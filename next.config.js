@@ -1,10 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    appDir: true,
+    serverComponentsExternalPackages: ['@supabase/supabase-js']
   },
   images: {
-    domains: ['htbyftlpbtpnrkbtxawj.supabase.co'],
+    domains: ['res.cloudinary.com', 'photos.proptx.com'],
+    formats: ['image/webp', 'image/avif']
   }
 };
 
