@@ -1,16 +1,24 @@
-## Hi there 👋
+﻿# CondoLeads Project
 
-<!--
-**condoleads/condoleads** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+##  Working Features
+- PropTx sync: 328 listings for 101 Charles St East
+- Three-part address matching (street number, name, city)
+- Toronto district support (C01-C15)
+- Test interface at /test-sync
 
-Here are some ideas to get you started:
+##  Project Structure
+- app/ - Next.js pages and API routes
+- components/ - React components
+- lib/ - Utility libraries
+- secrets/ - Credentials (not in Git)
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+##  Running the Project
+1. npm install
+2. npm run dev
+3. Visit http://localhost:3006/test-sync
+
+##  Current Stats
+- 8 Active For Sale
+- 13 For Lease
+- 33 Sold
+- 205 Leased
