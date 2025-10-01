@@ -1,0 +1,15 @@
+# CondoLeads Credentials
+
+## Supabase
+- URL: https://htbyftlpbtpnrkbtxawj.supabase.co
+- Anon Key: sb_publishable_wfIVFX6K0qnJXSTH2hirBA_pLcAxjLw
+- Service Key: sb_secret_QcXxGqcTWSxejFyN9ZcaSQ_U1oP6Ymp
+
+## PropTx (Dual Feeds)
+- API URL: https://query.ampre.ca/odata/
+
+### IDX Token (Public: For Sale + For Lease)
+- Bearer Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2ZW5kb3IvdHJyZWIvNjEwOSIsImF1ZCI6IkFtcFVzZXJzUHJkIiwicm9sZXMiOlsiQW1wVmVuZG9yIl0sImlzcyI6InByb2QuYW1wcmUuY2EiLCJleHAiOjI1MzQwMjMwMDc5OSwiaWF0IjoxNzU2OTkwMTEzLCJzdWJqZWN0VHlwZSI6InZlbmRvciIsInN1YmplY3RLZXkiOiI2MTA5IiwianRpIjoiMjlmMzA1MmE1OWJiZDA5MSIsImN1c3RvbWVyTmFtZSI6InRycmViIn0.Utdz8qDd2bpJb3vZ8qvHuyJh1nWlEHy5nJzZ3oGzekY
+
+### VOW Token (Authenticated: + Sold + Leased)
+- Bearer Token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2ZW5kb3IvdHJyZWIvNjEwOSIsImF1ZCI6IkFtcFVzZXJzUHJkIiwicm9sZXMiOlsiQW1wVmVuZG9yIl0sImlzcyI6InByb2QuYW1wcmUuY2EiLCJleHAiOjI1MzQwMjMwMDc5OSwiaWF0IjoxNzU2OTk1NTcwLCJzdWJqZWN0VHlwZSI6InZlbmRvciIsInN1YmplY3RLZXkiOiI2MTA5IiwianRpIjoiZDk5YWJiMzZhMjM1M2NmNyIsImN1c3RvbWVyTmFtZSI6InRycmViIn0.mGTXA0sGgERAf8rV4yOUrjuwwN7V_NlC1BQfVU9D3ZM
