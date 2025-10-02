@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { submitReview } from '@/app/actions/reviews'
+import { createClient } from '@/lib/supabase/client'
 
 interface Review {
   id: string
