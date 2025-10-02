@@ -10,6 +10,7 @@ import PriceChart from './components/PriceChart'
 import TransactionHistory from './components/TransactionHistory'
 import TransactionInsights from './components/TransactionInsights'
 import BuildingMap from './components/BuildingMap'
+import BuildingReviews from './components/BuildingReviews'
 import StickyNav from './components/StickyNav'
 import ListYourUnit from './components/ListYourUnit'
 import SEODescription from './components/SEODescription'
@@ -173,6 +174,11 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         address={building.full_address}
       />
 
+      <BuildingReviews
+        buildingId={building.id}
+        buildingName={building.building_name}
+      />
+
       <ListYourUnit buildingName={building.building_name} />
       
       <SEODescription 
@@ -183,6 +189,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     </div>
   )
 }
+
 
 
 
