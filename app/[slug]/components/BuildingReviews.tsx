@@ -100,7 +100,7 @@ export default function BuildingReviews({ buildingId, buildingName }: ReviewsPro
                   {[...Array(5)].map((_, i) => (
                     <span key={i} className={i < Math.round(Number(averageRating)) ? 'text-yellow-400 text-xl' : 'text-gray-300 text-xl'}>
                       
-                    </span>
+                    ★</span>
                   ))}
                 </div>
                 <span className="text-slate-600 ml-2">({reviews.length} {reviews.length === 1 ? 'review' : 'reviews'})</span>
@@ -143,7 +143,7 @@ export default function BuildingReviews({ buildingId, buildingName }: ReviewsPro
                     className={`text-4xl transition-colors ${star <= formData.rating ? 'text-yellow-400' : 'text-gray-300'} hover:scale-110`}
                   >
                     
-                  </button>
+                  ★</button>
                 ))}
               </div>
               <p className="text-sm text-slate-500 mt-1">{formData.rating} star{formData.rating !== 1 ? 's' : ''}</p>
