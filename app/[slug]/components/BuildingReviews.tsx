@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { submitReview } from '@/app/actions/reviews'
 
 interface Review {
   id: string
@@ -57,23 +57,20 @@ export default function BuildingReviews({ buildingId, buildingName }: ReviewsPro
     setSubmitting(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('building_reviews')
-        .insert({
-          building_id: buildingId,
-          user_name: formData.user_name,
-          rating: formData.rating,
-          comment: formData.comment
-        })
+      const result = await submitReview({
+        building_id: buildingId,
+        user_name: formData.user_name,
+        rating: formData.rating,
+        comment: formData.comment
+      })
 
-      if (!error) {
+      if (result.success) {
         setFormData({ user_name: '', rating: 5, comment: '' })
         setShowForm(false)
         await fetchReviews()
       } else {
-        console.error('Error submitting review:', error)
-        alert('Failed to submit review. Please try again.')
+        console.error('Error submitting review:', result.error)
+        alert(`Failed to submit review: ${result.error}`)
       }
     } catch (err) {
       console.error('Error:', err)
