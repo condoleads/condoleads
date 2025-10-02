@@ -1,6 +1,7 @@
 ﻿'use server'
 
 import { createClient } from '@supabase/supabase-js'
+import { revalidatePath } from 'next/cache'
 
 export async function submitReview(formData: {
   building_id: string
@@ -21,11 +22,15 @@ export async function submitReview(formData: {
       rating: formData.rating,
       comment: formData.comment
     })
+    .select()
 
   if (error) {
     console.error('Server action error:', error)
     return { success: false, error: error.message }
   }
 
-  return { success: true }
+  // Revalidate the page to show new review
+  revalidatePath(`/[slug]`)
+  
+  return { success: true, data }
 }
