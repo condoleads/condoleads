@@ -14,6 +14,7 @@ import BuildingReviews from './components/BuildingReviews'
 import StickyNav from './components/StickyNav'
 import ListYourUnit from './components/ListYourUnit'
 import SEODescription from './components/SEODescription'
+import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
@@ -175,6 +176,10 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       />
 
       <BuildingReviews
+        buildingId={building.id}
+        buildingName={building.building_name}
+      />
+<EstimatorSeller
         buildingId={building.id}
         buildingName={building.building_name}
       />
