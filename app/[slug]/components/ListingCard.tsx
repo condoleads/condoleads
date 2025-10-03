@@ -40,10 +40,26 @@ export default function ListingCard({ listing, type }: ListingCardProps) {
     }
   }
   
+  // Format sqft range for display
+  const formatSqftRange = (range: string | null) => {
+    if (!range) return null
+    // Convert "700-799" to "700-799 sqft"
+    return range
+  }
+
+  // Format locker display
+  const formatLocker = (locker: string | null) => {
+    if (!locker || locker === 'None') return null
+    return 'Locker'
+  }
+  
   const badge = getBadgeConfig()
   const accentColor = isClosed 
     ? (isSale ? 'red' : 'orange')
     : (isSale ? 'emerald' : 'sky')
+  
+  const sqftRange = formatSqftRange(listing.living_area_range)
+  const hasLocker = formatLocker(listing.locker)
   
   return (
     <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden">
@@ -124,8 +140,8 @@ export default function ListingCard({ listing, type }: ListingCardProps) {
           )}
         </div>
         
-        {/* Bed/Bath/Sqft */}
-        <div className="flex items-center gap-3 text-slate-700 mb-4 text-sm">
+        {/* Bed/Bath/Sqft/Parking/Locker */}
+        <div className="flex items-center gap-3 text-slate-700 mb-4 text-sm flex-wrap">
           <div className="flex items-center gap-1">
             <span className="font-semibold">{listing.bedrooms_total || 0}</span>
             <span className="text-slate-500">bed</span>
@@ -135,11 +151,11 @@ export default function ListingCard({ listing, type }: ListingCardProps) {
             <span className="font-semibold">{listing.bathrooms_total_integer || 0}</span>
             <span className="text-slate-500">bath</span>
           </div>
-          {listing.building_area_total && (
+          {sqftRange && (
             <>
               <span className="text-slate-300">|</span>
               <div className="flex items-center gap-1">
-                <span className="font-semibold">{listing.building_area_total.toLocaleString()}</span>
+                <span className="font-semibold">{sqftRange}</span>
                 <span className="text-slate-500">sqft</span>
               </div>
             </>
@@ -150,6 +166,15 @@ export default function ListingCard({ listing, type }: ListingCardProps) {
               <div className="flex items-center gap-1">
                 <span className="font-semibold">{listing.parking_total}</span>
                 <span className="text-slate-500">parking</span>
+              </div>
+            </>
+          )}
+          {hasLocker && (
+            <>
+              <span className="text-slate-300">|</span>
+              <div className="flex items-center gap-1">
+                <span className="font-semibold text-emerald-600"></span>
+                <span className="text-slate-500">Locker</span>
               </div>
             </>
           )}
