@@ -1,16 +1,16 @@
-﻿// app/estimator/actions/estimate-price.ts
+// app/estimator/actions/estimate-sale.ts
 'use server'
 
-import { findComparables } from '@/lib/estimator/comparable-matcher'
+import { findComparables } from '@/lib/estimator/comparable-matcher-sales'
 import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
 import { getAIInsights } from '@/lib/estimator/ai-insights'
 import { EstimateResult, UnitSpecs } from '@/lib/estimator/types'
 
 /**
- * Server action to estimate condo price
+ * Server action to estimate condo sale price
  * Used by both buyer (auto-fill) and seller (manual) forms
  */
-export async function estimatePrice(
+export async function estimateSale(
   specs: UnitSpecs,
   includeAI: boolean = false
 ): Promise<{ success: boolean; data?: EstimateResult; error?: string }> {
@@ -22,7 +22,7 @@ export async function estimatePrice(
     if (comparables.length === 0) {
       return {
         success: false,
-        error: `No sales data available for ${specs.bedrooms}-bedroom units in this building over the past 2 years. Unable to generate estimate.`
+        error: \No sales data available for \-bedroom units in this building over the past 2 years. Unable to generate estimate.\
       }
     }
     
@@ -49,7 +49,7 @@ export async function estimatePrice(
     }
     
   } catch (error) {
-    console.error('Error estimating price:', error)
+    console.error('Error estimating sale price:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to calculate estimate'
