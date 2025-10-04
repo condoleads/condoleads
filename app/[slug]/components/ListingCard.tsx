@@ -7,9 +7,10 @@ import { useState } from 'react'
 interface ListingCardProps {
   listing: MLSListing
   type: 'sale' | 'rent'
+  onEstimateClick?: () => void
 }
 
-export default function ListingCard({ listing, type }: ListingCardProps) {
+export default function ListingCard({ listing, type, onEstimateClick }: ListingCardProps) {
   const isSale = type === 'sale'
   const isClosed = listing.standard_status === 'Closed'
   const photos = listing.media?.filter(m => m.variant_type === 'large') || []
@@ -127,17 +128,17 @@ export default function ListingCard({ listing, type }: ListingCardProps) {
       </div>
       
       {/* Content */}
-      <div className="p-6">
+      <div className="p-6 flex flex-col h-full">
         {/* Address */}
         <div className="mb-3">
           <h3 className="text-xl font-bold text-slate-900">
             Unit {listing.unit_number || 'N/A'}
           </h3>
-          {listing.unparsed_address && (
-            <p className="text-sm text-slate-600 mt-1">
-              {listing.unparsed_address}
-            </p>
-          )}
+{listing.unparsed_address && (
+              <p className="text-sm text-slate-600 mt-1 truncate">
+                {listing.unparsed_address}
+              </p>
+            )}
         </div>
         
         {/* Bed/Bath/Sqft/Parking/Locker */}
@@ -202,9 +203,17 @@ export default function ListingCard({ listing, type }: ListingCardProps) {
           <p className="text-xs text-slate-400">
             {listing.listing_key || listing.listing_id ? `MLS #${listing.listing_key || listing.listing_id}` : ''}
           </p>
-          <button className={`text-sm font-semibold hover:underline transition-colors text-${accentColor}-600 hover:text-${accentColor}-700`}>
-            View Details 
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onEstimateClick}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors"
+            >
+              Value Estimate
+            </button>
+            <button className={`flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors border-${accentColor}-600 text-${accentColor}-600 hover:bg-${accentColor}-600 hover:text-white`}>
+              View Details
+            </button>
+          </div>
         </div>
       </div>
     </article>
