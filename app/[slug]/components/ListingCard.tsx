@@ -24,7 +24,6 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
     setCurrentPhotoIndex((prev) => (prev - 1 + photos.length) % photos.length)
   }
   
-  // Determine badge text and color
   const getBadgeConfig = () => {
     if (isClosed) {
       if (isSale) {
@@ -41,17 +40,9 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
     }
   }
   
-  // Format sqft range for display
   const formatSqftRange = (range: string | null) => {
     if (!range) return null
-    // Convert "700-799" to "700-799 sqft"
     return range
-  }
-
-  // Format locker display
-  const formatLocker = (locker: string | null) => {
-    if (!locker || locker === 'None') return null
-    return 'Locker'
   }
   
   const badge = getBadgeConfig()
@@ -60,12 +51,13 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
     : (isSale ? 'emerald' : 'sky')
   
   const sqftRange = formatSqftRange(listing.living_area_range)
-  const hasLocker = formatLocker(listing.locker)
+  const parkingCount = listing.parking_total || 0
+  const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
   
   return (
-    <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden">
+    <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col">
       {/* Image Carousel */}
-      <div className="relative h-64 bg-slate-200">
+      <div className="relative h-64 bg-slate-200 flex-shrink-0">
         {photos.length > 0 ? (
           <>
             <img 
@@ -75,7 +67,6 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             
-            {/* Navigation Arrows - Only show if multiple photos */}
             {photos.length > 1 && (
               <>
                 <button 
@@ -97,7 +88,6 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
                   </svg>
                 </button>
                 
-                {/* Photo Counter */}
                 <div className="absolute bottom-20 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
                   {currentPhotoIndex + 1} / {photos.length}
                 </div>
@@ -111,14 +101,12 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
           </>
         )}
         
-        {/* Status Badge */}
         <div className="absolute top-4 left-4 z-10">
           <span className={`px-3 py-1.5 backdrop-blur-sm rounded-full text-sm font-semibold ${badge.bgColor} text-white`}>
             {badge.text}
           </span>
         </div>
         
-        {/* Price */}
         <div className="absolute bottom-4 left-4 right-4 z-10">
           <p className="text-3xl font-bold text-white">
             {formatPrice(listing.list_price)}
@@ -128,60 +116,43 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
       </div>
       
       {/* Content */}
-      <div className="p-6 flex flex-col h-full">
-        {/* Address */}
+      <div className="p-6 flex flex-col flex-grow">
         <div className="mb-3">
           <h3 className="text-xl font-bold text-slate-900">
             Unit {listing.unit_number || 'N/A'}
           </h3>
-{listing.unparsed_address && (
-              <p className="text-sm text-slate-600 mt-1 truncate">
-                {listing.unparsed_address}
-              </p>
-            )}
+          {listing.unparsed_address && (
+            <p className="text-sm text-slate-600 mt-1 truncate">
+              {listing.unparsed_address}
+            </p>
+          )}
         </div>
         
-        {/* Bed/Bath/Sqft/Parking/Locker */}
-        <div className="flex items-center gap-3 text-slate-700 mb-4 text-sm flex-wrap">
-          <div className="flex items-center gap-1">
-            <span className="font-semibold">{listing.bedrooms_total || 0}</span>
-            <span className="text-slate-500">bed</span>
-          </div>
+        {/* Row 1: Bed/Bath/Sqft - Fixed Height */}
+        <div className="h-5 flex items-center gap-2 text-slate-700 mb-2 text-sm">
+          <span className="font-semibold">{listing.bedrooms_total || 0}</span>
+          <span className="text-slate-500">bed</span>
           <span className="text-slate-300">|</span>
-          <div className="flex items-center gap-1">
-            <span className="font-semibold">{listing.bathrooms_total_integer || 0}</span>
-            <span className="text-slate-500">bath</span>
-          </div>
+          <span className="font-semibold">{listing.bathrooms_total_integer || 0}</span>
+          <span className="text-slate-500">bath</span>
           {sqftRange && (
             <>
               <span className="text-slate-300">|</span>
-              <div className="flex items-center gap-1">
-                <span className="font-semibold">{sqftRange}</span>
-                <span className="text-slate-500">sqft</span>
-              </div>
-            </>
-          )}
-          {listing.parking_total && listing.parking_total > 0 && (
-            <>
-              <span className="text-slate-300">|</span>
-              <div className="flex items-center gap-1">
-                <span className="font-semibold">{listing.parking_total}</span>
-                <span className="text-slate-500">parking</span>
-              </div>
-            </>
-          )}
-          {hasLocker && (
-            <>
-              <span className="text-slate-300">|</span>
-              <div className="flex items-center gap-1">
-                <span className="font-semibold text-emerald-600"></span>
-                <span className="text-slate-500">Locker</span>
-              </div>
+              <span className="font-semibold">{sqftRange}</span>
+              <span className="text-slate-500">sqft</span>
             </>
           )}
         </div>
+
+        {/* Row 2: Parking/Locker - Fixed Height */}
+        <div className="h-5 flex items-center gap-2 text-slate-700 mb-4 text-sm">
+          <span className="font-semibold">{parkingCount}</span>
+          <span className="text-slate-500">parking</span>
+          <span className="text-slate-300">|</span>
+          <span className="font-semibold">{lockerCount}</span>
+          <span className="text-slate-500">locker</span>
+        </div>
         
-        {/* Property Type & Details */}
         <div className="flex items-center gap-3 text-sm text-slate-600 mb-4">
           <span>{listing.property_type || 'Condo'}</span>
           {listing.association_fee && listing.association_fee > 0 && (
@@ -198,8 +169,7 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
           )}
         </div>
         
-        {/* Footer */}
-        <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+        <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
           <p className="text-xs text-slate-400">
             {listing.listing_key || listing.listing_id ? `MLS #${listing.listing_key || listing.listing_id}` : ''}
           </p>
