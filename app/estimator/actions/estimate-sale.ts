@@ -22,7 +22,7 @@ export async function estimateSale(
     if (comparables.length === 0) {
       return {
         success: false,
-        error: \No sales data available for \-bedroom units in this building over the past 2 years. Unable to generate estimate.\
+        error: `No sales data available for ${specs.bedrooms}-bedroom units in this building over the past 2 years. Unable to generate estimate.`
       }
     }
     

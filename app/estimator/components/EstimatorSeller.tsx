@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { estimatePrice } from '../actions/estimate-price'
+import { estimateSale } from '../actions/estimate-sale'
 import { EstimateResult } from '@/lib/estimator/types'
 import EstimatorResults from './EstimatorResults'
 
@@ -15,7 +15,7 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  
+
   const [specs, setSpecs] = useState({
     bedrooms: 2,
     bathrooms: 2,
@@ -43,7 +43,7 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
     setError(null)
     setResult(null)
 
-    const response = await estimatePrice({
+    const response = await estimateSale({
       ...specs,
       buildingId
     }, true) // includeAI = true
@@ -72,7 +72,7 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
         {!result && (
           <div className="bg-white rounded-2xl shadow-lg p-8">
             <h3 className="text-xl font-bold text-slate-900 mb-6">Enter Your Unit Details</h3>
-            
+
             <div className="grid md:grid-cols-2 gap-6 mb-6">
               {/* Bedrooms */}
               <div>
@@ -81,7 +81,7 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
                 </label>
                 <select
                   value={specs.bedrooms}
-                  onChange={(e) => setSpecs({...specs, bedrooms: parseInt(e.target.value)})}
+                  onChange={(e) => setSpecs({...specs, bedrooms: parseInt(e.target.value)})}  
                   className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
                   <option value="0">Studio</option>
@@ -99,7 +99,7 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
                 </label>
                 <select
                   value={specs.bathrooms}
-                  onChange={(e) => setSpecs({...specs, bathrooms: parseInt(e.target.value)})}
+                  onChange={(e) => setSpecs({...specs, bathrooms: parseInt(e.target.value)})} 
                   className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
                   <option value="1">1 Bathroom</option>
@@ -116,7 +116,7 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
                 </label>
                 <select
                   value={specs.livingAreaRange}
-                  onChange={(e) => setSpecs({...specs, livingAreaRange: e.target.value})}
+                  onChange={(e) => setSpecs({...specs, livingAreaRange: e.target.value})}     
                   className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
                   {sqftRanges.map(range => (
@@ -132,7 +132,7 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
                 </label>
                 <select
                   value={specs.parking}
-                  onChange={(e) => setSpecs({...specs, parking: parseInt(e.target.value)})}
+                  onChange={(e) => setSpecs({...specs, parking: parseInt(e.target.value)})}   
                   className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
                   <option value="0">No Parking</option>
