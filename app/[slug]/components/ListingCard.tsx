@@ -174,12 +174,14 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
             {listing.listing_key || listing.listing_id ? `MLS #${listing.listing_key || listing.listing_id}` : ''}
           </p>
           <div className="flex gap-2">
-            <button
-              onClick={onEstimateClick}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors"
-            >
-              Value Estimate
-            </button>
+            {!isClosed && (
+              <button
+                onClick={onEstimateClick}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors"
+              >
+                {isSale ? 'Sale Offer' : 'Rent Offer'}
+              </button>
+            )}
             <button className={`flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors border-${accentColor}-600 text-${accentColor}-600 hover:bg-${accentColor}-600 hover:text-white`}>
               View Details
             </button>
