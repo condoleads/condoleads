@@ -17,12 +17,13 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
   const [error, setError] = useState<string | null>(null)
 
   const [specs, setSpecs] = useState({
-    bedrooms: 2,
-    bathrooms: 2,
-    livingAreaRange: '700-799',
-    parking: 1,
-    hasLocker: false
-  })
+  bedrooms: 2,
+  bathrooms: 2,
+  livingAreaRange: '700-799',
+  parking: 1,
+  hasLocker: false,
+  taxAnnualAmount: undefined as number | undefined
+})
 
   const sqftRanges = [
     '0-499',
@@ -142,7 +143,20 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
                 </select>
               </div>
             </div>
-
+{/* Property Tax */}
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Annual Property Tax (Optional)
+                  <span className="text-xs text-slate-500 ml-2">For better matching</span>
+                </label>
+                <input
+                  type="number"
+                  value={specs.taxAnnualAmount || ''}
+                  onChange={(e) => setSpecs({...specs, taxAnnualAmount: e.target.value ? parseFloat(e.target.value) : undefined})}
+                  placeholder="e.g., 3500"
+                  className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              </div>
             {/* Locker */}
             <div className="mb-8">
               <label className="flex items-center gap-3 cursor-pointer">

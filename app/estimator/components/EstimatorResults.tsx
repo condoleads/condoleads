@@ -45,7 +45,37 @@ export default function EstimatorResults({ result, type = 'sale' }: EstimatorRes
           </span>
         </div>
       </div>
-
+{/* Adjustment Summary Banner - ONLY FOR SALES */}
+      {isSale && result.adjustmentSummary && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200">
+          <h3 className="text-lg font-bold text-slate-900 mb-3">Valuation Methodology</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center">
+              <p className="text-3xl font-bold text-emerald-600">
+                {result.adjustmentSummary.perfectMatches}
+              </p>
+              <p className="text-sm text-slate-600 mt-1">Perfect Matches</p>
+            </div>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-blue-600">
+                {result.adjustmentSummary.adjustedComparables}
+              </p>
+              <p className="text-sm text-slate-600 mt-1">Adjusted Comparables</p>
+            </div>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-slate-700">
+                {formatPrice(result.adjustmentSummary.avgAdjustment)}
+              </p>
+              <p className="text-sm text-slate-600 mt-1">Avg Adjustment</p>
+            </div>
+          </div>
+          {result.adjustmentSummary.perfectMatches > 0 && (
+            <p className="text-sm text-emerald-700 mt-4 font-semibold">
+              ✓ Found {result.adjustmentSummary.perfectMatches} exact match{result.adjustmentSummary.perfectMatches > 1 ? 'es' : ''} with identical specs - highest confidence estimate
+            </p>
+          )}
+        </div>
+      )}
       {/* Market Speed */}
       <div className="bg-slate-50 rounded-xl p-6">
         <h3 className="text-lg font-bold text-slate-900 mb-3">Market Conditions</h3>
@@ -97,38 +127,95 @@ export default function EstimatorResults({ result, type = 'sale' }: EstimatorRes
         </div>
       )}
 
-      {/* Comparables */}
+{/* Enhanced Comparables with Adjustments */}
       <div>
         <h3 className="text-lg font-bold text-slate-900 mb-4">
           Recent Comparable {isSale ? 'Sales' : 'Leases'} ({result.comparables.length})
         </h3>
-        <div className="space-y-3 max-h-96 overflow-y-auto">
-          {result.comparables.slice(0, 5).map((comp, idx) => (
-            <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-              <div className="flex-1">
-                <p className="font-semibold text-slate-900">
-                  {comp.bedrooms} bed, {comp.bathrooms} bath • {comp.livingAreaRange} sqft
-                </p>
-                <p className="text-sm text-slate-600 mt-1">
-                  {comp.parking} parking • {comp.locker === 'Owned' ? 'Has locker' : 'No locker'} • {comp.daysOnMarket} days on market
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {isSale ? 'Sold' : 'Leased'}: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                </p>
+        <div className="space-y-4 max-h-[600px] overflow-y-auto">
+          {result.comparables.slice(0, 8).map((comp, idx) => {
+            const hasAdjustments = comp.adjustments && comp.adjustments.length > 0
+            const matchQualityColors = {
+              Perfect: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+              Excellent: 'bg-blue-100 text-blue-800 border-blue-300',
+              Good: 'bg-amber-100 text-amber-800 border-amber-300',
+              Fair: 'bg-slate-100 text-slate-800 border-slate-300'
+            }
+
+            return (
+              <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
+                {/* Header with Match Quality Badge */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <p className="font-bold text-slate-900 text-lg">
+                        {comp.bedrooms} bed, {comp.bathrooms} bath
+                      </p>
+                      {comp.matchQuality && (
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold border-2 ${matchQualityColors[comp.matchQuality]}`}>
+                          {comp.matchQuality} Match
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-600">
+                      {comp.livingAreaRange} sqft • {comp.parking} parking • {comp.locker === 'Owned' ? 'Has locker' : 'No locker'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {isSale ? 'Sold' : 'Leased'}: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} • {comp.daysOnMarket} days
+                    </p>
+                  </div>
+                </div>
+
+                {/* Price Breakdown with Adjustments */}
+                <div className="bg-white rounded-lg p-4 mt-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-slate-600">Sale Price:</span>
+                    <span className="text-lg font-bold text-slate-900">{formatPrice(comp.closePrice)}</span>
+                  </div>
+
+                  {/* Show Adjustments */}
+                  {isSale && hasAdjustments && comp.adjustments!.map((adj, adjIdx) => (
+                    <div key={adjIdx} className="flex justify-between items-center py-2 border-t border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm ${adj.adjustmentAmount > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {adj.adjustmentAmount > 0 ? '↑' : '↓'}
+                        </span>
+                        <span className="text-sm text-slate-600">{adj.reason}</span>
+                      </div>
+                      <span className={`text-sm font-semibold ${adj.adjustmentAmount > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {adj.adjustmentAmount > 0 ? '+' : ''}{formatPrice(adj.adjustmentAmount)}
+                      </span>
+                    </div>
+                  ))}
+
+                  {/* Adjusted Price */}
+                  {isSale && hasAdjustments && (
+                    <div className="flex justify-between items-center pt-3 mt-3 border-t-2 border-slate-300">
+                      <span className="text-sm font-bold text-slate-900">Adjusted Value:</span>
+                      <span className="text-xl font-bold text-emerald-600">{formatPrice(comp.adjustedPrice || comp.closePrice)}</span>
+                    </div>
+                  )}
+
+                  {/* Perfect Match Indicator */}
+                  {isSale && !hasAdjustments && comp.matchQuality === 'Perfect' && (
+                    <div className="pt-3 mt-3 border-t-2 border-emerald-300">
+                      <p className="text-sm font-semibold text-emerald-700 text-center">
+                        ✓ Identical unit specifications - no adjustments needed
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Show original listing price */}
+                  <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
+                    <span className="text-xs text-slate-500">Originally listed:</span>
+                    <span className="text-xs text-slate-500">{formatPrice(comp.listPrice)}</span>
+                  </div>
+                </div>
               </div>
-              <div className="text-right ml-4">
-                <p className="text-lg font-bold text-emerald-600">
-                  {formatPrice(comp.closePrice)}{!isSale && '/mo'}
-                </p>
-                <p className="text-xs text-slate-500">
-                  Listed: {formatPrice(comp.listPrice)}{!isSale && '/mo'}
-                </p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
-
       {/* Disclaimer */}
       <div className="text-xs text-slate-500 pt-4 border-t">
         <p>

@@ -19,7 +19,7 @@ export async function findComparables(specs: UnitSpecs): Promise<ComparableSale[
   
   const { data: allSales, error } = await supabase
     .from('mls_listings')
-    .select('close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date')
+    .select('close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date, tax_annual_amount')
     .eq('building_id', specs.buildingId)
     .eq('standard_status', 'Closed')
     .not('close_price', 'is', null)
@@ -38,11 +38,14 @@ export async function findComparables(specs: UnitSpecs): Promise<ComparableSale[
   )
   
   if (bedroomMatches.length === 0) {
-    return [] // No data available
-  }
-  
-  // Score each comparable based on similarity
-  const scoredComparables = bedroomMatches.map(sale => {
+  return [] // No data available
+}
+
+// If user provided tax amount, use it for scoring
+const userTax = specs.taxAnnualAmount
+
+// Score each comparable based on similarity
+const scoredComparables = bedroomMatches.map(sale => {
     let score = 100
     
     // Bathroom similarity (1 is acceptable)
