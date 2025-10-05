@@ -15,6 +15,7 @@ import StickyNav from './components/StickyNav'
 import ListYourUnit from './components/ListYourUnit'
 import SEODescription from './components/SEODescription'
 import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
+import BuildingSchema from './components/BuildingSchema'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
@@ -181,7 +182,13 @@ const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lea
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
+  <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
+    <BuildingSchema 
+      building={building}
+      activeSales={activeSales}
+      activeRentals={activeRentals}
+      avgPrice={avgSalePrice}
+    />
       <StickyNav />
       
       <BuildingHero 
