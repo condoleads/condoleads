@@ -193,6 +193,7 @@ const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lea
       
       <BuildingHero 
         building={building}
+        slug={params.slug}
         activeSalesCount={activeSales.length}
         activeRentalsCount={activeRentals.length}
         closedSalesCount={closedSales.length}

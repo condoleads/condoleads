@@ -1,8 +1,10 @@
 ﻿import { Building } from '@/lib/types/building'
 import { formatPriceShort } from '@/lib/utils/formatters'
+import ShareSaveButtons from './ShareSaveButtons'
 
 interface BuildingHeroProps {
   building: Building
+  slug: string
   activeSalesCount: number
   activeRentalsCount: number
   closedSalesCount: number
@@ -14,6 +16,7 @@ interface BuildingHeroProps {
 
 export default function BuildingHero({
   building,
+  slug,
   activeSalesCount,
   activeRentalsCount,
   closedSalesCount,
@@ -31,7 +34,11 @@ export default function BuildingHero({
         <p className="text-xl md:text-2xl opacity-90 mb-12">
           {building.canonical_address}
         </p>
-        
+                
+        <div className="mb-12">
+          <ShareSaveButtons buildingName={building.building_name} slug={slug} />
+        </div>
+                        
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 hover:bg-white/15 transition">
             <p className="text-3xl md:text-4xl font-bold mb-1">{building.total_units || ''}</p>
