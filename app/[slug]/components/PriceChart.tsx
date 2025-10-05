@@ -66,7 +66,7 @@ export default function PriceChart({ closedSales, closedRentals }: PriceChartPro
         </div>
 
         <div className="h-96">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" key={activeTab}>
             <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis
@@ -75,10 +75,21 @@ export default function PriceChart({ closedSales, closedRentals }: PriceChartPro
                 style={{ fontSize: '12px' }}
               />
               <YAxis
-                stroke="#64748b"
-                style={{ fontSize: '12px' }}
-                tickFormatter={(value) => formatPriceShort(value)}
-              />
+  key={`yaxis-${activeTab}`}
+  stroke="#64748b"
+  style={{ fontSize: '12px' }}
+  tickFormatter={(value) => {
+    if (activeTab === 'sales') {
+      return formatPriceShort(value)
+    }
+    return new Intl.NumberFormat('en-US', { 
+      style: 'currency', 
+      currency: 'USD', 
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0 
+    }).format(value)
+  }}
+/>
               <Tooltip
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
