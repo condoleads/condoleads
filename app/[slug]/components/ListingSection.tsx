@@ -3,12 +3,15 @@
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
 import ListingCard from './ListingCard'
+import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 
 interface ListingSectionProps {
   activeSales: MLSListing[]
   activeRentals: MLSListing[]
   closedSales: MLSListing[]
   closedRentals: MLSListing[]
+  buildingId: string
+  buildingName: string
 }
 
 type TabType = 'for-sale' | 'for-lease' | 'sold' | 'leased'
@@ -18,9 +21,15 @@ export default function ListingSection({
   activeRentals = [],
   closedSales = [],
   closedRentals = [],
+  buildingId,
+  buildingName,
 }: ListingSectionProps) {
   const [activeTab, setActiveTab] = useState<TabType>('for-sale')
   const [currentPage, setCurrentPage] = useState(1)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [selectedListing, setSelectedListing] = useState<MLSListing | null>(null)
+  const [modalType, setModalType] = useState<'sale' | 'rent'>('sale')
+  
   const itemsPerPage = 6
 
   const tabs = [
@@ -33,13 +42,17 @@ export default function ListingSection({
   const currentData = tabs.find(tab => tab.id === activeTab)?.data || []
   const isSaleTab = activeTab === 'for-sale' || activeTab === 'sold'
 
-  // Reset to page 1 when tab changes
   const handleTabChange = (tabId: TabType) => {
     setActiveTab(tabId)
     setCurrentPage(1)
   }
 
-  // Pagination calculations
+  const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'rent') => {
+    setSelectedListing(listing)
+    setModalType(type)
+    setModalOpen(true)
+  }
+
   const totalPages = Math.ceil(currentData.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
   const endIndex = startIndex + itemsPerPage
@@ -90,11 +103,11 @@ export default function ListingSection({
                   key={listing.id}
                   listing={listing}
                   type={isSaleTab ? 'sale' : 'rent'}
+                  onEstimateClick={() => handleEstimateClick(listing, isSaleTab ? 'sale' : 'rent')}
                 />
               ))}
             </div>
 
-            {/* Pagination Controls */}
             {totalPages > 1 && (
               <div className="flex justify-center items-center gap-4 mt-8">
                 <button
@@ -141,6 +154,16 @@ export default function ListingSection({
           </div>
         )}
       </section>
+
+      {/* Estimator Modal */}
+      <EstimatorBuyerModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        listing={selectedListing}
+        buildingName={buildingName}
+        buildingId={buildingId}
+        type={modalType}
+      />
     </>
   )
 }

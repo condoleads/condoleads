@@ -22,18 +22,18 @@ export async function estimateRent(
     if (comparables.length === 0) {
       return {
         success: false,
-        error: \No lease data available for \-bedroom units in this building over the past 2 years. Unable to generate estimate.\
+        error: `No lease data available for ${specs.bedrooms}-bedroom units in this building over the past 2 years. Unable to generate estimate.`
       }
     }
     
     // Step 2: Calculate statistical estimate for base rent
     const estimate = calculateEstimate(specs, comparables)
     
-    // Step 3: Calculate parking cost (market average: \-500/month per space)
-    // Using \/month as average for Toronto condos
+    // Step 3: Calculate parking cost (market average: $100-500/month per space)
+    // Using $250/month as average for Toronto condos
     const parkingCost = specs.parking > 0 ? specs.parking * 250 : 0
     
-    // Step 4: Calculate locker cost (market average: ~\/month)
+    // Step 4: Calculate locker cost (market average: ~$100/month)
     const lockerCost = specs.hasLocker ? 100 : 0
     
     // Step 5: Add AI insights if requested (and API key is configured)

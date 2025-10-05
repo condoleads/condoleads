@@ -122,14 +122,16 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         avgDaysOnMarketLease={avgDaysOnMarketLease}
       />
       
-      <div id="listings">
-        <ListingSection 
-          activeSales={activeSales}
-          activeRentals={activeRentals}
-          closedSales={closedSales}
-          closedRentals={closedRentals}
-        />
-      </div>
+    <div id="listings">
+  <ListingSection
+    activeSales={activeSales}
+    activeRentals={activeRentals}
+    closedSales={closedSales}
+    closedRentals={closedRentals}
+    buildingId={building.id}
+    buildingName={building.building_name}
+  />
+</div>
       
       <div id="highlights">
         <BuildingHighlights 
