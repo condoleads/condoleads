@@ -154,20 +154,26 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
         </div>
         
         <div className="flex items-center gap-3 text-sm text-slate-600 mb-4">
-          <span>{listing.property_type || 'Condo'}</span>
-          {listing.association_fee && listing.association_fee > 0 && (
-            <>
-              <span className="text-slate-300">|</span>
-              <span>${Math.round(listing.association_fee)} fees</span>
-            </>
-          )}
-          {listing.days_on_market && (
-            <>
-              <span className="text-slate-300">|</span>
-              <span>{listing.days_on_market} days</span>
-            </>
-          )}
-        </div>
+  <span>{listing.property_type || 'Condo'}</span>
+  {listing.association_fee && listing.association_fee > 0 && (
+    <>
+      <span className="text-slate-300">|</span>
+      <span>${Math.round(listing.association_fee)} fees</span>
+    </>
+  )}
+  {isSale && listing.tax_annual_amount && listing.tax_annual_amount > 0 && (
+    <>
+      <span className="text-slate-300">|</span>
+      <span>${Math.round(listing.tax_annual_amount)} tax</span>
+    </>
+  )}
+  {listing.days_on_market && (
+    <>
+      <span className="text-slate-300">|</span>
+      <span>{listing.days_on_market} days</span>
+    </>
+  )}
+</div>
         
         <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
           <p className="text-xs text-slate-400">

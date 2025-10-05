@@ -1,6 +1,6 @@
 ﻿// lib/estimator/comparable-matcher.ts
 import { createClient } from '@/lib/supabase/client'
-import { ComparableSale, UnitSpecs } from './types'
+import { ComparableSale, UnitSpecs, PriceAdjustment, ADJUSTMENT_VALUES } from './types'
 
 /**
  * Finds comparable sales within the same building
@@ -81,11 +81,78 @@ export async function findComparables(specs: UnitSpecs): Promise<ComparableSale[
     return { sale, score }
   })
   
-  // Sort by score and return top 10 comparables
-  const topComparables = scoredComparables
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
-    .map(item => ({
+  // Sort by score and return top 10 comparables with adjustments
+const topComparables = scoredComparables
+  .sort((a, b) => b.score - a.score)
+  .slice(0, 10)
+  .map(item => {
+    const adjustments: PriceAdjustment[] = []
+    let adjustedPrice = item.sale.close_price
+
+    // Calculate parking adjustment
+    const parkingDiff = specs.parking - (item.sale.parking_total || 0)
+    if (parkingDiff !== 0) {
+      const adjustmentAmount = parkingDiff * ADJUSTMENT_VALUES.PARKING_PER_SPACE
+      adjustedPrice += adjustmentAmount
+      adjustments.push({
+        type: 'parking',
+        difference: parkingDiff,
+        adjustmentAmount: adjustmentAmount,
+        reason: parkingDiff > 0 
+          ? `Your unit has ${Math.abs(parkingDiff)} more parking space${Math.abs(parkingDiff) > 1 ? 's' : ''}`
+          : `Comparable has ${Math.abs(parkingDiff)} more parking space${Math.abs(parkingDiff) > 1 ? 's' : ''}`
+      })
+    }
+
+    // Calculate locker adjustment
+    const userHasLocker = specs.hasLocker
+    const compHasLocker = item.sale.locker === 'Owned'
+    if (userHasLocker !== compHasLocker) {
+      const adjustmentAmount = userHasLocker ? ADJUSTMENT_VALUES.LOCKER : -ADJUSTMENT_VALUES.LOCKER
+      adjustedPrice += adjustmentAmount
+      adjustments.push({
+        type: 'locker',
+        difference: userHasLocker ? 1 : -1,
+        adjustmentAmount: adjustmentAmount,
+        reason: userHasLocker 
+          ? 'Your unit includes a locker'
+          : 'Comparable includes a locker'
+      })
+    }
+
+    // Calculate bathroom adjustment
+    const bathroomDiff = specs.bathrooms - (item.sale.bathrooms_total_integer || 0)
+    if (bathroomDiff !== 0) {
+      const adjustmentAmount = bathroomDiff * ADJUSTMENT_VALUES.BATHROOM
+      adjustedPrice += adjustmentAmount
+      adjustments.push({
+        type: 'bathroom',
+        difference: bathroomDiff,
+        adjustmentAmount: adjustmentAmount,
+        reason: bathroomDiff > 0
+          ? `Your unit has ${Math.abs(bathroomDiff)} more bathroom${Math.abs(bathroomDiff) > 1 ? 's' : ''}`
+          : `Comparable has ${Math.abs(bathroomDiff)} more bathroom${Math.abs(bathroomDiff) > 1 ? 's' : ''}`
+      })
+    }
+
+    // Determine match quality
+    let matchQuality: 'Perfect' | 'Excellent' | 'Good' | 'Fair' = 'Fair'
+    const hasExactBedBath = item.sale.bedrooms_total === specs.bedrooms && 
+                            item.sale.bathrooms_total_integer === specs.bathrooms
+    const hasExactParking = (item.sale.parking_total || 0) === specs.parking
+    const hasExactLocker = compHasLocker === specs.hasLocker
+    const hasTaxMatch = userTax && item.sale.tax_annual_amount && 
+                        Math.abs(item.sale.tax_annual_amount - userTax) / userTax <= 0.10
+
+    if (hasExactBedBath && hasExactParking && hasExactLocker) {
+      matchQuality = 'Perfect'
+    } else if (hasTaxMatch && hasExactBedBath) {
+      matchQuality = 'Excellent'
+    } else if (hasExactBedBath && adjustments.length <= 1) {
+      matchQuality = 'Good'
+    }
+
+    return {
       closePrice: item.sale.close_price,
       listPrice: item.sale.list_price,
       bedrooms: item.sale.bedrooms_total,
@@ -94,10 +161,16 @@ export async function findComparables(specs: UnitSpecs): Promise<ComparableSale[
       parking: item.sale.parking_total || 0,
       locker: item.sale.locker,
       daysOnMarket: item.sale.days_on_market || 0,
-      closeDate: item.sale.close_date
-    }))
-  
-  return topComparables
+      closeDate: item.sale.close_date,
+      taxAnnualAmount: item.sale.tax_annual_amount,
+      adjustments: adjustments,
+      adjustedPrice: adjustedPrice,
+      matchQuality: matchQuality,
+      matchScore: item.score
+    }
+  })
+
+return topComparables
 }
 
 /**

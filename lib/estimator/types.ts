@@ -1,4 +1,5 @@
 ﻿// lib/estimator/types.ts
+
 export interface UnitSpecs {
   bedrooms: number
   bathrooms: number
@@ -6,6 +7,14 @@ export interface UnitSpecs {
   parking: number
   hasLocker: boolean
   buildingId: string
+  taxAnnualAmount?: number  // Optional - for better matching
+}
+
+export interface PriceAdjustment {
+  type: 'parking' | 'locker' | 'bathroom'
+  difference: number  // +1 or -1
+  adjustmentAmount: number  // Dollar amount
+  reason: string  // Human-readable explanation
 }
 
 export interface ComparableSale {
@@ -18,6 +27,13 @@ export interface ComparableSale {
   locker: string | null
   daysOnMarket: number
   closeDate: string
+  taxAnnualAmount?: number
+  
+  // NEW: Adjustment tracking
+  adjustments?: PriceAdjustment[]
+  adjustedPrice?: number
+  matchQuality?: 'Perfect' | 'Excellent' | 'Good' | 'Fair'
+  matchScore?: number
 }
 
 export interface EstimateResult {
@@ -33,9 +49,21 @@ export interface EstimateResult {
     status: 'Fast' | 'Moderate' | 'Slow'
     message: string
   }
+  adjustmentSummary?: {
+    perfectMatches: number
+    adjustedComparables: number
+    avgAdjustment: number
+  }
   aiInsights?: {
     summary: string
     keyFactors: string[]
     marketTrend: string
   }
 }
+
+// Adjustment constants
+export const ADJUSTMENT_VALUES = {
+  PARKING_PER_SPACE: 85000,
+  LOCKER: 10000,
+  BATHROOM: 50000
+} as const
