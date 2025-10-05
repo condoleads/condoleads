@@ -170,21 +170,27 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         />
       </div>
       
-      <BuildingMap
-        latitude={building.latitude}
-        longitude={building.longitude}
-        buildingName={building.building_name}
-        address={building.full_address}
-      />
+      <div id="location">
+  <BuildingMap
+    latitude={building.latitude}
+    longitude={building.longitude}
+    buildingName={building.building_name}
+    address={building.full_address}
+  />
+</div>
 
-      <BuildingReviews
-        buildingId={building.id}
-        buildingName={building.building_name}
-      />
-<EstimatorSeller
-        buildingId={building.id}
-        buildingName={building.building_name}
-      />
+      <div id="reviews">
+  <BuildingReviews
+    buildingId={building.id}
+    buildingName={building.building_name}
+  />
+</div>
+<div id="list-your-unit">
+  <EstimatorSeller
+    buildingId={building.id}
+    buildingName={building.building_name}
+  />
+</div>
 
       <ListYourUnit buildingName={building.building_name} />
       

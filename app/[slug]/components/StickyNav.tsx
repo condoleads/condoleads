@@ -1,26 +1,27 @@
 ﻿'use client'
-
 import { useState, useEffect } from 'react'
 
 const sections = [
+  { id: 'highlights', label: 'Highlights' },
   { id: 'listings', label: 'Listings' },
   { id: 'list-your-unit', label: 'List Your Unit' },
-  { id: 'highlights', label: 'Building Highlights' },
   { id: 'market-stats', label: 'Market Stats' },
-  { id: 'amenities', label: 'Amenities' },
   { id: 'price-trends', label: 'Price Trends' },
-  { id: 'transaction-history', label: 'Transaction History' },
+  { id: 'amenities', label: 'Amenities' },
+  { id: 'transaction-history', label: 'Transactions' },
+  { id: 'reviews', label: 'Reviews' },
+  { id: 'location', label: 'Location' },
 ]
 
 export default function StickyNav() {
-  const [activeSection, setActiveSection] = useState('listings')
+  const [activeSection, setActiveSection] = useState('highlights')
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
       // Show nav after scrolling past hero (800px)
       setIsVisible(window.scrollY > 800)
-
+      
       // Find active section
       const scrollPosition = window.scrollY + 200
       
