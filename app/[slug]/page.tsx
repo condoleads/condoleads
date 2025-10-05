@@ -19,7 +19,7 @@ import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
     .from('buildings')
-    .select('building_name, canonical_address')
+    .select('building_name, canonical_address, year_built, total_units')
     .eq('slug', params.slug)
     .single()
 
@@ -27,9 +27,82 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     return { title: 'Building Not Found' }
   }
 
+  // Fetch listings for richer metadata
+  const { data: listings } = await supabase
+    .from('mls_listings')
+    .select('list_price, bedrooms_total, transaction_type, standard_status')
+    .eq('building_id', building.id)
+    .limit(100)
+
+  const activeSales = listings?.filter(l => l.transaction_type === 'For Sale' && l.standard_status === 'Active') || []
+  const activeRentals = listings?.filter(l => l.transaction_type === 'For Lease' && l.standard_status === 'Active') || []
+  
+  // Calculate price range
+  const salePrices = activeSales.map(l => l.list_price).filter(p => p > 0)
+  const minPrice = salePrices.length > 0 ? Math.min(...salePrices) : null
+  const maxPrice = salePrices.length > 0 ? Math.max(...salePrices) : null
+  
+  // Get bedroom range
+  const bedrooms = listings?.map(l => l.bedrooms_total).filter(b => b !== null) || []
+  const minBed = bedrooms.length > 0 ? Math.min(...bedrooms) : null
+  const maxBed = bedrooms.length > 0 ? Math.max(...bedrooms) : null
+
+  // Build dynamic description
+  let description = `${building.building_name} at ${building.canonical_address} in Toronto. `
+  
+  if (activeSales.length > 0) {
+    description += `${activeSales.length} unit${activeSales.length > 1 ? 's' : ''} for sale`
+    if (minPrice && maxPrice) {
+      description += ` from $${Math.round(minPrice/1000)}K to $${Math.round(maxPrice/1000)}K`
+    }
+    description += `. `
+  }
+  
+  if (activeRentals.length > 0) {
+    description += `${activeRentals.length} unit${activeRentals.length > 1 ? 's' : ''} for rent. `
+  }
+  
+  if (minBed !== null && maxBed !== null) {
+    description += `${minBed === maxBed ? minBed : `${minBed}-${maxBed}`} bedroom units available. `
+  }
+  
+  if (building.year_built) {
+    description += `Built in ${building.year_built}. `
+  }
+  
+  if (building.total_units) {
+    description += `${building.total_units} total units. `
+  }
+  
+  description += `View floor plans, amenities, market stats, and transaction history.`
+
+  const title = `${building.building_name} Condos - ${building.canonical_address} | Toronto Real Estate`
+
   return {
-    title: `${building.building_name} - Toronto Condos | CondoLeads`,
-    description: `View available units, market stats, and amenities for ${building.building_name} at ${building.canonical_address}`,
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url: `https://condoleads.com/${params.slug}`,
+      siteName: 'CondoLeads',
+      locale: 'en_CA',
+      type: 'website',
+      images: [
+        {
+          url: '/og-image.jpg', // We'll create this next
+          width: 1200,
+          height: 630,
+          alt: `${building.building_name} - Toronto Condos`,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: ['/og-image.jpg'],
+    },
   }
 }
 
