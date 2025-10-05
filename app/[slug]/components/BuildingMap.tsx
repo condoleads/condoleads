@@ -30,19 +30,31 @@ export default function BuildingMap({ latitude, longitude, buildingName, address
       })
 
       if (!mapInstanceRef.current) {
-        const map = L.map(mapRef.current).setView([latitude, longitude], 15)
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map)
-
-        L.marker([latitude, longitude])
-          .addTo(map)
-          .bindPopup(`<b>${buildingName}</b><br>${address}`)
-          .openPopup()
-
-        mapInstanceRef.current = map
-      }
+  const map = L.map(mapRef.current, {
+    scrollWheelZoom: false  // Disable scroll zoom
+  }).setView([latitude, longitude], 15)
+  
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map)
+  
+  L.marker([latitude, longitude])
+    .addTo(map)
+    .bindPopup(`<b>${buildingName}</b><br>${address}`)
+    .openPopup()
+  
+  mapInstanceRef.current = map
+  
+  // Optional: Enable scroll zoom when user clicks on the map
+  map.on('click', function() {
+    map.scrollWheelZoom.enable()
+  })
+  
+  // Disable scroll zoom when mouse leaves the map
+  map.on('mouseout', function() {
+    map.scrollWheelZoom.disable()
+  })
+}
     }
 
     initMap()
