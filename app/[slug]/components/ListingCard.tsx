@@ -94,11 +94,24 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
               </>
             )}
           </>
-        ) : (
-          <>
-            <div className={`w-full h-full ${isSale ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gradient-to-br from-sky-400 to-sky-600'}`} />
+) : (
+          <div className="relative w-full h-full overflow-hidden">
+            {/* Animated gradient background */}
+            <div className={`absolute inset-0 ${isSale ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' : 'bg-gradient-to-br from-sky-400 to-sky-600'}`}>
+              {/* Animated shimmer overlay */}
+              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            </div>
+            
+            {/* Building icon and text */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white z-10">
+              <svg className="w-20 h-20 mb-3 opacity-80" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 2.5L18 11v7h-2v-6h-8v6H6v-7l6-5.5zM10 14h4v4h-4v-4z"/>
+              </svg>
+              <p className="text-sm font-semibold opacity-90">Photos Coming Soon</p>
+            </div>
+            
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-          </>
+          </div>
         )}
         
         <div className="absolute top-4 left-4 z-10">
