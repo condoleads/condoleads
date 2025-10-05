@@ -63,10 +63,10 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   const activeListings = allListings.filter(l => l.standard_status === 'Active')
   const closedListings = allListings.filter(l => l.standard_status === 'Closed')
   
-  const activeSales = activeListings.filter(l => l.list_price > 10000)
-  const activeRentals = activeListings.filter(l => l.list_price <= 10000)
-  const closedSales = closedListings.filter(l => l.list_price > 10000)
-  const closedRentals = closedListings.filter(l => l.list_price <= 10000)
+const activeSales = activeListings.filter(l => l.transaction_type === 'For Sale')
+const activeRentals = activeListings.filter(l => l.transaction_type === 'For Lease')
+const closedSales = closedListings.filter(l => l.transaction_type === 'For Sale')
+const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lease')
 
   const amenities = extractAmenities(allListings)
   const feeIncludes = extractFeeIncludes(allListings)

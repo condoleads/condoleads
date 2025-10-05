@@ -14,7 +14,9 @@ export interface MLSListing {
   listing_id: string | null
   unit_number: string
   list_price: number
+  close_price: number | null
   standard_status: 'Active' | 'Closed'
+  transaction_type: 'For Sale' | 'For Lease'
   bedrooms_total: number
   bathrooms_total_integer: number
   building_area_total: number | null
@@ -25,6 +27,20 @@ export interface MLSListing {
   close_date: string | null
   days_on_market: number | null
   property_management_company: string | null
+  tax_annual_amount: number | null
+  tax_year: number | null
+  parking_total: number | null
+  locker: string | null
+  listing_key: string | null
+  unparsed_address: string | null
+  property_type: string | null
+  media?: Array<{
+    id: string
+    media_url: string
+    variant_type: string
+    order_number: number | null
+    preferred_photo_yn: boolean | null
+  }>
 }
 
 export interface BuildingStats {
