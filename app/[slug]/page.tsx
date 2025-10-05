@@ -150,9 +150,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         </div>
       )}
       
-      <div id="price-trends">
-        <PriceChart closedSales={closedSales} />
-      </div>
+<div id="price-trends">
+  <PriceChart closedSales={closedSales} closedRentals={closedRentals} />
+</div>
       
       <TransactionInsights 
         activeSales={activeSales}
