@@ -6,9 +6,12 @@ import { formatPrice } from '@/lib/utils/formatters'
 
 interface EstimatorResultsProps {
   result: EstimateResult
+  type?: 'sale' | 'rent'
 }
 
-export default function EstimatorResults({ result }: EstimatorResultsProps) {
+export default function EstimatorResults({ result, type = 'sale' }: EstimatorResultsProps) {
+  const isSale = type === 'sale'
+  
   const confidenceColors = {
     High: 'text-emerald-700 bg-emerald-50',
     Medium: 'text-amber-700 bg-amber-50',
@@ -25,12 +28,16 @@ export default function EstimatorResults({ result }: EstimatorResultsProps) {
     <div className="bg-white rounded-2xl shadow-lg p-8 space-y-8">
       {/* Main Estimate */}
       <div className="text-center border-b pb-6">
-        <p className="text-sm text-slate-600 mb-2">Estimated Market Value</p>
+        <p className="text-sm text-slate-600 mb-2">
+          Estimated {isSale ? 'Market Value' : 'Monthly Rent'}
+        </p>
         <h2 className="text-5xl font-bold text-slate-900 mb-3">
           {formatPrice(result.estimatedPrice)}
+          {!isSale && <span className="text-2xl font-normal">/mo</span>}
         </h2>
         <p className="text-lg text-slate-600">
           Range: {formatPrice(result.priceRange.low)} - {formatPrice(result.priceRange.high)}
+          {!isSale && '/mo'}
         </p>
         <div className="mt-4">
           <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${confidenceColors[result.confidence]}`}>
@@ -51,7 +58,10 @@ export default function EstimatorResults({ result }: EstimatorResultsProps) {
               {result.marketSpeed.status} Market
             </p>
             <p className="text-sm text-slate-600">
-              {result.marketSpeed.message}
+              {isSale 
+                ? result.marketSpeed.message 
+                : result.marketSpeed.message.replace(/selling/gi, 'leasing').replace(/sold/gi, 'leased')
+              }
             </p>
           </div>
         </div>
@@ -67,13 +77,13 @@ export default function EstimatorResults({ result }: EstimatorResultsProps) {
             AI Market Insights
           </h3>
           <p className="text-slate-700 mb-4">{result.aiInsights.summary}</p>
-          
+
           <div className="space-y-2">
             <p className="text-sm font-semibold text-slate-900">Key Factors:</p>
             <ul className="space-y-1">
               {result.aiInsights.keyFactors.map((factor, idx) => (
                 <li key={idx} className="text-sm text-slate-700 flex items-start gap-2">
-                  <span className="text-purple-600 mt-0.5"></span>
+                  <span className="text-purple-600 mt-0.5">•</span>
                   <span>{factor}</span>
                 </li>
               ))}
@@ -90,28 +100,28 @@ export default function EstimatorResults({ result }: EstimatorResultsProps) {
       {/* Comparables */}
       <div>
         <h3 className="text-lg font-bold text-slate-900 mb-4">
-          Recent Comparable Sales ({result.comparables.length})
+          Recent Comparable {isSale ? 'Sales' : 'Leases'} ({result.comparables.length})
         </h3>
         <div className="space-y-3 max-h-96 overflow-y-auto">
           {result.comparables.slice(0, 5).map((comp, idx) => (
             <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
               <div className="flex-1">
                 <p className="font-semibold text-slate-900">
-                  {comp.bedrooms} bed, {comp.bathrooms} bath  {comp.livingAreaRange} sqft
+                  {comp.bedrooms} bed, {comp.bathrooms} bath • {comp.livingAreaRange} sqft
                 </p>
                 <p className="text-sm text-slate-600 mt-1">
-                  {comp.parking} parking {comp.locker === 'Owned' ? ' Has locker' : ''}  {comp.daysOnMarket} days on market
+                  {comp.parking} parking • {comp.locker === 'Owned' ? 'Has locker' : 'No locker'} • {comp.daysOnMarket} days on market
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Sold: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  {isSale ? 'Sold' : 'Leased'}: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                 </p>
               </div>
               <div className="text-right ml-4">
                 <p className="text-lg font-bold text-emerald-600">
-                  {formatPrice(comp.closePrice)}
+                  {formatPrice(comp.closePrice)}{!isSale && '/mo'}
                 </p>
                 <p className="text-xs text-slate-500">
-                  Listed: {formatPrice(comp.listPrice)}
+                  Listed: {formatPrice(comp.listPrice)}{!isSale && '/mo'}
                 </p>
               </div>
             </div>
@@ -122,8 +132,7 @@ export default function EstimatorResults({ result }: EstimatorResultsProps) {
       {/* Disclaimer */}
       <div className="text-xs text-slate-500 pt-4 border-t">
         <p>
-          * This estimate is based on recent sales data and market analysis. Actual market value may vary based on unit condition, 
-          view, finishes, and current market conditions. Contact an agent for a professional evaluation.
+          * This estimate is based on recent {isSale ? 'sales' : 'lease'} data and market analysis. Actual market {isSale ? 'value' : 'rent'} may vary based on unit condition, view, finishes, and current market conditions. Contact an agent for a professional evaluation.
         </p>
       </div>
     </div>

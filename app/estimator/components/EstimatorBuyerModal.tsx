@@ -202,13 +202,22 @@ export default function EstimatorBuyerModal({
                 </div>
               )}
 
-              <EstimatorResults result={result} />
-              <button
-                onClick={() => setResult(null)}
-                className="w-full mt-6 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-semibold transition-colors"
-              >
-                Calculate New Estimate
-              </button>
+              <EstimatorResults result={result} type={type} />
+              
+              <div className="mt-6 flex gap-4">
+                <button
+                  onClick={() => setResult(null)}
+                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-semibold transition-colors"
+                >
+                  Calculate New Estimate
+                </button>
+                <button
+                  onClick={() => window.location.href = '/contact'}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-colors"
+                >
+                  Contact Agent
+                </button>
+              </div>
             </div>
           )}
         </div>
