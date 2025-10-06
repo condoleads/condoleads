@@ -66,9 +66,8 @@ export default function ListingSection({
         </div>
         
         <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <h2 className="text-5xl font-black text-white text-center mb-4">Browse Condos</h2>
-          <p className="text-3xl font-bold text-white text-center mb-12">Get Instant Digital Estimates</p>
-          
+          <h2 className="text-5xl font-black text-white text-center mb-4">Get Instant Digital Estimates</h2>
+          <p className="text-3xl font-bold text-white text-center mb-12">Browse Condos</p>
           <div className="flex justify-center gap-6 mb-8 flex-wrap">
             {tabs.map((tab) => (
               <button
