@@ -63,7 +63,7 @@ export interface EstimateResult {
 
 // Adjustment constants
 export const ADJUSTMENT_VALUES = {
-  PARKING_PER_SPACE: 85000,
+  PARKING_PER_SPACE: 50000,
   LOCKER: 10000,
   BATHROOM: 50000
 } as const

@@ -40,20 +40,52 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
     }
   }
   
-  const formatSqftRange = (range: string | null) => {
-    if (!range) return null
-    return range
+// Extract exact sqft with rejection logic
+const extractExactSqft = (squareFootSource: string | null): number | null => {
+  if (!squareFootSource) return null
+  
+  const cleaned = squareFootSource.replace(/,/g, '').toLowerCase()
+  
+  // Reject patterns that aren't actual sqft
+  if (cleaned.match(/^\+\s*\d+/)) return null  // Starts with + (balcony only)
+  if (cleaned.match(/^\d+-\d+$/)) return null  // Pure range like "0-499"
+  if (cleaned.match(/3rd\s+party/i)) return null
+  
+  // Extract first 3-4 digit number
+  const match = cleaned.match(/\b(\d{3,4})\b/)
+  if (!match) return null
+  
+  const value = parseInt(match[1])
+  if (value > 5000) return null  // Sanity check
+  
+  return value
+}
+
+// Get display sqft with 3-tier priority
+const getDisplaySqft = (): string => {
+  // Priority 1: Extract exact value from square_foot_source
+  const exactSqft = extractExactSqft(listing.square_foot_source)
+  if (exactSqft) {
+    return `${exactSqft.toLocaleString()}`
   }
   
-  const badge = getBadgeConfig()
-  const accentColor = isClosed 
-    ? (isSale ? 'red' : 'orange')
-    : (isSale ? 'emerald' : 'sky')
+  // Priority 2: Fall back to living_area_range
+  if (listing.living_area_range) {
+    return listing.living_area_range
+  }
   
-  const sqftRange = formatSqftRange(listing.living_area_range)
-  const parkingCount = listing.parking_total || 0
-  const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
-  
+  // Priority 3: No data available
+  return '-'
+}
+
+const badge = getBadgeConfig()
+const accentColor = isClosed
+  ? (isSale ? 'red' : 'orange')
+  : (isSale ? 'emerald' : 'sky')
+
+const sqftDisplay = getDisplaySqft()
+const parkingCount = listing.parking_total || 0
+const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0  
   return (
     <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col">
       {/* Image Carousel */}
@@ -148,13 +180,11 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
           <span className="text-slate-300">|</span>
           <span className="font-semibold">{listing.bathrooms_total_integer || 0}</span>
           <span className="text-slate-500">bath</span>
-          {sqftRange && (
-            <>
-              <span className="text-slate-300">|</span>
-              <span className="font-semibold">{sqftRange}</span>
-              <span className="text-slate-500">sqft</span>
-            </>
-          )}
+          <span className="text-slate-300">|</span>
+          <span className="font-semibold">{sqftDisplay}</span>
+          <span className="text-slate-500">sqft</span>
+          
+        
         </div>
 
         {/* Row 2: Parking/Locker - Fixed Height */}
