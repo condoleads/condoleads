@@ -14,6 +14,7 @@ interface EstimatorBuyerModalProps {
   buildingName: string
   buildingId: string
   type: 'sale' | 'rent'
+  exactSqft: number | null
 }
 
 export default function EstimatorBuyerModal({
@@ -23,6 +24,7 @@ export default function EstimatorBuyerModal({
   buildingName,
   buildingId,
   type
+  exactSqft
 }: EstimatorBuyerModalProps) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
@@ -64,6 +66,7 @@ export default function EstimatorBuyerModal({
       parking: listing.parking_total || 0,
       hasLocker: !!(listing.locker && listing.locker !== 'None'),
       buildingId
+      exactSqft
     }
 
     const response = isSale 

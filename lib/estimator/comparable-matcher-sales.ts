@@ -1,6 +1,6 @@
 ﻿// lib/estimator/comparable-matcher.ts
 import { createClient } from '@/lib/supabase/client'
-import { ComparableSale, UnitSpecs, PriceAdjustment, ADJUSTMENT_VALUES } from './types'
+import { ComparableSale, UnitSpecs, PriceAdjustment, ADJUSTMENT_VALUES, extractExactSqft } from './types'
 
 /**
  * Finds comparable sales within the same building
@@ -19,7 +19,7 @@ export async function findComparables(specs: UnitSpecs): Promise<ComparableSale[
   
   const { data: allSales, error } = await supabase
     .from('mls_listings')
-    .select('close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date, tax_annual_amount')
+    .select('close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date, tax_annual_amount, square_foot_source')
     .eq('building_id', specs.buildingId)
     .eq('standard_status', 'Closed')
     .not('close_price', 'is', null)
@@ -54,14 +54,28 @@ const scoredComparables = bedroomMatches.map(sale => {
     else if (bathroomDiff === 1) score += 10
     else score -= 20
     
-    // Sqft range similarity (adjacent ranges acceptable)
-    if (sale.living_area_range === specs.livingAreaRange) {
-      score += 30
-    } else if (isAdjacentRange(sale.living_area_range, specs.livingAreaRange)) {
-      score += 15
-    } else {
-      score -= 10
-    }
+    // Sqft matching - prioritize exact sqft if available
+const userExactSqft = specs.exactSqft
+const compExactSqft = extractExactSqft(sale.square_foot_source)
+
+if (userExactSqft && compExactSqft) {
+  // Both have exact sqft - use precise matching
+  const sqftDiff = Math.abs(userExactSqft - compExactSqft)
+  if (sqftDiff <= 25) score += 40      // Within 25 sqft - nearly identical
+  else if (sqftDiff <= 50) score += 30  // Within 50 sqft - excellent
+  else if (sqftDiff <= 100) score += 20 // Within 100 sqft - good
+  else if (sqftDiff <= 150) score += 10 // Within 150 sqft - acceptable
+  else score -= 5                        // Beyond 150 sqft difference
+} else {
+  // Fallback to range matching
+  if (sale.living_area_range === specs.livingAreaRange) {
+    score += 30
+  } else if (isAdjacentRange(sale.living_area_range, specs.livingAreaRange)) {
+    score += 15
+  } else {
+    score -= 10
+  }
+}
     
     // Parking match
     if ((sale.parking_total || 0) === specs.parking) {

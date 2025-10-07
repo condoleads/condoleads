@@ -8,6 +8,7 @@ export interface UnitSpecs {
   hasLocker: boolean
   buildingId: string
   taxAnnualAmount?: number  // Optional - for better matching
+  exactSqft?: number  // Optional - extracted from square_foot_source
 }
 
 export interface PriceAdjustment {
@@ -67,3 +68,23 @@ export const ADJUSTMENT_VALUES = {
   LOCKER: 10000,
   BATHROOM: 50000
 } as const
+// Extract exact sqft from square_foot_source field
+export function extractExactSqft(squareFootSource: string | null | undefined): number | null {
+  if (!squareFootSource) return null
+  
+  const cleaned = squareFootSource.replace(/,/g, '').toLowerCase()
+  
+  // Reject patterns that aren't actual sqft
+  if (cleaned.match(/^\+\s*\d+/)) return null  // Starts with + (balcony only)
+  if (cleaned.match(/^\d+-\d+$/)) return null  // Pure range like "0-499"
+  if (cleaned.match(/3rd\s+party/i)) return null
+  
+  // Extract first 3-4 digit number
+  const match = cleaned.match(/\b(\d{3,4})\b/)
+  if (!match) return null
+  
+  const value = parseInt(match[1])
+  if (value > 5000) return null  // Sanity check
+  
+  return value
+}

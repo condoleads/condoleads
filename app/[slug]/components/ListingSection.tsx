@@ -29,6 +29,7 @@ export default function ListingSection({
   const [modalOpen, setModalOpen] = useState(false)
   const [selectedListing, setSelectedListing] = useState<MLSListing | null>(null)
   const [modalType, setModalType] = useState<'sale' | 'rent'>('sale')
+  const [exactSqft, setExactSqft] = useState<number | null>(null)
   
   const itemsPerPage = 6
 
@@ -47,11 +48,12 @@ export default function ListingSection({
     setCurrentPage(1)
   }
 
-  const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'rent') => {
-    setSelectedListing(listing)
-    setModalType(type)
-    setModalOpen(true)
-  }
+  const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'rent', exactSqft: number | null) => {
+  setSelectedListing(listing)
+  setModalType(type)
+  setModalOpen(true)
+  // Store exactSqft in state to pass to modal
+}
 
   const totalPages = Math.ceil(currentData.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
@@ -102,7 +104,7 @@ export default function ListingSection({
                   key={listing.id}
                   listing={listing}
                   type={isSaleTab ? 'sale' : 'rent'}
-                  onEstimateClick={() => handleEstimateClick(listing, isSaleTab ? 'sale' : 'rent')}
+                  onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'rent', exactSqft)}
                 />
               ))}
             </div>
@@ -162,6 +164,7 @@ export default function ListingSection({
         buildingName={buildingName}
         buildingId={buildingId}
         type={modalType}
+        exactSqft={exactSqft}
       />
     </>
   )

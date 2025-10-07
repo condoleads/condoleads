@@ -7,7 +7,7 @@ import { useState } from 'react'
 interface ListingCardProps {
   listing: MLSListing
   type: 'sale' | 'rent'
-  onEstimateClick?: () => void
+  onEstimateClick?: (exactSqft: number | null) => void
 }
 
 export default function ListingCard({ listing, type, onEstimateClick }: ListingCardProps) {
@@ -225,7 +225,7 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
           <div className="flex gap-2">
             {!isClosed && (
               <button
-                onClick={onEstimateClick}
+                onClick={() => onEstimateClick?.(extractExactSqft(listing.square_foot_source))}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors"
               >
                 {isSale ? 'Sale Offer' : 'Rent Offer'}
