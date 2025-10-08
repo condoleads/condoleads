@@ -106,6 +106,22 @@ const topComparables = scoredComparables
     const adjustments: PriceAdjustment[] = []
     let adjustedPrice = item.sale.close_price
 
+    // Maintenance fee similarity scoring (not an adjustment - just for match quality)
+const userMaintenance = specs.associationFee
+const compMaintenance = item.sale.association_fee
+
+if (userMaintenance && compMaintenance && userExactSqft && compExactSqft) {
+  // Calculate fee per sqft for both
+  const userFeePerSqft = userMaintenance / userExactSqft
+  const compFeePerSqft = compMaintenance / compExactSqft
+  const feeDiffPercent = Math.abs(userFeePerSqft - compFeePerSqft) / userFeePerSqft
+  
+  // Similar maintenance fee suggests similar unit quality
+  if (feeDiffPercent <= 0.10) score += 10  // Within 10% - very similar
+  else if (feeDiffPercent <= 0.20) score += 5  // Within 20% - similar
+}
+
+// Calculate parking adjustment
     // Calculate parking adjustment
     const parkingDiff = specs.parking - (item.sale.parking_total || 0)
     if (parkingDiff !== 0) {

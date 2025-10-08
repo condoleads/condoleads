@@ -196,7 +196,7 @@ export default function EstimatorResults({ result, type = 'sale' }: EstimatorRes
     )}
     
     {/* Maintenance fee */}
-    {comp.associationFee && comp.associationFee > 0 && (
+    {isSale && comp.associationFee && comp.associationFee > 0 && (
       <div className="flex items-center gap-2">
         <span className="text-blue-600">ℹ</span>
         <span className="text-slate-700">
