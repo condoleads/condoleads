@@ -23,7 +23,7 @@ export default function EstimatorBuyerModal({
   listing,
   buildingName,
   buildingId,
-  type
+  type,
   exactSqft
 }: EstimatorBuyerModalProps) {
   const [loading, setLoading] = useState(false)
@@ -59,15 +59,15 @@ export default function EstimatorBuyerModal({
     setError(null)
     setResult(null)
 
-    const specs = {
-      bedrooms: listing.bedrooms_total || 0,
-      bathrooms: listing.bathrooms_total_integer || 0,
-      livingAreaRange: listing.living_area_range || '',
-      parking: listing.parking_total || 0,
-      hasLocker: !!(listing.locker && listing.locker !== 'None'),
-      buildingId
-      exactSqft
-    }
+  const specs = {
+  bedrooms: listing.bedrooms_total || 0,
+  bathrooms: listing.bathrooms_total_integer || 0,
+  livingAreaRange: listing.living_area_range || '',
+  parking: listing.parking_total || 0,
+  hasLocker: !!(listing.locker && listing.locker !== 'None'),
+  buildingId,
+  ...(exactSqft !== null && { exactSqft })
+}
 
     const response = isSale 
       ? await estimateSale(specs, true)

@@ -21,7 +21,7 @@ export async function findComparablesRentals(specs: UnitSpecs): Promise<Comparab
 
   const { data: allLeases, error } = await supabase
     .from('mls_listings')
-    .select('close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date, square_foot_source')
+    .select('close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date, square_foot_source, association_fee')
     .eq('building_id', specs.buildingId)
     .eq('transaction_type', 'For Lease')
     .eq('standard_status', 'Closed')
@@ -166,21 +166,24 @@ export async function findComparablesRentals(specs: UnitSpecs): Promise<Comparab
         matchQuality = 'Good'
       }
 
-      return {
-        closePrice: item.lease.close_price,
-        listPrice: item.lease.list_price,
-        bedrooms: item.lease.bedrooms_total,
-        bathrooms: item.lease.bathrooms_total_integer || 0,
-        livingAreaRange: item.lease.living_area_range || 'Unknown',
-        parking: item.lease.parking_total || 0,
-        locker: item.lease.locker,
-        daysOnMarket: item.lease.days_on_market || 0,
-        closeDate: item.lease.close_date,
-        adjustments: adjustments,
-        adjustedPrice: adjustedPrice,
-        matchQuality: matchQuality,
-        matchScore: item.score
-      }
+     return {
+  closePrice: item.lease.close_price,
+  listPrice: item.lease.list_price,
+  bedrooms: item.lease.bedrooms_total,
+  bathrooms: item.lease.bathrooms_total_integer || 0,
+  livingAreaRange: item.lease.living_area_range || 'Unknown',
+  parking: item.lease.parking_total || 0,
+  locker: item.lease.locker,
+  daysOnMarket: item.lease.days_on_market || 0,
+  closeDate: item.lease.close_date,
+  exactSqft: extractExactSqft(item.lease.square_foot_source),  // ADD THIS
+  userExactSqft: specs.exactSqft,  // ADD THIS
+  associationFee: item.lease.association_fee,  // ADD THIS
+  adjustments: adjustments,
+  adjustedPrice: adjustedPrice,
+  matchQuality: matchQuality,
+  matchScore: item.score
+}
     })
 
   return topComparables

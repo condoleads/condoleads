@@ -29,6 +29,11 @@ export interface ComparableSale {
   daysOnMarket: number
   closeDate: string
   taxAnnualAmount?: number
+
+  // NEW: Exact sqft for better matching display
+  exactSqft?: number           // ADD THIS
+  userExactSqft?: number        // ADD THIS - to show user's sqft for comparison
+  associationFee?: number       // ADD THIS - maintenance fee
   
   // NEW: Adjustment tracking
   adjustments?: PriceAdjustment[]

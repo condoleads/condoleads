@@ -165,6 +165,67 @@ export default function EstimatorResults({ result, type = 'sale' }: EstimatorRes
                     </p>
                   </div>
                 </div>
+                {/* Match Details - WHY this comp was selected */}
+<div className="bg-blue-50 rounded-lg p-4 mb-3 border border-blue-200">
+  <p className="text-xs font-semibold text-blue-900 mb-2">Match Details:</p>
+  <div className="space-y-1 text-xs">
+    {/* Bedroom match */}
+    <div className="flex items-center gap-2">
+      <span className="text-emerald-600">✓</span>
+      <span className="text-slate-700">Bedrooms: Exact {comp.bedrooms} bedroom match</span>
+    </div>
+    
+    {/* Square footage match */}
+    {comp.exactSqft && (
+      <div className="flex items-center gap-2">
+        <span className="text-emerald-600">✓</span>
+        <span className="text-slate-700">
+          Square footage: {comp.exactSqft} sqft{comp.userExactSqft ? ` (yours: ${comp.userExactSqft} sqft)` : ''}
+        </span>
+      </div>
+    )}
+    
+    {/* Property tax match */}
+    {comp.taxAnnualAmount && (
+      <div className="flex items-center gap-2">
+        <span className="text-emerald-600">✓</span>
+        <span className="text-slate-700">
+          Property tax: ${Math.round(comp.taxAnnualAmount).toLocaleString()}/year
+        </span>
+      </div>
+    )}
+    
+    {/* Maintenance fee */}
+    {comp.associationFee && comp.associationFee > 0 && (
+      <div className="flex items-center gap-2">
+        <span className="text-blue-600">ℹ</span>
+        <span className="text-slate-700">
+          Maintenance: ${Math.round(comp.associationFee).toLocaleString()}/month
+        </span>
+      </div>
+    )}
+    
+    {/* Parking difference */}
+    {comp.adjustments?.find(a => a.type === 'parking') && (
+      <div className="flex items-center gap-2">
+        <span className="text-amber-600">⚠</span>
+        <span className="text-slate-700">
+          {comp.adjustments.find(a => a.type === 'parking')?.reason}
+        </span>
+      </div>
+    )}
+    
+    {/* Locker difference */}
+    {comp.adjustments?.find(a => a.type === 'locker') && (
+      <div className="flex items-center gap-2">
+        <span className="text-amber-600">⚠</span>
+        <span className="text-slate-700">
+          {comp.adjustments.find(a => a.type === 'locker')?.reason}
+        </span>
+      </div>
+    )}
+  </div>
+</div>
 
                 {/* Price Breakdown with Adjustments */}
                 <div className="bg-white rounded-lg p-4 mt-3">
