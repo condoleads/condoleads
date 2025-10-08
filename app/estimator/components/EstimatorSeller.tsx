@@ -22,7 +22,9 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
   livingAreaRange: '700-799',
   parking: 1,
   hasLocker: false,
-  taxAnnualAmount: undefined as number | undefined
+  taxAnnualAmount: undefined as number | undefined,
+  exactSqft: undefined as number | undefined,          // ADD THIS
+  associationFee: undefined as number | undefined      // ADD THIS
 })
 
   const sqftRanges = [
@@ -157,6 +159,36 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
                   className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 />
               </div>
+              
+              {/* Exact Square Footage (Optional) */}
+<div className="mb-6">
+  <label className="block text-sm font-semibold text-slate-700 mb-2">
+    Exact Square Footage (Optional)
+    <span className="text-xs text-slate-500 ml-2">Leave blank if unknown - we'll use range</span>
+  </label>
+  <input
+    type="number"
+    value={specs.exactSqft || ''}
+    onChange={(e) => setSpecs({...specs, exactSqft: e.target.value ? parseInt(e.target.value) : undefined})}
+    placeholder="e.g., 750"
+    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+  />
+</div>
+
+{/* Monthly Maintenance Fee (Optional) */}
+<div className="mb-6">
+  <label className="block text-sm font-semibold text-slate-700 mb-2">
+    Monthly Maintenance Fee (Optional)
+    <span className="text-xs text-slate-500 ml-2">For better matching</span>
+  </label>
+  <input
+    type="number"
+    value={specs.associationFee || ''}
+    onChange={(e) => setSpecs({...specs, associationFee: e.target.value ? parseFloat(e.target.value) : undefined})}
+    placeholder="e.g., 575"
+    className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+  />
+</div>
             {/* Locker */}
             <div className="mb-8">
               <label className="flex items-center gap-3 cursor-pointer">
