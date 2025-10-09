@@ -16,6 +16,22 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
   const parkingCount = listing.parking_total || 0
   const hasLocker = listing.locker === 'Owned' || listing.locker === 'Rental'
   
+  // Extract additional details
+  const hasEnsuitelaundry = listing.laundry_features?.some((f: string) => 
+    f.toLowerCase().includes('ensuite') || f.toLowerCase().includes('in unit')
+  )
+  const architecturalStyle = listing.architectural_style?.[0] || null
+  const parkingType = listing.parking_features?.[0] || 'None'
+  
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return null
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  }
+  
   return (
     <div className="bg-white rounded-2xl shadow-lg p-8">
       <h2 className="text-2xl font-bold text-slate-900 mb-6">Property Details</h2>
@@ -40,36 +56,94 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
         </div>
       </div>
       
-      {/* Additional Details */}
-      <div className="border-t border-slate-200 pt-6 space-y-4">
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="flex justify-between py-2">
-            <span className="text-slate-600">Parking Spaces</span>
-            <span className="font-semibold text-slate-900">{parkingCount}</span>
+      {/* Additional Details - Two Column Layout */}
+      <div className="border-t border-slate-200 pt-6">
+        <div className="grid md:grid-cols-2 gap-x-8 gap-y-3">
+          
+          {listing.neighborhood && (
+            <div className="flex justify-between py-2 border-b border-slate-100">
+              <span className="text-slate-600">Neighbourhood</span>
+              <span className="font-semibold text-slate-900">{listing.neighborhood}</span>
+            </div>
+          )}
+          
+          <div className="flex justify-between py-2 border-b border-slate-100">
+            <span className="text-slate-600">Parking</span>
+            <span className="font-semibold text-slate-900">{parkingCount > 0 ? 'Yes' : 'No'}</span>
           </div>
-          <div className="flex justify-between py-2">
+          
+          <div className="flex justify-between py-2 border-b border-slate-100">
+            <span className="text-slate-600">Parking Type</span>
+            <span className="font-semibold text-slate-900">{parkingType}</span>
+          </div>
+          
+          <div className="flex justify-between py-2 border-b border-slate-100">
             <span className="text-slate-600">Locker</span>
             <span className="font-semibold text-slate-900">{hasLocker ? 'Yes' : 'No'}</span>
           </div>
+          
+          {listing.heat_type && (
+            <div className="flex justify-between py-2 border-b border-slate-100">
+              <span className="text-slate-600">Heating Type</span>
+              <span className="font-semibold text-slate-900">{listing.heat_type}</span>
+            </div>
+          )}
+          
+          {architecturalStyle && (
+            <div className="flex justify-between py-2 border-b border-slate-100">
+              <span className="text-slate-600">Style</span>
+              <span className="font-semibold text-slate-900">{architecturalStyle}</span>
+            </div>
+          )}
+          
+          {hasEnsuitelaundry !== null && (
+            <div className="flex justify-between py-2 border-b border-slate-100">
+              <span className="text-slate-600">Ensuite Laundry</span>
+              <span className="font-semibold text-slate-900">{hasEnsuitelaundry ? 'Yes' : 'No'}</span>
+            </div>
+          )}
+          
+          {listing.condo_corp_number && (
+            <div className="flex justify-between py-2 border-b border-slate-100">
+              <span className="text-slate-600">Corp #</span>
+              <span className="font-semibold text-slate-900">TSCC-{listing.condo_corp_number}</span>
+            </div>
+          )}
+          
+          <div className="flex justify-between py-2 border-b border-slate-100">
+            <span className="text-slate-600">MLS Size</span>
+            <span className="font-semibold text-slate-900">{listing.living_area_range || '-'}</span>
+          </div>
+          
+          {listing.listing_contract_date && (
+            <div className="flex justify-between py-2 border-b border-slate-100">
+              <span className="text-slate-600">Listed On</span>
+              <span className="font-semibold text-slate-900">{formatDate(listing.listing_contract_date)}</span>
+            </div>
+          )}
+          
         </div>
         
-        {listing.association_fee && listing.association_fee > 0 && (
-          <div className="flex justify-between py-2">
-            <span className="text-slate-600">Maintenance Fees</span>
-            <span className="font-semibold text-slate-900">
-              ${Math.round(listing.association_fee).toLocaleString()}/month
-            </span>
-          </div>
-        )}
-        
-        {listing.tax_annual_amount && listing.tax_annual_amount > 0 && (
-          <div className="flex justify-between py-2">
-            <span className="text-slate-600">Property Tax</span>
-            <span className="font-semibold text-slate-900">
-              ${Math.round(listing.tax_annual_amount).toLocaleString()}/year
-            </span>
-          </div>
-        )}
+        {/* Financial Details - Full Width */}
+        <div className="mt-6 space-y-3">
+          {listing.association_fee && listing.association_fee > 0 && (
+            <div className="flex justify-between py-2 border-b border-slate-100">
+              <span className="text-slate-600">Maintenance Fees</span>
+              <span className="font-semibold text-slate-900">
+                ${Math.round(listing.association_fee).toLocaleString()}/month
+              </span>
+            </div>
+          )}
+          
+          {listing.tax_annual_amount && listing.tax_annual_amount > 0 && (
+            <div className="flex justify-between py-2 border-b border-slate-100">
+              <span className="text-slate-600">Property Tax</span>
+              <span className="font-semibold text-slate-900">
+                ${Math.round(listing.tax_annual_amount).toLocaleString()}/year
+              </span>
+            </div>
+          )}
+        </div>
       </div>
       
       {/* Building Info */}
@@ -83,7 +157,7 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             href={`/${listing.buildings.slug}`}
             className="text-emerald-600 hover:text-emerald-700 font-semibold text-sm"
           >
-            View All Units in This Building 
+            View All Units in This Building →
           </a>
         </div>
       )}

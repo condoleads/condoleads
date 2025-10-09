@@ -1,5 +1,6 @@
 ﻿'use client'
 
+import Link from 'next/link'
 import { MLSListing } from '@/lib/types/building'
 import { formatPrice } from '@/lib/utils/formatters'
 import { useState } from 'react'
@@ -231,9 +232,12 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
                 {isSale ? 'Sale Offer' : 'Rent Offer'}
               </button>
             )}
-            <button className={`flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors border-${accentColor}-600 text-${accentColor}-600 hover:bg-${accentColor}-600 hover:text-white`}>
-              View Details
-            </button>
+            <Link 
+              href={`/property/${listing.id}`}
+              className={`flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors text-center border-${accentColor}-600 text-${accentColor}-600 hover:bg-${accentColor}-600 hover:text-white`}
+            >
+             View Details
+            </Link>
           </div>
         </div>
       </div>
