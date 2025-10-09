@@ -1,0 +1,168 @@
+﻿'use client'
+
+import { useState } from 'react'
+import Image from 'next/image'
+import { ChevronLeft, ChevronRight, X, ZoomIn } from 'lucide-react'
+
+interface Photo {
+  media_url: string
+  order_number: number
+}
+
+interface PropertyGalleryProps {
+  photos: Photo[]
+}
+
+export default function PropertyGallery({ photos }: PropertyGalleryProps) {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState(0)
+  
+  const nextPhoto = () => {
+    setCurrentIndex((prev) => (prev + 1) % photos.length)
+  }
+  
+  const prevPhoto = () => {
+    setCurrentIndex((prev) => (prev - 1 + photos.length) % photos.length)
+  }
+  
+  const openLightbox = (index: number) => {
+    setLightboxIndex(index)
+    setIsLightboxOpen(true)
+  }
+  
+  const closeLightbox = () => {
+    setIsLightboxOpen(false)
+  }
+  
+  const nextLightboxPhoto = () => {
+    setLightboxIndex((prev) => (prev + 1) % photos.length)
+  }
+  
+  const prevLightboxPhoto = () => {
+    setLightboxIndex((prev) => (prev - 1 + photos.length) % photos.length)
+  }
+
+  if (photos.length === 0) {
+    return (
+      <div className="w-full h-96 bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <svg className="w-20 h-20 mx-auto mb-4 opacity-80" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 2.5L18 11v7h-2v-6h-8v6H6v-7l6-5.5z"/>
+          </svg>
+          <p className="text-lg font-semibold">Photos Coming Soon</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="relative w-full">
+        <div className="relative h-[500px] bg-slate-200">
+          <Image
+            src={photos[currentIndex].media_url}
+            alt={`Property photo ${currentIndex + 1}`}
+            fill
+            className="object-cover"
+            priority
+          />
+          
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+          
+          {photos.length > 1 && (
+            <>
+              <button
+                onClick={prevPhoto}
+                className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-colors z-10"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <button
+                onClick={nextPhoto}
+                className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full transition-colors z-10"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </>
+          )}
+          
+          <div className="absolute bottom-4 right-4 bg-black/70 text-white px-4 py-2 rounded-full text-sm font-semibold z-10">
+            {currentIndex + 1} / {photos.length}
+          </div>
+          
+          <button
+            onClick={() => openLightbox(currentIndex)}
+            className="absolute bottom-4 left-4 bg-black/70 hover:bg-black/90 text-white px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 transition-colors z-10"
+          >
+            <ZoomIn className="w-4 h-4" />
+            View Full Screen
+          </button>
+        </div>
+        
+        <div className="bg-slate-100 py-4">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+              {photos.map((photo, index) => (
+                <button
+                  key={photo.order_number}
+                  onClick={() => setCurrentIndex(index)}
+                  className={`flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden border-2 transition-all ${
+                    index === currentIndex 
+                      ? 'border-emerald-500 ring-2 ring-emerald-500 ring-offset-2' 
+                      : 'border-transparent hover:border-slate-300'
+                  }`}
+                >
+                  <Image
+                    src={photo.media_url}
+                    alt={`Thumbnail ${index + 1}`}
+                    width={96}
+                    height={96}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {isLightboxOpen && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center">
+          <button
+            onClick={closeLightbox}
+            className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-3 rounded-full transition-colors z-10"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          
+          <button
+            onClick={prevLightboxPhoto}
+            className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-colors z-10"
+          >
+            <ChevronLeft className="w-8 h-8" />
+          </button>
+          <button
+            onClick={nextLightboxPhoto}
+            className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-colors z-10"
+          >
+            <ChevronRight className="w-8 h-8" />
+          </button>
+          
+          <div className="relative w-full h-full p-12">
+            <Image
+              src={photos[lightboxIndex].media_url}
+              alt={`Full size ${lightboxIndex + 1}`}
+              fill
+              className="object-contain"
+            />
+          </div>
+          
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-white/10 text-white px-6 py-3 rounded-full text-sm font-semibold backdrop-blur-sm">
+            {lightboxIndex + 1} / {photos.length}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
