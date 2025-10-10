@@ -12,6 +12,7 @@ import PropertyAmenities from '@/components/property/PropertyAmenities'
 import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
 import AgentContactForm from '@/components/property/AgentContactForm'
 import SimilarListings from '@/components/property/SimilarListings'
+import ShareButtons from '@/components/property/ShareButtons'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
   // Fetch listing data
@@ -169,7 +170,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
               parkingType={listing.parking_features}
               petPolicy={listing.pet_allowed}
             />
-            
+
+                     
             <PropertyEstimateCTA
               listing={listingWithBuilding}
               status={status}
