@@ -49,9 +49,18 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const largePhotos = allMedia?.filter(m => m.media_url.includes('1920:1920')) || []
   
   // Fetch similar listings (matches bed/bath + same transaction type, closed units)
-  const { data: similarListings } = await supabase
-    .from('mls_listings')
-    .select('*')
+const { data: similarListings } = await supabase
+  .from('mls_listings')
+  .select(`
+    *,
+    media (
+      id,
+      media_url,
+      variant_type,
+      order_number,
+      preferred_photo_yn
+    )
+  `)
     .eq('building_id', listing.building_id)
     .eq('transaction_type', listing.transaction_type)
     .eq('standard_status', 'Closed')
@@ -87,8 +96,17 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   // Fetch available listings of same transaction type
   const targetTransactionType = listing.transaction_type
   const { data: availableListings } = await supabase
-    .from('mls_listings')
-    .select('*')
+  .from('mls_listings')
+  .select(`
+    *,
+    media (
+      id,
+      media_url,
+      variant_type,
+      order_number,
+      preferred_photo_yn
+    )
+  `)
     .eq('building_id', listing.building_id)
     .eq('transaction_type', targetTransactionType)
     .eq('standard_status', 'Active')
