@@ -77,11 +77,21 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   
   description += `View floor plans, amenities, market stats, and transaction history.`
 
-  const title = `${building.building_name} Condos - ${building.canonical_address} | Toronto Real Estate`
-
+ const title = `${building.building_name} Condos - ${building.canonical_address} | Toronto Real Estate`
+  
   return {
     title,
     description,
+    keywords: [
+      building.building_name,
+      'Toronto condos',
+      'condos for sale',
+      'condos for rent',
+      building.canonical_address,
+      'Toronto real estate',
+      'condo listings',
+      'GTA condos'
+    ],
     openGraph: {
       title,
       description,
@@ -91,7 +101,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       type: 'website',
       images: [
         {
-          url: '/og-image.jpg', // We'll create this next
+          url: '/og-image.jpg',
           width: 1200,
           height: 630,
           alt: `${building.building_name} - Toronto Condos`,
@@ -104,9 +114,19 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       description,
       images: ['/og-image.jpg'],
     },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+      },
+    },
+    alternates: {
+      canonical: `https://condoleads.com/${params.slug}`,
+    },
   }
 }
-
 export default async function BuildingPage({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
     .from('buildings')
