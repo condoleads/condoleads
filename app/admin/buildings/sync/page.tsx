@@ -15,6 +15,7 @@ export default function BuildingSyncPage() {
   const [searchResult, setSearchResult] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<any>(null);
+  const [showHistorical, setShowHistorical] = useState(false);
   
   // Generate preview slug as user types
   const generateSlug = (streetNumber: string, streetName?: string, city?: string, buildingName?: string) => {
@@ -222,6 +223,9 @@ export default function BuildingSyncPage() {
             <p className="text-sm text-gray-500">
               Found {searchResult.total} listings ready for sync
             </p>
+            <p className="text-sm text-red-600 font-bold">
+              DEBUG: Historical = {searchResult.categories?.historical || 0}
+            </p>
             <p className="text-sm text-blue-600 font-mono">
               Final URL: condoleads.ca/{searchResult.building.slug}
             </p>
@@ -270,6 +274,31 @@ export default function BuildingSyncPage() {
               <div className="text-xs text-gray-600">Older Leased</div>
             </div>
           </div>
+
+          {/* Historical Statuses Section - Collapsible */}
+          {searchResult.categories.historical > 0 && (
+            <div className="mt-6 border-t pt-4">
+              <button
+                onClick={() => setShowHistorical(!showHistorical)}
+                className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium"
+              >
+                <span>{showHistorical ? '▼' : '▶'}</span>
+                <span>Historical Statuses ({searchResult.categories.historical} records)</span>
+              </button>
+              
+              {showHistorical && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-3">
+                    Includes: Expired, Terminated, Suspended, Deal Fell Through, Conditional Expired
+                  </p>
+                  <div className="text-2xl font-bold text-gray-700">
+                    {searchResult.categories.historical}
+                  </div>
+                  <div className="text-xs text-gray-600">Historical Listings</div>
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             onClick={handleSave}

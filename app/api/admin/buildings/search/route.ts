@@ -117,8 +117,10 @@ export async function POST(request: NextRequest) {
     
     // FILTER 4: EXCLUDE UNWANTED STATUSES
     console.log('FILTER 4: Excluding unwanted statuses (Pending, Cancelled, Withdrawn, Terminated, Suspended, Expired)');
-    const excludedStatuses = ['Pending', 'Cancelled', 'Withdrawn', 'Terminated', 'Suspended', 'Expired'];
-    const excludedMlsStatuses = ['Cancelled', 'Terminated', 'Expired', 'Withdrawn', 'Susp', 'Pend', 'Leased Conditional', 'Sold Conditional'];
+    
+    // Only exclude truly invalid statuses - keep historical ones for condo history
+    const excludedStatuses = ['Pending', 'Cancelled', 'Withdrawn'];
+    const excludedMlsStatuses = ['Cancelled', 'Withdrawn', 'Pend'];
     
     const beforeExclusion = filteredListings.length;
     filteredListings = filteredListings.filter(listing => {
@@ -320,23 +322,25 @@ function dateBasedCategorization(listings: any[]) {
   
   console.log(`90-day cutoff date: ${ninetyDaysAgo.toISOString().split('T')[0]}`);
   
-  const categories = {
-    activeForSale: 0,
-    activeForLease: 0,
-    recentlySold: 0,
-    olderSold: 0,
-    recentlyLeased: 0,
-    olderLeased: 0
-  };
-  
-  const detailedBreakdown = {
-    activeForSale: [],
-    activeForLease: [],
-    recentlySold: [],
-    olderSold: [],
-    recentlyLeased: [],
-    olderLeased: []
-  };
+const categories = {
+  activeForSale: 0,
+  activeForLease: 0,
+  recentlySold: 0,
+  olderSold: 0,
+  recentlyLeased: 0,
+  olderLeased: 0,
+  historical: 0
+};
+
+const detailedBreakdown = {
+  activeForSale: [],
+  activeForLease: [],
+  recentlySold: [],
+  olderSold: [],
+  recentlyLeased: [],
+  olderLeased: [],
+  historical: []
+};
   
   listings.forEach((listing) => {
     const status = listing.StandardStatus;
@@ -406,12 +410,26 @@ function dateBasedCategorization(listings: any[]) {
           console.log(`OLDER LEASED: Unit ${unit} - ${closeDate || 'no date'}`);
         }
       }
+      return; // EXIT after categorizing sold/leased
+    }
+    
+    // HISTORICAL STATUSES - only reached if NOT active and NOT sold/leased
+    const historicalMlsStatuses = ['Expired', 'Exp', 'Ext', 'Terminated', 'Ter', 'Suspended', 'Sus', 'DFT', 'SCE', 'LCE'];
+    const historicalStandardStatuses = ['Expired', 'Terminated', 'Hold'];
+    
+    const isHistorical = historicalMlsStatuses.includes(mlsStatus) || historicalStandardStatuses.includes(status);
+    
+    if (isHistorical) {
+      categories.historical++;
+      detailedBreakdown.historical.push(listingInfo);
+      console.log(`✅ HISTORICAL: Unit ${unit} - MlsStatus: ${mlsStatus}, StandardStatus: ${status}`);
     }
   });
   
   console.log(`RESULTS: ${categories.activeForSale} for sale, ${categories.activeForLease} for lease`);
   console.log(`         ${categories.recentlySold} recently sold, ${categories.olderSold} older sold`);
   console.log(`         ${categories.recentlyLeased} recently leased, ${categories.olderLeased} older leased`);
+  console.log(`         ${categories.historical} historical statuses`);
   
   return { categories, detailedBreakdown };
 }
@@ -612,20 +630,3 @@ function generateSlug(streetNumber: string, streetName?: string, city?: string, 
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
