@@ -77,14 +77,14 @@ export default function BuildingSyncPage() {
     }
   };
 
-    const handleSave = async () => {
+  const handleSave = async () => {
     if (!searchResult) return;
     
     setSaving(true);
     setSaveResult(null);
     
     try {
-      const CHUNK_SIZE = 20; // Save 20 listings at a time
+      const CHUNK_SIZE = 20;
       const totalChunks = Math.ceil(searchResult.allListings.length / CHUNK_SIZE);
       
       for (let i = 0; i < totalChunks; i++) {
@@ -107,7 +107,6 @@ export default function BuildingSyncPage() {
           throw new Error(`Chunk ${i + 1} failed`);
         }
         
-        // Update progress
         console.log(`Saved chunk ${i + 1}/${totalChunks}`);
       }
       
@@ -204,8 +203,8 @@ export default function BuildingSyncPage() {
         </button>
       </div>
       
-      {/* Search Results */}
-            {saving && (
+      {/* Saving Progress */}
+      {saving && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
           <p className="font-medium">Saving in progress...</p>
           <div className="mt-2 bg-blue-200 rounded-full h-2">
@@ -213,7 +212,9 @@ export default function BuildingSyncPage() {
           </div>
         </div>
       )}
-{searchResult && (
+
+      {/* Search Results */}
+      {searchResult && (
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Search Results</h2>
 
@@ -288,13 +289,33 @@ export default function BuildingSyncPage() {
               
               {showHistorical && (
                 <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-600 mb-3">
-                    Includes: Expired, Terminated, Suspended, Deal Fell Through, Conditional Expired
+                  <p className="text-sm text-gray-600 mb-4">
+                    Historical status breakdown for this building:
                   </p>
-                  <div className="text-2xl font-bold text-gray-700">
-                    {searchResult.categories.historical}
+                  
+                  {/* Breakdown by status type */}
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    {searchResult.detailedBreakdown.historical.map((item: any, index: number) => (
+                      <div key={index} className="flex justify-between items-center p-2 bg-white rounded border">
+                        <div>
+                          <span className="font-medium">Unit {item.unit}</span>
+                          <div className="text-xs text-gray-500">
+                            {item.mlsStatus || item.status}
+                            {item.closeDate && ` • ${new Date(item.closeDate).toLocaleDateString()}`}
+                          </div>
+                        </div>
+                        <span className="text-xs px-2 py-1 bg-gray-100 rounded">
+                          {item.mlsStatus || item.status}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-xs text-gray-600">Historical Listings</div>
+                  
+                  <div className="mt-4 pt-3 border-t">
+                    <p className="text-xs text-gray-500">
+                      Historical statuses include: Expired, Terminated, Suspended, Deal Fell Through, Conditional Expired
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -318,7 +339,7 @@ export default function BuildingSyncPage() {
       {saveResult && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-6 mt-6">
           <h2 className="text-xl font-semibold text-green-800 mb-4">
-             Save Completed
+            ✅ Save Completed
           </h2>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -331,21 +352,21 @@ export default function BuildingSyncPage() {
 
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-700">
-                {saveResult.stats.media_records}
+                {saveResult.stats.media_records || 0}
               </div>
               <div className="text-xs text-blue-600">Media Records</div>
             </div>
 
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-700">
-                {saveResult.stats.room_records}
+                {saveResult.stats.room_records || 0}
               </div>
               <div className="text-xs text-purple-600">Room Records</div>
             </div>
 
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-700">
-                {saveResult.stats.open_house_records}
+                {saveResult.stats.open_house_records || 0}
               </div>
               <div className="text-xs text-orange-600">Open Houses</div>
             </div>
@@ -359,16 +380,9 @@ export default function BuildingSyncPage() {
             </p>
           </div>
 
-          <p className="text-green-700 font-medium">{saveResult.message}</p>
+          <p className="text-green-700 font-medium">{saveResult.message || 'Successfully saved!'}</p>
         </div>
       )}
     </div>
   );
 }
-
-
-
-
-
-
-
