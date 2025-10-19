@@ -287,16 +287,20 @@ function filterTwoVariants(allMediaItems) {
   imageGroups.forEach(variants => {
     const originalCount = variants.length;
     
-    // Find thumbnail (240x240)
+    // Find thumbnail (240x240) - must have valid URL
     const thumbnail = variants.find(v => 
-      v.MediaURL?.includes('rs:fit:240:240') || 
-      v.ImageSizeDescription === 'Thumbnail'
+      v.MediaURL && (
+        v.MediaURL.includes('rs:fit:240:240') || 
+        v.ImageSizeDescription === 'Thumbnail'
+      )
     );
     
-    // Find large (1920x1920) 
+    // Find large (1920x1920) - must have valid URL
     const large = variants.find(v => 
-      v.MediaURL?.includes('rs:fit:1920:1920') || 
-      v.ImageSizeDescription === 'Large'
+      v.MediaURL && (
+        v.MediaURL.includes('rs:fit:1920:1920') || 
+        v.ImageSizeDescription === 'Large'
+      )
     );
     
     if (thumbnail) {

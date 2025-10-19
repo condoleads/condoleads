@@ -224,9 +224,7 @@ export default function BuildingSyncPage() {
             <p className="text-sm text-gray-500">
               Found {searchResult.total} listings ready for sync
             </p>
-            <p className="text-sm text-red-600 font-bold">
-              DEBUG: Historical = {searchResult.categories?.historical || 0}
-            </p>
+            
             <p className="text-sm text-blue-600 font-mono">
               Final URL: condoleads.ca/{searchResult.building.slug}
             </p>

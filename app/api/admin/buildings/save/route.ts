@@ -843,10 +843,12 @@ function groupMediaByBaseImage(mediaArray: any[]) {
   return groups;
 }
 
-function extractBaseImageId(url: string): string {
+function extractBaseImageId(url: string | null | undefined): string {
   // Extract unique image identifier from URL
+  if (!url) return 'unknown';
   const parts = url.split('/');
-  return parts[parts.length - 1].split('.')[0];
+  const filename = parts[parts.length - 1];
+  return filename.split('.')[0] || 'unknown';
 }
 
 function createMediaRecord(listingId: string, media: any, variantType: string, baseImageId: string) {
@@ -941,7 +943,6 @@ async function saveOpenHouses(savedListings: any[], originalListings: any[]) {
       for (const openHouse of originalListing.OpenHouses) {
         openHouseRecords.push({
           listing_id: savedListing.id,
-          listing_key: openHouse.ListingKey || null,
           open_house_key: openHouse.OpenHouseKey || null,
           open_house_id: openHouse.OpenHouseID || null,
           open_house_date: parseDate(openHouse.OpenHouseDate),
