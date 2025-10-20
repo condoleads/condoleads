@@ -140,8 +140,8 @@ async function forceCleanBuildingBySlug(slug: string) {
     await supabase.from('buildings').delete().eq('id', existingBuilding.id);
     
     console.log(`✅ Completely cleaned building: ${slug}`);
-  }
-}
+      }
+     }
 
 // STEP 2: Save building data
 async function saveBuildingData(buildingData: any) {

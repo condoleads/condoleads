@@ -20,7 +20,7 @@ import BuildingSchema from './components/BuildingSchema'
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
     .from('buildings')
-    .select('building_name, canonical_address, year_built, total_units')
+    .select('id, building_name, canonical_address, year_built, total_units')
     .eq('slug', params.slug)
     .single()
 

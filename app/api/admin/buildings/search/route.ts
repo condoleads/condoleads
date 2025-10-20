@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
         // Get Media data
         try {
           const mediaFilter = `ResourceRecordKey eq '${listingKey}'`;
-          const mediaUrl = `${baseUrl}Media?$filter=${encodeURIComponent(mediaFilter)}&$top=100`;
+          const mediaUrl = `${baseUrl}Media?$filter=${encodeURIComponent(mediaFilter)}&$top=500`;
           
           const mediaResponse = await fetch(mediaUrl, {
             headers: {
@@ -266,10 +266,17 @@ function filterTwoVariants(allMediaItems) {
   
   console.log(` Filtering ${allMediaItems.length} media items to two variants...`);
   
+  // CRITICAL: Sort by Order field FIRST to maintain MLS photo sequence
+  const sortedItems = [...allMediaItems].sort((a, b) => {
+    const orderA = parseInt(a.Order) || 999;
+    const orderB = parseInt(b.Order) || 999;
+    return orderA - orderB;
+  });
+  
   // Group by base image using URL pattern
   const imageGroups = new Map();
   
-  allMediaItems.forEach(item => {
+  sortedItems.forEach(item => {
     // Extract base image ID from PropTx URL
     const baseId = item.MediaURL ? 
       item.MediaURL.split('/').pop()?.split('.')[0] || item.MediaKey :
@@ -284,21 +291,21 @@ function filterTwoVariants(allMediaItems) {
   const filtered = [];
   let reductionCount = 0;
   
-  imageGroups.forEach(variants => {
+  imageGroups.forEach((variants) => {
     const originalCount = variants.length;
     
     // Find thumbnail (240x240) - must have valid URL
     const thumbnail = variants.find(v => 
       v.MediaURL && (
-        v.MediaURL.includes('rs:fit:240:240') || 
+        v.MediaURL.includes('rs:fit:240:240') ||
         v.ImageSizeDescription === 'Thumbnail'
       )
     );
     
     // Find large (1920x1920) - must have valid URL
-    const large = variants.find(v => 
+    const large = variants.find(v =>
       v.MediaURL && (
-        v.MediaURL.includes('rs:fit:1920:1920') || 
+        v.MediaURL.includes('rs:fit:1920:1920') ||
         v.ImageSizeDescription === 'Large'
       )
     );
