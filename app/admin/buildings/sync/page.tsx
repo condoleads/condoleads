@@ -87,6 +87,11 @@ export default function BuildingSyncPage() {
       const CHUNK_SIZE = 20;
       const totalChunks = Math.ceil(searchResult.allListings.length / CHUNK_SIZE);
       
+      // Accumulators for totals
+      let totalMedia = 0;
+      let totalRooms = 0;
+      let totalOpenHouses = 0;
+      
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, searchResult.allListings.length);
@@ -107,6 +112,12 @@ export default function BuildingSyncPage() {
           throw new Error(`Chunk ${i + 1} failed`);
         }
         
+        // Parse response and accumulate stats
+        const chunkResult = await response.json();
+        totalMedia += chunkResult.stats?.media_records || 0;
+        totalRooms += chunkResult.stats?.room_records || 0;
+        totalOpenHouses += chunkResult.stats?.open_house_records || 0;
+        
         console.log(`Saved chunk ${i + 1}/${totalChunks}`);
       }
       
@@ -114,8 +125,12 @@ export default function BuildingSyncPage() {
         success: true,
         building: searchResult.building,
         stats: {
-          listings_saved: searchResult.allListings.length
-        }
+          listings_saved: searchResult.allListings.length,
+          media_records: totalMedia,
+          room_records: totalRooms,
+          open_house_records: totalOpenHouses
+        },
+        message: 'Successfully saved!'
       });
       
     } catch (error: any) {
