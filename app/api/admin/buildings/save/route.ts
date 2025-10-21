@@ -78,8 +78,11 @@ export async function POST(request: NextRequest) {
       building: building,
       stats: {
         chunk_processed: chunkIndex + 1,
-        listings_in_chunk: listingsChunk?.length || 0,
-        total_chunks: totalChunks
+        listings_in_chunk: savedListings.length,
+        total_chunks: totalChunks,
+        media_records: mediaCount,
+        room_records: roomCount,
+        open_house_records: openHouseCount
       },
       message: ` Chunk ${chunkIndex + 1}/${totalChunks} saved successfully`
     });
