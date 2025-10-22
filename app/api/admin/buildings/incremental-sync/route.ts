@@ -96,39 +96,103 @@ export async function POST(request: NextRequest) {
 }
 
 async function fetchPropTxListings(building: any) {
-  const searchTerms = [
-    building.street_number,
-    building.street_name,
-    building.canonical_address
-  ].filter(Boolean);
+  const streetNumber = building.street_number?.trim();
+  const streetName = building.street_name?.trim();
+  
+  if (!streetNumber) {
+    throw new Error('Street number is required for search');
+  }
+
+  console.log(`🔍 Searching for: ${streetNumber} ${streetName || ''}`);
 
   let allListings: any[] = [];
 
-  for (const term of searchTerms) {
-    const filter = `contains(UnparsedAddress,'${term}')`;
-    const url = `${PROPTX_API_URL}Property?$filter=${encodeURIComponent(filter)}&$top=500`;
+  // STRATEGY 1: Active listings (exact street number match)
+  console.log('STRATEGY 1: Active listings');
+  const activeFilter = `StreetNumber eq '${streetNumber}'`;
+  const activeUrl = `${PROPTX_API_URL}Property?$filter=${encodeURIComponent(activeFilter)}&$top=5000`;
 
-    const response = await fetch(url, {
+  try {
+    const activeResponse = await fetch(activeUrl, {
       headers: {
         'Authorization': `Bearer ${PROPTX_TOKEN}`,
         'Accept': 'application/json'
       }
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      if (data.value?.length > 0) {
-        allListings = [...allListings, ...data.value];
-      }
+    if (activeResponse.ok) {
+      const activeData = await activeResponse.json();
+      console.log(`  Found ${activeData.value?.length || 0} listings by StreetNumber`);
+      allListings.push(...(activeData.value || []));
     }
+  } catch (error) {
+    console.error('Strategy 1 failed:', error);
   }
 
-  // Deduplicate by ListingKey
-  const unique = Array.from(
-    new Map(allListings.map(l => [l.ListingKey, l])).values()
-  );
+  // STRATEGY 2+3: Completed transactions (Closed/Sold/Leased)
+  console.log('STRATEGY 2+3: Completed transactions');
+  const completedFilter = `StreetNumber eq '${streetNumber}' and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
+  const completedUrl = `${PROPTX_API_URL}Property?$filter=${encodeURIComponent(completedFilter)}&$top=15000`;
 
-  return unique;
+  try {
+    const completedResponse = await fetch(completedUrl, {
+      headers: {
+        'Authorization': `Bearer ${PROPTX_TOKEN}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (completedResponse.ok) {
+      const completedData = await completedResponse.json();
+      console.log(`  Found ${completedData.value?.length || 0} completed transactions`);
+      allListings.push(...(completedData.value || []));
+    }
+  } catch (error) {
+    console.error('Strategy 2+3 failed:', error);
+  }
+
+  console.log(`📊 Total raw listings: ${allListings.length}`);
+
+  // Deduplicate by ListingKey
+  const uniqueMap = new Map();
+  allListings.forEach(listing => {
+    const key = listing.ListingKey || listing.ListingId;
+    if (key && !uniqueMap.has(key)) {
+      uniqueMap.set(key, listing);
+    }
+  });
+
+  let uniqueListings = Array.from(uniqueMap.values());
+  console.log(`  After deduplication: ${uniqueListings.length}`);
+
+  // Apply same filters as batch sync
+  // Filter 1: Exact street number match
+  uniqueListings = uniqueListings.filter(l => l.StreetNumber === streetNumber);
+  console.log(`  After street number filter: ${uniqueListings.length}`);
+
+  // Filter 2: Street name match (first word)
+  if (streetName) {
+    const streetFirstWord = streetName.toLowerCase().split(' ')[0];
+    uniqueListings = uniqueListings.filter(listing => {
+      const address = (listing.UnparsedAddress || '').toLowerCase();
+      const street = (listing.StreetName || '').toLowerCase();
+      return address.includes(streetFirstWord) || street.includes(streetFirstWord);
+    });
+    console.log(`  After street name filter: ${uniqueListings.length}`);
+  }
+
+  // Filter 3: Exclude unwanted statuses
+  const excludedStatuses = ['Pending', 'Cancelled', 'Withdrawn'];
+  const excludedMlsStatuses = ['Cancelled', 'Withdrawn', 'Pend'];
+  
+  uniqueListings = uniqueListings.filter(listing => {
+    const excluded = excludedStatuses.includes(listing.StandardStatus) || 
+                     excludedMlsStatuses.includes(listing.MlsStatus);
+    return !excluded;
+  });
+  console.log(`  After status filter: ${uniqueListings.length}`);
+
+  return uniqueListings;
 }
 
 async function syncActiveListings(buildingId: string, proptxActive: any[], dbActive: any[]) {
