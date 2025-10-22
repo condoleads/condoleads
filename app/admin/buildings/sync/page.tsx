@@ -16,6 +16,39 @@ export default function BuildingSyncPage() {
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<any>(null);
   const [showHistorical, setShowHistorical] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<any>(null);
+
+  const handleIncrementalSync = async () => {
+    if (!confirm('Sync all buildings? This will check for updates across all synced buildings.')) {
+      return;
+    }
+
+    setSyncing(true);
+    setSyncResult(null);
+
+    try {
+      const response = await fetch('/api/admin/buildings/sync-incremental', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+
+      if (!response.ok) {
+        throw new Error('Sync failed');
+      }
+
+      const result = await response.json();
+      setSyncResult(result);
+      alert(`Sync complete! ${result.buildingsProcessed} buildings processed, ${result.totalChanges} total changes.`);
+
+    } catch (error: any) {
+      console.error('Sync failed:', error);
+      alert(`Sync failed: ${error.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
   
   // Generate preview slug as user types
   const generateSlug = (streetNumber: string, streetName?: string, city?: string, buildingName?: string) => {
@@ -143,7 +176,79 @@ export default function BuildingSyncPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-8">
-      <h1 className="text-3xl font-bold mb-8">Building Search & Sync</h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">Building Search & Sync</h1>
+        
+        <button
+          onClick={handleIncrementalSync}
+          disabled={syncing}
+          className={`px-6 py-3 rounded-lg font-medium text-white ${
+            syncing
+              ? 'bg-gray-400 cursor-not-allowed'
+              : 'bg-purple-600 hover:bg-purple-700'
+          }`}
+        >
+          {syncing ? 'Syncing All Buildings...' : ' Sync All Buildings'}
+        </button>
+      </div>
+
+      {/* Sync Progress */}
+      {syncing && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+          <p className="font-medium text-purple-800">Incremental sync in progress...</p>
+          <p className="text-sm text-purple-600 mt-1">Checking all buildings for updates</p>
+          <div className="mt-2 bg-purple-200 rounded-full h-2">
+            <div className="bg-purple-600 h-2 rounded-full animate-pulse" style={{width: '50%'}}></div>
+          </div>
+        </div>
+      )}
+
+      {/* Sync Results */}
+      {syncResult && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 mb-6">
+          <h2 className="text-xl font-semibold text-purple-800 mb-4">
+             Incremental Sync Complete
+          </h2>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-700">
+                {syncResult.buildingsProcessed}
+              </div>
+              <div className="text-xs text-purple-600">Buildings Synced</div>
+            </div>
+
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-700">
+                {syncResult.totalChanges}
+              </div>
+              <div className="text-xs text-green-600">Total Changes</div>
+            </div>
+          </div>
+
+          {syncResult.syncResults && syncResult.syncResults.length > 0 && (
+            <div className="mt-4">
+              <h3 className="font-medium text-purple-800 mb-2">Building Details:</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {syncResult.syncResults.map((building: any, index: number) => (
+                  <div key={index} className="p-3 bg-white rounded border text-sm">
+                    <div className="font-medium">{building.building_name}</div>
+                    {building.error ? (
+                      <div className="text-red-600 text-xs">{building.error}</div>
+                    ) : (
+                      <div className="text-gray-600 text-xs">
+                        {building.updateResults?.newListingsAdded || 0} new, 
+                        {building.updateResults?.listingsUpdated || 0} updated, 
+                        {building.updateResults?.listingsRemoved || 0} removed
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Search Form */}
       <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
@@ -399,3 +504,5 @@ export default function BuildingSyncPage() {
     </div>
   );
 }
+
+

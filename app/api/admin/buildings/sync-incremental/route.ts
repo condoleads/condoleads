@@ -9,20 +9,24 @@ const supabase = createClient(
 
 // PropTx API Client
 class EnhancedPropTxClient {
-  private baseUrl = 'https://api.proptx.com/v2';
-  private token = process.env.DLA_TOKEN;
+  private baseUrl = process.env.PROPTX_RESO_API_URL;
+  private token = process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN;
 
-  async searchBuildingListings(address: string) {
-    const response = await fetch(`${this.baseUrl}/reso/odata/Property?$filter=contains(UnparsedAddress,'${address}')&$expand=Media,PropertyRooms,OpenHouses&$top=500`, {
+  async searchBuildingListings(streetNumber: string) {
+    const filter = `StreetNumber eq '${streetNumber}'`;
+    const url = `${this.baseUrl}Property?$filter=${encodeURIComponent(filter)}&$top=500`;
+    
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json'
+        'Accept': 'application/json'
       }
     });
 
     if (!response.ok) {
-      throw new Error(`PropTx API error: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`PropTx API error: ${response.status}`);
     }
 
     const data = await response.json();
@@ -32,10 +36,6 @@ class EnhancedPropTxClient {
     };
   }
 }
-
-// =====================================================
-// MAIN ROUTE HANDLER
-// =====================================================
 
 export async function POST(request: NextRequest) {
   try {
@@ -67,10 +67,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-// =====================================================
-// SYNC ALL BUILDINGS
-// =====================================================
 
 async function syncAllBuildings() {
   console.log(' Syncing all buildings...');
@@ -115,10 +111,6 @@ async function syncAllBuildings() {
   };
 }
 
-// =====================================================
-// SYNC SINGLE BUILDING
-// =====================================================
-
 async function syncSingleBuilding(buildingId: string, forceFullSync: boolean) {
   console.log(` Syncing building ${buildingId}...`);
   
@@ -136,10 +128,52 @@ async function syncSingleBuilding(buildingId: string, forceFullSync: boolean) {
   
   console.log(`Last sync: ${lastSyncDate.toISOString()}`);
   
+  // Get raw PropTx results
   const proptxClient = new EnhancedPropTxClient();
-  const currentListings = await proptxClient.searchBuildingListings(
-    `${building.street_number} ${building.street_name}`
-  );
+  const rawResults = await proptxClient.searchBuildingListings(building.street_number);
+  
+  // APPLY EXACT SAME 3-STEP FILTERING AS WORKING SEARCH ROUTE
+  let filteredListings = rawResults.allResults || [];
+  
+  // Filter 1: Street Number (exact match)
+  console.log(`FILTER 1: Street Number = '${building.street_number}'`);
+  filteredListings = filteredListings.filter((listing: any) => {
+    return listing.StreetNumber === building.street_number;
+  });
+  console.log(`After street number filter: ${filteredListings.length} listings`);
+  
+  // Filter 2: Street Name (first word match)
+  if (building.street_name && building.street_name.trim()) {
+    const streetFirstWord = building.street_name.toLowerCase().trim().split(' ')[0];
+    console.log(`FILTER 2: Street Name first word = '${streetFirstWord}'`);
+    
+    filteredListings = filteredListings.filter((listing: any) => {
+      const address = (listing.UnparsedAddress || '').toLowerCase();
+      const street = (listing.StreetName || '').toLowerCase();
+      return address.includes(streetFirstWord) || street.includes(streetFirstWord);
+    });
+    
+    console.log(`After street name filter: ${filteredListings.length} listings`);
+  }
+  
+  // Filter 3: City (Toronto for all our buildings)
+  const city = 'Toronto';
+  const cityFirstWord = city.toLowerCase().trim();
+  console.log(`FILTER 3: City = '${cityFirstWord}'`);
+  
+  filteredListings = filteredListings.filter((listing: any) => {
+    const address = (listing.UnparsedAddress || '').toLowerCase();
+    const listingCity = (listing.City || '').toLowerCase();
+    return address.includes(cityFirstWord) || listingCity.includes(cityFirstWord);
+  });
+  
+  console.log(`After city filter: ${filteredListings.length} listings`);
+  console.log(` Final filtered count for ${building.building_name}: ${filteredListings.length} listings`);
+  
+  const currentListings = {
+    total: filteredListings.length,
+    allResults: filteredListings
+  };
   
   const { data: existingListings } = await supabase
     .from('mls_listings')
@@ -175,10 +209,6 @@ async function syncSingleBuilding(buildingId: string, forceFullSync: boolean) {
     totalChanges: changes.newListings.length + changes.updatedListings.length + changes.removedListings.length
   };
 }
-
-// =====================================================
-// ANALYZE CHANGES
-// =====================================================
 
 function analyzeChanges(
   currentListings: any[], 
@@ -274,10 +304,6 @@ function getUpdateReason(currentListing: any, existingListing: any): string {
   return reasons.length > 0 ? reasons.join(', ') : 'Modified since last sync';
 }
 
-// =====================================================
-// APPLY CHANGES
-// =====================================================
-
 async function applyChanges(buildingId: string, changes: any) {
   console.log(' Applying changes...');
   
@@ -303,16 +329,6 @@ async function applyChanges(buildingId: string, changes: any) {
       if (error) throw error;
       
       results.newListingsAdded++;
-      
-      if (change.listing.Media) {
-        const mediaCount = await addMediaForListing(data.id, change.listing.Media);
-        results.mediaAdded += mediaCount;
-      }
-      
-      if (change.listing.PropertyRooms) {
-        const roomCount = await addRoomsForListing(data.id, change.listing.PropertyRooms);
-        results.roomsAdded += roomCount;
-      }
       
     } catch (error: any) {
       console.error(`Failed to add new listing ${change.listing.ListingKey}:`, error);
@@ -369,79 +385,24 @@ async function applyChanges(buildingId: string, changes: any) {
   return results;
 }
 
-// =====================================================
-// MAPPING FUNCTIONS
-// =====================================================
-
 function mapListingToDatabase(listing: any, buildingId: string) {
   return {
     building_id: buildingId,
     listing_key: listing.ListingKey || null,
     listing_id: listing.ListingId || null,
-    originating_system_id: listing.OriginatingSystemID || null,
-    originating_system_key: listing.OriginatingSystemKey || null,
-    originating_system_name: listing.OriginatingSystemName || null,
     street_number: listing.StreetNumber || null,
     street_name: listing.StreetName || null,
-    street_suffix: listing.StreetSuffix || null,
-    street_dir_prefix: listing.StreetDirPrefix || null,
-    street_dir_suffix: listing.StreetDirSuffix || null,
     unparsed_address: listing.UnparsedAddress || null,
-    city: listing.City || null,
-    state_or_province: listing.StateOrProvince || null,
-    postal_code: listing.PostalCode || null,
-    country: listing.Country || null,
     unit_number: listing.UnitNumber || listing.ApartmentNumber || null,
-    apartment_number: listing.ApartmentNumber || null,
-    legal_apartment_number: listing.LegalApartmentNumber || null,
-    legal_stories: listing.LegalStories || null,
     property_type: listing.PropertyType || null,
     property_subtype: listing.PropertySubType || null,
-    property_use: listing.PropertyUse || null,
-    board_property_type: listing.BoardPropertyType || null,
     transaction_type: listing.TransactionType || null,
     list_price: parseInteger(listing.ListPrice),
-    list_price_unit: listing.ListPriceUnit || null,
-    original_list_price: parseInteger(listing.OriginalListPrice),
-    original_list_price_unit: listing.OriginalListPriceUnit || null,
-    previous_list_price: parseInteger(listing.PreviousListPrice),
     close_price: parseInteger(listing.ClosePrice),
-    percent_list_price: listing.PercentListPrice || null,
-    prior_price_code: listing.PriorPriceCode || null,
     standard_status: listing.StandardStatus || null,
     mls_status: listing.MlsStatus || null,
-    prior_mls_status: listing.PriorMlsStatus || null,
-    contract_status: listing.ContractStatus || null,
-    status_aur: listing.StatusAUR || null,
-    listing_contract_date: parseDate(listing.ListingContractDate),
-    original_entry_timestamp: parseTimestamp(listing.OriginalEntryTimestamp),
-    on_market_date: parseDate(listing.OnMarketDate),
     close_date: parseDate(listing.CloseDate),
-    purchase_contract_date: parseDate(listing.PurchaseContractDate),
-    possession_date: parseDate(listing.PossessionDate),
-    expiration_date: parseDate(listing.ExpirationDate),
-    conditional_expiry_date: parseDate(listing.ConditionalExpiryDate),
-    unavailable_date: parseDate(listing.UnavailableDate),
-    suspended_date: parseDate(listing.SuspendedDate),
-    terminated_date: parseDate(listing.TerminatedDate),
-    modification_timestamp: parseTimestamp(listing.ModificationTimestamp),
-    major_change_timestamp: parseTimestamp(listing.MajorChangeTimestamp),
-    price_change_timestamp: parseTimestamp(listing.PriceChangeTimestamp),
-    photos_change_timestamp: parseTimestamp(listing.PhotosChangeTimestamp),
-    media_change_timestamp: parseTimestamp(listing.MediaChangeTimestamp),
-    add_change_timestamp: parseTimestamp(listing.AddChangeTimestamp),
-    back_on_market_entry_timestamp: parseTimestamp(listing.BackOnMarketEntryTimestamp),
-    sold_entry_timestamp: parseTimestamp(listing.SoldEntryTimestamp),
-    sold_conditional_entry_timestamp: parseTimestamp(listing.SoldConditionalEntryTimestamp),
-    leased_entry_timestamp: parseTimestamp(listing.LeasedEntryTimestamp),
-    leased_conditional_entry_timestamp: parseTimestamp(listing.LeasedConditionalEntryTimestamp),
-    suspended_entry_timestamp: parseTimestamp(listing.SuspendedEntryTimestamp),
-    terminated_entry_timestamp: parseTimestamp(listing.TerminatedEntryTimestamp),
-    extension_entry_timestamp: parseTimestamp(listing.ExtensionEntryTimestamp),
-    deal_fell_through_entry_timestamp: parseTimestamp(listing.DealFellThroughEntryTimestamp),
-    import_timestamp: parseTimestamp(listing.ImportTimestamp),
-    system_modification_timestamp: parseTimestamp(listing.SystemModificationTimestamp),
-    timestamp_sql: parseTimestamp(listing.TimestampSql),
+    on_market_date: parseDate(listing.OnMarketDate),
     bedrooms_total: parseInteger(listing.BedroomsTotal),
     bathrooms_total_integer: parseDecimal(listing.BathroomsTotalInteger),
     building_area_total: parseInteger(listing.BuildingAreaTotal),
@@ -451,7 +412,8 @@ function mapListingToDatabase(listing: any, buildingId: string) {
     balcony_type: listing.BalconyType || null,
     exposure: listing.Exposure || null,
     public_remarks: listing.PublicRemarks || null,
-    public_remarks_extras: listing.PublicRemarksExtras || null,
+    modification_timestamp: parseTimestamp(listing.ModificationTimestamp),
+    price_change_timestamp: parseTimestamp(listing.PriceChangeTimestamp),
     available_in_idx: listing.StandardStatus === 'Active',
     available_in_vow: true,
     available_in_dla: true,
@@ -460,46 +422,6 @@ function mapListingToDatabase(listing: any, buildingId: string) {
     last_modified_at: parseTimestamp(listing.ModificationTimestamp),
     sync_source: 'dla_incremental'
   };
-}
-
-async function addMediaForListing(listingId: string, mediaArray: any[]) {
-  let count = 0;
-  for (const mediaItem of mediaArray) {
-    try {
-      await supabase.from('media').insert({
-        listing_id: listingId,
-        media_key: mediaItem.MediaKey || null,
-        media_type: mediaItem.MediaType || null,
-        media_url: mediaItem.MediaURL || null,
-        order_number: parseInteger(mediaItem.Order),
-        created_at: new Date().toISOString()
-      });
-      count++;
-    } catch (error) {
-      console.error('Failed to add media:', error);
-    }
-  }
-  return count;
-}
-
-async function addRoomsForListing(listingId: string, roomsArray: any[]) {
-  let count = 0;
-  for (const room of roomsArray) {
-    try {
-      await supabase.from('property_rooms').insert({
-        listing_id: listingId,
-        room_type: room.RoomType || null,
-        room_level: room.RoomLevel || null,
-        room_dimensions: room.RoomDimensions || null,
-        room_area: parseDecimal(room.RoomArea),
-        created_at: new Date().toISOString()
-      });
-      count++;
-    } catch (error) {
-      console.error('Failed to add room:', error);
-    }
-  }
-  return count;
 }
 
 async function createPriceHistoryRecord(listingId: string, oldPrice: number, newPrice: number) {
@@ -527,9 +449,6 @@ async function recordIncrementalSyncHistory(buildingId: string, changes: any, re
       feed_type: 'dla_incremental',
       listings_found: changes.newListings.length + changes.updatedListings.length + changes.unchangedListings.length,
       listings_created: results.newListingsAdded,
-      listings_updated: results.listingsUpdated,
-      media_records_created: results.mediaAdded,
-      room_records_created: results.roomsAdded,
       sync_status: results.errors.length > 0 ? 'partial' : 'success',
       error_message: results.errors.length > 0 ? results.errors.join('; ') : null,
       started_at: new Date().toISOString(),
@@ -540,10 +459,6 @@ async function recordIncrementalSyncHistory(buildingId: string, changes: any, re
     console.error('Failed to record sync history:', error);
   }
 }
-
-// =====================================================
-// HELPER FUNCTIONS
-// =====================================================
 
 function parseInteger(value: any): number | null {
   if (value === null || value === undefined || value === '') return null;
