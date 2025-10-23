@@ -86,6 +86,9 @@ export async function POST(request: NextRequest) {
       building: building.building_name,
       active: activeResults,
       inactive: inactiveResults,
+      totalMedia: (activeResults.mediaAdded || 0) + (inactiveResults.mediaAdded || 0),
+      totalRooms: (activeResults.roomsAdded || 0) + (inactiveResults.roomsAdded || 0),
+      totalOpenHouses: (activeResults.openHousesAdded || 0) + (inactiveResults.openHousesAdded || 0),
       message: 'Incremental sync completed'
     });
 
@@ -255,14 +258,19 @@ async function fetchRelatedData(newlyAddedListings: any[]) {
   return { mediaCount, roomCount, openHouseCount };
 }
 
-// Fetch enhanced data from PropTx API for newly added listings
-async function fetchEnhancedDataFromPropTx(newlyAddedListings: any[]) {
-  const enhanced = [];
+// Fetch enhanced data from PropTx API and add to originalListings (modifies in place)
+async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
+  console.log(`🔍 Fetching enhanced data for ${originalListings.length} listings...`);
 
-  for (const { savedListing, originalListing } of newlyAddedListings) {
+  for (const originalListing of originalListings) {
     const listingKey = originalListing.ListingKey;
     
-    if (!listingKey) continue;
+    if (!listingKey) {
+      originalListing.Media = [];
+      originalListing.PropertyRooms = [];
+      originalListing.OpenHouses = [];
+      continue;
+    }
 
     // Fetch Media
     try {
@@ -332,11 +340,7 @@ async function fetchEnhancedDataFromPropTx(newlyAddedListings: any[]) {
       console.error(`Failed to fetch open houses for ${listingKey}:`, error);
       originalListing.OpenHouses = [];
     }
-
-    enhanced.push({ savedListing, originalListing });
   }
-
-  return enhanced;
 }
 
 // EXACT SAME as batch sync save route
@@ -615,10 +619,18 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
   // Fetch and save media/rooms/open houses for newly added listings
   if (newlyAddedListings.length > 0) {
     console.log(`📸 Fetching media/rooms/open houses for ${newlyAddedListings.length} new listings...`);
-    const relatedData = await fetchRelatedData(newlyAddedListings);
-    results.mediaAdded = relatedData.mediaCount;
-    results.roomsAdded = relatedData.roomCount;
-    results.openHousesAdded = relatedData.openHouseCount;
+    
+    // Separate into savedListings and originalListings arrays (EXACT same structure as batch sync)
+    const savedListingsArray = newlyAddedListings.map(item => item.savedListing);
+    const originalListingsArray = newlyAddedListings.map(item => item.originalListing);
+    
+    // Fetch enhanced data from PropTx
+    await fetchEnhancedDataFromPropTx(originalListingsArray);
+    
+    // Save using EXACT same functions as batch sync
+    results.mediaAdded = await saveMediaWithVariantFiltering(savedListingsArray, originalListingsArray);
+    results.roomsAdded = await savePropertyRooms(savedListingsArray, originalListingsArray);
+    results.openHousesAdded = await saveOpenHouses(savedListingsArray, originalListingsArray);
   }
   
   return results;
@@ -627,10 +639,14 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
 async function syncInactiveListings(buildingId: string, proptxInactive: any[], dbInactive: any[]) {
   const results = {
     added: 0,
-    skipped: 0
+    skipped: 0,
+    mediaAdded: 0,
+    roomsAdded: 0,
+    openHousesAdded: 0
   };
 
   const dbMap = new Map(dbInactive.map(l => [l.listing_key, l]));
+  const newlyAddedInactiveListings: any[] = [];
 
   console.log(`📥 Inactive Sync: PropTx has ${proptxInactive.length}, DB has ${dbMap.size}`);
 
@@ -641,19 +657,39 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
     if (!dbMap.has(listingKey)) {
       const mappedListing = mapCompleteDLAFields(proptxListing, buildingId);
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('mls_listings')
-        .insert(mappedListing);
+        .insert(mappedListing)
+        .select()
+        .single();
 
       if (error) {
         console.error(`❌ Failed to add inactive ${listingKey}:`, error);
       } else {
         results.added++;
         console.log(`📥 Added inactive: ${listingKey}`);
+        // Store for media/rooms/open houses sync
+        newlyAddedInactiveListings.push({ savedListing: data, originalListing: proptxListing });
       }
     } else {
       results.skipped++;
     }
+  }
+
+  // Fetch and save media/rooms/open houses for newly added inactive listings
+  if (newlyAddedInactiveListings.length > 0) {
+    console.log(`📸 Fetching media/rooms/open houses for ${newlyAddedInactiveListings.length} new inactive listings...`);
+    
+    const savedListingsArray = newlyAddedInactiveListings.map(item => item.savedListing);
+    const originalListingsArray = newlyAddedInactiveListings.map(item => item.originalListing);
+    
+    // Fetch enhanced data from PropTx
+    await fetchEnhancedDataFromPropTx(originalListingsArray);
+    
+    // Save using EXACT same functions as active listings (same two-variant logic)
+    results.mediaAdded = await saveMediaWithVariantFiltering(savedListingsArray, originalListingsArray);
+    results.roomsAdded = await savePropertyRooms(savedListingsArray, originalListingsArray);
+    results.openHousesAdded = await saveOpenHouses(savedListingsArray, originalListingsArray);
   }
 
   console.log(`✅ Inactive Results: +${results.added} ⏭️${results.skipped}`);
