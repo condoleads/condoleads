@@ -9,7 +9,7 @@ const supabase = createClient(
 );
 
 const PROPTX_API_URL = process.env.PROPTX_RESO_API_URL!;
-const PROPTX_TOKEN = process.env.PROPTX_BEARER_TOKEN!;
+const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN!;
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,7 +35,10 @@ export async function POST(request: NextRequest) {
       throw new Error('Building not found');
     }
 
-    // Fetch current listings from PropTx
+    console.log(`🏢 Building: ${building.building_name}`);
+    console.log(`📍 Address: ${building.street_number} ${building.street_name}`);
+
+    // Fetch current listings from PropTx using EXACT batch sync logic
     const proptxListings = await fetchPropTxListings(building);
 
     // Separate active and inactive
@@ -95,20 +98,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// EXACT SAME SEARCH LOGIC AS BATCH SYNC
 async function fetchPropTxListings(building: any) {
   const streetNumber = building.street_number?.trim();
   const streetName = building.street_name?.trim();
+  const city = building.city_district?.trim() || 'Toronto';
   
   if (!streetNumber) {
     throw new Error('Street number is required for search');
   }
 
-  console.log(`🔍 Searching for: ${streetNumber} ${streetName || ''}`);
+  console.log(`🔍 SEARCH STRATEGY - Street Number: ${streetNumber}`);
 
   let allListings: any[] = [];
 
   // STRATEGY 1: Active listings (exact street number match)
-  console.log('STRATEGY 1: Active listings');
+  console.log('STRATEGY 1: Active listings (street number based)');
   const activeFilter = `StreetNumber eq '${streetNumber}'`;
   const activeUrl = `${PROPTX_API_URL}Property?$filter=${encodeURIComponent(activeFilter)}&$top=5000`;
 
@@ -122,15 +127,15 @@ async function fetchPropTxListings(building: any) {
 
     if (activeResponse.ok) {
       const activeData = await activeResponse.json();
-      console.log(`  Found ${activeData.value?.length || 0} listings by StreetNumber`);
+      console.log(`  Found ${activeData.value?.length || 0} listings by StreetNumber (includes active)`);
       allListings.push(...(activeData.value || []));
     }
   } catch (error) {
-    console.error('Strategy 1 failed:', error);
+    console.error('❌ Strategy 1 failed:', error);
   }
 
   // STRATEGY 2+3: Completed transactions (Closed/Sold/Leased)
-  console.log('STRATEGY 2+3: Completed transactions');
+  console.log('STRATEGY 2+3: Combined search for completed transactions');
   const completedFilter = `StreetNumber eq '${streetNumber}' and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
   const completedUrl = `${PROPTX_API_URL}Property?$filter=${encodeURIComponent(completedFilter)}&$top=15000`;
 
@@ -144,55 +149,86 @@ async function fetchPropTxListings(building: any) {
 
     if (completedResponse.ok) {
       const completedData = await completedResponse.json();
-      console.log(`  Found ${completedData.value?.length || 0} completed transactions`);
+      console.log(`  Found ${completedData.value?.length || 0} completed transactions total`);
       allListings.push(...(completedData.value || []));
     }
   } catch (error) {
-    console.error('Strategy 2+3 failed:', error);
+    console.error('❌ Strategy 2+3 failed:', error);
   }
 
-  console.log(`📊 Total raw listings: ${allListings.length}`);
+  console.log(`📊 Total raw listings collected: ${allListings.length}`);
 
-  // Deduplicate by ListingKey
-  const uniqueMap = new Map();
+  // Remove duplicates by ListingKey
+  const uniqueListings = [];
+  const seenKeys = new Set();
+
   allListings.forEach(listing => {
-    const key = listing.ListingKey || listing.ListingId;
-    if (key && !uniqueMap.has(key)) {
-      uniqueMap.set(key, listing);
+    const key = listing.ListingKey || listing.ListingId || `${listing.StreetNumber}-${listing.UnitNumber}-${listing.MlsStatus}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      uniqueListings.push(listing);
     }
   });
 
-  let uniqueListings = Array.from(uniqueMap.values());
-  console.log(`  After deduplication: ${uniqueListings.length}`);
+  console.log(`  Unique listings after deduplication: ${uniqueListings.length}`);
 
-  // Apply same filters as batch sync
-  // Filter 1: Exact street number match
-  uniqueListings = uniqueListings.filter(l => l.StreetNumber === streetNumber);
-  console.log(`  After street number filter: ${uniqueListings.length}`);
+  // APPLY SAME 3-WAY FILTERING AS BATCH SYNC
+  let filteredListings = uniqueListings;
 
-  // Filter 2: Street name match (first word)
-  if (streetName) {
-    const streetFirstWord = streetName.toLowerCase().split(' ')[0];
-    uniqueListings = uniqueListings.filter(listing => {
+  // Filter 1: Street Number (exact match)
+  console.log(`FILTER 1: Street Number = '${streetNumber}'`);
+  filteredListings = filteredListings.filter(listing => {
+    return listing.StreetNumber === streetNumber;
+  });
+  console.log(`  After street number filter: ${filteredListings.length} listings`);
+
+  // Filter 2: Street Name (first word match)
+  if (streetName && streetName.trim()) {
+    const streetFirstWord = streetName.toLowerCase().trim().split(' ')[0];
+    console.log(`FILTER 2: Street Name first word = '${streetFirstWord}'`);
+
+    filteredListings = filteredListings.filter(listing => {
       const address = (listing.UnparsedAddress || '').toLowerCase();
       const street = (listing.StreetName || '').toLowerCase();
       return address.includes(streetFirstWord) || street.includes(streetFirstWord);
     });
-    console.log(`  After street name filter: ${uniqueListings.length}`);
+
+    console.log(`  After street name filter: ${filteredListings.length} listings`);
   }
 
-  // Filter 3: Exclude unwanted statuses
+  // Filter 3: City (first word match)
+  if (city && city.trim()) {
+    const cityFirstWord = city.toLowerCase().trim().split(' ')[0];
+    console.log(`FILTER 3: City first word = '${cityFirstWord}'`);
+
+    filteredListings = filteredListings.filter(listing => {
+      const address = (listing.UnparsedAddress || '').toLowerCase();
+      const listingCity = (listing.City || '').toLowerCase();
+      return address.includes(cityFirstWord) || listingCity.includes(cityFirstWord);
+    });
+
+    console.log(`  After city filter: ${filteredListings.length} listings`);
+  }
+
+  // FILTER 4: EXCLUDE UNWANTED STATUSES
+  console.log('FILTER 4: Excluding unwanted statuses');
   const excludedStatuses = ['Pending', 'Cancelled', 'Withdrawn'];
   const excludedMlsStatuses = ['Cancelled', 'Withdrawn', 'Pend'];
-  
-  uniqueListings = uniqueListings.filter(listing => {
-    const excluded = excludedStatuses.includes(listing.StandardStatus) || 
-                     excludedMlsStatuses.includes(listing.MlsStatus);
-    return !excluded;
-  });
-  console.log(`  After status filter: ${uniqueListings.length}`);
 
-  return uniqueListings;
+  const beforeExclusion = filteredListings.length;
+  filteredListings = filteredListings.filter(listing => {
+    const status = listing.StandardStatus;
+    const mlsStatus = listing.MlsStatus;
+
+    if (excludedStatuses.includes(status) || excludedMlsStatuses.includes(mlsStatus)) {
+      return false;
+    }
+    return true;
+  });
+
+  console.log(`  After exclusion filter: ${filteredListings.length} listings (removed ${beforeExclusion - filteredListings.length})`);
+
+  return filteredListings;
 }
 
 async function syncActiveListings(buildingId: string, proptxActive: any[], dbActive: any[]) {
@@ -203,9 +239,18 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
     unchanged: 0
   };
 
+  // SAFETY CHECK: If PropTx returned 0 active listings, don't delete anything!
+  if (proptxActive.length === 0 && dbActive.length > 0) {
+    console.warn(`⚠️ WARNING: PropTx returned 0 active listings but DB has ${dbActive.length}. Skipping DELETE to prevent data loss!`);
+    results.unchanged = dbActive.length;
+    return results;
+  }
+
   // Create maps for easy lookup
   const proptxMap = new Map(proptxActive.map(l => [l.ListingKey, l]));
   const dbMap = new Map(dbActive.map(l => [l.listing_key, l]));
+
+  console.log(`🔄 Active Sync: PropTx has ${proptxMap.size}, DB has ${dbMap.size}`);
 
   // UPDATE: Listings in both (check for changes)
   for (const [listingKey, proptxListing] of proptxMap) {
@@ -231,7 +276,7 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
           .eq('id', dbListing.id);
 
         results.updated++;
-        console.log(`✏️ Updated: ${listingKey}`);
+        console.log(`✏️ Updated: ${listingKey} (price: ${dbPrice} → ${proptxPrice})`);
       } else {
         results.unchanged++;
       }
@@ -243,28 +288,35 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
     if (!dbMap.has(listingKey)) {
       const mappedListing = mapCompleteDLAFields(proptxListing, buildingId);
 
-      await supabase
+      const { error } = await supabase
         .from('mls_listings')
         .insert(mappedListing);
 
-      results.added++;
-      console.log(`➕ Added: ${listingKey}`);
+      if (error) {
+        console.error(`❌ Failed to add ${listingKey}:`, error);
+      } else {
+        results.added++;
+        console.log(`➕ Added: ${listingKey}`);
+      }
     }
   }
 
-  // DELETE: Listings in DB but NOT in PropTx (expired/terminated)
-  for (const [listingKey, dbListing] of dbMap) {
-    if (!proptxMap.has(listingKey)) {
-      await supabase
-        .from('mls_listings')
-        .delete()
-        .eq('id', dbListing.id);
+  // DELETE: Listings in DB but NOT in PropTx (only if PropTx search was successful)
+  if (proptxActive.length > 0) {
+    for (const [listingKey, dbListing] of dbMap) {
+      if (!proptxMap.has(listingKey)) {
+        await supabase
+          .from('mls_listings')
+          .delete()
+          .eq('id', dbListing.id);
 
-      results.removed++;
-      console.log(`🗑️ Removed: ${listingKey}`);
+        results.removed++;
+        console.log(`🗑️ Removed: ${listingKey} (no longer active)`);
+      }
     }
   }
 
+  console.log(`✅ Active Results: +${results.added} ✏️${results.updated} 🗑️${results.removed} ⏺️${results.unchanged}`);
   return results;
 }
 
@@ -276,6 +328,8 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
 
   const dbMap = new Map(dbInactive.map(l => [l.listing_key, l]));
 
+  console.log(`📥 Inactive Sync: PropTx has ${proptxInactive.length}, DB has ${dbMap.size}`);
+
   // INSERT ONLY: Add new inactive listings, never delete
   for (const proptxListing of proptxInactive) {
     const listingKey = proptxListing.ListingKey;
@@ -283,17 +337,22 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
     if (!dbMap.has(listingKey)) {
       const mappedListing = mapCompleteDLAFields(proptxListing, buildingId);
 
-      await supabase
+      const { error } = await supabase
         .from('mls_listings')
         .insert(mappedListing);
 
-      results.added++;
-      console.log(`📥 Added inactive: ${listingKey}`);
+      if (error) {
+        console.error(`❌ Failed to add inactive ${listingKey}:`, error);
+      } else {
+        results.added++;
+        console.log(`📥 Added inactive: ${listingKey}`);
+      }
     } else {
       results.skipped++;
     }
   }
 
+  console.log(`✅ Inactive Results: +${results.added} ⏭️${results.skipped}`);
   return results;
 }
 
