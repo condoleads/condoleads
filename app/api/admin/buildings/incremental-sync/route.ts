@@ -266,16 +266,21 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
     const listingKey = originalListing.ListingKey;
     
     if (!listingKey) {
+      console.log(`⚠️ Skipping listing without ListingKey`);
       originalListing.Media = [];
       originalListing.PropertyRooms = [];
       originalListing.OpenHouses = [];
       continue;
     }
 
+    console.log(`🔍 Fetching data for listing: ${listingKey}`);
+
     // Fetch Media
     try {
       const mediaFilter = `ResourceRecordKey eq '${listingKey}'`;
       const mediaUrl = `${PROPTX_API_URL}Media?$filter=${encodeURIComponent(mediaFilter)}&$top=500`;
+      
+      console.log(`📸 Fetching media from: ${mediaUrl.substring(0, 100)}...`);
       
       const mediaResponse = await fetch(mediaUrl, {
         headers: {
@@ -287,11 +292,13 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
       if (mediaResponse.ok) {
         const mediaData = await mediaResponse.json();
         originalListing.Media = mediaData.value || [];
+        console.log(`✅ Found ${originalListing.Media.length} media items for ${listingKey}`);
       } else {
+        console.error(`❌ Media fetch failed for ${listingKey}: ${mediaResponse.status}`);
         originalListing.Media = [];
       }
     } catch (error) {
-      console.error(`Failed to fetch media for ${listingKey}:`, error);
+      console.error(`❌ Failed to fetch media for ${listingKey}:`, error);
       originalListing.Media = [];
     }
 
@@ -310,11 +317,13 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
       if (roomsResponse.ok) {
         const roomsData = await roomsResponse.json();
         originalListing.PropertyRooms = roomsData.value || [];
+        console.log(`✅ Found ${originalListing.PropertyRooms.length} rooms for ${listingKey}`);
       } else {
+        console.error(`❌ Rooms fetch failed for ${listingKey}: ${roomsResponse.status}`);
         originalListing.PropertyRooms = [];
       }
     } catch (error) {
-      console.error(`Failed to fetch rooms for ${listingKey}:`, error);
+      console.error(`❌ Failed to fetch rooms for ${listingKey}:`, error);
       originalListing.PropertyRooms = [];
     }
 
@@ -333,14 +342,19 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
       if (openHouseResponse.ok) {
         const openHouseData = await openHouseResponse.json();
         originalListing.OpenHouses = openHouseData.value || [];
+        if (originalListing.OpenHouses.length > 0) {
+          console.log(`✅ Found ${originalListing.OpenHouses.length} open houses for ${listingKey}`);
+        }
       } else {
         originalListing.OpenHouses = [];
       }
     } catch (error) {
-      console.error(`Failed to fetch open houses for ${listingKey}:`, error);
+      console.error(`❌ Failed to fetch open houses for ${listingKey}:`, error);
       originalListing.OpenHouses = [];
     }
   }
+  
+  console.log(`✅ Enhanced data fetching complete`);
 }
 
 // EXACT SAME as batch sync save route
@@ -355,10 +369,22 @@ async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
       // Group media by base image
       const grouped = groupMediaByBaseImage(originalListing.Media);
       
-      // Extract only thumbnail and large variants
+      // Extract only thumbnail and large variants (EXACT same logic as batch sync)
       for (const [baseId, variants] of Object.entries(grouped)) {
-        const thumbnail = (variants as any[]).find((v: any) => v.ImageSizeDescription === 'Thumbnail');
-        const large = (variants as any[]).find((v: any) => v.ImageSizeDescription === 'Large');
+        // Check BOTH URL pattern AND ImageSizeDescription (same as batch sync search route)
+        const thumbnail = (variants as any[]).find((v: any) => 
+          v.MediaURL && (
+            v.MediaURL.includes('rs:fit:240:240') || 
+            v.ImageSizeDescription === 'Thumbnail'
+          )
+        );
+        
+        const large = (variants as any[]).find((v: any) => 
+          v.MediaURL && (
+            v.MediaURL.includes('rs:fit:1920:1920') || 
+            v.ImageSizeDescription === 'Large'
+          )
+        );
         
         if (thumbnail) {
           mediaRecords.push(createMediaRecord(savedListing.id, thumbnail, 'thumbnail', baseId.substring(0, 100)));
@@ -370,8 +396,11 @@ async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
     }
   }
   
+  console.log(`📊 Total media records prepared: ${mediaRecords.length} from ${savedListings.length} listings`);
+  
   // Batch insert media
   if (mediaRecords.length > 0) {
+    console.log(`💾 Inserting ${mediaRecords.length} media records...`);
     const batchSize = 100;
     for (let i = 0; i < mediaRecords.length; i += batchSize) {
       const batch = mediaRecords.slice(i, i + batchSize);
@@ -382,15 +411,25 @@ async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
         mediaCount += batch.length;
       }
     }
+  } else {
+    console.log(`⚠️ No media records to insert!`);
   }
   
+  console.log(`✅ Media saved: ${mediaCount} records`);
   return mediaCount;
 }
 
 function groupMediaByBaseImage(mediaArray: any[]) {
   const groups: any = {};
   
-  for (const media of mediaArray) {
+  // IMPORTANT: Sort by Order first to maintain MLS photo sequence
+  const sortedMedia = [...mediaArray].sort((a, b) => {
+    const orderA = parseInt(a.Order) || 999;
+    const orderB = parseInt(b.Order) || 999;
+    return orderA - orderB;
+  });
+  
+  for (const media of sortedMedia) {
     const baseId = extractBaseImageId(media.MediaURL);
     if (!groups[baseId]) groups[baseId] = [];
     groups[baseId].push(media);
@@ -462,6 +501,7 @@ async function savePropertyRooms(enhancedListings: any[]) {
   }
   
   if (roomRecords.length > 0) {
+    console.log(`💾 Inserting ${roomRecords.length} room records...`);
     const batchSize = 100;
     for (let i = 0; i < roomRecords.length; i += batchSize) {
       const batch = roomRecords.slice(i, i + batchSize);
@@ -474,6 +514,7 @@ async function savePropertyRooms(enhancedListings: any[]) {
     }
   }
   
+  console.log(`✅ Rooms saved: ${roomCount} records`);
   return roomCount;
 }
 
@@ -505,6 +546,7 @@ async function saveOpenHouses(enhancedListings: any[]) {
   }
   
   if (openHouseRecords.length > 0) {
+    console.log(`💾 Inserting ${openHouseRecords.length} open house records...`);
     const batchSize = 100;
     for (let i = 0; i < openHouseRecords.length; i += batchSize) {
       const batch = openHouseRecords.slice(i, i + batchSize);
@@ -517,6 +559,7 @@ async function saveOpenHouses(enhancedListings: any[]) {
     }
   }
   
+  console.log(`✅ Open houses saved: ${openHouseCount} records`);
   return openHouseCount;
 }
 
