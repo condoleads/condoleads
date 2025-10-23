@@ -358,13 +358,17 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
 }
 
 // EXACT SAME as batch sync save route
-async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
-  console.log('💾 Saving media with 2-variant filtering...');
+async function saveMediaWithVariantFiltering(savedListings: any[], originalListings: any[]) {
+  console.log('?? Saving media with 2-variant filtering...');
   
   let mediaCount = 0;
   const mediaRecords = [];
   
-  for (const { savedListing, originalListing } of enhancedListings) {
+  for (const savedListing of savedListings) {
+    const originalListing = originalListings.find(l => 
+      l.ListingKey === savedListing.listing_key
+    );
+    
     if (originalListing?.Media && Array.isArray(originalListing.Media)) {
       // Group media by base image
       const grouped = groupMediaByBaseImage(originalListing.Media);
@@ -401,7 +405,7 @@ async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
   // Batch insert media
   if (mediaRecords.length > 0) {
     console.log(`💾 Inserting ${mediaRecords.length} media records...`);
-    const batchSize = 100;
+    const batchSize = 1;
     for (let i = 0; i < mediaRecords.length; i += batchSize) {
       const batch = mediaRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('media').insert(batch);
@@ -463,13 +467,17 @@ function createMediaRecord(listingId: string, media: any, variantType: string, b
 }
 
 // EXACT SAME as batch sync save route
-async function savePropertyRooms(enhancedListings: any[]) {
-  console.log('💾 Saving property rooms...');
-  
+async function savePropertyRooms(savedListings: any[], originalListings: any[]) {
+  console.log('?? Saving property rooms...');
+
   let roomCount = 0;
   const roomRecords = [];
-  
-  for (const { savedListing, originalListing } of enhancedListings) {
+
+  for (const savedListing of savedListings) {
+    const originalListing = originalListings.find(l =>
+      l.ListingKey === savedListing.listing_key
+    );
+    
     if (originalListing?.PropertyRooms && Array.isArray(originalListing.PropertyRooms)) {
       for (const room of originalListing.PropertyRooms) {
         roomRecords.push({
@@ -502,7 +510,7 @@ async function savePropertyRooms(enhancedListings: any[]) {
   
   if (roomRecords.length > 0) {
     console.log(`💾 Inserting ${roomRecords.length} room records...`);
-    const batchSize = 100;
+    const batchSize = 1;
     for (let i = 0; i < roomRecords.length; i += batchSize) {
       const batch = roomRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('property_rooms').insert(batch);
@@ -519,13 +527,17 @@ async function savePropertyRooms(enhancedListings: any[]) {
 }
 
 // EXACT SAME as batch sync save route
-async function saveOpenHouses(enhancedListings: any[]) {
-  console.log('💾 Saving open houses...');
-  
+async function saveOpenHouses(savedListings: any[], originalListings: any[]) {
+  console.log('?? Saving open houses...');
+
   let openHouseCount = 0;
   const openHouseRecords = [];
-  
-  for (const { savedListing, originalListing } of enhancedListings) {
+
+  for (const savedListing of savedListings) {
+    const originalListing = originalListings.find(l =>
+      l.ListingKey === savedListing.listing_key
+    );
+    
     if (originalListing?.OpenHouses && Array.isArray(originalListing.OpenHouses)) {
       for (const openHouse of originalListing.OpenHouses) {
         openHouseRecords.push({
@@ -547,7 +559,7 @@ async function saveOpenHouses(enhancedListings: any[]) {
   
   if (openHouseRecords.length > 0) {
     console.log(`💾 Inserting ${openHouseRecords.length} open house records...`);
-    const batchSize = 100;
+    const batchSize = 1;
     for (let i = 0; i < openHouseRecords.length; i += batchSize) {
       const batch = openHouseRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('open_houses').insert(batch);
