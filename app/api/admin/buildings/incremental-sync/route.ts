@@ -1342,7 +1342,7 @@ function mapCompleteDLAFields(listing: any, buildingId: string) {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     last_synced_at: new Date().toISOString(),
-    sync_source: 'incremental'
+    sync_source: 'dla'
   };
 }
 

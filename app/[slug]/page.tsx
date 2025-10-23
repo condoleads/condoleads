@@ -29,11 +29,11 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 
   // Fetch listings for richer metadata
-  const { data: listings } = await supabase
+  const { data: listings, error } = await supabase
     .from('mls_listings')
     .select('list_price, bedrooms_total, transaction_type, standard_status')
     .eq('building_id', building.id)
-    .limit(100)
+    console.log('🔍 LISTINGS DEBUG:', { count: listings?.length, error, buildingId: building.id, firstListing: listings?.[0] })
 
   const activeSales = listings?.filter(l => l.transaction_type === 'For Sale' && l.standard_status === 'Active') || []
   const activeRentals = listings?.filter(l => l.transaction_type === 'For Lease' && l.standard_status === 'Active') || []
@@ -133,6 +133,8 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     .select('*')
     .eq('slug', params.slug)
     .single()
+
+  console.log('🏢 BUILDING DEBUG:', { slug: params.slug, buildingId: building?.id, buildingName: building?.building_name })
 
   if (!building) {
     notFound()
