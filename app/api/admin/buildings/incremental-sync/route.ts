@@ -231,12 +231,300 @@ async function fetchPropTxListings(building: any) {
   return filteredListings;
 }
 
+// Fetch media, rooms, and open houses for newly added listings
+// Uses EXACT same logic as batch sync save route
+async function fetchRelatedData(newlyAddedListings: any[]) {
+  let mediaCount = 0;
+  let roomCount = 0;
+  let openHouseCount = 0;
+
+  // Fetch enhanced data (Media, PropertyRooms, OpenHouses) from PropTx API
+  const enhancedListings = await fetchEnhancedDataFromPropTx(newlyAddedListings);
+
+  // Save media with 2-variant filtering (EXACT same as batch sync)
+  mediaCount = await saveMediaWithVariantFiltering(enhancedListings);
+  
+  // Save rooms (EXACT same as batch sync)
+  roomCount = await savePropertyRooms(enhancedListings);
+  
+  // Save open houses (EXACT same as batch sync)
+  openHouseCount = await saveOpenHouses(enhancedListings);
+
+  console.log(`📸 Media: ${mediaCount}, 🏠 Rooms: ${roomCount}, 🚪 Open Houses: ${openHouseCount}`);
+  
+  return { mediaCount, roomCount, openHouseCount };
+}
+
+// Fetch enhanced data from PropTx API for newly added listings
+async function fetchEnhancedDataFromPropTx(newlyAddedListings: any[]) {
+  const enhanced = [];
+
+  for (const { savedListing, originalListing } of newlyAddedListings) {
+    const listingKey = originalListing.ListingKey;
+    
+    if (!listingKey) continue;
+
+    // Fetch Media
+    try {
+      const mediaFilter = `ResourceRecordKey eq '${listingKey}'`;
+      const mediaUrl = `${PROPTX_API_URL}Media?$filter=${encodeURIComponent(mediaFilter)}&$top=500`;
+      
+      const mediaResponse = await fetch(mediaUrl, {
+        headers: {
+          'Authorization': `Bearer ${PROPTX_TOKEN}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (mediaResponse.ok) {
+        const mediaData = await mediaResponse.json();
+        originalListing.Media = mediaData.value || [];
+      } else {
+        originalListing.Media = [];
+      }
+    } catch (error) {
+      console.error(`Failed to fetch media for ${listingKey}:`, error);
+      originalListing.Media = [];
+    }
+
+    // Fetch PropertyRooms
+    try {
+      const roomsFilter = `ListingKey eq '${listingKey}'`;
+      const roomsUrl = `${PROPTX_API_URL}PropertyRooms?$filter=${encodeURIComponent(roomsFilter)}&$top=50`;
+      
+      const roomsResponse = await fetch(roomsUrl, {
+        headers: {
+          'Authorization': `Bearer ${PROPTX_TOKEN}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (roomsResponse.ok) {
+        const roomsData = await roomsResponse.json();
+        originalListing.PropertyRooms = roomsData.value || [];
+      } else {
+        originalListing.PropertyRooms = [];
+      }
+    } catch (error) {
+      console.error(`Failed to fetch rooms for ${listingKey}:`, error);
+      originalListing.PropertyRooms = [];
+    }
+
+    // Fetch OpenHouses
+    try {
+      const openHouseFilter = `ListingKey eq '${listingKey}'`;
+      const openHouseUrl = `${PROPTX_API_URL}OpenHouse?$filter=${encodeURIComponent(openHouseFilter)}&$top=20`;
+      
+      const openHouseResponse = await fetch(openHouseUrl, {
+        headers: {
+          'Authorization': `Bearer ${PROPTX_TOKEN}`,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (openHouseResponse.ok) {
+        const openHouseData = await openHouseResponse.json();
+        originalListing.OpenHouses = openHouseData.value || [];
+      } else {
+        originalListing.OpenHouses = [];
+      }
+    } catch (error) {
+      console.error(`Failed to fetch open houses for ${listingKey}:`, error);
+      originalListing.OpenHouses = [];
+    }
+
+    enhanced.push({ savedListing, originalListing });
+  }
+
+  return enhanced;
+}
+
+// EXACT SAME as batch sync save route
+async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
+  console.log('💾 Saving media with 2-variant filtering...');
+  
+  let mediaCount = 0;
+  const mediaRecords = [];
+  
+  for (const { savedListing, originalListing } of enhancedListings) {
+    if (originalListing?.Media && Array.isArray(originalListing.Media)) {
+      // Group media by base image
+      const grouped = groupMediaByBaseImage(originalListing.Media);
+      
+      // Extract only thumbnail and large variants
+      for (const [baseId, variants] of Object.entries(grouped)) {
+        const thumbnail = (variants as any[]).find((v: any) => v.ImageSizeDescription === 'Thumbnail');
+        const large = (variants as any[]).find((v: any) => v.ImageSizeDescription === 'Large');
+        
+        if (thumbnail) {
+          mediaRecords.push(createMediaRecord(savedListing.id, thumbnail, 'thumbnail', baseId.substring(0, 100)));
+        }
+        if (large) {
+          mediaRecords.push(createMediaRecord(savedListing.id, large, 'large', baseId.substring(0, 100)));
+        }
+      }
+    }
+  }
+  
+  // Batch insert media
+  if (mediaRecords.length > 0) {
+    const batchSize = 100;
+    for (let i = 0; i < mediaRecords.length; i += batchSize) {
+      const batch = mediaRecords.slice(i, i + batchSize);
+      const { error } = await supabase.from('media').insert(batch);
+      if (error) {
+        console.error('❌ Media insert error:', error);
+      } else {
+        mediaCount += batch.length;
+      }
+    }
+  }
+  
+  return mediaCount;
+}
+
+function groupMediaByBaseImage(mediaArray: any[]) {
+  const groups: any = {};
+  
+  for (const media of mediaArray) {
+    const baseId = extractBaseImageId(media.MediaURL);
+    if (!groups[baseId]) groups[baseId] = [];
+    groups[baseId].push(media);
+  }
+  
+  return groups;
+}
+
+function extractBaseImageId(url: string | null | undefined): string {
+  if (!url) return 'unknown';
+  const parts = url.split('/');
+  const filename = parts[parts.length - 1];
+  return filename.split('.')[0] || 'unknown';
+}
+
+function createMediaRecord(listingId: string, media: any, variantType: string, baseImageId: string) {
+  return {
+    listing_id: listingId,
+    media_key: media.MediaKey || null,
+    media_type: media.MediaType || null,
+    media_url: media.MediaURL,
+    variant_type: variantType,
+    base_image_id: baseImageId?.substring(0, 100) || null,
+    short_description: media.ShortDescription || null,
+    order_number: parseInteger(media.Order),
+    preferred_photo_yn: parseBoolean(media.PreferredPhotoYN),
+    image_width: parseInteger(media.ImageWidth),
+    image_height: parseInteger(media.ImageHeight),
+    created_at: new Date().toISOString()
+  };
+}
+
+// EXACT SAME as batch sync save route
+async function savePropertyRooms(enhancedListings: any[]) {
+  console.log('💾 Saving property rooms...');
+  
+  let roomCount = 0;
+  const roomRecords = [];
+  
+  for (const { savedListing, originalListing } of enhancedListings) {
+    if (originalListing?.PropertyRooms && Array.isArray(originalListing.PropertyRooms)) {
+      for (const room of originalListing.PropertyRooms) {
+        roomRecords.push({
+          listing_id: savedListing.id,
+          room_key: room.RoomKey || null,
+          room_type: room.RoomType || null,
+          room_level: room.RoomLevel || null,
+          room_status: room.RoomStatus || null,
+          room_dimensions: room.RoomDimensions || null,
+          room_length: parseDecimal(room.RoomLength),
+          room_width: parseDecimal(room.RoomWidth),
+          room_height: parseDecimal(room.RoomHeight),
+          room_area: parseDecimal(room.RoomArea),
+          room_length_width_units: room.RoomLengthWidthUnits || null,
+          room_length_width_source: room.RoomLengthWidthSource || null,
+          room_area_units: room.RoomAreaUnits || null,
+          room_area_source: room.RoomAreaSource || null,
+          room_description: room.RoomDescription || null,
+          room_features: parseJsonArray(room.RoomFeatures),
+          room_feature1: room.RoomFeature1 || null,
+          room_feature2: room.RoomFeature2 || null,
+          room_feature3: room.RoomFeature3 || null,
+          order_number: parseInteger(room.Order),
+          modification_timestamp: parseTimestamp(room.ModificationTimestamp),
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+  }
+  
+  if (roomRecords.length > 0) {
+    const batchSize = 100;
+    for (let i = 0; i < roomRecords.length; i += batchSize) {
+      const batch = roomRecords.slice(i, i + batchSize);
+      const { error } = await supabase.from('property_rooms').insert(batch);
+      if (error) {
+        console.error('❌ Rooms insert error:', error);
+      } else {
+        roomCount += batch.length;
+      }
+    }
+  }
+  
+  return roomCount;
+}
+
+// EXACT SAME as batch sync save route
+async function saveOpenHouses(enhancedListings: any[]) {
+  console.log('💾 Saving open houses...');
+  
+  let openHouseCount = 0;
+  const openHouseRecords = [];
+  
+  for (const { savedListing, originalListing } of enhancedListings) {
+    if (originalListing?.OpenHouses && Array.isArray(originalListing.OpenHouses)) {
+      for (const openHouse of originalListing.OpenHouses) {
+        openHouseRecords.push({
+          listing_id: savedListing.id,
+          open_house_key: openHouse.OpenHouseKey || null,
+          open_house_id: openHouse.OpenHouseID || null,
+          open_house_date: parseDate(openHouse.OpenHouseDate),
+          open_house_start_time: parseTimestamp(openHouse.OpenHouseStartTime),
+          open_house_end_time: parseTimestamp(openHouse.OpenHouseEndTime),
+          open_house_type: openHouse.OpenHouseType || null,
+          open_house_status: openHouse.OpenHouseStatus || null,
+          original_entry_timestamp: parseTimestamp(openHouse.OriginalEntryTimestamp),
+          modification_timestamp: parseTimestamp(openHouse.ModificationTimestamp),
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+  }
+  
+  if (openHouseRecords.length > 0) {
+    const batchSize = 100;
+    for (let i = 0; i < openHouseRecords.length; i += batchSize) {
+      const batch = openHouseRecords.slice(i, i + batchSize);
+      const { error } = await supabase.from('open_houses').insert(batch);
+      if (error) {
+        console.error('❌ Open houses insert error:', error);
+      } else {
+        openHouseCount += batch.length;
+      }
+    }
+  }
+  
+  return openHouseCount;
+}
+
 async function syncActiveListings(buildingId: string, proptxActive: any[], dbActive: any[]) {
   const results = {
     updated: 0,
     added: 0,
     removed: 0,
-    unchanged: 0
+    unchanged: 0,
+    mediaAdded: 0,
+    roomsAdded: 0,
+    openHousesAdded: 0
   };
 
   // SAFETY CHECK: If PropTx returned 0 active listings, don't delete anything!
@@ -284,19 +572,25 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
   }
 
   // INSERT: Listings in PropTx but NOT in DB
+  const newlyAddedListings: any[] = [];
+  
   for (const [listingKey, proptxListing] of proptxMap) {
     if (!dbMap.has(listingKey)) {
       const mappedListing = mapCompleteDLAFields(proptxListing, buildingId);
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('mls_listings')
-        .insert(mappedListing);
+        .insert(mappedListing)
+        .select()
+        .single();
 
       if (error) {
         console.error(`❌ Failed to add ${listingKey}:`, error);
       } else {
         results.added++;
         console.log(`➕ Added: ${listingKey}`);
+        // Store for media/rooms/open houses sync
+        newlyAddedListings.push({ savedListing: data, originalListing: proptxListing });
       }
     }
   }
@@ -317,6 +611,16 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
   }
 
   console.log(`✅ Active Results: +${results.added} ✏️${results.updated} 🗑️${results.removed} ⏺️${results.unchanged}`);
+  
+  // Fetch and save media/rooms/open houses for newly added listings
+  if (newlyAddedListings.length > 0) {
+    console.log(`📸 Fetching media/rooms/open houses for ${newlyAddedListings.length} new listings...`);
+    const relatedData = await fetchRelatedData(newlyAddedListings);
+    results.mediaAdded = relatedData.mediaCount;
+    results.roomsAdded = relatedData.roomCount;
+    results.openHousesAdded = relatedData.openHouseCount;
+  }
+  
   return results;
 }
 
