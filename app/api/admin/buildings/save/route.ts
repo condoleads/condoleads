@@ -139,16 +139,20 @@ async function forceCleanBuildingBySlug(slug: string) {
     // Delete building relationships and history
     await supabase.from('sync_history').delete().eq('building_id', existingBuilding.id);
     
-    // Delete building
-    await supabase.from('buildings').delete().eq('id', existingBuilding.id);
-    
-    console.log(`✅ Completely cleaned building: ${slug}`);
-      }
+    // Keep the building, just cleaned its data
+    console.log(`✅ Cleaned building data, keeping ID: ${existingBuilding.id}`);
+    return existingBuilding.id; // Return existing building ID
+  }
+  
+  return null; // No existing building found
      }
 
 // STEP 2: Save building data
 async function saveBuildingData(buildingData: any) {
-  console.log('?? Saving building...');
+  console.log('💾 Saving building...');
+  
+  // Check if building already exists (and clean its data)
+  const existingBuildingId = await forceCleanBuildingBySlug(buildingData.slug);
   
   const buildingRecord = {
     slug: buildingData.slug,
@@ -160,18 +164,38 @@ async function saveBuildingData(buildingData: any) {
     total_units: buildingData.totalListings,
     last_sync_at: new Date().toISOString(),
     sync_status: 'completed',
-    created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
   
-  const { data, error } = await supabase
-    .from('buildings')
-    .insert(buildingRecord)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
+  if (existingBuildingId) {
+    // UPDATE existing building (keep same ID)
+    const { data, error } = await supabase
+      .from('buildings')
+      .update(buildingRecord)
+      .eq('id', existingBuildingId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    console.log(`✅ Updated existing building: ${existingBuildingId}`);
+    return data;
+  } else {
+    // INSERT new building (create new ID)
+    const updatedRecord = {
+      ...buildingRecord,
+      created_at: new Date().toISOString()
+    };
+    
+    const { data, error } = await supabase
+      .from('buildings')
+      .insert(updatedRecord)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    console.log(`✅ Created new building: ${data.id}`);
+    return data;
+  }
 }
 
 // STEP 3: Save listings with complete DLA mapping
