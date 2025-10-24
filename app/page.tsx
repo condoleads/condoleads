@@ -23,9 +23,8 @@ export default async function RootPage() {
   }
   
   const supabase = createClient();
-
-  console.log('🔍 DEBUG: Subdomain extracted:', subdomain);
-
+  
+  console.log(' DEBUG: Subdomain extracted:', subdomain);
   
   // Fetch agent by subdomain
   const { data: agent, error: agentError } = await supabase
@@ -35,8 +34,7 @@ export default async function RootPage() {
     .eq('is_active', true)
     .single();
 
-  console.log('🔍 DEBUG: Agent query result:', { agent, agentError });
-
+  console.log(' DEBUG: Agent query result:', { agent, agentError });
   
   if (!agent) notFound();
   
@@ -58,14 +56,15 @@ export default async function RootPage() {
     .eq('agent_id', agent.id)
     .order('is_featured', { ascending: false });
   
-  // Get listing counts for each building
+  // Get listing counts and photos for each building
   const buildingsWithCounts = await Promise.all(
     (agentBuildings || []).map(async (ab: any) => {
       const building = ab.buildings;
       
+      // Get listings for counts
       const { data: listings } = await supabase
         .from('mls_listings')
-        .select('transaction_type, standard_status')
+        .select('id, transaction_type, standard_status')
         .eq('building_id', building.id);
       
       const forSale = listings?.filter(
@@ -76,11 +75,22 @@ export default async function RootPage() {
         l => l.transaction_type === 'For Lease' && l.standard_status === 'Active'
       ).length || 0;
       
+      // Get first photo from building's listings
+      const { data: photo } = await supabase
+        .from('media')
+        .select('media_url')
+        .in('listing_id', listings?.map(l => l.id) || [])
+        .eq('variant_type', 'large')
+        .order('preferred_photo_yn', { ascending: false })
+        .order('order_number', { ascending: true })
+        .limit(1);
+      
       return {
         ...building,
         forSale,
         forLease,
-        isFeatured: ab.is_featured
+        isFeatured: ab.is_featured,
+        photoUrl: photo?.[0]?.media_url || null
       };
     })
   );
@@ -117,7 +127,7 @@ export async function generateMetadata() {
   }
   
   const supabase = createClient();
-  const { data: agent, error: agentError } = await supabase
+  const { data: agent } = await supabase
     .from('agents')
     .select('full_name, bio')
     .eq('subdomain', subdomain)
@@ -133,3 +143,4 @@ export async function generateMetadata() {
     description: agent.bio || `Find luxury Toronto condos with ${agent.full_name}. Exclusive access to premium buildings.`,
   };
 }
+
