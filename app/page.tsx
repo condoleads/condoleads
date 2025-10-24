@@ -1,8 +1,7 @@
-// app/page.tsx - Replace entire file
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { DatabaseClient } from '../lib/supabase/client';
-import { HomePage } from '../components/HomePage';
+import { createClient } from '@/lib/supabase/server';
+import { HomePage } from '@/components/HomePage';
 
 export default async function RootPage() {
   const headersList = headers();
@@ -16,19 +15,77 @@ export default async function RootPage() {
       <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 text-white flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-6xl font-bold mb-6">CondoLeads</h1>
-          <p className="text-xl mb-8">Toronto Real Estate Agent Websites</p>
-          <p className="text-gray-200">Each agent gets their own subdomain: agent.condoleads.ca</p>
+          <p className="text-xl mb-8">Toronto Real Estate Agent Platform</p>
+          <p className="text-gray-200">Each agent gets their own branded website</p>
         </div>
       </div>
     );
   }
   
-  const db = new DatabaseClient();
-  const agentData = await db.getAgentWithBuildings(subdomain);
+  const supabase = createClient();
+
+  console.log('🔍 DEBUG: Subdomain extracted:', subdomain);
+
   
-  if (!agentData) notFound();
+  // Fetch agent by subdomain
+  const { data: agent, error: agentError } = await supabase
+    .from('agents')
+    .select('*')
+    .eq('subdomain', subdomain)
+    .eq('is_active', true)
+    .single();
+
+  console.log('🔍 DEBUG: Agent query result:', { agent, agentError });
+
   
-  return <HomePage agent={agentData} />;
+  if (!agent) notFound();
+  
+  // Fetch agent's assigned buildings with listing counts
+  const { data: agentBuildings } = await supabase
+    .from('agent_buildings')
+    .select(`
+      is_featured,
+      buildings (
+        id,
+        building_name,
+        slug,
+        canonical_address,
+        street_number,
+        street_name,
+        city_district
+      )
+    `)
+    .eq('agent_id', agent.id)
+    .order('is_featured', { ascending: false });
+  
+  // Get listing counts for each building
+  const buildingsWithCounts = await Promise.all(
+    (agentBuildings || []).map(async (ab: any) => {
+      const building = ab.buildings;
+      
+      const { data: listings } = await supabase
+        .from('mls_listings')
+        .select('transaction_type, standard_status')
+        .eq('building_id', building.id);
+      
+      const forSale = listings?.filter(
+        l => l.transaction_type === 'For Sale' && l.standard_status === 'Active'
+      ).length || 0;
+      
+      const forLease = listings?.filter(
+        l => l.transaction_type === 'For Lease' && l.standard_status === 'Active'
+      ).length || 0;
+      
+      return {
+        ...building,
+        forSale,
+        forLease,
+        isFeatured: ab.is_featured
+      };
+    })
+  );
+  
+  return <HomePage agent={agent} buildings={buildingsWithCounts} />;
 }
 
 function extractSubdomain(host: string): string | null {
@@ -54,22 +111,25 @@ export async function generateMetadata() {
   
   if (!subdomain) {
     return {
-      title: 'CondoLeads - Toronto Real Estate Agent Websites',
+      title: 'CondoLeads - Toronto Real Estate Agent Platform',
       description: 'Professional real estate websites for Toronto condo specialists'
     };
   }
   
-  const db = new DatabaseClient();
-  const agentData = await db.getAgentWithBuildings(subdomain);
+  const supabase = createClient();
+  const { data: agent, error: agentError } = await supabase
+    .from('agents')
+    .select('full_name, bio')
+    .eq('subdomain', subdomain)
+    .eq('is_active', true)
+    .single();
   
-  if (!agentData) {
-    return {
-      title: 'Agent Not Found'
-    };
+  if (!agent) {
+    return { title: 'Agent Not Found' };
   }
   
   return {
-    title: `${agentData.name} - Toronto Condo Specialist`,
-    description: `Find luxury Toronto condos with ${agentData.name}. Exclusive access to premium buildings and personalized service.`,
+    title: `${agent.full_name} - Toronto Condo Specialist`,
+    description: agent.bio || `Find luxury Toronto condos with ${agent.full_name}. Exclusive access to premium buildings.`,
   };
 }
