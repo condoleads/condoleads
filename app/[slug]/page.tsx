@@ -16,6 +16,8 @@ import ListYourUnit from './components/ListYourUnit'
 import SEODescription from './components/SEODescription'
 import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
 import BuildingSchema from './components/BuildingSchema'
+import { AgentCard } from '@/components/AgentCard'
+import { createClient } from '@/lib/supabase/server'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
@@ -33,7 +35,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     .from('mls_listings')
     .select('list_price, bedrooms_total, transaction_type, standard_status')
     .eq('building_id', building.id)
-    console.log('🔍 LISTINGS DEBUG:', { count: listings?.length, error, buildingId: building.id, firstListing: listings?.[0] })
+    console.log(' LISTINGS DEBUG:', { count: listings?.length, error, buildingId: building.id, firstListing: listings?.[0] })
 
   const activeSales = listings?.filter(l => l.transaction_type === 'For Sale' && l.standard_status === 'Active') || []
   const activeRentals = listings?.filter(l => l.transaction_type === 'For Lease' && l.standard_status === 'Active') || []
@@ -127,6 +129,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     },
   }
 }
+
 export default async function BuildingPage({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
     .from('buildings')
@@ -134,35 +137,46 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     .eq('slug', params.slug)
     .single()
 
-  console.log('🏢 BUILDING DEBUG:', { slug: params.slug, buildingId: building?.id, buildingName: building?.building_name })
+  console.log(' BUILDING DEBUG:', { slug: params.slug, buildingId: building?.id, buildingName: building?.building_name })
 
   if (!building) {
     notFound()
   }
 
- const { data: listings } = await supabase
-  .from('mls_listings')
-  .select(`
-    *,
-    media (
-      id,
-      media_url,
-      variant_type,
-      order_number,
-      preferred_photo_yn
-    )
-  `)
-  .eq('building_id', building.id)
-  .order('list_price', { ascending: false })
+  // Fetch the agent assigned to this building
+  const supabaseServer = createClient()
+  const { data: agentBuilding } = await supabaseServer
+    .from('agent_buildings')
+    .select('agents (*)')
+    .eq('building_id', building.id)
+    .single()
+  
+  const agent = agentBuilding?.agents
+  console.log(' AGENT DEBUG:', { agent, agentBuilding, buildingId: building.id })
+  
+  const { data: listings } = await supabase
+    .from('mls_listings')
+    .select(`
+      *,
+      media (
+        id,
+        media_url,
+        variant_type,
+        order_number,
+        preferred_photo_yn
+      )
+    `)
+    .eq('building_id', building.id)
+    .order('list_price', { ascending: false })
 
   const allListings = listings || []
   const activeListings = allListings.filter(l => l.standard_status === 'Active')
   const closedListings = allListings.filter(l => l.standard_status === 'Closed')
   
-const activeSales = activeListings.filter(l => l.transaction_type === 'For Sale')
-const activeRentals = activeListings.filter(l => l.transaction_type === 'For Lease')
-const closedSales = closedListings.filter(l => l.transaction_type === 'For Sale')
-const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lease')
+  const activeSales = activeListings.filter(l => l.transaction_type === 'For Sale')
+  const activeRentals = activeListings.filter(l => l.transaction_type === 'For Lease')
+  const closedSales = closedListings.filter(l => l.transaction_type === 'For Sale')
+  const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lease')
 
   const amenities = extractAmenities(allListings)
   const feeIncludes = extractFeeIncludes(allListings)
@@ -204,13 +218,13 @@ const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lea
   }
 
   return (
-  <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
-    <BuildingSchema 
-      building={building}
-      activeSales={activeSales}
-      activeRentals={activeRentals}
-      avgPrice={avgSalePrice}
-    />
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
+      <BuildingSchema 
+        building={building}
+        activeSales={activeSales}
+        activeRentals={activeRentals}
+        avgPrice={avgSalePrice}
+      />
       <StickyNav />
       
       <BuildingHero 
@@ -225,90 +239,101 @@ const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lea
         avgDaysOnMarketLease={avgDaysOnMarketLease}
       />
       
-    <div id="listings">
-  <ListingSection
-    activeSales={activeSales}
-    activeRentals={activeRentals}
-    closedSales={closedSales}
-    closedRentals={closedRentals}
-    buildingId={building.id}
-    buildingName={building.building_name}
-  />
-</div>
-      
-      <div id="highlights">
-        <BuildingHighlights 
-          building={building}
-          listings={allListings}
-        />
-      </div>
-      
-      <div id="market-stats">
-        <MarketStats stats={stats} yearBuilt={building.year_built} />
-      </div>
-      
-      {amenities.length > 0 && (
-        <div id="amenities">
-          <BuildingAmenities amenities={amenities} feeIncludes={feeIncludes} />
+      {/* Main Content Grid with Agent Sidebar */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid lg:grid-cols-4 gap-8">
+          
+          {/* Main Content - 3 columns */}
+          <div className="lg:col-span-3 space-y-12">
+            <div id="listings">
+              <ListingSection
+                activeSales={activeSales}
+                activeRentals={activeRentals}
+                closedSales={closedSales}
+                closedRentals={closedRentals}
+                buildingId={building.id}
+                buildingName={building.building_name}
+              />
+            </div>
+            
+            <div id="highlights">
+              <BuildingHighlights 
+                building={building}
+                listings={allListings}
+              />
+            </div>
+            
+            <div id="market-stats">
+              <MarketStats stats={stats} yearBuilt={building.year_built} />
+            </div>
+            
+            {amenities.length > 0 && (
+              <div id="amenities">
+                <BuildingAmenities amenities={amenities} feeIncludes={feeIncludes} />
+              </div>
+            )}
+            
+            <div id="price-trends">
+              <PriceChart closedSales={closedSales} closedRentals={closedRentals} />
+            </div>
+            
+            <TransactionInsights 
+              activeSales={activeSales}
+              closedSales={closedSales}
+              activeRentals={activeRentals}
+              closedRentals={closedRentals}
+              totalUnits={building.total_units}
+            />
+            
+            <div id="transaction-history">
+              <TransactionHistory 
+                closedSales={closedSales}
+                closedRentals={closedRentals}
+                highestSale={highestSale}
+              />
+            </div>
+            
+            <div id="location">
+              <BuildingMap
+                latitude={building.latitude}
+                longitude={building.longitude}
+                buildingName={building.building_name}
+                address={building.full_address}
+              />
+            </div>
+
+            <div id="reviews">
+              <BuildingReviews
+                buildingId={building.id}
+                buildingName={building.building_name}
+              />
+            </div>
+            
+            <div id="list-your-unit">
+              <EstimatorSeller
+                buildingId={building.id}
+                buildingName={building.building_name}
+              />
+            </div>
+
+            <ListYourUnit buildingName={building.building_name} />
+            
+            <SEODescription 
+              building={building}
+              totalListings={allListings.length}
+              avgPrice={avgSalePrice}
+            />
+          </div>
+          
+          {/* Agent Sidebar - 1 column, sticky */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-24">
+              {agent && <AgentCard agent={agent} />}
+            </div>
+          </div>
+          
         </div>
-      )}
-      
-<div id="price-trends">
-  <PriceChart closedSales={closedSales} closedRentals={closedRentals} />
-</div>
-      
-      <TransactionInsights 
-        activeSales={activeSales}
-        closedSales={closedSales}
-        activeRentals={activeRentals}
-        closedRentals={closedRentals}
-        totalUnits={building.total_units}
-      />
-      
-      <div id="transaction-history">
-        <TransactionHistory 
-          closedSales={closedSales}
-          closedRentals={closedRentals}
-          highestSale={highestSale}
-        />
       </div>
-      
-      <div id="location">
-  <BuildingMap
-    latitude={building.latitude}
-    longitude={building.longitude}
-    buildingName={building.building_name}
-    address={building.full_address}
-  />
-</div>
-
-      <div id="reviews">
-  <BuildingReviews
-    buildingId={building.id}
-    buildingName={building.building_name}
-  />
-</div>
-<div id="list-your-unit">
-  <EstimatorSeller
-    buildingId={building.id}
-    buildingName={building.building_name}
-  />
-</div>
-
-      <ListYourUnit buildingName={building.building_name} />
-      
-      <SEODescription 
-        building={building}
-        totalListings={allListings.length}
-        avgPrice={avgSalePrice}
-      />
     </div>
   )
 }
-
-
-
-
-
-
-
