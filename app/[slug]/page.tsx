@@ -316,7 +316,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
               />
             </div>
 
-            <ListYourUnit buildingName={building.building_name} />
+            <ListYourUnit buildingName={building.building_name} buildingId={building.id} agentId={agent?.id || ""} />
             
             <SEODescription 
               building={building}
@@ -337,3 +337,4 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     </div>
   )
 }
+
