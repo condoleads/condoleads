@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
 import { MLSListing } from '@/lib/types/building'
@@ -90,7 +90,7 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
   return (
     <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col">
       {/* Image Carousel */}
-      <div className="relative h-64 bg-slate-200 flex-shrink-0">
+      <div className="relative h-48 bg-slate-200 flex-shrink-0">
         {photos.length > 0 ? (
           <>
             <img 
