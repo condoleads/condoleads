@@ -13,6 +13,7 @@ interface EstimatorBuyerModalProps {
   listing: MLSListing | null
   buildingName: string
   buildingId: string
+  agentId: string
   type: 'sale' | 'rent'
   exactSqft: number | null
 }
@@ -23,6 +24,7 @@ export default function EstimatorBuyerModal({
   listing,
   buildingName,
   buildingId,
+  agentId,
   type,
   exactSqft
 }: EstimatorBuyerModalProps) {
@@ -205,7 +207,19 @@ export default function EstimatorBuyerModal({
                 </div>
               )}
 
-              <EstimatorResults result={result} type={type} />
+              <EstimatorResults 
+                  result={result} 
+                  type={type}
+                  buildingId={buildingId}
+                  buildingName={buildingName}
+                  agentId={agentId}
+                  propertySpecs={{
+                    bedrooms: listing?.bedrooms_total || 0,
+                    bathrooms: listing?.bathrooms_total_integer || 0,
+                    livingAreaRange: listing?.living_area_sqft || 0,
+                    exactSqft: exactSqft || listing?.living_area_sqft || 0
+                  }}
+                />
               
               <div className="mt-6 flex gap-4">
                 <button

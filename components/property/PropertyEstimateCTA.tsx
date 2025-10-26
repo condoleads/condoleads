@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
@@ -10,6 +10,7 @@ interface PropertyEstimateCTAProps {
   status: 'Active' | 'Closed'
   isSale: boolean
   buildingName: string
+  agentId: string
 }
 
 export default function PropertyEstimateCTA({ listing, status, isSale, buildingName }: PropertyEstimateCTAProps) {
@@ -72,14 +73,16 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
       </div>
       
       <EstimatorBuyerModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        listing={listing}
-        buildingName={buildingName}
-        buildingId={listing.building_id}
-        type={isSale ? 'sale' : 'rent'}
-        exactSqft={exactSqft}
-      />
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          listing={listing}
+          buildingName={buildingName}
+          buildingId={listing.building_id}
+          agentId={agentId}
+          type={isSale ? 'sale' : 'rent'}
+          exactSqft={exactSqft}
+        />
     </>
   )
 }
+

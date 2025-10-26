@@ -247,13 +247,14 @@ export default async function BuildingPage({ params }: { params: { slug: string 
           <div className="lg:col-span-3 space-y-12">
             <div id="listings">
               <ListingSection
-                activeSales={activeSales}
-                activeRentals={activeRentals}
-                closedSales={closedSales}
-                closedRentals={closedRentals}
-                buildingId={building.id}
-                buildingName={building.building_name}
-              />
+                  activeSales={activeSales}
+                  activeRentals={activeRentals}
+                  closedSales={closedSales}
+                  closedRentals={closedRentals}
+                  buildingId={building.id}
+                  buildingName={building.building_name}
+                  agentId={agent?.id || ""}
+                />
             </div>
             
             <div id="highlights">
@@ -310,11 +311,17 @@ export default async function BuildingPage({ params }: { params: { slug: string 
             </div>
             
             <div id="list-your-unit">
-              <EstimatorSeller
-                buildingId={building.id}
-                buildingName={building.building_name}
-                agentId={agent?.id || ""}
-              />
+              {agent ? (
+                <EstimatorSeller
+                  buildingId={building.id}
+                  buildingName={building.building_name}
+                  agentId={agent.id}
+                />
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
+                  <p className="text-amber-800">Estimator will be available once an agent is assigned to this building.</p>
+                </div>
+              )}
             </div>
 
             <ListYourUnit buildingName={building.building_name} buildingId={building.id} agentId={agent?.id || ""} />
@@ -345,6 +352,8 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     </div>
   )
 }
+
+
 
 
 

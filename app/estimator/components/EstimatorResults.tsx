@@ -52,6 +52,8 @@ export default function EstimatorResults({
     const specs = propertySpecs || {}
     const message = `Received estimate for ${buildingName}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Would like to discuss accurate valuation.`
 
+    console.log('?? DEBUG EstimatorResults:', { agentId, buildingId, buildingName })
+    
     const leadResult = await createLead({
       agentId,
       contactName: contactForm.name,
@@ -439,4 +441,5 @@ export default function EstimatorResults({
     </div>
   )
 }
+
 

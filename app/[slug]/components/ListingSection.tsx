@@ -12,6 +12,7 @@ interface ListingSectionProps {
   closedRentals: MLSListing[]
   buildingId: string
   buildingName: string
+  agentId: string
 }
 
 type TabType = 'for-sale' | 'for-lease' | 'sold' | 'leased'
@@ -23,6 +24,7 @@ export default function ListingSection({
   closedRentals = [],
   buildingId,
   buildingName,
+  agentId,
 }: ListingSectionProps) {
   const [activeTab, setActiveTab] = useState<TabType>('for-sale')
   const [currentPage, setCurrentPage] = useState(1)
@@ -158,14 +160,18 @@ export default function ListingSection({
 
       {/* Estimator Modal */}
       <EstimatorBuyerModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        listing={selectedListing}
-        buildingName={buildingName}
-        buildingId={buildingId}
-        type={modalType}
-        exactSqft={exactSqft}
-      />
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          listing={selectedListing}
+          buildingName={buildingName}
+          buildingId={buildingId}
+          agentId={agentId}
+          type={modalType}
+          exactSqft={exactSqft}
+        />
     </>
   )
 }
+
+
+

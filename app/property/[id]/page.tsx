@@ -219,6 +219,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
                 status={status}
                 isSale={isSale}
                 buildingName={building?.name || ''}
+                agentId={agent?.id || ''}
               />
             </div>
 
@@ -239,5 +240,6 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     </main>
   )
 }
+
 
 
