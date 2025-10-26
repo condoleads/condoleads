@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Send, Loader2 } from 'lucide-react'
 import { createLead } from '@/lib/actions/leads'
 
@@ -39,8 +40,13 @@ export default function ContactModal({
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
-  if (!isOpen) return null
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!isOpen || !mounted) return null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -81,19 +87,24 @@ export default function ContactModal({
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
 
-  return (
+  const modalContent = (
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999]"
         onClick={onClose}
+        style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
       />
 
       {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div 
+        className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+        style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}
+      >
         <div 
           className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
+          style={{ pointerEvents: 'auto' }}
         >
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -232,4 +243,6 @@ export default function ContactModal({
       </div>
     </>
   )
+
+  return createPortal(modalContent, document.body)
 }

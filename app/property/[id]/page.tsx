@@ -203,7 +203,16 @@ export default async function PropertyPage({ params }: { params: { id: string } 
           <div className="lg:col-span-1 space-y-6">
             {/* Agent Card + Estimate - Sticky together */}
             <div className="sticky top-24 space-y-6">
-              {agent && <AgentCard agent={agent} />}
+              {agent && (
+                <AgentCard 
+                  agent={agent}
+                  source="property_inquiry"
+                  listingId={listing.id}
+                  listingAddress={listing.unparsed_address || ''}
+                  buildingId={listing.building_id}
+                  buildingName={building?.name || ''}
+                />
+              )}
               
               <PropertyEstimateCTA
                 listing={listingWithBuilding}
@@ -230,4 +239,5 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     </main>
   )
 }
+
 

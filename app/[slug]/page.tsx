@@ -328,7 +328,14 @@ export default async function BuildingPage({ params }: { params: { slug: string 
           {/* Agent Sidebar - 1 column, sticky */}
           <div className="lg:col-span-1">
             <div className="sticky top-24">
-              {agent && <AgentCard agent={agent} />}
+              {agent && (
+                <AgentCard 
+                  agent={agent} 
+                  source="building_page"
+                  buildingId={building.id}
+                  buildingName={building.building_name}
+                />
+              )}
             </div>
           </div>
           
@@ -337,4 +344,5 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     </div>
   )
 }
+
 
