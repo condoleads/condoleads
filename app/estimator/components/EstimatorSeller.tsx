@@ -1,4 +1,4 @@
-﻿// app/estimator/components/EstimatorSeller.tsx
+// app/estimator/components/EstimatorSeller.tsx
 'use client'
 
 import { useState } from 'react'
@@ -9,9 +9,10 @@ import EstimatorResults from './EstimatorResults'
 interface EstimatorSellerProps {
   buildingId: string
   buildingName: string
+  agentId: string
 }
 
-export default function EstimatorSeller({ buildingId, buildingName }: EstimatorSellerProps) {
+export default function EstimatorSeller({ buildingId, buildingName, agentId }: EstimatorSellerProps) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -226,7 +227,13 @@ export default function EstimatorSeller({ buildingId, buildingName }: EstimatorS
         {/* Results */}
         {result && (
           <div>
-            <EstimatorResults result={result} />
+            <EstimatorResults 
+                result={result}
+                buildingId={buildingId}
+                buildingName={buildingName}
+                agentId={agentId}
+                propertySpecs={specs}
+              />
             <div className="mt-6 flex gap-4">
               <button
                 onClick={() => setResult(null)}
