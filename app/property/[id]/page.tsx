@@ -201,12 +201,17 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
           {/* SIDEBAR - Right side */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Agent Card - Sticky */}
-            {agent && (
-              <div className="sticky top-24">
-                <AgentCard agent={agent} />
-              </div>
-            )}
+            {/* Agent Card + Estimate - Sticky together */}
+            <div className="sticky top-24 space-y-6">
+              {agent && <AgentCard agent={agent} />}
+              
+              <PropertyEstimateCTA
+                listing={listingWithBuilding}
+                status={status}
+                isSale={isSale}
+                buildingName={building?.name || ''}
+              />
+            </div>
 
             {/* Building Information */}
             <BuildingInfo
@@ -218,15 +223,11 @@ export default async function PropertyPage({ params }: { params: { id: string } 
               petPolicy={listing.pet_allowed}
             />
 
-            <PropertyEstimateCTA
-              listing={listingWithBuilding}
-              status={status}
-              isSale={isSale}
-              buildingName={building?.name || ''}
-            />
+
           </div>
         </div>
       </div>
     </main>
   )
 }
+
