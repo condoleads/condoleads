@@ -1,4 +1,5 @@
-﻿import { supabase } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import PropertyGallery from '@/components/property/PropertyGallery'
 import PropertyHeader from '@/components/property/PropertyHeader'
@@ -13,6 +14,7 @@ import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
 import AgentContactForm from '@/components/property/AgentContactForm'
 import SimilarListings from '@/components/property/SimilarListings'
 import ShareButtons from '@/components/property/ShareButtons'
+import { AgentCard } from '@/components/AgentCard'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
   // Fetch listing data
@@ -33,12 +35,22 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .eq('id', listing.building_id)
     .single()
 
+  // Fetch the agent assigned to this building
+  const supabaseServer = createClient()
+  const { data: agentBuilding } = await supabaseServer
+    .from('agent_buildings')
+    .select('agents (*)')
+    .eq('building_id', listing.building_id)
+    .single()
+  
+  const agent = agentBuilding?.agents
+
   // Combine the data
   const listingWithBuilding = {
     ...listing,
     buildings: building
   }
-  
+
   // Fetch media
   const { data: allMedia } = await supabase
     .from('media')
@@ -49,18 +61,18 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const largePhotos = allMedia?.filter(m => m.media_url.includes('1920:1920')) || []
   
   // Fetch similar listings (matches bed/bath + same transaction type, closed units)
-const { data: similarListings } = await supabase
-  .from('mls_listings')
-  .select(`
-    *,
-    media (
-      id,
-      media_url,
-      variant_type,
-      order_number,
-      preferred_photo_yn
-    )
-  `)
+  const { data: similarListings } = await supabase
+    .from('mls_listings')
+    .select(`
+      *,
+      media (
+        id,
+        media_url,
+        variant_type,
+        order_number,
+        preferred_photo_yn
+      )
+    `)
     .eq('building_id', listing.building_id)
     .eq('transaction_type', listing.transaction_type)
     .eq('standard_status', 'Closed')
@@ -69,8 +81,7 @@ const { data: similarListings } = await supabase
     .neq('id', listing.id)
     .limit(4)
 
-
-    // Fetch unit history (past sales/leases of this specific unit)
+  // Fetch unit history (past sales/leases of this specific unit)
   const { data: unitHistory } = await supabase
     .from('mls_listings')
     .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status')
@@ -88,25 +99,24 @@ const { data: similarListings } = await supabase
     .eq('listing_id', listing.id)
     .order('order_number')
 
-    // Extract amenities from listing
+  // Extract amenities from listing
   const amenities = listing.common_interest_elements || []
   const feeIncludes = listing.association_fee_includes || []
-
 
   // Fetch available listings of same transaction type
   const targetTransactionType = listing.transaction_type
   const { data: availableListings } = await supabase
-  .from('mls_listings')
-  .select(`
-    *,
-    media (
-      id,
-      media_url,
-      variant_type,
-      order_number,
-      preferred_photo_yn
-    )
-  `)
+    .from('mls_listings')
+    .select(`
+      *,
+      media (
+        id,
+        media_url,
+        variant_type,
+        order_number,
+        preferred_photo_yn
+      )
+    `)
     .eq('building_id', listing.building_id)
     .eq('transaction_type', targetTransactionType)
     .eq('standard_status', 'Active')
@@ -128,12 +138,13 @@ const { data: similarListings } = await supabase
           status={status}
           isSale={isSale}
         />
-        
+
         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
+          {/* MAIN CONTENT - Left side */}
           <div className="lg:col-span-2 space-y-8">
             {/* Property Description */}
             <PropertyDescription description={listing.public_remarks} />
-  
+
             {/* Property Details */}
             <PropertyDetails listing={listingWithBuilding} />
 
@@ -142,9 +153,19 @@ const { data: similarListings } = await supabase
 
             {/* Room Dimensions - Only show if data exists */}
             {rooms && rooms.length > 0 && (
-             <RoomDimensions rooms={rooms} />
+              <RoomDimensions rooms={rooms} />
             )}
-            
+
+            {/*  CONTACT FORM - PRIME MARKETING POSITION */}
+            {agent && (
+              <AgentContactForm
+                listing={listingWithBuilding}
+                status={status}
+                isSale={isSale}
+                agent={agent}
+              />
+            )}
+
             {/* Unit History */}
             {unitHistory && unitHistory.length > 0 && (
               <UnitHistory 
@@ -152,7 +173,7 @@ const { data: similarListings } = await supabase
                 unitNumber={listing.unit_number || 'N/A'} 
               />
             )}
-            
+
             {/* Price History */}
             {isClosed && (
               <PriceHistory
@@ -177,8 +198,16 @@ const { data: similarListings } = await supabase
               </div>
             )}
           </div>
-          
+
+          {/* SIDEBAR - Right side */}
           <div className="lg:col-span-1 space-y-6">
+            {/* Agent Card - Sticky */}
+            {agent && (
+              <div className="sticky top-24">
+                <AgentCard agent={agent} />
+              </div>
+            )}
+
             {/* Building Information */}
             <BuildingInfo
               buildingName={building?.name || 'N/A'}
@@ -189,18 +218,11 @@ const { data: similarListings } = await supabase
               petPolicy={listing.pet_allowed}
             />
 
-                     
             <PropertyEstimateCTA
               listing={listingWithBuilding}
               status={status}
               isSale={isSale}
               buildingName={building?.name || ''}
-            />
-            
-            <AgentContactForm
-              listing={listingWithBuilding}
-              status={status}
-              isSale={isSale}
             />
           </div>
         </div>
