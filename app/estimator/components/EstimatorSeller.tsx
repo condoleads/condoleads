@@ -63,6 +63,8 @@ export default function EstimatorSeller({ buildingId, buildingName, agentId }: E
     setLoading(false)
   }
 
+  console.log(' EstimatorSeller - agentId:', agentId)
+  
   return (
     <RequireAuth
       registrationSource="estimator"
@@ -280,5 +282,6 @@ export default function EstimatorSeller({ buildingId, buildingName, agentId }: E
     </RequireAuth>
   )
 }
+
 
 

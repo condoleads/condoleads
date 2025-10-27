@@ -28,6 +28,8 @@ export default function RequireAuth({
     setMounted(true)
   }, [])
 
+  console.log(' RequireAuth - user:', user, 'loading:', loading, 'mounted:', mounted)
+  
   if (!mounted || loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -84,3 +86,4 @@ export default function RequireAuth({
 
   return <>{children}</>
 }
+

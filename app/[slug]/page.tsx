@@ -225,7 +225,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         activeRentals={activeRentals}
         avgPrice={avgSalePrice}
       />
-      <StickyNav />
+      <StickyNav agentId={agent?.id} />
       
       <BuildingHero 
         building={building}
@@ -352,6 +352,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     </div>
   )
 }
+
 
 
 
