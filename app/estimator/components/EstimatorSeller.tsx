@@ -1,6 +1,8 @@
 // app/estimator/components/EstimatorSeller.tsx
 'use client'
 
+import RequireAuth from '@/components/auth/RequireAuth'
+
 import { useState } from 'react'
 import { estimateSale } from '../actions/estimate-sale'
 import { EstimateResult } from '@/lib/estimator/types'
@@ -62,6 +64,30 @@ export default function EstimatorSeller({ buildingId, buildingName, agentId }: E
   }
 
   return (
+    <RequireAuth
+      registrationSource="estimator"
+      agentId={agentId}
+      message="Register to Get Your Free Condo Estimate"
+      fallback={
+        <section className="py-16 bg-gradient-to-br from-blue-50 to-indigo-50">
+          <div className="max-w-4xl mx-auto px-6">
+            <div className="bg-white rounded-2xl border-2 border-blue-200 p-12 text-center">
+              <div className="w-20 h-20 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-3xl font-bold text-gray-900 mb-4">
+                Get Your Free Condo Estimate
+              </h3>
+              <p className="text-gray-600 text-lg mb-6">
+                Find out what your condo is worth with our AI-powered estimator
+              </p>
+            </div>
+          </div>
+        </section>
+      }
+    >
     <section className="py-16 bg-gradient-to-br from-slate-50 to-emerald-50">
       <div className="max-w-4xl mx-auto px-6">
         <div className="text-center mb-8">
@@ -250,7 +276,9 @@ export default function EstimatorSeller({ buildingId, buildingName, agentId }: E
             </div>
           </div>
         )}
-      </div>
-    </section>
+      </div>    </section>
+    </RequireAuth>
   )
 }
+
+
