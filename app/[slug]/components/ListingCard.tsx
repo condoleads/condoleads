@@ -1,5 +1,8 @@
 'use client'
 
+import { useAuth } from '@/components/auth/AuthContext'
+import RegisterModal from '@/components/auth/RegisterModal'
+
 import Link from 'next/link'
 import { MLSListing } from '@/lib/types/building'
 import { formatPrice } from '@/lib/utils/formatters'
@@ -16,6 +19,8 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
   const isClosed = listing.standard_status === 'Closed'
   const photos = listing.media?.filter(m => m.variant_type === 'large') || []
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
+  const [showRegister, setShowRegister] = useState(false)
+  const { user } = useAuth()
   
   const nextPhoto = () => {
     setCurrentPhotoIndex((prev) => (prev + 1) % photos.length)
@@ -144,8 +149,18 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
             </div>
             
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-          </div>
-        )}
+                <RegisterModal
+        isOpen={showRegister}
+        onClose={() => setShowRegister(false)}
+        onSuccess={() => {
+          setShowRegister(false)
+          onEstimateClick?.(extractExactSqft(listing.square_foot_source))
+        }}
+        registrationSource="listing_card"
+      />
+    </div>
+  )
+}
         
         <div className="absolute top-4 left-4 z-10">
           <span className={`px-3 py-1.5 backdrop-blur-sm rounded-full text-sm font-semibold ${badge.bgColor} text-white`}>
@@ -226,7 +241,13 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
           <div className="flex gap-2">
             {!isClosed && (
               <button
-                onClick={() => onEstimateClick?.(extractExactSqft(listing.square_foot_source))}
+                onClick={() => {
+                  if (!user) {
+                    setShowRegister(true)
+                  } else {
+                    onEstimateClick?.(extractExactSqft(listing.square_foot_source))
+                  }
+                }}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors"
               >
                 {isSale ? 'Sale Offer' : 'Rent Offer'}
@@ -241,6 +262,17 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
           </div>
         </div>
       </div>
+      <RegisterModal
+        isOpen={showRegister}
+        onClose={() => setShowRegister(false)}
+        onSuccess={() => {
+          setShowRegister(false)
+          onEstimateClick?.(extractExactSqft(listing.square_foot_source))
+        }}
+        registrationSource="listing_card"
+      />
     </article>
   )
 }
+
+
