@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase/client'
+﻿import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import PropertyGallery from '@/components/property/PropertyGallery'
@@ -15,8 +15,14 @@ import AgentContactForm from '@/components/property/AgentContactForm'
 import SimilarListings from '@/components/property/SimilarListings'
 import ShareButtons from '@/components/property/ShareButtons'
 import { AgentCard } from '@/components/AgentCard'
+import GatedContent from '@/components/property/GatedContent'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
+  // Check authentication status
+  const supabaseServer = createClient()
+  const { data: { user } } = await supabaseServer.auth.getUser()
+  const isAuthenticated = !!user
+
   // Fetch listing data
   const { data: listing, error } = await supabase
     .from('mls_listings')
@@ -36,13 +42,12 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .single()
 
   // Fetch the agent assigned to this building
-  const supabaseServer = createClient()
   const { data: agentBuilding } = await supabaseServer
     .from('agent_buildings')
     .select('agents (*)')
     .eq('building_id', listing.building_id)
     .single()
-  
+
   const agent = agentBuilding?.agents
 
   // Combine the data
@@ -59,8 +64,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .order('order_number')
 
   const largePhotos = allMedia?.filter(m => m.media_url.includes('1920:1920')) || []
-  
-  // Fetch similar listings (matches bed/bath + same transaction type, closed units)
+
+  // Fetch similar listings
   const { data: similarListings } = await supabase
     .from('mls_listings')
     .select(`
@@ -81,7 +86,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .neq('id', listing.id)
     .limit(4)
 
-  // Fetch unit history (past sales/leases of this specific unit)
+  // Fetch unit history
   const { data: unitHistory } = await supabase
     .from('mls_listings')
     .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status')
@@ -99,11 +104,11 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .eq('listing_id', listing.id)
     .order('order_number')
 
-  // Extract amenities from listing
+  // Extract amenities
   const amenities = listing.common_interest_elements || []
   const feeIncludes = listing.association_fee_includes || []
 
-  // Fetch available listings of same transaction type
+  // Fetch available listings
   const targetTransactionType = listing.transaction_type
   const { data: availableListings } = await supabase
     .from('mls_listings')
@@ -123,20 +128,28 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .neq('id', listing.id)
     .order('list_price', { ascending: false })
     .limit(8)
-    
+
   const isSale = listing.transaction_type === 'For Sale'
   const status = listing.standard_status === 'Closed' ? 'Closed' : 'Active'
   const isClosed = listing.standard_status === 'Closed'
+  
+  // Determine if content should be gated
+  const shouldGate = isClosed && !isAuthenticated
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <PropertyGallery photos={largePhotos} />
-      
+      <PropertyGallery 
+        photos={largePhotos} 
+        shouldBlur={shouldGate}
+        maxPhotos={shouldGate ? 2 : undefined}
+      />
+
       <div className="max-w-7xl mx-auto pb-16">
         <PropertyHeader
           listing={listingWithBuilding}
           status={status}
           isSale={isSale}
+          shouldBlur={shouldGate}
         />
 
         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
@@ -146,17 +159,21 @@ export default async function PropertyPage({ params }: { params: { id: string } 
             <PropertyDescription description={listing.public_remarks} />
 
             {/* Property Details */}
-            <PropertyDetails listing={listingWithBuilding} />
+            <GatedContent shouldGate={shouldGate} sectionName="Property Details">
+              <PropertyDetails listing={listingWithBuilding} />
+            </GatedContent>
 
             {/* Amenities */}
             <PropertyAmenities amenities={amenities} feeIncludes={feeIncludes} />
 
-            {/* Room Dimensions - Only show if data exists */}
+            {/* Room Dimensions */}
             {rooms && rooms.length > 0 && (
-              <RoomDimensions rooms={rooms} />
+              <GatedContent shouldGate={shouldGate} sectionName="Room Dimensions">
+                <RoomDimensions rooms={rooms} />
+              </GatedContent>
             )}
 
-            {/*  CONTACT FORM - PRIME MARKETING POSITION */}
+            {/* CONTACT FORM */}
             {agent && (
               <AgentContactForm
                 listing={listingWithBuilding}
@@ -168,23 +185,27 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
             {/* Unit History */}
             {unitHistory && unitHistory.length > 0 && (
-              <UnitHistory 
-                history={unitHistory} 
-                unitNumber={listing.unit_number || 'N/A'} 
-              />
+              <GatedContent shouldGate={shouldGate} sectionName="Transaction History">
+                <UnitHistory
+                  history={unitHistory}
+                  unitNumber={listing.unit_number || 'N/A'}
+                />
+              </GatedContent>
             )}
 
             {/* Price History */}
             {isClosed && (
-              <PriceHistory
-                listPrice={listing.list_price}
-                closePrice={listing.close_price}
-                listingDate={listing.listing_contract_date}
-                closeDate={listing.close_date}
-                daysOnMarket={listing.days_on_market}
-              />
+              <GatedContent shouldGate={shouldGate} sectionName="Price History">
+                <PriceHistory
+                  listPrice={listing.list_price}
+                  closePrice={listing.close_price}
+                  listingDate={listing.listing_contract_date}
+                  closeDate={listing.close_date}
+                  daysOnMarket={listing.days_on_market}
+                />
+              </GatedContent>
             )}
-    
+
             {/* Similar Units */}
             <SimilarListings listings={similarListings || []} />
 
@@ -201,10 +222,10 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
           {/* SIDEBAR - Right side */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Agent Card + Estimate - Sticky together */}
+            {/* Agent Card + Estimate */}
             <div className="sticky top-24 space-y-6">
               {agent && (
-                <AgentCard 
+                <AgentCard
                   agent={agent}
                   source="property_inquiry"
                   listingId={listing.id}
@@ -213,7 +234,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
                   buildingName={building?.name || ''}
                 />
               )}
-              
+
               <PropertyEstimateCTA
                 listing={listingWithBuilding}
                 status={status}
@@ -232,14 +253,9 @@ export default async function PropertyPage({ params }: { params: { id: string } 
               parkingType={listing.parking_features}
               petPolicy={listing.pet_allowed}
             />
-
-
           </div>
         </div>
       </div>
     </main>
   )
 }
-
-
-
