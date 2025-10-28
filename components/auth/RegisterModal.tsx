@@ -1,9 +1,10 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Mail, Lock, User, Phone, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
+import { createLeadFromRegistration } from '@/app/actions/createLead'
 
 interface RegisterModalProps {
   isOpen: boolean
@@ -11,6 +12,11 @@ interface RegisterModalProps {
   onSuccess?: () => void
   registrationSource?: string
   agentId?: string
+  buildingId?: string
+  listingId?: string
+  estimatedValueMin?: number
+  estimatedValueMax?: number
+  propertyDetails?: any
 }
 
 export default function RegisterModal({
@@ -18,7 +24,12 @@ export default function RegisterModal({
   onClose,
   onSuccess,
   registrationSource = 'home_page',
-  agentId
+  agentId,
+  buildingId,
+  listingId,
+  estimatedValueMin,
+  estimatedValueMax,
+  propertyDetails
 }: RegisterModalProps) {
   const [formData, setFormData] = useState({
     fullName: '',
@@ -41,13 +52,13 @@ export default function RegisterModal({
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    
+
     // Validation
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords don't match")
       return
     }
-    
+
     if (formData.password.length < 6) {
       setError("Password must be at least 6 characters")
       return
@@ -83,6 +94,28 @@ export default function RegisterModal({
           .eq('id', authData.user.id)
 
         if (profileError) console.error('Profile update error:', profileError)
+
+        // Auto-create lead from registration
+        const leadResult = await createLeadFromRegistration({
+          userId: authData.user.id,
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          registrationSource: registrationSource,
+          registrationUrl: window.location.href,
+          buildingId: buildingId,
+          listingId: listingId,
+          estimatedValueMin: estimatedValueMin,
+          estimatedValueMax: estimatedValueMax,
+          propertyDetails: propertyDetails
+        })
+
+        if (!leadResult.success) {
+          console.error('Failed to create lead:', leadResult.error)
+          // Don't fail the registration if lead creation fails
+        } else {
+          console.log('Lead created successfully:', leadResult.leadId)
+        }
 
         // Success!
         if (onSuccess) onSuccess()
@@ -126,19 +159,19 @@ export default function RegisterModal({
   const modalContent = (
     <>
       {/* Backdrop */}
-      <div 
+      <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999]"
         onClick={onClose}
       />
 
       {/* Modal */}
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-        <div 
+        <div
           className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">        
             <div>
               <h3 className="text-2xl font-bold text-gray-900">
                 {showLogin ? 'Welcome Back' : 'Create Your Account'}
@@ -156,7 +189,7 @@ export default function RegisterModal({
           </div>
 
           {/* Form */}
-          <form onSubmit={showLogin ? handleLogin : handleRegister} className="p-6 space-y-4">
+          <form onSubmit={showLogin ? handleLogin : handleRegister} className="p-6 space-y-4">    
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <p className="text-red-800 text-sm">{error}</p>
@@ -252,7 +285,7 @@ export default function RegisterModal({
                     required
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    placeholder=""
+                    placeholder="••••••••"
                     className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
