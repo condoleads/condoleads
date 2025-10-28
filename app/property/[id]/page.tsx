@@ -1,5 +1,5 @@
 ﻿import { supabase } from '@/lib/supabase/client'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServerClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import PropertyGallery from '@/components/property/PropertyGallery'
 import PropertyHeader from '@/components/property/PropertyHeader'
@@ -18,10 +18,13 @@ import { AgentCard } from '@/components/AgentCard'
 import GatedContent from '@/components/property/GatedContent'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
-  // Check authentication status
-  const supabaseServer = createClient()
-  const { data: { user } } = await supabaseServer.auth.getUser()
+  // Check authentication status using session-aware client
+  const supabaseSession = await createServerClient()
+  const { data: { user } } = await supabaseSession.auth.getUser()
   const isAuthenticated = !!user
+
+  // Use service role client for data fetching
+  const supabaseServer = createClient()
 
   // Fetch listing data
   const { data: listing, error } = await supabase
