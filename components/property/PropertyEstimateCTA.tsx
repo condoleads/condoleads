@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
@@ -13,11 +13,11 @@ interface PropertyEstimateCTAProps {
   agentId: string
 }
 
-export default function PropertyEstimateCTA({ listing, status, isSale, buildingName }: PropertyEstimateCTAProps) {
+export default function PropertyEstimateCTA({ listing, status, isSale, buildingName, agentId }: PropertyEstimateCTAProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const isClosed = status === 'Closed'
   const exactSqft = extractExactSqft(listing.square_foot_source)
-  
+
   const config = {
     active_sale: {
       title: 'Get Instant Sale Estimate',
@@ -52,37 +52,36 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
       bgColor: 'bg-purple-50'
     }
   }
-  
-  const key = isClosed 
+
+  const key = isClosed
     ? (isSale ? 'closed_sale' : 'closed_lease')
     : (isSale ? 'active_sale' : 'active_lease')
-  
+
   const { title, description, buttonText, buttonColor, borderColor, bgColor } = config[key]
-  
+
   return (
     <>
       <div className={`${bgColor} border-2 ${borderColor} rounded-xl p-6 sticky top-4`}>
         <h3 className="text-xl font-bold text-slate-900 mb-2">{title}</h3>
         <p className="text-sm text-slate-600 mb-4">{description}</p>
-        <button 
+        <button
           onClick={() => setModalOpen(true)}
           className={`w-full ${buttonColor} text-white py-3 rounded-lg font-semibold transition-colors`}
         >
           {buttonText}
         </button>
       </div>
-      
+
       <EstimatorBuyerModal
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          listing={listing}
-          buildingName={buildingName}
-          buildingId={listing.building_id}
-          agentId={agentId}
-          type={isSale ? 'sale' : 'rent'}
-          exactSqft={exactSqft}
-        />
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        listing={listing}
+        buildingName={buildingName}
+        buildingId={listing.building_id}
+        agentId={agentId}
+        type={isSale ? 'sale' : 'rent'}
+        exactSqft={exactSqft}
+      />
     </>
   )
 }
-
