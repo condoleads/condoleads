@@ -1,28 +1,13 @@
 ﻿import { supabase } from '@/lib/supabase/client'
-import { createClient, createServerClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import PropertyGallery from '@/components/property/PropertyGallery'
-import PropertyHeader from '@/components/property/PropertyHeader'
-import PropertyDetails from '@/components/property/PropertyDetails'
-import PropertyDescription from '@/components/property/PropertyDescription'
-import PriceHistory from '@/components/property/PriceHistory'
-import BuildingInfo from '@/components/property/BuildingInfo'
-import RoomDimensions from '@/components/property/RoomDimensions'
-import UnitHistory from '@/components/property/UnitHistory'
-import PropertyAmenities from '@/components/property/PropertyAmenities'
 import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
 import AgentContactForm from '@/components/property/AgentContactForm'
-import SimilarListings from '@/components/property/SimilarListings'
-import ShareButtons from '@/components/property/ShareButtons'
+import BuildingInfo from '@/components/property/BuildingInfo'
 import { AgentCard } from '@/components/AgentCard'
-import GatedContent from '@/components/property/GatedContent'
+import PropertyPageClient from './PropertyPageClient'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
-  // Check authentication status using session-aware client
-  const supabaseSession = await createServerClient()
-  const { data: { user } } = await supabaseSession.auth.getUser()
-  const isAuthenticated = !!user
-
   // Use service role client for data fetching
   const supabaseServer = createClient()
 
@@ -37,14 +22,14 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     notFound()
   }
 
-  // Fetch building data separately
+  // Fetch building data
   const { data: building } = await supabase
     .from('buildings')
     .select('id, name, slug, address')
     .eq('id', listing.building_id)
     .single()
 
-  // Fetch the agent assigned to this building
+  // Fetch agent
   const { data: agentBuilding } = await supabaseServer
     .from('agent_buildings')
     .select('agents (*)')
@@ -53,7 +38,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
   const agent = agentBuilding?.agents
 
-  // Combine the data
+  // Combine data
   const listingWithBuilding = {
     ...listing,
     buildings: building
@@ -135,97 +120,28 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const isSale = listing.transaction_type === 'For Sale'
   const status = listing.standard_status === 'Closed' ? 'Closed' : 'Active'
   const isClosed = listing.standard_status === 'Closed'
-  
-  // Determine if content should be gated
-  const shouldGate = isClosed && !isAuthenticated
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <PropertyGallery 
-        photos={largePhotos} 
-        shouldBlur={shouldGate}
-        maxPhotos={shouldGate ? 2 : undefined}
+      <PropertyPageClient
+        listing={listingWithBuilding}
+        largePhotos={largePhotos}
+        rooms={rooms || []}
+        unitHistory={unitHistory || []}
+        amenities={amenities}
+        feeIncludes={feeIncludes}
+        similarListings={similarListings || []}
+        availableListings={availableListings || []}
+        isSale={isSale}
+        status={status}
+        isClosed={isClosed}
       />
 
+      {/* Server-rendered sidebar - not affected by gating */}
       <div className="max-w-7xl mx-auto pb-16">
-        <PropertyHeader
-          listing={listingWithBuilding}
-          status={status}
-          isSale={isSale}
-          shouldBlur={shouldGate}
-        />
-
         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
-          {/* MAIN CONTENT - Left side */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Property Description */}
-            <PropertyDescription description={listing.public_remarks} />
-
-            {/* Property Details */}
-            <GatedContent shouldGate={shouldGate} sectionName="Property Details">
-              <PropertyDetails listing={listingWithBuilding} />
-            </GatedContent>
-
-            {/* Amenities */}
-            <PropertyAmenities amenities={amenities} feeIncludes={feeIncludes} />
-
-            {/* Room Dimensions */}
-            {rooms && rooms.length > 0 && (
-              <GatedContent shouldGate={shouldGate} sectionName="Room Dimensions">
-                <RoomDimensions rooms={rooms} />
-              </GatedContent>
-            )}
-
-            {/* CONTACT FORM */}
-            {agent && (
-              <AgentContactForm
-                listing={listingWithBuilding}
-                status={status}
-                isSale={isSale}
-                agent={agent}
-              />
-            )}
-
-            {/* Unit History */}
-            {unitHistory && unitHistory.length > 0 && (
-              <GatedContent shouldGate={shouldGate} sectionName="Transaction History">
-                <UnitHistory
-                  history={unitHistory}
-                  unitNumber={listing.unit_number || 'N/A'}
-                />
-              </GatedContent>
-            )}
-
-            {/* Price History */}
-            {isClosed && (
-              <GatedContent shouldGate={shouldGate} sectionName="Price History">
-                <PriceHistory
-                  listPrice={listing.list_price}
-                  closePrice={listing.close_price}
-                  listingDate={listing.listing_contract_date}
-                  closeDate={listing.close_date}
-                  daysOnMarket={listing.days_on_market}
-                />
-              </GatedContent>
-            )}
-
-            {/* Similar Units */}
-            <SimilarListings listings={similarListings || []} />
-
-            {/* Available Units */}
-            {availableListings && availableListings.length > 0 && (
-              <div>
-                <h2 className="text-2xl font-bold mb-4">
-                  Available {isSale ? 'For Sale' : 'For Lease'} in This Building
-                </h2>
-                <SimilarListings listings={availableListings} />
-              </div>
-            )}
-          </div>
-
-          {/* SIDEBAR - Right side */}
+          <div className="lg:col-span-2"></div>
           <div className="lg:col-span-1 space-y-6">
-            {/* Agent Card + Estimate */}
             <div className="sticky top-24 space-y-6">
               {agent && (
                 <AgentCard
@@ -247,7 +163,6 @@ export default async function PropertyPage({ params }: { params: { id: string } 
               />
             </div>
 
-            {/* Building Information */}
             <BuildingInfo
               buildingName={building?.name || 'N/A'}
               address={building?.address || listing.unparsed_address || 'N/A'}
@@ -256,6 +171,15 @@ export default async function PropertyPage({ params }: { params: { id: string } 
               parkingType={listing.parking_features}
               petPolicy={listing.pet_allowed}
             />
+
+            {agent && (
+              <AgentContactForm
+                listing={listingWithBuilding}
+                status={status}
+                isSale={isSale}
+                agent={agent}
+              />
+            )}
           </div>
         </div>
       </div>
