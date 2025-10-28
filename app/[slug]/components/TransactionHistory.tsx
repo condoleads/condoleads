@@ -1,4 +1,9 @@
-﻿import { MLSListing } from '@/lib/types/building'
+'use client'
+
+import { useAuth } from '@/components/auth/AuthContext'
+import RegisterModal from '@/components/auth/RegisterModal'
+import { useState } from 'react'
+import { MLSListing } from '@/lib/types/building'
 import { formatPriceShort } from '@/lib/utils/formatters'
 
 interface TransactionHistoryProps {
@@ -12,6 +17,8 @@ export default function TransactionHistory({
   closedRentals = [],
   highestSale = 0,
 }: TransactionHistoryProps) {
+  const { user } = useAuth()
+  const [showRegister, setShowRegister] = useState(false)
   if (closedSales.length === 0 && closedRentals.length === 0) {
     return null
   }

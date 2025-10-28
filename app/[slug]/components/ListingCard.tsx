@@ -85,7 +85,8 @@ const getDisplaySqft = (): string => {
 }
 
 const badge = getBadgeConfig()
-const accentColor = isClosed
+const shouldBlur = isClosed && !user
+  const accentColor = isClosed
   ? (isSale ? 'red' : 'orange')
   : (isSale ? 'emerald' : 'sky')
 
@@ -95,7 +96,7 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
   return (
     <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col">
       {/* Image Carousel */}
-      <div className="relative h-48 bg-slate-200 flex-shrink-0">
+      <div className={`relative h-48 bg-slate-200 flex-shrink-0 ${shouldBlur ? 'blur-lg' : ''}`}>
         {photos.length > 0 ? (
           <>
             <img 
@@ -169,16 +170,40 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
         </div>
         
         <div className="absolute bottom-4 left-4 right-4 z-10">
-          <p className="text-3xl font-bold text-white">
-            {formatPrice(listing.list_price)}
+            {!shouldBlur ? (
+              <p className="text-3xl font-bold text-white">
+                {formatPrice(listing.list_price)}
             {!isSale && !isClosed && <span className="text-lg font-normal">/mo</span>}
-          </p>
+              </p>
+            ) : (
+              <div className="bg-black/70 backdrop-blur-sm rounded-lg px-4 py-2">
+                <p className="text-white text-sm font-semibold">Register to see {isSale ? 'sold' : 'leased'} price</p>
+              </div>
+            )}
         </div>
       </div>
       
       {/* Content */}
       <div className="p-6 flex flex-col flex-grow">
-        <div className="mb-3">
+        {shouldBlur ? (
+          // Minimal info for closed listings when not logged in
+          <div className="text-center py-8">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
+              {isSale ? 'Sold Condo' : 'Leased Condo'}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {listing.canonical_address}
+            </p>
+            <button
+              onClick={() => setShowRegister(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+            >
+              Register to See {isSale ? 'Sold' : 'Leased'} Details
+            </button>
+          </div>
+        ) : (
+          <>
+          <div className="mb-3">
           <h3 className="text-xl font-bold text-slate-900">
             Unit {listing.unit_number || 'N/A'}
           </h3>
@@ -261,6 +286,8 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
             </Link>
           </div>
         </div>
+          </>
+        )}
       </div>
       <RegisterModal
         isOpen={showRegister}
@@ -274,5 +301,9 @@ const lockerCount = (listing.locker && listing.locker !== 'None') ? 1 : 0
     </article>
   )
 }
+
+
+
+
 
 
