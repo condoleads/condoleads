@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { Building2, Home, Key } from 'lucide-react';
 
 interface Building {

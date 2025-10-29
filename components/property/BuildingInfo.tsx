@@ -1,4 +1,4 @@
-interface BuildingInfoProps {
+﻿interface BuildingInfoProps {
   buildingName: string
   address: string
   yearBuilt?: number | null

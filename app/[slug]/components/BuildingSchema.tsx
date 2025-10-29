@@ -1,4 +1,4 @@
-// app/[slug]/components/BuildingSchema.tsx
+﻿// app/[slug]/components/BuildingSchema.tsx
 import { Building, MLSListing } from '@/lib/types/building'
 
 interface BuildingSchemaProps {
