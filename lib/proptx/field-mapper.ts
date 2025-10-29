@@ -1,4 +1,4 @@
-export class FieldMapper {
+﻿export class FieldMapper {
   mapPropTxToDatabase(proptxListing: any, buildingId: string): any {
     return {
       // Building relationship

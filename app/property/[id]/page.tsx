@@ -99,7 +99,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .eq('listing_id', listing.id)
     .order('order_number')
 
-  // Extract amenities (VERIFIED: association_amenities, NOT common_interest_elements)
+  // Extract amenities (VERIFIED: association_amenities, NOT association_amenities)
   const amenities = listing.association_amenities || []
   const feeIncludes = listing.association_fee_includes || []
 

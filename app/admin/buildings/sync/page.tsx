@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from 'react';
 import { ComprehensiveSaveButton } from '@/components/admin/sync/ComprehensiveSaveButton';
@@ -401,7 +401,7 @@ export default function BuildingSyncPage() {
                 onClick={() => setShowHistorical(!showHistorical)}
                 className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium"
               >
-                <span>{showHistorical ? '▼' : '▶'}</span>
+                <span>{showHistorical ? 'â–¼' : 'â–¶'}</span>
                 <span>Historical Statuses ({searchResult.categories.historical} records)</span>
               </button>
               
@@ -419,7 +419,7 @@ export default function BuildingSyncPage() {
                           <span className="font-medium">Unit {item.unit}</span>
                           <div className="text-xs text-gray-500">
                             {item.mlsStatus || item.status}
-                            {item.closeDate && ` • ${new Date(item.closeDate).toLocaleDateString()}`}
+                            {item.closeDate && ` â€¢ ${new Date(item.closeDate).toLocaleDateString()}`}
                           </div>
                         </div>
                         <span className="text-xs px-2 py-1 bg-gray-100 rounded">
@@ -457,7 +457,7 @@ export default function BuildingSyncPage() {
       {saveResult && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-6 mt-6">
           <h2 className="text-xl font-semibold text-green-800 mb-4">
-            ✅ Save Completed
+            âœ… Save Completed
           </h2>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">

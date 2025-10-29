@@ -40,7 +40,17 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
   // Fetch agent
   const { data: agentBuilding } = await supabaseServer
     .from('agent_buildings')
-    .select('agents (*)')
+    .select(`
+      *,
+      agents (
+        id,
+        full_name,
+        email,
+        phone,
+        profile_photo_url,
+        bio
+      )
+    `)
     .eq('building_id', listing.building_id)
     .single()
 
@@ -101,7 +111,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
     .order('order_number')
 
   // Extract amenities
-  const amenities = listing.common_interest_elements || []
+  const amenities = listing.association_amenities || []
   const feeIncludes = listing.association_fee_includes || []
 
   // Fetch available listings

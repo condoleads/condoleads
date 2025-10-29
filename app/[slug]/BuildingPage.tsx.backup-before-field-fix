@@ -1,4 +1,4 @@
-﻿import { notFound } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { calculateAverage, calculateInventoryRate, extractAmenities, extractFeeIncludes } from '@/lib/utils/calculations'
 import BuildingHero from './components/BuildingHero'
@@ -147,17 +147,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   const supabaseServer = createClient()
   const { data: agentBuilding } = await supabaseServer
     .from('agent_buildings')
-    .select(`
-      *,
-      agents (
-        id,
-        full_name,
-        email,
-        phone,
-        profile_photo_url,
-        bio
-      )
-    `)
+    .select('agents (*)')
     .eq('building_id', building.id)
     .single()
   
