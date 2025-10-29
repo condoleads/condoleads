@@ -5,8 +5,8 @@ import RegisterModal from '@/components/auth/RegisterModal'
 import Link from 'next/link'
 import { MLSListing } from '@/lib/types/building'
 import { formatPrice } from '@/lib/utils/formatters'
+import { generatePropertySlug } from '@/lib/utils/slugs'
 import { useState } from 'react'
-
 interface ListingCardProps {
   listing: MLSListing
   type: 'sale' | 'rent'
@@ -92,6 +92,9 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
   
   // Get the appropriate price to display
   const displayPrice = isClosed ? (listing.close_price || listing.list_price) : listing.list_price
+
+  // Generate property slug URL
+  const propertyUrl = generatePropertySlug(listing)
 
   return (
     <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col">
@@ -328,7 +331,7 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
                   </button>
                 )}
                 <Link
-                  href={`/property/${listing.id}`}
+                  href={propertyUrl}
                   className={`flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors text-center border-${accentColor}-600 text-${accentColor}-600 hover:bg-${accentColor}-600 hover:text-white`}
                 >
                   View Details
