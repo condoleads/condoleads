@@ -8,7 +8,6 @@ import { AgentCard } from '@/components/AgentCard'
 import PropertyPageClient from './PropertyPageClient'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
-  // Use service role client for data fetching
   const supabaseServer = createClient()
 
   // Fetch listing data
@@ -22,17 +21,27 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     notFound()
   }
 
-  // Fetch building data
+  // Fetch building data (VERIFIED FIELDS: building_name, canonical_address)
   const { data: building } = await supabase
     .from('buildings')
-    .select('id, name, slug, address')
+    .select('id, building_name, slug, canonical_address')
     .eq('id', listing.building_id)
     .single()
 
-  // Fetch agent
+  // Fetch agent (VERIFIED: agent_id foreign key, needs explicit JOIN)
   const { data: agentBuilding } = await supabaseServer
     .from('agent_buildings')
-    .select('agents (*)')
+    .select(`
+      *,
+      agents (
+        id,
+        full_name,
+        email,
+        phone,
+        profile_photo_url,
+        bio
+      )
+    `)
     .eq('building_id', listing.building_id)
     .single()
 
@@ -61,9 +70,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       media (
         id,
         media_url,
-        variant_type,
-        order_number,
-        preferred_photo_yn
+        order_number
       )
     `)
     .eq('building_id', listing.building_id)
@@ -92,8 +99,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .eq('listing_id', listing.id)
     .order('order_number')
 
-  // Extract amenities
-  const amenities = listing.common_interest_elements || []
+  // Extract amenities (VERIFIED: association_amenities, NOT common_interest_elements)
+  const amenities = listing.association_amenities || []
   const feeIncludes = listing.association_fee_includes || []
 
   // Fetch available listings
@@ -105,9 +112,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       media (
         id,
         media_url,
-        variant_type,
-        order_number,
-        preferred_photo_yn
+        order_number
       )
     `)
     .eq('building_id', listing.building_id)
@@ -137,7 +142,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         isClosed={isClosed}
       />
 
-      {/* Server-rendered sidebar - not affected by gating */}
+      {/* Server-rendered sidebar */}
       <div className="max-w-7xl mx-auto pb-16">
         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
           <div className="lg:col-span-2"></div>
@@ -150,7 +155,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
                   listingId={listing.id}
                   listingAddress={listing.unparsed_address || ''}
                   buildingId={listing.building_id}
-                  buildingName={building?.name || ''}
+                  buildingName={building?.building_name || ''}
                 />
               )}
 
@@ -158,14 +163,14 @@ export default async function PropertyPage({ params }: { params: { id: string } 
                 listing={listingWithBuilding}
                 status={status}
                 isSale={isSale}
-                buildingName={building?.name || ''}
+                buildingName={building?.building_name || ''}
                 agentId={agent?.id || ''}
               />
             </div>
 
             <BuildingInfo
-              buildingName={building?.name || 'N/A'}
-              address={building?.address || listing.unparsed_address || 'N/A'}
+              buildingName={building?.building_name || 'N/A'}
+              address={building?.canonical_address || listing.unparsed_address || 'N/A'}
               yearBuilt={listing.year_built}
               totalUnits={null}
               parkingType={listing.parking_features}
