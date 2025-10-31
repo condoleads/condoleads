@@ -1,6 +1,7 @@
 ﻿'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createLead } from '@/lib/actions/leads'
 
 interface CreateLeadFromRegistrationParams {
   userId: string
@@ -19,8 +20,6 @@ interface CreateLeadFromRegistrationParams {
 
 export async function createLeadFromRegistration(params: CreateLeadFromRegistrationParams) {
   try {
-    const supabase = createClient()
-
     // Default agent ID (Mary Smith)
     const DEFAULT_AGENT_ID = 'd5ab9f8b-5819-4363-806c-a414657e7763'
 
@@ -35,42 +34,32 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
 
     const leadSource = sourceMap[params.registrationSource] || 'registration'
 
-    // Create lead record
-    const { data: lead, error } = await supabase
-      .from('leads')
-      .insert({
-        agent_id: DEFAULT_AGENT_ID,
-        user_id: params.userId,
-        contact_name: params.fullName,
-        contact_email: params.email,
-        contact_phone: params.phone || null,
-        source: leadSource,
-        source_url: params.registrationUrl || null,
-        building_id: params.buildingId || null,
-        listing_id: params.listingId || null,
-        message: params.message || `New user registration via ${params.registrationSource}`,
-        estimated_value_min: params.estimatedValueMin || null,
-        estimated_value_max: params.estimatedValueMax || null,
-        property_details: params.propertyDetails || null,
-        quality: 'warm',
-        status: 'new',
-        notes: null,
-        last_contact_at: null,
-        next_followup_at: null,
-      })
-      .select()
-      .single()
+    // Use the new createLead function which sends emails!
+    const result = await createLead({
+      agentId: DEFAULT_AGENT_ID,
+      contactName: params.fullName,
+      contactEmail: params.email,
+      contactPhone: params.phone,
+      source: leadSource as any,
+      sourceUrl: params.registrationUrl,
+      buildingId: params.buildingId,
+      listingId: params.listingId,
+      message: params.message || `New user registration via ${params.registrationSource}`,
+      estimatedValueMin: params.estimatedValueMin,
+      estimatedValueMax: params.estimatedValueMax,
+      propertyDetails: params.propertyDetails
+    })
 
-    if (error) {
-      console.error('Error creating lead from registration:', error)
-      return { success: false, error: error.message }
+    if (!result.success) {
+      console.error('Error creating lead from registration:', result.error)
+      return { success: false, error: result.error }
     }
 
-    console.log('Lead created successfully:', lead.id)
-    return { success: true, leadId: lead.id }
+    console.log(' Lead created successfully with email notification:', result.lead?.id)
+    return { success: true, leadId: result.lead?.id }
 
   } catch (error) {
-    console.error('Unexpected error creating lead:', error)
+    console.error(' Unexpected error creating lead:', error)
     return { success: false, error: 'Failed to create lead' }
   }
 }

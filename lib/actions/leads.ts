@@ -8,7 +8,7 @@ import { sendLeadNotificationToAgent } from '@/lib/email/resend'
 function createServiceClient() {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!, // Uses service role key
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: {
         autoRefreshToken: false,
@@ -87,14 +87,17 @@ export async function createLead(params: CreateLeadParams) {
     
     const { data: agent, error: agentError } = await supabase
       .from('agents')
-      .select('full_name, email')
+      .select('full_name, email, notification_email')
       .eq('id', params.agentId)
       .single()
 
     if (agentError) {
       console.error(' Error fetching agent:', agentError)
     } else if (agent) {
-      console.log(' Sending email to agent:', agent.email)
+      // Use notification_email if set, otherwise fallback to email
+      const emailTo = agent.notification_email || agent.email
+      
+      console.log(' Sending email to agent:', emailTo)
       
       // Get building and listing details for the email
       let buildingName = undefined
@@ -119,7 +122,7 @@ export async function createLead(params: CreateLeadParams) {
       }
 
       const emailResult = await sendLeadNotificationToAgent({
-        agentEmail: agent.email,
+        agentEmail: emailTo,
         agentName: agent.full_name,
         leadName: params.contactName,
         leadEmail: params.contactEmail,
