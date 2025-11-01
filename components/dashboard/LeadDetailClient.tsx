@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { Phone, Mail, MessageCircle, ArrowLeft, X } from 'lucide-react'
+import { Phone, Mail, MessageCircle, ArrowLeft, X, Building2 } from 'lucide-react'
 import { 
   updateLeadStatus, 
   updateLeadQuality, 
+  updateLeadBuilding,
   addLeadNote, 
   addLeadTag, 
   removeLeadTag,
@@ -16,11 +17,13 @@ interface LeadDetailClientProps {
   lead: any
   agent: any
   initialNotes: any[]
+  buildings: any[]
 }
 
-export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDetailClientProps) {
+export default function LeadDetailClient({ lead, agent, initialNotes, buildings }: LeadDetailClientProps) {
   const [status, setStatus] = useState(lead.status)
   const [quality, setQuality] = useState(lead.quality)
+  const [buildingId, setBuildingId] = useState(lead.building_id || '')
   const [tags, setTags] = useState(lead.tags || [])
   const [notes, setNotes] = useState(initialNotes)
   const [newNote, setNewNote] = useState('')
@@ -40,13 +43,18 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
     await updateLeadQuality(lead.id, newQuality)
   }
 
+  async function handleBuildingChange(newBuildingId: string) {
+    setBuildingId(newBuildingId)
+    await updateLeadBuilding(lead.id, newBuildingId || null)
+  }
+
   async function handleAddNote(e: React.FormEvent) {
     console.log(' handleAddNote called')
     e.preventDefault()
     if (!newNote.trim()) return
 
     setLoading(true)
-    console.log('🔵 Calling addLeadNote with:', { leadId: lead.id, agentId: agent.id, note: newNote })
+    console.log(' Calling addLeadNote with:', { leadId: lead.id, agentId: agent.id, note: newNote })
     const result = await addLeadNote(lead.id, agent.id, newNote)
     console.log(' addLeadNote result:', result)
     
@@ -110,6 +118,12 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
             </div>
             <p className="text-gray-600">{lead.contact_email}</p>
             {lead.contact_phone && <p className="text-gray-600">{lead.contact_phone}</p>}
+            {lead.buildings && (
+              <div className="flex items-center gap-2 mt-2">
+                <Building2 className="w-4 h-4 text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">{lead.buildings.building_name}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3">
@@ -155,6 +169,25 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
                   <option value="warm"> Warm</option>
                   <option value="cold"> Cold</option>
                 </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Building2 className="w-4 h-4 inline mr-1" />
+                  Assign to Building
+                </label>
+                <select 
+                  value={buildingId} 
+                  onChange={(e) => handleBuildingChange(e.target.value)} 
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">No building assigned</option>
+                  {buildings.map((building) => (
+                    <option key={building.id} value={building.id}>
+                      {building.building_name} - {building.canonical_address}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Link this lead to a specific building</p>
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Follow-up Date</label>
@@ -226,4 +259,3 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
     </div>
   )
 }
-

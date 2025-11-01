@@ -1,7 +1,7 @@
 ﻿import { redirect } from 'next/navigation'
 import { requireAgent } from '@/lib/auth/helpers'
 import { createClient } from '@/lib/supabase/server'
-import { getLeadNotes } from '@/lib/actions/lead-management'
+import { getLeadNotes, getAgentBuildings } from '@/lib/actions/lead-management'
 import LeadDetailClient from '@/components/dashboard/LeadDetailClient'
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
@@ -11,11 +11,18 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
     redirect('/login')
   }
 
-  // Fetch lead details
+  // Fetch lead details with building info
   const supabase = createClient()
   const { data: lead, error: leadError } = await supabase
     .from('leads')
-    .select('*')
+    .select(`
+      *,
+      buildings (
+        id,
+        building_name,
+        canonical_address
+      )
+    `)
     .eq('id', params.id)
     .eq('agent_id', agent.id)
     .single()
@@ -28,9 +35,12 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   const notesResult = await getLeadNotes(params.id)
   const notes = notesResult.success ? notesResult.notes : []
 
+  // Fetch available buildings for dropdown
+  const buildingsResult = await getAgentBuildings(agent.id)
+  const buildings = buildingsResult.success ? buildingsResult.buildings : []
+
   return (
     <div className="flex min-h-screen bg-gray-50">
-      {/* Sidebar */}
       <aside className="fixed top-0 left-0 z-40 h-full w-64 bg-white border-r border-gray-200 hidden lg:block">
         <div className="flex flex-col h-full">
           <div className="h-16 px-6 border-b border-gray-200 flex items-center">
@@ -63,9 +73,13 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         </div>
       </aside>
       
-      {/* Main Content */}
       <div className="flex-1 lg:ml-64">
-        <LeadDetailClient lead={lead} agent={agent} initialNotes={notes} />
+        <LeadDetailClient 
+          lead={lead} 
+          agent={agent} 
+          initialNotes={notes}
+          buildings={buildings}
+        />
       </div>
     </div>
   )

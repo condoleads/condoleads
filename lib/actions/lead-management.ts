@@ -35,6 +35,23 @@ export async function updateLeadQuality(leadId: string, quality: string) {
   return { success: true }
 }
 
+export async function updateLeadBuilding(leadId: string, buildingId: string | null) {
+  const supabase = createClient()
+  
+  const { error } = await supabase
+    .from('leads')
+    .update({ building_id: buildingId, updated_at: new Date().toISOString() })
+    .eq('id', leadId)
+  
+  if (error) {
+    return { success: false, error: error.message }
+  }
+  
+  revalidatePath('/dashboard/leads')
+  revalidatePath(`/dashboard/leads/${leadId}`)
+  return { success: true }
+}
+
 export async function addLeadNote(leadId: string, agentId: string, note: string) {
   const supabase = createClient()
   
@@ -159,4 +176,19 @@ export async function setFollowUpDate(leadId: string, followUpDate: string) {
   
   revalidatePath(`/dashboard/leads/${leadId}`)
   return { success: true }
+}
+
+export async function getAgentBuildings(agentId: string) {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase
+    .from('buildings')
+    .select('id, building_name, canonical_address, total_units')
+    .order('building_name')
+  
+  if (error) {
+    return { success: false, buildings: [], error: error.message }
+  }
+  
+  return { success: true, buildings: data }
 }
