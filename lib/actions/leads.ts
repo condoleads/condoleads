@@ -20,16 +20,12 @@ function createServiceClient() {
 
 interface CreateLeadParams {
   agentId: string
+  buildingId: string  // REQUIRED NOW
   contactName: string
   contactEmail: string
   contactPhone?: string
-  source: 'registration' | 'estimator' | 'property_inquiry' | 'contact_form' | 'building_page'    
-  sourceUrl?: string
-  buildingId?: string
-  listingId?: string
   message?: string
-  estimatedValueMin?: number
-  estimatedValueMax?: number
+  source?: string
   propertyDetails?: any
 }
 
@@ -40,38 +36,32 @@ export async function createLead(params: CreateLeadParams) {
 
   // Get current URL for source tracking
   const headersList = headers()
-  const sourceUrl = params.sourceUrl || headersList.get('referer') || ''
-
-  // Determine lead quality based on source
-  let quality = 'cold'
-  if (params.source === 'estimator' || params.message) {
-    quality = 'warm'
-  }
-  if (params.source === 'contact_form' && params.message) {
-    quality = 'hot'
+  const referer = headersList.get('referer') || ''
+  
+  let source = params.source || 'contact_form'
+  if (referer.includes('/estimator')) {
+    source = 'estimator'
+  } else if (referer.includes('/register')) {
+    source = 'registration'
   }
 
   const { data: lead, error } = await supabase
     .from('leads')
     .insert({
       agent_id: params.agentId,
+      building_id: params.buildingId,  // NOW REQUIRED
       contact_name: params.contactName,
       contact_email: params.contactEmail,
       contact_phone: params.contactPhone,
-      source: params.source,
-      source_url: sourceUrl,
-      building_id: params.buildingId,
-      listing_id: params.listingId,
       message: params.message,
-      estimated_value_min: params.estimatedValueMin,
-      estimated_value_max: params.estimatedValueMax,
-      property_details: params.propertyDetails,
-      quality,
-      status: 'new'
+      source: source,
+      quality: 'cold',
+      status: 'new',
+      created_at: new Date().toISOString()
     })
     .select()
     .single()
-  
+
   console.log(' INSERT RESULT:', { data: lead, error })
 
   if (error) {
@@ -83,68 +73,15 @@ export async function createLead(params: CreateLeadParams) {
 
   // Send email notification to agent
   try {
-    console.log(' Fetching agent details for email...')
-    
-    const { data: agent, error: agentError } = await supabase
-      .from('agents')
-      .select('full_name, email, notification_email')
-      .eq('id', params.agentId)
-      .single()
-
-    if (agentError) {
-      console.error(' Error fetching agent:', agentError)
-    } else if (agent) {
-      // Use notification_email if set, otherwise fallback to email
-      const emailTo = agent.notification_email || agent.email
-      
-      console.log(' Sending email to agent:', emailTo)
-      
-      // Get building and listing details for the email
-      let buildingName = undefined
-      let listingAddress = undefined
-      
-      if (params.buildingId) {
-        const { data: building } = await supabase
-          .from('buildings')
-          .select('building_name')
-          .eq('id', params.buildingId)
-          .single()
-        buildingName = building?.building_name
-      }
-      
-      if (params.listingId) {
-        const { data: listing } = await supabase
-          .from('mls_listings')
-          .select('unparsed_address')
-          .eq('id', params.listingId)
-          .single()
-        listingAddress = listing?.unparsed_address
-      }
-
-      const emailResult = await sendLeadNotificationToAgent({
-        agentEmail: emailTo,
-        agentName: agent.full_name,
-        leadName: params.contactName,
-        leadEmail: params.contactEmail,
-        leadPhone: params.contactPhone,
-        source: params.source,
-        buildingName,
-        listingAddress,
-        message: params.message,
-        estimatedValue: params.estimatedValueMin && params.estimatedValueMax 
-          ? `$${params.estimatedValueMin?.toLocaleString()} - $${params.estimatedValueMax?.toLocaleString()}`
-          : undefined
-      })
-
-      if (emailResult.success) {
-        console.log(' Email sent successfully to agent')
-      } else {
-        console.error(' Failed to send email:', emailResult.error)
-      }
-    }
+    await sendLeadNotificationToAgent({
+      agentEmail: params.contactEmail,
+      leadId: lead.id,
+      contactName: params.contactName,
+      contactEmail: params.contactEmail,
+      source: source
+    })
   } catch (emailError) {
-    console.error(' Exception while sending email:', emailError)
-    // Don't fail the lead creation if email fails
+    console.error(' Error sending notification email:', emailError)
   }
 
   return { success: true, lead }
@@ -152,10 +89,10 @@ export async function createLead(params: CreateLeadParams) {
 
 export async function updateLeadStatus(leadId: string, status: string, notes?: string) {
   const supabase = createServiceClient()
-  
+
   const updateData: any = {
     status,
-    last_contact_at: new Date().toISOString()
+    updated_at: new Date().toISOString()
   }
 
   if (notes) {
@@ -168,7 +105,7 @@ export async function updateLeadStatus(leadId: string, status: string, notes?: s
     .eq('id', leadId)
 
   if (error) {
-    console.error('Error updating lead:', error)
+    console.error('Error updating lead status:', error)
     return { success: false, error: error.message }
   }
 
@@ -183,12 +120,9 @@ export async function getAgentLeads(agentId: string) {
     .select(`
       *,
       buildings (
+        id,
         building_name,
-        slug
-      ),
-      mls_listings (
-        unit_number,
-        list_price
+        canonical_address
       )
     `)
     .eq('agent_id', agentId)
@@ -196,9 +130,8 @@ export async function getAgentLeads(agentId: string) {
 
   if (error) {
     console.error('Error fetching leads:', error)
-    return { success: false, error: error.message }
+    return { success: false, leads: [], error: error.message }
   }
 
-  return { success: true, leads }
+  return { success: true, leads: leads || [] }
 }
-

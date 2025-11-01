@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { Search, Download } from 'lucide-react'
+import { Search, Download, Building2 } from 'lucide-react'
 
 interface LeadsTableProps {
   leads: any[]
@@ -18,7 +18,8 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
   const filteredLeads = leads.filter((lead) => {
     const matchesSearch = 
       lead.contact_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lead.contact_email?.toLowerCase().includes(searchTerm.toLowerCase())
+      lead.contact_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.buildings?.building_name?.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesStatus = statusFilter === 'all' || lead.status === statusFilter
     const matchesQuality = qualityFilter === 'all' || lead.quality === qualityFilter
@@ -48,11 +49,12 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
   }
 
   const exportToCSV = () => {
-    const headers = ['Name', 'Email', 'Phone', 'Source', 'Quality', 'Status', 'Tags', 'Created']
+    const headers = ['Name', 'Email', 'Phone', 'Building', 'Source', 'Quality', 'Status', 'Tags', 'Created']
     const rows = filteredLeads.map(lead => [
       lead.contact_name,
       lead.contact_email,
       lead.contact_phone || '',
+      lead.buildings?.building_name || 'No building',
       lead.source,
       lead.quality,
       lead.status,
@@ -77,7 +79,7 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search by name or email..."
+              placeholder="Search by name, email, or building..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -144,6 +146,7 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Building</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tags</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quality</th>
@@ -159,6 +162,19 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
                     <p className="text-sm font-medium text-gray-900">{lead.contact_name}</p>
                     <p className="text-sm text-gray-500">{lead.contact_email}</p>
                     {lead.contact_phone && <p className="text-xs text-gray-400">{lead.contact_phone}</p>}
+                  </td>
+                  <td className="px-6 py-4">
+                    {lead.buildings ? (
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-blue-600" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{lead.buildings.building_name}</p>
+                          <p className="text-xs text-gray-500">{lead.buildings.canonical_address}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-red-600 font-medium"> No building</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-sm capitalize">{lead.source.replace(/_/g, ' ')}</td>
                   <td className="px-6 py-4">
