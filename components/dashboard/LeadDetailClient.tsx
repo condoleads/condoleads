@@ -41,11 +41,14 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
   }
 
   async function handleAddNote(e: React.FormEvent) {
+    console.log(' handleAddNote called')
     e.preventDefault()
     if (!newNote.trim()) return
 
     setLoading(true)
+    console.log('🔵 Calling addLeadNote with:', { leadId: lead.id, agentId: agent.id, note: newNote })
     const result = await addLeadNote(lead.id, agent.id, newNote)
+    console.log(' addLeadNote result:', result)
     
     if (result.success) {
       setNotes([{
@@ -223,3 +226,4 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
     </div>
   )
 }
+

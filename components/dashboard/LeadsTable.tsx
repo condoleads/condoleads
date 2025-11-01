@@ -48,7 +48,7 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
   }
 
   const exportToCSV = () => {
-    const headers = ['Name', 'Email', 'Phone', 'Source', 'Quality', 'Status', 'Created']
+    const headers = ['Name', 'Email', 'Phone', 'Source', 'Quality', 'Status', 'Tags', 'Created']
     const rows = filteredLeads.map(lead => [
       lead.contact_name,
       lead.contact_email,
@@ -56,6 +56,7 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
       lead.source,
       lead.quality,
       lead.status,
+      (lead.tags || []).join('; '),
       new Date(lead.created_at).toLocaleDateString()
     ])
 
@@ -144,6 +145,7 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tags</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quality</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
@@ -159,6 +161,22 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
                     {lead.contact_phone && <p className="text-xs text-gray-400">{lead.contact_phone}</p>}
                   </td>
                   <td className="px-6 py-4 text-sm capitalize">{lead.source.replace(/_/g, ' ')}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-1">
+                      {(lead.tags || []).length === 0 ? (
+                        <span className="text-xs text-gray-400">No tags</span>
+                      ) : (
+                        (lead.tags || []).slice(0, 2).map((tag: string) => (
+                          <span key={tag} className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                            {tag}
+                          </span>
+                        ))
+                      )}
+                      {(lead.tags || []).length > 2 && (
+                        <span className="text-xs text-gray-500">+{lead.tags.length - 2}</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${getQualityBadge(lead.quality)}`}>
                       {lead.quality}
