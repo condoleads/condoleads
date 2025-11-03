@@ -19,10 +19,25 @@ export default function LoginPage() {
     console.log(' Attempting login with:', email)
 
     try {
-      // Use browser client with proper cookie handling
       const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            get(name: string) {
+              const cookie = document.cookie
+                .split('; ')
+                .find(row => row.startsWith(name + '='))
+              return cookie ? decodeURIComponent(cookie.split('=')[1]) : null
+            },
+            set(name: string, value: string, options: any) {
+              document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${options.maxAge}; ${options.sameSite ? 'SameSite=' + options.sameSite : ''}`
+            },
+            remove(name: string, options: any) {
+              document.cookie = `${name}=; path=/; max-age=0`
+            }
+          }
+        }
       )
 
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -30,7 +45,11 @@ export default function LoginPage() {
         password,
       })
 
-      console.log(' Login response:', { data, error })
+      console.log(' Login response:', { 
+        hasSession: !!data.session, 
+        userId: data.user?.id,
+        error: error?.message 
+      })
 
       if (error) {
         console.error(' Login error:', error)
@@ -38,12 +57,13 @@ export default function LoginPage() {
       }
 
       if (data.session) {
-        console.log(' Login successful, session created')
-        console.log(' Refreshing and redirecting...')
+        console.log(' Login successful, redirecting...')
         
-        // Refresh the page to get new session, then redirect
-        router.refresh()
-        router.push('/dashboard')
+        // Wait a bit for cookies to be set
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        // Force a full page reload to ensure cookies are recognized
+        window.location.href = '/dashboard'
       }
     } catch (error: any) {
       console.error(' Catch block error:', error)
