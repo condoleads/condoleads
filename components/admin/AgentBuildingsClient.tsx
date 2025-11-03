@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Building2, Check, X, ArrowLeft } from 'lucide-react'
+import { Building2, Check, ArrowLeft } from 'lucide-react'
 
 export default function AgentBuildingsClient({ agent, allBuildings, assignedBuildings }) {
   const [assigned, setAssigned] = useState(assignedBuildings.map(function(b) { return b.id }))
   const [searchTerm, setSearchTerm] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const filteredBuildings = allBuildings.filter(function(building) {
     return building.building_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -20,9 +21,29 @@ export default function AgentBuildingsClient({ agent, allBuildings, assignedBuil
     }
   }
 
-  function saveAssignments() {
-    // TODO: API call to save assignments
-    alert('Saving assignments for ' + agent.full_name + '. Total: ' + assigned.length + ' buildings')
+  async function saveAssignments() {
+    setSaving(true)
+    
+    try {
+      const response = await fetch('/api/admin/agents/' + agent.id + '/buildings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buildingIds: assigned })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        alert('Successfully assigned ' + data.count + ' buildings to ' + agent.full_name)
+        window.location.reload()
+      } else {
+        alert('Error: ' + data.error)
+      }
+    } catch (error) {
+      alert('Error saving assignments')
+    }
+    
+    setSaving(false)
   }
 
   return (
@@ -38,8 +59,12 @@ export default function AgentBuildingsClient({ agent, allBuildings, assignedBuil
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Assign Buildings</h1>
             <p className="text-gray-600">Managing buildings for {agent.full_name}</p>
           </div>
-          <button onClick={saveAssignments} className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">
-            Save Assignments
+          <button 
+            onClick={saveAssignments} 
+            disabled={saving}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold disabled:bg-blue-400"
+          >
+            {saving ? 'Saving...' : 'Save Assignments'}
           </button>
         </div>
       </div>

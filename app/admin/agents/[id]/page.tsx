@@ -35,9 +35,15 @@ export default async function AgentDetailPage({ params }) {
     .select('id, building_name, canonical_address, total_units')
     .order('building_name')
 
-  // Get agent's assigned buildings (we'll create this table)
-  // For now, return empty array
-  const assignedBuildings = []
+  // Get agent's assigned buildings
+  const { data: assignments } = await supabase
+    .from('building_agents')
+    .select('building_id, buildings(id, building_name, canonical_address, total_units)')
+    .eq('agent_id', params.id)
+
+  const assignedBuildings = (assignments || []).map(function(a) { 
+    return a.buildings 
+  }).filter(function(b) { return b !== null })
 
   return (
     <AgentBuildingsClient 
