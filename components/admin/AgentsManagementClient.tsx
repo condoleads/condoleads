@@ -74,6 +74,7 @@ export default function AgentsManagementClient({ agents }) {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Buildings</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Leads</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -104,6 +105,12 @@ export default function AgentsManagementClient({ agents }) {
                     </span>
                   </td>
                   <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-semibold text-gray-900">{agent.assigned_buildings}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
                     <p className="text-sm font-semibold">{agent.total_leads} total</p>
                     <p className="text-xs text-gray-500">{agent.new_leads} new  {agent.hot_leads} hot</p>
                   </td>
@@ -115,7 +122,7 @@ export default function AgentsManagementClient({ agents }) {
                   <td className="px-6 py-4">
                     <a href={'/admin/agents/' + agent.id} className="flex items-center gap-1 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded">
                       <Building2 className="w-4 h-4" />
-                      Assign Buildings
+                      Assign
                     </a>
                   </td>
                 </tr>
