@@ -23,28 +23,52 @@ export async function POST(request, { params }) {
     process.env.SUPABASE_SERVICE_ROLE_KEY
   )
 
-  // Delete all existing assignments for this agent
+  // Delete existing assignments from BOTH tables
   await supabase
     .from('building_agents')
     .delete()
     .eq('agent_id', agentId)
 
-  // Insert new assignments
+  await supabase
+    .from('agent_buildings')
+    .delete()
+    .eq('agent_id', agentId)
+
+  // Insert new assignments to BOTH tables
   if (buildingIds.length > 0) {
-    const assignments = buildingIds.map(function(buildingId) {
+    // Insert to building_agents (new table)
+    const buildingAgentsData = buildingIds.map(function(buildingId) {
       return {
         agent_id: agentId,
-        building_id: buildingId,
-        assigned_by: user.id
+        building_id: buildingId
       }
     })
 
-    const { error } = await supabase
+    const { error: error1 } = await supabase
       .from('building_agents')
-      .insert(assignments)
+      .insert(buildingAgentsData)
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error1) {
+      console.error('Error inserting to building_agents:', error1)
+      return NextResponse.json({ error: error1.message }, { status: 500 })
+    }
+
+    // Insert to agent_buildings (home page table)
+    const agentBuildingsData = buildingIds.map(function(buildingId) {
+      return {
+        agent_id: agentId,
+        building_id: buildingId,
+        is_featured: false
+      }
+    })
+
+    const { error: error2 } = await supabase
+      .from('agent_buildings')
+      .insert(agentBuildingsData)
+
+    if (error2) {
+      console.error('Error inserting to agent_buildings:', error2)
+      return NextResponse.json({ error: error2.message }, { status: 500 })
     }
   }
 
