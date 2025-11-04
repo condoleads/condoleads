@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Building2, Check, ArrowLeft } from 'lucide-react'
+import { Building2, Check, ArrowLeft, Users } from 'lucide-react'
 
 export default function AgentBuildingsClient({ agent, allBuildings, assignedBuildings }) {
   const [assigned, setAssigned] = useState(assignedBuildings.map(function(b) { return b.id }))
@@ -76,7 +76,7 @@ export default function AgentBuildingsClient({ agent, allBuildings, assignedBuil
         </div>
         
         <div className="bg-white rounded-lg shadow p-6">
-          <p className="text-sm text-gray-600">Assigned</p>
+          <p className="text-sm text-gray-600">Assigned to {agent.full_name.split(' ')[0]}</p>
           <p className="text-3xl font-bold text-green-600">{assigned.length}</p>
         </div>
 
@@ -102,13 +102,22 @@ export default function AgentBuildingsClient({ agent, allBuildings, assignedBuil
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredBuildings.map(function(building) {
           const isAssigned = assigned.includes(building.id)
+          const hasOtherAgents = building.assignedToOthers && building.assignedToOthers.length > 0
           
           return (
             <div 
               key={building.id}
               onClick={function() { toggleBuilding(building.id) }}
-              className={'border-2 rounded-lg p-4 cursor-pointer transition-all ' + (isAssigned ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-blue-300')}
+              className={'border-2 rounded-lg p-4 cursor-pointer transition-all relative ' + (isAssigned ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-blue-300')}
             >
+              {/* Assignment indicator badge */}
+              {hasOtherAgents && (
+                <div className="absolute top-2 left-2 bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-semibold flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {building.assignmentCount}
+                </div>
+              )}
+
               <div className="flex items-start justify-between mb-2">
                 <Building2 className={'w-8 h-8 ' + (isAssigned ? 'text-green-600' : 'text-gray-400')} />
                 {isAssigned ? (
@@ -122,7 +131,23 @@ export default function AgentBuildingsClient({ agent, allBuildings, assignedBuil
               
               <h3 className="font-semibold text-gray-900 mb-1">{building.building_name}</h3>
               <p className="text-sm text-gray-600 mb-2">{building.canonical_address}</p>
-              <p className="text-xs text-gray-500">{building.total_units} units</p>
+              <p className="text-xs text-gray-500 mb-2">{building.total_units} units</p>
+
+              {/* Show which other agents have this building */}
+              {hasOtherAgents && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-xs text-gray-500 mb-1">Also assigned to:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {building.assignedToOthers.map(function(agentName, index) {
+                      return (
+                        <span key={index} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                          {agentName}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}

@@ -29,26 +29,55 @@ export default async function AgentDetailPage({ params }) {
     redirect('/admin/agents')
   }
 
-  // Get all buildings
+  // Get all buildings with assignment info
   const { data: allBuildings } = await supabase
     .from('buildings')
     .select('id, building_name, canonical_address, total_units')
     .order('building_name')
 
-  // Get agent's assigned buildings
-  const { data: assignments } = await supabase
+  // Get ALL building assignments (for all agents) to show who has what
+  const { data: allAssignments } = await supabase
+    .from('building_agents')
+    .select(`
+      building_id,
+      agent_id,
+      agents (
+        id,
+        full_name
+      )
+    `)
+
+  // Get current agent's assigned buildings
+  const { data: currentAgentAssignments } = await supabase
     .from('building_agents')
     .select('building_id, buildings(id, building_name, canonical_address, total_units)')
     .eq('agent_id', params.id)
 
-  const assignedBuildings = (assignments || []).map(function(a) { 
+  const assignedBuildings = (currentAgentAssignments || []).map(function(a) { 
     return a.buildings 
   }).filter(function(b) { return b !== null })
+
+  // Add assignment info to each building
+  const buildingsWithAssignments = (allBuildings || []).map(function(building) {
+    const assignments = (allAssignments || []).filter(function(a) {
+      return a.building_id === building.id
+    })
+    
+    const otherAgents = assignments
+      .filter(function(a) { return a.agent_id !== params.id })
+      .map(function(a) { return a.agents.full_name })
+    
+    return {
+      ...building,
+      assignedToOthers: otherAgents,
+      assignmentCount: assignments.length
+    }
+  })
 
   return (
     <AgentBuildingsClient 
       agent={agent} 
-      allBuildings={allBuildings || []}
+      allBuildings={buildingsWithAssignments}
       assignedBuildings={assignedBuildings}
     />
   )

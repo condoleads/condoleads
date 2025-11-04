@@ -1,7 +1,11 @@
-﻿import { headers } from 'next/headers';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { HomePage } from '@/components/HomePage';
+
+// Force dynamic rendering - no caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function RootPage() {
   const headersList = headers();
@@ -35,9 +39,9 @@ export default async function RootPage() {
     .single();
 
   console.log(' DEBUG: Agent query result:', { agent, agentError });
-  
+
   if (!agent) notFound();
-  
+
   // Fetch agent's assigned buildings with listing counts
   const { data: agentBuildings } = await supabase
     .from('agent_buildings')
@@ -55,10 +59,12 @@ export default async function RootPage() {
     `)
     .eq('agent_id', agent.id)
     .order('is_featured', { ascending: false });
+
+  console.log(' DEBUG: Found buildings:', agentBuildings?.length || 0);
   
   // Get listing counts and photos for each building
   const buildingsWithCounts = await Promise.all(
-    (agentBuildings || []).map(async (ab: any) => {
+    (agentBuildings || []).map(async (ab) => {
       const building = ab.buildings;
       
       // Get listings for counts
@@ -70,11 +76,10 @@ export default async function RootPage() {
       const forSale = listings?.filter(
         l => l.transaction_type === 'For Sale' && l.standard_status === 'Active'
       ).length || 0;
-      
       const forLease = listings?.filter(
         l => l.transaction_type === 'For Lease' && l.standard_status === 'Active'
       ).length || 0;
-      
+
       // Get first photo from building's listings
       const { data: photo } = await supabase
         .from('media')
@@ -84,7 +89,7 @@ export default async function RootPage() {
         .order('preferred_photo_yn', { ascending: false })
         .order('order_number', { ascending: true })
         .limit(1);
-      
+
       return {
         ...building,
         forSale,
@@ -94,11 +99,13 @@ export default async function RootPage() {
       };
     })
   );
-  
+
+  console.log(' DEBUG: Buildings with counts:', buildingsWithCounts.length);
+
   return <HomePage agent={agent} buildings={buildingsWithCounts} />;
 }
 
-function extractSubdomain(host: string): string | null {
+function extractSubdomain(host) {
   // Development: use DEV_SUBDOMAIN environment variable
   if (host.includes('localhost') || host.includes('vercel.app')) {
     return process.env.DEV_SUBDOMAIN || null;
@@ -118,14 +125,14 @@ export async function generateMetadata() {
   const headersList = headers();
   const host = headersList.get('host') || '';
   const subdomain = extractSubdomain(host);
-  
+
   if (!subdomain) {
     return {
       title: 'CondoLeads - Toronto Real Estate Agent Platform',
       description: 'Professional real estate websites for Toronto condo specialists'
     };
   }
-  
+
   const supabase = createClient();
   const { data: agent } = await supabase
     .from('agents')
@@ -133,14 +140,13 @@ export async function generateMetadata() {
     .eq('subdomain', subdomain)
     .eq('is_active', true)
     .single();
-  
+
   if (!agent) {
     return { title: 'Agent Not Found' };
   }
-  
+
   return {
     title: `${agent.full_name} - Toronto Condo Specialist`,
     description: agent.bio || `Find luxury Toronto condos with ${agent.full_name}. Exclusive access to premium buildings.`,
   };
 }
-
