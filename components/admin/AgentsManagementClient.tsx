@@ -2,10 +2,12 @@
 
 import { useState } from 'react'
 import { Users, Mail, Phone, TrendingUp, Building2, Plus } from 'lucide-react'
+import AddAgentModal from './AddAgentModal'
 
 export default function AgentsManagementClient({ agents }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
+  const [showAddModal, setShowAddModal] = useState(false)
 
   const filteredAgents = agents.filter(function(agent) {
     const matchesSearch = agent.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || agent.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -15,6 +17,10 @@ export default function AgentsManagementClient({ agents }) {
 
   const activeAgents = agents.filter(function(a) { return a.is_active }).length
   const totalLeads = agents.reduce(function(sum, a) { return sum + a.total_leads }, 0)
+
+  function handleAgentCreated() {
+    window.location.reload()
+  }
 
   return (
     <div className="p-8">
@@ -63,6 +69,13 @@ export default function AgentsManagementClient({ agents }) {
             <option value="agent">Agents</option>
             <option value="admin">Admins</option>
           </select>
+          <button 
+            onClick={function() { setShowAddModal(true) }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4" />
+            Add Agent
+          </button>
         </div>
         <p className="mt-4 text-sm text-gray-600">Showing {filteredAgents.length} of {agents.length} agents</p>
       </div>
@@ -131,6 +144,12 @@ export default function AgentsManagementClient({ agents }) {
           </tbody>
         </table>
       </div>
+
+      <AddAgentModal 
+        isOpen={showAddModal}
+        onClose={function() { setShowAddModal(false) }}
+        onSuccess={handleAgentCreated}
+      />
     </div>
   )
 }
