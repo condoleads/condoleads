@@ -1,10 +1,6 @@
-﻿import { supabase } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
-import AgentContactForm from '@/components/property/AgentContactForm'
-import BuildingInfo from '@/components/property/BuildingInfo'
-import { AgentCard } from '@/components/AgentCard'
 import PropertyPageClient from './PropertyPageClient'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
@@ -21,14 +17,14 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     notFound()
   }
 
-  // Fetch building data (VERIFIED FIELDS: building_name, canonical_address)
+  // Fetch building data
   const { data: building } = await supabase
     .from('buildings')
     .select('id, building_name, slug, canonical_address')
     .eq('id', listing.building_id)
     .single()
 
-  // Fetch agent (VERIFIED: agent_id foreign key, needs explicit JOIN)
+  // Fetch agent
   const { data: agentBuilding } = await supabaseServer
     .from('agent_buildings')
     .select(`
@@ -39,19 +35,15 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         email,
         phone,
         profile_photo_url,
-        bio
+        bio,
+        brokerage_name,
+        title
       )
     `)
     .eq('building_id', listing.building_id)
     .single()
 
   const agent = agentBuilding?.agents
-
-  // Combine data
-  const listingWithBuilding = {
-    ...listing,
-    buildings: building
-  }
 
   // Fetch media
   const { data: allMedia } = await supabase
@@ -99,12 +91,16 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .eq('listing_id', listing.id)
     .order('order_number')
 
-  // Extract amenities (VERIFIED: association_amenities, NOT association_amenities)
-  const amenities = listing.association_amenities || []
-  const feeIncludes = listing.association_fee_includes || []
+  // Fetch amenities
+  const { data: amenitiesData } = await supabase
+    .from('property_amenities')
+    .select('*')
+    .eq('listing_id', listing.id)
 
-  // Fetch available listings
-  const targetTransactionType = listing.transaction_type
+  const amenities = amenitiesData?.filter(a => a.category === 'amenity') || []
+  const feeIncludes = amenitiesData?.filter(a => a.category === 'fee_includes') || []
+
+  // Fetch available listings in same building
   const { data: availableListings } = await supabase
     .from('mls_listings')
     .select(`
@@ -116,20 +112,19 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       )
     `)
     .eq('building_id', listing.building_id)
-    .eq('transaction_type', targetTransactionType)
+    .eq('transaction_type', listing.transaction_type)
     .eq('standard_status', 'Active')
     .neq('id', listing.id)
-    .order('list_price', { ascending: false })
-    .limit(8)
+    .limit(4)
 
   const isSale = listing.transaction_type === 'For Sale'
-  const status = listing.standard_status === 'Closed' ? 'Closed' : 'Active'
   const isClosed = listing.standard_status === 'Closed'
+  const status = isClosed ? 'Closed' : 'Active'
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-gray-50">
       <PropertyPageClient
-        listing={listingWithBuilding}
+        listing={listing}
         largePhotos={largePhotos}
         rooms={rooms || []}
         unitHistory={unitHistory || []}
@@ -140,54 +135,9 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         isSale={isSale}
         status={status}
         isClosed={isClosed}
+        agent={agent}
+        building={building}
       />
-
-      {/* Server-rendered sidebar */}
-      <div className="max-w-7xl mx-auto pb-16">
-        <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
-          <div className="lg:col-span-2"></div>
-          <div className="lg:col-span-1 space-y-6">
-            <div className="sticky top-24 space-y-6">
-              {agent && (
-                <AgentCard
-                  agent={agent}
-                  source="property_inquiry"
-                  listingId={listing.id}
-                  listingAddress={listing.unparsed_address || ''}
-                  buildingId={listing.building_id}
-                  buildingName={building?.building_name || ''}
-                />
-              )}
-
-              <PropertyEstimateCTA
-                listing={listingWithBuilding}
-                status={status}
-                isSale={isSale}
-                buildingName={building?.building_name || ''}
-                agentId={agent?.id || ''}
-              />
-            </div>
-
-            <BuildingInfo
-              buildingName={building?.building_name || 'N/A'}
-              address={building?.canonical_address || listing.unparsed_address || 'N/A'}
-              yearBuilt={listing.year_built}
-              totalUnits={null}
-              parkingType={listing.parking_features}
-              petPolicy={listing.pet_allowed}
-            />
-
-            {agent && (
-              <AgentContactForm
-                listing={listingWithBuilding}
-                status={status}
-                isSale={isSale}
-                agent={agent}
-              />
-            )}
-          </div>
-        </div>
-      </div>
     </main>
   )
 }

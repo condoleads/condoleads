@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useAuth } from '@/components/auth/AuthContext'
 import PropertyGallery from '@/components/property/PropertyGallery'
@@ -11,6 +11,10 @@ import UnitHistory from '@/components/property/UnitHistory'
 import PropertyAmenities from '@/components/property/PropertyAmenities'
 import GatedContent from '@/components/property/GatedContent'
 import SimilarListings from '@/components/property/SimilarListings'
+import { AgentCard } from '@/components/AgentCard'
+import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
+import BuildingInfo from '@/components/property/BuildingInfo'
+import AgentContactForm from '@/components/property/AgentContactForm'
 
 interface PropertyPageClientProps {
   listing: any
@@ -24,6 +28,8 @@ interface PropertyPageClientProps {
   isSale: boolean
   status: 'Active' | 'Closed'
   isClosed: boolean
+  agent?: any
+  building?: any
 }
 
 export default function PropertyPageClient({
@@ -37,15 +43,17 @@ export default function PropertyPageClient({
   availableListings,
   isSale,
   status,
-  isClosed
+  isClosed,
+  agent,
+  building
 }: PropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
 
   return (
     <>
-      <PropertyGallery 
-        photos={largePhotos} 
+      <PropertyGallery
+        photos={largePhotos}
         shouldBlur={shouldGate}
         maxPhotos={shouldGate ? 2 : undefined}
       />
@@ -59,6 +67,7 @@ export default function PropertyPageClient({
         />
 
         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
+          {/* LEFT COLUMN - Main Content */}
           <div className="lg:col-span-2 space-y-8">
             <PropertyDescription description={listing.public_remarks} />
 
@@ -105,6 +114,48 @@ export default function PropertyPageClient({
                 <SimilarListings listings={availableListings} />
               </div>
             )}
+          </div>
+
+          {/* RIGHT COLUMN - Sticky Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-24 space-y-6">
+              {agent && (
+                <>
+                  <AgentCard
+                    agent={agent}
+                    source="property_inquiry"
+                    listingId={listing.id}
+                    listingAddress={listing.unparsed_address || ''}
+                    buildingId={listing.building_id}
+                    buildingName={building?.building_name || ''}
+                  />
+                  
+                  <PropertyEstimateCTA
+                    listing={{ ...listing, buildings: building }}
+                    status={status}
+                    isSale={isSale}
+                    buildingName={building?.building_name || ''}
+                    agentId={agent.id}
+                  />
+
+                  <BuildingInfo
+                    buildingName={building?.building_name || 'N/A'}
+                    address={building?.canonical_address || listing.unparsed_address || 'N/A'}
+                    yearBuilt={listing.year_built}
+                    totalUnits={null}
+                    parkingType={listing.parking_features}
+                    petPolicy={listing.pet_allowed}
+                  />
+
+                  <AgentContactForm
+                    listing={{ ...listing, buildings: building }}
+                    status={status}
+                    isSale={isSale}
+                    agent={agent}
+                  />
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
