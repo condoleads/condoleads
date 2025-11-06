@@ -54,7 +54,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
   const largePhotos = allMedia?.filter(m => m.media_url.includes('1920:1920')) || []
 
-  // Fetch similar listings
+  // Fetch similar listings WITH media variant_type
   const { data: similarListings } = await supabase
     .from('mls_listings')
     .select(`
@@ -62,7 +62,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       media (
         id,
         media_url,
-        order_number
+        order_number,
+        variant_type
       )
     `)
     .eq('building_id', listing.building_id)
@@ -100,7 +101,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const amenities = amenitiesData?.filter(a => a.category === 'amenity') || []
   const feeIncludes = amenitiesData?.filter(a => a.category === 'fee_includes') || []
 
-  // Fetch available listings in same building
+  // Fetch available listings in same building WITH media variant_type
   const { data: availableListings } = await supabase
     .from('mls_listings')
     .select(`
@@ -108,7 +109,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       media (
         id,
         media_url,
-        order_number
+        order_number,
+        variant_type
       )
     `)
     .eq('building_id', listing.building_id)
