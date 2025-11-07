@@ -54,8 +54,9 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
   const largePhotos = allMedia?.filter(m => m.media_url.includes('1920:1920')) || []
 
-  // Fetch similar listings WITH media variant_type
-  const { data: similarListings } = await supabase
+  // Fetch similar SOLD listings with smart fallback
+  // Try 1: Exact match (same bed/bath)
+  let { data: similarListings } = await supabase
     .from('mls_listings')
     .select(`
       *,
@@ -72,7 +73,68 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .eq('bedrooms_total', listing.bedrooms_total)
     .eq('bathrooms_total_integer', listing.bathrooms_total_integer)
     .neq('id', listing.id)
-    .limit(4)
+    .order('close_date', { ascending: false })
+    .limit(8)
+
+  // Try 2: If less than 4, get same bedrooms only
+  if (!similarListings || similarListings.length < 4) {
+    const { data: moreSimilar } = await supabase
+      .from('mls_listings')
+      .select(`
+        *,
+        media (
+          id,
+          media_url,
+          order_number,
+          variant_type
+        )
+      `)
+      .eq('building_id', listing.building_id)
+      .eq('transaction_type', listing.transaction_type)
+      .eq('standard_status', 'Closed')
+      .eq('bedrooms_total', listing.bedrooms_total)
+      .neq('id', listing.id)
+      .order('close_date', { ascending: false })
+      .limit(8)
+    
+    // Merge and deduplicate
+    if (moreSimilar) {
+      const existingIds = new Set(similarListings?.map(l => l.id) || [])
+      const newListings = moreSimilar.filter(l => !existingIds.has(l.id))
+      similarListings = [...(similarListings || []), ...newListings]
+    }
+  }
+
+  // Try 3: If still less than 4, get any sold units in building
+  if (!similarListings || similarListings.length < 4) {
+    const { data: anySold } = await supabase
+      .from('mls_listings')
+      .select(`
+        *,
+        media (
+          id,
+          media_url,
+          order_number,
+          variant_type
+        )
+      `)
+      .eq('building_id', listing.building_id)
+      .eq('transaction_type', listing.transaction_type)
+      .eq('standard_status', 'Closed')
+      .neq('id', listing.id)
+      .order('close_date', { ascending: false })
+      .limit(8)
+    
+    // Merge and deduplicate
+    if (anySold) {
+      const existingIds = new Set(similarListings?.map(l => l.id) || [])
+      const newListings = anySold.filter(l => !existingIds.has(l.id))
+      similarListings = [...(similarListings || []), ...newListings]
+    }
+  }
+
+  // Limit to 8 total
+  similarListings = similarListings?.slice(0, 8) || []
 
   // Fetch unit history
   const { data: unitHistory } = await supabase
@@ -117,7 +179,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .eq('transaction_type', listing.transaction_type)
     .eq('standard_status', 'Active')
     .neq('id', listing.id)
-    .limit(4)
+    .order('list_price', { ascending: true })
+    .limit(8)
 
   const isSale = listing.transaction_type === 'For Sale'
   const isClosed = listing.standard_status === 'Closed'
