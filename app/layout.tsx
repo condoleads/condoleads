@@ -1,8 +1,7 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Footer from "@/components/Footer";
-import UniversalNav from "@/components/UniversalNav";
+import ConditionalLayout from "@/components/ConditionalLayout";
 import { AuthProvider } from "@/components/auth/AuthContext";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -21,9 +20,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <UniversalNav />
-          {children}
-          <Footer />
+          <ConditionalLayout>
+            {children}
+          </ConditionalLayout>
         </AuthProvider>
       </body>
     </html>
