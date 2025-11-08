@@ -1,4 +1,5 @@
-﻿import { redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
+import DashboardLogout from '@/components/dashboard/DashboardLogout'
 import { requireAgent } from '@/lib/auth/helpers'
 import { getAgentLeads } from '@/lib/actions/leads'
 
@@ -56,10 +57,16 @@ export default async function DashboardPage() {
       
       {/* Main Content */}
       <div className="flex-1 lg:ml-64">
+        {/* Top Header Bar */}
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-30 px-8 py-4">
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-bold text-gray-900">
+              Welcome back, {agent.full_name}!
+            </h1>
+            <DashboardLogout />
+          </div>
+        </div>
         <div className="max-w-7xl mx-auto p-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            Welcome back, {agent.full_name}!
-          </h1>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div className="bg-white p-6 rounded-lg shadow">
