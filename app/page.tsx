@@ -102,7 +102,23 @@ export default async function RootPage() {
 
   console.log(' DEBUG: Buildings with counts:', buildingsWithCounts.length);
 
-  return <HomePage agent={agent} buildings={buildingsWithCounts} />;
+  return (
+    <>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.__AGENT_DATA__ = ${JSON.stringify({
+            full_name: agent.full_name,
+            email: agent.email,
+            phone: agent.phone,
+            brokerage_name: agent.brokerage_name,
+            brokerage_address: agent.brokerage_address,
+            title: agent.title
+          })};`
+        }}
+      />
+      <HomePage agent={agent} buildings={buildingsWithCounts} />
+    </>
+  );
 }
 
 function extractSubdomain(host) {
