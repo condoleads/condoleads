@@ -1,5 +1,4 @@
-﻿'use client'
-
+'use client'
 import Link from 'next/link'
 import AuthStatus from '@/components/auth/AuthStatus'
 
@@ -12,20 +11,20 @@ export default function UniversalNav() {
           <Link href="/" className="flex items-center">
             <span className="text-2xl font-bold text-emerald-600">CondoLeads</span>
           </Link>
-
+          
           {/* Navigation Links */}
           <div className="hidden md:flex items-center space-x-8">
             <Link href="/" className="text-gray-700 hover:text-emerald-600 font-medium transition-colors">
               Home
             </Link>
-            <Link href="/buildings" className="text-gray-700 hover:text-emerald-600 font-medium transition-colors">
+            <a href="#buildings" className="text-gray-700 hover:text-emerald-600 font-medium transition-colors">
               Buildings
-            </Link>
-            <Link href="/estimator" className="text-gray-700 hover:text-emerald-600 font-medium transition-colors">
+            </a>
+            <a href="#estimate" className="text-gray-700 hover:text-emerald-600 font-medium transition-colors">
               Estimator
-            </Link>
+            </a>
           </div>
-
+          
           {/* Auth Status */}
           <div className="flex items-center">
             <AuthStatus />

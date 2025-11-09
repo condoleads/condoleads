@@ -68,8 +68,8 @@ export default function Footer({ agentData }: FooterProps) {
               <h4 className="font-semibold mb-4 text-lg">Quick Links</h4>
               <ul className="space-y-2 text-sm">
                 <li><a href="/" className="text-slate-400 hover:text-white transition-colors">Home</a></li>
-                <li><a href="/buildings" className="text-slate-400 hover:text-white transition-colors">Browse Buildings</a></li>
-                <li><a href="/estimator" className="text-slate-400 hover:text-white transition-colors">Get Estimate</a></li>
+                <li><a href="#buildings" className="text-slate-400 hover:text-white transition-colors">Browse Buildings</a></li>
+                <li><a href="#estimate" className="text-slate-400 hover:text-white transition-colors">Get Estimate</a></li>
               </ul>
             </div>
           </div>
