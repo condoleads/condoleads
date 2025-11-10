@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
+import { getAgentForBuilding } from '@/lib/utils/agent-detection'
 import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
 import PropertyPageClient from './PropertyPageClient'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
@@ -24,26 +26,15 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .eq('id', listing.building_id)
     .single()
 
-  // Fetch agent
-  const { data: agentBuilding } = await supabaseServer
-    .from('agent_buildings')
-    .select(`
-      *,
-      agents (
-        id,
-        full_name,
-        email,
-        phone,
-        profile_photo_url,
-        bio,
-        brokerage_name,
-        title
-      )
-    `)
-    .eq('building_id', listing.building_id)
-    .single()
+  // Get agent from subdomain with access verification
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const agent = await getAgentForBuilding(host, listing.building_id)
 
-  const agent = agentBuilding?.agents
+  // If no agent (not assigned to this building), show 404
+  if (!agent) {
+    notFound()
+  }
 
   // Fetch media
   const { data: allMedia } = await supabase
@@ -187,6 +178,19 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const status = isClosed ? 'Closed' : 'Active'
 
   return (
+    <>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.__AGENT_DATA__ = ${JSON.stringify({
+            full_name: agent.full_name,
+            email: agent.email,
+            phone: agent.phone,
+            brokerage_name: agent.brokerage_name,
+            brokerage_address: agent.brokerage_address,
+            title: agent.title
+          })};`
+        }}
+      />
     <main className="min-h-screen bg-gray-50">
       <PropertyPageClient
         listing={listing}
@@ -204,5 +208,6 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         building={building}
       />
     </main>
+    </>
   )
 }
