@@ -1,4 +1,5 @@
-﻿import { notFound } from 'next/navigation'
+import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
 import { supabase } from '@/lib/supabase/client'
 import { calculateAverage, calculateInventoryRate, extractAmenities, extractFeeIncludes } from '@/lib/utils/calculations'
 import BuildingHero from './components/BuildingHero'
@@ -18,6 +19,7 @@ import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
 import BuildingSchema from './components/BuildingSchema'
 import { AgentCard } from '@/components/AgentCard'
 import { createClient } from '@/lib/supabase/server'
+import { getAgentForBuilding } from '@/lib/utils/agent-detection'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
@@ -143,26 +145,15 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     notFound()
   }
 
-  // Fetch the agent assigned to this building
-  const supabaseServer = createClient()
-  const { data: agentBuilding } = await supabaseServer
-    .from('agent_buildings')
-    .select(`
-      *,
-      agents (
-        id,
-        full_name,
-        email,
-        phone,
-        profile_photo_url,
-        bio
-      )
-    `)
-    .eq('building_id', building.id)
-    .single()
-  
-  const agent = agentBuilding?.agents
-  console.log(' AGENT DEBUG:', { agent, agentBuilding, buildingId: building.id })
+  // Get agent from subdomain with access verification
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const agent = await getAgentForBuilding(host, building.id)
+
+  // If no agent (not assigned to this building), show 404
+  if (!agent) {
+    notFound()
+  }
   
   const { data: listings } = await supabase
     .from('mls_listings')
@@ -228,6 +219,19 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   }
 
   return (
+    <>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.__AGENT_DATA__ = ${JSON.stringify({
+            full_name: agent.full_name,
+            email: agent.email,
+            phone: agent.phone,
+            brokerage_name: agent.brokerage_name,
+            brokerage_address: agent.brokerage_address,
+            title: agent.title
+          })};`
+        }}
+      />
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
       <BuildingSchema 
         building={building}
@@ -360,6 +364,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         </div>
       </div>
     </div>
+    </>
   )
 }
 

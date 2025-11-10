@@ -1,0 +1,94 @@
+import { createClient } from '@/lib/supabase/server'
+
+interface Agent {
+  id: string
+  full_name: string
+  email: string
+  phone: string | null
+  profile_photo_url: string | null
+  bio: string | null
+  brokerage_name: string | null
+  brokerage_address: string | null
+  title: string | null
+  subdomain: string
+}
+
+export function extractSubdomain(host: string): string | null {
+  if (host.includes('localhost') || host.includes('vercel.app')) {
+    const subdomain = process.env.DEV_SUBDOMAIN || null
+    console.log(' extractSubdomain (dev):', { host, subdomain })
+    return subdomain
+  }
+  
+  const parts = host.split('.')
+  if (parts.length >= 3 && parts[1] === 'condoleads') {
+    console.log(' extractSubdomain (prod):', { host, subdomain: parts[0] })
+    return parts[0]
+  }
+  
+  console.log(' extractSubdomain (no match):', { host })
+  return null
+}
+
+export async function getAgentFromSubdomain(subdomain: string): Promise<Agent | null> {
+  const supabase = createClient()
+  
+  const { data: agent, error } = await supabase
+    .from('agents')
+    .select('*')
+    .eq('subdomain', subdomain)
+    .eq('is_active', true)
+    .single()
+  
+  console.log(' getAgentFromSubdomain:', { subdomain, agent: agent?.full_name, error: error?.message })
+  return agent
+}
+
+export async function verifyAgentBuildingAccess(
+  agentId: string, 
+  buildingId: string
+): Promise<boolean> {
+  const supabase = createClient()
+  
+  const { data: assignment, error } = await supabase
+    .from('agent_buildings')
+    .select('id')
+    .eq('agent_id', agentId)
+    .eq('building_id', buildingId)
+    .single()
+  
+  const hasAccess = !!assignment
+  console.log(' verifyAgentBuildingAccess:', { agentId, buildingId, hasAccess, error: error?.message })
+  return hasAccess
+}
+
+export async function getAgentForBuilding(
+  host: string,
+  buildingId: string
+): Promise<Agent | null> {
+  console.log(' getAgentForBuilding START:', { host, buildingId })
+  
+  const subdomain = extractSubdomain(host)
+  
+  if (!subdomain) {
+    console.log(' No subdomain detected')
+    return null
+  }
+  
+  const agent = await getAgentFromSubdomain(subdomain)
+  
+  if (!agent) {
+    console.log(' No agent found for subdomain:', subdomain)
+    return null
+  }
+  
+  const hasAccess = await verifyAgentBuildingAccess(agent.id, buildingId)
+  
+  if (!hasAccess) {
+    console.log(' Agent has no access to building:', { agentName: agent.full_name, buildingId })
+    return null
+  }
+  
+  console.log(' Agent access verified:', { agentName: agent.full_name, buildingId })
+  return agent
+}
