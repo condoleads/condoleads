@@ -2,6 +2,7 @@
 import EstimatorDemo from '@/components/landing/EstimatorDemo'
 import PipelineFlow from '@/components/landing/PipelineFlow'
 import BeforeAfter from '@/components/landing/BeforeAfter'
+import PreviewGenerator from '@/components/landing/PreviewGenerator'
 
 export default function LandingPage() {
   return (
@@ -10,6 +11,7 @@ export default function LandingPage() {
       <EstimatorDemo />
       <PipelineFlow />
       <BeforeAfter />
+      <PreviewGenerator />
       
       {/* More sections coming next */}
       <section className="min-h-screen bg-white flex items-center justify-center">
@@ -17,7 +19,7 @@ export default function LandingPage() {
           <h2 className="text-4xl font-bold text-gray-900 mb-4">
             More sections coming soon...
           </h2>
-          <p className="text-gray-600">Before/After comparison complete! </p>
+          <p className="text-gray-600">Preview generator complete! </p>
         </div>
       </section>
     </main>
