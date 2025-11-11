@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -9,10 +9,12 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const pathname = usePathname()
   const [agentData, setAgentData] = useState<any>(null)
   
-  // Don't show public nav/footer on admin or dashboard pages
+  // Don't show public nav/footer on admin, dashboard, or landing pages
   const isAdminPage = pathname.startsWith('/admin')
   const isDashboardPage = pathname.startsWith('/dashboard')
-  const showPublicLayout = !isAdminPage && !isDashboardPage
+  const isLandingPage = pathname === '/' && !agentData // Root without agent data = landing page
+  
+  const showPublicLayout = !isAdminPage && !isDashboardPage && !isLandingPage
 
   useEffect(() => {
     // Get agent data from page metadata if available
