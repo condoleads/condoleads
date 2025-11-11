@@ -4,6 +4,7 @@ import PipelineFlow from '@/components/landing/PipelineFlow'
 import BeforeAfter from '@/components/landing/BeforeAfter'
 import PreviewGenerator from '@/components/landing/PreviewGenerator'
 import FeatureCards from '@/components/landing/FeatureCards'
+import DemoEmbed from '@/components/landing/DemoEmbed'
 
 export default function LandingPage() {
   return (
@@ -14,14 +15,15 @@ export default function LandingPage() {
       <BeforeAfter />
       <PreviewGenerator />
       <FeatureCards />
+      <DemoEmbed />
       
       {/* More sections coming next */}
-      <section className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <section className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            More sections coming soon...
+            Final section coming next...
           </h2>
-          <p className="text-gray-600">Feature cards complete! </p>
+          <p className="text-gray-600">Demo embed complete! 🎉</p>
         </div>
       </section>
     </main>
