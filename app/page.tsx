@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { HomePage } from '@/components/HomePage';
+import LandingPage from '@/app/(landing)/page';
 
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
@@ -13,23 +14,15 @@ export default async function RootPage() {
   
   const subdomain = extractSubdomain(host);
   
-  // If no subdomain, show main landing page
+  // If no subdomain, show new landing page
   if (!subdomain) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 text-white flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-6xl font-bold mb-6">CondoLeads</h1>
-          <p className="text-xl mb-8">Toronto Real Estate Agent Platform</p>
-          <p className="text-gray-200">Each agent gets their own branded website</p>
-        </div>
-      </div>
-    );
+    return <LandingPage />;
   }
   
   const supabase = createClient();
   
   console.log(' DEBUG: Subdomain extracted:', subdomain);
-  
+
   // Fetch agent by subdomain
   const { data: agent, error: agentError } = await supabase
     .from('agents')
@@ -61,18 +54,18 @@ export default async function RootPage() {
     .order('is_featured', { ascending: false });
 
   console.log(' DEBUG: Found buildings:', agentBuildings?.length || 0);
-  
+
   // Get listing counts and photos for each building
   const buildingsWithCounts = await Promise.all(
     (agentBuildings || []).map(async (ab) => {
       const building = ab.buildings;
-      
+
       // Get listings for counts
       const { data: listings } = await supabase
         .from('mls_listings')
         .select('id, transaction_type, standard_status')
         .eq('building_id', building.id);
-      
+
       const forSale = listings?.filter(
         l => l.transaction_type === 'For Sale' && l.standard_status === 'Active'
       ).length || 0;
@@ -126,13 +119,13 @@ function extractSubdomain(host) {
   if (host.includes('localhost') || host.includes('vercel.app')) {
     return process.env.DEV_SUBDOMAIN || null;
   }
-  
+
   // Production: extract subdomain from condoleads.ca
   const parts = host.split('.');
   if (parts.length >= 3 && parts[1] === 'condoleads') {
     return parts[0];
   }
-  
+
   return null;
 }
 
@@ -144,8 +137,8 @@ export async function generateMetadata() {
 
   if (!subdomain) {
     return {
-      title: 'CondoLeads - Toronto Real Estate Agent Platform',
-      description: 'Professional real estate websites for Toronto condo specialists'
+      title: 'CondoLeads - Your Own AI-Powered Condo Website',
+      description: 'Stop sharing leads with competitors. Get your branded website with AI estimates that turn curious buyers into exclusive clients.'
     };
   }
 
