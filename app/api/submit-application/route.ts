@@ -53,7 +53,7 @@ Schedule a 15-minute strategy call to discuss their application.
         'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
       },
       body: JSON.stringify({
-        from: 'CondoLeads <applications@condoleads.ca>',
+        from: 'onboarding@resend.dev',
         to: 'condoleads.ca@gmail.com',
         subject: `🎯 New Application: ${data.fullName} - ${data.marketArea}`,
         text: emailBody
@@ -61,7 +61,9 @@ Schedule a 15-minute strategy call to discuss their application.
     })
 
     if (!response.ok) {
-      throw new Error('Failed to send email')
+      const errorData = await response.json()
+      console.error('Resend API error:', errorData)
+      throw new Error(`Failed to send email: ${JSON.stringify(errorData)}`)
     }
 
     return NextResponse.json({ success: true })
@@ -73,3 +75,4 @@ Schedule a 15-minute strategy call to discuss their application.
     )
   }
 }
+

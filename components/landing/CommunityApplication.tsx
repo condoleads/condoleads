@@ -68,18 +68,29 @@ export default function CommunityApplication() {
     e.preventDefault()
     setIsSubmitting(true)
 
-    // TODO: Replace with actual API call
     const applicationData = {
       ...formData,
       buildings: buildings.filter(b => b.name || b.address)
     }
-    
-    console.log('Application submitted:', applicationData)
 
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/submit-application', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(applicationData)
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to submit')
+      }
+
       setIsSubmitting(false)
       setIsSubmitted(true)
-    }, 2000)
+    } catch (error) {
+      console.error('Submission error:', error)
+      alert('Failed to submit application. Please try again or email hello@condoleads.ca')
+      setIsSubmitting(false)
+    }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -455,4 +466,5 @@ export default function CommunityApplication() {
     </section>
   )
 }
+
 
