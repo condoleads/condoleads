@@ -1,4 +1,4 @@
-﻿'use server'
+'use server'
 
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { headers } from 'next/headers'
@@ -20,7 +20,7 @@ function createServiceClient() {
 
 interface CreateLeadParams {
   agentId: string
-  buildingId: string  // REQUIRED NOW
+  buildingId?: string  // Optional - captured when available
   contactName: string
   contactEmail: string
   contactPhone?: string
@@ -49,7 +49,7 @@ export async function createLead(params: CreateLeadParams) {
     .from('leads')
     .insert({
       agent_id: params.agentId,
-      building_id: params.buildingId,  // NOW REQUIRED
+      building_id: params.buildingId || null,
       contact_name: params.contactName,
       contact_email: params.contactEmail,
       contact_phone: params.contactPhone,
