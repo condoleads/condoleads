@@ -9,7 +9,7 @@ export default function PipelineFlow() {
   const steps = [
     {
       icon: Search,
-      title: 'Buyer Searches',
+      title: 'Buyer/Seller Searches',
       subtitle: 'Google',
       color: 'bg-red-500',
       textColor: 'text-red-600'
@@ -241,3 +241,4 @@ export default function PipelineFlow() {
     </section>
   )
 }
+

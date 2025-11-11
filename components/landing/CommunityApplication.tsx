@@ -132,6 +132,14 @@ export default function CommunityApplication() {
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             We partner with serious Toronto condo specialists. Let's see if we're a fit.
           </p>
+          <div className="mt-8 bg-white rounded-xl p-6 max-w-2xl mx-auto border-2 border-purple-200">
+  <p className="text-lg font-semibold text-gray-900 mb-2">
+    📞 What Happens Next?
+  </p>
+  <p className="text-gray-700">
+    After reviewing your application, we'll schedule a <span className="font-bold">15-minute strategy call</span> to discuss your target buildings, market positioning, and how CondoLeads can help you capture exclusive leads in your niche.
+  </p>
+</div>
         </div>
 
         {/* Application Form */}
@@ -447,3 +455,4 @@ export default function CommunityApplication() {
     </section>
   )
 }
+

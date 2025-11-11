@@ -53,7 +53,7 @@ export default function HeroSection() {
 
         <p className="text-xl md:text-2xl text-blue-100 mb-12 max-w-3xl mx-auto">
           Stop sharing leads with competitors. Get your branded website with AI estimates 
-          that turn curious buyers into exclusive clients.
+          that turn curious buyers & sellers into exclusive clients.
         </p>
 
         <div className="bg-white/10 backdrop-blur-md rounded-2xl p-8 mb-12 max-w-md mx-auto border border-white/20">
@@ -95,3 +95,4 @@ export default function HeroSection() {
     </section>
   )
 }
+
