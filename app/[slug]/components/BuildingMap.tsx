@@ -30,6 +30,7 @@ export default function BuildingMap({ latitude, longitude, buildingName, address
       })
 
       if (!mapInstanceRef.current) {
+        if (!mapRef.current) return;
   const map = L.map(mapRef.current, {
     scrollWheelZoom: false  // Disable scroll zoom
   }).setView([latitude, longitude], 15)
