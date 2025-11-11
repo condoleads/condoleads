@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { getCurrentUser, isAdmin } from '@/lib/auth/helpers'
 
-export async function POST(request) {
+export async function POST(request: NextRequest) {
   const user = await getCurrentUser()
   
   if (!user) {
