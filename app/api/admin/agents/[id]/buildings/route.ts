@@ -19,8 +19,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const agentId = params.id
 
   const supabase = createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
   // Delete existing assignments from BOTH tables
