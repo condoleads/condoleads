@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { getCurrentUser, isAdmin } from '@/lib/auth/helpers'
 
-export async function POST(request, { params }) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   const user = await getCurrentUser()
   
   if (!user) {
