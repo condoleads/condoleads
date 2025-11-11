@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Parse property slug to extract MLS number
  * Example: "101-charles-st-e-unit-2503-c7351578" -> "C7351578"
  */
@@ -30,10 +30,10 @@ export function isBuildingSlug(slug: string): boolean {
  * Example: /101-charles-st-e-unit-2503-c7351578
  */
 export function generatePropertySlug(listing: {
-  unparsed_address?: string
-  listing_key?: string
-  unit_number?: string
-}): string {
+    unparsed_address?: string | null
+    listing_key?: string | null
+    unit_number?: string | null
+  }): string {
   if (!listing.listing_key) {
     return `/property/${listing.listing_key}` // fallback to old format
   }
