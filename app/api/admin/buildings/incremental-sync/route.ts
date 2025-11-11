@@ -1,4 +1,4 @@
-﻿// app/api/admin/buildings/incremental-sync/route.ts
+// app/api/admin/buildings/incremental-sync/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`ðŸ”„ Starting incremental sync for building: ${buildingId}`);
+    console.log(`🔄 Starting incremental sync for building: ${buildingId}`);
 
     // Get building details
     const { data: building, error: buildingError } = await supabase
@@ -37,8 +37,8 @@ export async function POST(request: NextRequest) {
       throw new Error('Building not found');
     }
 
-    console.log(`ðŸ¢ Building: ${building.building_name}`);
-    console.log(`ðŸ“ Address: ${building.street_number} ${building.street_name}`);
+    console.log(`🏢 Building: ${building.building_name}`);
+    console.log(`📍 Address: ${building.street_number} ${building.street_name}`);
 
     // Fetch current listings from PropTx using EXACT batch sync logic
     const proptxListings = await fetchPropTxListings(building);
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       l.StandardStatus !== 'Active' && l.MlsStatus !== 'Active'
     );
 
-    console.log(`ðŸ“Š PropTx: ${proptxActive.length} active, ${proptxInactive.length} inactive`);
+    console.log(`📊 PropTx: ${proptxActive.length} active, ${proptxInactive.length} inactive`);
 
     // Get existing listings from DB
     const { data: dbListings } = await supabase
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       l.standard_status !== 'Active' && l.mls_status !== 'Active'
     ) || [];
 
-    console.log(`ðŸ’¾ Database: ${dbActive.length} active, ${dbInactive.length} inactive`);
+    console.log(`💾 Database: ${dbActive.length} active, ${dbInactive.length} inactive`);
 
     // OPERATION 1: ACTIVE SYNC
     const activeResults = await syncActiveListings(buildingId, proptxActive, dbActive);
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('âŒ Incremental sync failed:', error);
+    console.error('❌ Incremental sync failed:', error);
     return NextResponse.json(
       { error: 'Sync failed', details: error.message },
       { status: 500 }
@@ -133,7 +133,7 @@ async function fetchPropTxListings(building: any) {
     throw new Error('Street number is required for search');
   }
 
-  console.log(`ðŸ” SEARCH STRATEGY - Street Number: ${streetNumber}`);
+  console.log(`🔍 SEARCH STRATEGY - Street Number: ${streetNumber}`);
 
   let allListings: any[] = [];
 
@@ -156,7 +156,7 @@ async function fetchPropTxListings(building: any) {
       allListings.push(...(activeData.value || []));
     }
   } catch (error) {
-    console.error('âŒ Strategy 1 failed:', error);
+    console.error('❌ Strategy 1 failed:', error);
   }
 
   // STRATEGY 2+3: Completed transactions (Closed/Sold/Leased)
@@ -178,13 +178,13 @@ async function fetchPropTxListings(building: any) {
       allListings.push(...(completedData.value || []));
     }
   } catch (error) {
-    console.error('âŒ Strategy 2+3 failed:', error);
+    console.error('❌ Strategy 2+3 failed:', error);
   }
 
-  console.log(`ðŸ“Š Total raw listings collected: ${allListings.length}`);
+  console.log(`📊 Total raw listings collected: ${allListings.length}`);
 
   // Remove duplicates by ListingKey
-  const uniqueListings = [];
+  const uniqueListings: any[] = [];
   const seenKeys = new Set();
 
   allListings.forEach(listing => {
@@ -275,34 +275,34 @@ async function fetchRelatedData(newlyAddedListings: any[]) {
   // Save open houses (EXACT same as batch sync)
   openHouseCount = await saveOpenHouses(enhancedListings);
 
-  console.log(`ðŸ“¸ Media: ${mediaCount}, ðŸ  Rooms: ${roomCount}, ðŸšª Open Houses: ${openHouseCount}`);
+  console.log(`📸 Media: ${mediaCount}, 🏠 Rooms: ${roomCount}, 🚪 Open Houses: ${openHouseCount}`);
   
   return { mediaCount, roomCount, openHouseCount };
 }
 
 // Fetch enhanced data from PropTx API and add to originalListings (modifies in place)
 async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
-  console.log(`ðŸ” Fetching enhanced data for ${originalListings.length} listings...`);
+  console.log(`🔍 Fetching enhanced data for ${originalListings.length} listings...`);
 
   for (const originalListing of originalListings) {
     const listingKey = originalListing.ListingKey;
     
     if (!listingKey) {
-      console.log(`âš ï¸ Skipping listing without ListingKey`);
+      console.log(`⚠️ Skipping listing without ListingKey`);
       originalListing.Media = [];
       originalListing.PropertyRooms = [];
       originalListing.OpenHouses = [];
       continue;
     }
 
-    console.log(`ðŸ” Fetching data for listing: ${listingKey}`);
+    console.log(`🔍 Fetching data for listing: ${listingKey}`);
 
     // Fetch Media
     try {
       const mediaFilter = `ResourceRecordKey eq '${listingKey}'`;
       const mediaUrl = `${PROPTX_API_URL}Media?$filter=${encodeURIComponent(mediaFilter)}&$top=500`;
       
-      console.log(`ðŸ“¸ Fetching media from: ${mediaUrl.substring(0, 100)}...`);
+      console.log(`📸 Fetching media from: ${mediaUrl.substring(0, 100)}...`);
       
       const mediaResponse = await fetch(mediaUrl, {
         headers: {
@@ -314,13 +314,13 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
       if (mediaResponse.ok) {
         const mediaData = await mediaResponse.json();
         originalListing.Media = mediaData.value || [];
-        console.log(`âœ… Found ${originalListing.Media.length} media items for ${listingKey}`);
+        console.log(`✅ Found ${originalListing.Media.length} media items for ${listingKey}`);
       } else {
-        console.error(`âŒ Media fetch failed for ${listingKey}: ${mediaResponse.status}`);
+        console.error(`❌ Media fetch failed for ${listingKey}: ${mediaResponse.status}`);
         originalListing.Media = [];
       }
     } catch (error) {
-      console.error(`âŒ Failed to fetch media for ${listingKey}:`, error);
+      console.error(`❌ Failed to fetch media for ${listingKey}:`, error);
       originalListing.Media = [];
     }
 
@@ -339,13 +339,13 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
       if (roomsResponse.ok) {
         const roomsData = await roomsResponse.json();
         originalListing.PropertyRooms = roomsData.value || [];
-        console.log(`âœ… Found ${originalListing.PropertyRooms.length} rooms for ${listingKey}`);
+        console.log(`✅ Found ${originalListing.PropertyRooms.length} rooms for ${listingKey}`);
       } else {
-        console.error(`âŒ Rooms fetch failed for ${listingKey}: ${roomsResponse.status}`);
+        console.error(`❌ Rooms fetch failed for ${listingKey}: ${roomsResponse.status}`);
         originalListing.PropertyRooms = [];
       }
     } catch (error) {
-      console.error(`âŒ Failed to fetch rooms for ${listingKey}:`, error);
+      console.error(`❌ Failed to fetch rooms for ${listingKey}:`, error);
       originalListing.PropertyRooms = [];
     }
 
@@ -365,23 +365,23 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
         const openHouseData = await openHouseResponse.json();
         originalListing.OpenHouses = openHouseData.value || [];
         if (originalListing.OpenHouses.length > 0) {
-          console.log(`âœ… Found ${originalListing.OpenHouses.length} open houses for ${listingKey}`);
+          console.log(`✅ Found ${originalListing.OpenHouses.length} open houses for ${listingKey}`);
         }
       } else {
         originalListing.OpenHouses = [];
       }
     } catch (error) {
-      console.error(`âŒ Failed to fetch open houses for ${listingKey}:`, error);
+      console.error(`❌ Failed to fetch open houses for ${listingKey}:`, error);
       originalListing.OpenHouses = [];
     }
   }
   
-  console.log(`âœ… Enhanced data fetching complete`);
+  console.log(`✅ Enhanced data fetching complete`);
 }
 
 // EXACT SAME as batch sync save route
 async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
-  console.log('ðŸ’¾ Saving media with 2-variant filtering...');
+  console.log('💾 Saving media with 2-variant filtering...');
   
   let mediaCount = 0;
   const mediaRecords = [];
@@ -418,26 +418,26 @@ async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
     }
   }
   
-  console.log(`ðŸ“Š Total media records prepared: ${mediaRecords.length} from ${savedListings.length} listings`);
+  console.log(`📊 Total media records prepared: ${mediaRecords.length} from ${savedListings.length} listings`);
   
   // Batch insert media
   if (mediaRecords.length > 0) {
-    console.log(`ðŸ’¾ Inserting ${mediaRecords.length} media records...`);
+    console.log(`💾 Inserting ${mediaRecords.length} media records...`);
     const batchSize = 100;
     for (let i = 0; i < mediaRecords.length; i += batchSize) {
       const batch = mediaRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('media').insert(batch);
       if (error) {
-        console.error('âŒ Media insert error:', error);
+        console.error('❌ Media insert error:', error);
       } else {
         mediaCount += batch.length;
       }
     }
   } else {
-    console.log(`âš ï¸ No media records to insert!`);
+    console.log(`⚠️ No media records to insert!`);
   }
   
-  console.log(`âœ… Media saved: ${mediaCount} records`);
+  console.log(`✅ Media saved: ${mediaCount} records`);
   return mediaCount;
 }
 
@@ -486,7 +486,7 @@ function createMediaRecord(listingId: string, media: any, variantType: string, b
 
 // EXACT SAME as batch sync save route
 async function savePropertyRooms(enhancedListings: any[]) {
-  console.log('ðŸ’¾ Saving property rooms...');
+  console.log('💾 Saving property rooms...');
   
   let roomCount = 0;
   const roomRecords = [];
@@ -523,26 +523,26 @@ async function savePropertyRooms(enhancedListings: any[]) {
   }
   
   if (roomRecords.length > 0) {
-    console.log(`ðŸ’¾ Inserting ${roomRecords.length} room records...`);
+    console.log(`💾 Inserting ${roomRecords.length} room records...`);
     const batchSize = 100;
     for (let i = 0; i < roomRecords.length; i += batchSize) {
       const batch = roomRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('property_rooms').insert(batch);
       if (error) {
-        console.error('âŒ Rooms insert error:', error);
+        console.error('❌ Rooms insert error:', error);
       } else {
         roomCount += batch.length;
       }
     }
   }
   
-  console.log(`âœ… Rooms saved: ${roomCount} records`);
+  console.log(`✅ Rooms saved: ${roomCount} records`);
   return roomCount;
 }
 
 // EXACT SAME as batch sync save route
 async function saveOpenHouses(enhancedListings: any[]) {
-  console.log('ðŸ’¾ Saving open houses...');
+  console.log('💾 Saving open houses...');
   
   let openHouseCount = 0;
   const openHouseRecords = [];
@@ -568,20 +568,20 @@ async function saveOpenHouses(enhancedListings: any[]) {
   }
   
   if (openHouseRecords.length > 0) {
-    console.log(`ðŸ’¾ Inserting ${openHouseRecords.length} open house records...`);
+    console.log(`💾 Inserting ${openHouseRecords.length} open house records...`);
     const batchSize = 100;
     for (let i = 0; i < openHouseRecords.length; i += batchSize) {
       const batch = openHouseRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('open_houses').insert(batch);
       if (error) {
-        console.error('âŒ Open houses insert error:', error);
+        console.error('❌ Open houses insert error:', error);
       } else {
         openHouseCount += batch.length;
       }
     }
   }
   
-  console.log(`âœ… Open houses saved: ${openHouseCount} records`);
+  console.log(`✅ Open houses saved: ${openHouseCount} records`);
   return openHouseCount;
 }
 
@@ -598,7 +598,7 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
 
   // SAFETY CHECK: If PropTx returned 0 active listings, don't delete anything!
   if (proptxActive.length === 0 && dbActive.length > 0) {
-    console.warn(`âš ï¸ WARNING: PropTx returned 0 active listings but DB has ${dbActive.length}. Skipping DELETE to prevent data loss!`);
+    console.warn(`⚠️ WARNING: PropTx returned 0 active listings but DB has ${dbActive.length}. Skipping DELETE to prevent data loss!`);
     results.unchanged = dbActive.length;
     return results;
   }
@@ -607,7 +607,7 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
   const proptxMap = new Map(proptxActive.map(l => [l.ListingKey, l]));
   const dbMap = new Map(dbActive.map(l => [l.listing_key, l]));
 
-  console.log(`ðŸ”„ Active Sync: PropTx has ${proptxMap.size}, DB has ${dbMap.size}`);
+  console.log(`🔄 Active Sync: PropTx has ${proptxMap.size}, DB has ${dbMap.size}`);
 
   // UPDATE: Listings in both (check for changes)
   for (const [listingKey, proptxListing] of proptxMap) {
@@ -633,7 +633,7 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
           .eq('id', dbListing.id);
 
         results.updated++;
-        console.log(`âœï¸ Updated: ${listingKey} (price: ${dbPrice} â†’ ${proptxPrice})`);
+        console.log(`✏️ Updated: ${listingKey} (price: ${dbPrice} → ${proptxPrice})`);
       } else {
         results.unchanged++;
       }
@@ -654,10 +654,10 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
         .single();
 
       if (error) {
-        console.error(`âŒ Failed to add ${listingKey}:`, error);
+        console.error(`❌ Failed to add ${listingKey}:`, error);
       } else {
         results.added++;
-        console.log(`âž• Added: ${listingKey}`);
+        console.log(`➕ Added: ${listingKey}`);
         // Store for media/rooms/open houses sync
         newlyAddedListings.push({ savedListing: data, originalListing: proptxListing });
       }
@@ -674,16 +674,16 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
           .eq('id', dbListing.id);
 
         results.removed++;
-        console.log(`ðŸ—‘ï¸ Removed: ${listingKey} (no longer active)`);
+        console.log(`🗑️ Removed: ${listingKey} (no longer active)`);
       }
     }
   }
 
-  console.log(`âœ… Active Results: +${results.added} âœï¸${results.updated} ðŸ—‘ï¸${results.removed} âºï¸${results.unchanged}`);
+  console.log(`✅ Active Results: +${results.added} ✏️${results.updated} 🗑️${results.removed} ⏺️${results.unchanged}`);
   
   // Fetch and save media/rooms/open houses for newly added listings
   if (newlyAddedListings.length > 0) {
-    console.log(`ðŸ“¸ Fetching media/rooms/open houses for ${newlyAddedListings.length} new listings...`);
+    console.log(`📸 Fetching media/rooms/open houses for ${newlyAddedListings.length} new listings...`);
     
     // Separate into savedListings and originalListings arrays (EXACT same structure as batch sync)
     const savedListingsArray = newlyAddedListings.map(item => item.savedListing);
@@ -713,7 +713,7 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
   const dbMap = new Map(dbInactive.map(l => [l.listing_key, l]));
   const newlyAddedInactiveListings: any[] = [];
 
-  console.log(`ðŸ“¥ Inactive Sync: PropTx has ${proptxInactive.length}, DB has ${dbMap.size}`);
+  console.log(`📥 Inactive Sync: PropTx has ${proptxInactive.length}, DB has ${dbMap.size}`);
 
   // INSERT ONLY: Add new inactive listings, never delete
   for (const proptxListing of proptxInactive) {
@@ -729,10 +729,10 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
         .single();
 
       if (error) {
-        console.error(`âŒ Failed to add inactive ${listingKey}:`, error);
+        console.error(`❌ Failed to add inactive ${listingKey}:`, error);
       } else {
         results.added++;
-        console.log(`ðŸ“¥ Added inactive: ${listingKey}`);
+        console.log(`📥 Added inactive: ${listingKey}`);
         // Store for media/rooms/open houses sync
         newlyAddedInactiveListings.push({ savedListing: data, originalListing: proptxListing });
       }
@@ -743,7 +743,7 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
 
   // Fetch and save media/rooms/open houses for newly added inactive listings
   if (newlyAddedInactiveListings.length > 0) {
-    console.log(`ðŸ“¸ Fetching media/rooms/open houses for ${newlyAddedInactiveListings.length} new inactive listings...`);
+    console.log(`📸 Fetching media/rooms/open houses for ${newlyAddedInactiveListings.length} new inactive listings...`);
     
     const savedListingsArray = newlyAddedInactiveListings.map(item => item.savedListing);
     const originalListingsArray = newlyAddedInactiveListings.map(item => item.originalListing);
@@ -757,7 +757,7 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
     results.openHousesAdded = await saveOpenHouses(savedListingsArray, originalListingsArray);
   }
 
-  console.log(`âœ… Inactive Results: +${results.added} â­ï¸${results.skipped}`);
+  console.log(`✅ Inactive Results: +${results.added} ⏭️${results.skipped}`);
   return results;
 }
 
