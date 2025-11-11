@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   // Insert new assignments to BOTH tables
   if (buildingIds.length > 0) {
     // Insert to building_agents (new table)
-    const buildingAgentsData = buildingIds.map(function(buildingId) {
+    const buildingAgentsData = buildingIds.map(function(buildingId: string) {
       return {
         agent_id: agentId,
         building_id: buildingId
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     // Insert to agent_buildings (home page table)
-    const agentBuildingsData = buildingIds.map(function(buildingId) {
+    const agentBuildingsData = buildingIds.map(function(buildingId: string) {
       return {
         agent_id: agentId,
         building_id: buildingId,
