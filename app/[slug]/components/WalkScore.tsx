@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 interface WalkScoreProps {
   latitude: number
@@ -22,6 +22,7 @@ export default function WalkScore({ latitude, longitude, address, buildingName }
           </p>
           
           
+          <a
             href={walkScoreLink}
             target="_blank"
             rel="noopener noreferrer"
