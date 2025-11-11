@@ -6,6 +6,7 @@ export interface Building {
   total_units: number | null
   total_floors: number | null
   year_built: number | null
+  city_district: string | null
 }
 
 export interface MLSListing {
