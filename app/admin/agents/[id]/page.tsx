@@ -3,7 +3,7 @@ import { getCurrentUser, isAdmin } from '@/lib/auth/helpers'
 import { createClient } from '@/lib/supabase/server'
 import AgentBuildingsClient from '@/components/admin/AgentBuildingsClient'
 
-export default async function AgentDetailPage({ params }) {
+export default async function AgentDetailPage({ params }: { params: { id: string } }) {
   const user = await getCurrentUser()
   
   if (!user) {
