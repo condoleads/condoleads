@@ -65,7 +65,7 @@ export default async function AgentDetailPage({ params }: { params: { id: string
     
     const otherAgents = assignments
       .filter(function(a) { return a.agent_id !== params.id })
-      .map(function(a) { return a.agents.full_name })
+      .map(function(a: any) { return a.agents.full_name })
     
     return {
       ...building,
