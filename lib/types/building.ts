@@ -1,4 +1,4 @@
-﻿export interface Building {
+export interface Building {
   id: string
   building_name: string
   canonical_address: string
@@ -20,6 +20,7 @@ export interface MLSListing {
   bedrooms_total: number
   bathrooms_total_integer: number
   building_area_total: number | null
+  square_foot_source: string | null
   living_area_range: string | null
   association_fee: number | null
   association_amenities: string[]
