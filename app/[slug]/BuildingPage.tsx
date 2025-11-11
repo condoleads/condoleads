@@ -308,14 +308,14 @@ export default async function BuildingPage({ params }: { params: { slug: string 
               />
             </div>
             
-            <div id="location">
+            {/* <div id="location">
               <BuildingMap
                 latitude={building.latitude}
                 longitude={building.longitude}
                 buildingName={building.building_name}
                 address={building.full_address}
               />
-            </div>
+            </div> */}
 
             <div id="reviews">
               <BuildingReviews

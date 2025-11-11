@@ -20,11 +20,11 @@ export default function BuildingSchema({ building, activeSales, activeRentals, a
       "addressRegion": "ON",
       "addressCountry": "CA"
     },
-    "geo": building.latitude && building.longitude ? {
-      "@type": "GeoCoordinates",
-      "latitude": building.latitude,
-      "longitude": building.longitude
-    } : undefined,
+    // "geo": building.latitude && building.longitude ? {
+   //   "@type": "GeoCoordinates",
+   //   "latitude": building.latitude,
+  //   "longitude": building.longitude
+  // } : undefined,
     "numberOfUnits": building.total_units,
     "yearBuilt": building.year_built,
     "offers": activeSales.length > 0 ? {
