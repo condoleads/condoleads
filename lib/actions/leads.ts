@@ -26,6 +26,10 @@ interface CreateLeadParams {
   contactPhone?: string
   message?: string
   source?: string
+  sourceUrl?: string
+  listingId?: string
+  estimatedValueMin?: number
+  estimatedValueMax?: number
   propertyDetails?: any
 }
 
@@ -50,7 +54,12 @@ export async function createLead(params: CreateLeadParams) {
     .insert({
       agent_id: params.agentId,
       building_id: params.buildingId || null,
-      contact_name: params.contactName,
+        listing_id: params.listingId || null,
+        source_url: params.sourceUrl || null,
+        estimated_value_min: params.estimatedValueMin || null,
+        estimated_value_max: params.estimatedValueMax || null,
+        property_details: params.propertyDetails || null,
+        contact_name: params.contactName,
       contact_email: params.contactEmail,
       contact_phone: params.contactPhone,
       message: params.message,
