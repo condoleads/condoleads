@@ -19,7 +19,7 @@ export default function BuildingMap({ latitude, longitude, buildingName, address
 
     const initMap = async () => {
       const L = (await import('leaflet')).default
-      await import('leaflet/dist/leaflet.css')
+      // await import('leaflet/dist/leaflet.css')
 
       // Fix for default marker icons
       delete (L.Icon.Default.prototype as any)._getIconUrl
