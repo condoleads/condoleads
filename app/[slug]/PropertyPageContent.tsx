@@ -2,7 +2,7 @@
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
 import { parsePropertySlug } from '@/lib/utils/slugs'
-import PropertyPageClient from '../../property/[id]/PropertyPageClient'
+import PropertyPageClient from '../property/[id]/PropertyPageClient'
 import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
 import AgentContactForm from '@/components/property/AgentContactForm'
 import BuildingInfo from '@/components/property/BuildingInfo'
