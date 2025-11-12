@@ -35,7 +35,7 @@ export default function AgentBuildingsClient({ agent, allBuildings, assignedBuil
            building.canonical_address?.toLowerCase().includes(searchTerm.toLowerCase())
   })
 
-  function toggleBuilding(buildingId) {
+  function toggleBuilding(buildingId: string) {
     if (assigned.includes(buildingId)) {
       setAssigned(assigned.filter(function(id) { return id !== buildingId }))
     } else {
