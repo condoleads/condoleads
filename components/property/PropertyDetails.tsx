@@ -116,7 +116,7 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
           {false && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Listed On</span>
-              <span className="font-semibold text-slate-900">{formatDate(false)}</span>
+              <span className="font-semibold text-slate-900">{formatDate(null)}</span>
             </div>
           )}
           
