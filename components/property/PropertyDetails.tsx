@@ -113,10 +113,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             <span className="font-semibold text-slate-900">{listing.living_area_range || '-'}</span>
           </div>
           
-          {null /* listing_contract_date not in MLSListing */ && (
+          {false && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Listed On</span>
-              <span className="font-semibold text-slate-900">{formatDate(null /* listing_contract_date not in MLSListing */)}</span>
+              <span className="font-semibold text-slate-900">{formatDate(false)}</span>
             </div>
           )}
           
