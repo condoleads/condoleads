@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { X, Upload } from 'lucide-react'
 
-export default function AddAgentModal({ isOpen, onClose, onSuccess }) {
+export default function AddAgentModal({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose: () => void; onSuccess: () => void }) {
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
