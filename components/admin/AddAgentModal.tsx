@@ -41,7 +41,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: { isOpen: 
     })
   }
 
-  function handlePhotoChange(e) {
+  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) {
       const reader = new FileReader()
