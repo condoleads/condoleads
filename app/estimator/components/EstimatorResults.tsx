@@ -57,7 +57,7 @@ export default function EstimatorResults({
     // Only create lead if agentId is provided (agent context)
     if (!agentId) {
       console.log(' No agentId - skipping lead creation (public context)')
-      setContactSubmitted(true)
+      setSubmitted(true)
       setShowContactForm(false)
       return
     }
