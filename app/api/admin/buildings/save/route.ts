@@ -1,4 +1,4 @@
-﻿// app/api/admin/buildings/save/route.ts
+// app/api/admin/buildings/save/route.ts
 // COMPLETE DLA FIELD MAPPING - All 470+ fields
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -22,8 +22,8 @@ export async function POST(request: NextRequest) {
     console.log(` First listing has PropertyRooms: ${listingsData[0]?.PropertyRooms?.length || 0}`);
     console.log(` First listing has OpenHouses: ${listingsData[0]?.OpenHouses?.length || 0}`);
     
-    console.log(`ðŸš€ Starting complete DLA sync for ${buildingData.buildingName}`);
-    console.log(`ðŸ“Š Processing ${listingsData.length} listings`);
+    console.log(`🚀 Starting complete DLA sync for ${buildingData.buildingName}`);
+    console.log(`📊 Processing ${listingsData.length} listings`);
     
     const startTime = Date.now();
     
@@ -49,23 +49,23 @@ export async function POST(request: NextRequest) {
       }
       building = existingBuilding;
     }
-    console.log(`âœ… Building saved: ${building.id}`);
+    console.log(`✅ Building saved: ${building.id}`);
     
     // STEP 3: Save listings with COMPLETE DLA mapping
     const savedListings = await saveListingsWithCompleteDLAMapping(building.id, listingsData);
-    console.log(`âœ… Listings saved: ${savedListings.length}`);
+    console.log(`✅ Listings saved: ${savedListings.length}`);
     
     // STEP 4: Save media (2 variants only - thumbnail + large)
     const mediaCount = await saveMediaWithVariantFiltering(savedListings, listingsData);
-    console.log(`âœ… Media saved: ${mediaCount} records`);
+    console.log(`✅ Media saved: ${mediaCount} records`);
     
     // STEP 5: Save rooms
     const roomCount = await savePropertyRooms(savedListings, listingsData);
-    console.log(`âœ… Rooms saved: ${roomCount} records`);
+    console.log(`✅ Rooms saved: ${roomCount} records`);
     
     // STEP 6: Save open houses
     const openHouseCount = await saveOpenHouses(savedListings, listingsData);
-    console.log(`âœ… Open houses saved: ${openHouseCount} records`);
+    console.log(`✅ Open houses saved: ${openHouseCount} records`);
     
     // STEP 7: Create sync history
     const duration = (Date.now() - startTime) / 1000;
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     });
     
   } catch (error: any) {
-    console.error('âŒ Complete DLA save failed:', error);
+    console.error('❌ Complete DLA save failed:', error);
     return NextResponse.json(
       { 
         error: 'Save failed',
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
 
 // STEP 1: Force clean existing building data
 async function forceCleanBuildingBySlug(slug: string) {
-  console.log(`ðŸ§¹ Force cleaning building by slug: ${slug}`);
+  console.log(`🧹 Force cleaning building by slug: ${slug}`);
   
   const { data: existingBuilding } = await supabase
     .from('buildings')
@@ -140,7 +140,7 @@ async function forceCleanBuildingBySlug(slug: string) {
     await supabase.from('sync_history').delete().eq('building_id', existingBuilding.id);
     
     // Keep the building, just cleaned its data
-    console.log(`âœ… Cleaned building data, keeping ID: ${existingBuilding.id}`);
+    console.log(`✅ Cleaned building data, keeping ID: ${existingBuilding.id}`);
     return existingBuilding.id; // Return existing building ID
   }
   
@@ -149,7 +149,7 @@ async function forceCleanBuildingBySlug(slug: string) {
 
 // STEP 2: Save building data
 async function saveBuildingData(buildingData: any) {
-  console.log('ðŸ’¾ Saving building...');
+  console.log('💾 Saving building...');
   
   // Check if building already exists (and clean its data)
   const existingBuildingId = await forceCleanBuildingBySlug(buildingData.slug);
@@ -177,7 +177,7 @@ async function saveBuildingData(buildingData: any) {
       .single();
     
     if (error) throw error;
-    console.log(`âœ… Updated existing building: ${existingBuildingId}`);
+    console.log(`✅ Updated existing building: ${existingBuildingId}`);
     return data;
   } else {
     // INSERT new building (create new ID)
@@ -193,7 +193,7 @@ async function saveBuildingData(buildingData: any) {
       .single();
     
     if (error) throw error;
-    console.log(`âœ… Created new building: ${data.id}`);
+    console.log(`✅ Created new building: ${data.id}`);
     return data;
   }
 }
@@ -812,7 +812,7 @@ function determineVOWAccess(listing: any): boolean {
 
 // STEP 4: Save media with 2-variant filtering
 async function saveMediaWithVariantFiltering(savedListings: any[], originalListings: any[]) {
-  console.log('ðŸ’¾ Saving media with 2-variant filtering...');
+  console.log('💾 Saving media with 2-variant filtering...');
   
   let mediaCount = 0;
   const mediaRecords = [];
@@ -828,8 +828,8 @@ async function saveMediaWithVariantFiltering(savedListings: any[], originalListi
       
       // Extract only thumbnail and large variants
       for (const [baseId, variants] of Object.entries(grouped)) {
-        const thumbnail = variants.find((v: any) => v.ImageSizeDescription === 'Thumbnail');
-        const large = variants.find((v: any) => v.ImageSizeDescription === 'Large');
+        const thumbnail = (variants as any[]).find((v: any) => v.ImageSizeDescription === 'Thumbnail');
+        const large = (variants as any[]).find((v: any) => v.ImageSizeDescription === 'Large');
         
         if (thumbnail) {
           mediaRecords.push(createMediaRecord(savedListing.id, thumbnail, 'thumbnail', baseId.substring(0, 100)));
@@ -897,7 +897,7 @@ function createMediaRecord(listingId: string, media: any, variantType: string, b
 
 // STEP 5: Save property rooms
 async function savePropertyRooms(savedListings: any[], originalListings: any[]) {
-  console.log('ðŸ’¾ Saving property rooms...');
+  console.log('💾 Saving property rooms...');
   
   let roomCount = 0;
   const roomRecords = [];
@@ -956,7 +956,7 @@ async function savePropertyRooms(savedListings: any[], originalListings: any[]) 
 
 // STEP 6: Save open houses
 async function saveOpenHouses(savedListings: any[], originalListings: any[]) {
-  console.log('ðŸ’¾ Saving open houses...');
+  console.log('💾 Saving open houses...');
   
   let openHouseCount = 0;
   const openHouseRecords = [];
