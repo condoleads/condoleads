@@ -96,13 +96,13 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
           </>
         ) : (
           <>
-            <div className={`w-full h-full ${badge.color}`} />
+            <div className={`w-full h-full ${badge.bgColor}`} />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
           </>
         )}
 
         <div className="absolute top-4 left-4 z-10">
-          <span className={`px-3 py-1.5 backdrop-blur-sm rounded-full text-sm font-semibold ${badge.color} text-white`}>
+          <span className={`px-3 py-1.5 backdrop-blur-sm rounded-full text-sm font-semibold ${badge.bgColor} text-white`}>
             {badge.text}
           </span>
         </div>
