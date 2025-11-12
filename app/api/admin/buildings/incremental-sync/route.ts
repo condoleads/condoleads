@@ -695,8 +695,8 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
     
     // Save using EXACT same functions as batch sync
     results.mediaAdded = await saveMediaWithVariantFiltering(newlyAddedListings);
-    results.roomsAdded = await savePropertyRooms(newlyAddedInactiveListings);
-    results.openHousesAdded = await saveOpenHouses(newlyAddedInactiveListings);
+    results.roomsAdded = await savePropertyRooms(newlyAddedListings);
+    results.openHousesAdded = await saveOpenHouses(newlyAddedListings);
   }
   
   return results;
