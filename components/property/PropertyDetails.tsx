@@ -128,7 +128,7 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Maintenance Fees</span>
               <span className="font-semibold text-slate-900">
-                ${Math.round(listing.association_fee).toLocaleString()}/month
+                  {`$${Math.round(listing.association_fee).toLocaleString()}/month`}
               </span>
             </div>
           )}
@@ -137,7 +137,7 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Property Tax</span>
               <span className="font-semibold text-slate-900">
-                ${Math.round(listing.tax_annual_amount).toLocaleString()}/year
+                  {`$${Math.round(listing.tax_annual_amount).toLocaleString()}/year`}
               </span>
             </div>
           )}
