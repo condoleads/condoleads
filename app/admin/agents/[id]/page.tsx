@@ -53,9 +53,7 @@ export default async function AgentDetailPage({ params }: { params: { id: string
     .select('building_id, buildings(id, building_name, canonical_address, total_units)')
     .eq('agent_id', params.id)
 
-  const assignedBuildings = (currentAgentAssignments || []).map(function(a) { 
-    return a.buildings 
-  }).filter(function(b) { return b !== null })
+  const assignedBuildings = ((currentAgentAssignments || []).map(function(a: any) { return a.buildings }).filter(function(b) { return b !== null }) as any)
 
   // Add assignment info to each building
   const buildingsWithAssignments = (allBuildings || []).map(function(building) {
