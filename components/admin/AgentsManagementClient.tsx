@@ -4,7 +4,26 @@ import { useState } from 'react'
 import { Users, Mail, Phone, TrendingUp, Building2, Plus } from 'lucide-react'
 import AddAgentModal from './AddAgentModal'
 
-export default function AgentsManagementClient({ agents }) {
+interface Agent {
+  id: string
+  full_name: string
+  email: string
+  phone: string | null
+  subdomain: string
+  profile_photo_url: string | null
+  bio: string | null
+  is_active: boolean
+  created_at: string
+  total_leads: number
+  new_leads: number
+  hot_leads: number
+  assigned_buildings: number
+}
+
+interface AgentsManagementClientProps {
+  agents: Agent[]
+}
+export default function AgentsManagementClient({ agents }: AgentsManagementClientProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
