@@ -32,7 +32,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: { isOpen: 
       .substring(0, 30)
   }
 
-  function handleNameChange(e) {
+  function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const name = e.target.value
     setFormData({
       ...formData,
