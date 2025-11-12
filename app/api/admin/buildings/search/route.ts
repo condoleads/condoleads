@@ -261,7 +261,7 @@ export async function POST(request: NextRequest) {
 }
 
 
-function filterTwoVariants(allMediaItems) {
+function filterTwoVariants(allMediaItems: any[]) {
   if (!allMediaItems || allMediaItems.length === 0) return [];
   
   console.log(` Filtering ${allMediaItems.length} media items to two variants...`);
