@@ -13,6 +13,7 @@ interface Agent {
   profile_photo_url: string | null
   bio: string | null
   is_active: boolean
+  role: string | null
   created_at: string
   total_leads: number
   new_leads: number
