@@ -85,10 +85,10 @@ export async function createLead(params: CreateLeadParams) {
     await sendLeadNotificationToAgent({
       agentEmail: params.contactEmail,
       leadId: lead.id,
-      contactName: params.contactName,
-      contactEmail: params.contactEmail,
+      agentName: agent?.full_name || "Agent",
+      leadName: params.contactName,
+      leadEmail: params.contactEmail,
       source: source
-    })
   } catch (emailError) {
     console.error(' Error sending notification email:', emailError)
   }
