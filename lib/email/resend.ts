@@ -1,4 +1,4 @@
-﻿import { Resend } from 'resend'
+import { Resend } from 'resend'
 
 // Initialize Resend - this should only run server-side
 const getResendClient = () => {
@@ -13,6 +13,7 @@ const getResendClient = () => {
 
 interface SendLeadNotificationParams {
   agentEmail: string
+  leadId: string
   agentName: string
   leadName: string
   leadEmail: string
