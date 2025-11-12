@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { sendLeadNotificationToAgent } from '@/lib/email/resend'
 
 export async function POST(request: NextRequest) {
@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
 
     const result = await sendLeadNotificationToAgent({
       agentEmail: testEmail,
+      leadId: 'test-lead-id',
       agentName: 'Mary Smith',
       leadName: 'Test Lead',
       leadEmail: 'testlead@example.com',
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
   } catch (error: any) {
-    console.error('❌ Error in test-email API:', error)
+    console.error('? Error in test-email API:', error)
     return NextResponse.json({ 
       success: false, 
       error: error.message 
