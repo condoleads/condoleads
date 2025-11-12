@@ -52,7 +52,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: { isOpen: 
     }
   }
 
-  async function handleSubmit(e) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
     setError('')
