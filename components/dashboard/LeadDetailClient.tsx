@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
@@ -24,7 +24,7 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
   const [tags, setTags] = useState(lead.tags || [])
   const [notes, setNotes] = useState(initialNotes)
   const [newNote, setNewNote] = useState('')
-  const [followUpDate, setFollowUpDate] = useState(lead.follow_up_date || '')
+  const [followUpDate, setFollowUpDateLocal] = useState(lead.follow_up_date || '')
   const [newTag, setNewTag] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -77,7 +77,7 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
   }
 
   async function handleFollowUpChange(date: string) {
-    setFollowUpDate(date)
+    setFollowUpDateLocal(date)
     await setFollowUpDate(lead.id, date)
   }
 
