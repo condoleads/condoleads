@@ -89,8 +89,8 @@ export async function createLead(params: CreateLeadParams) {
       leadName: params.contactName,
       leadEmail: params.contactEmail,
       source: source
+    })
   } catch (emailError) {
-    console.error(' Error sending notification email:', emailError)
   }
 
   return { success: true, lead }
