@@ -96,13 +96,13 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
           </>
         ) : (
           <>
-            <div className={\w-full h-full \\} />
+            <div className={`w-full h-full ${badge.color}`} />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
           </>
         )}
 
         <div className="absolute top-4 left-4 z-10">
-          <span className={\px-3 py-1.5 backdrop-blur-sm rounded-full text-sm font-semibold \ text-white\}>
+          <span className={`px-3 py-1.5 backdrop-blur-sm rounded-full text-sm font-semibold ${badge.color} text-white`}>
             {badge.text}
           </span>
         </div>
@@ -181,7 +181,7 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
             >
               Value Estimate
             </button>
-            <button className={\lex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors border-\-600 text-\-600 hover:bg-\-600 hover:text-white\}>
+            <button className={`flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors ${badge.buttonClass}`}>
               View Details
             </button>
           </div>
