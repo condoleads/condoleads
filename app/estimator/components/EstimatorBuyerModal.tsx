@@ -187,16 +187,16 @@ export default function EstimatorBuyerModal({
                       <span>Base Rent:</span>
                       <span className="font-semibold">${result.estimatedPrice.toLocaleString()}</span>
                     </div>
-                    {result.parkingCost > 0 && (
+                    {(result.parkingCost as number) > 0 && (
                       <div className="flex justify-between text-slate-600">
                         <span>Parking ({listing.parking_total} space):</span>
-                        <span>+${result.parkingCost}</span>
+                        <span>+${(result.parkingCost as number)}</span>
                       </div>
                     )}
-                    {result.lockerCost > 0 && (
+                    {(result.lockerCost as number) > 0 && (
                       <div className="flex justify-between text-slate-600">
                         <span>Locker:</span>
-                        <span>+${result.lockerCost}</span>
+                        <span>+${(result.lockerCost as number)}</span>
                       </div>
                     )}
                     <div className="flex justify-between pt-2 border-t border-blue-300 font-bold">
