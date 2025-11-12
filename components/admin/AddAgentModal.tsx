@@ -25,7 +25,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: { isOpen: 
   const [error, setError] = useState('')
   const [photoPreview, setPhotoPreview] = useState('')
 
-  function generateSubdomain(fullName) {
+  function generateSubdomain(fullName: string) {
     return fullName
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '')
