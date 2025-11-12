@@ -72,19 +72,19 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
                 <button
                   onClick={prevPhoto}
                   className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
-                  aria-label=\"Previous photo\"
+                  aria-label="Previous photo"
                 >
-                  <svg className="w-6 h-6" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-                    <path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M15 19l-7-7 7-7\" />
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
                 </button>
                 <button
                   onClick={nextPhoto}
                   className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
-                  aria-label=\"Next photo\"
+                  aria-label="Next photo"
                 >
-                  <svg className="w-6 h-6" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\">
-                    <path strokeLinecap=\"round\" strokeLinejoin=\"round\" strokeWidth={2} d=\"M9 5l7 7-7 7\" />
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
 
