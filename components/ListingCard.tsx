@@ -62,7 +62,7 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
           <>
             <img
               src={photos[currentPhotoIndex].media_url}
-              alt={`Unit ${listing.unit_number} - Photo ${currentPhotoIndex + 1}`
+              alt={`Unit ${listing.unit_number} - Photo ${currentPhotoIndex + 1}`}
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
