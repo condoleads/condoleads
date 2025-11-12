@@ -19,7 +19,7 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
   // Extract additional details
   const hasEnsuitelaundry = false // laundry_features not in MLSListing type
   const architecturalStyle = null // architectural_style not in MLSListing type
-  const parkingType = listing.parking_features?.[0] || 'None'
+  const parkingType = 'None' // parking_features not in MLSListing type
   
   const formatDate = (dateString: string | null) => {
     if (!dateString) return null
