@@ -39,7 +39,7 @@ export default function AgentContactForm({ listing, status, isSale, agent }: Age
 
     // Build context-aware message
     const unitInfo = `${listing.unit_number || 'Unit'} - ${listing.bedrooms_total}BR/${listing.bathrooms_total_integer}BA`
-    const buildingInfo = listing.buildings?.name || listing.unparsed_address
+    const buildingInfo = listing.unparsed_address
     const fullMessage = formData.message 
       ? `${formData.message} (Re: ${unitInfo} at ${buildingInfo})`
       : `Inquiry about ${unitInfo} at ${buildingInfo}`
