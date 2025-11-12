@@ -32,7 +32,7 @@ export function HomePage({ agent, buildings }: HomePageProps) {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <HeroSection agent={agent} />
+      <HeroSection agent={agent as any} />
       
       {/* How It Works */}
       <HowItWorks />
