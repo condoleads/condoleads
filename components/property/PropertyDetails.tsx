@@ -58,10 +58,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
       <div className="border-t border-slate-200 pt-6">
         <div className="grid md:grid-cols-2 gap-x-8 gap-y-3">
           
-          {listing.neighborhood && (
+          {'' /* neighborhood not in MLSListing */ && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Neighbourhood</span>
-              <span className="font-semibold text-slate-900">{listing.neighborhood}</span>
+              <span className="font-semibold text-slate-900">{'' /* neighborhood not in MLSListing */}</span>
             </div>
           )}
           
@@ -80,10 +80,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             <span className="font-semibold text-slate-900">{hasLocker ? 'Yes' : 'No'}</span>
           </div>
           
-          {listing.heat_type && (
+          {null /* heat_type not in MLSListing */ && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Heating Type</span>
-              <span className="font-semibold text-slate-900">{listing.heat_type}</span>
+              <span className="font-semibold text-slate-900">{null /* heat_type not in MLSListing */}</span>
             </div>
           )}
           
@@ -101,10 +101,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             </div>
           )}
           
-          {listing.condo_corp_number && (
+          {null /* condo_corp_number not in MLSListing */ && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Corp #</span>
-              <span className="font-semibold text-slate-900">TSCC-{listing.condo_corp_number}</span>
+              <span className="font-semibold text-slate-900">TSCC-{null /* condo_corp_number not in MLSListing */}</span>
             </div>
           )}
           
@@ -145,14 +145,14 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
       </div>
       
       {/* Building Info */}
-      {listing.buildings && (
+      {null /* buildings not in MLSListing */ && (
         <div className="border-t border-slate-200 mt-6 pt-6">
           <h3 className="text-lg font-bold text-slate-900 mb-3">Building Information</h3>
           <p className="text-slate-700 mb-2">
-            <span className="font-semibold">{listing.buildings.name}</span>
+            <span className="font-semibold">{null /* buildings not in MLSListing */.name}</span>
           </p>
           <a 
-            href={`/${listing.buildings.slug}`}
+            href={`/${null /* buildings not in MLSListing */.slug}`}
             className="text-emerald-600 hover:text-emerald-700 font-semibold text-sm"
           >
             View All Units in This Building ?
