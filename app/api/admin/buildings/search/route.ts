@@ -303,7 +303,7 @@ function filterTwoVariants(allMediaItems: any[]) {
     );
     
     // Find large (1920x1920) - must have valid URL
-    const large = variants.find(v =>
+    const large = variants.find((v: any) =>
       v.MediaURL && (
         v.MediaURL.includes('rs:fit:1920:1920') ||
         v.ImageSizeDescription === 'Large'
