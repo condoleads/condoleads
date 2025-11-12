@@ -1,4 +1,4 @@
-﻿import { redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import { requireAgent } from '@/lib/auth/helpers'
 import { createClient } from '@/lib/supabase/server'
 import { getLeadNotes, getAgentBuildings } from '@/lib/actions/lead-management'
@@ -78,7 +78,6 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           lead={lead} 
           agent={agent} 
           initialNotes={notes}
-          buildings={buildings}
         />
       </div>
     </div>
