@@ -3,7 +3,29 @@
 import { useState } from 'react'
 import { Building2, Check, ArrowLeft, Users } from 'lucide-react'
 
-export default function AgentBuildingsClient({ agent, allBuildings, assignedBuildings }) {
+interface AgentBuildingsClientProps {
+  agent: {
+    id: string
+    full_name: string
+    email: string
+    subdomain: string
+  }
+  allBuildings: Array<{
+    id: string
+    building_name: string
+    canonical_address: string
+    total_units: number
+    assignedToOthers: string[]
+    assignmentCount: number
+  }>
+  assignedBuildings: Array<{
+    id: string
+    building_name: string
+    canonical_address: string
+    total_units: number
+  }>
+}
+export default function AgentBuildingsClient({ agent, allBuildings, assignedBuildings }: AgentBuildingsClientProps) {
   const [assigned, setAssigned] = useState(assignedBuildings.map(function(b) { return b.id }))
   const [searchTerm, setSearchTerm] = useState('')
   const [saving, setSaving] = useState(false)
