@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -85,14 +85,14 @@ export default function DashboardLayout({ children, agent }: DashboardLayoutProp
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
             {navigation.map((item) => (
-              
+              <Link
                 key={item.name}
                 href={item.href}
                 className="flex items-center space-x-3 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <item.icon className="w-5 h-5" />
                 <span className="text-sm font-medium">{item.name}</span>
-              </a>
+              </Link>
             ))}
           </nav>
 
