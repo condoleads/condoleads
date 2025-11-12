@@ -419,7 +419,7 @@ async function saveMediaWithVariantFiltering(enhancedListings: any[]): Promise<n
     }
   }
   
-  console.log(`📊 Total media records prepared: ${mediaRecords.length} from ${savedListings.length} listings`);
+  console.log(`📊 Total media records prepared: ${mediaRecords.length} from ${enhancedListings.length} listings`);
   
   // Batch insert media
   if (mediaRecords.length > 0) {
