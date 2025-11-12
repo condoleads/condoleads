@@ -46,7 +46,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess }: { isOpen: 
     if (file) {
       const reader = new FileReader()
       reader.onloadend = function() {
-        setPhotoPreview(reader.result)
+        setPhotoPreview(reader.result as string)
       }
       reader.readAsDataURL(file)
     }
