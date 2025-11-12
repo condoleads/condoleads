@@ -281,7 +281,7 @@ async function fetchRelatedData(newlyAddedListings: any[]) {
 }
 
 // Fetch enhanced data from PropTx API and add to originalListings (modifies in place)
-async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
+async function fetchEnhancedDataFromPropTx(originalListings: any[]): Promise<any[]> {
   console.log(`🔍 Fetching enhanced data for ${originalListings.length} listings...`);
 
   for (const originalListing of originalListings) {
@@ -379,6 +379,7 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]) {
   console.log(`✅ Enhanced data fetching complete`);
 }
 
+  return originalListings;
 // EXACT SAME as batch sync save route
 async function saveMediaWithVariantFiltering(enhancedListings: any[]): Promise<number> {
   console.log('💾 Saving media with 2-variant filtering...');
