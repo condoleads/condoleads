@@ -344,13 +344,13 @@ const categories = {
 };
 
 const detailedBreakdown = {
-  activeForSale: [],
-  activeForLease: [],
-  recentlySold: [],
-  olderSold: [],
-  recentlyLeased: [],
-  olderLeased: [],
-  historical: []
+  activeForSale: [] as any[],
+  activeForLease: [] as any[],
+  recentlySold: [] as any[],
+  olderSold: [] as any[],
+  recentlyLeased: [] as any[],
+  olderLeased: [] as any[],
+  historical: [] as any[]
 };
   
   listings.forEach((listing) => {
