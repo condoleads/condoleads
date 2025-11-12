@@ -181,7 +181,7 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
             >
               Value Estimate
             </button>
-            <button className={`flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors ${badge.buttonClass}`}>
+            <button className="flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white">
               View Details
             </button>
           </div>
