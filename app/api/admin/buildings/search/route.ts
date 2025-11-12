@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     }console.log(`Total raw listings collected: ${allListings.length}`);
     
     // Remove duplicates by ListingKey
-    const uniqueListings = [];
+    const uniqueListings: any[] = [];
     const seenKeys = new Set();
     
     allListings.forEach(listing => {
