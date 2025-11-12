@@ -172,7 +172,7 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
         {/* Footer */}
         <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
           <p className="text-xs text-slate-400">
-            {listing.listing_key || listing.listing_id ? \MLS #\\ : ''}
+            {listing.listing_key || listing.listing_id ? "MLS #" : ''}
           </p>
           <div className="flex gap-2">
             <button
