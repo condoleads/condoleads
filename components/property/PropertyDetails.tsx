@@ -149,10 +149,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
         <div className="border-t border-slate-200 mt-6 pt-6">
           <h3 className="text-lg font-bold text-slate-900 mb-3">Building Information</h3>
           <p className="text-slate-700 mb-2">
-            <span className="font-semibold">{false.name}</span>
+            <span className="font-semibold">{'Unknown Building'}</span>
           </p>
           <a 
-            href={`/${false.slug}`}
+            href={${'#'}}
             className="text-emerald-600 hover:text-emerald-700 font-semibold text-sm"
           >
             View All Units in This Building ?
