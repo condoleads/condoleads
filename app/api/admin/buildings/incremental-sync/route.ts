@@ -695,8 +695,8 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
     
     // Save using EXACT same functions as batch sync
     results.mediaAdded = await saveMediaWithVariantFiltering(newlyAddedListings);
-    results.roomsAdded = await savePropertyRooms(newlyAddedListings);
-    results.openHousesAdded = await saveOpenHouses(newlyAddedListings);
+    results.roomsAdded = await savePropertyRooms(newlyAddedInactiveListings);
+    results.openHousesAdded = await saveOpenHouses(newlyAddedInactiveListings);
   }
   
   return results;
@@ -753,9 +753,9 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
     await fetchEnhancedDataFromPropTx(originalListingsArray);
     
     // Save using EXACT same functions as active listings (same two-variant logic)
-    results.mediaAdded = await saveMediaWithVariantFiltering(newlyAddedListings);
-    results.roomsAdded = await savePropertyRooms(newlyAddedListings);
-    results.openHousesAdded = await saveOpenHouses(newlyAddedListings);
+    results.mediaAdded = await saveMediaWithVariantFiltering(newlyAddedInactiveListings);
+    results.roomsAdded = await savePropertyRooms(newlyAddedInactiveListings);
+    results.openHousesAdded = await saveOpenHouses(newlyAddedInactiveListings);
   }
 
   console.log(`✅ Inactive Results: +${results.added} ⏭️${results.skipped}`);
