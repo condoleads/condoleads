@@ -184,7 +184,7 @@ async function fetchPropTxListings(building: any) {
   console.log(`📊 Total raw listings collected: ${allListings.length}`);
 
   // Remove duplicates by ListingKey
-  const uniqueListings: any[] = [];
+  const uniqueListings = [];
   const seenKeys = new Set();
 
   allListings.forEach(listing => {
@@ -377,11 +377,11 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]): Promise<any
   }
   
   console.log(`✅ Enhanced data fetching complete`);
+  return originalListings;
 }
 
-  return originalListings;
 // EXACT SAME as batch sync save route
-async function saveMediaWithVariantFiltering(enhancedListings: any[]): Promise<number> {
+async function saveMediaWithVariantFiltering(enhancedListings: any[]) {
   console.log('💾 Saving media with 2-variant filtering...');
   
   let mediaCount = 0;
@@ -486,7 +486,7 @@ function createMediaRecord(listingId: string, media: any, variantType: string, b
 }
 
 // EXACT SAME as batch sync save route
-async function savePropertyRooms(enhancedListings: any[]): Promise<number> {
+async function savePropertyRooms(enhancedListings: any[]) {
   console.log('💾 Saving property rooms...');
   
   let roomCount = 0;
@@ -542,7 +542,7 @@ async function savePropertyRooms(enhancedListings: any[]): Promise<number> {
 }
 
 // EXACT SAME as batch sync save route
-async function saveOpenHouses(enhancedListings: any[]): Promise<number> {
+async function saveOpenHouses(enhancedListings: any[]) {
   console.log('💾 Saving open houses...');
   
   let openHouseCount = 0;
