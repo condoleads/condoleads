@@ -201,7 +201,7 @@ export default function EstimatorBuyerModal({
                     )}
                     <div className="flex justify-between pt-2 border-t border-blue-300 font-bold">
                       <span>Total Monthly:</span>
-                      <span>${(result.estimatedPrice + (result.parkingCost || 0) + (result.lockerCost || 0)).toLocaleString()}</span>
+                      <span>${((result.estimatedPrice as number) + ((result.parkingCost as number) || 0) + ((result.lockerCost as number) || 0)).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
