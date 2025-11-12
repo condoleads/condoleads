@@ -288,7 +288,7 @@ function filterTwoVariants(allMediaItems: any[]) {
     imageGroups.get(baseId).push(item);
   });
   
-  const filtered = [];
+  const filtered: any[] = [];
   let reductionCount = 0;
   
   imageGroups.forEach((variants) => {
