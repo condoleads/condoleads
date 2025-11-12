@@ -1,4 +1,4 @@
-﻿import { MLSListing } from '@/lib/types/building'
+import { MLSListing } from '@/lib/types/building'
 import { extractExactSqft } from '@/lib/estimator/types'
 
 interface PropertyDetailsProps {
@@ -17,10 +17,8 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
   const hasLocker = listing.locker === 'Owned' || listing.locker === 'Rental'
   
   // Extract additional details
-  const hasEnsuitelaundry = listing.laundry_features?.some((f: string) => 
-    f.toLowerCase().includes('ensuite') || f.toLowerCase().includes('in unit')
-  )
-  const architecturalStyle = listing.architectural_style?.[0] || null
+  const hasEnsuitelaundry = false // laundry_features not in MLSListing type
+  const architecturalStyle = null // architectural_style not in MLSListing type
   const parkingType = listing.parking_features?.[0] || 'None'
   
   const formatDate = (dateString: string | null) => {
@@ -157,7 +155,7 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             href={`/${listing.buildings.slug}`}
             className="text-emerald-600 hover:text-emerald-700 font-semibold text-sm"
           >
-            View All Units in This Building →
+            View All Units in This Building ?
           </a>
         </div>
       )}
