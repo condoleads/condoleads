@@ -295,7 +295,7 @@ function filterTwoVariants(allMediaItems: any[]) {
     const originalCount = variants.length;
     
     // Find thumbnail (240x240) - must have valid URL
-    const thumbnail = variants.find(v => 
+    const thumbnail = variants.find((v: any) => 
       v.MediaURL && (
         v.MediaURL.includes('rs:fit:240:240') ||
         v.ImageSizeDescription === 'Thumbnail'
