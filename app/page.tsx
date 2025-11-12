@@ -114,7 +114,7 @@ export default async function RootPage() {
   );
 }
 
-function extractSubdomain(host) {
+function extractSubdomain(host: string) {
   // Development: use DEV_SUBDOMAIN environment variable
   if (host.includes('localhost') || host.includes('vercel.app')) {
     return process.env.DEV_SUBDOMAIN || null;
