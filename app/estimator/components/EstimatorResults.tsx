@@ -11,7 +11,7 @@ interface EstimatorResultsProps {
   type?: 'sale' | 'rent'
   buildingId: string
   buildingName: string
-  agentId: string
+  agentId?: string
   propertySpecs: any
 }
 
@@ -54,6 +54,14 @@ export default function EstimatorResults({
 
     console.log('?? DEBUG EstimatorResults:', { agentId, buildingId, buildingName })
     
+    // Only create lead if agentId is provided (agent context)
+    if (!agentId) {
+      console.log(' No agentId - skipping lead creation (public context)')
+      setContactSubmitted(true)
+      setShowContactForm(false)
+      return
+    }
+
     const leadResult = await createLead({
       agentId,
       contactName: contactForm.name,

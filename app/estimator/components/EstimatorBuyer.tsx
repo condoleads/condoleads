@@ -114,7 +114,18 @@ export default function EstimatorBuyer({
         {/* Results */}
         {result && (
           <div className="mt-8">
-            <EstimatorResults result={result} />
+            <EstimatorResults 
+              result={result}
+              buildingId={buildingId}
+              buildingName={buildingName}
+              propertySpecs={{
+                bedrooms,
+                bathrooms,
+                livingAreaRange,
+                parking,
+                hasLocker
+              }}
+            />
             <button
               onClick={() => setResult(null)}
               className="w-full mt-6 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-semibold transition-colors"
