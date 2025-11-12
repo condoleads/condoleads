@@ -1,4 +1,4 @@
-﻿import { formatDistanceToNow } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
 
 interface RecentLeadsProps {
   leads: any[]
@@ -89,7 +89,7 @@ export default function RecentLeads({ leads }: RecentLeadsProps) {
                   {formatDistanceToNow(new Date(lead.created_at), { addSuffix: true })}
                 </td>
                 <td className="px-6 py-4">
-                  
+                  <a
                     href={`/dashboard/leads/${lead.id}`}
                     className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                   >
