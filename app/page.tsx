@@ -58,7 +58,7 @@ export default async function RootPage() {
   // Get listing counts and photos for each building
   const buildingsWithCounts = await Promise.all(
     (agentBuildings || []).map(async (ab) => {
-      const building = ab.buildings;
+      const building = ab.buildings as any;
 
       // Get listings for counts
       const { data: listings } = await supabase
