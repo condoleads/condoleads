@@ -1,4 +1,4 @@
-import { MLSListing } from '@/lib/types/building'
+﻿import { MLSListing } from '@/lib/types/building'
 import { extractExactSqft } from '@/lib/estimator/types'
 
 interface PropertyDetailsProps {
@@ -17,9 +17,11 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
   const hasLocker = listing.locker === 'Owned' || listing.locker === 'Rental'
   
   // Extract additional details
-  const hasEnsuitelaundry = false // laundry_features not in MLSListing type
-  const architecturalStyle = null // architectural_style not in MLSListing type
-  const parkingType = 'None' // parking_features not in MLSListing type
+  const hasEnsuitelaundry = listing.laundry_features?.some((f: string) => 
+    f.toLowerCase().includes('ensuite') || f.toLowerCase().includes('in unit')
+  )
+  const architecturalStyle = listing.architectural_style?.[0] || null
+  const parkingType = listing.parking_features?.[0] || 'None'
   
   const formatDate = (dateString: string | null) => {
     if (!dateString) return null
@@ -58,10 +60,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
       <div className="border-t border-slate-200 pt-6">
         <div className="grid md:grid-cols-2 gap-x-8 gap-y-3">
           
-          {false && (
+          {listing.neighborhood && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Neighbourhood</span>
-              <span className="font-semibold text-slate-900">{false}</span>
+              <span className="font-semibold text-slate-900">{listing.neighborhood}</span>
             </div>
           )}
           
@@ -80,10 +82,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             <span className="font-semibold text-slate-900">{hasLocker ? 'Yes' : 'No'}</span>
           </div>
           
-          {false && (
+          {listing.heat_type && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Heating Type</span>
-              <span className="font-semibold text-slate-900">{false}</span>
+              <span className="font-semibold text-slate-900">{listing.heat_type}</span>
             </div>
           )}
           
@@ -101,10 +103,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             </div>
           )}
           
-          {false && (
+          {listing.condo_corp_number && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Corp #</span>
-              <span className="font-semibold text-slate-900">TSCC-{false}</span>
+              <span className="font-semibold text-slate-900">TSCC-{listing.condo_corp_number}</span>
             </div>
           )}
           
@@ -113,10 +115,10 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             <span className="font-semibold text-slate-900">{listing.living_area_range || '-'}</span>
           </div>
           
-          {false && (
+          {listing.listing_contract_date && (
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Listed On</span>
-              <span className="font-semibold text-slate-900">{formatDate(null)}</span>
+              <span className="font-semibold text-slate-900">{formatDate(listing.listing_contract_date)}</span>
             </div>
           )}
           
@@ -128,7 +130,7 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Maintenance Fees</span>
               <span className="font-semibold text-slate-900">
-                  {`$${Math.round(listing.association_fee).toLocaleString()}/month`}
+                ${Math.round(listing.association_fee).toLocaleString()}/month
               </span>
             </div>
           )}
@@ -137,7 +139,7 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-slate-600">Property Tax</span>
               <span className="font-semibold text-slate-900">
-                  {`$${Math.round(listing.tax_annual_amount).toLocaleString()}/year`}
+                ${Math.round(listing.tax_annual_amount).toLocaleString()}/year
               </span>
             </div>
           )}
@@ -145,17 +147,17 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
       </div>
       
       {/* Building Info */}
-      {false && (
+      {listing.buildings && (
         <div className="border-t border-slate-200 mt-6 pt-6">
           <h3 className="text-lg font-bold text-slate-900 mb-3">Building Information</h3>
           <p className="text-slate-700 mb-2">
-            <span className="font-semibold">{'Unknown Building'}</span>
+            <span className="font-semibold">{listing.buildings.name}</span>
           </p>
           <a 
-            href={${'#'}}
+            href={`/${listing.buildings.slug}`}
             className="text-emerald-600 hover:text-emerald-700 font-semibold text-sm"
           >
-            View All Units in This Building ?
+            View All Units in This Building →
           </a>
         </div>
       )}

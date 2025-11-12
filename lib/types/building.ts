@@ -36,6 +36,13 @@ export interface MLSListing {
   listing_key: string | null
   unparsed_address: string | null
   property_type: string | null
+  architectural_style?: string[] | null
+  condo_corp_number?: number | null
+  laundry_features?: string[] | null
+  parking_features?: string[] | null
+  neighborhood?: string | null
+  heat_type?: string | null
+  listing_contract_date?: string | null
   media?: Array<{
     id: string
     media_url: string
