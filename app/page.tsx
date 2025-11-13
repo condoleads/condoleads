@@ -21,6 +21,7 @@ export default async function RootPage() {
   const host = headersList.get('host') || '';
   
   const subdomain = extractSubdomain(host);
+  console.log('?? DEBUG - Host:', host, 'Subdomain:', subdomain);
   
   // If no subdomain, show new landing page
   if (!subdomain) {
@@ -163,6 +164,7 @@ export async function generateMetadata() {
   const headersList = headers();
   const host = headersList.get('host') || '';
   const subdomain = extractSubdomain(host);
+  console.log('?? DEBUG - Host:', host, 'Subdomain:', subdomain);
 
   if (!subdomain) {
     return {
