@@ -80,6 +80,14 @@ export async function createLead(params: CreateLeadParams) {
 
   console.log(' LEAD CREATED SUCCESSFULLY:', lead.id)
 
+  // Fetch agent details for email
+  const { data: agent } = await supabase
+    .from('agents')
+    .select('full_name, email')
+    .eq('id', params.agentId)
+    .single()
+
+
   // Send email notification to agent
   try {
     await sendLeadNotificationToAgent({
