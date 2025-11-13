@@ -2,7 +2,7 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { HomePage } from '@/components/HomePage';
-import LandingPage from '@/app/(landing)/page';
+import LandingPage from '@/app/_landing/page';
 
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
