@@ -176,7 +176,7 @@ export async function findComparablesRentals(specs: UnitSpecs): Promise<Comparab
   locker: item.lease.locker,
   daysOnMarket: item.lease.days_on_market || 0,
   closeDate: item.lease.close_date,
-  exactSqft: extractExactSqft(item.lease.square_foot_source),  // ADD THIS
+  exactSqft: extractExactSqft(item.lease.square_foot_source) ?? undefined,  // ADD THIS
   userExactSqft: specs.exactSqft,  // ADD THIS
   associationFee: item.lease.association_fee,  // ADD THIS
   adjustments: adjustments,
