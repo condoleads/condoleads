@@ -147,8 +147,13 @@ function extractSubdomain(host: string) {
       return null; // Root domain, no subdomain
     }
     if (parts.length >= 3 && parts[1] === 'condoleads') {
-      return parts[0]; // Return subdomain
-    }
+        const potentialSubdomain = parts[0];
+        // Filter out 'www' - it's not a real subdomain
+        if (potentialSubdomain === 'www') {
+          return null;
+        }
+        return potentialSubdomain; // Return subdomain
+      }
   }
 
   // Development: use DEV_SUBDOMAIN environment variable
