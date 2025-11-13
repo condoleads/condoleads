@@ -1,4 +1,4 @@
-﻿// lib/estimator/comparable-matcher.ts
+// lib/estimator/comparable-matcher.ts
 import { createClient } from '@/lib/supabase/client'
 import { ComparableSale, UnitSpecs, PriceAdjustment, ADJUSTMENT_VALUES, extractExactSqft } from './types'
 
@@ -107,6 +107,10 @@ const topComparables = scoredComparables
     let adjustedPrice = item.sale.close_price
 
     // Maintenance fee similarity scoring (not an adjustment - just for match quality)
+    // Extract exact sqft for fee per sqft calculation
+    const userExactSqft = specs.exactSqft
+    const compExactSqft = extractExactSqft(item.sale.square_foot_source)
+
 const userMaintenance = specs.associationFee
 const compMaintenance = item.sale.association_fee
 
