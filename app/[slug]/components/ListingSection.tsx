@@ -69,15 +69,15 @@ export default function ListingSection({
           <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
         </div>
         
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <h2 className="text-5xl font-black text-white text-center mb-4">Get Instant Digital Estimates</h2>
-          <p className="text-3xl font-bold text-white text-center mb-12">Browse Condos</p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white text-center mb-4">Get Instant Digital Estimates</h2>
+          <p className="text-xl sm:text-2xl md:text-3xl font-bold text-white text-center mb-8 sm:mb-12">Browse Condos</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 max-w-4xl mx-auto">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
-                className={`px-6 py-4 text-lg md:text-xl font-black rounded-2xl transition-all duration-300 ${
+                className={`px-4 sm:px-6 py-3 sm:py-4 text-base sm:text-lg md:text-xl font-black rounded-2xl transition-all duration-300 ${
                   activeTab === tab.id
                     ? 'bg-white text-emerald-900 shadow-2xl transform scale-110'
                     : 'bg-white/20 text-white hover:bg-white/30 backdrop-blur-lg border-2 border-white/40 hover:scale-105'

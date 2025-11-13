@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useAuth } from '@/components/auth/AuthContext'
 import RegisterModal from '@/components/auth/RegisterModal'
