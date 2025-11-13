@@ -2,7 +2,15 @@ import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { HomePage } from '@/components/HomePage';
-import LandingPage from '@/app/_landing/page';
+import LandingHeader from '@/components/landing/LandingHeader'
+import HeroSection from '@/components/landing/HeroSection'
+import EstimatorDemo from '@/components/landing/EstimatorDemo'
+import PipelineFlow from '@/components/landing/PipelineFlow'
+import BeforeAfter from '@/components/landing/BeforeAfter'
+import PreviewGenerator from '@/components/landing/PreviewGenerator'
+import FeatureCards from '@/components/landing/FeatureCards'
+import DemoEmbed from '@/components/landing/DemoEmbed'
+import CommunityApplication from '@/components/landing/CommunityApplication'
 
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
@@ -16,7 +24,21 @@ export default async function RootPage() {
   
   // If no subdomain, show new landing page
   if (!subdomain) {
-    return <LandingPage />;
+    return (
+      <>
+        <LandingHeader />
+        <main className="pt-16">
+          <HeroSection />
+          <EstimatorDemo />
+          <PipelineFlow />
+          <BeforeAfter />
+          <PreviewGenerator />
+          <FeatureCards />
+          <DemoEmbed />
+          <CommunityApplication />
+        </main>
+      </>
+    );
   }
   
   const supabase = createClient();
