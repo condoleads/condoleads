@@ -1,4 +1,4 @@
-﻿// lib/estimator/types.ts
+// lib/estimator/types.ts
 
 export interface UnitSpecs {
   bedrooms: number
@@ -9,6 +9,7 @@ export interface UnitSpecs {
   buildingId: string
   taxAnnualAmount?: number  // Optional - for better matching
   exactSqft?: number  // Optional - extracted from square_foot_source
+  associationFee?: number  // Optional - maintenance fee for comparison
 }
 
 export interface PriceAdjustment {
