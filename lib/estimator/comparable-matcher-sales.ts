@@ -179,7 +179,7 @@ const topComparables = scoredComparables
   daysOnMarket: item.sale.days_on_market || 0,
   closeDate: item.sale.close_date,
   taxAnnualAmount: item.sale.tax_annual_amount,
-  exactSqft: extractExactSqft(item.sale.square_foot_source),  // ADD THIS
+  exactSqft: extractExactSqft(item.sale.square_foot_source) ?? undefined,  // ADD THIS
   userExactSqft: specs.exactSqft,  // ADD THIS - pass user's sqft for comparison
   associationFee: item.sale.association_fee,  // ADD THIS
   adjustments: adjustments,
