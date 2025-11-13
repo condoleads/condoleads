@@ -104,7 +104,7 @@ const topComparables = scoredComparables
   .slice(0, 10)
   .map(item => {
     const adjustments: PriceAdjustment[] = []
-    const parkingDiff = specs.parking - (item.sale.parking_total || 0)
+    let adjustedPrice = item.sale.close_price
     if (parkingDiff !== 0) {
       const adjustmentAmount = parkingDiff * ADJUSTMENT_VALUES.PARKING_PER_SPACE
       adjustedPrice += adjustmentAmount
