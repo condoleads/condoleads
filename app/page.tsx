@@ -137,15 +137,22 @@ export default async function RootPage() {
 }
 
 function extractSubdomain(host: string) {
+  // Production: extract subdomain from condoleads.ca
+  if (host.endsWith('.condoleads.ca') || host === 'condoleads.ca') {
+    const parts = host.split('.');
+    // condoleads.ca = no subdomain (2 parts)
+    // mary.condoleads.ca = subdomain 'mary' (3 parts)
+    if (parts.length === 2) {
+      return null; // Root domain, no subdomain
+    }
+    if (parts.length >= 3 && parts[1] === 'condoleads') {
+      return parts[0]; // Return subdomain
+    }
+  }
+
   // Development: use DEV_SUBDOMAIN environment variable
   if (host.includes('localhost') || host.includes('vercel.app')) {
     return process.env.DEV_SUBDOMAIN || null;
-  }
-
-  // Production: extract subdomain from condoleads.ca
-  const parts = host.split('.');
-  if (parts.length >= 3 && parts[1] === 'condoleads') {
-    return parts[0];
   }
 
   return null;
