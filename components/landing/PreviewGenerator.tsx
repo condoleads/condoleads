@@ -149,12 +149,15 @@ export default function PreviewGenerator() {
                 <div className="grid md:grid-cols-3 gap-6">
                   {['Building A', 'Building B', 'Building C'].map((building, index) => (
                     <div key={index} className="bg-gray-100 rounded-xl p-6">
-                      <div className="w-full h-40 rounded-lg mb-4 overflow-hidden">
-                        <img 
-                          src={`https://images.unsplash.com/photo-${index === 0 ? '1545324418-cc1a3fa10c00' : index === 1 ? '1582407947550-d65d3fda785d' : '1480074012040-e84bb4a8b359'}?w=400&h=300&fit=crop`}
-                          alt={`${building} exterior`}
-                          className="w-full h-full object-cover"
-                        />
+                      <div className={`w-full h-40 rounded-lg mb-4 flex items-center justify-center ${
+                        index === 0 ? 'bg-gradient-to-br from-blue-400 to-blue-600' : 
+                        index === 1 ? 'bg-gradient-to-br from-purple-400 to-purple-600' : 
+                        'bg-gradient-to-br from-green-400 to-green-600'
+                      }`}>
+                        <div className="text-center">
+                          <div className="text-white text-6xl mb-2"></div>
+                          <p className="text-white text-sm font-semibold">Sample Building</p>
+                        </div>
                       </div>
                       <h3 className="text-xl font-bold text-gray-900 mb-2">{building}</h3>
                       <p className="text-gray-600 mb-4">{index === 0 ? "Entertainment District" : index === 1 ? "Distillery District" : "King St West"}</p>
