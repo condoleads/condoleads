@@ -151,7 +151,7 @@ export default function PreviewGenerator() {
                     <div key={index} className="bg-gray-100 rounded-xl p-6">
                       <div className="w-full h-40 rounded-lg mb-4 overflow-hidden">
                         <img 
-                          src={`https://images.unsplash.com/photo-${index === 0 ? '1545324418-cc1a3fa10c00' : index === 1 ? '1449844343068-78d1e6f76c27' : '1565402170291-8491f14678db'}?w=400&h=300&fit=crop`}
+                          src={`https://images.unsplash.com/photo-${index === 0 ? '1545324418-cc1a3fa10c00' : index === 1 ? '1577801982606-f554b37b9797' : '1555636222-cae831e670b3'}?w=400&h=300&fit=crop`}
                           alt={`${building} exterior`}
                           className="w-full h-full object-cover"
                         />
