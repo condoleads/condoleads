@@ -151,7 +151,7 @@ export default function PreviewGenerator() {
                     <div key={index} className="bg-gray-100 rounded-xl p-6">
                       <div className="w-full h-40 rounded-lg mb-4 overflow-hidden">
                         <img 
-                          src={`https://images.unsplash.com/photo-${index === 0 ? '1545324418-cc1a3fa10c00' : index === 1 ? '1565402170291-8491f14678db' : '1512917774080-9991f1c4c750'}?w=400&h=300&fit=crop`}
+                          src={`https://images.unsplash.com/photo-${index === 0 ? '1545324418-cc1a3fa10c00' : index === 1 ? '1580587988276-4c93f559e05f' : '1545324418-6b85f0fa59d3'}?w=400&h=300&fit=crop`}
                           alt={`${building} exterior`}
                           className="w-full h-full object-cover"
                         />
@@ -196,10 +196,7 @@ export default function PreviewGenerator() {
               </button>
             </div>
 
-            {/* Disclaimer */}
-            <p className="text-center text-sm text-gray-500 mt-6">
-              *Sample buildings and images shown for preview purposes
-            </p>
+
           </div>
         )}
             {/* Disclaimer */}
