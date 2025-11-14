@@ -64,7 +64,7 @@ export default function ShareSaveButtons({ buildingName, slug }: ShareSaveButton
 
         {/* Share Menu (Desktop) */}
         {showShareMenu && (
-          <div className="absolute top-full mt-2 bg-white border-2 border-slate-200 rounded-lg shadow-xl p-4 z-50 min-w-[200px]">
+          <div className="absolute top-full mt-2 bg-white border-2 border-slate-200 rounded-lg shadow-xl p-4 z-50 min-w-[200px] right-0">
             <p className="text-sm font-semibold text-slate-700 mb-3">Share via:</p>
             <div className="space-y-2">
               <a href={shareLinks.twitter} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-2 hover:bg-slate-100 rounded-lg transition-colors">
