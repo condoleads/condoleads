@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { ArrowDown } from 'lucide-react'
@@ -42,8 +42,8 @@ export default function HeroSection() {
 
       <div className="relative z-10 max-w-6xl mx-auto px-6 text-center">
         <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-          Your Own AI-Powered<br />
-          Condo Website
+          Get Your AI-Powered<br />
+          Condo Leads Funnel Today
         </h1>
 
         <div className="text-2xl md:text-3xl font-semibold mb-4 space-y-2">

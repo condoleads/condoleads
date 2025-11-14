@@ -173,7 +173,7 @@ export async function generateMetadata() {
 
   if (!subdomain) {
     return {
-      title: 'CondoLeads - Your Own AI-Powered Condo Website',
+      title: 'CondoLeads - Get Your AI-Powered Condo Leads Funnel Today',
       description: 'Stop sharing leads with competitors. Get your branded website with AI estimates that turn curious buyers into exclusive clients.'
     };
   }
