@@ -39,8 +39,8 @@ export default function BuildingHero({
           <ShareSaveButtons buildingName={building.building_name} slug={slug} />
         </div>
                         
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 sm:gap-4">
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/15 transition">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-3 md:gap-4 w-full">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 md:p-6 border min-w-0 border-white/20 hover:bg-white/15 transition">
             <p className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1">{building.total_units || ''}</p>
             <p className="text-sm opacity-80">Total Units</p>
           </div>
@@ -55,12 +55,12 @@ export default function BuildingHero({
             <p className="text-sm opacity-80">For Rent</p>
           </div>
           
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/15 transition">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 md:p-6 border min-w-0 border-white/20 hover:bg-white/15 transition">
             <p className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1">{closedSalesCount}</p>
             <p className="text-sm opacity-80">Sold</p>
           </div>
           
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 sm:p-6 border border-white/20 hover:bg-white/15 transition">
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 md:p-6 border min-w-0 border-white/20 hover:bg-white/15 transition">
             <p className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1">{closedRentalsCount}</p>
             <p className="text-sm opacity-80">Leased</p>
           </div>
