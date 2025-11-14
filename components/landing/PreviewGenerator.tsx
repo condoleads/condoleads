@@ -155,7 +155,7 @@ export default function PreviewGenerator() {
                         'bg-gradient-to-br from-green-400 to-green-600'
                       }`}>
                         <div className="text-center">
-                          <div className="text-white text-6xl mb-2"></div>
+                          <Building2 className="w-16 h-16 text-white mb-2" />
                           <p className="text-white text-sm font-semibold">Sample Building</p>
                         </div>
                       </div>
