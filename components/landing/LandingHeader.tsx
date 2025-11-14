@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { ExternalLink } from 'lucide-react'
 
@@ -25,7 +25,7 @@ export default function LandingHeader() {
               <a href="https://viyacondex.condoleads.ca"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden sm:flex items-center gap-2 px-6 py-2 text-blue-600 hover:text-blue-700 font-semibold transition-colors"
+              className="flex items-center gap-2 px-4 sm:px-6 py-2 text-blue-600 hover:text-blue-700 font-semibold transition-colors text-sm sm:text-base"
             >
               View Demo
               <ExternalLink className="w-4 h-4" />
