@@ -149,9 +149,15 @@ export default function PreviewGenerator() {
                 <div className="grid md:grid-cols-3 gap-6">
                   {['Building A', 'Building B', 'Building C'].map((building, index) => (
                     <div key={index} className="bg-gray-100 rounded-xl p-6">
-                      <div className="w-full h-40 bg-gradient-to-br from-gray-300 to-gray-400 rounded-lg mb-4" />
+                      <div className="w-full h-40 rounded-lg mb-4 overflow-hidden">
+                        <img 
+                          src={`https://images.unsplash.com/photo-${index === 0 ? '1545324418-cc1a3fa10c00' : index === 1 ? '1565402170291-8491f14678db' : '1512917774080-9991f1c4c750'}?w=400&h=300&fit=crop`}
+                          alt={`${building} exterior`}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                       <h3 className="text-xl font-bold text-gray-900 mb-2">{building}</h3>
-                      <p className="text-gray-600 mb-4">Toronto Entertainment District</p>
+                      <p className="text-gray-600 mb-4">{index === 0 ? "Toronto Entertainment District" : index === 1 ? "Distillery District" : "King St West"}</p>
                       <div className="flex gap-4 text-sm">
                         <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-semibold">
                           12 For Sale
@@ -189,6 +195,11 @@ export default function PreviewGenerator() {
                 </span>
               </button>
             </div>
+
+            {/* Disclaimer */}
+            <p className="text-center text-sm text-gray-500 mt-6">
+              *Sample buildings and images shown for preview purposes
+            </p>
           </div>
         )}
             {/* Disclaimer */}
