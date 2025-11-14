@@ -2,22 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Force proper mobile layout */
-* {
-  box-sizing: border-box;
-}
-
+/* CRITICAL: Prevent horizontal scroll on mobile */
 html {
   overflow-x: hidden;
   width: 100%;
-  height: 100%;
+  position: relative;
 }
 
 body {
   overflow-x: hidden;
-  max-width: 100vw;
   width: 100%;
   position: relative;
+  margin: 0;
+  padding: 0;
+}
+
+#__next {
+  overflow-x: hidden;
+  width: 100%;
+  position: relative;
+}
+
+/* Ensure all children respect viewport width */
+* {
+  box-sizing: border-box;
+}
+
+/* Force any wide elements to stay within bounds */
+section, div, nav, header, main {
+  max-width: 100vw;
 }
 
 @keyframes shimmer {
