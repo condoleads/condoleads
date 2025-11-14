@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { User, Building2, Sparkles, ExternalLink } from 'lucide-react'
@@ -31,7 +31,7 @@ export default function PreviewGenerator() {
             See Yourself Here
           </div>
           <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            Preview YOUR Future Website
+            Preview Your Condo Leads Funnel
           </h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Enter your details and see what your branded website will look like
@@ -147,7 +147,7 @@ export default function PreviewGenerator() {
                   Featured Buildings
                 </h2>
                 <div className="grid md:grid-cols-3 gap-6">
-                  {['X2 Condos', 'The One', 'Aura'].map((building, index) => (
+                  {['Building A', 'Building B', 'Building C'].map((building, index) => (
                     <div key={index} className="bg-gray-100 rounded-xl p-6">
                       <div className="w-full h-40 bg-gradient-to-br from-gray-300 to-gray-400 rounded-lg mb-4" />
                       <h3 className="text-xl font-bold text-gray-900 mb-2">{building}</h3>
@@ -191,6 +191,10 @@ export default function PreviewGenerator() {
             </div>
           </div>
         )}
+            {/* Disclaimer */}
+            <p className="text-center text-sm text-gray-500 mt-6">
+              *Sample buildings and images shown for preview purposes
+            </p>
 
         {/* Bottom CTA */}
         {!showPreview && (
