@@ -64,12 +64,12 @@ export default function ListingSection({
 
   return (
     <>
-      <section className="py-20 bg-gradient-to-br from-emerald-700 via-teal-600 to-emerald-700 relative overflow-hidden">
+      <section className="py-20 bg-gradient-to-br from-emerald-700 via-teal-600 to-emerald-700 relative overflow-hidden w-full">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
         </div>
         
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10 w-full overflow-hidden">
           <h2 className="text-2xl sm:text-4xl md:text-5xl font-black text-white text-center mb-4">
             Get Instant<br className="sm:hidden" /> Digital Estimates
           </h2>

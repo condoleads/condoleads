@@ -26,8 +26,8 @@ export default function BuildingHero({
   avgDaysOnMarketLease,
 }: BuildingHeroProps) {
   return (
-    <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24">
+    <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24 w-full">
         <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold mb-4 tracking-tight">
           {building.building_name}
         </h1>
@@ -39,7 +39,7 @@ export default function BuildingHero({
           <ShareSaveButtons buildingName={building.building_name} slug={slug} />
         </div>
                         
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-3 md:gap-4 w-full">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 sm:gap-3 md:gap-4 w-full overflow-hidden">
           <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 md:p-6 border min-w-0 border-white/20 hover:bg-white/15 transition">
             <p className="text-2xl sm:text-3xl md:text-4xl font-bold mb-1">{building.total_units || ''}</p>
             <p className="text-sm opacity-80">Total Units</p>
