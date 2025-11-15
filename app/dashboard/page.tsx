@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import DashboardLogout from '@/components/dashboard/DashboardLogout'
 import { requireAgent } from '@/lib/auth/helpers'
-import { getAgentLeads } from '@/lib/actions/leads'
+import { getAgentLeads, getAllLeadsForAdmin } from '@/lib/actions/leads'
 
 export default async function DashboardPage() {
   const { error, agent } = await requireAgent()
@@ -10,7 +10,10 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  const leadsResult = await getAgentLeads(agent.id)
+  // Fetch leads based on admin status
+  const leadsResult = agent.is_admin 
+    ? await getAllLeadsForAdmin()
+    : await getAgentLeads(agent.id)
   const leads = leadsResult.success ? leadsResult.leads : []
 
   const totalLeads = leads.length

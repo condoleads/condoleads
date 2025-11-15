@@ -152,3 +152,33 @@ export async function getAgentLeads(agentId: string) {
 
   return { success: true, leads: leads || [] }
 }
+
+
+export async function getAllLeadsForAdmin() {
+  const supabase = createServiceClient()
+
+  const { data: leads, error } = await supabase
+    .from('leads')
+    .select(`
+      *,
+      buildings (
+        id,
+        building_name,
+        canonical_address
+      ),
+      agents!leads_agent_id_fkey (
+        id,
+        full_name,
+        email,
+        subdomain
+      )
+    `)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching all leads for admin:', error)
+    return { success: false, leads: [], error: error.message }
+  }
+
+  return { success: true, leads: leads || [] }
+}
