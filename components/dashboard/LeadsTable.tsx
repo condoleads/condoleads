@@ -125,6 +125,24 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
             <option value="property_inquiry">Property Inquiry</option>
           </select>
 
+
+          {isAdmin && (
+            <select
+              value={agentFilter}
+              onChange={(e) => setAgentFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Agents</option>
+              {Array.from(new Set(leads.map(l => l.agents?.id).filter(Boolean))).map((agentId) => {
+                const agent = leads.find(l => l.agents?.id === agentId)?.agents
+                return (
+                  <option key={agentId} value={agentId}>
+                    {agent?.full_name || agent?.email || 'Unknown'}
+                  </option>
+                )
+              })}
+            </select>
+          )}
           <button
             onClick={exportToCSV}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
