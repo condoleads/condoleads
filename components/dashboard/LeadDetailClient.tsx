@@ -112,6 +112,11 @@ export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDeta
                 <strong>Building:</strong> {lead.buildings.building_name}
               </p>
             )}
+            {lead.agents && (
+              <p className="text-sm text-gray-600 mt-1">
+                <strong>Agent:</strong> {lead.agents.full_name} ({lead.agents.subdomain}.condoleads.ca)
+              </p>
+            )}
           </div>
 
           <div className="flex gap-3">
