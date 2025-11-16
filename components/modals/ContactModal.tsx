@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Send, Loader2 } from 'lucide-react'
 import { createLead } from '@/lib/actions/leads'
+import { trackActivity } from '@/lib/actions/user-activity'
 
 interface ContactModalProps {
   isOpen: boolean
@@ -59,6 +60,19 @@ export default function ContactModal({
     } else if (buildingName) {
       contextMessage = `Inquiry about ${buildingName}: ${formData.message}`
     }
+
+    // Track contact form submission
+    await trackActivity({
+      contactEmail: formData.email,
+      activityType: 'contact_form',
+      activityData: {
+        buildingId,
+        buildingName: buildingName || 'Unknown',
+        listingId,
+        listingAddress,
+        source
+      }
+    })
 
     const result = await createLead({
       agentId: agent.id,

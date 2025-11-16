@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
 import { createLead } from '@/lib/actions/leads'
+import { trackActivity } from '@/lib/actions/user-activity'
 
 interface AgentContactFormProps {
   listing: MLSListing
@@ -43,6 +44,21 @@ export default function AgentContactForm({ listing, status, isSale, agent }: Age
     const fullMessage = formData.message 
       ? `${formData.message} (Re: ${unitInfo} at ${buildingInfo})`
       : `Inquiry about ${unitInfo} at ${buildingInfo}`
+
+    // Track property inquiry
+    await trackActivity({
+      contactEmail: formData.email,
+      activityType: 'property_inquiry',
+      activityData: {
+        listingId: listing.id,
+        buildingId: listing.building_id,
+        address: listing.unparsed_address,
+        unitNumber: listing.unit_number,
+        price: listing.list_price,
+        bedrooms: listing.bedrooms_total,
+        bathrooms: listing.bathrooms_total_integer
+      }
+    })
 
     // Create lead with listing context
     const result = await createLead({
