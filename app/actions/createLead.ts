@@ -72,7 +72,7 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       sourceUrl: sourceUrl,
       buildingId: params.buildingId,
       listingId: params.listingId,
-      message: params.message || `New user registration via ${params.registrationSource} ${subdomain ? `on ${subdomain}.condoleads.ca` : ''}`,
+      message: params.message ? `${params.message} ${subdomain ? `(via ${subdomain}.condoleads.ca)` : ""}` : `New user registration via ${params.registrationSource} ${subdomain ? `on ${subdomain}.condoleads.ca` : ""}`,
       estimatedValueMin: params.estimatedValueMin,
       estimatedValueMax: params.estimatedValueMax,
       propertyDetails: params.propertyDetails
