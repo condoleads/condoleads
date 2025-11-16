@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
@@ -7,13 +7,15 @@ import { Search, Download, Building2 } from 'lucide-react'
 interface LeadsTableProps {
   leads: any[]
   agentId: string
+  isAdmin?: boolean
 }
 
-export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
+export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTableProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [qualityFilter, setQualityFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
+  const [agentFilter, setAgentFilter] = useState('all')
 
   const filteredLeads = leads.filter((lead) => {
     const matchesSearch = 
@@ -24,8 +26,9 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
     const matchesStatus = statusFilter === 'all' || lead.status === statusFilter
     const matchesQuality = qualityFilter === 'all' || lead.quality === qualityFilter
     const matchesSource = sourceFilter === 'all' || lead.source === sourceFilter
+    const matchesAgent = agentFilter === 'all' || lead.agents?.id === agentFilter
 
-    return matchesSearch && matchesStatus && matchesQuality && matchesSource
+    return matchesSearch && matchesStatus && matchesQuality && matchesSource && matchesAgent
   })
 
   const getQualityBadge = (quality: string) => {
@@ -146,6 +149,7 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                {isAdmin && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Building</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tags</th>
@@ -163,6 +167,18 @@ export default function LeadsTable({ leads, agentId }: LeadsTableProps) {
                     <p className="text-sm text-gray-500">{lead.contact_email}</p>
                     {lead.contact_phone && <p className="text-xs text-gray-400">{lead.contact_phone}</p>}
                   </td>
+                  {isAdmin && (
+                    <td className="px-6 py-4">
+                      {lead.agents ? (
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{lead.agents.full_name}</p>
+                          <p className="text-xs text-gray-500">{lead.agents.subdomain}.condoleads.ca</p>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">No agent</span>
+                      )}
+                    </td>
+                  )}
                   <td className="px-6 py-4">
                     {lead.buildings ? (
                       <div className="flex items-center gap-2">
