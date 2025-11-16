@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { createLead } from '@/lib/actions/leads'
+import { trackActivity } from '@/lib/actions/user-activity'
 
 interface ListYourUnitProps {
   buildingName: string
@@ -32,6 +33,18 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     e.preventDefault()
     setIsEvaluationSubmitting(true)
     
+    // Track market evaluation request
+    await trackActivity({
+      contactEmail: evaluationForm.email,
+      agentId: agentId,
+      activityType: 'sale_evaluation_request',
+      activityData: {
+        buildingId,
+        buildingName,
+        requestType: 'market_evaluation'
+      }
+    })
+
     // Create lead for market evaluation request
     const result = await createLead({
       agentId,
@@ -56,6 +69,19 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     e.preventDefault()
     setIsVisitSubmitting(true)
     
+    // Track building visit request
+    await trackActivity({
+      contactEmail: visitForm.email,
+      agentId: agentId,
+      activityType: 'building_visit_request',
+      activityData: {
+        buildingId,
+        buildingName,
+        requestedDate: visitForm.date,
+        requestedTime: visitForm.time
+      }
+    })
+
     // Create lead for visit booking
     const result = await createLead({
       agentId,

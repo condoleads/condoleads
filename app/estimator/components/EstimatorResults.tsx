@@ -5,6 +5,7 @@ import { EstimateResult } from '@/lib/estimator/types'
 import { formatPrice } from '@/lib/utils/formatters'
 import { MessageSquare, AlertTriangle } from 'lucide-react'
 import { createLead } from '@/lib/actions/leads'
+import { trackActivity } from '@/lib/actions/user-activity'
 
 interface EstimatorResultsProps {
   result: EstimateResult
@@ -61,6 +62,24 @@ export default function EstimatorResults({
       setShowContactForm(false)
       return
     }
+
+    // Track estimator usage
+    await trackActivity({
+      contactEmail: contactForm.email,
+      agentId: agentId,
+      activityType: 'estimator_used',
+      activityData: {
+        buildingId,
+        buildingName,
+        estimatedPrice: result.estimatedPrice,
+        priceRangeLow: result.priceRange.low,
+        priceRangeHigh: result.priceRange.high,
+        confidence: result.confidence,
+        bedrooms: specs.bedrooms,
+        bathrooms: specs.bathrooms,
+        sqft: specs.livingAreaRange
+      }
+    })
 
     const leadResult = await createLead({
       agentId,

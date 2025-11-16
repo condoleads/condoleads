@@ -2,7 +2,8 @@
 
 import { useAuth } from '@/components/auth/AuthContext'
 import RegisterModal from '@/components/auth/RegisterModal'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { trackActivity } from '@/lib/actions/user-activity'
 import { MLSListing } from '@/lib/types/building'
 import { formatPriceShort } from '@/lib/utils/formatters'
 
@@ -19,6 +20,21 @@ export default function TransactionHistory({
 }: TransactionHistoryProps) {
   const { user } = useAuth()
   const [showRegister, setShowRegister] = useState(false)
+  
+  // Track when authenticated user views transaction history
+  useEffect(() => {
+    if (user?.email && (closedSales.length > 0 || closedRentals.length > 0)) {
+      trackActivity({
+        contactEmail: user.email,
+        activityType: 'viewed_transaction_history',
+        activityData: {
+          totalSales: closedSales.length,
+          totalRentals: closedRentals.length,
+          highestSale
+        }
+      }).catch(err => console.error('Failed to track activity:', err))
+    }
+  }, [user?.email, closedSales.length, closedRentals.length, highestSale])
   if (closedSales.length === 0 && closedRentals.length === 0) {
     return null
   }
