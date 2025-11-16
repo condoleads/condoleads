@@ -1,6 +1,6 @@
 'use server'
 
-import { createServiceClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
 
 export type ActivityType =
@@ -39,7 +39,7 @@ interface TrackActivityParams {
 
 export async function trackActivity(params: TrackActivityParams) {
   try {
-    const supabase = createServiceClient()
+    const supabase = createClient()
     
     // Get request metadata
     const headersList = headers()
@@ -94,7 +94,7 @@ export async function trackActivity(params: TrackActivityParams) {
 
 // Get activities for a specific user
 export async function getUserActivities(contactEmail: string) {
-  const supabase = createServiceClient()
+  const supabase = createClient()
   
   const { data, error } = await supabase
     .from('user_activities')
@@ -112,7 +112,7 @@ export async function getUserActivities(contactEmail: string) {
 
 // Get activities for an agent (their leads only)
 export async function getAgentActivities(agentId: string) {
-  const supabase = createServiceClient()
+  const supabase = createClient()
   
   const { data, error } = await supabase
     .from('user_activities')
@@ -130,7 +130,7 @@ export async function getAgentActivities(agentId: string) {
 
 // Get ALL activities (admin only)
 export async function getAllActivities(limit: number = 100) {
-  const supabase = createServiceClient()
+  const supabase = createClient()
   
   const { data, error } = await supabase
     .from('user_activities')
