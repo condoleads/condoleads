@@ -1,6 +1,7 @@
-'use client'
+ï»¿'use client'
 
 import { useState, useEffect } from 'react'
+import { trackActivity } from '@/lib/actions/user-activity'
 import { createPortal } from 'react-dom'
 import { X, Mail, Lock, User, Phone, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
@@ -18,8 +19,6 @@ interface RegisterModalProps {
   estimatedValueMax?: number
   propertyDetails?: any
 }
-
-import { trackActivity } from '@/lib/actions/user-activity'
 
 export default function RegisterModal({
   isOpen,
@@ -287,7 +286,7 @@ export default function RegisterModal({
                     required
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    placeholder="••••••••"
+                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                     className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
