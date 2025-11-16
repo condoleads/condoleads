@@ -18,7 +18,7 @@ interface LeadDetailClientProps {
   initialNotes: any[]
 }
 
-export default function LeadDetailClient({ lead, agent, initialNotes }: LeadDetailClientProps) {
+export default function LeadDetailClient({ lead, agent, initialNotes, engagementScore }: LeadDetailClientProps) {
   const [status, setStatus] = useState(lead.status)
   const [quality, setQuality] = useState(lead.quality)
   const [tags, setTags] = useState(lead.tags || [])

@@ -3,6 +3,8 @@ import { requireAgent } from '@/lib/auth/helpers'
 import { createClient } from '@/lib/supabase/server'
 import { getLeadNotes, getAgentBuildings } from '@/lib/actions/lead-management'
 import LeadDetailClient from '@/components/dashboard/LeadDetailClient'
+import ActivityTimeline from '@/components/dashboard/ActivityTimeline'
+import { getUserActivities, calculateEngagementScore } from '@/lib/actions/user-activity'
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { error, agent } = await requireAgent()
@@ -46,6 +48,13 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   // Fetch notes
   const notesResult = await getLeadNotes(params.id)
   const notes = notesResult.success ? notesResult.notes : []
+
+  // Fetch user activities
+  const activitiesResult = await getUserActivities(lead.contact_email)
+  const activities = activitiesResult.success ? activitiesResult.activities : []
+
+  // Calculate engagement score
+  const engagement = await calculateEngagementScore(lead.contact_email)
 
   // Fetch available buildings for dropdown
   const buildingsResult = await getAgentBuildings(agent.id)
