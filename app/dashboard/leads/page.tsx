@@ -1,6 +1,6 @@
-﻿import { redirect } from 'next/navigation'
+import { redirect } from 'next/navigation'
 import { requireAgent } from '@/lib/auth/helpers'
-import { getAgentLeads } from '@/lib/actions/leads'
+import { getAgentLeads, getAllLeadsForAdmin } from '@/lib/actions/leads'
 import LeadsTable from '@/components/dashboard/LeadsTable'
 
 export default async function LeadsPage() {
@@ -10,7 +10,10 @@ export default async function LeadsPage() {
     redirect('/login')
   }
 
-  const leadsResult = await getAgentLeads(agent.id)
+  // Fetch leads based on admin status
+  const leadsResult = agent.is_admin 
+    ? await getAllLeadsForAdmin()
+    : await getAgentLeads(agent.id)
   const leads = leadsResult.success ? leadsResult.leads : []
 
   return (
