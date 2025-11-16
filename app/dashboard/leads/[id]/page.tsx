@@ -13,7 +13,8 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
 
   // Fetch lead details with building info
   const supabase = createClient()
-  const { data: lead, error: leadError } = await supabase
+  // Build query based on admin status
+  let leadQuery = supabase
     .from('leads')
     .select(`
       *,
@@ -21,11 +22,22 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         id,
         building_name,
         canonical_address
+      ),
+      agents!leads_agent_id_fkey (
+        id,
+        full_name,
+        email,
+        subdomain
       )
     `)
     .eq('id', params.id)
-    .eq('agent_id', agent.id)
-    .single()
+
+  // If not admin, only show their own leads
+  if (!agent.is_admin) {
+    leadQuery = leadQuery.eq('agent_id', agent.id)
+  }
+
+  const { data: lead, error: leadError } = await leadQuery.single()
 
   if (leadError || !lead) {
     redirect('/dashboard/leads')
