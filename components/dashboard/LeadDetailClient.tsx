@@ -16,6 +16,7 @@ interface LeadDetailClientProps {
   lead: any
   agent: any
   initialNotes: any[]
+  engagementScore?: { score: number; status: 'hot' | 'warm' | 'cold'; activityCount: number }
 }
 
 export default function LeadDetailClient({ lead, agent, initialNotes, engagementScore }: LeadDetailClientProps) {
