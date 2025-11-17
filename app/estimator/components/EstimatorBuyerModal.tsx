@@ -90,7 +90,10 @@ export default function EstimatorBuyerModal({
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-black/50 z-40 transition-opacity"
-        onClick={onClose}
+        onClick={() => {
+                    onClose()
+                    setTimeout(() => onContactRequest?.(), 400)
+                  }}
       />
 
       {/* Modal Drawer - Slides from right */}
@@ -105,7 +108,10 @@ export default function EstimatorBuyerModal({
               <p className="text-emerald-100 text-sm">Unit {listing.unit_number}</p>
             </div>
             <button
-              onClick={onClose}
+              onClick={() => {
+                    onClose()
+                    setTimeout(() => onContactRequest?.(), 400)
+                  }}
               className="p-2 hover:bg-white/20 rounded-lg transition-colors"
               aria-label="Close modal"
             >
