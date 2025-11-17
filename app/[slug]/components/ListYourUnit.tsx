@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { createLead } from '@/lib/actions/leads'
+import { getOrCreateLead } from '@/lib/actions/leads'
 import { trackActivity } from '@/lib/actions/user-activity'
 
 interface ListYourUnitProps {
@@ -46,7 +46,7 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     })
 
     // Create lead for market evaluation request
-    const result = await createLead({
+    const result = await getOrCreateLead({
       agentId,
       contactName: evaluationForm.name,
       contactEmail: evaluationForm.email,
@@ -83,7 +83,7 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     })
 
     // Create lead for visit booking
-    const result = await createLead({
+    const result = await getOrCreateLead({
       agentId,
       contactName: visitForm.name,
       contactEmail: visitForm.email,

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Send, Loader2 } from 'lucide-react'
-import { createLead } from '@/lib/actions/leads'
+import { getOrCreateLead } from '@/lib/actions/leads'
 import { trackActivity } from '@/lib/actions/user-activity'
 
 interface ContactModalProps {
@@ -74,7 +74,7 @@ export default function ContactModal({
       }
     })
 
-    const result = await createLead({
+    const result = await getOrCreateLead({
       agentId: agent.id,
       contactName: formData.name,
       contactEmail: formData.email,

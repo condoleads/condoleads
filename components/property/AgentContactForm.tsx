@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
-import { createLead } from '@/lib/actions/leads'
+import { getOrCreateLead } from '@/lib/actions/leads'
 import { trackActivity } from '@/lib/actions/user-activity'
 
 interface AgentContactFormProps {
@@ -61,7 +61,7 @@ export default function AgentContactForm({ listing, status, isSale, agent }: Age
     })
 
     // Create lead with listing context
-    const result = await createLead({
+    const result = await getOrCreateLead({
       agentId: agent.id,
       contactName: formData.name,
       contactEmail: formData.email,

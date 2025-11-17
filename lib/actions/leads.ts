@@ -33,6 +33,39 @@ interface CreateLeadParams {
   propertyDetails?: any
 }
 
+
+// Smart lead handler - prevents duplicates, maintains single lead per email per agent
+export async function getOrCreateLead(params: CreateLeadParams) {
+  const supabase = createClient()
+  
+  // Check if lead already exists for this email + agent combination
+  const { data: existingLead, error: searchError } = await supabase
+    .from('leads')
+    .select('id, contact_email, agent_id')
+    .eq('contact_email', params.contactEmail)
+    .eq('agent_id', params.agentId)
+    .single()
+  
+  if (existingLead && !searchError) {
+    console.log(' Lead already exists:', existingLead.id)
+    
+    // Update last activity timestamp
+    await supabase
+      .from('leads')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', existingLead.id)
+    
+    return { 
+      success: true, 
+      lead: existingLead,
+      isNew: false 
+    }
+  }
+  
+  // Lead doesn't exist, create new one
+  console.log(' Creating new lead for:', params.contactEmail)
+  return await createLead(params)
+}
 export async function createLead(params: CreateLeadParams) {
   console.log(' CREATE LEAD CALLED:', params)
 

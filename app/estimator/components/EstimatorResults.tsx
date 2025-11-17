@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { EstimateResult } from '@/lib/estimator/types'
 import { formatPrice } from '@/lib/utils/formatters'
 import { MessageSquare, AlertTriangle } from 'lucide-react'
-import { createLead } from '@/lib/actions/leads'
+import { getOrCreateLead } from '@/lib/actions/leads'
 import { trackActivity } from '@/lib/actions/user-activity'
 
 interface EstimatorResultsProps {
@@ -81,7 +81,7 @@ export default function EstimatorResults({
       }
     })
 
-    const leadResult = await createLead({
+    const leadResult = await getOrCreateLead({
       agentId,
       contactName: contactForm.name,
       contactEmail: contactForm.email,
