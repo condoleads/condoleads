@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import ContactModal from '@/components/modals/ContactModal'
 import { estimateSale } from '../actions/estimate-sale'
 import { estimateRent } from '../actions/estimate-rent'
 import { EstimateResult } from '@/lib/estimator/types'
@@ -231,7 +230,13 @@ export default function EstimatorBuyerModal({
                   Calculate New Estimate
                 </button>
                 <button
-                  onClick={() => setShowContactModal(true)}
+                  onClick={() => {
+                    // Scroll to contact form in EstimatorResults
+                    const contactForm = document.querySelector('[data-contact-form]')
+                    if (contactForm) {
+                      contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }
+                  }}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-colors"
                 >
                   Contact Agent
@@ -241,16 +246,6 @@ export default function EstimatorBuyerModal({
           )}
         </div>
       </div>
-
-      {/* Contact Modal */}
-      <ContactModal
-        isOpen={showContactModal}
-        onClose={() => setShowContactModal(false)}
-        buildingId={buildingId}
-        buildingName={buildingName}
-        listingId={listing?.id}
-        agentId={agentId}
-      />
     </>
   )
 }
