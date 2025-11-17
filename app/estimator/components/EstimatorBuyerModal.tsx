@@ -26,7 +26,8 @@ export default function EstimatorBuyerModal({
   buildingId,
   agentId,
   type,
-  exactSqft
+  exactSqft,
+  onContactRequest
 }: EstimatorBuyerModalProps) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
