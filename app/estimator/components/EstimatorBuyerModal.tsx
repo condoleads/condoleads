@@ -31,6 +31,7 @@ export default function EstimatorBuyerModal({
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showContactModal, setShowContactModal] = useState(false)
 
   const isSale = type === 'sale'
 
