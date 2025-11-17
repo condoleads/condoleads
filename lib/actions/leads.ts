@@ -124,7 +124,7 @@ export async function createLead(params: CreateLeadParams) {
   // Send email notification to agent
   try {
     await sendLeadNotificationToAgent({
-      agentEmail: params.contactEmail,
+      agentEmail: agent?.email || '',  // Send to AGENT not lead
       leadId: lead.id,
       agentName: agent?.full_name || "Agent",
       leadName: params.contactName,
