@@ -1,11 +1,11 @@
-ï»¿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { trackActivity } from '@/lib/actions/user-activity'
 import { createPortal } from 'react-dom'
 import { X, Mail, Lock, User, Phone, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
-import { createLeadFromRegistration } from '@/app/actions/createLead'
+import { getOrCreateLead } from '@/lib/actions/leads'
 
 interface RegisterModalProps {
   isOpen: boolean
@@ -97,7 +97,7 @@ export default function RegisterModal({
         if (profileError) console.error('Profile update error:', profileError)
 
         // Auto-create lead from registration
-        const leadResult = await createLeadFromRegistration({
+        const leadResult = await getOrCreateLead({
           userId: authData.user.id,
           fullName: formData.fullName,
           email: formData.email,
@@ -286,7 +286,7 @@ export default function RegisterModal({
                     required
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                    placeholder="••••••••"
                     className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
