@@ -79,8 +79,8 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
     })
 
     if (!result.success) {
-      console.error('Error creating lead from registration:', result.error)
-      return { success: false, error: result.error }
+      console.error('Error creating lead from registration')
+      return { success: false, error: 'Failed to create lead' }
     }
 
     console.log(' Lead created successfully with email notification:', result.lead?.id)
