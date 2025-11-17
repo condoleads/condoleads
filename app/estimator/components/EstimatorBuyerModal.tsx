@@ -16,6 +16,7 @@ interface EstimatorBuyerModalProps {
   agentId: string
   type: 'sale' | 'rent'
   exactSqft: number | null
+  onContactRequest?: () => void
 }
 
 export default function EstimatorBuyerModal({
