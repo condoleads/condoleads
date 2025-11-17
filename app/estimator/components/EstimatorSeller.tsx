@@ -247,25 +247,14 @@ export default function EstimatorSeller({ buildingId, buildingName, agentId }: E
                 agentId={agentId}
                 propertySpecs={specs}
               />
-            <div className="mt-6 flex gap-4">
-              <button
-                onClick={() => setResult(null)}
-                className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-semibold transition-colors"
-              >
-                Calculate New Estimate
-              </button>
-              <button
-                onClick={() => {
-                const listSection = document.getElementById('list-your-unit')
-                if (listSection) {
-                  listSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                }
-              }}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-colors"
-              >
-                List Your Unit
-              </button>
-            </div>
+            <div className="mt-6">
+            <button
+              onClick={() => setResult(null)}
+              className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-semibold transition-colors"
+            >
+              Calculate New Estimate
+            </button>
+          </div>
           </div>
         )}
       </div>
