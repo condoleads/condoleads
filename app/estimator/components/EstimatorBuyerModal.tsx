@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import ContactModal from '@/components/modals/ContactModal'
 import { estimateSale } from '../actions/estimate-sale'
 import { estimateRent } from '../actions/estimate-rent'
 import { EstimateResult } from '@/lib/estimator/types'
@@ -240,6 +241,17 @@ export default function EstimatorBuyerModal({
           )}
         </div>
       </div>
+
+      {/* Contact Modal */}
+      <ContactModal
+        isOpen={showContactModal}
+        onClose={() => setShowContactModal(false)}
+        buildingId={buildingId}
+        buildingName={buildingName}
+        listingId={listing?.id}
+        agentId={agentId}
+      />
     </>
   )
 }
+
