@@ -231,11 +231,16 @@ export default function EstimatorBuyerModal({
                 </button>
                 <button
                   onClick={() => {
-                    // Scroll to contact form in EstimatorResults
-                    const contactForm = document.querySelector('[data-contact-form]')
-                    if (contactForm) {
-                      contactForm.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                    }
+                    // Close modal first
+                    onClose()
+                    // Wait for modal to close, then scroll to and trigger contact form
+                    setTimeout(() => {
+                      const talkToAgentBtn = document.querySelector('button:has(> svg + *)') as HTMLElement
+                      if (talkToAgentBtn && talkToAgentBtn.textContent?.includes('Talk to an Agent')) {
+                        talkToAgentBtn.click()
+                        talkToAgentBtn.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      }
+                    }, 300)
                   }}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-colors"
                 >
