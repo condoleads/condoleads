@@ -231,16 +231,18 @@ export default function EstimatorBuyerModal({
                 </button>
                 <button
                   onClick={() => {
-                    // Close modal first
+                    // Close modal
                     onClose()
-                    // Wait for modal to close, then scroll to and trigger contact form
+                    // Trigger contact form after modal closes
                     setTimeout(() => {
-                      const talkToAgentBtn = document.querySelector('button:has(> svg + *)') as HTMLElement
-                      if (talkToAgentBtn && talkToAgentBtn.textContent?.includes('Talk to an Agent')) {
-                        talkToAgentBtn.click()
-                        talkToAgentBtn.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      // Find and click the "Talk to an Agent" button
+                      const buttons = Array.from(document.querySelectorAll('button'))
+                      const talkBtn = buttons.find(btn => btn.textContent?.includes('Talk to an Agent'))
+                      if (talkBtn) {
+                        talkBtn.click()
+                        setTimeout(() => talkBtn.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
                       }
-                    }, 300)
+                    }, 400)
                   }}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-colors"
                 >
