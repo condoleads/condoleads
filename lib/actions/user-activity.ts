@@ -3,6 +3,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { headers } from 'next/headers'
 
+// Create service role client that bypasses RLS
+function createServiceClient() {
+  const createServerClient = require('@supabase/supabase-js').createClient
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { persistSession: false } }
+  )
+}
+
 export type ActivityType =
   // Lead Generation (existing)
   | 'registration'
@@ -39,7 +49,7 @@ interface TrackActivityParams {
 
 export async function trackActivity(params: TrackActivityParams) {
   try {
-    const supabase = createClient()
+    const supabase = createServiceClient()
     
     // Get request metadata
     const headersList = headers()
