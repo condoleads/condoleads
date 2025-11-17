@@ -255,7 +255,12 @@ export default function EstimatorSeller({ buildingId, buildingName, agentId }: E
                 Calculate New Estimate
               </button>
               <button
-                onClick={() => window.location.href = '/contact'}
+                onClick={() => {
+                const listSection = document.getElementById('list-your-unit')
+                if (listSection) {
+                  listSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+              }}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-colors"
               >
                 List Your Unit
