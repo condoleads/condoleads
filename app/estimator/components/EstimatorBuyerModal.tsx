@@ -16,7 +16,6 @@ interface EstimatorBuyerModalProps {
   agentId: string
   type: 'sale' | 'rent'
   exactSqft: number | null
-  onContactRequest?: () => void
 }
 
 export default function EstimatorBuyerModal({
@@ -27,8 +26,7 @@ export default function EstimatorBuyerModal({
   buildingId,
   agentId,
   type,
-  exactSqft,
-  onContactRequest
+  exactSqft
 }: EstimatorBuyerModalProps) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
@@ -230,31 +228,12 @@ export default function EstimatorBuyerModal({
                   }}
                 />
               
-              <div className="mt-6 flex gap-4">
+              <div className="mt-6">
                 <button
                   onClick={() => setResult(null)}
-                  className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-semibold transition-colors"
+                  className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-semibold transition-colors"
                 >
                   Calculate New Estimate
-                </button>
-                <button
-                  onClick={() => {
-                    // Close modal
-                    onClose()
-                    // Trigger contact form after modal closes
-                    setTimeout(() => {
-                      // Find and click the "Talk to an Agent" button
-                      const buttons = Array.from(document.querySelectorAll('button'))
-                      const talkBtn = buttons.find(btn => btn.textContent?.includes('Talk to an Agent'))
-                      if (talkBtn) {
-                        talkBtn.click()
-                        setTimeout(() => talkBtn.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
-                      }
-                    }, 400)
-                  }}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-semibold transition-colors"
-                >
-                  Contact Agent
                 </button>
               </div>
             </div>
