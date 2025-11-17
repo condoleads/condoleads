@@ -1,6 +1,6 @@
 'use server'
 import { createClient } from '@/lib/supabase/server'
-import { createLead } from '@/lib/actions/leads'
+import { getOrCreateLead } from '@/lib/actions/leads'
 import { headers } from 'next/headers'
 
 interface CreateLeadFromRegistrationParams {
@@ -63,7 +63,7 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       : params.registrationUrl
 
     // Use the new createLead function which sends emails!
-    const result = await createLead({
+    const result = await getOrCreateLead({
       agentId: agentId,
       contactName: params.fullName,
       contactEmail: params.email,
