@@ -1,10 +1,11 @@
-'use client'
+ï»¿'use client'
+
 import { useState, useEffect } from 'react'
-import { trackActivity } from '@/lib/actions/user-activity'
 import { createPortal } from 'react-dom'
 import { X, Mail, Lock, User, Phone, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
-import { getOrCreateLead } from '@/lib/actions/leads'
+import { createLeadFromRegistration } from '@/app/actions/createLead'
+
 interface RegisterModalProps {
   isOpen: boolean
   onClose: () => void
@@ -17,6 +18,7 @@ interface RegisterModalProps {
   estimatedValueMax?: number
   propertyDetails?: any
 }
+
 export default function RegisterModal({
   isOpen,
   onClose,
@@ -40,23 +42,30 @@ export default function RegisterModal({
   const [error, setError] = useState<string | null>(null)
   const [showLogin, setShowLogin] = useState(false)
   const [mounted, setMounted] = useState(false)
+
   useEffect(() => {
     setMounted(true)
   }, [])
+
   if (!isOpen || !mounted) return null
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
     // Validation
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords don't match")
       return
     }
+
     if (formData.password.length < 6) {
       setError("Password must be at least 6 characters")
       return
     }
+
     setIsSubmitting(true)
+
     try {
       // Register with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -70,7 +79,9 @@ export default function RegisterModal({
           }
         }
       })
+
       if (authError) throw authError
+
       if (authData.user) {
         // Update user_profiles with additional info
         const { error: profileError } = await supabase
@@ -81,23 +92,31 @@ export default function RegisterModal({
             marketing_consent: true
           })
           .eq('id', authData.user.id)
+
         if (profileError) console.error('Profile update error:', profileError)
+
         // Auto-create lead from registration
-        const leadResult = await getOrCreateLead({
-          agentId: agentId || '',
+        const leadResult = await createLeadFromRegistration({
+          userId: authData.user.id,
+          fullName: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          registrationSource: registrationSource,
+          registrationUrl: window.location.href,
           buildingId: buildingId,
-          contactName: formData.fullName,
-          contactEmail: formData.email,
-          contactPhone: formData.phone,
-          message: 'New user registration',
-          source: registrationSource || 'registration'
+          listingId: listingId,
+          estimatedValueMin: estimatedValueMin,
+          estimatedValueMax: estimatedValueMax,
+          propertyDetails: propertyDetails
         })
+
         if (!leadResult.success) {
           console.error('Failed to create lead:', leadResult.error)
           // Don't fail the registration if lead creation fails
         } else {
           console.log('Lead created successfully:', leadResult.leadId)
         }
+
         // Success!
         if (onSuccess) onSuccess()
         onClose()
@@ -108,16 +127,20 @@ export default function RegisterModal({
       setIsSubmitting(false)
     }
   }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setIsSubmitting(true)
+
     try {
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password
       })
+
       if (loginError) throw loginError
+
       if (data.user) {
         if (onSuccess) onSuccess()
         onClose()
@@ -128,9 +151,11 @@ export default function RegisterModal({
       setIsSubmitting(false)
     }
   }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }))
   }
+
   const modalContent = (
     <>
       {/* Backdrop */}
@@ -138,6 +163,7 @@ export default function RegisterModal({
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999]"
         onClick={onClose}
       />
+
       {/* Modal */}
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
         <div
@@ -161,6 +187,7 @@ export default function RegisterModal({
               <X className="w-6 h-6" />
             </button>
           </div>
+
           {/* Form */}
           <form onSubmit={showLogin ? handleLogin : handleRegister} className="p-6 space-y-4">    
             {error && (
@@ -168,6 +195,7 @@ export default function RegisterModal({
                 <p className="text-red-800 text-sm">{error}</p>
               </div>
             )}
+
             {!showLogin && (
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -187,6 +215,7 @@ export default function RegisterModal({
                 </div>
               </div>
             )}
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Email *
@@ -204,6 +233,7 @@ export default function RegisterModal({
                 />
               </div>
             </div>
+
             {!showLogin && (
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -223,6 +253,7 @@ export default function RegisterModal({
                 </div>
               </div>
             )}
+
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Password *
@@ -240,6 +271,7 @@ export default function RegisterModal({
                 />
               </div>
             </div>
+
             {!showLogin && (
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -253,12 +285,13 @@ export default function RegisterModal({
                     required
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    placeholder="••••••••"
+                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                     className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
               </div>
             )}
+
             {!showLogin && (
               <div className="flex items-start gap-2">
                 <input
@@ -272,6 +305,7 @@ export default function RegisterModal({
                 </label>
               </div>
             )}
+
             <button
               type="submit"
               disabled={isSubmitting}
@@ -286,6 +320,7 @@ export default function RegisterModal({
                 showLogin ? 'Sign In' : 'Create Account'
               )}
             </button>
+
             <div className="text-center">
               <button
                 type="button"
@@ -303,5 +338,6 @@ export default function RegisterModal({
       </div>
     </>
   )
+
   return createPortal(modalContent, document.body)
 }
