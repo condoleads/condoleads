@@ -52,8 +52,9 @@ interface TrackActivityParams {
 }
 
 export async function trackActivity(params: TrackActivityParams) {
-  console.log(' trackActivity CALLED:', JSON.stringify(params, null, 2))
+  console.log(' trackActivity CALLED:', params)
   try {
+    const supabase = createServiceClient()
     
     // Get request metadata
     const headersList = headers()
@@ -75,7 +76,7 @@ export async function trackActivity(params: TrackActivityParams) {
     }
     
     // Insert activity
-    console.log('?? Attempting insert:', { contact_email: params.contactEmail, agent_id: agentId, activity_type: params.activityType })
+    console.log(' About to INSERT:', { email: params.contactEmail, type: params.activityType })
     const { data, error } = await supabase
       .from('user_activities')
       .insert({
