@@ -264,7 +264,7 @@ export async function sendActivityEmail({
 
     // Send email
     const { data, error } = await resend.emails.send({
-      from: 'CondoLeads <condoleads.ca@gmail.com>',
+      from: 'CondoLeads <notifications@condoleads.ca>',
       to: agentEmail,
       subject: `${engagement.score} Lead Activity: ${lead.contact_name} - ${latestFormatted.type} (${activities.length} actions)`,
       html

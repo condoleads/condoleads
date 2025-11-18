@@ -30,7 +30,7 @@ export async function sendLeadNotificationToAgent(params: SendLeadNotificationPa
     const resend = getResendClient()
     
     const { data, error } = await resend.emails.send({
-      from: 'CondoLeads <onboarding@resend.dev>', // Using Resend's test domain
+      from: 'CondoLeads <notifications@condoleads.ca>', // Using Resend's test domain
       to: [params.agentEmail],
       subject: ` New Lead: ${params.leadName}`,
       html: `
@@ -142,7 +142,7 @@ export async function sendWelcomeEmail(params: SendWelcomeEmailParams) {
     const resend = getResendClient()
     
     const { data, error } = await resend.emails.send({
-      from: 'CondoLeads <onboarding@resend.dev>',
+      from: 'CondoLeads <notifications@condoleads.ca>',
       to: [params.userEmail],
       subject: `Welcome to ${params.agentName}'s Real Estate Portal`,
       html: `
