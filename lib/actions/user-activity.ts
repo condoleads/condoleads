@@ -108,7 +108,7 @@ export async function trackActivity(params: TrackActivityParams) {
 
 // Get activities for a specific user
 export async function getUserActivities(contactEmail: string) {
-  const supabase = createClient()
+  const supabase = createServiceClient()
   
   const { data, error } = await supabase
     .from('user_activities')
@@ -126,7 +126,7 @@ export async function getUserActivities(contactEmail: string) {
 
 // Get activities for an agent (their leads only)
 export async function getAgentActivities(agentId: string) {
-  const supabase = createClient()
+  const supabase = createServiceClient()
   
   const { data, error } = await supabase
     .from('user_activities')
@@ -144,7 +144,7 @@ export async function getAgentActivities(agentId: string) {
 
 // Get ALL activities (admin only)
 export async function getAllActivities(limit: number = 100) {
-  const supabase = createClient()
+  const supabase = createServiceClient()
   
   const { data, error } = await supabase
     .from('user_activities')
