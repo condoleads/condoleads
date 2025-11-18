@@ -102,6 +102,18 @@ export async function trackActivity(params: TrackActivityParams) {
       agent: agentId
     })
     
+    
+    // Send activity email if agent exists
+    if (agentId) {
+      const { data: agentData } = await supabase.from('agents').select('full_name, email').eq('id', agentId).single()
+      if (agentData?.email) {
+        const { data: leadData } = await supabase.from('leads').select('id').eq('contact_email', params.contactEmail).eq('agent_id', agentId).single()
+        if (leadData?.id) {
+          console.log(' Sending activity email...')
+          await sendActivityEmail({ leadId: leadData.id, activityType: params.activityType, agentEmail: agentData.email, agentName: agentData.full_name }).catch(e => console.error('?? Email failed:', e))
+        }
+      }
+    }
     return { success: true, activity: data }
   } catch (error) {
     console.error('❌ Unexpected error tracking activity:', error)
