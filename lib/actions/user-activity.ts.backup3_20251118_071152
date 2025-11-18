@@ -2,7 +2,6 @@
 
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { headers } from 'next/headers'
-import { sendActivityEmail } from '@/lib/email/sendActivityEmail'
 
 // Create service role client that bypasses RLS
 function createServiceClient() {
@@ -53,7 +52,6 @@ interface TrackActivityParams {
 }
 
 export async function trackActivity(params: TrackActivityParams) {
-  console.log(' trackActivity CALLED:', params)
   try {
     const supabase = createServiceClient()
     
@@ -77,7 +75,6 @@ export async function trackActivity(params: TrackActivityParams) {
     }
     
     // Insert activity
-    console.log(' About to INSERT:', { email: params.contactEmail, type: params.activityType })
     const { data, error } = await supabase
       .from('user_activities')
       .insert({
