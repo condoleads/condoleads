@@ -123,6 +123,13 @@ export async function createLead(params: CreateLeadParams) {
 
   // Send email notification to agent
   try {
+    console.log(' DEBUG - Email params being sent:', {
+      phone: params.contactPhone,
+      message: params.message,
+      name: params.contactName,
+      email: params.contactEmail
+    })
+    
     await sendLeadNotificationToAgent({
       agentEmail: agent?.email || '',
       leadId: lead.id,
