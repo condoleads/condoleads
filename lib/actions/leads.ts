@@ -124,12 +124,18 @@ export async function createLead(params: CreateLeadParams) {
   // Send email notification to agent
   try {
     await sendLeadNotificationToAgent({
-      agentEmail: agent?.email || '',  // Send to AGENT not lead
+      agentEmail: agent?.email || '',
       leadId: lead.id,
       agentName: agent?.full_name || "Agent",
       leadName: params.contactName,
       leadEmail: params.contactEmail,
-      source: source
+      leadPhone: params.contactPhone,
+      message: params.message,
+      source: source,
+      buildingName: params.buildingId ? 'Building Info' : undefined,
+      estimatedValue: params.estimatedValueMin && params.estimatedValueMax 
+        ? `${params.estimatedValueMin?.toLocaleString()} - ${params.estimatedValueMax?.toLocaleString()}`
+        : undefined
     })
   } catch (emailError) {
   }
@@ -215,3 +221,5 @@ export async function getAllLeadsForAdmin() {
 
   return { success: true, leads: leads || [] }
 }
+
+
