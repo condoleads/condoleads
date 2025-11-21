@@ -1,5 +1,6 @@
 'use server'
 
+import { createClient as createServerClient } from '@supabase/supabase-js'
 import { sendActivityEmail } from '@/lib/email/sendActivityEmail'
 import { sendLeadNotificationToAgent } from '@/lib/email/resend'
 
@@ -122,19 +123,14 @@ export async function createLead(params: CreateLeadParams) {
 
   // Send email notification to agent
   try {
-    console.log(' DEBUG - Email params being sent:', {
-      phone: params.contactPhone,
-      message: params.message,
-      name: params.contactName,
-      email: params.contactEmail
-    })
-    
     await sendActivityEmail({
       leadId: lead.id,
       activityType: 'contact_form',
       agentEmail: agent?.email || '',
       agentName: agent?.full_name || 'Agent'
     })
+  } catch (emailError) {
+    console.error(' Error sending email:', emailError)
   }
 
   return { success: true, lead }
