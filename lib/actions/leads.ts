@@ -1,7 +1,6 @@
 'use server'
 
-import { createClient as createServerClient } from '@supabase/supabase-js'
-import { headers } from 'next/headers'
+import { sendActivityEmail } from '@/lib/email/sendActivityEmail'
 import { sendLeadNotificationToAgent } from '@/lib/email/resend'
 
 // Create service role client that bypasses RLS
@@ -130,21 +129,12 @@ export async function createLead(params: CreateLeadParams) {
       email: params.contactEmail
     })
     
-    await sendLeadNotificationToAgent({
-      agentEmail: agent?.email || '',
+    await sendActivityEmail({
       leadId: lead.id,
-      agentName: agent?.full_name || "Agent",
-      leadName: params.contactName,
-      leadEmail: params.contactEmail,
-      leadPhone: params.contactPhone,
-      message: params.message,
-      source: source,
-      buildingName: params.buildingId ? 'Building Info' : undefined,
-      estimatedValue: params.estimatedValueMin && params.estimatedValueMax 
-        ? `${params.estimatedValueMin?.toLocaleString()} - ${params.estimatedValueMax?.toLocaleString()}`
-        : undefined
+      activityType: 'contact_form',
+      agentEmail: agent?.email || '',
+      agentName: agent?.full_name || 'Agent'
     })
-  } catch (emailError) {
   }
 
   return { success: true, lead }
