@@ -1,9 +1,7 @@
 'use server'
-
 import { createClient as createServerClient } from '@supabase/supabase-js'
+import { headers } from 'next/headers'
 import { sendActivityEmail } from '@/lib/email/sendActivityEmail'
-import { sendLeadNotificationToAgent } from '@/lib/email/resend'
-
 // Create service role client that bypasses RLS
 function createServiceClient() {
   return createServerClient(
