@@ -37,8 +37,9 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
         .eq('subdomain', subdomain)
         .eq('is_active', true)
         .single()
+      
       agentId = agent?.id || 'd5ab9f8b-5819-4363-806c-a414657e7763' // Fallback to Mary
-      console.log(` Lead assigned to agent via subdomain: ${subdomain} -> ${agentId}`)
+      console.log(`?? Lead assigned to agent via subdomain: ${subdomain} -> ${agentId}`)
     } else {
       // No subdomain (main site) - default to Mary (admin)
       agentId = 'd5ab9f8b-5819-4363-806c-a414657e7763'
@@ -61,15 +62,6 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       ? `https://${subdomain}.condoleads.ca${params.registrationUrl || ''}` 
       : params.registrationUrl
 
-    // Form submissions always create NEW leads (forceNew: true)
-    // These are critical user requests that need immediate agent attention
-    const formSubmissionSources = ['contact_form', 'listing_card', 'building_page']
-    const shouldForceNewLead = formSubmissionSources.includes(params.registrationSource)
-
-    if (shouldForceNewLead) {
-      console.log(' Form submission detected - creating NEW lead')
-    }
-
     // Use the new createLead function which sends emails!
     const result = await getOrCreateLead({
       agentId: agentId,
@@ -83,20 +75,18 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       message: params.message ? `${params.message} ${subdomain ? `(via ${subdomain}.condoleads.ca)` : ""}` : `New user registration via ${params.registrationSource} ${subdomain ? `on ${subdomain}.condoleads.ca` : ""}`,
       estimatedValueMin: params.estimatedValueMin,
       estimatedValueMax: params.estimatedValueMax,
-      propertyDetails: params.propertyDetails,
-      forceNew: shouldForceNewLead
+      propertyDetails: params.propertyDetails
     })
 
     if (!result.success) {
-      console.error(' Error creating lead from registration')
+      console.error('Error creating lead from registration')
       return { success: false, error: 'Failed to create lead' }
     }
 
     console.log(' Lead created successfully with email notification:', result.lead?.id)
     return { success: true, leadId: result.lead?.id }
-
   } catch (error) {
-    console.error(' Unexpected error creating lead:', error)
+    console.error('? Unexpected error creating lead:', error)
     return { success: false, error: 'Failed to create lead' }
   }
 }

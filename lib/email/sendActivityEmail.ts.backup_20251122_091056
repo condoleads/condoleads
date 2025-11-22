@@ -20,8 +20,7 @@ const CRITICAL_ACTIVITIES = [
   'building_visit_request',
   'sale_evaluation_request',
   'lease_evaluation_request',
-  'estimator_contact_submitted',
-  'registration'
+  'estimator_contact_submitted'
 ]
 
 const HIGH_INTENT_ACTIVITIES = [
