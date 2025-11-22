@@ -169,42 +169,26 @@ function extractActivityDetails(activityType: string, activityData: any): string
         details += `Building: ${activityData.buildingName}`
       }
       if (activityData.source) {
-        const sourceText = activityData.source.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-        details += details ? ` • Source: ${sourceText}` : `Source: ${sourceText}`
+        details += details ? ` • Source: ${activityData.source}` : `Source: ${activityData.source}`
       }
       break
 
     case 'estimator_used':
-      if (activityData.sqft) {
-        details += `Unit Size: ${activityData.sqft} sqft`
+      const priceRange = activityData['safe[1']
+      if (priceRange) {
+        details += `Price Range: $${priceRange.replace('-', ' - $')}`
       }
       if (activityData.bedrooms || activityData.bathrooms) {
         const bedBath = `${activityData.bedrooms || '?'}BR / ${activityData.bathrooms || '?'}BA`
         details += details ? ` • ${bedBath}` : bedBath
-      }
-      if (activityData.estimatedPrice) {
-        const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(activityData.estimatedPrice)
-        details += details ? ` • Estimated: ${price}` : `Estimated: ${price}`
       }
       if (activityData.buildingName) {
         details += details ? ` • ${activityData.buildingName}` : activityData.buildingName
       }
       break
 
-    case 'building_visit_request':
-      if (activityData.buildingName) {
-        details += activityData.buildingName
-      }
-      if (activityData.requestedDate) {
-        const date = new Date(activityData.requestedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        details += details ? ` • Requested: ${date}` : `Requested: ${date}`
-      }
-      if (activityData.requestedTime) {
-        details += details ? ` at ${activityData.requestedTime}` : activityData.requestedTime
-      }
-      break
-
     case 'property_inquiry':
+    case 'building_visit_request':
       if (activityData.buildingName) {
         details += activityData.buildingName
       }
