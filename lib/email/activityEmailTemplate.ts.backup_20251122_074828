@@ -16,7 +16,7 @@ interface ActivityEmailData {
     description: string
     timestamp: string
   }>
-  engagementScore: '🔥 HOT' | '🌡️ WARM' | '❄️ COLD'
+  engagementScore: ' HOT' | ' WARM' | ' COLD'
   engagementText: string
   totalActivityCount: number
   leadUrl: string
@@ -26,15 +26,15 @@ interface ActivityEmailData {
 
 export function generateActivityEmailHtml(data: ActivityEmailData): string {
   const activityIcons: Record<string, string> = {
-    contact_form: '📧',
-    property_inquiry: '🏢',
-    estimator_used: '💰',
-    estimator_contact_submitted: '📞',
-    sale_evaluation_request: '📊',
-    lease_evaluation_request: '📋',
-    building_visit_request: '🏗️',
-    viewed_transaction_history: '📈',
-    registration: '✅'
+    contact_form: '??',
+    property_inquiry: '??',
+    estimator_used: '',
+    estimator_contact_submitted: '',
+    sale_evaluation_request: '',
+    lease_evaluation_request: '',
+    building_visit_request: '',
+    viewed_transaction_history: '',
+    registration: ''
   }
 
   const activityNames: Record<string, string> = {
@@ -94,18 +94,18 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
 
   <div style="background: white; padding: 30px;">
     <div class="section">
-      <div class="section-title">📍 LATEST ACTION</div>
+      <div class="section-title"> LATEST ACTION</div>
       <div class="latest-action">
-        <div style="font-size: 24px; margin-bottom: 10px;">${activityIcons[data.latestActivity.type] || '📌'}</div>
+        <div style="font-size: 24px; margin-bottom: 10px;">${activityIcons[data.latestActivity.type] || ''}</div>
         <div style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 8px;">${activityNames[data.latestActivity.type] || data.latestActivity.description}</div>
         ${data.latestActivity.details ? `<div style="color: #6b7280; margin-bottom: 8px;">${data.latestActivity.details}</div>` : ''}
-        ${data.buildingName ? `<div style="color: #667eea; font-weight: 500;">🏢 ${data.buildingName}</div>` : ''}
-        <div style="color: #6b7280; font-size: 13px; margin-top: 8px;">⏰ ${data.latestActivity.timestamp}</div>
+        ${data.buildingName ? `<div style="color: #667eea; font-weight: 500;"> ${data.buildingName}</div>` : ''}
+        <div style="color: #6b7280; font-size: 13px; margin-top: 8px;"> ${data.latestActivity.timestamp}</div>
       </div>
     </div>
 
     <div class="section">
-      <div class="section-title">📊 RECENT ACTIVITY (Last ${Math.min(data.recentActivities.length, 5)})</div>
+      <div class="section-title"> RECENT ACTIVITY (Last ${Math.min(data.recentActivities.length, 5)})</div>
       ${data.recentActivities.slice(0, 5).map(activity => `
         <div class="activity-item">
           <div class="activity-icon">${activity.icon}</div>
@@ -119,7 +119,7 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
     </div>
 
     <div class="section">
-      <div class="section-title">🎯 ENGAGEMENT SCORE</div>
+      <div class="section-title"> ENGAGEMENT SCORE</div>
       <div class="engagement">
         <div class="engagement-score">${data.engagementScore}</div>
         <div class="engagement-text">${data.engagementText}</div>
@@ -127,7 +127,7 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
     </div>
 
     <div class="section">
-      <div class="section-title">👤 CONTACT INFO</div>
+      <div class="section-title"> CONTACT INFO</div>
       <div class="contact-info">
         <div class="contact-row">
           <div class="contact-label">Name:</div>
@@ -147,15 +147,15 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
     </div>
 
     <div class="actions">
-      <a href="${data.leadUrl}" class="btn btn-primary">📋 View Full Lead</a>
-      ${data.callUrl ? `<a href="${data.callUrl}" class="btn btn-success">📞 Call Now</a>` : ''}
-      ${data.whatsappUrl ? `<a href="${data.whatsappUrl}" class="btn btn-success">💬 WhatsApp</a>` : ''}
+      <a href="${data.leadUrl}" class="btn btn-primary">View Full Lead</a>
+      ${data.callUrl ? `<a href="${data.callUrl}" class="btn btn-success">Call Now</a>` : ''}
+      ${data.whatsappUrl ? `<a href="${data.whatsappUrl}" class="btn btn-success">WhatsApp</a>` : ''}
     </div>
   </div>
 
   <div class="footer">
     <p>This is an automated notification from CondoLeads.</p>
-    <p>Respond quickly to convert hot leads! ⚡</p>
+    <p>Respond quickly to convert hot leads! </p>
   </div>
 </body>
 </html>

@@ -6,6 +6,7 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+// Create service client
 function createServiceClient() {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +15,7 @@ function createServiceClient() {
   )
 }
 
+// Activity priority levels
 const CRITICAL_ACTIVITIES = [
   'contact_form',
   'property_inquiry',
@@ -36,39 +38,41 @@ const PASSIVE_ACTIVITIES = [
   'clicked_get_estimate_cta'
 ]
 
-function calculateEngagement(activities: any[]): { score: '🔥 HOT' | '🌡️ WARM' | '❄️ COLD', text: string } {
+// Calculate engagement score
+function calculateEngagement(activities: any[]): { score: ' HOT' | ' WARM' | ' COLD', text: string } {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
   const recentActivities = activities.filter(a => new Date(a.created_at) > oneHourAgo)
-
+  
   if (recentActivities.length >= 4) {
-    return {
-      score: '🔥 HOT',
-      text: `High engagement - ${recentActivities.length} actions in the last hour!`
+    return { 
+      score: ' HOT', 
+      text: `High engagement - ${recentActivities.length} actions in the last hour!` 
     }
   }
   if (recentActivities.length >= 2) {
-    return {
-      score: '🌡️ WARM',
-      text: `Actively browsing - ${recentActivities.length} recent actions`
+    return { 
+      score: ' WARM', 
+      text: `Actively browsing - ${recentActivities.length} recent actions` 
     }
   }
-  return {
-    score: '❄️ COLD',
-    text: 'New activity detected'
+  return { 
+    score: ' COLD', 
+    text: 'New activity detected' 
   }
 }
 
+// Format activity for email
 function formatActivityForEmail(activity: any) {
   const activityIcons: Record<string, string> = {
-    contact_form: '📧',
-    property_inquiry: '🏢',
-    estimator_used: '💰',
-    estimator_contact_submitted: '📞',
-    sale_evaluation_request: '📊',
-    lease_evaluation_request: '📋',
-    building_visit_request: '🏗️',
-    viewed_transaction_history: '📈',
-    registration: '✅'
+    contact_form: '',
+    property_inquiry: '',
+    estimator_used: '',
+    estimator_contact_submitted: '',
+    sale_evaluation_request: '',
+    lease_evaluation_request: '',
+    building_visit_request: '',
+    viewed_transaction_history: '',
+    registration: ''
   }
 
   const activityNames: Record<string, string> = {
@@ -85,14 +89,15 @@ function formatActivityForEmail(activity: any) {
 
   const timestamp = new Date(activity.created_at)
   const minutesAgo = Math.floor((Date.now() - timestamp.getTime()) / 60000)
-
+  
   let timeText = ''
   if (minutesAgo < 1) timeText = 'Just now'
   else if (minutesAgo < 60) timeText = `${minutesAgo} minute${minutesAgo > 1 ? 's' : ''} ago`
   else timeText = `${Math.floor(minutesAgo / 60)} hour${Math.floor(minutesAgo / 60) > 1 ? 's' : ''} ago`
 
   let description = activityNames[activity.activity_type] || activity.activity_type
-
+  
+  // Add extra context from activity_data
   if (activity.activity_data) {
     const data = activity.activity_data
     if (data.buildingName) description += ` - ${data.buildingName}`
@@ -102,30 +107,35 @@ function formatActivityForEmail(activity: any) {
   }
 
   return {
-    icon: activityIcons[activity.activity_type] || '📌',
+    icon: activityIcons[activity.activity_type] || '',
     type: activityNames[activity.activity_type] || activity.activity_type,
     description,
     timestamp: timeText
   }
 }
 
+// Check if should send email
 async function shouldSendActivityEmail(
   leadId: string,
   activityType: string
 ): Promise<boolean> {
   const supabase = createServiceClient()
 
+  // Always send for critical activities
   if (CRITICAL_ACTIVITIES.includes(activityType)) {
-    console.log('✅ Critical activity - sending email')
+    console.log(' Critical activity - sending email')
     return true
   }
 
+  // Never send for passive activities
   if (PASSIVE_ACTIVITIES.includes(activityType)) {
-    console.log('❌ Passive activity - no email')
+    console.log(' Passive activity - no email')
     return false
   }
 
+  // For high-intent activities, check throttle
   if (HIGH_INTENT_ACTIVITIES.includes(activityType)) {
+    // Check last email time for this lead
     const { data: lastEmail } = await supabase
       .from('lead_email_log')
       .select('sent_at')
@@ -137,18 +147,19 @@ async function shouldSendActivityEmail(
     if (lastEmail) {
       const hoursSinceLastEmail = (Date.now() - new Date(lastEmail.sent_at).getTime()) / (1000 * 60 * 60)
       if (hoursSinceLastEmail < 1) {
-        console.log('⏸️ Email throttled - sent one recently')
+        console.log(' Email throttled - sent one recently')
         return false
       }
     }
 
-    console.log('✅ High-intent activity - sending email')
+    console.log(' High-intent activity - sending email')
     return true
   }
 
   return false
 }
 
+// Log email sent
 async function logEmailSent(leadId: string, activityType: string) {
   const supabase = createServiceClient()
   await supabase.from('lead_email_log').insert({
@@ -156,63 +167,6 @@ async function logEmailSent(leadId: string, activityType: string) {
     activity_type: activityType,
     sent_at: new Date().toISOString()
   })
-}
-
-function extractActivityDetails(activityType: string, activityData: any): string {
-  if (!activityData) return ''
-
-  let details = ''
-
-  switch (activityType) {
-    case 'contact_form':
-      if (activityData.buildingName) {
-        details += `Building: ${activityData.buildingName}`
-      }
-      if (activityData.source) {
-        details += details ? ` • Source: ${activityData.source}` : `Source: ${activityData.source}`
-      }
-      break
-
-    case 'estimator_used':
-      const priceRange = activityData['safe[1']
-      if (priceRange) {
-        details += `Price Range: $${priceRange.replace('-', ' - $')}`
-      }
-      if (activityData.bedrooms || activityData.bathrooms) {
-        const bedBath = `${activityData.bedrooms || '?'}BR / ${activityData.bathrooms || '?'}BA`
-        details += details ? ` • ${bedBath}` : bedBath
-      }
-      if (activityData.buildingName) {
-        details += details ? ` • ${activityData.buildingName}` : activityData.buildingName
-      }
-      break
-
-    case 'property_inquiry':
-    case 'building_visit_request':
-      if (activityData.buildingName) {
-        details += activityData.buildingName
-      }
-      if (activityData.propertyType) {
-        details += details ? ` • ${activityData.propertyType}` : activityData.propertyType
-      }
-      break
-
-    case 'viewed_transaction_history':
-      if (activityData.totalSales || activityData.totalLeases) {
-        details += `Viewed ${activityData.totalSales || 0} sales, ${activityData.totalLeases || 0} leases`
-      }
-      if (activityData.buildingName) {
-        details += details ? ` at ${activityData.buildingName}` : activityData.buildingName
-      }
-      break
-
-    default:
-      if (activityData.buildingName) {
-        details += activityData.buildingName
-      }
-  }
-
-  return details
 }
 
 export async function sendActivityEmail({
@@ -227,8 +181,9 @@ export async function sendActivityEmail({
   agentName: string
 }) {
   try {
-    console.log('🔵 Checking if should send activity email...', { leadId, activityType })
+    console.log(' Checking if should send activity email...', { leadId, activityType })
 
+    // Check if we should send email for this activity
     const shouldSend = await shouldSendActivityEmail(leadId, activityType)
     if (!shouldSend) {
       return { success: true, skipped: true }
@@ -236,6 +191,7 @@ export async function sendActivityEmail({
 
     const supabase = createServiceClient()
 
+    // Get lead details
     const { data: lead } = await supabase
       .from('leads')
       .select('*, buildings(*)')
@@ -243,10 +199,11 @@ export async function sendActivityEmail({
       .single()
 
     if (!lead) {
-      console.error('❌ Lead not found')
+      console.error(' Lead not found')
       return { success: false, error: 'Lead not found' }
     }
 
+    // Get recent activities
     const { data: activities } = await supabase
       .from('user_activities')
       .select('*')
@@ -255,17 +212,32 @@ export async function sendActivityEmail({
       .limit(10)
 
     if (!activities || activities.length === 0) {
-      console.error('❌ No activities found')
+      console.error(' No activities found')
       return { success: false, error: 'No activities' }
     }
 
+    // Calculate engagement
     const engagement = calculateEngagement(activities)
+
+    // Format latest activity
     const latestActivity = activities[0]
     const latestFormatted = formatActivityForEmail(latestActivity)
-    const buildingName = lead.buildings?.name || latestActivity.activity_data?.buildingName
-    const recentActivities = activities.slice(0, 5).map(formatActivityForEmail)
-    const latestDetails = extractActivityDetails(latestActivity.activity_type, latestActivity.activity_data)
 
+    // Get building name
+    const buildingName = lead.buildings?.name || lead.activity_data?.buildingName
+
+    // Format recent activities
+    const recentActivities = activities.slice(0, 5).map(formatActivityForEmail)
+
+    // Get latest activity details
+    let latestDetails = ''
+    if (latestActivity.activity_data) {
+      const data = latestActivity.activity_data
+      if (data.sqft) latestDetails += `${data.bedrooms || 'N/A'}BR/${data.bathrooms || 'N/A'}BA, ${data.sqft} sqft`
+      if (data.estimatedValue) latestDetails += `\nEstimated: ${data.estimatedValue}`
+    }
+
+    // Build email data
     const emailData = {
       agentName,
       leadName: lead.contact_name,
@@ -287,8 +259,10 @@ export async function sendActivityEmail({
       whatsappUrl: lead.contact_phone ? `https://wa.me/${lead.contact_phone.replace(/\D/g, '')}` : undefined
     }
 
+    // Generate HTML
     const html = generateActivityEmailHtml(emailData)
 
+    // Send email
     const { data, error } = await resend.emails.send({
       from: 'CondoLeads <notifications@condoleads.ca>',
       to: agentEmail,
@@ -297,17 +271,18 @@ export async function sendActivityEmail({
     })
 
     if (error) {
-      console.error('❌ Error sending activity email:', error)
+      console.error(' Error sending activity email:', error)
       return { success: false, error: error.message }
     }
 
+    // Log email sent
     await logEmailSent(leadId, activityType)
 
-    console.log('✅ Activity email sent successfully:', data?.id)
+    console.log(' Activity email sent successfully:', data?.id)
     return { success: true, emailId: data?.id }
 
   } catch (error) {
-    console.error('❌ Error in sendActivityEmail:', error)
+    console.error(' Error in sendActivityEmail:', error)
     return { success: false, error: String(error) }
   }
 }
