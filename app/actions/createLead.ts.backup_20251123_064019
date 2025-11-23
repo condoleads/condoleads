@@ -45,17 +45,13 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       console.log(' Lead assigned to default admin (no subdomain)')
     }
 
-    // Enhanced source mapping with specific action types
+    // Map registration sources to valid lead sources
     const sourceMap: Record<string, string> = {
       'home_page': 'registration',
       'listing_card': 'property_inquiry',
       'estimator': 'estimator',
-      'building_page': 'contact_form',
-      'contact_form': 'contact_form',
-      'message_agent': 'contact_form',
-      'sale_offer': 'sale_evaluation_request',
-      'building_visit': 'building_visit_request',
-      'property_inquiry': 'property_inquiry'
+      'building_page': 'building_page',
+      'contact_form': 'contact_form'
     }
     
     const leadSource = sourceMap[params.registrationSource] || 'registration'
@@ -65,22 +61,13 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       ? `https://${subdomain}.condoleads.ca${params.registrationUrl || ''}` 
       : params.registrationUrl
 
-    // Determine if this should force create a new lead
-    // Form submissions and registration always create new leads
-    const formSubmissionSources = [
-      'contact_form', 
-      'listing_card', 
-      'building_page',
-      'message_agent',
-      'sale_offer',
-      'building_visit',
-      'property_inquiry',
-      'home_page'  // Registration also creates new lead
-    ]
+    // Form submissions always create NEW leads (forceNew: true)
+    // These are critical user requests that need immediate agent attention
+    const formSubmissionSources = ['contact_form', 'listing_card', 'building_page']
     const shouldForceNewLead = formSubmissionSources.includes(params.registrationSource)
 
     if (shouldForceNewLead) {
-      console.log(' Form submission/Registration detected - creating NEW lead')
+      console.log(' Form submission detected - creating NEW lead')
     }
 
     // Use the new createLead function which sends emails!

@@ -51,11 +51,9 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
       contactName: evaluationForm.name,
       contactEmail: evaluationForm.email,
       contactPhone: evaluationForm.phone,
-      source: 'sale_evaluation_request',
+      source: 'contact_form',
       buildingId,
       message: `Requested market evaluation for ${buildingName}`
-      forceNew: true
-    }
     })
     
     if (result.success) {
@@ -90,10 +88,9 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
       contactName: visitForm.name,
       contactEmail: visitForm.email,
       contactPhone: visitForm.phone,
-      source: 'building_visit_request',
+      source: 'contact_form',
       buildingId,
       message: `Requested building visit for ${buildingName} on ${visitForm.date} at ${visitForm.time}`,
-      forceNew: true,
       propertyDetails: {
         requestedDate: visitForm.date,
         requestedTime: visitForm.time
@@ -319,5 +316,3 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     </section>
   )
 }
-
-

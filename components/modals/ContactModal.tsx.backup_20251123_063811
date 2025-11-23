@@ -16,7 +16,7 @@ interface ContactModalProps {
     phone?: string | null
     profile_photo_url?: string | null
   }
-  source: 'home_page' | 'building_page' | 'property_inquiry' | 'message_agent' | 'sale_offer' | 'building_visit'
+  source: 'home_page' | 'building_page' | 'property_inquiry'
   buildingId?: string
   buildingName?: string
   listingId?: string
@@ -74,7 +74,6 @@ export default function ContactModal({
       }
     })
 
-    // ALWAYS create new lead for form submissions (forceNew: true)
     const result = await getOrCreateLead({
       agentId: agent.id,
       contactName: formData.name,
@@ -83,8 +82,7 @@ export default function ContactModal({
       source,
       buildingId,
       listingId,
-      message: contextMessage,
-      forceNew: true  // CRITICAL: Always create new lead for form submissions
+      message: contextMessage
     })
 
     setIsSubmitting(false)
@@ -106,18 +104,18 @@ export default function ContactModal({
   const modalContent = (
     <>
       {/* Backdrop */}
-      <div
+      <div 
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999]"
         onClick={onClose}
         style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
       />
 
       {/* Modal */}
-      <div
+      <div 
         className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
         style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}
       >
-        <div
+        <div 
           className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
           style={{ pointerEvents: 'auto' }}
@@ -126,8 +124,8 @@ export default function ContactModal({
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <div className="flex items-center gap-4">
               {agent.profile_photo_url ? (
-                <img
-                  src={agent.profile_photo_url}
+                <img 
+                  src={agent.profile_photo_url} 
                   alt={agent.full_name}
                   className="w-16 h-16 rounded-full object-cover border-2 border-blue-500"
                 />
