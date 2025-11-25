@@ -289,20 +289,7 @@ export async function sendActivityEmail({
     const engagement = calculateEngagement(activities)
     const latestActivity = activities[0]
     const latestFormatted = formatActivityForEmail(latestActivity)
-    // Get building name from lead's building relationship, activity data, or fetch it
-let buildingName = lead.buildings?.name || latestActivity.activity_data?.buildingName
-
-// If still no building name but lead has building_id, fetch it
-if (!buildingName && lead.building_id) {
-  const { data: building } = await supabase
-    .from('buildings')
-    .select('name')
-    .eq('id', lead.building_id)
-    .single()
-  if (building) {
-    buildingName = building.name
-  }
-}
+    const buildingName = lead.buildings?.name || latestActivity.activity_data?.buildingName
     const recentActivities = activities.slice(0, 5).map(formatActivityForEmail)
     const latestDetails = extractActivityDetails(latestActivity.activity_type, latestActivity.activity_data)
 
