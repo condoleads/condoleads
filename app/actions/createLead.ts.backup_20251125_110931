@@ -65,12 +65,9 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
     let finalBuildingId = params.buildingId
     if (!finalBuildingId && params.registrationUrl) {
       // Try to extract building slug from URL (e.g., /one-bedford-1-bedford-rd-toronto)
-      // Extract slug from full URL or path
-      const url = new URL(params.registrationUrl, 'https://condoleads.ca')
-      const pathSegments = url.pathname.split('/').filter(s => s)
-      const slug = pathSegments[0] // First segment after domain
-      
-      if (slug && slug !== 'estimator' && slug !== 'dashboard' && slug !== 'login') {
+      const urlMatch = params.registrationUrl.match(/\/([^\/\?]+)/)
+      if (urlMatch && urlMatch[1] && urlMatch[1] !== '' && urlMatch[1] !== 'estimator') {
+        const slug = urlMatch[1]
         // Look up building by slug
         const { data: building } = await supabase
           .from('buildings')
@@ -156,5 +153,4 @@ function extractSubdomain(host: string): string | null {
   
   return null
 }
-
 
