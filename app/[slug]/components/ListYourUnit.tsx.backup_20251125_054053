@@ -30,7 +30,6 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
   const [visitSuccess, setVisitSuccess] = useState(false)
 
   const handleEvaluationSubmit = async (e: React.FormEvent) => {
-    console.log(' EVALUATION FORM SUBMIT CLICKED', evaluationForm)
     e.preventDefault()
     setIsEvaluationSubmitting(true)
     
@@ -46,7 +45,6 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
       }
     })
 
-    console.log('?? Calling getOrCreateLead for EVALUATION')
     // Create lead for market evaluation request
     const result = await getOrCreateLead({
       agentId,
@@ -69,7 +67,6 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
   }
 
   const handleVisitSubmit = async (e: React.FormEvent) => {
-    console.log(' VISIT FORM SUBMIT CLICKED', visitForm)
     e.preventDefault()
     setIsVisitSubmitting(true)
     
@@ -86,7 +83,6 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
       }
     })
 
-    console.log(' Calling getOrCreateLead for VISIT')
     // Create lead for visit booking
     const result = await getOrCreateLead({
       agentId,
@@ -322,7 +318,6 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     </section>
   )
 }
-
 
 
 
