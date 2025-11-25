@@ -58,7 +58,7 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
       message: `Requested market evaluation for \${buildingName\}`,
       forceNew: true
     })
-    
+    console.log(' EVALUATION RESULT:', result)
     if (result.success) {
       setEvaluationSuccess(true)
       setEvaluationForm({ name: '', email: '', phone: '' })
@@ -102,7 +102,7 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
         requestedTime: visitForm.time
       }
     })
-    
+    console.log('??? VISIT RESULT:', result)
     if (result.success) {
       setVisitSuccess(true)
       setVisitForm({ name: '', email: '', phone: '', date: '', time: '' })
@@ -322,6 +322,8 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     </section>
   )
 }
+
+
 
 
 
