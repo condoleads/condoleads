@@ -309,7 +309,7 @@ export async function sendActivityEmail({
     const { data, error } = await resend.emails.send({
       from: 'CondoLeads <notifications@condoleads.ca>',
       to: agentEmail,
-      subject: `${engagement.score} Lead Activity: ${lead.contact_name} - ${latestFormatted.type}${buildingName ? "  " + buildingName : ""} (${activities.length} actions)`,
+      subject: `${engagement.score} Lead Activity: ${lead.contact_name} - ${latestFormatted.type} (${activities.length} actions)`,
       html
     })
 
@@ -328,4 +328,3 @@ export async function sendActivityEmail({
     return { success: false, error: String(error) }
   }
 }
-
