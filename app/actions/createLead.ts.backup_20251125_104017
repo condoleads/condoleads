@@ -61,26 +61,6 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
     const leadSource = sourceMap[params.registrationSource] || 'registration'
     
     // Enhanced source URL with subdomain tracking
-    // Extract building from URL if not provided
-    let finalBuildingId = params.buildingId
-    if (!finalBuildingId && params.registrationUrl) {
-      // Try to extract building slug from URL (e.g., /one-bedford-1-bedford-rd-toronto)
-      const urlMatch = params.registrationUrl.match(/\/([^\/\?]+)/)
-      if (urlMatch && urlMatch[1] && urlMatch[1] !== '' && urlMatch[1] !== 'estimator') {
-        const slug = urlMatch[1]
-        // Look up building by slug
-        const { data: building } = await supabase
-          .from('buildings')
-          .select('id')
-          .eq('slug', slug)
-          .single()
-        if (building) {
-          finalBuildingId = building.id
-          console.log(' Extracted building from URL:', slug, '', building.id)
-        }
-      }
-    }
-
     const sourceUrl = subdomain 
       ? `https://${subdomain}.condoleads.ca${params.registrationUrl || ''}` 
       : params.registrationUrl
@@ -111,7 +91,7 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       contactPhone: params.phone,
       source: leadSource as any,
       sourceUrl: sourceUrl,
-      buildingId: finalBuildingId,
+      buildingId: params.buildingId,
       listingId: params.listingId,
       message: params.message ? `${params.message} ${subdomain ? `(via ${subdomain}.condoleads.ca)` : ""}` : `New user registration via ${params.registrationSource} ${subdomain ? `on ${subdomain}.condoleads.ca` : ""}`,
       estimatedValueMin: params.estimatedValueMin,
@@ -153,4 +133,3 @@ function extractSubdomain(host: string): string | null {
   
   return null
 }
-
