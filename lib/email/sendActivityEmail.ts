@@ -296,7 +296,7 @@ let buildingName = lead.buildings?.building_name || latestActivity.activity_data
 if (!buildingName && lead.building_id) {
   const { data: building } = await supabase
     .from('buildings')
-    .select('name')
+    .select('building_name')
     .eq('id', lead.building_id)
     .single()
   if (building) {
