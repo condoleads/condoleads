@@ -37,25 +37,6 @@ const PASSIVE_ACTIVITIES = [
   'clicked_get_estimate_cta'
 ]
 
-// Format activity type for email subject
-function formatActivityType(activityType: string): string {
-  const typeMap: Record<string, string> = {
-    'registration': 'New User Registration',
-    'contact_form': 'Contact Form Submitted',
-    'property_inquiry': 'Property Inquiry',
-    'sale_evaluation_request': 'Request to List',
-    'lease_evaluation_request': 'Lease Evaluation Request',
-    'building_visit_request': 'Building Visit Request',
-    'estimator_used': 'Used Price Estimator',
-    'estimator_contact_submitted': 'Estimator Contact Submitted',
-    'viewed_transaction_history': 'Viewed Transaction History',
-    'viewed_sold_listings': 'Viewed Sold Listings',
-    'viewed_leased_listings': 'Viewed Leased Listings',
-    'message_agent': 'Message to Agent'
-  }
-  return typeMap[activityType] || activityType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-}
-
 function calculateEngagement(activities: any[]): { score: '🔥 HOT' | '🌡️ WARM' | '❄️ COLD', text: string } {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
   const recentActivities = activities.filter(a => new Date(a.created_at) > oneHourAgo)
@@ -328,7 +309,7 @@ export async function sendActivityEmail({
     const { data, error } = await resend.emails.send({
       from: 'CondoLeads <notifications@condoleads.ca>',
       to: agentEmail,
-      subject: `${engagement.score} Lead Activity: ${lead.contact_name} - ${formatActivityType(activityType)}${buildingName ? " � " + buildingName : ""} (${activities.length} actions)`,
+      subject: `${engagement.score} Lead Activity: ${lead.contact_name} - ${latestFormatted.type}${buildingName ? "  " + buildingName : ""} (${activities.length} actions)`,
       html
     })
 
@@ -347,6 +328,4 @@ export async function sendActivityEmail({
     return { success: false, error: String(error) }
   }
 }
-
-
 
