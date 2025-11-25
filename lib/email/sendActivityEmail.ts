@@ -53,42 +53,42 @@ function formatActivityType(activityType: string): string {
     'viewed_leased_listings': 'Viewed Leased Listings',
     'message_agent': 'Message to Agent'
   }
-  return typeMap[activityType] || activityType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  return typeMap[activityType] || activityType.replace(/_/g, ' ')
 }
 
-function calculateEngagement(activities: any[]): { score: '🔥 HOT' | '🌡️ WARM' | '❄️ COLD', text: string } {
+function calculateEngagement(activities: any[]): { score: 'ðŸ”¥ HOT' | 'ðŸŒ¡ï¸ WARM' | 'â„ï¸ COLD', text: string } {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
   const recentActivities = activities.filter(a => new Date(a.created_at) > oneHourAgo)
 
   if (recentActivities.length >= 4) {
     return {
-      score: '🔥 HOT',
+      score: 'ðŸ”¥ HOT',
       text: `High engagement - ${recentActivities.length} actions in the last hour!`
     }
   }
   if (recentActivities.length >= 2) {
     return {
-      score: '🌡️ WARM',
+      score: 'ðŸŒ¡ï¸ WARM',
       text: `Actively browsing - ${recentActivities.length} recent actions`
     }
   }
   return {
-    score: '❄️ COLD',
+    score: 'â„ï¸ COLD',
     text: 'New activity detected'
   }
 }
 
 function formatActivityForEmail(activity: any) {
   const activityIcons: Record<string, string> = {
-    contact_form: '📧',
-    property_inquiry: '🏢',
-    estimator_used: '💰',
-    estimator_contact_submitted: '📞',
-    sale_evaluation_request: '📊',
-    lease_evaluation_request: '📋',
-    building_visit_request: '🏗️',
-    viewed_transaction_history: '📈',
-    registration: '✅'
+    contact_form: 'ðŸ“§',
+    property_inquiry: 'ðŸ¢',
+    estimator_used: 'ðŸ’°',
+    estimator_contact_submitted: 'ðŸ“ž',
+    sale_evaluation_request: 'ðŸ“Š',
+    lease_evaluation_request: 'ðŸ“‹',
+    building_visit_request: 'ðŸ—ï¸',
+    viewed_transaction_history: 'ðŸ“ˆ',
+    registration: 'âœ…'
   }
 
   const activityNames: Record<string, string> = {
@@ -122,7 +122,7 @@ function formatActivityForEmail(activity: any) {
   }
 
   return {
-    icon: activityIcons[activity.activity_type] || '📌',
+    icon: activityIcons[activity.activity_type] || 'ðŸ“Œ',
     type: activityNames[activity.activity_type] || activity.activity_type,
     description,
     timestamp: timeText
@@ -136,12 +136,12 @@ async function shouldSendActivityEmail(
   const supabase = createServiceClient()
 
   if (CRITICAL_ACTIVITIES.includes(activityType)) {
-    console.log('✅ Critical activity - sending email')
+    console.log('âœ… Critical activity - sending email')
     return true
   }
 
   if (PASSIVE_ACTIVITIES.includes(activityType)) {
-    console.log('❌ Passive activity - no email')
+    console.log('âŒ Passive activity - no email')
     return false
   }
 
@@ -157,12 +157,12 @@ async function shouldSendActivityEmail(
     if (lastEmail) {
       const hoursSinceLastEmail = (Date.now() - new Date(lastEmail.sent_at).getTime()) / (1000 * 60 * 60)
       if (hoursSinceLastEmail < 1) {
-        console.log('⏸️ Email throttled - sent one recently')
+        console.log('â¸ï¸ Email throttled - sent one recently')
         return false
       }
     }
 
-    console.log('✅ High-intent activity - sending email')
+    console.log('âœ… High-intent activity - sending email')
     return true
   }
 
@@ -190,7 +190,7 @@ function extractActivityDetails(activityType: string, activityData: any): string
       }
       if (activityData.source) {
         const sourceText = activityData.source.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-        details += details ? ` • Source: ${sourceText}` : `Source: ${sourceText}`
+        details += details ? ` â€¢ Source: ${sourceText}` : `Source: ${sourceText}`
       }
       break
 
@@ -200,14 +200,14 @@ function extractActivityDetails(activityType: string, activityData: any): string
       }
       if (activityData.bedrooms || activityData.bathrooms) {
         const bedBath = `${activityData.bedrooms || '?'}BR / ${activityData.bathrooms || '?'}BA`
-        details += details ? ` • ${bedBath}` : bedBath
+        details += details ? ` â€¢ ${bedBath}` : bedBath
       }
       if (activityData.estimatedPrice) {
         const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(activityData.estimatedPrice)
-        details += details ? ` • Estimated: ${price}` : `Estimated: ${price}`
+        details += details ? ` â€¢ Estimated: ${price}` : `Estimated: ${price}`
       }
       if (activityData.buildingName) {
-        details += details ? ` • ${activityData.buildingName}` : activityData.buildingName
+        details += details ? ` â€¢ ${activityData.buildingName}` : activityData.buildingName
       }
       break
 
@@ -217,7 +217,7 @@ function extractActivityDetails(activityType: string, activityData: any): string
       }
       if (activityData.requestedDate) {
         const date = new Date(activityData.requestedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        details += details ? ` • Requested: ${date}` : `Requested: ${date}`
+        details += details ? ` â€¢ Requested: ${date}` : `Requested: ${date}`
       }
       if (activityData.requestedTime) {
         details += details ? ` at ${activityData.requestedTime}` : activityData.requestedTime
@@ -229,7 +229,7 @@ function extractActivityDetails(activityType: string, activityData: any): string
         details += activityData.buildingName
       }
       if (activityData.propertyType) {
-        details += details ? ` • ${activityData.propertyType}` : activityData.propertyType
+        details += details ? ` â€¢ ${activityData.propertyType}` : activityData.propertyType
       }
       break
 
@@ -263,7 +263,7 @@ export async function sendActivityEmail({
   agentName: string
 }) {
   try {
-    console.log('🔵 Checking if should send activity email...', { leadId, activityType })
+    console.log('ðŸ”µ Checking if should send activity email...', { leadId, activityType })
 
     const shouldSend = await shouldSendActivityEmail(leadId, activityType)
     if (!shouldSend) {
@@ -279,7 +279,7 @@ export async function sendActivityEmail({
       .single()
 
     if (!lead) {
-      console.error('❌ Lead not found')
+      console.error('âŒ Lead not found')
       return { success: false, error: 'Lead not found' }
     }
 
@@ -291,7 +291,7 @@ export async function sendActivityEmail({
       .limit(10)
 
     if (!activities || activities.length === 0) {
-      console.error('❌ No activities found')
+      console.error('âŒ No activities found')
       return { success: false, error: 'No activities' }
     }
 
@@ -328,25 +328,23 @@ export async function sendActivityEmail({
     const { data, error } = await resend.emails.send({
       from: 'CondoLeads <notifications@condoleads.ca>',
       to: agentEmail,
-      subject: `${engagement.score} Lead Activity: ${lead.contact_name} - ${formatActivityType(activityType)}${buildingName ? " � " + buildingName : ""} (${activities.length} actions)`,
+      subject: `${engagement.score} Lead Activity: ${lead.contact_name} - ${formatActivityType(activityType)}${buildingName ? " - " + buildingName : ""} (${activities.length} actions)`,
       html
     })
 
     if (error) {
-      console.error('❌ Error sending activity email:', error)
+      console.error('âŒ Error sending activity email:', error)
       return { success: false, error: error.message }
     }
 
     await logEmailSent(leadId, activityType)
 
-    console.log('✅ Activity email sent successfully:', data?.id)
+    console.log('âœ… Activity email sent successfully:', data?.id)
     return { success: true, emailId: data?.id }
 
   } catch (error) {
-    console.error('❌ Error in sendActivityEmail:', error)
+    console.error('âŒ Error in sendActivityEmail:', error)
     return { success: false, error: String(error) }
   }
 }
-
-
 
