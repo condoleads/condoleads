@@ -28,6 +28,8 @@ export type ActivityType =
   | 'sale_evaluation_request'
   | 'lease_evaluation_request'
   | 'building_visit_request'
+  | 'sale_offer_inquiry'
+  | 'lease_offer_inquiry'
   
   // Estimator Usage
   | 'estimator_used'
