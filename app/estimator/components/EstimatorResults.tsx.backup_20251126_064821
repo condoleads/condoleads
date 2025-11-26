@@ -86,7 +86,7 @@ export default function EstimatorResults({
       contactName: contactForm.name,
       contactEmail: contactForm.email,
       contactPhone: contactForm.phone,
-      source: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+      source: 'estimator',
       buildingId,
       message,
       estimatedValueMin: result.priceRange.low,
