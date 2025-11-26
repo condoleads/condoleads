@@ -82,22 +82,23 @@ export default function EstimatorResults({
     })
 
     const leadResult = await getOrCreateLead({
-      agentId,
-      contactName: contactForm.name,
-      contactEmail: contactForm.email,
-      contactPhone: contactForm.phone,
-      source: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
-      buildingId,
-      message,
-      estimatedValueMin: result.priceRange.low,
-      estimatedValueMax: result.priceRange.high,
-      propertyDetails: {
-        ...(propertySpecs || {}),
-        estimatedPrice: result.estimatedPrice,
-        confidence: result.confidence,
-        marketSpeed: result.marketSpeed.status
-      }
-    })
+  agentId,
+  contactName: contactForm.name,
+  contactEmail: contactForm.email,
+  contactPhone: contactForm.phone,
+  source: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+  buildingId,
+  message,
+  estimatedValueMin: result.priceRange.low,
+  estimatedValueMax: result.priceRange.high,
+  propertyDetails: {
+    ...(propertySpecs || {}),
+    estimatedPrice: result.estimatedPrice,
+    confidence: result.confidence,
+    marketSpeed: result.marketSpeed.status
+  },
+  forceNew: true
+})
 
     setIsSubmitting(false)
 
