@@ -67,7 +67,7 @@ export default function EstimatorResults({
     await trackActivity({
       contactEmail: contactForm.email,
       agentId: agentId,
-      activityType: 'estimator_used',
+      activityType: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
       activityData: {
         buildingId,
         buildingName,
