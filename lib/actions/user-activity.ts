@@ -30,11 +30,12 @@ export type ActivityType =
   | 'building_visit_request'
   | 'sale_offer_inquiry'
   | 'lease_offer_inquiry'
-  
+
   // Estimator Usage
-  | 'estimator_used'
-  | 'estimator_contact_submitted'
-  
+| 'estimator'
+| 'estimator_used'
+| 'estimator_contact_submitted'
+
   // Content Viewing
   | 'viewed_sold_listings'
   | 'viewed_leased_listings'
