@@ -9,7 +9,7 @@ import { generatePropertySlug } from '@/lib/utils/slugs'
 import { useState } from 'react'
 interface ListingCardProps {
   listing: MLSListing
-  type: 'sale' | 'rent'
+  type: 'sale' | 'lease'
   onEstimateClick?: (exactSqft: number | null) => void
 }
 
