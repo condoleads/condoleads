@@ -30,7 +30,7 @@ export default function ListingSection({
   const [currentPage, setCurrentPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
   const [selectedListing, setSelectedListing] = useState<MLSListing | null>(null)
-  const [modalType, setModalType] = useState<'sale' | 'rent'>('sale')
+  const [modalType, setModalType] = useState<'sale' | 'lease'>('sale')
   const [exactSqft, setExactSqft] = useState<number | null>(null)
   
   const itemsPerPage = 6
@@ -50,7 +50,7 @@ export default function ListingSection({
     setCurrentPage(1)
   }
 
-  const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'rent', exactSqft: number | null) => {
+  const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'lease', exactSqft: number | null) => {
   setSelectedListing(listing)
   setModalType(type)
   setModalOpen(true)
@@ -107,8 +107,8 @@ export default function ListingSection({
                 <ListingCard
                   key={listing.id}
                   listing={listing}
-                  type={isSaleTab ? 'sale' : 'rent'}
-                  onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'rent', exactSqft)}
+                  type={isSaleTab ? 'sale' : 'lease'}
+                  onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'lease', exactSqft)}
                 />
               ))}
             </div>
