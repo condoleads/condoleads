@@ -31,6 +31,24 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
     return matchesSearch && matchesStatus && matchesQuality && matchesSource && matchesAgent
   })
 
+  const getSourceLabel = (source: string): string => {
+  const sourceLabels: Record<string, string> = {
+    'registration': 'Registration',
+    'sale_evaluation_request': 'Request to List',
+    'building_visit_request': 'Building Visit Request',
+    'sale_offer_inquiry': 'Sale Offer Inquiry',
+    'lease_offer_inquiry': 'Lease Offer Inquiry',
+    'lease_evaluation_request': 'Lease Evaluation',
+    'estimator': 'Used Price Estimator',
+    'message_agent': 'Contact Form',
+    'contact_form': 'Contact Form',
+    'building_page': 'Building Page',
+    'property_inquiry': 'Property Inquiry',
+    'list_your_unit': 'Request to List'
+  }
+  return sourceLabels[source] || source.replace(/_/g, ' ')
+}
+
   const getQualityBadge = (quality: string) => {
     const colors: Record<string, string> = {
       hot: 'bg-red-100 text-red-700 border-red-200',
@@ -210,7 +228,7 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
                       <span className="text-xs text-red-600 font-medium"> No building</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-sm capitalize">{lead.source.replace(/_/g, ' ')}</td>
+                  <td className="px-6 py-4 text-sm">{getSourceLabel(lead.source)}</td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1">
                       {(lead.tags || []).length === 0 ? (
