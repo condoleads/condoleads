@@ -106,7 +106,7 @@ try {
   console.log('🎯 Lead creation result:', leadResult)
 
   if (!leadResult.success) {
-    console.error('❌ Lead creation failed:', leadResult.error)
+    console.error('❌ Lead creation failed:', leadResult)
   }
 } catch (error) {
   console.error('❌ Exception during lead creation:', error)
