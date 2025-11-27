@@ -64,28 +64,34 @@ function calculateEngagement(activities: any[]): { score: '🔥 HOT' | '🌡️ 
 
 function formatActivityForEmail(activity: any) {
   const activityIcons: Record<string, string> = {
-    contact_form: '📧',
-    property_inquiry: '🏢',
-    estimator_used: '💰',
-    estimator_contact_submitted: '📞',
-    sale_evaluation_request: '📊',
-    lease_evaluation_request: '📋',
-    building_visit_request: '🏗️',
-    viewed_transaction_history: '📈',
-    registration: '✅'
-  }
+  contact_form: '📧',
+  property_inquiry: '🏢',
+  estimator: '💰',
+  estimator_used: '💰',
+  estimator_contact_submitted: '📞',
+  sale_evaluation_request: '📊',
+  sale_offer_inquiry: '🔥',
+  lease_evaluation_request: '📋',
+  lease_offer_inquiry: '🔥',
+  building_visit_request: '🗝️',
+  viewed_transaction_history: '📈',
+  registration: '✅'
+}
 
   const activityNames: Record<string, string> = {
-    contact_form: 'Contact Form Submission',
-    property_inquiry: 'Property Inquiry',
-    estimator_used: 'Used Price Estimator',
-    estimator_contact_submitted: 'Requested Agent Contact',
-    sale_evaluation_request: 'Requested Sale Evaluation',
-    lease_evaluation_request: 'Requested Lease Evaluation',
-    building_visit_request: 'Requested Building Visit',
-    viewed_transaction_history: 'Viewed Transaction History',
-    registration: 'New User Registration'
-  }
+  contact_form: 'Contact Form Submission',
+  property_inquiry: 'Property Inquiry',
+  estimator: 'Used Price Estimator',
+  estimator_used: 'Used Price Estimator',
+  estimator_contact_submitted: 'Requested Agent Contact',
+  sale_evaluation_request: 'Requested Sale Evaluation',
+  sale_offer_inquiry: 'Sale Offer Inquiry',
+  lease_evaluation_request: 'Requested Lease Evaluation',
+  lease_offer_inquiry: 'Lease Offer Inquiry',
+  building_visit_request: 'Requested Building Visit',
+  viewed_transaction_history: 'Viewed Transaction History',
+  registration: 'New User Registration'
+}
 
   const timestamp = new Date(activity.created_at)
   const minutesAgo = Math.floor((Date.now() - timestamp.getTime()) / 60000)
