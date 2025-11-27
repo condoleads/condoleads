@@ -79,7 +79,7 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
         buildingName={buildingName}
         buildingId={listing.building_id}
         agentId={agentId}
-        type={isSale ? 'sale' : 'rent'}
+        type={isSale ? 'sale' : 'lease'}
         exactSqft={exactSqft}
       />
     </>
