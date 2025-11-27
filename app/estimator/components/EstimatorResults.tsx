@@ -64,24 +64,29 @@ export default function EstimatorResults({
     }
 
     // Track estimator usage
-    await trackActivity({
-      contactEmail: contactForm.email,
-      agentId: agentId,
-      activityType: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
-      activityData: {
-        buildingId,
-        buildingName,
-        estimatedPrice: result.estimatedPrice,
-        priceRangeLow: result.priceRange.low,
-        priceRangeHigh: result.priceRange.high,
-        confidence: result.confidence,
-        bedrooms: specs.bedrooms,
-        bathrooms: specs.bathrooms,
-        sqft: specs.livingAreaRange
-      }
-    })
+try {
+  await trackActivity({
+    contactEmail: contactForm.email,
+    agentId: agentId,
+    activityType: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+    activityData: {
+      buildingId,
+      buildingName,
+      estimatedPrice: result.estimatedPrice,
+      priceRangeLow: result.priceRange.low,
+      priceRangeHigh: result.priceRange.high,
+      confidence: result.confidence,
+      bedrooms: specs.bedrooms,
+      bathrooms: specs.bathrooms,
+      sqft: specs.livingAreaRange
+    }
+  })
+  console.log('✅ Activity tracked successfully')
+} catch (error) {
+  console.error('❌ trackActivity error:', error)
+}
 
-    console.log('✅ Activity tracked, now creating lead...')
+console.log('✅ Now creating lead...')
 
 try {
   const leadResult = await getOrCreateLead({
