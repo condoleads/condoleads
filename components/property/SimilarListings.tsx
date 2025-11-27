@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
@@ -54,7 +54,7 @@ export default function SimilarListings({
       <div className="grid md:grid-cols-2 gap-6">
         {displayedListings.map((listing) => {
           const isSale = listing.transaction_type === 'For Sale'
-          const type = isSale ? 'sale' : 'rent'
+          const type = isSale ? 'sale' : 'lease'
 
           return (
             <ListingCard
