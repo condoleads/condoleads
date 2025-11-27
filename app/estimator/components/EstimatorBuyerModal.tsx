@@ -14,7 +14,7 @@ interface EstimatorBuyerModalProps {
   buildingName: string
   buildingId: string
   agentId: string
-  type: 'sale' | 'rent'
+  type: 'sale' | 'lease'
   exactSqft: number | null
 }
 
