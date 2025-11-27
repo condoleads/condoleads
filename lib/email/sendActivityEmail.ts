@@ -20,6 +20,9 @@ const CRITICAL_ACTIVITIES = [
   'building_visit_request',
   'sale_evaluation_request',
   'lease_evaluation_request',
+  'sale_offer_inquiry',
+  'lease_offer_inquiry',
+  'estimator',
   'estimator_contact_submitted',
   'registration'
 ]
@@ -239,7 +242,10 @@ const ACTIVITY_TYPE_NAMES: Record<string, string> = {
   'contact_form': 'Contact Form',
   'building_visit_request': 'Building Visit Request',
   'property_inquiry': 'Property Inquiry',
-  'lease_evaluation_request': 'Lease Evaluation'
+  'lease_evaluation_request': 'Lease Evaluation',
+  'sale_offer_inquiry': 'Sale Offer Inquiry',
+  'lease_offer_inquiry': 'Lease Offer Inquiry',
+  'estimator': 'Used Price Estimator'
 }
 
 export async function sendActivityEmail({
