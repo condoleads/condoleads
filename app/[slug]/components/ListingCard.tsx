@@ -327,7 +327,7 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
                     }}
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors"
                   >
-                    {isSale ? 'Sale Offer' : 'Rent Offer'}
+                    {isSale ? 'Sale Offer' : 'Lease Offer'}
                   </button>
                 )}
                 <Link

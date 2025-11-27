@@ -9,7 +9,7 @@ import { trackActivity } from '@/lib/actions/user-activity'
 
 interface EstimatorResultsProps {
   result: EstimateResult
-  type?: 'sale' | 'rent'
+  type?: 'sale' | 'lease' | 'estimator'
   buildingId: string
   buildingName: string
   agentId?: string
@@ -68,7 +68,7 @@ try {
   await trackActivity({
     contactEmail: contactForm.email,
     agentId: agentId,
-    activityType: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+    activityType: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
     activityData: {
       buildingId,
       buildingName,
@@ -94,7 +94,7 @@ try {
     contactName: contactForm.name,
     contactEmail: contactForm.email,
     contactPhone: contactForm.phone,
-    source: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+    source: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
     buildingId,
     message,
     estimatedValueMin: result.priceRange.low,

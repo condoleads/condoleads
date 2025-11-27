@@ -99,7 +99,7 @@ export function AgentCard({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         agent={agent}
-        source={source}
+        source="message_agent"
         buildingId={buildingId}
         buildingName={buildingName}
         listingId={listingId}

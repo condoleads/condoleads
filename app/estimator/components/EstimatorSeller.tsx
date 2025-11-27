@@ -246,6 +246,7 @@ export default function EstimatorSeller({ buildingId, buildingName, agentId }: E
                 buildingName={buildingName}
                 agentId={agentId}
                 propertySpecs={specs}
+                type="estimator"
               />
             <div className="mt-6">
             <button
