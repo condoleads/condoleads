@@ -81,30 +81,40 @@ export default function EstimatorResults({
       }
     })
 
-    const leadResult = await getOrCreateLead({
-  agentId,
-  contactName: contactForm.name,
-  contactEmail: contactForm.email,
-  contactPhone: contactForm.phone,
-  source: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
-  buildingId,
-  message,
-  estimatedValueMin: result.priceRange.low,
-  estimatedValueMax: result.priceRange.high,
-  propertyDetails: {
-    ...(propertySpecs || {}),
-    estimatedPrice: result.estimatedPrice,
-    confidence: result.confidence,
-    marketSpeed: result.marketSpeed.status
-  },
-  forceNew: true
-})
+    console.log('✅ Activity tracked, now creating lead...')
 
-    setIsSubmitting(false)
+try {
+  const leadResult = await getOrCreateLead({
+    agentId,
+    contactName: contactForm.name,
+    contactEmail: contactForm.email,
+    contactPhone: contactForm.phone,
+    source: type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+    buildingId,
+    message,
+    estimatedValueMin: result.priceRange.low,
+    estimatedValueMax: result.priceRange.high,
+    propertyDetails: {
+      ...(propertySpecs || {}),
+      estimatedPrice: result.estimatedPrice,
+      confidence: result.confidence,
+      marketSpeed: result.marketSpeed.status
+    },
+    forceNew: true
+  })
 
-    if (leadResult.success) {
-      setSubmitted(true)
-    }
+  console.log('🎯 Lead creation result:', leadResult)
+
+  if (!leadResult.success) {
+    console.error('❌ Lead creation failed:', leadResult.error)
+  }
+} catch (error) {
+  console.error('❌ Exception during lead creation:', error)
+}
+
+setIsSubmitting(false)
+setSubmitted(true)
+setShowContactForm(false)
   }
 
   return (
