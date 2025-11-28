@@ -15,6 +15,7 @@ function createServiceClient() {
 }
 
 const CRITICAL_ACTIVITIES = [
+  'message_agent',
   'contact_form',
   'property_inquiry',
   'building_visit_request',
@@ -79,6 +80,7 @@ function formatActivityForEmail(activity: any) {
 }
 
   const activityNames: Record<string, string> = {
+  message_agent: 'Contact Agent Message',
   contact_form: 'Contact Form Submission',
   property_inquiry: 'Property Inquiry',
   estimator: 'Used Price Estimator',
@@ -258,6 +260,7 @@ function extractActivityDetails(activityType: string, activityData: any): string
 
 // Activity type display names for email subject
 const ACTIVITY_TYPE_NAMES: Record<string, string> = {
+  'message_agent': 'Contact Agent',
   'registration': 'New User Registration',
   'sale_evaluation_request': 'Request to List',
   'contact_form': 'Contact Form',
