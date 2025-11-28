@@ -231,25 +231,6 @@ function extractActivityDetails(activityType: string, activityData: any): string
         details += details ? ` at ${activityData.buildingName}` : activityData.buildingName
       }
       break
-      
-    case 'estimator':
-    case 'sale_offer_inquiry':
-    case 'lease_offer_inquiry':
-      if (activityData.buildingName) {
-        details += activityData.buildingName
-      }
-      if (activityData.estimatedPrice) {
-        const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(activityData.estimatedPrice)
-        details += details ? ` • Estimated: ${price}` : `Estimated: ${price}`
-      }
-      if (activityData.bedrooms || activityData.bathrooms) {
-        const bedBath = `${activityData.bedrooms || '?'}BR / ${activityData.bathrooms || '?'}BA`
-        details += details ? ` • ${bedBath}` : bedBath
-      }
-      if (activityData.sqft) {
-        details += details ? ` • ${activityData.sqft} sqft` : `${activityData.sqft} sqft`
-      }
-      break
 
     default:
       if (activityData.buildingName) {
