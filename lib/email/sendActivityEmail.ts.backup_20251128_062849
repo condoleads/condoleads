@@ -102,9 +102,13 @@ function formatActivityForEmail(activity: any) {
   else timeText = `${Math.floor(minutesAgo / 60)} hour${Math.floor(minutesAgo / 60) > 1 ? 's' : ''} ago`
 
   let description = activityNames[activity.activity_type] || activity.activity_type
-  const details = extractActivityDetails(activity.activity_type, activity.activity_data)
-  if (details) {
-    description += ` - ${details}`
+
+  if (activity.activity_data) {
+    const data = activity.activity_data
+    if (data.buildingName) description += ` - ${data.buildingName}`
+    if (data.totalSales || data.totalLeases) {
+      description += ` (Viewed ${data.totalSales || 0} sold, ${data.totalLeases || 0} leased)`
+    }
   }
 
   return {
@@ -227,7 +231,7 @@ function extractActivityDetails(activityType: string, activityData: any): string
         details += details ? ` at ${activityData.buildingName}` : activityData.buildingName
       }
       break
-
+      
     case 'estimator':
     case 'sale_offer_inquiry':
     case 'lease_offer_inquiry':
