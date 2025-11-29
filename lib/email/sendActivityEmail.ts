@@ -29,8 +29,7 @@ const CRITICAL_ACTIVITIES = [
 ]
 
 const HIGH_INTENT_ACTIVITIES = [
-  'estimator_used',
-  'registration'
+  'estimator_used'
 ]
 
 const PASSIVE_ACTIVITIES = [
