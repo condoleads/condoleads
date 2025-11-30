@@ -4,6 +4,7 @@ interface ActivityEmailData {
   leadEmail: string
   leadPhone?: string
   buildingName?: string
+  buildingAddress?: string
   latestActivity: {
     type: string
     description: string
@@ -99,7 +100,7 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
         <div style="font-size: 24px; margin-bottom: 10px;">${activityIcons[data.latestActivity.type] || '📌'}</div>
         <div style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 8px;">${activityNames[data.latestActivity.type] || data.latestActivity.description}</div>
         ${data.latestActivity.details ? `<div style="color: #6b7280; margin-bottom: 8px;">${data.latestActivity.details}</div>` : ''}
-        ${data.buildingName ? `<div style="color: #667eea; font-weight: 500;">🏢 ${data.buildingName}</div>` : ''}
+        ${data.buildingName ? `<div style="color: #667eea; font-weight: 500;">🏢 ${data.buildingName}${data.buildingAddress ? ` • ${data.buildingAddress}` : ``}</div>` : ''}
         <div style="color: #6b7280; font-size: 13px; margin-top: 8px;">⏰ ${data.latestActivity.timestamp}</div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-'use server'
+﻿'use server'
 
 import { Resend } from 'resend'
 import { generateActivityEmailHtml } from './activityEmailTemplate'
@@ -320,16 +320,18 @@ export async function sendActivityEmail({
     const latestFormatted = formatActivityForEmail(latestActivity)
     // Get building name from lead's building relationship, activity data, or fetch it
 let buildingName = lead.buildings?.building_name || latestActivity.activity_data?.buildingName
+let buildingAddress = lead.buildings?.canonical_address || latestActivity.activity_data?.buildingAddress
 
 // If still no building name but lead has building_id, fetch it
 if (!buildingName && lead.building_id) {
   const { data: building } = await supabase
     .from('buildings')
-    .select('building_name')
+    .select('building_name, canonical_address')
     .eq('id', lead.building_id)
     .single()
   if (building) {
   buildingName = building.building_name
+  buildingAddress = building.canonical_address
 }
 }
     const recentActivities = activities.slice(0, 5).map(formatActivityForEmail)
@@ -344,6 +346,7 @@ if (!buildingName && lead.building_id) {
       leadEmail: lead.contact_email,
       leadPhone: lead.contact_phone,
       buildingName,
+      buildingAddress,
       latestActivity: {
         type: activityType,
         description: latestFormatted.type,
