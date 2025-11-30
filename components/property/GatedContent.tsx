@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import RegisterModal from '@/components/auth/RegisterModal'
@@ -55,7 +55,7 @@ export default function GatedContent({ children, shouldGate, sectionName, buildi
             Register to View
           </button>
           <p className="text-xs text-gray-500 mt-4">
-            Free account � No credit card required
+            Free account • No credit card required
           </p>
         </div>
       </div>

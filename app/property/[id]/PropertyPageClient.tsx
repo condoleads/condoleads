@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useAuth } from '@/components/auth/AuthContext'
 import PropertyGallery from '@/components/property/PropertyGallery'
@@ -80,13 +80,13 @@ export default function PropertyPageClient({
             <PropertyAmenities amenities={amenities} feeIncludes={feeIncludes} />
 
             {rooms && rooms.length > 0 && (
-              <GatedContent shouldGate={shouldGate} sectionName="Room Dimensions" buildingId={listing.building_id}>
+            <GatedContent shouldGate={shouldGate} sectionName="Room Dimensions" buildingId={listing.building_id}>
                 <RoomDimensions rooms={rooms} />
               </GatedContent>
             )}
 
             {unitHistory && unitHistory.length > 0 && (
-              <GatedContent shouldGate={shouldGate} sectionName="Transaction History" buildingId={listing.building_id}>
+            <GatedContent shouldGate={shouldGate} sectionName="Transaction History" buildingId={listing.building_id}>
                 <UnitHistory
                   history={unitHistory}
                   unitNumber={listing.unit_number || 'N/A'}
@@ -95,7 +95,7 @@ export default function PropertyPageClient({
             )}
 
             {isClosed && (
-              <GatedContent shouldGate={shouldGate} sectionName="Price History" buildingId={listing.building_id}>
+            <GatedContent shouldGate={shouldGate} sectionName="Price History" buildingId={listing.building_id}>
                 <PriceHistory
                   listPrice={listing.list_price}
                   closePrice={listing.close_price}
