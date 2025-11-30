@@ -13,10 +13,11 @@ interface Photo {
 interface PropertyGalleryProps {
   photos: Photo[]
   shouldBlur?: boolean
+  buildingId?: string
   maxPhotos?: number
 }
 
-export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos }: PropertyGalleryProps) {
+export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos, buildingId }: PropertyGalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const [showRegister, setShowRegister] = useState(false)
@@ -124,6 +125,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos 
             window.location.reload()
           }}
           registrationSource="property_gallery"
+          buildingId={buildingId}
         />
       </>
     )
@@ -325,6 +327,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos 
           window.location.reload()
         }}
         registrationSource="property_gallery"
+          buildingId={buildingId}
       />
     </>
   )
