@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { formatPrice } from '@/lib/utils/formatters'
@@ -11,9 +11,10 @@ interface PropertyHeaderProps {
   status: 'Active' | 'Closed'
   isSale: boolean
   shouldBlur?: boolean
+  buildingId?: string
 }
 
-export default function PropertyHeader({ listing, status, isSale, shouldBlur = false }: PropertyHeaderProps) {
+export default function PropertyHeader({ listing, status, isSale, shouldBlur = false, buildingId }: PropertyHeaderProps) {
   const [showRegister, setShowRegister] = useState(false)
   const isClosed = status === 'Closed'
   
@@ -119,6 +120,7 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
           window.location.reload()
         }}
         registrationSource="property_header"
+        buildingId={buildingId}
       />
     </>
   )

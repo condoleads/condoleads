@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import RegisterModal from '@/components/auth/RegisterModal'
@@ -7,9 +7,10 @@ interface GatedContentProps {
   children: React.ReactNode
   shouldGate: boolean
   sectionName: string
+  buildingId?: string
 }
 
-export default function GatedContent({ children, shouldGate, sectionName }: GatedContentProps) {
+export default function GatedContent({ children, shouldGate, sectionName, buildingId }: GatedContentProps) {
   const [showRegister, setShowRegister] = useState(false)
 
   if (!shouldGate) {
@@ -54,7 +55,7 @@ export default function GatedContent({ children, shouldGate, sectionName }: Gate
             Register to View
           </button>
           <p className="text-xs text-gray-500 mt-4">
-            Free account • No credit card required
+            Free account � No credit card required
           </p>
         </div>
       </div>
@@ -67,6 +68,7 @@ export default function GatedContent({ children, shouldGate, sectionName }: Gate
           window.location.reload()
         }}
         registrationSource="property_detail"
+        buildingId={buildingId}
       />
     </div>
   )

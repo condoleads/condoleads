@@ -55,6 +55,7 @@ export default function PropertyPageClient({
       <PropertyGallery
         photos={largePhotos}
         shouldBlur={shouldGate}
+          buildingId={listing.building_id}
         maxPhotos={shouldGate ? 2 : undefined}
       />
 
@@ -64,6 +65,7 @@ export default function PropertyPageClient({
           status={status}
           isSale={isSale}
           shouldBlur={shouldGate}
+          buildingId={listing.building_id}
         />
 
         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
@@ -71,20 +73,20 @@ export default function PropertyPageClient({
           <div className="lg:col-span-2 space-y-8">
             <PropertyDescription description={listing.public_remarks} />
 
-            <GatedContent shouldGate={shouldGate} sectionName="Property Details">
+            <GatedContent shouldGate={shouldGate} sectionName="Property Details" buildingId={listing.building_id}>
               <PropertyDetails listing={listing} />
             </GatedContent>
 
             <PropertyAmenities amenities={amenities} feeIncludes={feeIncludes} />
 
             {rooms && rooms.length > 0 && (
-              <GatedContent shouldGate={shouldGate} sectionName="Room Dimensions">
+              <GatedContent shouldGate={shouldGate} sectionName="Room Dimensions" buildingId={listing.building_id}>
                 <RoomDimensions rooms={rooms} />
               </GatedContent>
             )}
 
             {unitHistory && unitHistory.length > 0 && (
-              <GatedContent shouldGate={shouldGate} sectionName="Transaction History">
+              <GatedContent shouldGate={shouldGate} sectionName="Transaction History" buildingId={listing.building_id}>
                 <UnitHistory
                   history={unitHistory}
                   unitNumber={listing.unit_number || 'N/A'}
@@ -93,7 +95,7 @@ export default function PropertyPageClient({
             )}
 
             {isClosed && (
-              <GatedContent shouldGate={shouldGate} sectionName="Price History">
+              <GatedContent shouldGate={shouldGate} sectionName="Price History" buildingId={listing.building_id}>
                 <PriceHistory
                   listPrice={listing.list_price}
                   closePrice={listing.close_price}
