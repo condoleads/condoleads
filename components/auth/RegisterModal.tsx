@@ -28,6 +28,7 @@ export default function RegisterModal({
   agentId,
   buildingId,
   listingId,
+  listingAddress,
   estimatedValueMin,
   estimatedValueMax,
   propertyDetails
