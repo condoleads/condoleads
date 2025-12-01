@@ -14,7 +14,6 @@ interface RegisterModalProps {
   agentId?: string
   buildingId?: string
   listingId?: string
-  listingAddress?: string
   estimatedValueMin?: number
   estimatedValueMax?: number
   propertyDetails?: any
@@ -106,7 +105,6 @@ export default function RegisterModal({
           registrationUrl: window.location.href,
           buildingId: buildingId,
           listingId: listingId,
-          listingAddress: listingAddress,
           estimatedValueMin: estimatedValueMin,
           estimatedValueMax: estimatedValueMax,
           propertyDetails: propertyDetails

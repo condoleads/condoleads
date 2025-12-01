@@ -8,11 +8,9 @@ interface GatedContentProps {
   shouldGate: boolean
   sectionName: string
   buildingId?: string
-  listingId?: string
-  listingAddress?: string
 }
 
-export default function GatedContent({ children, shouldGate, sectionName, buildingId, listingId, listingAddress }: GatedContentProps) {
+export default function GatedContent({ children, shouldGate, sectionName, buildingId }: GatedContentProps) {
   const [showRegister, setShowRegister] = useState(false)
 
   if (!shouldGate) {
@@ -71,8 +69,6 @@ export default function GatedContent({ children, shouldGate, sectionName, buildi
         }}
         registrationSource="property_detail"
         buildingId={buildingId}
-        listingId={listingId}
-        listingAddress={listingAddress}
       />
     </div>
   )

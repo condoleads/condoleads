@@ -12,7 +12,6 @@ interface CreateLeadFromRegistrationParams {
   registrationUrl?: string
   buildingId?: string
   listingId?: string
-  listingAddress?: string
   message?: string
   estimatedValueMin?: number
   estimatedValueMax?: number
@@ -117,7 +116,7 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       sourceUrl: sourceUrl,
       buildingId: finalBuildingId,
       listingId: params.listingId,
-      message: params.message || ("New user registration" + (params.listingAddress ? " for " + params.listingAddress : "") + " via " + params.registrationSource + (subdomain ? " on " + subdomain + ".condoleads.ca" : "")),
+      message: params.message || ("New user registration via " + params.registrationSource + (subdomain ? " on " + subdomain + ".condoleads.ca" : "")),
       estimatedValueMin: params.estimatedValueMin,
       estimatedValueMax: params.estimatedValueMax,
       propertyDetails: params.propertyDetails,
