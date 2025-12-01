@@ -130,7 +130,7 @@ export default function PropertyPageClient({
                     listingAddress={listing.unparsed_address || ''}
                     buildingId={listing.building_id}
                     buildingName={building?.building_name || ''}
-                    buildingAddress={building?.canonical_address || ''}
+                    
                   />
                   
                   <PropertyEstimateCTA
@@ -138,6 +138,7 @@ export default function PropertyPageClient({
                     status={status}
                     isSale={isSale}
                     buildingName={building?.building_name || ''}
+                    buildingAddress={building?.canonical_address || ''}
                     agentId={agent.id}
                   />
 
