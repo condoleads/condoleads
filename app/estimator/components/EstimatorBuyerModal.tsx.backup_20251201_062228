@@ -216,7 +216,6 @@ export default function EstimatorBuyerModal({
                   buildingId={buildingId}
                   buildingAddress={buildingAddress}
                   buildingName={buildingName}
-                  unitNumber={listing?.unit_number || ''}
                   agentId={agentId}
                   propertySpecs={{
                     bedrooms: listing?.bedrooms_total || 0,
