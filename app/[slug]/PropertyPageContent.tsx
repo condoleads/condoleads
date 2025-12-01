@@ -178,7 +178,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
                 status={status}
                 isSale={isSale}
                 buildingName={building?.name || ''}
-                buildingAddress={building?.address || building?.canonical_address || ''}
+                buildingAddress={building?.address || ''}
                 agentId={agent?.id || ''}
               />
             </div>
