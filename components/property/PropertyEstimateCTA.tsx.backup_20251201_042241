@@ -10,11 +10,10 @@ interface PropertyEstimateCTAProps {
   status: 'Active' | 'Closed'
   isSale: boolean
   buildingName: string
-  buildingAddress?: string
   agentId: string
 }
 
-export default function PropertyEstimateCTA({ listing, status, isSale, buildingName, buildingAddress, agentId }: PropertyEstimateCTAProps) {
+export default function PropertyEstimateCTA({ listing, status, isSale, buildingName, agentId }: PropertyEstimateCTAProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const isClosed = status === 'Closed'
   const exactSqft = extractExactSqft(listing.square_foot_source)
@@ -78,7 +77,6 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
         onClose={() => setModalOpen(false)}
         listing={listing}
         buildingName={buildingName}
-        buildingAddress={buildingAddress}
         buildingId={listing.building_id}
         agentId={agentId}
         type={isSale ? 'sale' : 'lease'}

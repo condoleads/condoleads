@@ -11,7 +11,6 @@ interface ListingSectionProps {
   closedSales: MLSListing[]
   closedRentals: MLSListing[]
   buildingId: string
-  buildingAddress?: string
   buildingName: string
   agentId: string
 }
@@ -24,7 +23,6 @@ export default function ListingSection({
   closedSales = [],
   closedRentals = [],
   buildingId,
-  buildingAddress,
   buildingName,
   agentId,
 }: ListingSectionProps) {
@@ -168,7 +166,6 @@ export default function ListingSection({
           onClose={() => setModalOpen(false)}
           listing={selectedListing}
           buildingName={buildingName}
-          buildingAddress={buildingAddress}
           buildingId={buildingId}
           agentId={agentId}
           type={modalType}

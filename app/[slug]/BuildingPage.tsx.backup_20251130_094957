@@ -267,7 +267,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   closedRentals={closedRentals}
                   buildingId={building.id}
                   buildingName={building.building_name}
-                  buildingAddress={building.canonical_address}
                   agentId={agent?.id || ""}
                 />
             </div>
@@ -330,7 +329,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                 <EstimatorSeller
                   buildingId={building.id}
                   buildingName={building.building_name}
-                  buildingAddress={building.canonical_address}
                   agentId={agent.id}
                 />
               ) : (

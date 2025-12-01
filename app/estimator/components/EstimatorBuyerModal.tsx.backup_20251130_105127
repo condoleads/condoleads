@@ -12,7 +12,6 @@ interface EstimatorBuyerModalProps {
   onClose: () => void
   listing: MLSListing | null
   buildingName: string
-  buildingAddress?: string
   buildingId: string
   agentId: string
   type: 'sale' | 'lease'
@@ -24,7 +23,6 @@ export default function EstimatorBuyerModal({
   onClose,
   listing,
   buildingName,
-  buildingAddress,
   buildingId,
   agentId,
   type,
@@ -214,7 +212,6 @@ export default function EstimatorBuyerModal({
                   result={result} 
                   type={type}
                   buildingId={buildingId}
-                  buildingAddress={buildingAddress}
                   buildingName={buildingName}
                   agentId={agentId}
                   propertySpecs={{

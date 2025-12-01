@@ -12,7 +12,6 @@ interface EstimatorResultsProps {
   type?: 'sale' | 'lease' | 'estimator'
   buildingId: string
   buildingName: string
-  buildingAddress?: string
   agentId?: string
   propertySpecs: any
 }
@@ -22,7 +21,6 @@ export default function EstimatorResults({
   type = 'sale',
   buildingId,
   buildingName,
-  buildingAddress,
   agentId,
   propertySpecs
 }: EstimatorResultsProps) {
@@ -53,7 +51,7 @@ export default function EstimatorResults({
     setIsSubmitting(true)
 
     const specs = propertySpecs || {}
-    const message = `Received estimate for ${buildingName}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Would like to discuss accurate valuation.`
+    const message = `Received estimate for ${buildingName}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Would like to discuss accurate valuation.`
 
     console.log('?? DEBUG EstimatorResults:', { agentId, buildingId, buildingName })
     
