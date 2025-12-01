@@ -169,7 +169,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
                   listingAddress={listing.unparsed_address || ''}
                   buildingId={listing.building_id}
                   buildingName={building?.name || ''}
-                  buildingAddress={building?.address || building?.canonical_address || ''}
+                  
                 />
               )}
 
@@ -178,6 +178,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
                 status={status}
                 isSale={isSale}
                 buildingName={building?.name || ''}
+                buildingAddress={building?.address || building?.canonical_address || ''}
                 agentId={agent?.id || ''}
               />
             </div>
