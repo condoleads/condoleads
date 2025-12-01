@@ -230,17 +230,11 @@ function extractActivityDetails(activityType: string, activityData: any): string
       break
 
     case 'estimator':
-   case 'sale_offer_inquiry':
-      case 'lease_offer_inquiry':
-        if (activityData.buildingName) {
-          details += activityData.buildingName
-        }
-        if (activityData.unitNumber) {
-          details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
-        }
-        if (activityData.buildingAddress) {
-          details += details ? ` • ${activityData.buildingAddress}` : activityData.buildingAddress
-        }
+    case 'sale_offer_inquiry':
+    case 'lease_offer_inquiry':
+      if (activityData.buildingName) {
+        details += activityData.buildingName
+      }
       if (activityData.estimatedPrice) {
         const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(activityData.estimatedPrice)
         details += details ? ` • Estimated: ${price}` : `Estimated: ${price}`
@@ -327,7 +321,6 @@ export async function sendActivityEmail({
     // Get building name from lead's building relationship, activity data, or fetch it
 let buildingName = lead.buildings?.building_name || latestActivity.activity_data?.buildingName
 let buildingAddress = lead.buildings?.canonical_address || latestActivity.activity_data?.buildingAddress
-let unitNumber = latestActivity.activity_data?.unitNumber
 
 // If still no building name but lead has building_id, fetch it
 if (!buildingName && lead.building_id) {
@@ -354,7 +347,6 @@ if (!buildingName && lead.building_id) {
       leadPhone: lead.contact_phone,
       buildingName,
       buildingAddress,
-      unitNumber,
       latestActivity: {
         type: activityType,
         description: latestFormatted.type,

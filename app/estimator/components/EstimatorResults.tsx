@@ -76,6 +76,8 @@ try {
     activityData: {
       buildingId,
       buildingName,
+      buildingAddress,
+      unitNumber,
       estimatedPrice: result.estimatedPrice,
       priceRangeLow: result.priceRange.low,
       priceRangeHigh: result.priceRange.high,
