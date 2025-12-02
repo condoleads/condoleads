@@ -17,9 +17,8 @@ interface ContactModalProps {
     profile_photo_url?: string | null
   }
   source: 'home_page' | 'building_page' | 'property_inquiry' | 'message_agent' | 'sale_offer' | 'building_visit'
-buildingId?: string
+  buildingId?: string
   buildingName?: string
-  buildingAddress?: string
   listingId?: string
   listingAddress?: string
 }
@@ -31,7 +30,6 @@ export default function ContactModal({
   source,
   buildingId,
   buildingName,
-  buildingAddress,
   listingId,
   listingAddress
 }: ContactModalProps) {
@@ -70,7 +68,6 @@ export default function ContactModal({
       activityData: {
         buildingId,
         buildingName: buildingName || 'Unknown',
-        buildingAddress,
         listingId,
         listingAddress,
         source

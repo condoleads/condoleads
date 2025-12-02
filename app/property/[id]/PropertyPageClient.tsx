@@ -130,6 +130,7 @@ export default function PropertyPageClient({
                     listingAddress={listing.unparsed_address || ''}
                     buildingId={listing.building_id}
                     buildingName={building?.building_name || ''}
+                    buildingAddress={building?.canonical_address || ''}
                     
                   />
                   

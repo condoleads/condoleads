@@ -358,6 +358,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   source="building_page"
                   buildingId={building.id}
                   buildingName={building.building_name}
+                  buildingAddress={building.canonical_address}
                 />
               )}
             </div>

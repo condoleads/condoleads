@@ -169,6 +169,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
                   listingAddress={listing.unparsed_address || ''}
                   buildingId={listing.building_id}
                   buildingName={building?.name || ''}
+                  buildingAddress={building?.address || ''}
                   
                 />
               )}

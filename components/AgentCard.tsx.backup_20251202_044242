@@ -18,7 +18,6 @@ interface AgentCardProps {
   source?: 'home_page' | 'building_page' | 'property_inquiry'
   buildingId?: string
   buildingName?: string
-  buildingAddress?: string
   listingId?: string
   listingAddress?: string
 }
@@ -28,7 +27,6 @@ export function AgentCard({
   source = 'building_page',
   buildingId,
   buildingName,
-  buildingAddress,
   listingId,
   listingAddress
 }: AgentCardProps) {
@@ -104,7 +102,6 @@ export function AgentCard({
         source="message_agent"
         buildingId={buildingId}
         buildingName={buildingName}
-        buildingAddress={buildingAddress}
         listingId={listingId}
         listingAddress={listingAddress}
       />
