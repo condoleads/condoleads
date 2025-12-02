@@ -20,6 +20,7 @@ interface ContactModalProps {
 buildingId?: string
   buildingName?: string
   buildingAddress?: string
+  unitNumber?: string
   listingId?: string
   listingAddress?: string
 }
@@ -32,6 +33,7 @@ export default function ContactModal({
   buildingId,
   buildingName,
   buildingAddress,
+  unitNumber,
   listingId,
   listingAddress
 }: ContactModalProps) {
@@ -71,6 +73,7 @@ export default function ContactModal({
         buildingId,
         buildingName: buildingName || 'Unknown',
         buildingAddress,
+        unitNumber,
         listingId,
         listingAddress,
         source

@@ -19,6 +19,7 @@ interface AgentCardProps {
   buildingId?: string
   buildingName?: string
   buildingAddress?: string
+  unitNumber?: string
   listingId?: string
   listingAddress?: string
 }
@@ -29,6 +30,7 @@ export function AgentCard({
   buildingId,
   buildingName,
   buildingAddress,
+  unitNumber,
   listingId,
   listingAddress
 }: AgentCardProps) {
@@ -105,6 +107,7 @@ export function AgentCard({
         buildingId={buildingId}
         buildingName={buildingName}
         buildingAddress={buildingAddress}
+        unitNumber={unitNumber}
         listingId={listingId}
         listingAddress={listingAddress}
       />

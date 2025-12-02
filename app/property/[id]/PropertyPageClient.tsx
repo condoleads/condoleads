@@ -131,6 +131,7 @@ export default function PropertyPageClient({
                     buildingId={listing.building_id}
                     buildingName={building?.building_name || ''}
                     buildingAddress={building?.canonical_address || ''}
+                    unitNumber={listing.unit_number || ''}
                     
                   />
                   

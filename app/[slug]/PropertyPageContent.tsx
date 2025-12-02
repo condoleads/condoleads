@@ -170,6 +170,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
                   buildingId={listing.building_id}
                   buildingName={building?.name || ''}
                   buildingAddress={building?.address || ''}
+                  unitNumber={listing.unit_number || ''}
                   
                 />
               )}
