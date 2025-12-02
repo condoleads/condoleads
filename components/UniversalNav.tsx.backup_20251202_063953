@@ -2,19 +2,7 @@
 import Link from 'next/link'
 import AuthStatus from '@/components/auth/AuthStatus'
 
-interface UniversalNavProps {
-  agentData?: {
-    id?: string
-    buildingId?: string
-    buildingName?: string
-    buildingAddress?: string
-    listingId?: string
-    listingAddress?: string
-    unitNumber?: string
-  }
-}
-
-export default function UniversalNav({ agentData }: UniversalNavProps) {
+export default function UniversalNav() {
   return (
     <nav className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -23,7 +11,7 @@ export default function UniversalNav({ agentData }: UniversalNavProps) {
           <Link href="/" className="flex items-center">
             <span className="text-2xl font-bold text-emerald-600">CondoLeads</span>
           </Link>
-
+          
           {/* Navigation Links */}
           <div className="hidden md:flex items-center space-x-8">
             <Link href="/" className="text-gray-700 hover:text-emerald-600 font-medium transition-colors">
@@ -36,19 +24,10 @@ export default function UniversalNav({ agentData }: UniversalNavProps) {
               Estimator
             </a>
           </div>
-
+          
           {/* Auth Status */}
           <div className="flex items-center">
-            <AuthStatus 
-              agentId={agentData?.id}
-              buildingId={agentData?.buildingId}
-              buildingName={agentData?.buildingName}
-              buildingAddress={agentData?.buildingAddress}
-              listingId={agentData?.listingId}
-              listingAddress={agentData?.listingAddress}
-              unitNumber={agentData?.unitNumber}
-              registrationSource={agentData?.listingId ? 'property_detail' : 'home_page'}
-            />
+            <AuthStatus />
           </div>
         </div>
       </div>
