@@ -108,17 +108,11 @@ function formatActivityForEmail(activity: any) {
     description += ` - ${details}`
   }
 
-  const activityData = activity.activity_data || {}
-  const buildingInfo = activityData.buildingName 
-    ? `${activityData.buildingName}${activityData.unitNumber ? ` • Unit ${activityData.unitNumber}` : ''}${activityData.buildingAddress ? ` • ${activityData.buildingAddress}` : ''}`
-    : ''
-
   return {
     icon: activityIcons[activity.activity_type] || '📌',
     type: activityNames[activity.activity_type] || activity.activity_type,
     description,
-    timestamp: timeText,
-    buildingInfo
+    timestamp: timeText
   }
 }
 

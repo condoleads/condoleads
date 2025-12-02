@@ -76,8 +76,6 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
                 {data.buildingName && (
                   <p className="text-xs text-gray-600 mt-0.5">
                     Building: {data.buildingName}
-                    {data.unitNumber && ` • Unit ${data.unitNumber}`}
-                    {data.buildingAddress && ` • ${data.buildingAddress}`}
                   </p>
                 )}
                 {data.estimatedPrice && (

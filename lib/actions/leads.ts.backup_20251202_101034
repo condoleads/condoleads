@@ -182,11 +182,6 @@ export async function getAgentLeads(agentId: string) {
         id,
         building_name,
         canonical_address
-      ),
-      mls_listings (
-        id,
-        unit_number,
-        unparsed_address
       )
     `)
     .eq('agent_id', agentId)
@@ -212,11 +207,6 @@ export async function getAllLeadsForAdmin() {
         id,
         building_name,
         canonical_address
-      ),
-      mls_listings (
-        id,
-        unit_number,
-        unparsed_address
       ),
       agents!leads_agent_id_fkey (
         id,

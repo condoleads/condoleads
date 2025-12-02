@@ -220,10 +220,7 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
                       <div className="flex items-center gap-2">
                         <Building2 className="w-4 h-4 text-blue-600" />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {lead.buildings.building_name}
-                            {lead.mls_listings?.unit_number && ` • Unit ${lead.mls_listings.unit_number}`}
-                          </p>
+                          <p className="text-sm font-medium text-gray-900">{lead.buildings.building_name}</p>
                           <p className="text-xs text-gray-500">{lead.buildings.canonical_address}</p>
                         </div>
                       </div>
