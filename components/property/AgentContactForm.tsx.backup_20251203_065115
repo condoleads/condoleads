@@ -52,8 +52,7 @@ export default function AgentContactForm({ listing, status, isSale, agent }: Age
       activityData: {
         listingId: listing.id,
         buildingId: listing.building_id,
-        buildingName: (listing as any).buildings?.building_name || '',
-        buildingAddress: (listing as any).buildings?.canonical_address || listing.unparsed_address,
+        address: listing.unparsed_address,
         unitNumber: listing.unit_number,
         price: listing.list_price,
         bedrooms: listing.bedrooms_total,
