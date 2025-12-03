@@ -1,7 +1,6 @@
 'use server'
 import { createClient } from '@/lib/supabase/server'
 import { getOrCreateLead } from '@/lib/actions/leads'
-import { trackActivity } from '@/lib/actions/user-activity'
 import { headers } from 'next/headers'
 
 interface CreateLeadFromRegistrationParams {
@@ -12,11 +11,8 @@ interface CreateLeadFromRegistrationParams {
   registrationSource: string
   registrationUrl?: string
   buildingId?: string
-  buildingName?: string
-  buildingAddress?: string
   listingId?: string
   listingAddress?: string
-  unitNumber?: string
   message?: string
   estimatedValueMin?: number
   estimatedValueMax?: number
@@ -121,7 +117,7 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       sourceUrl: sourceUrl,
       buildingId: finalBuildingId,
       listingId: params.listingId,
-      message: params.message || ("New user registration" + (params.buildingName ? " for " + params.buildingName : "") + (params.unitNumber ? " Unit " + params.unitNumber : "") + (params.buildingAddress ? " (" + params.buildingAddress + ")" : "") + " via " + params.registrationSource + (subdomain ? " on " + subdomain + ".condoleads.ca" : "")),
+      message: params.message || ("New user registration" + (params.listingAddress ? " for " + params.listingAddress : "") + " via " + params.registrationSource + (subdomain ? " on " + subdomain + ".condoleads.ca" : "")),
       estimatedValueMin: params.estimatedValueMin,
       estimatedValueMax: params.estimatedValueMax,
       propertyDetails: params.propertyDetails,
@@ -134,24 +130,6 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
     }
 
     console.log(' Lead created successfully with email notification:', result.lead?.id)
-
-    // Track registration activity with building info
-    if (result.lead?.id) {
-      await trackActivity({
-        contactEmail: params.email,
-        agentId: agentId,
-        activityType: 'registration',
-        activityData: {
-          buildingId: finalBuildingId,
-          buildingName: params.buildingName,
-          buildingAddress: params.buildingAddress,
-          listingId: params.listingId,
-          unitNumber: params.unitNumber,
-          registrationSource: params.registrationSource
-        }
-      }).catch(err => console.error('Failed to track registration activity:', err))
-    }
-
     return { success: true, leadId: result.lead?.id }
 
   } catch (error) {
