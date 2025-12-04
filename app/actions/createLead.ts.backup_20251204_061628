@@ -124,12 +124,7 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       message: params.message || ("New user registration" + (params.buildingName ? " for " + params.buildingName : "") + (params.unitNumber ? " Unit " + params.unitNumber : "") + (params.buildingAddress ? " (" + params.buildingAddress + ")" : "") + " via " + params.registrationSource + (subdomain ? " on " + subdomain + ".condoleads.ca" : "")),
       estimatedValueMin: params.estimatedValueMin,
       estimatedValueMax: params.estimatedValueMax,
-      propertyDetails: {
-          ...(params.propertyDetails || {}),
-          buildingName: params.buildingName,
-          buildingAddress: params.buildingAddress,
-          unitNumber: params.unitNumber
-        },
+      propertyDetails: params.propertyDetails,
       forceNew: shouldForceNewLead
     })
 

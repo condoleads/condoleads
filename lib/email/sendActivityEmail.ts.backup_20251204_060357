@@ -287,20 +287,12 @@ export async function sendActivityEmail({
   leadId,
   activityType,
   agentEmail,
-  agentName,
-  buildingName: overrideBuildingName,
-  buildingAddress: overrideBuildingAddress,
-  unitNumber: overrideUnitNumber,
-  message: overrideMessage
+  agentName
 }: {
   leadId: string
   activityType: string
   agentEmail: string
   agentName: string
-  buildingName?: string
-  buildingAddress?: string
-  unitNumber?: string
-  message?: string
 }) {
   try {
     console.log('🔵 Checking if should send activity email...', { leadId, activityType })
@@ -339,9 +331,9 @@ export async function sendActivityEmail({
     const latestActivity = activities[0]
     const latestFormatted = formatActivityForEmail(latestActivity)
     // Get building name from lead's building relationship, activity data, or fetch it
-let buildingName = overrideBuildingName || lead.buildings?.building_name || latestActivity?.activity_data?.buildingName
-let buildingAddress = overrideBuildingAddress || lead.buildings?.canonical_address || latestActivity?.activity_data?.buildingAddress
-let unitNumber = overrideUnitNumber || latestActivity?.activity_data?.unitNumber
+let buildingName = lead.buildings?.building_name || latestActivity.activity_data?.buildingName
+let buildingAddress = lead.buildings?.canonical_address || latestActivity.activity_data?.buildingAddress
+let unitNumber = latestActivity.activity_data?.unitNumber
 
 // If still no building name but lead has building_id, fetch it
 if (!buildingName && lead.building_id) {

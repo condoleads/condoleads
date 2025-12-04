@@ -90,13 +90,7 @@ export default function ContactModal({
       buildingId,
       listingId,
       message: contextMessage,
-      forceNew: true,  // CRITICAL: Always create new lead for form submissions
-      propertyDetails: {
-        buildingName,
-        buildingAddress,
-        unitNumber,
-        userMessage: formData.message
-      }
+      forceNew: true  // CRITICAL: Always create new lead for form submissions
     })
 
     setIsSubmitting(false)

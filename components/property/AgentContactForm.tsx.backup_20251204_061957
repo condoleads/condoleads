@@ -72,15 +72,12 @@ export default function AgentContactForm({ listing, status, isSale, agent }: Age
       buildingId: listing.building_id,
       message: fullMessage,
       propertyDetails: {
-          buildingName: (listing as any).buildings?.building_name || '',
-          buildingAddress: (listing as any).buildings?.canonical_address || listing.unparsed_address,
-          unitNumber: listing.unit_number,
-          bedrooms: listing.bedrooms_total,
-          bathrooms: listing.bathrooms_total_integer,
-          price: listing.list_price,
-          transactionType: listing.transaction_type,
-          userMessage: formData.message
-        }
+        unitNumber: listing.unit_number,
+        bedrooms: listing.bedrooms_total,
+        bathrooms: listing.bathrooms_total_integer,
+        price: listing.list_price,
+        transactionType: listing.transaction_type
+      }
     })
 
     setIsSubmitting(false)

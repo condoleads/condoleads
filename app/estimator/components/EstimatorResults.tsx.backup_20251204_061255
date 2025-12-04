@@ -106,14 +106,11 @@ try {
     estimatedValueMin: result.priceRange.low,
     estimatedValueMax: result.priceRange.high,
     propertyDetails: {
-        ...(propertySpecs || {}),
-        buildingName,
-        buildingAddress,
-        unitNumber,
-        estimatedPrice: result.estimatedPrice,
-        confidence: result.confidence,
-        marketSpeed: result.marketSpeed.status
-      },
+      ...(propertySpecs || {}),
+      estimatedPrice: result.estimatedPrice,
+      confidence: result.confidence,
+      marketSpeed: result.marketSpeed.status
+    },
     forceNew: true
   })
 

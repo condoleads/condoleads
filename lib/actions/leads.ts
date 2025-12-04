@@ -137,7 +137,11 @@ export async function createLead(params: CreateLeadParams) {
         leadId: lead.id,
         activityType: source,
         agentEmail: agent.email,
-        agentName: agent.full_name || 'Agent'
+        agentName: agent.full_name || 'Agent',
+        buildingName: params.propertyDetails?.buildingName,
+        buildingAddress: params.propertyDetails?.buildingAddress,
+        unitNumber: params.propertyDetails?.unitNumber,
+        message: params.message
       })
       console.log('✅ Email sent successfully')
     } catch (emailError) {
