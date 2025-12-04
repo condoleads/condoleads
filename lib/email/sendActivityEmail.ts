@@ -62,7 +62,7 @@ function calculateEngagement(activities: any[]): { score: '🔥 HOT' | '🌡️ 
   }
 }
 
-function formatActivityForEmail(activity: any) {
+function formatActivityForEmail(activity: any, fallbackBuilding?: { building_name?: string, canonical_address?: string }) {
   const activityIcons: Record<string, string> = {
   contact_form: '📧',
   property_inquiry: '🏢',
@@ -109,9 +109,11 @@ function formatActivityForEmail(activity: any) {
   }
 
   const activityData = activity.activity_data || {}
-  const buildingInfo = activityData.buildingName 
-    ? `${activityData.buildingName}${activityData.unitNumber ? ` • Unit ${activityData.unitNumber}` : ''}${activityData.buildingAddress ? ` • ${activityData.buildingAddress}` : ''}`
-    : ''
+    const bName = activityData.buildingName || fallbackBuilding?.building_name
+    const bAddress = activityData.buildingAddress || fallbackBuilding?.canonical_address
+    const buildingInfo = bName
+      ? `${bName}${activityData.unitNumber ? ` • Unit ${activityData.unitNumber}` : ''}${bAddress ? ` • ${bAddress}` : ''}`
+      : ''
 
   return {
     icon: activityIcons[activity.activity_type] || '📌',
@@ -362,7 +364,7 @@ export async function sendActivityEmail({
 
     const engagement = calculateEngagement(activities)
     const latestActivity = activities[0]
-    const latestFormatted = formatActivityForEmail(latestActivity)
+    const latestFormatted = formatActivityForEmail(latestActivity, lead.buildings)
     // Get building name from lead's building relationship, activity data, or fetch it
 let buildingName = overrideBuildingName || lead.buildings?.building_name || latestActivity?.activity_data?.buildingName
 let buildingAddress = overrideBuildingAddress || lead.buildings?.canonical_address || latestActivity?.activity_data?.buildingAddress
@@ -380,7 +382,7 @@ if (!buildingName && lead.building_id) {
   buildingAddress = building.canonical_address
 }
 }
-    const recentActivities = activities.slice(0, 5).map(formatActivityForEmail)
+    const recentActivities = activities.slice(0, 5).map(a => formatActivityForEmail(a, lead.buildings))
       
       // Build override activity data from passed parameters
       const overrideActivityData = {

@@ -104,7 +104,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         
         {/* Activity Timeline */}
         <div className="mt-8">
-          <ActivityTimeline activities={activities} leadBuilding={lead.buildings} />
+          <ActivityTimeline activities={activities} />
         </div>
       </div>
     </div>

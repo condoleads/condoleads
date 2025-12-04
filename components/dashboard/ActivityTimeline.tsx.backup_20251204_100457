@@ -5,10 +5,6 @@ import { Activity, Calculator, Eye, Calendar, Home, FileText, Lock } from 'lucid
 
 interface ActivityTimelineProps {
   activities: any[]
-  leadBuilding?: {
-    building_name?: string
-    canonical_address?: string
-  }
 }
 
 const activityIcons: Record<string, any> = {
@@ -37,7 +33,7 @@ const activityLabels: Record<string, string> = {
   contact_form: 'Contact form submission'
 }
 
-export default function ActivityTimeline({ activities, leadBuilding }: ActivityTimelineProps) {
+export default function ActivityTimeline({ activities }: ActivityTimelineProps) {
   if (!activities || activities.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
@@ -77,11 +73,11 @@ export default function ActivityTimeline({ activities, leadBuilding }: ActivityT
                 <p className="text-sm font-medium text-gray-900">{label}</p>
                 
                 {/* Activity details */}
-                {(data.buildingName || leadBuilding?.building_name) && (
+                {data.buildingName && (
                   <p className="text-xs text-gray-600 mt-0.5">
-                    Building: {data.buildingName || leadBuilding?.building_name}
+                    Building: {data.buildingName}
                     {data.unitNumber && ` • Unit ${data.unitNumber}`}
-                    {(data.buildingAddress || leadBuilding?.canonical_address) && ` • ${data.buildingAddress || leadBuilding?.canonical_address}`}
+                    {data.buildingAddress && ` • ${data.buildingAddress}`}
                   </p>
                 )}
                 {data.estimatedPrice && (
