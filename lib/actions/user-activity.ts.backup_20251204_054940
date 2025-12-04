@@ -112,8 +112,9 @@ export async function trackActivity(params: TrackActivityParams) {
       if (agentData?.email) {
         const { data: leadData } = await supabase.from('leads').select('id').eq('contact_email', params.contactEmail).eq('agent_id', agentId).single()
         if (leadData?.id) {
-            console.log('📝 Activity tracked for lead:', leadData.id, '- Email handled by getOrCreateLead')
-          }
+          console.log(' Sending activity email...')
+          await sendActivityEmail({ leadId: leadData.id, activityType: params.activityType, agentEmail: agentData.email, agentName: agentData.full_name }).catch(e => console.error('?? Email failed:', e))
+        }
       }
     }
     return { success: true, activity: data }
