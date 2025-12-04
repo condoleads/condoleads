@@ -407,7 +407,7 @@ if (!buildingName && lead.building_id) {
       unitNumber,
       latestActivity: {
         type: activityType,
-        description: activityNames[activityType] || latestFormatted.type,
+        description: ACTIVITY_TYPE_NAMES[activityType] || latestFormatted.type,
         details: latestDetails,
         timestamp: 'Just now'
       },
