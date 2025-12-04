@@ -11,18 +11,12 @@ interface TransactionHistoryProps {
   closedSales: MLSListing[]
   closedRentals: MLSListing[]
   highestSale: number
-  buildingName?: string
-  buildingAddress?: string
-  unitNumber?: string
 }
 
 export default function TransactionHistory({
   closedSales = [],
   closedRentals = [],
   highestSale = 0,
-  buildingName = '',
-  buildingAddress = '',
-  unitNumber = '',
 }: TransactionHistoryProps) {
   const { user } = useAuth()
   const [showRegister, setShowRegister] = useState(false)
@@ -36,10 +30,7 @@ export default function TransactionHistory({
         activityData: {
           totalSales: closedSales.length,
           totalRentals: closedRentals.length,
-          highestSale,
-          buildingName,
-          buildingAddress,
-          unitNumber
+          highestSale
         }
       }).catch(err => console.error('Failed to track activity:', err))
     }

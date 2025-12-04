@@ -381,10 +381,21 @@ if (!buildingName && lead.building_id) {
 }
 }
     const recentActivities = activities.slice(0, 5).map(formatActivityForEmail)
-    const latestDetails = extractActivityDetails(latestActivity.activity_type, latestActivity.activity_data)
+      
+      // Build override activity data from passed parameters
+      const overrideActivityData = {
+        buildingName: overrideBuildingName || buildingName,
+        buildingAddress: overrideBuildingAddress || buildingAddress,
+        unitNumber: overrideUnitNumber || unitNumber,
+        userMessage: overrideMessage
+      }
+      
+      // Use triggering activity type details, not DB's latest activity
+      const triggeringDetails = extractActivityDetails(activityType, overrideActivityData)
+      const latestDetails = triggeringDetails || extractActivityDetails(latestActivity.activity_type, latestActivity.activity_data)
 
-    // Use the triggering activity type for subject, not the latest activity
-    const subjectActivityName = ACTIVITY_TYPE_NAMES[activityType] || latestFormatted.type
+      // Use the triggering activity type for subject, not the latest activity
+      const subjectActivityName = ACTIVITY_TYPE_NAMES[activityType] || latestFormatted.type
 
     const emailData = {
       agentName,
@@ -396,9 +407,9 @@ if (!buildingName && lead.building_id) {
       unitNumber,
       latestActivity: {
         type: activityType,
-        description: latestFormatted.type,
+        description: activityNames[activityType] || latestFormatted.type,
         details: latestDetails,
-        timestamp: latestFormatted.timestamp
+        timestamp: 'Just now'
       },
       recentActivities,
       engagementScore: engagement.score,

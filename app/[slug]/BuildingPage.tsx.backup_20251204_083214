@@ -306,8 +306,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                 closedSales={closedSales}
                 closedRentals={closedRentals}
                 highestSale={highestSale}
-                buildingName={building.building_name}
-                buildingAddress={building.canonical_address}
               />
             </div>
             
