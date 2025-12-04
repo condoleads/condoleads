@@ -78,10 +78,10 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       if (slug && slug !== 'estimator' && slug !== 'dashboard' && slug !== 'login') {
         // Look up building by slug
         const { data: building } = await supabase
-          .from('buildings')
-          .select('id')
-          .eq('slug', slug)
-          .single()
+            .from('buildings')
+            .select('id, building_name, canonical_address')
+            .eq('slug', slug)
+            .single()
         if (building) {
             finalBuildingId = building.id
             // Also capture building name/address if not provided
