@@ -178,12 +178,19 @@ function extractActivityDetails(activityType: string, activityData: any): string
 
   switch (activityType) {
     case 'contact_form':
+    case 'message_agent':
       if (activityData.buildingName) {
         details += `Building: ${activityData.buildingName}`
+      }
+      if (activityData.unitNumber) {
+        details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
       }
       if (activityData.source) {
         const sourceText = activityData.source.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
         details += details ? ` • Source: ${sourceText}` : `Source: ${sourceText}`
+      }
+      if (activityData.userMessage) {
+        details += details ? ` • Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
       }
       break
 
@@ -221,8 +228,11 @@ function extractActivityDetails(activityType: string, activityData: any): string
       if (activityData.buildingName) {
         details += activityData.buildingName
       }
-      if (activityData.propertyType) {
-        details += details ? ` • ${activityData.propertyType}` : activityData.propertyType
+      if (activityData.unitNumber) {
+        details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
+      }
+      if (activityData.userMessage) {
+        details += details ? ` • Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
       }
       break
 

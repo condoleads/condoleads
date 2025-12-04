@@ -222,7 +222,7 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
                         <div>
                           <p className="text-sm font-medium text-gray-900">
                             {lead.buildings.building_name}
-                            {(lead.mls_listings?.unit_number || lead.property_details?.unitNumber) && ` • Unit ${lead.mls_listings?.unit_number || lead.property_details?.unitNumber}`}
+                            {lead.mls_listings?.unit_number && ` • Unit ${lead.mls_listings.unit_number}`}
                           </p>
                           <p className="text-xs text-gray-500">{lead.buildings.canonical_address}</p>
                         </div>
