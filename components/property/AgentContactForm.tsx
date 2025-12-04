@@ -57,7 +57,8 @@ export default function AgentContactForm({ listing, status, isSale, agent }: Age
         unitNumber: listing.unit_number,
         price: listing.list_price,
         bedrooms: listing.bedrooms_total,
-        bathrooms: listing.bathrooms_total_integer
+        bathrooms: listing.bathrooms_total_integer,
+        userMessage: formData.message
       }
     })
 

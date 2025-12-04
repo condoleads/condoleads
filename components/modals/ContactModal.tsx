@@ -67,18 +67,19 @@ export default function ContactModal({
 
     // Track contact form submission
     await trackActivity({
-      contactEmail: formData.email,
-      activityType: 'contact_form',
-      activityData: {
-        buildingId,
-        buildingName: buildingName || 'Unknown',
-        buildingAddress,
-        unitNumber,
-        listingId,
-        listingAddress,
-        source
-      }
-    })
+        contactEmail: formData.email,
+        activityType: 'contact_form',
+        activityData: {
+          buildingId,
+          buildingName: buildingName || 'Unknown',
+          buildingAddress,
+          unitNumber,
+          listingId,
+          listingAddress,
+          source,
+          userMessage: formData.message
+        }
+      })
 
     // ALWAYS create new lead for form submissions (forceNew: true)
     const result = await getOrCreateLead({

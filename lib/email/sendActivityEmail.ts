@@ -236,12 +236,27 @@ function extractActivityDetails(activityType: string, activityData: any): string
       }
       break
 
+      case 'registration':
+      if (activityData.buildingName) {
+        details += activityData.buildingName
+      }
+      if (activityData.unitNumber) {
+        details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
+      }
+      if (activityData.buildingAddress) {
+        details += details ? ` • ${activityData.buildingAddress}` : activityData.buildingAddress
+      }
+      break
+
     case 'viewed_transaction_history':
       if (activityData.totalSales || activityData.totalLeases) {
         details += `Viewed ${activityData.totalSales || 0} sales, ${activityData.totalLeases || 0} leases`
       }
       if (activityData.buildingName) {
         details += details ? ` at ${activityData.buildingName}` : activityData.buildingName
+      }
+      if (activityData.unitNumber) {
+        details += ` • Unit ${activityData.unitNumber}`
       }
       break
 

@@ -95,11 +95,6 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
                     Viewed {data.totalSales} sold, {data.totalRentals} leased
                   </p>
                 )}
-                {data.userMessage && (
-                  <p className="text-xs text-gray-600 mt-0.5 italic">
-                    Message: "{data.userMessage}"
-                  </p>
-                )}
                 
                 <p className="text-xs text-gray-400 mt-1">
                   {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
