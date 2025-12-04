@@ -83,9 +83,16 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
           .eq('slug', slug)
           .single()
         if (building) {
-          finalBuildingId = building.id
-          console.log(' Extracted building from URL:', slug, '', building.id)
-        }
+            finalBuildingId = building.id
+            // Also capture building name/address if not provided
+            if (!params.buildingName) {
+              params.buildingName = building.building_name
+            }
+            if (!params.buildingAddress) {
+              params.buildingAddress = building.canonical_address
+            }
+            console.log('📍 Extracted building from URL:', slug, '→', building.id, building.building_name)
+          }
       }
     }
 
