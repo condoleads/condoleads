@@ -129,23 +129,8 @@ export async function createLead(params: CreateLeadParams) {
     .single()
 
 
-  // Send email notification to agent for NEW leads
-  if (agent?.email) {
-    try {
-      console.log('📧 Sending email for new lead:', { leadId: lead.id, source, agentEmail: agent.email })
-      await sendActivityEmail({
-        leadId: lead.id,
-        activityType: source,
-        agentEmail: agent.email,
-        agentName: agent.full_name || 'Agent'
-      })
-      console.log('✅ Email sent successfully')
-    } catch (emailError) {
-      console.error('❌ Error sending email:', emailError)
-    }
-  } else {
-    console.log('⚠️ No agent email found, skipping notification')
-  }
+  // Email is now sent via trackActivity to avoid duplicates
+    console.log(' Lead created/updated. Email will be sent via trackActivity.')
 
   return { success: true, lead }
 }
