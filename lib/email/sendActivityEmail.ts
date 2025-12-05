@@ -382,8 +382,13 @@ if (!buildingName && lead.building_id) {
   buildingAddress = building.canonical_address
 }
 }
-    const recentActivities = activities.slice(0, 5).map(a => formatActivityForEmail(a, lead.buildings))
-      
+    const recentActivities = activities.slice(0, 20).map(a => formatActivityForEmail(a, lead.buildings))
+    
+    // Extract KEY MILESTONES (always visible regardless of recency)
+    const keyMilestones = activities.filter(a => 
+      ['registration', 'sale_offer_inquiry', 'lease_offer_inquiry', 'contact_form', 'message_agent', 'property_inquiry'].includes(a.activity_type)
+    ).map(a => formatActivityForEmail(a, lead.buildings))
+
       // Build override activity data from passed parameters
       const overrideActivityData = {
         buildingName: overrideBuildingName || buildingName,
@@ -414,6 +419,7 @@ if (!buildingName && lead.building_id) {
         timestamp: 'Just now'
       },
       recentActivities,
+      keyMilestones,
       engagementScore: engagement.score,
       engagementText: engagement.text,
       totalActivityCount: activities.length,

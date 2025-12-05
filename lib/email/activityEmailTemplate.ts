@@ -19,6 +19,13 @@ interface ActivityEmailData {
     timestamp: string
     buildingInfo?: string
   }>
+  keyMilestones?: Array<{
+    icon: string
+    type: string
+    description: string
+    timestamp: string
+    buildingInfo?: string
+  }>
   engagementScore: '🔥 HOT' | '🌡️ WARM' | '❄️ COLD'
   engagementText: string
   totalActivityCount: number
@@ -107,9 +114,26 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-title">📊 RECENT ACTIVITY (Last ${Math.min(data.recentActivities.length, 5)})</div>
-      ${data.recentActivities.slice(0, 5).map(activity => `
+    ${data.keyMilestones && data.keyMilestones.length > 0 ? `
+      <div class="section">
+        <div class="section-title">⭐ KEY MILESTONES (${data.keyMilestones.length} important actions)</div>
+        ${data.keyMilestones.map(activity => `
+          <div class="activity-item">
+            <div class="activity-icon">${activity.icon}</div>
+            <div class="activity-content">
+              <div class="activity-type">${activity.type}</div>
+              <div style="color: #6b7280; font-size: 14px; margin-bottom: 4px;">${activity.description}</div>
+              ${activity.buildingInfo ? `<div style="color: #667eea; font-size: 13px; margin-bottom: 4px;">🏢 ${activity.buildingInfo}</div>` : ''}
+              <div class="activity-time">${activity.timestamp}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      ` : ''}
+
+      <div class="section">
+        <div class="section-title">📊 RECENT ACTIVITY (Last ${Math.min(data.recentActivities.length, 20)})</div>
+        ${data.recentActivities.slice(0, 20).map(activity => `
         <div class="activity-item">
           <div class="activity-icon">${activity.icon}</div>
           <div class="activity-content">
