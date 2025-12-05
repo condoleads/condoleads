@@ -96,6 +96,20 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       }
     }
 
+    // If we have buildingId but missing name/address, fetch it
+      if (finalBuildingId && (!params.buildingName || !params.buildingAddress)) {
+        const { data: buildingData } = await supabase
+          .from('buildings')
+          .select('building_name, canonical_address')
+          .eq('id', finalBuildingId)
+          .single()
+        if (buildingData) {
+          if (!params.buildingName) params.buildingName = buildingData.building_name
+          if (!params.buildingAddress) params.buildingAddress = buildingData.canonical_address
+          console.log('📍 Fetched building info:', buildingData.building_name)
+        }
+      }
+
     const sourceUrl = subdomain 
       ? `https://${subdomain}.condoleads.ca${params.registrationUrl || ''}` 
       : params.registrationUrl
