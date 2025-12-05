@@ -16,7 +16,6 @@ import StickyNav from './components/StickyNav'
 import ListYourUnit from './components/ListYourUnit'
 import SEODescription from './components/SEODescription'
 import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
-import DualCTASection from './components/DualCTASection'
 import BuildingSchema from './components/BuildingSchema'
 import { AgentCard } from '@/components/AgentCard'
 import { createClient } from '@/lib/supabase/server'
@@ -252,15 +251,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         avgSalePrice={avgSalePrice}
         avgDaysOnMarketSale={avgDaysOnMarketSale}
         avgDaysOnMarketLease={avgDaysOnMarketLease}
-      />
-      
-      {/* Dual CTA Section - Sellers & Buyers */}
-      <DualCTASection
-        buildingName={building.building_name}
-        activeSalesCount={activeSales.length}
-        activeRentalsCount={activeRentals.length}
-        lowestSalePrice={activeSales.length > 0 ? Math.min(...activeSales.map(l => l.list_price).filter(p => p > 0)) : undefined}
-        lowestRentPrice={activeRentals.length > 0 ? Math.min(...activeRentals.map(l => l.list_price).filter(p => p > 0)) : undefined}
       />
       
       {/* Main Content Grid with Agent Sidebar */}
