@@ -110,6 +110,19 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
         }
       }
 
+      // If we have listingId but no unitNumber, fetch it from the listing
+      if (params.listingId && !params.unitNumber) {
+        const { data: listingData } = await supabase
+          .from('mls_listings')
+          .select('unit_number')
+          .eq('id', params.listingId)
+          .single()
+        if (listingData?.unit_number) {
+          params.unitNumber = listingData.unit_number
+          console.log('📍 Fetched unit number from listing:', listingData.unit_number)
+        }
+      }
+
     const sourceUrl = subdomain 
       ? `https://${subdomain}.condoleads.ca${params.registrationUrl || ''}` 
       : params.registrationUrl
