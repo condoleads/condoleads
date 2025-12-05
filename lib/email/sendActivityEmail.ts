@@ -382,12 +382,26 @@ if (!buildingName && lead.building_id) {
   buildingAddress = building.canonical_address
 }
 }
-    const recentActivities = activities.slice(0, 20).map(a => formatActivityForEmail(a, lead.buildings))
+    // Add triggering activity to recent activities (it's not in DB yet)
+    const allActivities = [triggeringActivity, ...activities.filter(a => a.activity_type !== activityType)]
+    const recentActivities = allActivities.slice(0, 20).map(a => formatActivityForEmail(a, lead.buildings))
     
     // Extract KEY MILESTONES (always visible regardless of recency)
-    const keyMilestones = activities.filter(a => 
-      ['registration', 'sale_offer_inquiry', 'lease_offer_inquiry', 'contact_form', 'message_agent', 'property_inquiry'].includes(a.activity_type)
-    ).map(a => formatActivityForEmail(a, lead.buildings))
+    const keyMilestoneTypes = ['registration', 'sale_offer_inquiry', 'lease_offer_inquiry', 'contact_form', 'message_agent', 'property_inquiry']
+    
+    // Create triggering activity entry (not in DB yet)
+    const triggeringActivity = {
+      activity_type: activityType,
+      activity_data: overrideActivityData,
+      created_at: new Date().toISOString()
+    }
+    
+    // Add triggering activity to front if it's a key milestone type
+    const allKeyActivities = keyMilestoneTypes.includes(activityType)
+      ? [triggeringActivity, ...activities.filter(a => a.activity_type !== activityType && keyMilestoneTypes.includes(a.activity_type))]
+      : activities.filter(a => keyMilestoneTypes.includes(a.activity_type))
+    
+    const keyMilestones = allKeyActivities.map(a => formatActivityForEmail(a, lead.buildings))
 
       // Build override activity data from passed parameters
       const overrideActivityData = {
