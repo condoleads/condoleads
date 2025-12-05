@@ -379,7 +379,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                     <h3 className="font-bold text-slate-900">Own a Unit Here?</h3>
                   </div>
                   <p className="text-sm text-slate-600 mb-4">Get a FREE instant estimate of your unit's market value</p>
-                  
+                  <a
                     href="#list-your-unit"
                     className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"
                   >
