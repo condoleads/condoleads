@@ -8,6 +8,10 @@ interface DualCTASectionProps {
   lowestRentPrice?: number
 }
 
+// Capitalize each word in building name
+const capitalizeWords = (str: string) => {
+  return str.replace(/\b\w/g, char => char.toUpperCase())
+}
 export default function DualCTASection({
   buildingName,
   activeSalesCount,
@@ -47,7 +51,7 @@ export default function DualCTASection({
               <div className="flex-1">
                 <h3 className="text-lg font-bold text-slate-900 mb-1">Own a Unit Here?</h3>
                 <p className="text-slate-600 text-sm mb-4">
-                  Get a FREE instant estimate of your unit's current market value in {buildingName}
+                Get a FREE instant estimate of your unit's current market value in <span className="font-semibold">{capitalizeWords(buildingName)}</span>
                 </p>
                 <button
                   onClick={() => scrollToSection('list-your-unit')}
@@ -71,7 +75,7 @@ export default function DualCTASection({
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-bold text-slate-900 mb-1">Looking to Buy or Rent?</h3>
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Looking to Buy or Rent in {capitalizeWords(buildingName)}?</h3>
                 <p className="text-slate-600 text-sm mb-2">
                   {totalActiveListings > 0 ? (
                     <>
