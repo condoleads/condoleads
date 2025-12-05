@@ -254,15 +254,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         avgDaysOnMarketLease={avgDaysOnMarketLease}
       />
       
-      {/* Dual CTA Section - Sellers & Buyers */}
-      <DualCTASection
-        buildingName={building.building_name}
-        activeSalesCount={activeSales.length}
-        activeRentalsCount={activeRentals.length}
-        lowestSalePrice={activeSales.length > 0 ? Math.min(...activeSales.map(l => l.list_price).filter(p => p > 0)) : undefined}
-        lowestRentPrice={activeRentals.length > 0 ? Math.min(...activeRentals.map(l => l.list_price).filter(p => p > 0)) : undefined}
-      />
-      
+            
       {/* Main Content Grid with Agent Sidebar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid lg:grid-cols-4 gap-8">
@@ -364,15 +356,36 @@ export default async function BuildingPage({ params }: { params: { slug: string 
           
           {/* Agent Sidebar - 1 column, sticky */}
           <div className="lg:col-span-1">
-            <div className="sticky top-24">
+            <div className="sticky top-24 space-y-6">
               {agent && (
-                <AgentCard 
-                  agent={agent} 
+                <AgentCard
+                  agent={agent}
                   source="building_page"
                   buildingId={building.id}
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
                 />
+              )}
+              
+              {/* Own a Unit CTA */}
+              {agent && (
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-6 border border-emerald-200 shadow-sm">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                      </svg>
+                    </div>
+                    <h3 className="font-bold text-slate-900">Own a Unit Here?</h3>
+                  </div>
+                  <p className="text-sm text-slate-600 mb-4">Get a FREE instant estimate of your unit's market value</p>
+                  
+                    href="#list-your-unit"
+                    className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"
+                  >
+                    What's Your Unit Worth?
+                  </a>
+                </div>
               )}
             </div>
           </div>
