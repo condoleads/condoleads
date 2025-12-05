@@ -26,36 +26,28 @@ export function isBuildingSlug(slug: string): boolean {
 
 /**
  * Generate property slug from listing data
- * Format: /[building-slug]-unit-[unit-number]-[mls-number]
- * Example: /liberty-market-lofts-5-hanna-ave-toronto-unit-301-c12431082
+ * Format: /[street-number]-[street-name]-unit-[unit-number]-[mls-number]
+ * Example: /101-charles-st-e-unit-2503-c7351578
  */
-export function generatePropertySlug(
-  listing: {
+export function generatePropertySlug(listing: {
     unparsed_address?: string | null
     listing_key?: string | null
     unit_number?: string | null
-  },
-  buildingSlug?: string
-): string {
+  }): string {
   if (!listing.listing_key) {
     return `/property/${listing.listing_key}` // fallback to old format
   }
 
-  const unitNumber = listing.unit_number || 'unit'
-  const mlsNumber = listing.listing_key.toLowerCase()
-
-  // If buildingSlug provided, use it for consistent URLs
-  if (buildingSlug) {
-    return `/${buildingSlug}-unit-${unitNumber}-${mlsNumber}`
-  }
-
-  // Fallback: Extract street address (before unit number)
+  // Extract street address (before unit number)
   const address = listing.unparsed_address || ''
   const addressPart = address
     .split(',')[0] // Take only street address before comma
     .toLowerCase()
     .replace(/\s+/g, '-') // Replace spaces with hyphens
     .replace(/[^a-z0-9-]/g, '') // Remove special chars
-
+  
+  const unitNumber = listing.unit_number || 'unit'
+  const mlsNumber = listing.listing_key.toLowerCase()
+  
   return `/${addressPart}-unit-${unitNumber}-${mlsNumber}`
 }

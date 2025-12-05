@@ -11,10 +11,9 @@ interface ListingCardProps {
   listing: MLSListing
   type: 'sale' | 'lease'
   onEstimateClick?: (exactSqft: number | null) => void
-  buildingSlug?: string
 }
 
-export default function ListingCard({ listing, type, onEstimateClick, buildingSlug }: ListingCardProps) {
+export default function ListingCard({ listing, type, onEstimateClick }: ListingCardProps) {
   const isSale = type === 'sale'
   const isClosed = listing.standard_status === 'Closed'
   const photos = listing.media?.filter(m => m.variant_type === 'large') || []
@@ -95,7 +94,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
   const displayPrice = isClosed ? (listing.close_price || listing.list_price) : listing.list_price
 
   // Generate property slug URL
-  const propertyUrl = generatePropertySlug(listing, buildingSlug)
+  const propertyUrl = generatePropertySlug(listing)
 
   return (
     <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col">

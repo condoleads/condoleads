@@ -13,7 +13,6 @@ interface ListingSectionProps {
   buildingId: string
   buildingAddress?: string
   buildingName: string
-  buildingSlug: string
   agentId: string
 }
 
@@ -27,7 +26,6 @@ export default function ListingSection({
   buildingId,
   buildingAddress,
   buildingName,
-  buildingSlug,
   agentId,
 }: ListingSectionProps) {
   const [activeTab, setActiveTab] = useState<TabType>('for-sale')
@@ -113,7 +111,6 @@ export default function ListingSection({
                   listing={listing}
                   type={isSaleTab ? 'sale' : 'lease'}
                   onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'lease', exactSqft)}
-                  buildingSlug={buildingSlug}
                 />
               ))}
             </div>
