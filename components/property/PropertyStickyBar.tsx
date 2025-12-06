@@ -36,7 +36,10 @@ export default function PropertyStickyBar({
 
   if (!isVisible) return null
 
-  const formatPrice = (price: number) => {
+  const formatPrice = (price: number, isRental: boolean = false) => {
+    if (isRental) {
+      return `$${price.toLocaleString()}`
+    }
     if (price >= 1000000) {
       return `$${(price / 1000000).toFixed(2)}M`
     }
@@ -50,7 +53,7 @@ export default function PropertyStickyBar({
         <div className="flex md:hidden items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
             <p className="font-bold text-slate-900 truncate">Unit {listing.unit_number}</p>
-            <p className="text-sm text-slate-600">{formatPrice(listing.list_price)}{!isSale && '/mo'}</p>
+            <p className="text-sm text-slate-600">{formatPrice(listing.list_price, !isSale)}{!isSale && '/mo'}</p>
           </div>
           <button
             onClick={onEstimateClick}
@@ -72,7 +75,7 @@ export default function PropertyStickyBar({
                 Unit {listing.unit_number} • {buildingName}
               </p>
               <p className="text-sm text-slate-600">
-                {formatPrice(listing.list_price)}{!isSale && '/mo'} • {isSale ? 'For Sale' : 'For Lease'}
+                {formatPrice(listing.list_price, !isSale)}{!isSale && '/mo'} • {isSale ? 'For Sale' : 'For Lease'}
               </p>
             </div>
           </div>
