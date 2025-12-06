@@ -263,20 +263,17 @@ function extractActivityDetails(activityType: string, activityData: any): string
       break
 
     case 'estimator':
-     case 'sale_offer_inquiry':
-        case 'lease_offer_inquiry':
-          if (activityData.buildingName) {
-            details += activityData.buildingName
-          }
-          if (activityData.unitNumber) {
-            details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
-          }
-          if (activityData.buildingAddress) {
-            details += details ? ` • ${activityData.buildingAddress}` : activityData.buildingAddress
-          }
-          if (activityData.userMessage) {
-            details += details ? ` • Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
-          }
+   case 'sale_offer_inquiry':
+      case 'lease_offer_inquiry':
+        if (activityData.buildingName) {
+          details += activityData.buildingName
+        }
+        if (activityData.unitNumber) {
+          details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
+        }
+        if (activityData.buildingAddress) {
+          details += details ? ` • ${activityData.buildingAddress}` : activityData.buildingAddress
+        }
       if (activityData.estimatedPrice) {
         const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(activityData.estimatedPrice)
         details += details ? ` • Estimated: ${price}` : `Estimated: ${price}`
