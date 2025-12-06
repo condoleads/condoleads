@@ -18,6 +18,7 @@ import BuildingInfo from '@/components/property/BuildingInfo'
 import AgentContactForm from '@/components/property/AgentContactForm'
 import PropertyStickyBar from '@/components/property/PropertyStickyBar'
 import OfferInquiryModal from '@/components/property/OfferInquiryModal'
+import ExitIntentPopup from '@/components/property/ExitIntentPopup'
 import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 
 interface PropertyPageClientProps {
@@ -211,6 +212,14 @@ export default function PropertyPageClient({
           agent={agent}
         />
       )}
+      
+      {/* Exit Intent Popup - Desktop Only */}
+      <ExitIntentPopup
+        unitNumber={listing.unit_number || ''}
+        buildingName={building?.building_name || ''}
+        isSale={isSale}
+        onEstimateClick={() => setShowEstimatorModal(true)}
+      />
     </>
   )
 }
