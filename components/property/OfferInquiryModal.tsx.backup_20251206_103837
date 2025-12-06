@@ -60,13 +60,7 @@ export default function OfferInquiryModal({
         buildingId: listing.building_id,
         listingId: listing.id,
         message: formData.message,
-        forceNew: true,
-        propertyDetails: {
-          buildingName: buildingName,
-          buildingAddress: listing.unparsed_address || '',
-          unitNumber: listing.unit_number || '',
-          listPrice: listing.list_price
-        }
+        forceNew: true
       })
 
       if (lead) {
