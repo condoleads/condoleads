@@ -12,11 +12,9 @@ interface PropertyHeaderProps {
   isSale: boolean
   shouldBlur?: boolean
   buildingId?: string
-  onEstimateClick?: () => void
-  onOfferClick?: () => void
 }
 
-export default function PropertyHeader({ listing, status, isSale, shouldBlur = false, buildingId, onEstimateClick, onOfferClick }: PropertyHeaderProps) {
+export default function PropertyHeader({ listing, status, isSale, shouldBlur = false, buildingId }: PropertyHeaderProps) {
   const [showRegister, setShowRegister] = useState(false)
   const isClosed = status === 'Closed'
   
@@ -78,35 +76,6 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
                 <p className="text-sm text-slate-600 mt-1">
                   {isSale ? 'Listed Price' : 'Monthly Rent'}
                 </p>
-                {/* Hero CTA Buttons */}
-                {(onEstimateClick || onOfferClick) && (
-                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                    {onEstimateClick && (
-                      <button
-                        onClick={onEstimateClick}
-                        className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                          isSale 
-                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
-                            : 'bg-purple-600 hover:bg-purple-700 text-white'
-                        }`}
-                      >
-                        {isSale ? 'Get Sale Estimate' : 'Get Rent Estimate'}
-                      </button>
-                    )}
-                    {onOfferClick && (
-                      <button
-                        onClick={onOfferClick}
-                        className={`px-4 py-2 rounded-lg font-semibold text-sm transition-colors ${
-                          isSale 
-                            ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                        }`}
-                      >
-                        {isSale ? 'Make an Offer' : 'Apply for Lease'}
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             ) : (
               <div className={shouldBlur ? 'blur-sm' : ''}>

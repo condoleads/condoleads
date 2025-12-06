@@ -73,6 +73,8 @@ export default function PropertyPageClient({
           isSale={isSale}
           shouldBlur={shouldGate}
           buildingId={listing.building_id}
+          onEstimateClick={() => setShowEstimatorModal(true)}
+          onOfferClick={() => setShowOfferModal(true)}
         />
 
         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
