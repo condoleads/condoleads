@@ -17,6 +17,7 @@ import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
 import BuildingInfo from '@/components/property/BuildingInfo'
 import AgentContactForm from '@/components/property/AgentContactForm'
 import PropertyStickyBar from '@/components/property/PropertyStickyBar'
+import OfferInquiryModal from '@/components/property/OfferInquiryModal'
 import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 
 interface PropertyPageClientProps {
@@ -196,6 +197,18 @@ export default function PropertyPageClient({
           agentId={agent?.id || ''}
           type={isSale ? 'sale' : 'lease'}
           exactSqft={listing.building_area_total || null}
+        />
+      )}
+      
+      {/* Offer Inquiry Modal */}
+      {showOfferModal && agent && (
+        <OfferInquiryModal
+          isOpen={showOfferModal}
+          onClose={() => setShowOfferModal(false)}
+          listing={listing}
+          buildingName={building?.building_name || ''}
+          isSale={isSale}
+          agent={agent}
         />
       )}
     </>
