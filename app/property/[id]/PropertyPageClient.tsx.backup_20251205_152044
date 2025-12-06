@@ -1,6 +1,5 @@
 ﻿'use client'
 
-import { useState } from 'react'
 import { useAuth } from '@/components/auth/AuthContext'
 import PropertyGallery from '@/components/property/PropertyGallery'
 import PropertyHeader from '@/components/property/PropertyHeader'
@@ -16,8 +15,6 @@ import { AgentCard } from '@/components/AgentCard'
 import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
 import BuildingInfo from '@/components/property/BuildingInfo'
 import AgentContactForm from '@/components/property/AgentContactForm'
-import PropertyStickyBar from '@/components/property/PropertyStickyBar'
-import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 
 interface PropertyPageClientProps {
   listing: any
@@ -52,10 +49,6 @@ export default function PropertyPageClient({
 }: PropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
-  
-  // Modal state for sticky bar CTAs
-  const [showEstimatorModal, setShowEstimatorModal] = useState(false)
-  const [showOfferModal, setShowOfferModal] = useState(false)
 
   return (
     <>
@@ -172,30 +165,6 @@ export default function PropertyPageClient({
           </div>
         </div>
       </div>
-      
-      {/* Sticky Bottom Bar */}
-      <PropertyStickyBar
-        listing={listing}
-        buildingName={building?.building_name || ''}
-        isSale={isSale}
-        onEstimateClick={() => setShowEstimatorModal(true)}
-        onOfferClick={() => setShowOfferModal(true)}
-      />
-      
-      {/* Estimator Modal */}
-      {showEstimatorModal && (
-        <EstimatorBuyerModal
-          isOpen={showEstimatorModal}
-          onClose={() => setShowEstimatorModal(false)}
-          listing={listing}
-          buildingId={listing.building_id}
-          buildingName={building?.building_name || ''}
-          buildingAddress={building?.canonical_address || ''}
-          agentId={agent?.id || ''}
-          type={isSale ? 'sale' : 'lease'}
-          exactSqft={listing.building_area_total || null}
-        />
-      )}
     </>
   )
 }
