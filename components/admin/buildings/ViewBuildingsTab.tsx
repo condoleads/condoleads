@@ -214,7 +214,7 @@ export default function ViewBuildingsTab() {
                           e.target.value = ''
                         }
                       }}
-                      className="text-xs border border-gray-300 rounded px-2 py-1"
+                      className="text-sm border border-gray-300 rounded px-2 py-2"
                       defaultValue=""
                     >
                       <option value="">+ Add Agent</option>
