@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import IncrementalSyncTab from '@/components/admin/sync/IncrementalSyncTab';
-import ViewBuildingsTab from '@/components/admin/buildings/ViewBuildingsTab';
 
 interface BuildingRow {
   id: string;
@@ -18,7 +17,7 @@ interface BuildingRow {
 }
 
 export default function BatchSyncPage() {
-  const [activeTab, setActiveTab] = useState<'view' | 'full' | 'incremental'>('view');
+  const [activeTab, setActiveTab] = useState<'full' | 'incremental'>('full');
   const [rows, setRows] = useState<BuildingRow[]>([
     {
       id: '1',
@@ -256,17 +255,6 @@ export default function BatchSyncPage() {
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
           <button
-              onClick={() => setActiveTab('view')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'view'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              View Buildings
-            </button>
-
-          <button
             onClick={() => setActiveTab('full')}
             className={`py-4 px-1 border-b-2 font-medium text-sm ${
               activeTab === 'full'
@@ -290,9 +278,7 @@ export default function BatchSyncPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'view' ? (
-        <ViewBuildingsTab />
-      ) : activeTab === 'incremental' ? (
+      {activeTab === 'incremental' ? (
         <IncrementalSyncTab />
       ) : (
         <div className="space-y-6">
