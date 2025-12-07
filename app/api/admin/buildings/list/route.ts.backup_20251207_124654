@@ -83,10 +83,6 @@ export async function GET(request: NextRequest) {
       success: true,
       buildings: buildingsWithDetails,
       agents: agents || []
-    }, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-      }
     });
   } catch (error: any) {
     console.error('Failed to list buildings:', error);
