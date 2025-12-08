@@ -76,24 +76,16 @@ export async function GET(request: NextRequest) {
           total_units: building.total_units,
           year_built: building.year_built,
           last_synced_at: building.last_synced_at,
-          development_id: building.development_id,
           listingCount: count || 0,
           assignedAgents: assignmentMap.get(building.id) || []
         };
       })
     );
 
-    // Get all developments
-    const { data: developments } = await supabase
-      .from('developments')
-      .select('id, name, slug')
-      .order('name');
-
     return NextResponse.json({
       success: true,
       buildings: buildingsWithDetails,
-      agents: agents || [],
-      developments: developments || []
+      agents: agents || []
     }, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate',
