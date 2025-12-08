@@ -85,38 +85,15 @@ export default async function DevelopmentPage({ params, development }: Developme
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
           {buildings.map((building: any) => {
             const bListings = (allListings || []).filter((l: any) => l.building_id === building.id)
-            const bForSale = bListings.filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active')
-            const bForLease = bListings.filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active')
-            const buildingPhoto = bListings.find((l: any) => l.media?.length > 0)
-            const photoUrl = buildingPhoto ? getListingPhoto(buildingPhoto) : '/placeholder-building.jpg'
-            const minPrice = bForSale.length > 0 ? Math.min(...bForSale.map((l: any) => l.list_price)) : null
-            const maxPrice = bForSale.length > 0 ? Math.max(...bForSale.map((l: any) => l.list_price)) : null
+            const bForSale = bListings.filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active').length
+            const bForLease = bListings.filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active').length
             return (
-              <Link key={building.id} href={'/' + building.slug} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow group">
-                <div className="aspect-video bg-gray-200 relative overflow-hidden">
-                  <img src={photoUrl} alt={building.building_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-3 left-3 right-3">
-                    <h3 className="font-bold text-lg text-white">{building.building_name}</h3>
-                    <p className="text-white/80 text-sm">{building.canonical_address}</p>
-                  </div>
-                </div>
-                <div className="p-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex gap-3 text-sm">
-                      <span className="text-green-600 font-medium">{bForSale.length} For Sale</span>
-                      <span className="text-blue-600 font-medium">{bForLease.length} For Lease</span>
-                    </div>
-                  </div>
-                  {minPrice && maxPrice && (
-                    <p className="text-gray-600 text-sm mb-2">
-                      {formatPrice(minPrice)} - {formatPrice(maxPrice)}
-                    </p>
-                  )}
-                  <div className="flex gap-3 text-xs text-gray-500">
-                    {building.total_units && <span>{building.total_units} units</span>}
-                    {building.year_built && <span>Built {building.year_built}</span>}
-                  </div>
+              <Link key={building.id} href={'/' + building.slug} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                <h3 className="font-bold text-lg text-gray-900 mb-1">{building.building_name}</h3>
+                <p className="text-gray-600 text-sm mb-3">{building.canonical_address}</p>
+                <div className="flex gap-4 text-sm">
+                  <span className="text-green-600 font-medium">{bForSale} For Sale</span>
+                  <span className="text-blue-600 font-medium">{bForLease} For Lease</span>
                 </div>
               </Link>
             )
@@ -128,14 +105,15 @@ export default async function DevelopmentPage({ params, development }: Developme
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Sale ({forSaleActive.length})</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {forSaleActive.slice(0, 12).map((listing: any) => (
-                <div key={listing.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="aspect-video bg-gray-200 relative">
-                    <img src={getListingPhoto(listing)} alt={listing.unit_number || 'Unit'} className="w-full h-full object-cover" />
+                <div key={listing.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow group">
+                  <div className="aspect-video bg-gray-200 relative overflow-hidden">
+                    <img src={getListingPhoto(listing)} alt={listing.unit_number || 'Unit'} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     <div className="absolute top-2 right-2 bg-green-600 text-white px-2 py-1 rounded text-sm font-medium">{formatPrice(listing.list_price)}</div>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-bold text-gray-900">Unit {listing.unit_number || 'N/A'}</h3>
-                    <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed - {listing.bathrooms_total || 0} bath - {listing.living_area_sqft || 'N/A'} sqft</p>
+                    <div className="absolute bottom-3 left-3 right-3">
+                      <h3 className="font-bold text-lg text-white">Unit {listing.unit_number || 'N/A'}</h3>
+                      <p className="text-white/80 text-sm">{listing.bedrooms_total || 0} bed • {listing.bathrooms_total || 0} bath • {listing.living_area_sqft || 'N/A'} sqft</p>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -147,14 +125,15 @@ export default async function DevelopmentPage({ params, development }: Developme
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Lease ({forLeaseActive.length})</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {forLeaseActive.slice(0, 12).map((listing: any) => (
-                <div key={listing.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
-                  <div className="aspect-video bg-gray-200 relative">
-                    <img src={getListingPhoto(listing)} alt={listing.unit_number || 'Unit'} className="w-full h-full object-cover" />
+                <div key={listing.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow group">
+                  <div className="aspect-video bg-gray-200 relative overflow-hidden">
+                    <img src={getListingPhoto(listing)} alt={listing.unit_number || 'Unit'} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                     <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded text-sm font-medium">{formatPrice(listing.list_price)}/mo</div>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-bold text-gray-900">Unit {listing.unit_number || 'N/A'}</h3>
-                    <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed - {listing.bathrooms_total || 0} bath - {listing.living_area_sqft || 'N/A'} sqft</p>
+                    <div className="absolute bottom-3 left-3 right-3">
+                      <h3 className="font-bold text-lg text-white">Unit {listing.unit_number || 'N/A'}</h3>
+                      <p className="text-white/80 text-sm">{listing.bedrooms_total || 0} bed • {listing.bathrooms_total || 0} bath • {listing.living_area_sqft || 'N/A'} sqft</p>
+                    </div>
                   </div>
                 </div>
               ))}
