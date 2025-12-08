@@ -56,31 +56,7 @@ export async function GET(request: NextRequest) {
         assignmentMap.set(a.building_id, []);
       }
       if (a.agents) {
-        assignmentMap.get(a.building_id)!.push({ ...a.agents, inherited: false });
-      }
-    });
-
-    // Get development-agent assignments
-    const { data: devAgentAssignments } = await supabase
-      .from('development_agents')
-      .select(`
-        development_id,
-        agent_id,
-        agents (
-          id,
-          full_name,
-          email
-        )
-      `);
-
-    // Build development agent lookup
-    const devAgentMap = new Map<string, any[]>();
-    (devAgentAssignments || []).forEach((a: any) => {
-      if (!devAgentMap.has(a.development_id)) {
-        devAgentMap.set(a.development_id, []);
-      }
-      if (a.agents) {
-        devAgentMap.get(a.development_id)!.push({ ...a.agents, inherited: true });
+        assignmentMap.get(a.building_id)!.push(a.agents);
       }
     });
 
@@ -92,21 +68,6 @@ export async function GET(request: NextRequest) {
           .select('*', { count: 'exact', head: true })
           .eq('building_id', building.id);
 
-        // Get direct agents
-        const directAgents = assignmentMap.get(building.id) || [];
-        
-        // Get inherited agents from development (if building belongs to one)
-        const inheritedAgents = building.development_id 
-          ? (devAgentMap.get(building.development_id) || [])
-          : [];
-        
-        // Combine agents, avoiding duplicates
-        const allAgentIds = new Set(directAgents.map((a: any) => a.id));
-        const combinedAgents = [
-          ...directAgents,
-          ...inheritedAgents.filter((a: any) => !allAgentIds.has(a.id))
-        ];
-
         return {
           id: building.id,
           building_name: building.building_name,
@@ -117,7 +78,7 @@ export async function GET(request: NextRequest) {
           last_synced_at: building.last_synced_at,
           development_id: building.development_id,
           listingCount: count || 0,
-          assignedAgents: combinedAgents
+          assignedAgents: assignmentMap.get(building.id) || []
         };
       })
     );

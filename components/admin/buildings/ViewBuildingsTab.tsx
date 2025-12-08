@@ -6,6 +6,7 @@ interface Agent {
   id: string
   full_name: string
   email: string
+  inherited?: boolean
 }
 
 interface Development {
@@ -215,9 +216,15 @@ export default function ViewBuildingsTab() {
                     {building.assignedAgents?.map(agent => (
                       <span
                         key={agent.id}
-                        className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800"
+                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                          agent.inherited 
+                            ? 'bg-purple-100 text-purple-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}
+                        title={agent.inherited ? 'Inherited from development' : 'Direct assignment'}
                       >
                         {agent.full_name}
+                        {agent.inherited && <span className="ml-1 text-purple-500">⬆</span>}
                         <button
                           onClick={() => handleAgentAssignment(building.id, agent.id, 'unassign')}
                           className="ml-1 text-green-600 hover:text-red-600"
