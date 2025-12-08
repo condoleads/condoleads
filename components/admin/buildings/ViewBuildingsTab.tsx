@@ -188,7 +188,7 @@ export default function ViewBuildingsTab() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                   {building.listingCount}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono text-xs">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono text-xs max-w-[200px] truncate" title={building.slug}>
                   {building.slug}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
