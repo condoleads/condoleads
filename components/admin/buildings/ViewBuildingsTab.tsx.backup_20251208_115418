@@ -8,26 +8,18 @@ interface Agent {
   email: string
 }
 
-interface Development {
-  id: string
-  name: string
-  slug: string
-}
-
 interface Building {
   id: string
   building_name: string
   canonical_address: string
   slug: string
   listingCount: number
-  development_id: string | null
   assignedAgents: Agent[]
 }
 
 export default function ViewBuildingsTab() {
   const [buildings, setBuildings] = useState<Building[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
-  const [developments, setDevelopments] = useState<Development[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   
@@ -47,7 +39,6 @@ export default function ViewBuildingsTab() {
       const data = await res.json()
       setBuildings(data.buildings || [])
       setAgents(data.agents || [])
-      setDevelopments(data.developments || [])
     } catch (error) {
       console.error('Error fetching buildings:', error)
     } finally {
@@ -179,7 +170,6 @@ export default function ViewBuildingsTab() {
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Building</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Development</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Listings</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Slug</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Agents</th>
@@ -194,15 +184,6 @@ export default function ViewBuildingsTab() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                   {building.canonical_address}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  {building.development_id ? (
-                    <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">
-                      {developments.find(d => d.id === building.development_id)?.name || 'Unknown'}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">-</span>
-                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                   {building.listingCount}

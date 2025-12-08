@@ -159,25 +159,6 @@ export default function ViewDevelopmentsTab() {
     }
   }
 
-  // Handle Agent Assignment to Development
-  const handleAgentAssignment = async (developmentId: string, agentId: string, action: 'assign' | 'unassign') => {
-    try {
-      const res = await fetch('/api/admin/developments/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ developmentId, agentId, action })
-      })
-      const data = await res.json()
-      if (data.success) {
-        fetchDevelopments()
-      } else {
-        alert(`Error: ${data.error}`)
-      }
-    } catch (error) {
-      alert('Failed to update assignment')
-    }
-  }
-  
   // All buildings available for selection (unassigned + currently assigned to this dev)
   const availableBuildings = editingDev
     ? [...unassignedBuildings, ...editingDev.buildings]
@@ -259,39 +240,15 @@ export default function ViewDevelopmentsTab() {
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <div className="flex flex-wrap gap-1 items-center">
+                  <div className="flex flex-wrap gap-1">
                     {dev.assignedAgents?.map(agent => (
-                      <span
-                        key={agent.id}
-                        className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800"
-                      >
+                      <span key={agent.id} className="inline-block px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
                         {agent.full_name}
-                        <button
-                          onClick={() => handleAgentAssignment(dev.id, agent.id, 'unassign')}
-                          className="ml-1 text-green-600 hover:text-red-600"
-                        >
-                          ×
-                        </button>
                       </span>
                     ))}
-                    <select
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          handleAgentAssignment(dev.id, e.target.value, 'assign')
-                          e.target.value = ''
-                        }
-                      }}
-                      className="text-sm border border-gray-300 rounded px-2 py-2"
-                      defaultValue=""
-                    >
-                      <option value="">+ Add Agent</option>
-                      {agents
-                        .filter(a => !dev.assignedAgents?.some(aa => aa.id === a.id))
-                        .map(agent => (
-                          <option key={agent.id} value={agent.id}>{agent.full_name}</option>
-                        ))
-                      }
-                    </select>
+                    {(!dev.assignedAgents || dev.assignedAgents.length === 0) && (
+                      <span className="text-gray-400 text-sm">No agents</span>
+                    )}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
