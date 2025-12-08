@@ -1,20 +1,20 @@
 ﻿import { notFound } from 'next/navigation'
 import { isPropertySlug, parsePropertySlug } from '@/lib/utils/slugs'
 import BuildingPage from './BuildingPage'
-import DevelopmentPage from './DevelopmentPage'
 import PropertyPage from '../property/[id]/page'
 import { supabase } from '@/lib/supabase/client'
 
 export { generateMetadata } from './BuildingPage'
 
-export default async function DynamicSlugPage({
-  params
-}: {
-  params: { slug: string }
+export default async function DynamicSlugPage({ 
+  params 
+}: { 
+  params: { slug: string } 
 }) {
   // Property URL: /101-charles-st-e-unit-2503-c7351578
   if (isPropertySlug(params.slug)) {
     const { mlsNumber } = parsePropertySlug(params.slug)
+    
     if (!mlsNumber) {
       notFound()
     }
@@ -32,18 +32,6 @@ export default async function DynamicSlugPage({
 
     // Render property page with the found ID
     return <PropertyPage params={{ id: listing.id }} />
-  }
-
-  // Check if it's a development slug
-  const { data: development } = await supabase
-    .from('developments')
-    .select('id, name, slug')
-    .eq('slug', params.slug)
-    .single()
-
-  if (development) {
-    // Development URL: /playground-condos-30-50-ordnance-st-toronto
-    return <DevelopmentPage params={params} development={development} />
   }
 
   // Building URL: /x2-condos-101-charles-st-e-toronto

@@ -1,0 +1,144 @@
+﻿import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
+import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
+import { extractSubdomain, getAgentFromSubdomain } from '@/lib/utils/agent-detection'
+import { AgentCard } from '@/components/AgentCard'
+import Link from 'next/link'
+
+interface DevelopmentPageProps {
+  params: { slug: string }
+  development: { id: string; name: string; slug: string }
+}
+
+export default async function DevelopmentPage({ params, development }: DevelopmentPageProps) {
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const subdomain = extractSubdomain(host)
+  let agent: any = null
+
+  if (subdomain) {
+    agent = await getAgentFromSubdomain(subdomain)
+  }
+
+  if (agent) {
+    const supabaseServer = createClient()
+    const { data: devAssignment } = await supabaseServer
+      .from('development_agents')
+      .select('id')
+      .eq('agent_id', agent.id)
+      .eq('development_id', development.id)
+      .single()
+    if (!devAssignment) { notFound() }
+  } else if (subdomain) {
+    notFound()
+  }
+
+  const { data: buildings } = await supabase
+    .from('buildings')
+    .select('*')
+    .eq('development_id', development.id)
+    .order('building_name')
+
+  if (!buildings || buildings.length === 0) { notFound() }
+
+  const buildingIds = buildings.map((b: any) => b.id)
+
+  const { data: allListings } = await supabase
+    .from('mls_listings')
+    .select('*, media (media_url, media_type, variant_type, order_number, preferred_photo_yn)')
+    .in('building_id', buildingIds)
+    .order('list_price', { ascending: false })
+
+  const forSaleActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active')
+  const forLeaseActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active')
+  const totalUnits = buildings.reduce((sum: number, b: any) => sum + (b.total_units || 0), 0)
+  const addresses = buildings.map((b: any) => b.canonical_address).join(' & ')
+
+  const formatPrice = (price: number) => {
+    if (price >= 1000000) return `$${(price / 1000000).toFixed(2)}M`
+    return `$${(price / 1000).toFixed(0)}K`
+  }
+
+  const getListingPhoto = (listing: any) => {
+    const photos = listing.media?.filter((m: any) => m.media_type === 'Photo' && m.variant_type === 'large') || []
+    return photos[0]?.media_url || '/placeholder-unit.jpg'
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="bg-gradient-to-r from-blue-900 to-blue-700 text-white">
+        <div className="max-w-7xl mx-auto px-4 py-16 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">{development.name}</h1>
+          <p className="text-xl text-blue-100 mb-2">{addresses}</p>
+          <p className="text-blue-200">{buildings.length} Buildings - {totalUnits} Total Units</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 max-w-3xl mx-auto">
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{forSaleActive.length}</div><div className="text-blue-200 text-sm">For Sale</div></div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{forLeaseActive.length}</div><div className="text-blue-200 text-sm">For Lease</div></div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{buildings.length}</div><div className="text-blue-200 text-sm">Buildings</div></div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{totalUnits}</div><div className="text-blue-200 text-sm">Total Units</div></div>
+          </div>
+        </div>
+      </div>
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">Buildings in {development.name}</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+          {buildings.map((building: any) => {
+            const bListings = (allListings || []).filter((l: any) => l.building_id === building.id)
+            const bForSale = bListings.filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active').length
+            const bForLease = bListings.filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active').length
+            return (
+              <Link key={building.id} href={'/' + building.slug} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                <h3 className="font-bold text-lg text-gray-900 mb-1">{building.building_name}</h3>
+                <p className="text-gray-600 text-sm mb-3">{building.canonical_address}</p>
+                <div className="flex gap-4 text-sm">
+                  <span className="text-green-600 font-medium">{bForSale} For Sale</span>
+                  <span className="text-blue-600 font-medium">{bForLease} For Lease</span>
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+        {agent && <div className="mb-12"><AgentCard agent={agent} /></div>}
+        {forSaleActive.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Sale ({forSaleActive.length})</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {forSaleActive.slice(0, 12).map((listing: any) => (
+                <div key={listing.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="aspect-video bg-gray-200 relative">
+                    <img src={getListingPhoto(listing)} alt={listing.unit_number || 'Unit'} className="w-full h-full object-cover" />
+                    <div className="absolute top-2 right-2 bg-green-600 text-white px-2 py-1 rounded text-sm font-medium">{formatPrice(listing.list_price)}</div>
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-bold text-gray-900">Unit {listing.unit_number || 'N/A'}</h3>
+                    <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed - {listing.bathrooms_total || 0} bath - {listing.living_area_sqft || 'N/A'} sqft</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {forLeaseActive.length > 0 && (
+          <div className="mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Lease ({forLeaseActive.length})</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {forLeaseActive.slice(0, 12).map((listing: any) => (
+                <div key={listing.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="aspect-video bg-gray-200 relative">
+                    <img src={getListingPhoto(listing)} alt={listing.unit_number || 'Unit'} className="w-full h-full object-cover" />
+                    <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded text-sm font-medium">{formatPrice(listing.list_price)}/mo</div>
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-bold text-gray-900">Unit {listing.unit_number || 'N/A'}</h3>
+                    <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed - {listing.bathrooms_total || 0} bath - {listing.living_area_sqft || 'N/A'} sqft</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
