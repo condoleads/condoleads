@@ -58,7 +58,7 @@ export default async function RootPage() {
 
   if (!agent) notFound();
 
-  // Fetch agent's directly assigned buildings
+  // Fetch agent's assigned buildings with listing counts
   const { data: agentBuildings } = await supabase
     .from('agent_buildings')
     .select(`
@@ -70,53 +70,18 @@ export default async function RootPage() {
         canonical_address,
         street_number,
         street_name,
-        city_district,
-        development_id
+        city_district
       )
     `)
     .eq('agent_id', agent.id)
     .order('is_featured', { ascending: false });
 
-  // Fetch agent's assigned developments
-  const { data: agentDevelopments } = await supabase
-    .from('development_agents')
-    .select(`
-      developments (
-        id,
-        name,
-        slug
-      )
-    `)
-    .eq('agent_id', agent.id);
-
-  // Get buildings from assigned developments
-  const developmentIds = (agentDevelopments || [])
-    .map((ad: any) => ad.developments?.id)
-    .filter(Boolean);
-
-  let developmentBuildings: any[] = [];
-  if (developmentIds.length > 0) {
-    const { data: devBuildings } = await supabase
-      .from('buildings')
-      .select('id, building_name, slug, canonical_address, street_number, street_name, city_district, development_id')
-      .in('development_id', developmentIds);
-    developmentBuildings = devBuildings || [];
-  }
-
-  // Combine direct and development buildings, avoiding duplicates
-  const directBuildingIds = new Set((agentBuildings || []).map((ab: any) => ab.buildings?.id));
-  const combinedBuildings = [
-    ...(agentBuildings || []).map((ab: any) => ({ ...ab.buildings, is_featured: ab.is_featured, fromDevelopment: false })),
-    ...developmentBuildings
-      .filter((b: any) => !directBuildingIds.has(b.id))
-      .map((b: any) => ({ ...b, is_featured: false, fromDevelopment: true }))
-  ];
-
-  console.log(' DEBUG: Found buildings:', combinedBuildings.length);
+  console.log(' DEBUG: Found buildings:', agentBuildings?.length || 0);
 
   // Get listing counts and photos for each building
   const buildingsWithCounts = await Promise.all(
-    combinedBuildings.map(async (building) => {
+    (agentBuildings || []).map(async (ab) => {
+      const building = ab.buildings as any;
 
       // Get listings for counts
       const { data: listings } = await supabase
@@ -145,8 +110,7 @@ export default async function RootPage() {
         ...building,
         forSale,
         forLease,
-        isFeatured: building.is_featured,
-        fromDevelopment: building.fromDevelopment,
+        isFeatured: ab.is_featured,
         photoUrl: photo?.[0]?.media_url || null
       };
     })
