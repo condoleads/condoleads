@@ -52,83 +52,17 @@ export default async function DevelopmentPage({ params, development }: Developme
 
   const forSaleActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active')
   const forLeaseActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active')
-  const soldListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && (l.standard_status === 'Closed' || l.standard_status === 'Sold'))
-  const leasedListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && (l.standard_status === 'Closed' || l.standard_status === 'Leased'))
-  
   const totalUnits = buildings.reduce((sum: number, b: any) => sum + (b.total_units || 0), 0)
   const addresses = buildings.map((b: any) => b.canonical_address).join(' & ')
 
   const formatPrice = (price: number) => {
-    if (!price) return 'N/A'
     if (price >= 1000000) return `$${(price / 1000000).toFixed(2)}M`
-    if (price >= 1000) return `$${(price / 1000).toFixed(0)}K`
-    return `$${price}`
+    return `$${(price / 1000).toFixed(0)}K`
   }
 
   const getListingPhoto = (listing: any) => {
     const photos = listing.media?.filter((m: any) => m.media_type === 'Photo' && m.variant_type === 'large') || []
-    return photos[0]?.media_url || null
-  }
-
-  const renderUnitCard = (listing: any, type: 'sale' | 'lease', isClosed: boolean) => {
-    const photoUrl = getListingPhoto(listing)
-    const price = isClosed ? (listing.close_price || listing.list_price) : listing.list_price
-    const parking = listing.parking_total || 0
-    const locker = (listing.locker && listing.locker !== 'None') ? 1 : 0
-    const sqft = listing.living_area_sqft || listing.living_area_range || 'N/A'
-    
-    const badgeConfig = isClosed 
-      ? (type === 'sale' ? { text: 'Sold', bg: 'bg-red-500' } : { text: 'Leased', bg: 'bg-orange-500' })
-      : (type === 'sale' ? { text: 'For Sale', bg: 'bg-emerald-500' } : { text: 'For Rent', bg: 'bg-sky-500' })
-    
-    const gradientBg = type === 'sale' 
-      ? 'bg-gradient-to-br from-emerald-400 to-emerald-600' 
-      : 'bg-gradient-to-br from-sky-400 to-sky-600'
-
-    return (
-      <div key={listing.id} className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden group">
-        <div className="relative h-48 bg-slate-200">
-          {photoUrl ? (
-            <>
-              <img src={photoUrl} alt={`Unit ${listing.unit_number}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-            </>
-          ) : (
-            <div className="relative w-full h-full overflow-hidden">
-              <div className={`absolute inset-0 ${gradientBg}`} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-white z-10">
-                <svg className="w-16 h-16 mb-2 opacity-80" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 2.5L18 11v7h-2v-6h-8v6H6v-7l6-5.5zM10 14h4v4h-4v-4z"/>
-                </svg>
-                <p className="text-sm font-semibold opacity-90">Photos Coming Soon</p>
-              </div>
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-            </div>
-          )}
-          <div className="absolute top-3 left-3 z-10">
-            <span className={`px-3 py-1.5 backdrop-blur-sm rounded-full text-sm font-semibold ${badgeConfig.bg} text-white`}>{badgeConfig.text}</span>
-          </div>
-          <div className="absolute bottom-3 left-3 right-3 z-10">
-            <p className="text-2xl font-bold text-white">{formatPrice(price)}{!isClosed && type === 'lease' && <span className="text-base font-normal">/mo</span>}</p>
-          </div>
-        </div>
-        <div className="p-4">
-          <h3 className="font-bold text-lg text-gray-900 mb-1">Unit {listing.unit_number || 'N/A'}</h3>
-          <div className="flex items-center gap-2 text-gray-600 text-sm mb-2">
-            <span>{listing.bedrooms_total || 0} bed</span>
-            <span></span>
-            <span>{listing.bathrooms_total || 0} bath</span>
-            <span></span>
-            <span>{sqft} sqft</span>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-gray-500">
-            <span>{parking} parking</span>
-            <span></span>
-            <span>{locker} locker</span>
-          </div>
-        </div>
-      </div>
-    )
+    return photos[0]?.media_url || '/placeholder-unit.jpg'
   }
 
   return (
@@ -141,8 +75,8 @@ export default async function DevelopmentPage({ params, development }: Developme
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 max-w-3xl mx-auto">
             <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{forSaleActive.length}</div><div className="text-blue-200 text-sm">For Sale</div></div>
             <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{forLeaseActive.length}</div><div className="text-blue-200 text-sm">For Lease</div></div>
-            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{soldListings.length}</div><div className="text-blue-200 text-sm">Sold</div></div>
-            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{leasedListings.length}</div><div className="text-blue-200 text-sm">Leased</div></div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{buildings.length}</div><div className="text-blue-200 text-sm">Buildings</div></div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{totalUnits}</div><div className="text-blue-200 text-sm">Total Units</div></div>
           </div>
         </div>
       </div>
@@ -170,7 +104,18 @@ export default async function DevelopmentPage({ params, development }: Developme
           <div className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Sale ({forSaleActive.length})</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {forSaleActive.slice(0, 12).map((listing: any) => renderUnitCard(listing, 'sale', false))}
+              {forSaleActive.slice(0, 12).map((listing: any) => (
+                <div key={listing.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="aspect-video bg-gray-200 relative">
+                    <img src={getListingPhoto(listing)} alt={listing.unit_number || 'Unit'} className="w-full h-full object-cover" />
+                    <div className="absolute top-2 right-2 bg-green-600 text-white px-2 py-1 rounded text-sm font-medium">{formatPrice(listing.list_price)}</div>
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-bold text-gray-900">Unit {listing.unit_number || 'N/A'}</h3>
+                    <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed - {listing.bathrooms_total || 0} bath - {listing.living_area_sqft || 'N/A'} sqft</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -178,23 +123,18 @@ export default async function DevelopmentPage({ params, development }: Developme
           <div className="mb-12">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Lease ({forLeaseActive.length})</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {forLeaseActive.slice(0, 12).map((listing: any) => renderUnitCard(listing, 'lease', false))}
-            </div>
-          </div>
-        )}
-        {soldListings.length > 0 && (
-          <div className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Recently Sold ({soldListings.length})</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {soldListings.slice(0, 12).map((listing: any) => renderUnitCard(listing, 'sale', true))}
-            </div>
-          </div>
-        )}
-        {leasedListings.length > 0 && (
-          <div className="mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Recently Leased ({leasedListings.length})</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {leasedListings.slice(0, 12).map((listing: any) => renderUnitCard(listing, 'lease', true))}
+              {forLeaseActive.slice(0, 12).map((listing: any) => (
+                <div key={listing.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+                  <div className="aspect-video bg-gray-200 relative">
+                    <img src={getListingPhoto(listing)} alt={listing.unit_number || 'Unit'} className="w-full h-full object-cover" />
+                    <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded text-sm font-medium">{formatPrice(listing.list_price)}/mo</div>
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-bold text-gray-900">Unit {listing.unit_number || 'N/A'}</h3>
+                    <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed - {listing.bathrooms_total || 0} bath - {listing.living_area_sqft || 'N/A'} sqft</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
