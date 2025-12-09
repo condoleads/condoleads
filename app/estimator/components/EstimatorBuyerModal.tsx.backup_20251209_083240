@@ -99,13 +99,13 @@ export default function EstimatorBuyerModal({
       {/* Modal Drawer - Slides from right */}
       <div className="fixed inset-y-0 right-0 z-[100] w-full md:w-[600px] bg-white shadow-2xl transform transition-transform overflow-y-auto">
         {/* Header */}
-        <div className={`sticky top-0 bg-gradient-to-r ${isSale ? 'from-emerald-600 to-teal-600' : 'from-sky-600 to-blue-600'} text-white p-6 shadow-lg z-10`}>
+        <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-6 shadow-lg z-10">
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-2xl font-bold mb-1">
-                {isSale ? 'Sale Price Estimate' : 'Lease Price Estimate'}
+                {isSale ? 'Sale Price Estimate' : 'Rental Price Estimate'}
               </h2>
-              <p className={`${isSale ? 'text-emerald-100' : 'text-sky-100'} text-sm`}>Unit {listing.unit_number}</p>
+              <p className="text-emerald-100 text-sm">Unit {listing.unit_number}</p>
             </div>
             <button
               onClick={onClose}
@@ -159,9 +159,9 @@ export default function EstimatorBuyerModal({
             <button
               onClick={handleEstimate}
               disabled={loading}
-              className={`w-full ${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-600 hover:bg-sky-700'} disabled:bg-slate-400 text-white py-4 px-8 rounded-xl font-semibold text-lg transition-colors shadow-lg`}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white py-4 px-8 rounded-xl font-semibold text-lg transition-colors shadow-lg"
             >
-              {loading ? 'Analyzing Market Data...' : `Get ${isSale ? 'Price' : 'Lease'} Estimate`}
+              {loading ? 'Analyzing Market Data...' : `Get ${isSale ? 'Price' : 'Rent'} Estimate`}
             </button>
           )}
 

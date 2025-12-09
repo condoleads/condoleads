@@ -56,13 +56,13 @@ export default function DevelopmentListings({
               />
             ))}
           </div>
-          {forSaleActive.length > 12 && !showAllSale && (
+          {forSaleActive.length > 12 && (
             <div className="text-center mt-6">
               <button 
-                onClick={() => setShowAllSale(true)}
+                onClick={() => setShowAllSale(!showAllSale)}
                 className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold transition-colors"
               >
-                Load More ({forSaleActive.length - 12} remaining)
+                {showAllSale ? 'Show Less' : `Load More (${forSaleActive.length - 12} remaining)`}
               </button>
             </div>
           )}
@@ -82,13 +82,13 @@ export default function DevelopmentListings({
               />
             ))}
           </div>
-          {forLeaseActive.length > 12 && !showAllLease && (
+          {forLeaseActive.length > 12 && (
             <div className="text-center mt-6">
               <button 
-                onClick={() => setShowAllLease(true)}
+                onClick={() => setShowAllLease(!showAllLease)}
                 className="px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-semibold transition-colors"
               >
-                Load More ({forLeaseActive.length - 12} remaining)
+                {showAllLease ? 'Show Less' : `Load More (${forLeaseActive.length - 12} remaining)`}
               </button>
             </div>
           )}
@@ -103,13 +103,13 @@ export default function DevelopmentListings({
               <ListingCard key={listing.id} listing={listing} type="sale" />
             ))}
           </div>
-          {soldListings.length > 12 && !showAllSold && (
+          {soldListings.length > 12 && (
             <div className="text-center mt-6">
               <button 
-                onClick={() => setShowAllSold(true)}
+                onClick={() => setShowAllSold(!showAllSold)}
                 className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
               >
-                Load More ({soldListings.length - 12} remaining)
+                {showAllSold ? 'Show Less' : `Load More (${soldListings.length - 12} remaining)`}
               </button>
             </div>
           )}
@@ -124,13 +124,13 @@ export default function DevelopmentListings({
               <ListingCard key={listing.id} listing={listing} type="lease" />
             ))}
           </div>
-          {leasedListings.length > 12 && !showAllLeased && (
+          {leasedListings.length > 12 && (
             <div className="text-center mt-6">
               <button 
-                onClick={() => setShowAllLeased(true)}
+                onClick={() => setShowAllLeased(!showAllLeased)}
                 className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold transition-colors"
               >
-                Load More ({leasedListings.length - 12} remaining)
+                {showAllLeased ? 'Show Less' : `Load More (${leasedListings.length - 12} remaining)`}
               </button>
             </div>
           )}

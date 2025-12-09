@@ -41,7 +41,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
       if (isSale) {
         return { text: 'For Sale', bgColor: 'bg-emerald-500/90' }
       } else {
-        return { text: 'For Lease', bgColor: 'bg-sky-500/90' }
+        return { text: 'For Rent', bgColor: 'bg-sky-500/90' }
       }
     }
   }
@@ -326,7 +326,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                         onEstimateClick?.(extractExactSqft(listing.square_foot_source))
                       }
                     }}
-                    className={`flex-1 ${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-600 hover:bg-sky-700'} text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors`}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors"
                   >
                     {isSale ? 'Sale Offer' : 'Lease Offer'}
                   </button>
