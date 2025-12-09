@@ -76,11 +76,11 @@ export default async function DevelopmentPage({ params, development }: Developme
           <p className="text-xl text-blue-100 mb-2">{addresses}</p>
           <p className="text-blue-200">{buildings.length} Buildings - {totalUnits} Total Units</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 max-w-3xl mx-auto">
-              <a href="#for-sale" className="bg-white/10 rounded-lg p-4 hover:bg-white/20 transition-colors cursor-pointer"><div className="text-3xl font-bold">{forSaleActive.length}</div><div className="text-blue-200 text-sm">For Sale</div></a>
-              <a href="#for-lease" className="bg-white/10 rounded-lg p-4 hover:bg-white/20 transition-colors cursor-pointer"><div className="text-3xl font-bold">{forLeaseActive.length}</div><div className="text-blue-200 text-sm">For Lease</div></a>
-              <a href="#sold" className="bg-white/10 rounded-lg p-4 hover:bg-white/20 transition-colors cursor-pointer"><div className="text-3xl font-bold">{soldListings.length}</div><div className="text-blue-200 text-sm">Sold</div></a>
-              <a href="#leased" className="bg-white/10 rounded-lg p-4 hover:bg-white/20 transition-colors cursor-pointer"><div className="text-3xl font-bold">{leasedListings.length}</div><div className="text-blue-200 text-sm">Leased</div></a>
-            </div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{forSaleActive.length}</div><div className="text-blue-200 text-sm">For Sale</div></div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{forLeaseActive.length}</div><div className="text-blue-200 text-sm">For Lease</div></div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{soldListings.length}</div><div className="text-blue-200 text-sm">Sold</div></div>
+            <div className="bg-white/10 rounded-lg p-4"><div className="text-3xl font-bold">{leasedListings.length}</div><div className="text-blue-200 text-sm">Leased</div></div>
+          </div>
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -91,17 +91,14 @@ export default async function DevelopmentPage({ params, development }: Developme
             const bForSale = bListings.filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active').length
             const bForLease = bListings.filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active').length
             return (
-              <div key={building.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+              <Link key={building.id} href={'/' + building.slug} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
                 <h3 className="font-bold text-lg text-gray-900 mb-1">{building.building_name}</h3>
                 <p className="text-gray-600 text-sm mb-3">{building.canonical_address}</p>
-                <div className="flex gap-4 text-sm mb-4">
+                <div className="flex gap-4 text-sm">
                   <span className="text-green-600 font-medium">{bForSale} For Sale</span>
                   <span className="text-blue-600 font-medium">{bForLease} For Lease</span>
                 </div>
-                <Link href={'/' + building.slug} className="block w-full text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
-                  View Building
-                </Link>
-              </div>
+              </Link>
             )
           })}
         </div>

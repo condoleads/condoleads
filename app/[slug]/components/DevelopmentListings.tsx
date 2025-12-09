@@ -44,7 +44,7 @@ export default function DevelopmentListings({
   return (
     <>
       {forSaleActive.length > 0 && (
-        <div className="mb-12">
+        <div id="for-sale" className="mb-12 scroll-mt-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Sale ({forSaleActive.length})</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {displayedSale.map((listing: any) => (
@@ -69,9 +69,9 @@ export default function DevelopmentListings({
         </div>
       )}
 
-      {forLeaseActive.length > 0 && (
-        <div className="mb-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Lease ({forLeaseActive.length})</h2>
+      {leasedListings.length > 0 && (
+        <div id="leased" className="mb-12 scroll-mt-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Recently Leased ({leasedListings.length})</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayedLease.map((listing: any) => (
               <ListingCard 
