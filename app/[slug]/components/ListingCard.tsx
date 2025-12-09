@@ -132,7 +132,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                     </svg>
                   </button>
 
-                  <div className="absolute bottom-20 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
+                  <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
                     {currentPhotoIndex + 1} / {photos.length}
                   </div>
                 </>
