@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import ListingCard from './ListingCard'
@@ -48,17 +48,17 @@ export default function DevelopmentListings({
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Sale ({forSaleActive.length})</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {displayedSale.map((listing: any) => (
-              <ListingCard
-                key={listing.id}
-                listing={listing}
-                type="sale"
+              <ListingCard 
+                key={listing.id} 
+                listing={listing} 
+                type="sale" 
                 onEstimateClick={() => handleEstimateClick(listing, 'sale')}
               />
             ))}
           </div>
           {forSaleActive.length > 12 && (
             <div className="text-center mt-6">
-              <button
+              <button 
                 onClick={() => setShowAllSale(!showAllSale)}
                 className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold transition-colors"
               >
@@ -69,22 +69,22 @@ export default function DevelopmentListings({
         </div>
       )}
 
-      {forLeaseActive.length > 0 && (
-        <div id="for-lease" className="mb-12 scroll-mt-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Units For Lease ({forLeaseActive.length})</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {leasedListings.length > 0 && (
+        <div id="leased" className="mb-12 scroll-mt-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Recently Leased ({leasedListings.length})</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayedLease.map((listing: any) => (
-              <ListingCard
-                key={listing.id}
-                listing={listing}
-                type="lease"
+              <ListingCard 
+                key={listing.id} 
+                listing={listing} 
+                type="lease" 
                 onEstimateClick={() => handleEstimateClick(listing, 'lease')}
               />
             ))}
           </div>
           {forLeaseActive.length > 12 && (
             <div className="text-center mt-6">
-              <button
+              <button 
                 onClick={() => setShowAllLease(!showAllLease)}
                 className="px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-semibold transition-colors"
               >
@@ -96,16 +96,16 @@ export default function DevelopmentListings({
       )}
 
       {soldListings.length > 0 && (
-        <div id="sold" className="mb-12 scroll-mt-8">
+        <div className="mb-12">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Recently Sold ({soldListings.length})</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayedSold.map((listing: any) => (
               <ListingCard key={listing.id} listing={listing} type="sale" />
             ))}
           </div>
           {soldListings.length > 12 && (
             <div className="text-center mt-6">
-              <button
+              <button 
                 onClick={() => setShowAllSold(!showAllSold)}
                 className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
               >
@@ -117,16 +117,16 @@ export default function DevelopmentListings({
       )}
 
       {leasedListings.length > 0 && (
-        <div id="leased" className="mb-12 scroll-mt-8">
+        <div className="mb-12">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Recently Leased ({leasedListings.length})</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {displayedLeased.map((listing: any) => (
               <ListingCard key={listing.id} listing={listing} type="lease" />
             ))}
           </div>
           {leasedListings.length > 12 && (
             <div className="text-center mt-6">
-              <button
+              <button 
                 onClick={() => setShowAllLeased(!showAllLeased)}
                 className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold transition-colors"
               >
