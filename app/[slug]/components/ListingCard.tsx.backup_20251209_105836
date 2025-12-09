@@ -100,8 +100,8 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
   return (
     <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col">
       {/* Image Carousel */}
-      <div className="relative h-48 bg-slate-200 flex-shrink-0 overflow-hidden">
-        <div className={`h-full ${shouldBlur ? 'blur-lg' : ''}`}>
+      <div className="relative h-48 bg-slate-200 flex-shrink-0"> 
+        <div className={shouldBlur ? 'blur-lg' : ''}>
           {photos.length > 0 ? (
             <>
               <img
