@@ -61,7 +61,7 @@ export default async function DevelopmentPage({ params, development }: Developme
   }
 
   const getListingPhoto = (listing: any) => {
-    const photos = listing.media?.filter((m: any) => m.media_type === 'Photo' && m.variant_type === 'large') || []
+    const photos = listing.media?.filter((m: any) => m.variant_type === 'large') || []
     return photos[0]?.media_url || '/placeholder-unit.jpg'
   }
 
@@ -114,7 +114,7 @@ export default async function DevelopmentPage({ params, development }: Developme
                   </div>
                   <div className="p-4">
                       <h3 className="font-bold text-gray-900">Unit {listing.unit_number || 'N/A'}</h3>
-                      <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed • {listing.bathrooms_total || 0} bath • {listing.living_area_sqft || 'N/A'} sqft</p>
+                      <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed • {listing.bathrooms_total_integer || 0} bath • {listing.living_area_range || 'N/A'} sqft</p>
                       <p className="text-gray-500 text-xs mt-1">{listing.parking_total || 0} parking • {(listing.locker && listing.locker !== 'None') ? 1 : 0} locker</p>
                     </div>
                 </div>
@@ -136,7 +136,7 @@ export default async function DevelopmentPage({ params, development }: Developme
                   </div>
                   <div className="p-4">
                     <h3 className="font-bold text-gray-900">Unit {listing.unit_number || 'N/A'}</h3>
-                    <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed • {listing.bathrooms_total || 0} bath • {listing.living_area_sqft || 'N/A'} sqft</p>
+                    <p className="text-gray-600 text-sm">{listing.bedrooms_total || 0} bed • {listing.bathrooms_total_integer || 0} bath • {listing.living_area_range || 'N/A'} sqft</p>
                     <p className="text-gray-500 text-xs mt-1">{listing.parking_total || 0} parking • {(listing.locker && listing.locker !== 'None') ? 1 : 0} locker</p>
                   </div>
                 </div>
