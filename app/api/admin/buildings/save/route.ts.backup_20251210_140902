@@ -28,13 +28,9 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now();
     
     // STEP 1: Clean existing building data (full replace)
-    // STEP 1: Clean existing building data (full replace)
     if (chunkIndex === 0) {
-      if (!buildingData.streetNumber || !buildingData.streetName || !buildingData.city) {
-        throw new Error('Missing required fields for cleanup: streetNumber, streetName, and city are all required');
-      }
-      await forceCleanBuildingByAddress(buildingData.streetNumber, buildingData.streetName, buildingData.city);
-    }
+    await forceCleanBuildingBySlug(buildingData.slug);
+  }
     
     // STEP 2: Save/update building (only on first chunk)
     let building;
@@ -104,66 +100,59 @@ export async function POST(request: NextRequest) {
 }
 
 // STEP 1: Force clean existing building data
-async function forceCleanBuildingByAddress(streetNumber: string, streetName: string, city: string) {
-  // Extract first word of street name for matching
-  const streetFirstWord = streetName.split(' ')[0];
-  console.log(`🧹 Force cleaning buildings by address: ${streetNumber} ${streetFirstWord}%, ${city}`);
+async function forceCleanBuildingBySlug(slug: string) {
+  console.log(`🧹 Force cleaning building by slug: ${slug}`);
   
-  // Find ALL buildings matching street_number + street_name (first word) + city
-  const { data: existingBuildings } = await supabase
+  const { data: existingBuilding } = await supabase
     .from('buildings')
-    .select('id, building_name, slug')
-    .eq('street_number', streetNumber)
-    .ilike('street_name', `${streetFirstWord}%`)
-    .ilike('city_district', `%${city}%`);
+    .select('id')
+    .eq('slug', slug)
+    .single();
   
-  if (existingBuildings && existingBuildings.length > 0) {
-    console.log(`Found ${existingBuildings.length} existing building(s) to clean:`, existingBuildings.map(b => b.building_name));
+  if (existingBuilding) {
+    console.log(`Found existing building, deleting all data...`);
     
-    for (const existingBuilding of existingBuildings) {
-      console.log(`Cleaning building: ${existingBuilding.building_name} (${existingBuilding.id})`);
-      
-      // Get all listing IDs for this building
-      const { data: listings } = await supabase
-        .from('mls_listings')
-        .select('id')
-        .eq('building_id', existingBuilding.id);
-      
-      const listingIds = listings?.map(l => l.id) || [];
-      
-      if (listingIds.length > 0) {
-        // Delete related records in batches
-        const batchSize = 50;
-        for (let i = 0; i < listingIds.length; i += batchSize) {
-          const batch = listingIds.slice(i, i + batchSize);
-          await Promise.all([
-            supabase.from('open_houses').delete().in('listing_id', batch),
-            supabase.from('media').delete().in('listing_id', batch),
-            supabase.from('property_rooms').delete().in('listing_id', batch)
-          ]);
-        }
-        // Delete listings
-        await supabase.from('mls_listings').delete().eq('building_id', existingBuilding.id);
+    // Get all listing IDs for this building
+    const { data: listings } = await supabase
+      .from('mls_listings')
+      .select('id')
+      .eq('building_id', existingBuilding.id);
+    
+    const listingIds = listings?.map(l => l.id) || [];
+    
+    if (listingIds.length > 0) {
+      // Delete related records in batches
+      const batchSize = 1;
+      for (let i = 0; i < listingIds.length; i += batchSize) {
+        const batch = listingIds.slice(i, i + batchSize);
+        await Promise.all([
+          supabase.from('open_houses').delete().in('listing_id', batch),
+          supabase.from('media').delete().in('listing_id', batch),
+          supabase.from('property_rooms').delete().in('listing_id', batch)
+        ]);
       }
       
-      // Delete building relationships and history
-      await supabase.from('sync_history').delete().eq('building_id', existingBuilding.id);
-      
-      // Delete the building itself
-      await supabase.from('buildings').delete().eq('id', existingBuilding.id);
-      
-      console.log(`✅ Deleted building and all data: ${existingBuilding.building_name}`);
+      // Delete listings
+      await supabase.from('mls_listings').delete().eq('building_id', existingBuilding.id);
     }
+    
+    // Delete building relationships and history
+    await supabase.from('sync_history').delete().eq('building_id', existingBuilding.id);
+    
+    // Keep the building, just cleaned its data
+    console.log(`✅ Cleaned building data, keeping ID: ${existingBuilding.id}`);
+    return existingBuilding.id; // Return existing building ID
   }
   
-  return null; // Always return null since we delete buildings now
-}
+  return null; // No existing building found
+     }
 
 // STEP 2: Save building data
 async function saveBuildingData(buildingData: any) {
   console.log('💾 Saving building...');
   
-  // Building was already cleaned in STEP 1, always INSERT fresh
+  // Check if building already exists (and clean its data)
+  const existingBuildingId = await forceCleanBuildingBySlug(buildingData.slug);
   
   const buildingRecord = {
     slug: buildingData.slug,
@@ -175,19 +164,38 @@ async function saveBuildingData(buildingData: any) {
     total_units: buildingData.totalListings,
     last_sync_at: new Date().toISOString(),
     sync_status: 'completed',
-    updated_at: new Date().toISOString(),
-    created_at: new Date().toISOString()
+    updated_at: new Date().toISOString()
   };
   
-  const { data, error } = await supabase
-    .from('buildings')
-    .insert(buildingRecord)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  console.log(`✅ Created new building: ${data.id}`);
-  return data;
+  if (existingBuildingId) {
+    // UPDATE existing building (keep same ID)
+    const { data, error } = await supabase
+      .from('buildings')
+      .update(buildingRecord)
+      .eq('id', existingBuildingId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    console.log(`✅ Updated existing building: ${existingBuildingId}`);
+    return data;
+  } else {
+    // INSERT new building (create new ID)
+    const updatedRecord = {
+      ...buildingRecord,
+      created_at: new Date().toISOString()
+    };
+    
+    const { data, error } = await supabase
+      .from('buildings')
+      .insert(updatedRecord)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    console.log(`✅ Created new building: ${data.id}`);
+    return data;
+  }
 }
 
 // STEP 3: Save listings with complete DLA mapping
