@@ -22,20 +22,9 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   // Fetch building data
   const { data: building } = await supabase
     .from('buildings')
-    .select('id, building_name, slug, canonical_address, development_id')
+    .select('id, building_name, slug, canonical_address')
     .eq('id', listing.building_id)
     .single()
-
-  // Fetch development if building belongs to one
-  let development: { id: string; name: string; slug: string } | null = null
-  if (building?.development_id) {
-    const { data: devData } = await supabase
-      .from('developments')
-      .select('id, name, slug')
-      .eq('id', building.development_id)
-      .single()
-    development = devData
-  }
 
   // Get agent from subdomain with access verification
   const headersList = headers()
@@ -224,8 +213,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         isClosed={isClosed}
         agent={agent}
         building={building}
-        development={development}
-        />
+      />
     </main>
     </>
   )

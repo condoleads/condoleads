@@ -19,7 +19,6 @@ import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
 import DualCTASection from './components/DualCTASection'
 import BuildingSchema from './components/BuildingSchema'
 import { AgentCard } from '@/components/AgentCard'
-import Breadcrumb from '@/components/Breadcrumb'
 import { createClient } from '@/lib/supabase/server'
 import { getAgentForBuilding } from '@/lib/utils/agent-detection'
 
@@ -143,17 +142,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
 
   console.log(' BUILDING DEBUG:', { slug: params.slug, buildingId: building?.id, buildingName: building?.building_name })
 
-  // Fetch development if building belongs to one
-  let development: { id: string; name: string; slug: string } | null = null
-  if (building?.development_id) {
-    const { data: devData } = await supabase
-      .from('developments')
-      .select('id, name, slug')
-      .eq('id', building.development_id)
-      .single()
-    development = devData
-  }
-
   if (!building) {
     notFound()
   }
@@ -246,13 +234,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         }}
       />
       <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
-        <div className="max-w-7xl mx-auto px-4">
-          <Breadcrumb items={[
-            ...(development ? [{ label: development.name, href: `/${development.slug}` }] : []),
-            { label: building.building_name }
-          ]} />
-        </div>
-        <BuildingSchema
+      <BuildingSchema 
         building={building}
         activeSales={activeSales}
         activeRentals={activeRentals}

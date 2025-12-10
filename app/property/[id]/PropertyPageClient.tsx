@@ -20,6 +20,8 @@ import PropertyStickyBar from '@/components/property/PropertyStickyBar'
 import OfferInquiryModal from '@/components/property/OfferInquiryModal'
 import ExitIntentPopup from '@/components/property/ExitIntentPopup'
 import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
+import Breadcrumb from '@/components/Breadcrumb'
+import PropertySEO from '@/components/property/PropertySEO'
 
 interface PropertyPageClientProps {
   listing: any
@@ -35,6 +37,7 @@ interface PropertyPageClientProps {
   isClosed: boolean
   agent?: any
   building?: any
+  development?: { id: string; name: string; slug: string } | null
 }
 
 export default function PropertyPageClient({
@@ -50,7 +53,8 @@ export default function PropertyPageClient({
   status,
   isClosed,
   agent,
-  building
+  building,
+  development
 }: PropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
@@ -69,7 +73,14 @@ export default function PropertyPageClient({
       />
 
       <div className="max-w-7xl mx-auto pb-16">
-        <PropertyHeader
+          <div className="px-4">
+            <Breadcrumb items={[
+              ...(development ? [{ label: development.name, href: `/${development.slug}` }] : []),
+              ...(building ? [{ label: building.building_name, href: `/${building.slug}` }] : []),
+              { label: `Unit ${listing.unit_number || 'N/A'}` }
+            ]} />
+          </div>
+          <PropertyHeader
           listing={listing}
           status={status}
           isSale={isSale}
@@ -219,6 +230,15 @@ export default function PropertyPageClient({
         buildingName={building?.building_name || ''}
         isSale={isSale}
         onEstimateClick={() => setShowEstimatorModal(true)}
+      />
+
+      {/* SEO Content */}
+      <PropertySEO
+        listing={listing}
+        building={building}
+        development={development}
+        isSale={isSale}
+        isClosed={isClosed}
       />
     </>
   )

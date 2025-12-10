@@ -7,7 +7,6 @@ import { AgentCard } from '@/components/AgentCard'
 import Link from 'next/link'
 import DevelopmentListings from './components/DevelopmentListings'
 import DevelopmentSEO from './components/DevelopmentSEO'
-import Breadcrumb from '@/components/Breadcrumb'
 
 interface DevelopmentPageProps {
   params: { slug: string }
@@ -72,9 +71,6 @@ export default async function DevelopmentPage({ params, development }: Developme
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 pt-4">
-        <Breadcrumb items={[{ label: development.name }]} />
-      </div>
       <div className="bg-gradient-to-r from-blue-900 to-blue-700 text-white">
         <div className="max-w-7xl mx-auto px-4 py-16 text-center">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">{development.name}</h1>

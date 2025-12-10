@@ -224,8 +224,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         isClosed={isClosed}
         agent={agent}
         building={building}
-        development={development}
-        />
+      />
     </main>
     </>
   )
