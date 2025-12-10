@@ -33,6 +33,8 @@ interface HomePageProps {
       buildingCount: number;
       photoUrl?: string | null;
       addresses?: string;
+      forSale: number;
+      forLease: number;
     }>;
   }
 

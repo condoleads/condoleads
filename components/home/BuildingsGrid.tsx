@@ -22,6 +22,8 @@ interface Development {
   buildingCount: number;
   photoUrl?: string | null;
   addresses?: string;
+  forSale: number;
+  forLease: number;
 }
 
 interface BuildingsGridProps {
@@ -78,9 +80,19 @@ export function BuildingsGrid({ buildings, developments = [], agentName }: Build
                     {development.name}
                   </h3>
                   {development.addresses && (
-                    <p className="text-gray-500 text-sm mb-2">{development.addresses}</p>
+                    <p className="text-gray-500 text-sm mb-2 truncate" title={development.addresses}>{development.addresses}</p>
                   )}
-                  <p className="text-gray-600 text-sm mb-4">{development.buildingCount} buildings</p>
+                  <p className="text-gray-600 text-sm mb-3">{development.buildingCount} buildings</p>
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="flex items-center gap-1">
+                      <Home className="w-4 h-4 text-emerald-600" />
+                      <span className="text-sm font-medium text-gray-700">{development.forSale} For Sale</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Key className="w-4 h-4 text-sky-600" />
+                      <span className="text-sm font-medium text-gray-700">{development.forLease} For Lease</span>
+                    </div>
+                  </div>
                   <div className="flex items-center justify-center gap-2 py-2 bg-purple-50 rounded-lg text-purple-700 font-medium">
                     <span>View Development</span>
                   </div>

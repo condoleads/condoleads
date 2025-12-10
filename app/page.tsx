@@ -173,15 +173,20 @@ export default async function RootPage() {
         buildings={buildingsWithCounts.filter((b: any) => !b.fromDevelopment)} 
         developments={(agentDevelopments || []).map((ad: any) => {
           const devBuildings = developmentBuildings.filter((b: any) => b.development_id === ad.developments?.id);
-          const buildingWithPhoto = buildingsWithCounts.find((b: any) => b.development_id === ad.developments?.id && b.photoUrl);
+          const devBuildingsWithCounts = buildingsWithCounts.filter((b: any) => b.development_id === ad.developments?.id);
+          const buildingWithPhoto = devBuildingsWithCounts.find((b: any) => b.photoUrl);
           const addresses = devBuildings.map((b: any) => b.canonical_address).join(' & ');
+          const forSale = devBuildingsWithCounts.reduce((sum: number, b: any) => sum + (b.forSale || 0), 0);
+          const forLease = devBuildingsWithCounts.reduce((sum: number, b: any) => sum + (b.forLease || 0), 0);
           return {
             id: ad.developments?.id,
             name: ad.developments?.name,
             slug: ad.developments?.slug,
             buildingCount: devBuildings.length,
             photoUrl: buildingWithPhoto?.photoUrl || null,
-            addresses: addresses
+            addresses: addresses,
+            forSale: forSale,
+            forLease: forLease
           };
         }).filter((d: any) => d.id)}
       />
