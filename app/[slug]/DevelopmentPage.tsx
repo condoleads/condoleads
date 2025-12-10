@@ -6,6 +6,7 @@ import { extractSubdomain, getAgentFromSubdomain } from '@/lib/utils/agent-detec
 import { AgentCard } from '@/components/AgentCard'
 import Link from 'next/link'
 import DevelopmentListings from './components/DevelopmentListings'
+import DevelopmentSEO from './components/DevelopmentSEO'
 
 interface DevelopmentPageProps {
   params: { slug: string }
@@ -115,6 +116,15 @@ export default async function DevelopmentPage({ params, development }: Developme
           agentId={agent?.id || ''}
         />
       </div>
+      <DevelopmentSEO
+        developmentName={development.name}
+        buildings={buildings}
+        totalForSale={forSaleActive.length}
+        totalForLease={forLeaseActive.length}
+        totalSold={soldListings.length}
+        totalLeased={leasedListings.length}
+        addresses={addresses}
+      />
     </div>
   )
 }
