@@ -15,8 +15,6 @@ interface RoomDimensionsProps {
 export default function RoomDimensions({ rooms }: RoomDimensionsProps) {
   if (!rooms || rooms.length === 0) return null
 
-  const metersToFeet = (meters: number) => (meters * 3.28084).toFixed(1)
-
   return (
     <section className="bg-white rounded-xl shadow-sm p-6">
       <h2 className="text-2xl font-bold text-slate-900 mb-6">Rooms</h2>
@@ -26,20 +24,16 @@ export default function RoomDimensions({ rooms }: RoomDimensionsProps) {
           <thead>
             <tr className="border-b-2 border-slate-200">
               <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Name</th>
-              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Size (m)</th>
-              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Size (ft)</th>
+              <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Size</th>
               <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Features</th>
             </tr>
           </thead>
           <tbody>
             {rooms.map((room) => {
-              const hasDimensions = room.room_length && room.room_width
-              const sizeMeters = hasDimensions
-                ? `${room.room_length} x ${room.room_width}`
+              const sizeDisplay = room.room_length && room.room_width 
+                ? `${room.room_length} x ${room.room_width} ft`
                 : room.room_dimensions || '-'
-              const sizeFeet = hasDimensions
-                ? `${metersToFeet(room.room_length!)} x ${metersToFeet(room.room_width!)}`
-                : '-'
+              
               const features = room.room_features?.join(', ') || '-'
               
               return (
@@ -51,10 +45,7 @@ export default function RoomDimensions({ rooms }: RoomDimensionsProps) {
                     )}
                   </td>
                   <td className="py-3 px-4 text-slate-700">
-                    {sizeMeters}
-                  </td>
-                  <td className="py-3 px-4 text-slate-700">
-                    {sizeFeet}
+                    {sizeDisplay}
                   </td>
                   <td className="py-3 px-4 text-slate-600 text-sm">
                     {features}
