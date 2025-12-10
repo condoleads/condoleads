@@ -20,6 +20,8 @@ interface Development {
   name: string;
   slug: string;
   buildingCount: number;
+  photoUrl?: string | null;
+  addresses?: string;
 }
 
 interface BuildingsGridProps {
@@ -56,9 +58,17 @@ export function BuildingsGrid({ buildings, developments = [], agentName }: Build
                 className="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-200 hover:border-purple-500"
               >
                 <div className="relative h-48 overflow-hidden">
-                  <div className="w-full h-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
-                    <Building2 className="w-20 h-20 text-white/30" />
-                  </div>
+                  {development.photoUrl ? (
+                    <img
+                      src={development.photoUrl}
+                      alt={development.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
+                      <Building2 className="w-20 h-20 text-white/30" />
+                    </div>
+                  )}
                   <div className="absolute top-3 left-3">
                     <span className="px-3 py-1 bg-purple-600 text-white text-xs font-semibold rounded-full">Development</span>
                   </div>
@@ -67,7 +77,10 @@ export function BuildingsGrid({ buildings, developments = [], agentName }: Build
                   <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors">
                     {development.name}
                   </h3>
-                  <p className="text-gray-600 text-sm mb-4">{development.buildingCount} buildings in this development</p>
+                  {development.addresses && (
+                    <p className="text-gray-500 text-sm mb-2">{development.addresses}</p>
+                  )}
+                  <p className="text-gray-600 text-sm mb-4">{development.buildingCount} buildings</p>
                   <div className="flex items-center justify-center gap-2 py-2 bg-purple-50 rounded-lg text-purple-700 font-medium">
                     <span>View Development</span>
                   </div>

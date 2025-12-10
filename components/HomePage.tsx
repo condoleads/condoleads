@@ -31,6 +31,8 @@ interface HomePageProps {
       name: string;
       slug: string;
       buildingCount: number;
+      photoUrl?: string | null;
+      addresses?: string;
     }>;
   }
 
