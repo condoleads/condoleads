@@ -25,16 +25,10 @@ interface HomePageProps {
     forSale: number;
     forLease: number;
     isFeatured?: boolean;
-    }>;
-    developments?: Array<{
-      id: string;
-      name: string;
-      slug: string;
-      buildingCount: number;
-    }>;
-  }
+  }>;
+}
 
-export function HomePage({ agent, buildings, developments = [] }: HomePageProps) {
+export function HomePage({ agent, buildings }: HomePageProps) {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -44,7 +38,7 @@ export function HomePage({ agent, buildings, developments = [] }: HomePageProps)
       <HowItWorks />
       
       {/* Buildings Grid */}
-      <BuildingsGrid buildings={buildings} developments={developments} agentName={agent.full_name} />
+      <BuildingsGrid buildings={buildings} agentName={agent.full_name} />
       
       {/* Estimator CTA Banner */}
       <EstimatorBanner buildings={buildings} />

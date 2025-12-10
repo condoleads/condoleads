@@ -168,16 +168,7 @@ export default async function RootPage() {
           })};`
         }}
       />
-      <HomePage 
-        agent={agent} 
-        buildings={buildingsWithCounts.filter((b: any) => !b.fromDevelopment)} 
-        developments={(agentDevelopments || []).map((ad: any) => ({
-          id: ad.developments?.id,
-          name: ad.developments?.name,
-          slug: ad.developments?.slug,
-          buildingCount: developmentBuildings.filter((b: any) => b.development_id === ad.developments?.id).length
-        })).filter((d: any) => d.id)}
-      />
+      <HomePage agent={agent} buildings={buildingsWithCounts} />
     </>
   );
 }
