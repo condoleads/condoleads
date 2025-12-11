@@ -3,7 +3,7 @@
 // ============ NEW: Temperature & Tier Types ============
 
 export type Temperature = 'HOT' | 'WARM' | 'COLD' | 'FROZEN'
-export type MatchTier = 'BINGO' | 'FAIR' | 'ADJUSTED' | 'CONTACT'
+export type MatchTier = 'BINGO' | 'BINGO-ADJ' | 'RANGE' | 'RANGE-ADJ' | 'MAINT' | 'MAINT-ADJ' | 'CONTACT'
 
 export const TEMPERATURE_CONFIG = {
   HOT: { maxMonths: 3, icon: '🔥', label: 'Hot', color: 'text-red-500' },
@@ -88,7 +88,7 @@ export interface EstimateResult {
   // Match info
   matchTier: MatchTier
   showPrice: boolean  // false for CONTACT tier
-  confidence: 'High' | 'Medium-High' | 'Medium' | 'Low' | 'None'
+  confidence: 'High' | 'Medium-High' | 'Medium' | 'Medium-Low' | 'Low' | 'None'
   confidenceMessage: string
   
   // Comparables

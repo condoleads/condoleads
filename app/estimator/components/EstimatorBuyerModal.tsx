@@ -66,14 +66,15 @@ export default function EstimatorBuyerModal({
     setResult(null)
 
   const specs = {
-  bedrooms: listing.bedrooms_total || 0,
-  bathrooms: listing.bathrooms_total_integer || 0,
-  livingAreaRange: listing.living_area_range || '',
-  parking: listing.parking_total || 0,
-  hasLocker: !!(listing.locker && listing.locker !== 'None'),
-  buildingId,
-  ...(exactSqft !== null && { exactSqft })
-}
+    bedrooms: listing.bedrooms_total || 0,
+    bathrooms: listing.bathrooms_total_integer || 0,
+    livingAreaRange: listing.living_area_range || '',
+    parking: listing.parking_total || 0,
+    hasLocker: !!(listing.locker && listing.locker !== 'None'),
+    buildingId,
+    ...(exactSqft !== null && { exactSqft }),
+    ...(listing.association_fee && { associationFee: listing.association_fee })
+  }
 
     const response = isSale 
       ? await estimateSale(specs, true)

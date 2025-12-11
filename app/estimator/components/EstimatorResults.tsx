@@ -43,7 +43,8 @@ export default function EstimatorResults({
     'High': 'text-emerald-700 bg-emerald-50 border-emerald-200',
     'Medium-High': 'text-green-700 bg-green-50 border-green-200',
     'Medium': 'text-amber-700 bg-amber-50 border-amber-200',
-    'Low': 'text-orange-700 bg-orange-50 border-orange-200',
+    'Medium-Low': 'text-orange-600 bg-orange-50 border-orange-200',
+    'Low': 'text-red-700 bg-red-50 border-red-200',
     'None': 'text-slate-700 bg-slate-50 border-slate-200'
   }
 
@@ -60,11 +61,14 @@ export default function EstimatorResults({
     FROZEN: { icon: '🧊', label: 'Frozen', color: 'text-slate-600 bg-slate-50 border-slate-200' }
   }
 
-  const tierLabels = {
-    BINGO: { label: 'Perfect Matches', description: 'Identical units with exact specifications' },
-    FAIR: { label: 'Similar Units', description: 'Same size range and specifications' },
-    ADJUSTED: { label: 'Adjusted Comparables', description: 'Similar units with price adjustments applied' },
-    CONTACT: { label: 'Market Reference', description: 'Recent sales for context only' }
+  const tierLabels: Record<string, { label: string; description: string }> = {
+    'BINGO': { label: 'Perfect Matches', description: 'Identical units with exact sqft (±10%)' },
+    'BINGO-ADJ': { label: 'Perfect Matches (Adjusted)', description: 'Identical sqft with parking/locker adjustments' },
+    'RANGE': { label: 'Same Size Units', description: 'Same sqft range with matching specs' },
+    'RANGE-ADJ': { label: 'Same Size Units (Adjusted)', description: 'Same sqft range with parking/locker adjustments' },
+    'MAINT': { label: 'Similar Size Units', description: 'Similar maintenance fee (±20%) as size proxy' },
+    'MAINT-ADJ': { label: 'Similar Size Units (Adjusted)', description: 'Similar maintenance with parking/locker adjustments' },
+    'CONTACT': { label: 'Market Reference', description: 'Recent sales for context only' }
   }
 
   const handleContactSubmit = async (e: React.FormEvent) => {
@@ -345,28 +349,33 @@ export default function EstimatorResults({
         {/* Match Tier Banner */}
         {result.matchTier && (
           <div className={`rounded-xl p-4 border-2 ${
-            result.matchTier === 'BINGO' ? 'bg-emerald-50 border-emerald-200' :
-            result.matchTier === 'FAIR' ? 'bg-blue-50 border-blue-200' :
-            'bg-amber-50 border-amber-200'
+            result.matchTier === 'BINGO' || result.matchTier === 'BINGO-ADJ' ? 'bg-emerald-50 border-emerald-200' :
+            result.matchTier === 'RANGE' || result.matchTier === 'RANGE-ADJ' ? 'bg-blue-50 border-blue-200' :
+            result.matchTier === 'MAINT' || result.matchTier === 'MAINT-ADJ' ? 'bg-amber-50 border-amber-200' :
+            'bg-slate-50 border-slate-200'
           }`}>
             <div className="flex items-center gap-3">
               <span className="text-2xl">
-                {result.matchTier === 'BINGO' ? '🎯' : result.matchTier === 'FAIR' ? '📊' : '🔧'}
+                {result.matchTier === 'BINGO' || result.matchTier === 'BINGO-ADJ' ? '🎯' : 
+                 result.matchTier === 'RANGE' || result.matchTier === 'RANGE-ADJ' ? '📊' : 
+                 result.matchTier === 'MAINT' || result.matchTier === 'MAINT-ADJ' ? '🔧' : '📋'}
               </span>
               <div>
                 <p className={`font-bold ${
-                  result.matchTier === 'BINGO' ? 'text-emerald-800' :
-                  result.matchTier === 'FAIR' ? 'text-blue-800' :
-                  'text-amber-800'
+                  result.matchTier === 'BINGO' || result.matchTier === 'BINGO-ADJ' ? 'text-emerald-800' :
+                  result.matchTier === 'RANGE' || result.matchTier === 'RANGE-ADJ' ? 'text-blue-800' :
+                  result.matchTier === 'MAINT' || result.matchTier === 'MAINT-ADJ' ? 'text-amber-800' :
+                  'text-slate-800'
                 }`}>
-                  {tierLabels[result.matchTier].label}
+                  {tierLabels[result.matchTier]?.label || 'Comparables'}
                 </p>
                 <p className={`text-sm ${
-                  result.matchTier === 'BINGO' ? 'text-emerald-600' :
-                  result.matchTier === 'FAIR' ? 'text-blue-600' :
-                  'text-amber-600'
+                  result.matchTier === 'BINGO' || result.matchTier === 'BINGO-ADJ' ? 'text-emerald-600' :
+                  result.matchTier === 'RANGE' || result.matchTier === 'RANGE-ADJ' ? 'text-blue-600' :
+                  result.matchTier === 'MAINT' || result.matchTier === 'MAINT-ADJ' ? 'text-amber-600' :
+                  'text-slate-600'
                 }`}>
-                  {tierLabels[result.matchTier].description}
+                  {tierLabels[result.matchTier]?.description || ''}
                 </p>
               </div>
             </div>
@@ -427,9 +436,13 @@ export default function EstimatorResults({
         {/* Comparables with Temperature */}
         <div>
           <h3 className="text-lg font-bold text-slate-900 mb-4">
-            {result.matchTier === 'BINGO' ? 'BINGO Matches' : 
-             result.matchTier === 'FAIR' ? 'Similar Units' : 
-             'Adjusted Comparables'} ({result.comparables.length})
+            {result.matchTier === 'BINGO' ? 'Perfect Matches' : 
+             result.matchTier === 'BINGO-ADJ' ? 'Perfect Matches (Adjusted)' : 
+             result.matchTier === 'RANGE' ? 'Same Size Units' :
+             result.matchTier === 'RANGE-ADJ' ? 'Same Size Units (Adjusted)' :
+             result.matchTier === 'MAINT' ? 'Similar Size Units' :
+             result.matchTier === 'MAINT-ADJ' ? 'Similar Size Units (Adjusted)' :
+             'Comparables'} ({result.comparables.length})
           </h3>
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
             {result.comparables.map((comp, idx) => {
@@ -462,56 +475,71 @@ export default function EstimatorResults({
                     </div>
                   </div>
 
-                  {/* Match Details for BINGO */}
-                  {result.matchTier === 'BINGO' && (
+                  {/* Match Details for BINGO / BINGO-ADJ */}
+                  {(result.matchTier === 'BINGO' || result.matchTier === 'BINGO-ADJ') && (
                     <div className="bg-emerald-50 rounded-lg p-4 mb-3 border border-emerald-200">
-                      <p className="text-xs font-semibold text-emerald-900 mb-2">✅ Perfect Match Details:</p>
+                      <p className="text-xs font-semibold text-emerald-900 mb-2">🎯 {result.matchTier === 'BINGO' ? 'Perfect Match' : 'Perfect Match (Adjusted)'}:</p>
                       <div className="space-y-1 text-xs">
                         <div className="flex items-center gap-2">
                           <span className="text-emerald-600">✓</span>
-                          <span className="text-slate-700">Exact bedroom match: {comp.bedrooms} bed</span>
+                          <span className="text-slate-700">Exact sqft match: {comp.exactSqft} sqft {comp.userExactSqft ? `(yours: ${comp.userExactSqft} sqft, ±10%)` : ''}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-emerald-600">✓</span>
-                          <span className="text-slate-700">Exact bathroom match: {comp.bathrooms} bath</span>
-                        </div>
-                        {comp.exactSqft && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-emerald-600">✓</span>
-                            <span className="text-slate-700">
-                              Square footage: {comp.exactSqft} sqft {comp.userExactSqft ? `(yours: ${comp.userExactSqft} sqft)` : ''}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <span className="text-emerald-600">✓</span>
-                          <span className="text-slate-700">Parking: {comp.parking} space{comp.parking !== 1 ? 's' : ''}</span>
+                          <span className="text-slate-700">Bedroom: {comp.bedrooms} bed</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-emerald-600">✓</span>
-                          <span className="text-slate-700">Locker: {comp.locker === 'Owned' ? 'Yes' : 'No'}</span>
+                          <span className="text-slate-700">Bathroom: {comp.bathrooms} bath</span>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Match Details for FAIR */}
-                  {result.matchTier === 'FAIR' && (
+                  {/* Match Details for RANGE / RANGE-ADJ */}
+                  {(result.matchTier === 'RANGE' || result.matchTier === 'RANGE-ADJ') && (
                     <div className="bg-blue-50 rounded-lg p-4 mb-3 border border-blue-200">
-                      <p className="text-xs font-semibold text-blue-900 mb-2">📊 Similar Unit Details:</p>
+                      <p className="text-xs font-semibold text-blue-900 mb-2">📊 {result.matchTier === 'RANGE' ? 'Same Size Match' : 'Same Size Match (Adjusted)'}:</p>
                       <div className="space-y-1 text-xs">
                         <div className="flex items-center gap-2">
                           <span className="text-blue-600">✓</span>
-                          <span className="text-slate-700">Same size range: {comp.livingAreaRange} sqft</span>
+                          <span className="text-slate-700">Same sqft range: {comp.livingAreaRange}</span>
                         </div>
-                        {comp.associationFee && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-blue-600">✓</span>
-                            <span className="text-slate-700">
-                              Similar maintenance: ${Math.round(comp.associationFee)}/month
-                            </span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="text-blue-600">✓</span>
+                          <span className="text-slate-700">Bedroom: {comp.bedrooms} bed</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-blue-600">✓</span>
+                          <span className="text-slate-700">Bathroom: {comp.bathrooms} bath</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Match Details for MAINT / MAINT-ADJ */}
+                  {(result.matchTier === 'MAINT' || result.matchTier === 'MAINT-ADJ') && (
+                    <div className="bg-amber-50 rounded-lg p-4 mb-3 border border-amber-200">
+                      <p className="text-xs font-semibold text-amber-900 mb-2">🔧 {result.matchTier === 'MAINT' ? 'Similar Size Match' : 'Similar Size Match (Adjusted)'}:</p>
+                      <div className="space-y-1 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-600">✓</span>
+                          <span className="text-slate-700">
+                            Similar maintenance: ${comp.associationFee ? Math.round(comp.associationFee) : 'N/A'}/month (±20%)
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-600">✓</span>
+                          <span className="text-slate-700">Sqft range: {comp.livingAreaRange}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-600">✓</span>
+                          <span className="text-slate-700">Bedroom: {comp.bedrooms} bed</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-600">✓</span>
+                          <span className="text-slate-700">Bathroom: {comp.bathrooms} bath</span>
+                        </div>
                       </div>
                     </div>
                   )}

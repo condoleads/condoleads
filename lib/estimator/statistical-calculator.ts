@@ -16,7 +16,7 @@ interface LegacySpecs {
 
 /**
  * Calculates price estimate based on match tier
- * BINGO/FAIR/ADJUSTED: Returns average + most recent price
+ * BINGO/BINGO-ADJ/RANGE/RANGE-ADJ/MAINT/MAINT-ADJ: Returns average + most recent price
  * CONTACT: Returns no price (showPrice = false)
  */
 export function calculateEstimate(
@@ -28,8 +28,8 @@ export function calculateEstimate(
   let comparables: ComparableSale[]
   
   if (legacyComparables !== undefined) {
-    // Old signature: (specs, comparables)
-    tier = 'FAIR'
+    // Old signature: (specs, comparables) - used by rentals
+    tier = 'RANGE'
     comparables = legacyComparables
   } else {
     // New signature: ({ tier, comparables })
@@ -64,7 +64,7 @@ export function calculateEstimate(
 
   // Get prices (use adjustedPrice for ADJUSTED tier, closePrice for others)
   const prices = sortedComparables.map(comp => 
-    tier === 'ADJUSTED' ? (comp.adjustedPrice || comp.closePrice) : comp.closePrice
+    (tier === 'BINGO-ADJ' || tier === 'RANGE-ADJ' || tier === 'MAINT-ADJ') ? (comp.adjustedPrice || comp.closePrice) : comp.closePrice
   )
 
   // Calculate average
@@ -74,7 +74,13 @@ export function calculateEstimate(
   const currentMarketPrice = prices[0]
 
   // Calculate price range based on tier
-  const rangeMultiplier = tier === 'BINGO' ? 0.03 : tier === 'FAIR' ? 0.05 : 0.08
+  const rangeMultiplier = 
+    tier === 'BINGO' ? 0.05 :
+    tier === 'BINGO-ADJ' ? 0.05 :
+    tier === 'RANGE' ? 0.08 :
+    tier === 'RANGE-ADJ' ? 0.08 :
+    tier === 'MAINT' ? 0.12 :
+    tier === 'MAINT-ADJ' ? 0.12 : 0.15
   const priceRange = {
     low: Math.round(averagePrice * (1 - rangeMultiplier)),
     high: Math.round(averagePrice * (1 + rangeMultiplier))
@@ -148,39 +154,66 @@ function calculateConfidence(
     }
     if (totalRecent >= 2) {
       return {
+        confidence: 'High',
+        confidenceMessage: `Strong estimate based on ${comparables.length} identical units sold recently.`
+      }
+    }
+    return {
+      confidence: 'Medium-High',
+      confidenceMessage: `Good estimate based on ${comparables.length} identical unit${comparables.length > 1 ? 's' : ''}.`
+    }
+  }
+
+  if (tier === 'BINGO-ADJ') {
+    if (totalRecent >= 2) {
+      return {
+        confidence: 'High',
+        confidenceMessage: `Strong estimate based on ${comparables.length} identical units with parking/locker adjustment.`
+      }
+    }
+    return {
+      confidence: 'Medium-High',
+      confidenceMessage: `Good estimate based on ${comparables.length} identical unit${comparables.length > 1 ? 's' : ''} with adjustments.`
+    }
+  }
+
+  if (tier === 'RANGE') {
+    if (totalRecent >= 2) {
+      return {
         confidence: 'Medium-High',
-        confidenceMessage: `Good estimate based on ${comparables.length} identical units sold recently.`
+        confidenceMessage: `Good estimate based on ${comparables.length} same-size units.`
       }
     }
     return {
       confidence: 'Medium',
-      confidenceMessage: `Estimate based on ${comparables.length} identical unit${comparables.length > 1 ? 's' : ''} sold in the past year.`
+      confidenceMessage: `Estimate based on ${comparables.length} same-size unit${comparables.length > 1 ? 's' : ''}.`
     }
   }
 
-  if (tier === 'FAIR') {
-    if (totalRecent >= 2) {
-      return {
-        confidence: 'Medium',
-        confidenceMessage: `Estimate based on ${comparables.length} similar units with matching specifications.`
-      }
-    }
+  if (tier === 'RANGE-ADJ') {
     return {
-      confidence: 'Low',
-      confidenceMessage: `Limited data. Estimate based on ${comparables.length} similar unit${comparables.length > 1 ? 's' : ''}.`
+      confidence: 'Medium',
+      confidenceMessage: `Estimate based on ${comparables.length} same-size unit${comparables.length > 1 ? 's' : ''} with adjustments.`
     }
   }
 
-  if (tier === 'ADJUSTED') {
+  if (tier === 'MAINT') {
+    return {
+      confidence: 'Medium-Low',
+      confidenceMessage: `Estimate based on ${comparables.length} similar-size unit${comparables.length > 1 ? 's' : ''} (maintenance fee proxy).`
+    }
+  }
+
+  if (tier === 'MAINT-ADJ') {
     return {
       confidence: 'Low',
-      confidenceMessage: `Estimate includes adjustments for differences in parking, locker, or bathrooms.`
+      confidenceMessage: `Limited data. Estimate based on similar-size units with adjustments.`
     }
   }
 
   return {
     confidence: 'None',
-    confidenceMessage: 'Insufficient comparable data for reliable estimate.'
+    confidenceMessage: 'Your unit requires professional analysis for accurate pricing.'
   }
 }
 
