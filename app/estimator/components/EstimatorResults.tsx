@@ -29,7 +29,7 @@ export default function EstimatorResults({
   agentId,
   propertySpecs
 }: EstimatorResultsProps) {
-  const isSale = type === 'sale'
+  const isSale = type === 'sale' || type === 'estimator'
   const [showContactForm, setShowContactForm] = useState(false)
   const [contactForm, setContactForm] = useState({
     name: '',
