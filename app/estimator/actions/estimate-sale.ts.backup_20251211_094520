@@ -1,0 +1,51 @@
+// app/estimator/actions/estimate-sale.ts
+'use server'
+
+import { findComparables } from '@/lib/estimator/comparable-matcher-sales'
+import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
+import { getAIInsights } from '@/lib/estimator/ai-insights'
+import { EstimateResult, UnitSpecs } from '@/lib/estimator/types'
+
+/**
+ * Server action to estimate condo sale price
+ * Uses tiered matching: BINGO → FAIR → ADJUSTED → CONTACT
+ */
+export async function estimateSale(
+  specs: UnitSpecs,
+  includeAI: boolean = false
+): Promise<{ success: boolean; data?: EstimateResult; error?: string }> {
+  try {
+    // Step 1: Find comparable sales using tiered matching
+    const matchResult = await findComparables(specs)
+    
+    console.log(`[Estimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}`)
+
+    // Step 2: Calculate estimate based on tier
+    const estimate = calculateEstimate(matchResult)
+
+    // Step 3: Add AI insights if requested and we have a price to analyze
+    let aiInsights = undefined
+    if (includeAI && estimate.showPrice && estimate.estimatedPrice > 0) {
+      try {
+        aiInsights = await getAIInsights(specs, estimate.estimatedPrice, matchResult.comparables)
+      } catch (aiError) {
+        console.log('AI insights unavailable:', aiError)
+        // Continue without AI - not a critical failure
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        ...estimate,
+        aiInsights
+      }
+    }
+  } catch (error) {
+    console.error('Error estimating sale price:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to calculate estimate'
+    }
+  }
+}
