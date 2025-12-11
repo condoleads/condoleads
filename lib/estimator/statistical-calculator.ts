@@ -1,79 +1,67 @@
 ﻿// lib/estimator/statistical-calculator.ts
-import { ComparableSale, EstimateResult, UnitSpecs } from './types'
+import { ComparableSale, EstimateResult, MatchTier, TEMPERATURE_CONFIG } from './types'
+
+interface CalculateInput {
+  tier: MatchTier
+  comparables: ComparableSale[]
+}
 
 /**
- * Calculates price estimate from comparable sales using adjusted prices
- * Weights perfect/excellent matches more heavily
+ * Calculates price estimate based on match tier
+ * BINGO/FAIR/ADJUSTED: Returns average + most recent price
+ * CONTACT: Returns no price (showPrice = false)
  */
 export function calculateEstimate(
-  specs: UnitSpecs,
-  comparables: ComparableSale[]
+  input: CalculateInput
 ): Omit<EstimateResult, 'aiInsights'> {
-  
-  if (comparables.length === 0) {
-    throw new Error('No comparable sales data available for this unit configuration')
-  }
+  const { tier, comparables } = input
 
-  // Separate comparables by match quality for weighted calculation
-  const perfectMatches = comparables.filter(c => c.matchQuality === 'Perfect')
-  const excellentMatches = comparables.filter(c => c.matchQuality === 'Excellent')
-  const adjustedComparables = comparables.filter(c => c.adjustments && c.adjustments.length > 0)
-
-  // Use adjustedPrice (which includes all adjustments) instead of closePrice
-  const prices = comparables.map(comp => comp.adjustedPrice || comp.closePrice)
-
-  // Weight calculation: Perfect matches count 3x, Excellent 2x, others 1x
-  const weightedPrices: number[] = []
-  comparables.forEach(comp => {
-    const price = comp.adjustedPrice || comp.closePrice
-    if (comp.matchQuality === 'Perfect') {
-      weightedPrices.push(price, price, price) // Count 3x
-    } else if (comp.matchQuality === 'Excellent') {
-      weightedPrices.push(price, price) // Count 2x
-    } else {
-      weightedPrices.push(price) // Count 1x
+  // CONTACT tier: No price calculation
+  if (tier === 'CONTACT' || comparables.length === 0) {
+    return {
+      estimatedPrice: 0,
+      currentMarketPrice: undefined,
+      priceRange: { low: 0, high: 0 },
+      matchTier: 'CONTACT',
+      showPrice: false,
+      confidence: 'None',
+      confidenceMessage: 'Your unit has unique characteristics that require professional analysis for accurate pricing.',
+      comparables,
+      marketSpeed: {
+        avgDaysOnMarket: 0,
+        status: 'Moderate',
+        message: 'Contact agent for market insights.'
+      }
     }
-  })
+  }
 
-  // Use weighted median for final estimate
-  const sortedWeightedPrices = [...weightedPrices].sort((a, b) => a - b)
-  const medianPrice = sortedWeightedPrices[Math.floor(sortedWeightedPrices.length / 2)]
+  // Sort by close date (most recent first)
+  const sortedComparables = [...comparables].sort(
+    (a, b) => new Date(b.closeDate).getTime() - new Date(a.closeDate).getTime()
+  )
 
-  // Calculate price range based on confidence
-  const priceStdDev = calculateStdDev(prices)
-  const rangeMultiplier = perfectMatches.length >= 3 ? 0.05 : 
-                          excellentMatches.length >= 3 ? 0.08 : 0.10
-  
+  // Get prices (use adjustedPrice for ADJUSTED tier, closePrice for others)
+  const prices = sortedComparables.map(comp => 
+    tier === 'ADJUSTED' ? (comp.adjustedPrice || comp.closePrice) : comp.closePrice
+  )
+
+  // Calculate average
+  const averagePrice = Math.round(prices.reduce((sum, p) => sum + p, 0) / prices.length)
+
+  // Most recent sale price
+  const currentMarketPrice = prices[0]
+
+  // Calculate price range based on tier
+  const rangeMultiplier = tier === 'BINGO' ? 0.03 : tier === 'FAIR' ? 0.05 : 0.08
   const priceRange = {
-    low: Math.round(medianPrice * (1 - rangeMultiplier)),
-    high: Math.round(medianPrice * (1 + rangeMultiplier))
+    low: Math.round(averagePrice * (1 - rangeMultiplier)),
+    high: Math.round(averagePrice * (1 + rangeMultiplier))
   }
 
-  // Enhanced confidence calculation
-  let confidence: 'High' | 'Medium' | 'Low'
-  if (perfectMatches.length >= 3 || comparables.length >= 8) {
-    confidence = 'High'
-  } else if (excellentMatches.length >= 2 || comparables.length >= 4) {
-    confidence = 'Medium'
-  } else {
-    confidence = 'Low'
-  }
+  // Determine confidence based on tier and temperature
+  const { confidence, confidenceMessage } = calculateConfidence(tier, sortedComparables)
 
-  // Calculate adjustment summary
-  const totalAdjustments = adjustedComparables.reduce((sum, comp) => {
-    return sum + (comp.adjustments?.reduce((adjSum, adj) => adjSum + Math.abs(adj.adjustmentAmount), 0) || 0)
-  }, 0)
-  const avgAdjustment = adjustedComparables.length > 0 
-    ? Math.round(totalAdjustments / adjustedComparables.length) 
-    : 0
-
-  const adjustmentSummary = {
-    perfectMatches: perfectMatches.length,
-    adjustedComparables: adjustedComparables.length,
-    avgAdjustment: avgAdjustment
-  }
-
-  // Calculate market speed from days on market
+  // Calculate market speed
   const avgDaysOnMarket = Math.round(
     comparables.reduce((sum, comp) => sum + comp.daysOnMarket, 0) / comparables.length
   )
@@ -92,26 +80,98 @@ export function calculateEstimate(
     marketMessage = 'Units taking longer to sell. Buyer\'s market with more negotiating room.'
   }
 
+  // Count matches for summary
+  const hotMatches = comparables.filter(c => c.temperature === 'HOT').length
+  const warmMatches = comparables.filter(c => c.temperature === 'WARM').length
+
   return {
-    estimatedPrice: Math.round(medianPrice),
+    estimatedPrice: averagePrice,
+    currentMarketPrice,
     priceRange,
+    matchTier: tier,
+    showPrice: true,
     confidence,
-    comparables,
-    adjustmentSummary,
+    confidenceMessage,
+    comparables: sortedComparables,
     marketSpeed: {
       avgDaysOnMarket,
       status: marketStatus,
       message: marketMessage
+    },
+    adjustmentSummary: {
+      perfectMatches: hotMatches + warmMatches,
+      adjustedComparables: comparables.filter(c => c.adjustments && c.adjustments.length > 0).length,
+      avgAdjustment: calculateAvgAdjustment(comparables)
     }
   }
 }
 
 /**
- * Calculate standard deviation for price variance
+ * Calculate confidence level based on tier and recency
  */
-function calculateStdDev(prices: number[]): number {
-  const avg = prices.reduce((sum, price) => sum + price, 0) / prices.length
-  const squaredDiffs = prices.map(price => Math.pow(price - avg, 2))
-  const variance = squaredDiffs.reduce((sum, diff) => sum + diff, 0) / prices.length
-  return Math.sqrt(variance)
+function calculateConfidence(
+  tier: MatchTier, 
+  comparables: ComparableSale[]
+): { confidence: EstimateResult['confidence']; confidenceMessage: string } {
+  const hotCount = comparables.filter(c => c.temperature === 'HOT').length
+  const warmCount = comparables.filter(c => c.temperature === 'WARM').length
+  const totalRecent = hotCount + warmCount
+
+  if (tier === 'BINGO') {
+    if (hotCount >= 2) {
+      return {
+        confidence: 'High',
+        confidenceMessage: `Strong estimate based on ${hotCount} identical units sold in the last 3 months.`
+      }
+    }
+    if (totalRecent >= 2) {
+      return {
+        confidence: 'Medium-High',
+        confidenceMessage: `Good estimate based on ${comparables.length} identical units sold recently.`
+      }
+    }
+    return {
+      confidence: 'Medium',
+      confidenceMessage: `Estimate based on ${comparables.length} identical unit${comparables.length > 1 ? 's' : ''} sold in the past year.`
+    }
+  }
+
+  if (tier === 'FAIR') {
+    if (totalRecent >= 2) {
+      return {
+        confidence: 'Medium',
+        confidenceMessage: `Estimate based on ${comparables.length} similar units with matching specifications.`
+      }
+    }
+    return {
+      confidence: 'Low',
+      confidenceMessage: `Limited data. Estimate based on ${comparables.length} similar unit${comparables.length > 1 ? 's' : ''}.`
+    }
+  }
+
+  if (tier === 'ADJUSTED') {
+    return {
+      confidence: 'Low',
+      confidenceMessage: `Estimate includes adjustments for differences in parking, locker, or bathrooms.`
+    }
+  }
+
+  return {
+    confidence: 'None',
+    confidenceMessage: 'Insufficient comparable data for reliable estimate.'
+  }
+}
+
+/**
+ * Calculate average adjustment amount
+ */
+function calculateAvgAdjustment(comparables: ComparableSale[]): number {
+  const adjustedComps = comparables.filter(c => c.adjustments && c.adjustments.length > 0)
+  if (adjustedComps.length === 0) return 0
+
+  const totalAdjustment = adjustedComps.reduce((sum, comp) => {
+    return sum + (comp.adjustments?.reduce((adjSum, adj) => adjSum + Math.abs(adj.adjustmentAmount), 0) || 0)
+  }, 0)
+
+  return Math.round(totalAdjustment / adjustedComps.length)
 }

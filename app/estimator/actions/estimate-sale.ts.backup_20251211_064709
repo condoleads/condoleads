@@ -8,32 +8,38 @@ import { EstimateResult, UnitSpecs } from '@/lib/estimator/types'
 
 /**
  * Server action to estimate condo sale price
- * Uses tiered matching: BINGO → FAIR → ADJUSTED → CONTACT
+ * Used by both buyer (auto-fill) and seller (manual) forms
  */
 export async function estimateSale(
   specs: UnitSpecs,
   includeAI: boolean = false
 ): Promise<{ success: boolean; data?: EstimateResult; error?: string }> {
+  
   try {
-    // Step 1: Find comparable sales using tiered matching
-    const matchResult = await findComparables(specs)
+    // Step 1: Find comparable sales in the building
+    const comparables = await findComparables(specs)
     
-    console.log(`[Estimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}`)
-
-    // Step 2: Calculate estimate based on tier
-    const estimate = calculateEstimate(matchResult)
-
-    // Step 3: Add AI insights if requested and we have a price to analyze
+    if (comparables.length === 0) {
+      return {
+        success: false,
+        error: `No sales data available for ${specs.bedrooms}-bedroom units in this building over the past 2 years. Unable to generate estimate.`
+      }
+    }
+    
+    // Step 2: Calculate statistical estimate
+    const estimate = calculateEstimate(specs, comparables)
+    
+    // Step 3: Add AI insights if requested (and API key is configured)
     let aiInsights = undefined
-    if (includeAI && estimate.showPrice && estimate.estimatedPrice > 0) {
+    if (includeAI) {
       try {
-        aiInsights = await getAIInsights(specs, estimate.estimatedPrice, matchResult.comparables)
+        aiInsights = await getAIInsights(specs, estimate.estimatedPrice, comparables)
       } catch (aiError) {
         console.log('AI insights unavailable:', aiError)
         // Continue without AI - not a critical failure
       }
     }
-
+    
     return {
       success: true,
       data: {
@@ -41,6 +47,7 @@ export async function estimateSale(
         aiInsights
       }
     }
+    
   } catch (error) {
     console.error('Error estimating sale price:', error)
     return {
