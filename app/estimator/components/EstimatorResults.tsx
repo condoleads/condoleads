@@ -38,10 +38,12 @@ export default function EstimatorResults({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   
-  const confidenceColors = {
-    High: 'text-emerald-700 bg-emerald-50',
-    Medium: 'text-amber-700 bg-amber-50',
-    Low: 'text-slate-700 bg-slate-50'
+  const confidenceColors: Record<string, string> = {
+    'High': 'text-emerald-700 bg-emerald-50',
+    'Medium-High': 'text-green-700 bg-green-50',
+    'Medium': 'text-amber-700 bg-amber-50',
+    'Low': 'text-orange-700 bg-orange-50',
+    'None': 'text-slate-700 bg-slate-50'
   }
 
   const marketSpeedColors = {

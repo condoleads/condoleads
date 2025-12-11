@@ -6,15 +6,37 @@ interface CalculateInput {
   comparables: ComparableSale[]
 }
 
+interface LegacySpecs {
+  bedrooms: number
+  bathrooms: number
+  parking: number
+  hasLocker: boolean
+  buildingId: string
+}
+
 /**
  * Calculates price estimate based on match tier
  * BINGO/FAIR/ADJUSTED: Returns average + most recent price
  * CONTACT: Returns no price (showPrice = false)
  */
 export function calculateEstimate(
-  input: CalculateInput
+  inputOrSpecs: CalculateInput | LegacySpecs,
+  legacyComparables?: ComparableSale[]
 ): Omit<EstimateResult, 'aiInsights'> {
-  const { tier, comparables } = input
+  // Handle legacy call: calculateEstimate(specs, comparables)
+  let tier: MatchTier
+  let comparables: ComparableSale[]
+  
+  if (legacyComparables !== undefined) {
+    // Old signature: (specs, comparables)
+    tier = 'FAIR'
+    comparables = legacyComparables
+  } else {
+    // New signature: ({ tier, comparables })
+    const input = inputOrSpecs as CalculateInput
+    tier = input.tier
+    comparables = input.comparables
+  }
 
   // CONTACT tier: No price calculation
   if (tier === 'CONTACT' || comparables.length === 0) {
