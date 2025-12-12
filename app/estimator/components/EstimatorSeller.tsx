@@ -11,12 +11,13 @@ import EstimatorResults from './EstimatorResults'
 
 interface EstimatorSellerProps {
   buildingId: string
+  buildingSlug?: string
   buildingName: string
   buildingAddress?: string
   agentId: string
 }
 
-export default function EstimatorSeller({ buildingId, buildingName, buildingAddress, agentId }: EstimatorSellerProps) {
+export default function EstimatorSeller({ buildingId, buildingSlug, buildingName, buildingAddress, agentId }: EstimatorSellerProps) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -61,7 +62,8 @@ export default function EstimatorSeller({ buildingId, buildingName, buildingAddr
 
     const response = await estimateSale({
       ...specs,
-      buildingId
+      buildingId,
+      buildingSlug
     }, true) // includeAI = true
 
     if (response.success && response.data) {

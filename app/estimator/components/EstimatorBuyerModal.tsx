@@ -15,6 +15,7 @@ interface EstimatorBuyerModalProps {
   buildingName: string
   buildingAddress?: string
   buildingId: string
+  buildingSlug?: string
   agentId: string
   type: 'sale' | 'lease'
   exactSqft: number | null
@@ -27,6 +28,7 @@ export default function EstimatorBuyerModal({
   buildingName,
   buildingAddress,
   buildingId,
+  buildingSlug,
   agentId,
   type,
   exactSqft
@@ -72,6 +74,7 @@ export default function EstimatorBuyerModal({
     parking: listing.parking_total || 0,
     hasLocker: !!(listing.locker && listing.locker !== 'None'),
     buildingId,
+    buildingSlug,
     ...(exactSqft !== null && { exactSqft }),
     ...(listing.association_fee && { associationFee: listing.association_fee })
   }

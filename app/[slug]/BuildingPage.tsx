@@ -352,6 +352,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
               {agent ? (
                 <EstimatorSeller
                   buildingId={building.id}
+                  buildingSlug={building.slug}
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
                   agentId={agent.id}

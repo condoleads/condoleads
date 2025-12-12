@@ -8,45 +8,38 @@ import { EstimateResult, UnitSpecs } from '@/lib/estimator/types'
 
 /**
  * Server action to estimate monthly rent
- * Returns base rent + separate parking/locker costs
+ * Uses 5-tier matching: BINGO → BINGO-ADJ → RANGE → RANGE-ADJ → CONTACT
  */
 export async function estimateRent(
   specs: UnitSpecs,
   includeAI: boolean = false
 ): Promise<{ success: boolean; data?: EstimateResult & { parkingCost?: number; lockerCost?: number }; error?: string }> {
-  
   try {
-    // Step 1: Find comparable leases in the building
-    const comparables = await findComparablesRentals(specs)
+    // Step 1: Find comparable leases using tiered matching
+    const matchResult = await findComparablesRentals(specs)
     
-    if (comparables.length === 0) {
-      return {
-        success: false,
-        error: `No lease data available for ${specs.bedrooms}-bedroom units in this building over the past 2 years. Unable to generate estimate.`
-      }
-    }
-    
-    // Step 2: Calculate statistical estimate for base rent
-    const estimate = calculateEstimate(specs, comparables)
-    
-    // Step 3: Calculate parking cost (market average: $100-500/month per space)
-    // Using $250/month as average for Toronto condos
-    const parkingCost = specs.parking > 0 ? specs.parking * 250 : 0
-    
-    // Step 4: Calculate locker cost (market average: ~$100/month)
-    const lockerCost = specs.hasLocker ? 100 : 0
-    
-    // Step 5: Add AI insights if requested (and API key is configured)
+    console.log(`[Rental Estimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}`)
+
+    // Step 2: Calculate estimate based on tier
+    const estimate = calculateEstimate(matchResult)
+
+    // Step 3: Calculate parking cost (market average for Toronto)
+    const parkingCost = specs.parking > 0 ? specs.parking * 200 : 0
+
+    // Step 4: Calculate locker cost (market average for Toronto)
+    const lockerCost = specs.hasLocker ? 50 : 0
+
+    // Step 5: Add AI insights if requested and we have a price
     let aiInsights = undefined
-    if (includeAI) {
+    if (includeAI && estimate.showPrice && estimate.estimatedPrice > 0) {
       try {
-        aiInsights = await getAIInsights(specs, estimate.estimatedPrice, comparables)
+        aiInsights = await getAIInsights(specs, estimate.estimatedPrice, matchResult.comparables)
       } catch (aiError) {
         console.log('AI insights unavailable:', aiError)
         // Continue without AI - not a critical failure
       }
     }
-    
+
     return {
       success: true,
       data: {
@@ -56,7 +49,6 @@ export async function estimateRent(
         aiInsights
       }
     }
-    
   } catch (error) {
     console.error('Error estimating rent:', error)
     return {

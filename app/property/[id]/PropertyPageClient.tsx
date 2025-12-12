@@ -204,6 +204,7 @@ export default function PropertyPageClient({
           onClose={() => setShowEstimatorModal(false)}
           listing={listing}
           buildingId={listing.building_id}
+          buildingSlug={building?.slug || ''}
           buildingName={building?.building_name || ''}
           buildingAddress={building?.canonical_address || ''}
           agentId={agent?.id || ''}

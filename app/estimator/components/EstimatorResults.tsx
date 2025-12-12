@@ -291,6 +291,16 @@ export default function EstimatorResults({
                       </p>
                     </div>
                   )}
+                  {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
+                     <a                 
+                      href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      View Property Details →
+                    </a>
+                  )}
                 </div>
               ))}
             </div>
@@ -585,6 +595,16 @@ export default function EstimatorResults({
                       <span className="text-xs text-slate-500">Originally listed:</span>
                       <span className="text-xs text-slate-500">{formatPrice(comp.listPrice)}</span>
                     </div>
+                    {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
+                      <a
+                        href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        View Property Details →
+                      </a>
+                    )}
                   </div>
                 </div>
               )

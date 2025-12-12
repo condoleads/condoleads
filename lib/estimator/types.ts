@@ -21,6 +21,7 @@ export interface UnitSpecs {
   parking: number
   hasLocker: boolean
   buildingId: string
+  buildingSlug?: string  // For generating view links
   taxAnnualAmount?: number  // Optional - for better matching
   exactSqft?: number  // Optional - extracted from square_foot_source
   associationFee?: number  // Optional - maintenance fee for comparison
@@ -35,11 +36,17 @@ export interface PriceAdjustment {
   reason: string  // Human-readable explanation
 }
 
-// Adjustment constants
+// Adjustment constants - SALES
 export const ADJUSTMENT_VALUES = {
   PARKING_PER_SPACE: 50000,
   LOCKER: 10000,
   BATHROOM: 50000
+} as const
+
+// Adjustment constants - LEASE (monthly)
+export const ADJUSTMENT_VALUES_LEASE = {
+  PARKING_PER_SPACE: 200,
+  LOCKER: 50
 } as const
 
 // ============ Comparable Sale ============
@@ -59,6 +66,8 @@ export interface ComparableSale {
   userExactSqft?: number
   associationFee?: number
   unitNumber?: string
+  listingKey?: string
+  buildingSlug?: string
   
   // Match classification
   temperature?: Temperature
