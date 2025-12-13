@@ -92,16 +92,16 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
     .neq('id', listing.id)
     .limit(4)
 
-  // Fetch unit history
+  // Fetch unit history - ALL statuses for complete transaction history
   const { data: unitHistory } = await supabase
     .from('mls_listings')
-    .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status')
+    .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status, mls_status')
     .eq('building_id', listing.building_id)
     .eq('unit_number', listing.unit_number)
-    .eq('standard_status', 'Closed')
     .neq('id', listing.id)
-    .order('close_date', { ascending: false })
-    .limit(10)
+    .order('close_date', { ascending: false, nullsFirst: false })
+    .order('listing_contract_date', { ascending: false })
+    .limit(20)
 
   // Fetch room dimensions
   const { data: rooms } = await supabase

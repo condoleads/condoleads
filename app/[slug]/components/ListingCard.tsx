@@ -5,6 +5,7 @@ import RegisterModal from '@/components/auth/RegisterModal'
 import Link from 'next/link'
 import { MLSListing } from '@/lib/types/building'
 import { formatPrice } from '@/lib/utils/formatters'
+import { calculateDaysOnMarket } from '@/lib/utils/dom'
 import { generatePropertySlug } from '@/lib/utils/slugs'
 import { useState } from 'react'
 interface ListingCardProps {
@@ -304,12 +305,19 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                   <span>${Math.round(listing.tax_annual_amount)} tax</span>
                 </>
               )}
-              {listing.days_on_market && (
-                <>
-                  <span className="text-slate-300">|</span>
-                  <span>{listing.days_on_market} days</span>
-                </>
-              )}
+              {(() => {
+                const dom = calculateDaysOnMarket(
+                  listing.days_on_market,
+                  listing.listing_contract_date,
+                  listing.standard_status
+                )
+                return dom !== null ? (
+                  <>
+                    <span className="text-slate-300">|</span>
+                    <span>{dom} days</span>
+                  </>
+                ) : null
+              })()}
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
