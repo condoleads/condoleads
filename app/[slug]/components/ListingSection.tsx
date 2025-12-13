@@ -173,6 +173,7 @@ export default function ListingSection({
           buildingName={buildingName}
           buildingAddress={buildingAddress}
           buildingId={buildingId}
+          buildingSlug={buildingSlug}
           agentId={agentId}
           type={modalType}
           exactSqft={exactSqft}
