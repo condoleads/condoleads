@@ -8,6 +8,8 @@ import { formatPrice } from '@/lib/utils/formatters'
 import { calculateDaysOnMarket } from '@/lib/utils/dom'
 import { generatePropertySlug } from '@/lib/utils/slugs'
 import { useState } from 'react'
+import { Clock, History } from 'lucide-react'
+import UnitHistoryModal from '@/components/property/UnitHistoryModal'
 interface ListingCardProps {
   listing: MLSListing
   type: 'sale' | 'lease'
@@ -21,6 +23,8 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
   const photos = listing.media?.filter(m => m.variant_type === 'large') || []
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
   const [showRegister, setShowRegister] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyPending, setHistoryPending] = useState(false)
   const { user } = useAuth()
   
   const nextPhoto = () => {
@@ -305,20 +309,22 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                   <span>${Math.round(listing.tax_annual_amount)} tax</span>
                 </>
               )}
-              {(() => {
-                const dom = calculateDaysOnMarket(
-                  listing.days_on_market,
-                  listing.listing_contract_date,
-                  listing.standard_status
-                )
-                return dom !== null ? (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <span>{dom} days</span>
-                  </>
-                ) : null
-              })()}
-            </div>
+              </div>
+
+            {/* Days on Market - Separate Line */}
+            {(() => {
+              const dom = calculateDaysOnMarket(
+                listing.days_on_market,
+                listing.listing_contract_date,
+                listing.standard_status
+              )
+              return dom !== null ? (
+                <div className="flex items-center gap-2 text-sm text-slate-500 mb-4">
+                  <Clock className="w-4 h-4" />
+                  <span className="italic">{dom} days on market</span>
+                </div>
+              ) : null
+            })()}
 
             <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
               <p className="text-xs text-slate-400">
@@ -345,6 +351,20 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                 >
                   View Details
                 </Link>
+                <button
+                  onClick={() => {
+                    if (!user) {
+                      setHistoryPending(true)
+                      setShowRegister(true)
+                    } else {
+                      setShowHistory(true)
+                    }
+                  }}
+                  className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                  title="View unit history"
+                >
+                  <History className="w-5 h-5" />
+                </button>
               </div>
             </div>
           </>
@@ -353,12 +373,28 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
       
       <RegisterModal
         isOpen={showRegister}
-        onClose={() => setShowRegister(false)}
+        onClose={() => {
+          setShowRegister(false)
+          setHistoryPending(false)
+        }}
         onSuccess={() => {
           setShowRegister(false)
-          onEstimateClick?.(extractExactSqft(listing.square_foot_source))
+          if (historyPending) {
+            setHistoryPending(false)
+            setShowHistory(true)
+          } else {
+            onEstimateClick?.(extractExactSqft(listing.square_foot_source))
+          }
         }}
         registrationSource="listing_card"
+      />
+
+      <UnitHistoryModal
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        unitNumber={listing.unit_number || ''}
+        buildingId={listing.building_id}
+        currentListingId={listing.id}
       />
     </article>
   )
