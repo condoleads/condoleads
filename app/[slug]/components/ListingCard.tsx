@@ -8,7 +8,7 @@ import { formatPrice } from '@/lib/utils/formatters'
 import { calculateDaysOnMarket } from '@/lib/utils/dom'
 import { generatePropertySlug } from '@/lib/utils/slugs'
 import { useState } from 'react'
-import { Clock, History } from 'lucide-react'
+import { Clock } from 'lucide-react'
 import UnitHistoryModal from '@/components/property/UnitHistoryModal'
 interface ListingCardProps {
   listing: MLSListing
@@ -103,7 +103,10 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
   const propertyUrl = generatePropertySlug(listing, buildingSlug)
 
   return (
-    <article className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col">
+    <article 
+      className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col cursor-pointer"
+      onClick={() => window.open(propertyUrl, '_blank')}
+    >
       {/* Image Carousel */}
       <div className="relative h-48 bg-slate-200 flex-shrink-0 overflow-hidden">
         <div className={`h-full ${shouldBlur ? 'blur-lg' : ''}`}>
@@ -119,7 +122,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
               {photos.length > 1 && !shouldBlur && (
                 <>
                   <button
-                    onClick={prevPhoto}
+                    onClick={(e) => { e.stopPropagation(); prevPhoto(); }}
                     className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
                     aria-label="Previous photo"
                   >
@@ -128,7 +131,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                     </svg>
                   </button>
                   <button
-                    onClick={nextPhoto}
+                    onClick={(e) => { e.stopPropagation(); nextPhoto(); }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
                     aria-label="Next photo"
                   >
@@ -251,7 +254,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
             {/* Register CTA */}
             <div className="pt-4 mt-auto">
               <button
-                onClick={() => setShowRegister(true)}
+                onClick={(e) => { e.stopPropagation(); setShowRegister(true); }}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
               >
                 Register to See {isSale ? 'Sold' : 'Leased'} Details
@@ -264,9 +267,16 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
         ) : (
           <>
             <div className="mb-3">
-              <h3 className="text-xl font-bold text-slate-900">
-                Unit {listing.unit_number || 'N/A'}
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-slate-900">
+                  Unit {listing.unit_number || 'N/A'}
+                </h3>
+                {(listing.listing_key || listing.listing_id) && (
+                  <span className="text-xs text-slate-400">
+                    MLS# {listing.listing_key || listing.listing_id}
+                  </span>
+                )}
+              </div>
               {listing.unparsed_address && (
                 <p className="text-sm text-slate-600 mt-1 truncate">
                   {listing.unparsed_address}
@@ -326,46 +336,36 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
               ) : null
             })()}
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
-              <p className="text-xs text-slate-400">
-                {listing.listing_key || listing.listing_id ? `MLS #${listing.listing_key || listing.listing_id}` : ''}
-              </p>
-              <div className="flex gap-2">
-                {!isClosed && (
-                  <button
-                    onClick={() => {
-                      if (!user) {
-                        setShowRegister(true)
-                      } else {
-                        onEstimateClick?.(extractExactSqft(listing.square_foot_source))
-                      }
-                    }}
-                    className={`flex-1 ${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-600 hover:bg-sky-700'} text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors`}
-                  >
-                    {isSale ? 'Sale Offer' : 'Lease Offer'}
-                  </button>
-                )}
-                <Link
-                  href={propertyUrl}
-                  className={`flex-1 text-sm font-semibold py-2 px-4 rounded-lg border-2 transition-colors text-center border-${accentColor}-600 text-${accentColor}-600 hover:bg-${accentColor}-600 hover:text-white`}
-                >
-                  View Details
-                </Link>
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2 mt-auto">
+              {!isClosed && (
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation()
                     if (!user) {
-                      setHistoryPending(true)
                       setShowRegister(true)
                     } else {
-                      setShowHistory(true)
+                      onEstimateClick?.(extractExactSqft(listing.square_foot_source))
                     }
                   }}
-                  className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-                  title="View unit history"
+                  className={`${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-600 hover:bg-sky-700'} text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors`}
                 >
-                  <History className="w-5 h-5" />
+                  {isSale ? 'Sale Offer' : 'Lease Offer'}
                 </button>
-              </div>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (!user) {
+                    setHistoryPending(true)
+                    setShowRegister(true)
+                  } else {
+                    setShowHistory(true)
+                  }
+                }}
+                className="py-2 px-4 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg text-sm font-semibold transition-colors"
+              >
+                History
+              </button>
             </div>
           </>
         )}
