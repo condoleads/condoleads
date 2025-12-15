@@ -390,12 +390,13 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
       />
 
       <UnitHistoryModal
-        isOpen={showHistory}
-        onClose={() => setShowHistory(false)}
-        unitNumber={listing.unit_number || ''}
-        buildingId={listing.building_id}
-        currentListingId={listing.id}
-      />
+          isOpen={showHistory}
+          onClose={() => setShowHistory(false)}
+          unitNumber={listing.unit_number || ''}
+          buildingId={listing.building_id}
+          buildingSlug={buildingSlug}
+          currentListingId={listing.id}
+        />
     </article>
   )
 }
