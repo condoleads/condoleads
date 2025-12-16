@@ -1,4 +1,4 @@
-﻿'use server'
+'use server'
 
 import { Resend } from 'resend'
 import { generateActivityEmailHtml } from './activityEmailTemplate'
@@ -25,7 +25,8 @@ const CRITICAL_ACTIVITIES = [
   'lease_offer_inquiry',
   'estimator',
   'estimator_contact_submitted',
-  'registration'
+  'registration',
+  'unit_history_inquiry'
 ]
 
 const HIGH_INTENT_ACTIVITIES = [
@@ -75,7 +76,8 @@ function formatActivityForEmail(activity: any, fallbackBuilding?: { building_nam
   lease_offer_inquiry: '🔥',
   building_visit_request: '🗝️',
   viewed_transaction_history: '📈',
-  registration: '✅'
+  registration: '✅',
+    unit_history_inquiry: '📜'
 }
 
   const activityNames: Record<string, string> = {
@@ -91,7 +93,8 @@ function formatActivityForEmail(activity: any, fallbackBuilding?: { building_nam
   lease_offer_inquiry: 'Lease Offer Inquiry',
   building_visit_request: 'Requested Building Visit',
   viewed_transaction_history: 'Viewed Transaction History',
-  registration: 'New User Registration'
+  registration: 'New User Registration',
+  unit_history_inquiry: 'Unit History Inquiry'
 }
 
   const timestamp = new Date(activity.created_at)
@@ -310,7 +313,8 @@ const ACTIVITY_TYPE_NAMES: Record<string, string> = {
   'lease_evaluation_request': 'Lease Evaluation',
   'sale_offer_inquiry': 'Sale Offer Inquiry',
   'lease_offer_inquiry': 'Lease Offer Inquiry',
-  'estimator': 'Used Price Estimator'
+  'estimator': 'Used Price Estimator',
+  'unit_history_inquiry': 'Unit History Inquiry'
 }
 
 export async function sendActivityEmail({

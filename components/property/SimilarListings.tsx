@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
@@ -8,12 +8,14 @@ interface SimilarListingsProps {
   listings: MLSListing[]
   title?: string
   initialDisplay?: number
+  agentId?: string
 }
 
 export default function SimilarListings({ 
   listings, 
   title,
-  initialDisplay = 4 
+  initialDisplay = 4,
+  agentId
 }: SimilarListingsProps) {
   const [showAll, setShowAll] = useState(false)
   
@@ -61,7 +63,8 @@ export default function SimilarListings({
               key={listing.id}
               listing={listing}
               type={type}
-            />
+                agentId={agentId}
+              />
           )
         })}
       </div>

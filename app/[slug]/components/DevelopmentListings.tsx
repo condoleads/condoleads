@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import ListingCard from './ListingCard'
@@ -80,8 +80,10 @@ export default function DevelopmentListings({
                 key={listing.id}
                 listing={listing}
                 type="lease"
-                onEstimateClick={() => handleEstimateClick(listing, 'lease')}
-              />
+                  onEstimateClick={() => handleEstimateClick(listing, 'lease')}
+                  buildingName={developmentName}
+                  agentId={agentId}
+                />
             ))}
           </div>
           {forLeaseActive.length > 12 && (

@@ -44,8 +44,9 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
     'contact_form': 'Contact Form',
     'building_page': 'Building Page',
     'property_inquiry': 'Property Inquiry',
-    'list_your_unit': 'Request to List'
-  }
+    'list_your_unit': 'Request to List',
+      'unit_history_inquiry': 'Unit History Inquiry'
+    }
   return sourceLabels[source] || source.replace(/_/g, ' ')
 }
 

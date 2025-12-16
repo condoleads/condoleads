@@ -118,7 +118,7 @@ export default function UnitHistoryModal({
         await trackActivity({
           contactEmail: contactForm.email,
           agentId: agentId,
-          activityType: 'property_inquiry',
+          activityType: 'unit_history_inquiry',
           activityData: {
             buildingId,
             buildingName,

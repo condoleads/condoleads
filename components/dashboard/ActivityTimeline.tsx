@@ -21,7 +21,8 @@ const activityIcons: Record<string, any> = {
   lease_evaluation_request: Home,
   building_visit_request: Calendar,
   property_inquiry: FileText,
-  contact_form: FileText
+  contact_form: FileText,
+  unit_history_inquiry: FileText
 }
 
 const activityLabels: Record<string, string> = {
@@ -34,7 +35,8 @@ const activityLabels: Record<string, string> = {
   lease_evaluation_request: 'Requested lease evaluation',
   building_visit_request: 'Requested building visit',
   property_inquiry: 'Property inquiry',
-  contact_form: 'Contact form submission'
+  contact_form: 'Contact form submission',
+  unit_history_inquiry: 'Unit history inquiry'
 }
 
 export default function ActivityTimeline({ activities, leadBuilding }: ActivityTimelineProps) {

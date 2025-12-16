@@ -23,6 +23,7 @@ export type ActivityType =
   | 'registration'
   | 'contact_form'
   | 'property_inquiry'
+  | 'unit_history_inquiry'
   
   // Service Requests
   | 'sale_evaluation_request'
