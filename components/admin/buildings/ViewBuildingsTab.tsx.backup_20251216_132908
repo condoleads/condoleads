@@ -23,10 +23,6 @@ interface Building {
   listingCount: number
   development_id: string | null
   assignedAgents: Agent[]
-  parking_value_sale: number | null
-  parking_value_lease: number | null
-  locker_value_sale: number | null
-  locker_value_lease: number | null
 }
 
 export default function ViewBuildingsTab() {
@@ -40,10 +36,6 @@ export default function ViewBuildingsTab() {
   const [editingBuilding, setEditingBuilding] = useState<Building | null>(null)
   const [editName, setEditName] = useState('')
   const [editSlug, setEditSlug] = useState('')
-  const [editParkingSale, setEditParkingSale] = useState<string>('')
-  const [editParkingLease, setEditParkingLease] = useState<string>('')
-  const [editLockerSale, setEditLockerSale] = useState<string>('')
-  const [editLockerLease, setEditLockerLease] = useState<string>('')
   const [saving, setSaving] = useState(false)
   
   // Delete state
@@ -73,10 +65,6 @@ export default function ViewBuildingsTab() {
     setEditingBuilding(building)
     setEditName(building.building_name || '')
     setEditSlug(building.slug || '')
-    setEditParkingSale(building.parking_value_sale?.toString() || '')
-    setEditParkingLease(building.parking_value_lease?.toString() || '')
-    setEditLockerSale(building.locker_value_sale?.toString() || '')
-    setEditLockerLease(building.locker_value_lease?.toString() || '')
   }
 
   const handleSaveEdit = async () => {
@@ -89,11 +77,7 @@ export default function ViewBuildingsTab() {
         body: JSON.stringify({
           buildingId: editingBuilding.id,
           building_name: editName,
-          slug: editSlug,
-          parking_value_sale: editParkingSale ? parseFloat(editParkingSale) : null,
-          parking_value_lease: editParkingLease ? parseFloat(editParkingLease) : null,
-          locker_value_sale: editLockerSale ? parseFloat(editLockerSale) : null,
-          locker_value_lease: editLockerLease ? parseFloat(editLockerLease) : null
+          slug: editSlug
         })
       })
       const data = await res.json()
@@ -331,62 +315,10 @@ export default function ViewBuildingsTab() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                 />
                 <p className="text-xs text-gray-500 mt-1">condoleads.ca/{editSlug}</p>
-                </div>
               </div>
+            </div>
 
-              {/* Estimator Values Section */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <h4 className="text-sm font-semibold text-gray-900 mb-4">Estimator Values (Leave empty to use defaults)</h4>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Parking Value (Sale)</label>
-                    <input
-                      type="number"
-                      value={editParkingSale}
-                      onChange={(e) => setEditParkingSale(e.target.value)}
-                      placeholder="50000"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Default: $50,000/space</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Parking Value (Lease)</label>
-                    <input
-                      type="number"
-                      value={editParkingLease}
-                      onChange={(e) => setEditParkingLease(e.target.value)}
-                      placeholder="200"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Default: $200/mo</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Locker Value (Sale)</label>
-                    <input
-                      type="number"
-                      value={editLockerSale}
-                      onChange={(e) => setEditLockerSale(e.target.value)}
-                      placeholder="10000"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Default: $10,000</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Locker Value (Lease)</label>
-                    <input
-                      type="number"
-                      value={editLockerLease}
-                      onChange={(e) => setEditLockerLease(e.target.value)}
-                      placeholder="50"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Default: $50/mo</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
+            <div className="flex justify-end gap-3 mt-6">
               <button
                 onClick={() => setEditingBuilding(null)}
                 className="px-4 py-2 text-gray-600 hover:text-gray-900"

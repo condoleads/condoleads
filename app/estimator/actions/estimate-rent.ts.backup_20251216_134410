@@ -4,50 +4,30 @@
 import { findComparablesRentals } from '@/lib/estimator/comparable-matcher-rentals'
 import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
 import { getAIInsights } from '@/lib/estimator/ai-insights'
-import { EstimateResult, UnitSpecs, ADJUSTMENT_VALUES_LEASE } from '@/lib/estimator/types'
-import { createClient as createServerClient } from '@supabase/supabase-js'
-
-function createServiceClient() {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+import { EstimateResult, UnitSpecs } from '@/lib/estimator/types'
 
 /**
  * Server action to estimate monthly rent
- * Uses 5-tier matching: BINGO -> BINGO-ADJ -> RANGE -> RANGE-ADJ -> CONTACT
+ * Uses 5-tier matching: BINGO → BINGO-ADJ → RANGE → RANGE-ADJ → CONTACT
  */
 export async function estimateRent(
   specs: UnitSpecs,
   includeAI: boolean = false
 ): Promise<{ success: boolean; data?: EstimateResult & { parkingCost?: number; lockerCost?: number }; error?: string }> {
   try {
-    const supabase = createServiceClient()
-
-    // Fetch building-specific estimator values
-    const { data: building } = await supabase
-      .from('buildings')
-      .select('parking_value_lease, locker_value_lease')
-      .eq('id', specs.buildingId)
-      .single()
-
-    // Use building values if set, otherwise use defaults
-    const parkingValueLease = building?.parking_value_lease ?? ADJUSTMENT_VALUES_LEASE.PARKING_PER_SPACE
-    const lockerValueLease = building?.locker_value_lease ?? ADJUSTMENT_VALUES_LEASE.LOCKER
-
     // Step 1: Find comparable leases using tiered matching
     const matchResult = await findComparablesRentals(specs)
+    
     console.log(`[Rental Estimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}`)
 
     // Step 2: Calculate estimate based on tier
     const estimate = calculateEstimate(matchResult)
 
-    // Step 3: Calculate parking cost using building-specific or default value
-    const parkingCost = specs.parking > 0 ? specs.parking * parkingValueLease : 0
+    // Step 3: Calculate parking cost (market average for Toronto)
+    const parkingCost = specs.parking > 0 ? specs.parking * 200 : 0
 
-    // Step 4: Calculate locker cost using building-specific or default value
-    const lockerCost = specs.hasLocker ? lockerValueLease : 0
+    // Step 4: Calculate locker cost (market average for Toronto)
+    const lockerCost = specs.hasLocker ? 50 : 0
 
     // Step 5: Add AI insights if requested and we have a price
     let aiInsights = undefined
@@ -56,6 +36,7 @@ export async function estimateRent(
         aiInsights = await getAIInsights(specs, estimate.estimatedPrice, matchResult.comparables)
       } catch (aiError) {
         console.log('AI insights unavailable:', aiError)
+        // Continue without AI - not a critical failure
       }
     }
 

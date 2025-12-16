@@ -8,7 +8,7 @@ const supabase = createClient(
 
 export async function PUT(request: NextRequest) {
   try {
-    const { buildingId, building_name, slug, parking_value_sale, parking_value_lease, locker_value_sale, locker_value_lease } = await request.json()
+    const { buildingId, building_name, slug } = await request.json()
 
     if (!buildingId) {
       return NextResponse.json({ error: 'Building ID required' }, { status: 400 })
@@ -17,10 +17,6 @@ export async function PUT(request: NextRequest) {
     const updateData: any = {}
     if (building_name !== undefined) updateData.building_name = building_name
     if (slug !== undefined) updateData.slug = slug
-    if (parking_value_sale !== undefined) updateData.parking_value_sale = parking_value_sale
-    if (parking_value_lease !== undefined) updateData.parking_value_lease = parking_value_lease
-    if (locker_value_sale !== undefined) updateData.locker_value_sale = locker_value_sale
-    if (locker_value_lease !== undefined) updateData.locker_value_lease = locker_value_lease
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })

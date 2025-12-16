@@ -1,0 +1,118 @@
+'use client'
+
+import { formatDistanceToNow } from 'date-fns'
+import { Activity, Calculator, Eye, Calendar, Home, FileText, Lock } from 'lucide-react'
+
+interface ActivityTimelineProps {
+  activities: any[]
+  leadBuilding?: {
+    building_name?: string
+    canonical_address?: string
+  }
+}
+
+const activityIcons: Record<string, any> = {
+  registration: Lock,
+  estimator_used: Calculator,
+  viewed_transaction_history: Eye,
+  viewed_sold_listings: Eye,
+  viewed_leased_listings: Eye,
+  sale_evaluation_request: Home,
+  lease_evaluation_request: Home,
+  building_visit_request: Calendar,
+  property_inquiry: FileText,
+  contact_form: FileText
+}
+
+const activityLabels: Record<string, string> = {
+  registration: 'Registered account',
+  estimator_used: 'Used price estimator',
+  viewed_transaction_history: 'Viewed transaction history',
+  viewed_sold_listings: 'Viewed sold listings',
+  viewed_leased_listings: 'Viewed leased listings',
+  sale_evaluation_request: 'Requested sale evaluation',
+  lease_evaluation_request: 'Requested lease evaluation',
+  building_visit_request: 'Requested building visit',
+  property_inquiry: 'Property inquiry',
+  contact_form: 'Contact form submission'
+}
+
+export default function ActivityTimeline({ activities, leadBuilding }: ActivityTimelineProps) {
+  if (!activities || activities.length === 0) {
+    return (
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold mb-4">Activity Timeline</h3>
+        <p className="text-gray-500 text-sm">No activity recorded yet</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <Activity className="w-5 h-5" />
+        Activity Timeline ({activities.length})
+      </h3>
+      
+      <div className="space-y-4">
+        {activities.map((activity: any, index: number) => {
+          const Icon = activityIcons[activity.activity_type] || Activity
+          const label = activityLabels[activity.activity_type] || activity.activity_type
+          const data = activity.activity_data || {}
+          
+          return (
+            <div key={activity.id} className="flex gap-3 relative">
+              {/* Timeline line */}
+              {index < activities.length - 1 && (
+                <div className="absolute left-[15px] top-[32px] bottom-[-16px] w-0.5 bg-gray-200" />
+              )}
+              
+              {/* Icon */}
+              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center relative z-10">
+                <Icon className="w-4 h-4 text-blue-600" />
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 pt-0.5">
+                <p className="text-sm font-medium text-gray-900">{label}</p>
+                
+                {/* Activity details */}
+                {(data.buildingName || leadBuilding?.building_name) && (
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Building: {data.buildingName || leadBuilding?.building_name}
+                    {data.unitNumber && ` • Unit ${data.unitNumber}`}
+                    {(data.buildingAddress || leadBuilding?.canonical_address) && ` • ${data.buildingAddress || leadBuilding?.canonical_address}`}
+                  </p>
+                )}
+                {data.estimatedPrice && (
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Estimated: ${data.estimatedPrice?.toLocaleString()}
+                  </p>
+                )}
+                {data.requestedDate && (
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Date: {data.requestedDate} {data.requestedTime || ''}
+                  </p>
+                )}
+                {data.totalSales !== undefined && (
+                  <p className="text-xs text-gray-600 mt-0.5">
+                    Viewed {data.totalSales} sold, {data.totalRentals} leased
+                  </p>
+                )}
+                {data.userMessage && (
+                  <p className="text-xs text-gray-600 mt-0.5 italic">
+                    Message: "{data.userMessage}"
+                  </p>
+                )}
+                
+                <p className="text-xs text-gray-400 mt-1">
+                  {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+                </p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

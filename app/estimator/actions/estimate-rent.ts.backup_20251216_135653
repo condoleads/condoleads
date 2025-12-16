@@ -5,26 +5,22 @@ import { findComparablesRentals } from '@/lib/estimator/comparable-matcher-renta
 import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
 import { getAIInsights } from '@/lib/estimator/ai-insights'
 import { EstimateResult, UnitSpecs, ADJUSTMENT_VALUES_LEASE } from '@/lib/estimator/types'
-import { createClient as createServerClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 
-function createServiceClient() {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 /**
  * Server action to estimate monthly rent
- * Uses 5-tier matching: BINGO -> BINGO-ADJ -> RANGE -> RANGE-ADJ -> CONTACT
+ * Uses 5-tier matching: BINGO  BINGO-ADJ  RANGE  RANGE-ADJ  CONTACT
  */
 export async function estimateRent(
   specs: UnitSpecs,
   includeAI: boolean = false
 ): Promise<{ success: boolean; data?: EstimateResult & { parkingCost?: number; lockerCost?: number }; error?: string }> {
   try {
-    const supabase = createServiceClient()
-
     // Fetch building-specific estimator values
     const { data: building } = await supabase
       .from('buildings')
@@ -37,7 +33,7 @@ export async function estimateRent(
     const lockerValueLease = building?.locker_value_lease ?? ADJUSTMENT_VALUES_LEASE.LOCKER
 
     // Step 1: Find comparable leases using tiered matching
-    const matchResult = await findComparablesRentals(specs)
+    const matchResult = await findComparablesRentals(specs, { parkingValueLease, lockerValueLease })
     console.log(`[Rental Estimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}`)
 
     // Step 2: Calculate estimate based on tier
