@@ -15,17 +15,12 @@ interface MatchResult {
   comparables: ComparableSale[]
 }
 
-interface AdjustmentValuesLease {
-  parkingPerSpace: number
-  locker: number
-}
-
 /**
  * Finds comparable leases using 5-tier matching:
  * BINGO → BINGO-ADJ → RANGE → RANGE-ADJ → CONTACT
  * (No MAINT tier for rentals - association fee not relevant)
  */
-export async function findComparablesRentals(specs: UnitSpecs, customValues?: AdjustmentValuesLease): Promise<MatchResult> {
+export async function findComparablesRentals(specs: UnitSpecs): Promise<MatchResult> {
   const supabase = createClient()
 
   // Query closed leases from last 2 years in this specific building
@@ -60,25 +55,25 @@ export async function findComparablesRentals(specs: UnitSpecs, customValues?: Ad
   }
 
   // TIER 1: BINGO - Exact sqft ±10% + same parking + same locker
-  const bingoMatches = findBingoMatches(bedBathMatches, specs, false, customValues)
+  const bingoMatches = findBingoMatches(bedBathMatches, specs, false)
   if (bingoMatches.length > 0) {
     return { tier: 'BINGO', comparables: bingoMatches }
   }
 
   // TIER 2: BINGO-ADJ - Exact sqft ±10% + parking/locker may differ
-  const bingoAdjMatches = findBingoMatches(bedBathMatches, specs, true, customValues)
+  const bingoAdjMatches = findBingoMatches(bedBathMatches, specs, true)
   if (bingoAdjMatches.length > 0) {
     return { tier: 'BINGO-ADJ', comparables: bingoAdjMatches }
   }
 
   // TIER 3: RANGE - Same sqft range + same parking + same locker
-  const rangeMatches = findRangeMatches(bedBathMatches, specs, false, customValues)
+  const rangeMatches = findRangeMatches(bedBathMatches, specs, false)
   if (rangeMatches.length > 0) {
     return { tier: 'RANGE', comparables: rangeMatches }
   }
 
   // TIER 4: RANGE-ADJ - Same sqft range + parking/locker may differ
-  const rangeAdjMatches = findRangeMatches(bedBathMatches, specs, true, customValues)
+  const rangeAdjMatches = findRangeMatches(bedBathMatches, specs, true)
   if (rangeAdjMatches.length > 0) {
     return { tier: 'RANGE-ADJ', comparables: rangeAdjMatches }
   }
@@ -91,7 +86,7 @@ export async function findComparablesRentals(specs: UnitSpecs, customValues?: Ad
 /**
  * BINGO Match: Exact sqft ±10% + bed + bath + (parking + locker if not adjusted)
  */
-function findBingoMatches(leases: any[], specs: UnitSpecs, allowAdjustments: boolean, customValues?: AdjustmentValuesLease): ComparableSale[] {
+function findBingoMatches(leases: any[], specs: UnitSpecs, allowAdjustments: boolean): ComparableSale[] {
   if (!specs.exactSqft) return [] // Need exact sqft for BINGO
   
   const sqftTolerance = specs.exactSqft * 0.10 // ±10%
@@ -117,13 +112,13 @@ function findBingoMatches(leases: any[], specs: UnitSpecs, allowAdjustments: boo
     }
   })
 
-  return matches.map(lease => createComparable(lease, specs, allowAdjustments, customValues))
+  return matches.map(lease => createComparable(lease, specs, allowAdjustments))
 }
 
 /**
  * RANGE Match: Same sqft range + bed + bath + (parking + locker if not adjusted)
  */
-function findRangeMatches(leases: any[], specs: UnitSpecs, allowAdjustments: boolean, customValues?: AdjustmentValuesLease): ComparableSale[] {
+function findRangeMatches(leases: any[], specs: UnitSpecs, allowAdjustments: boolean): ComparableSale[] {
   const matches = leases.filter(lease => {
     // Exact sqft range match
     const rangeMatch = lease.living_area_range === specs.livingAreaRange
@@ -140,7 +135,7 @@ function findRangeMatches(leases: any[], specs: UnitSpecs, allowAdjustments: boo
     }
   })
 
-  return matches.map(lease => createComparable(lease, specs, allowAdjustments, customValues))
+  return matches.map(lease => createComparable(lease, specs, allowAdjustments))
 }
 
 /**
@@ -213,7 +208,7 @@ function findReferenceComparables(allLeases: any[], specs: UnitSpecs): Comparabl
 /**
  * Create ComparableSale object with optional adjustments (parking/locker only)
  */
-function createComparable(lease: any, specs: UnitSpecs, applyAdjustments: boolean, customValues?: AdjustmentValuesLease): ComparableSale {
+function createComparable(lease: any, specs: UnitSpecs, applyAdjustments: boolean): ComparableSale {
   const adjustments: PriceAdjustment[] = []
   let adjustedPrice = lease.close_price
 
@@ -221,7 +216,7 @@ function createComparable(lease: any, specs: UnitSpecs, applyAdjustments: boolea
     // Parking adjustment
     const parkingDiff = specs.parking - (lease.parking_total || 0)
     if (parkingDiff !== 0) {
-      const adjustmentAmount = parkingDiff * (customValues?.parkingPerSpace ?? ADJUSTMENT_VALUES_LEASE.PARKING_PER_SPACE)
+      const adjustmentAmount = parkingDiff * ADJUSTMENT_VALUES_LEASE.PARKING_PER_SPACE
       adjustedPrice += adjustmentAmount
       adjustments.push({
         type: 'parking',
@@ -237,7 +232,7 @@ function createComparable(lease: any, specs: UnitSpecs, applyAdjustments: boolea
     const userHasLocker = specs.hasLocker
     const compHasLocker = lease.locker === 'Owned'
     if (userHasLocker !== compHasLocker) {
-      const adjustmentAmount = userHasLocker ? (customValues?.locker ?? ADJUSTMENT_VALUES_LEASE.LOCKER) : -(customValues?.locker ?? ADJUSTMENT_VALUES_LEASE.LOCKER)
+      const adjustmentAmount = userHasLocker ? ADJUSTMENT_VALUES_LEASE.LOCKER : -ADJUSTMENT_VALUES_LEASE.LOCKER
       adjustedPrice += adjustmentAmount
       adjustments.push({
         type: 'locker',

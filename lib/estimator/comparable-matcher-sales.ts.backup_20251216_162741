@@ -16,16 +16,11 @@ interface MatchResult {
   comparables: ComparableSale[]
 }
 
-interface AdjustmentValues {
-  parkingPerSpace: number
-  locker: number
-}
-
 /**
  * Finds comparable sales using 7-tier matching:
  * BINGO → BINGO-ADJ → RANGE → RANGE-ADJ → MAINT → MAINT-ADJ → CONTACT
  */
-export async function findComparables(specs: UnitSpecs, customValues?: AdjustmentValues): Promise<MatchResult> {
+export async function findComparables(specs: UnitSpecs): Promise<MatchResult> {
   const supabase = createClient()
 
   // Query closed sales from last 2 years in this specific building
@@ -60,37 +55,37 @@ export async function findComparables(specs: UnitSpecs, customValues?: Adjustmen
   }
 
   // TIER 1: BINGO - Exact sqft ±10% + same parking + same locker
-  const bingoMatches = findBingoMatches(bedBathMatches, specs, false, customValues)
+  const bingoMatches = findBingoMatches(bedBathMatches, specs, false)
   if (bingoMatches.length > 0) {
     return { tier: 'BINGO', comparables: bingoMatches }
   }
 
   // TIER 2: BINGO-ADJ - Exact sqft ±10% + parking/locker may differ
-  const bingoAdjMatches = findBingoMatches(bedBathMatches, specs, true, customValues)
+  const bingoAdjMatches = findBingoMatches(bedBathMatches, specs, true)
   if (bingoAdjMatches.length > 0) {
     return { tier: 'BINGO-ADJ', comparables: bingoAdjMatches }
   }
 
   // TIER 3: RANGE - Same sqft range + same parking + same locker
-  const rangeMatches = findRangeMatches(bedBathMatches, specs, false, customValues)
+  const rangeMatches = findRangeMatches(bedBathMatches, specs, false)
   if (rangeMatches.length > 0) {
     return { tier: 'RANGE', comparables: rangeMatches }
   }
 
   // TIER 4: RANGE-ADJ - Same sqft range + parking/locker may differ
-  const rangeAdjMatches = findRangeMatches(bedBathMatches, specs, true, customValues)
+  const rangeAdjMatches = findRangeMatches(bedBathMatches, specs, true)
   if (rangeAdjMatches.length > 0) {
     return { tier: 'RANGE-ADJ', comparables: rangeAdjMatches }
   }
 
   // TIER 5: MAINT - Association fee ±20% + same parking + same locker
-  const maintMatches = findMaintenanceMatches(bedBathMatches, specs, false, customValues)
+  const maintMatches = findMaintenanceMatches(bedBathMatches, specs, false)
   if (maintMatches.length > 0) {
     return { tier: 'MAINT', comparables: maintMatches }
   }
 
   // TIER 6: MAINT-ADJ - Association fee ±20% + parking/locker may differ
-  const maintAdjMatches = findMaintenanceMatches(bedBathMatches, specs, true, customValues)
+  const maintAdjMatches = findMaintenanceMatches(bedBathMatches, specs, true)
   if (maintAdjMatches.length > 0) {
     return { tier: 'MAINT-ADJ', comparables: maintAdjMatches }
   }
@@ -103,7 +98,7 @@ export async function findComparables(specs: UnitSpecs, customValues?: Adjustmen
 /**
  * BINGO Match: Exact sqft ±10% + bed + bath + (parking + locker if not adjusted)
  */
-function findBingoMatches(sales: any[], specs: UnitSpecs, allowAdjustments: boolean, customValues?: AdjustmentValues): ComparableSale[] {
+function findBingoMatches(sales: any[], specs: UnitSpecs, allowAdjustments: boolean): ComparableSale[] {
   if (!specs.exactSqft) return [] // Need exact sqft for BINGO
   
   const sqftTolerance = specs.exactSqft * 0.10 // ±10%
@@ -129,13 +124,13 @@ function findBingoMatches(sales: any[], specs: UnitSpecs, allowAdjustments: bool
     }
   })
 
-  return matches.map(sale => createComparable(sale, specs, allowAdjustments, customValues))
+  return matches.map(sale => createComparable(sale, specs, allowAdjustments))
 }
 
 /**
  * RANGE Match: Same sqft range + bed + bath + (parking + locker if not adjusted)
  */
-function findRangeMatches(sales: any[], specs: UnitSpecs, allowAdjustments: boolean, customValues?: AdjustmentValues): ComparableSale[] {
+function findRangeMatches(sales: any[], specs: UnitSpecs, allowAdjustments: boolean): ComparableSale[] {
   const matches = sales.filter(sale => {
     // Exact sqft range match
     const rangeMatch = sale.living_area_range === specs.livingAreaRange
@@ -152,13 +147,13 @@ function findRangeMatches(sales: any[], specs: UnitSpecs, allowAdjustments: bool
     }
   })
 
-  return matches.map(sale => createComparable(sale, specs, allowAdjustments, customValues))
+  return matches.map(sale => createComparable(sale, specs, allowAdjustments))
 }
 
 /**
  * MAINT Match: Association fee ±20% + bed + bath + (parking + locker if not adjusted)
  */
-function findMaintenanceMatches(sales: any[], specs: UnitSpecs, allowAdjustments: boolean, customValues?: AdjustmentValues): ComparableSale[] {
+function findMaintenanceMatches(sales: any[], specs: UnitSpecs, allowAdjustments: boolean): ComparableSale[] {
   if (!specs.associationFee) return [] // Need user's fee for MAINT
 
   const matches = sales.filter(sale => {
@@ -177,7 +172,7 @@ function findMaintenanceMatches(sales: any[], specs: UnitSpecs, allowAdjustments
     }
   })
 
-  return matches.map(sale => createComparable(sale, specs, allowAdjustments, customValues))
+  return matches.map(sale => createComparable(sale, specs, allowAdjustments))
 }
 
 /**
@@ -251,7 +246,7 @@ function findReferenceComparables(allSales: any[], specs: UnitSpecs): Comparable
 /**
  * Create ComparableSale object with optional adjustments
  */
-function createComparable(sale: any, specs: UnitSpecs, applyAdjustments: boolean, customValues?: AdjustmentValues): ComparableSale {
+function createComparable(sale: any, specs: UnitSpecs, applyAdjustments: boolean): ComparableSale {
   const adjustments: PriceAdjustment[] = []
   let adjustedPrice = sale.close_price
 
@@ -259,7 +254,7 @@ function createComparable(sale: any, specs: UnitSpecs, applyAdjustments: boolean
     // Parking adjustment
     const parkingDiff = specs.parking - (sale.parking_total || 0)
     if (parkingDiff !== 0) {
-      const adjustmentAmount = parkingDiff * (customValues?.parkingPerSpace ?? ADJUSTMENT_VALUES.PARKING_PER_SPACE)
+      const adjustmentAmount = parkingDiff * ADJUSTMENT_VALUES.PARKING_PER_SPACE
       adjustedPrice += adjustmentAmount
       adjustments.push({
         type: 'parking',
@@ -275,7 +270,7 @@ function createComparable(sale: any, specs: UnitSpecs, applyAdjustments: boolean
     const userHasLocker = specs.hasLocker
     const compHasLocker = sale.locker === 'Owned'
     if (userHasLocker !== compHasLocker) {
-      const adjustmentAmount = userHasLocker ? (customValues?.locker ?? ADJUSTMENT_VALUES.LOCKER) : -(customValues?.locker ?? ADJUSTMENT_VALUES.LOCKER)
+      const adjustmentAmount = userHasLocker ? ADJUSTMENT_VALUES.LOCKER : -ADJUSTMENT_VALUES.LOCKER
       adjustedPrice += adjustmentAmount
       adjustments.push({
         type: 'locker',

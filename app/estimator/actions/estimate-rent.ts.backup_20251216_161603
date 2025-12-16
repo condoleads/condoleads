@@ -17,8 +17,6 @@ function createServiceClient() {
 /**
  * Server action to estimate monthly rent
  * Uses 5-tier matching: BINGO -> BINGO-ADJ -> RANGE -> RANGE-ADJ -> CONTACT
- * 
- * Value Priority: Building-specific > Universal Default > System Hardcoded
  */
 export async function estimateRent(
   specs: UnitSpecs,
@@ -27,44 +25,28 @@ export async function estimateRent(
   try {
     const supabase = createServiceClient()
 
-    // Fetch building-specific values
+    // Fetch building-specific estimator values
     const { data: building } = await supabase
       .from('buildings')
       .select('parking_value_lease, locker_value_lease')
       .eq('id', specs.buildingId)
       .single()
 
-    // Fetch universal defaults from system_settings
-    const { data: systemSettings } = await supabase
-      .from('system_settings')
-      .select('setting_value')
-      .eq('setting_key', 'estimator_defaults')
-      .single()
-
-    const universalDefaults = systemSettings?.setting_value || {}
-
-    // Priority: Building-specific > Universal Default > System Hardcoded
-    const parkingValueLease = 
-      building?.parking_value_lease ?? 
-      universalDefaults.parking_value_lease ?? 
-      ADJUSTMENT_VALUES_LEASE.PARKING_PER_SPACE
-
-    const lockerValueLease = 
-      building?.locker_value_lease ?? 
-      universalDefaults.locker_value_lease ?? 
-      ADJUSTMENT_VALUES_LEASE.LOCKER
+    // Use building values if set, otherwise use defaults
+    const parkingValueLease = building?.parking_value_lease ?? ADJUSTMENT_VALUES_LEASE.PARKING_PER_SPACE
+    const lockerValueLease = building?.locker_value_lease ?? ADJUSTMENT_VALUES_LEASE.LOCKER
 
     // Step 1: Find comparable leases using tiered matching
-    const matchResult = await findComparablesRentals(specs, { parkingPerSpace: parkingValueLease, locker: lockerValueLease })
+    const matchResult = await findComparablesRentals(specs)
     console.log(`[Rental Estimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}`)
 
     // Step 2: Calculate estimate based on tier
     const estimate = calculateEstimate(matchResult)
 
-    // Step 3: Calculate parking cost using priority values
+    // Step 3: Calculate parking cost using building-specific or default value
     const parkingCost = specs.parking > 0 ? specs.parking * parkingValueLease : 0
 
-    // Step 4: Calculate locker cost using priority values
+    // Step 4: Calculate locker cost using building-specific or default value
     const lockerCost = specs.hasLocker ? lockerValueLease : 0
 
     // Step 5: Add AI insights if requested and we have a price
