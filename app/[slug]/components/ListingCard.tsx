@@ -15,9 +15,11 @@ interface ListingCardProps {
   type: 'sale' | 'lease'
   onEstimateClick?: (exactSqft: number | null) => void
   buildingSlug?: string
+  buildingName?: string
+  agentId?: string
 }
 
-export default function ListingCard({ listing, type, onEstimateClick, buildingSlug }: ListingCardProps) {
+export default function ListingCard({ listing, type, onEstimateClick, buildingSlug, buildingName, agentId }: ListingCardProps) {
   const isSale = type === 'sale'
   const isClosed = listing.standard_status === 'Closed'
   const photos = listing.media?.filter(m => m.variant_type === 'large') || []
@@ -390,13 +392,15 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
       />
 
       <UnitHistoryModal
-          isOpen={showHistory}
-          onClose={() => setShowHistory(false)}
-          unitNumber={listing.unit_number || ''}
-          buildingId={listing.building_id}
-          buildingSlug={buildingSlug}
-          currentListingId={listing.id}
-        />
+            isOpen={showHistory}
+            onClose={() => setShowHistory(false)}
+            unitNumber={listing.unit_number || ''}
+            buildingId={listing.building_id}
+            buildingSlug={buildingSlug}
+            buildingName={buildingName}
+            agentId={agentId}
+            currentListingId={listing.id}
+          />
     </article>
   )
 }

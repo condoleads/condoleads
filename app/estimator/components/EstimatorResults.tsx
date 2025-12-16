@@ -1,12 +1,13 @@
 // app/estimator/components/EstimatorResults.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { EstimateResult, TEMPERATURE_CONFIG } from '@/lib/estimator/types'
 import { formatPrice } from '@/lib/utils/formatters'
 import { MessageSquare, AlertTriangle, Phone } from 'lucide-react'
 import { getOrCreateLead } from '@/lib/actions/leads'
 import { trackActivity } from '@/lib/actions/user-activity'
+import { useAuth } from '@/components/auth/AuthContext'
 
 interface EstimatorResultsProps {
   result: EstimateResult
@@ -30,13 +31,25 @@ export default function EstimatorResults({
   propertySpecs
 }: EstimatorResultsProps) {
   const isSale = type === 'sale' || type === 'estimator'
-  const [showContactForm, setShowContactForm] = useState(false)
+  const { user } = useAuth()
+  const [showContactForm, setShowContactForm] = useState(true)
   const [contactForm, setContactForm] = useState({
     name: '',
     email: '',
     phone: ''
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Pre-fill form with user data
+  useEffect(() => {
+    if (user) {
+      setContactForm({
+        name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+        email: user.email || '',
+        phone: user.user_metadata?.phone || ''
+      })
+    }
+  }, [user])
   const [submitted, setSubmitted] = useState(false)
 
   const confidenceColors: Record<string, string> = {

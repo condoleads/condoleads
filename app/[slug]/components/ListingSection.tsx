@@ -109,12 +109,14 @@ export default function ListingSection({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {paginatedData.map((listing) => (
                 <ListingCard
-                  key={listing.id}
-                  listing={listing}
-                  type={isSaleTab ? 'sale' : 'lease'}
-                  onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'lease', exactSqft)}
-                  buildingSlug={buildingSlug}
-                />
+                    key={listing.id}
+                    listing={listing}
+                    type={isSaleTab ? 'sale' : 'lease'}
+                    onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'lease', exactSqft)}
+                    buildingSlug={buildingSlug}
+                    buildingName={buildingName}
+                    agentId={agentId}
+                  />
               ))}
             </div>
 

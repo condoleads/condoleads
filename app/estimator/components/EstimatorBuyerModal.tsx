@@ -48,6 +48,13 @@ export default function EstimatorBuyerModal({
     }
   }, [isOpen, listing])
 
+  // Auto-run estimate when modal opens
+  useEffect(() => {
+    if (isOpen && listing && !result && !loading) {
+      handleEstimate()
+    }
+  }, [isOpen, listing])
+
   // Prevent body scroll when modal is open
   useEffect(() => {
     if (isOpen) {

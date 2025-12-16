@@ -49,11 +49,13 @@ export default function DevelopmentListings({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {displayedSale.map((listing: any) => (
               <ListingCard
-                key={listing.id}
-                listing={listing}
-                type="sale"
-                onEstimateClick={() => handleEstimateClick(listing, 'sale')}
-              />
+                  key={listing.id}
+                  listing={listing}
+                  type="sale"
+                  onEstimateClick={() => handleEstimateClick(listing, 'sale')}
+                  buildingName={developmentName}
+                  agentId={agentId}
+                />
             ))}
           </div>
           {forSaleActive.length > 12 && (
@@ -100,7 +102,7 @@ export default function DevelopmentListings({
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Recently Sold ({soldListings.length})</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {displayedSold.map((listing: any) => (
-              <ListingCard key={listing.id} listing={listing} type="sale" />
+              <ListingCard key={listing.id} listing={listing} type="sale" buildingName={developmentName} agentId={agentId} />
             ))}
           </div>
           {soldListings.length > 12 && (
@@ -121,7 +123,7 @@ export default function DevelopmentListings({
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Recently Leased ({leasedListings.length})</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {displayedLeased.map((listing: any) => (
-              <ListingCard key={listing.id} listing={listing} type="lease" />
+              <ListingCard key={listing.id} listing={listing} type="lease" buildingName={developmentName} agentId={agentId} />
             ))}
           </div>
           {leasedListings.length > 12 && (
