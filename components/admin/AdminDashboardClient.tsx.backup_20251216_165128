@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { Users, Building2, TrendingUp, BarChart3 } from 'lucide-react'
 
@@ -25,9 +25,6 @@ export default function AdminDashboardClient({ stats, agents, buildings }: Admin
               </a>
               <a href="/admin/database/validate" className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
                 Database Tools
-              </a>
-              <a href="/admin/settings" className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-                 Settings
               </a>
             </div>
           </div>
