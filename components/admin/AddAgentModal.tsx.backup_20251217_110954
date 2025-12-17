@@ -1,14 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Upload, Users, Globe } from 'lucide-react'
+import { X, Upload, Users, Globe, Building2 } from 'lucide-react'
 
 interface Agent {
   id: string
   full_name: string
   subdomain: string
   custom_domain?: string
-  can_create_children?: boolean
 }
 
 interface AddAgentModalProps {
@@ -36,8 +35,10 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
     custom_domain: '',
     bio: '',
     profile_photo_url: '',
+    // Hierarchy fields
     parent_id: '',
     can_create_children: false,
+    // Branding
     primary_color: '#2563eb',
     secondary_color: '#1e40af'
   })
@@ -46,6 +47,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
   const [error, setError] = useState('')
   const [photoPreview, setPhotoPreview] = useState('')
 
+  // Fetch agents for parent dropdown if not provided
   useEffect(() => {
     if (isOpen && existingAgents.length === 0) {
       fetchAgents()
@@ -65,12 +67,19 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
   }
 
   function generateSubdomain(fullName: string) {
-    return fullName.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 30)
+    return fullName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .substring(0, 30)
   }
 
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     const name = e.target.value
-    setFormData({ ...formData, full_name: name, subdomain: generateSubdomain(name) })
+    setFormData({
+      ...formData,
+      full_name: name,
+      subdomain: generateSubdomain(name)
+    })
   }
 
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -127,6 +136,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
       if (data.success) {
         onSuccess()
         onClose()
+        // Reset form
         setFormData({
           full_name: '',
           email: '',
@@ -161,7 +171,8 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
 
   if (!isOpen) return null
 
-  const availableParents = agents.filter(a => a.can_create_children !== false)
+  // Filter out agents that can't have children for parent dropdown
+  const availableParents = agents.filter(a => a.id !== formData.parent_id)
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -180,6 +191,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             </div>
           )}
 
+          {/* Hierarchy Section - NEW */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="text-lg font-semibold text-blue-900 mb-4 flex items-center gap-2">
               <Users className="w-5 h-5" />
@@ -202,7 +214,9 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                     </option>
                   ))}
                 </select>
-                <p className="text-xs text-gray-500 mt-1">Leave empty for solo agents or top-level managers</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave empty for solo agents or top-level managers
+                </p>
               </div>
 
               <div className="flex items-center">
@@ -222,6 +236,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             </div>
           </div>
 
+          {/* Personal Information */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -299,6 +314,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             </div>
           </div>
 
+          {/* Professional Information */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Professional Information (RECO)</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -325,6 +341,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                   <option value="Sales Representative">Sales Representative</option>
                   <option value="custom">Custom Title...</option>
                 </select>
+
                 {formData.useCustomTitle && (
                   <input
                     type="text"
@@ -338,7 +355,9 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">License Number</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  License Number
+                </label>
                 <input
                   type="text"
                   value={formData.license_number}
@@ -378,6 +397,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             </div>
           </div>
 
+          {/* Website Setup */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Globe className="w-5 h-5" />
@@ -403,7 +423,9 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Custom Domain</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Custom Domain
+                  </label>
                   <input
                     type="text"
                     value={formData.custom_domain}
@@ -415,9 +437,12 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                 </div>
               </div>
 
+              {/* Branding Colors */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Primary Color
+                  </label>
                   <div className="flex items-center gap-2">
                     <input
                       type="color"
@@ -430,12 +455,15 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                       value={formData.primary_color}
                       onChange={(e) => setFormData({...formData, primary_color: e.target.value})}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="#2563eb"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Secondary Color</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Secondary Color
+                  </label>
                   <div className="flex items-center gap-2">
                     <input
                       type="color"
@@ -448,13 +476,16 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                       value={formData.secondary_color}
                       onChange={(e) => setFormData({...formData, secondary_color: e.target.value})}
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="#1e40af"
                     />
                   </div>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Bio / Description</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Bio / Description
+                </label>
                 <textarea
                   value={formData.bio}
                   onChange={(e) => setFormData({...formData, bio: e.target.value})}
@@ -465,7 +496,9 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Profile Photo</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Profile Photo
+                </label>
                 <div className="flex items-start gap-4">
                   {photoPreview && (
                     <img src={photoPreview} alt="Preview" className="w-20 h-20 rounded-full object-cover" />
@@ -474,7 +507,12 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                     <label className="flex items-center justify-center px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
                       <Upload className="w-5 h-5 text-gray-400 mr-2" />
                       <span className="text-sm text-gray-600">Upload Photo</span>
-                      <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handlePhotoChange}
+                        className="hidden"
+                      />
                     </label>
                     <p className="text-xs text-gray-500 mt-1">Or paste URL below</p>
                     <input
@@ -490,6 +528,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             </div>
           </div>
 
+          {/* Preview Badge */}
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm font-medium text-gray-700 mb-2">Preview:</p>
             <div className="flex items-center gap-3">
@@ -513,6 +552,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             </div>
           </div>
 
+          {/* Actions */}
           <div className="flex gap-3 pt-4 border-t">
             <button
               type="button"
