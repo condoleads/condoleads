@@ -38,7 +38,7 @@ export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: bo
   
   // If forceNew is true (form submissions), always create new lead
   if (params.forceNew) {
-    console.log('✨ Force creating new lead for form submission:', params.contactEmail)
+    console.log('âœ¨ Force creating new lead for form submission:', params.contactEmail)
     return await createLead(params)
   }
   
@@ -51,7 +51,7 @@ export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: bo
     .single()
   
   if (existingLead && !searchError) {
-    console.log('✅ Lead already exists:', existingLead.id)
+    console.log('âœ… Lead already exists:', existingLead.id)
     
     // Update last activity timestamp
     await supabase
@@ -67,7 +67,7 @@ export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: bo
   }
   
   // Lead doesn't exist, create new one
-  console.log('✨ Creating new lead for:', params.contactEmail)
+  console.log('âœ¨ Creating new lead for:', params.contactEmail)
   return await createLead(params)
 }
 export async function createLead(params: CreateLeadParams) {
@@ -132,7 +132,7 @@ export async function createLead(params: CreateLeadParams) {
   // Send email notification to agent for NEW leads
   if (agent?.email) {
     try {
-      console.log('📧 Sending email for new lead:', { leadId: lead.id, source, agentEmail: agent.email })
+      console.log('ðŸ“§ Sending email for new lead:', { leadId: lead.id, source, agentEmail: agent.email })
       await sendActivityEmail({
         leadId: lead.id,
         activityType: source,
@@ -143,12 +143,70 @@ export async function createLead(params: CreateLeadParams) {
         unitNumber: params.propertyDetails?.unitNumber,
         message: params.message
       })
-      console.log('✅ Email sent successfully')
+      console.log('âœ… Email sent successfully')
     } catch (emailError) {
-      console.error('❌ Error sending email:', emailError)
+      console.error('âŒ Error sending email:', emailError)
     }
   } else {
-    console.log('⚠️ No agent email found, skipping notification')
+    console.log('âš ï¸ No agent email found, skipping notification')
+  }
+
+  // Send email to manager (parent) if they have receive_team_lead_emails enabled
+  if (agent?.parent_id) {
+    const { data: manager } = await supabase
+      .from('agents')
+      .select('id, full_name, email, receive_team_lead_emails')
+      .eq('id', agent.parent_id)
+      .single()
+
+    if (manager?.receive_team_lead_emails && manager.email) {
+      try {
+        console.log('Sending email to manager:', manager.email)
+        await sendActivityEmail({
+          leadId: lead.id,
+          activityType: source,
+          agentEmail: manager.email,
+          agentName: manager.full_name || 'Manager',
+          buildingName: params.propertyDetails?.buildingName,
+          buildingAddress: params.propertyDetails?.buildingAddress,
+          unitNumber: params.propertyDetails?.unitNumber,
+          message: params.message
+        })
+        console.log('Manager email sent')
+      } catch (err) {
+        console.error('Manager email error:', err)
+      }
+    }
+  }
+
+  // Send email to admins with receive_all_lead_emails enabled
+  const { data: admins } = await supabase
+    .from('agents')
+    .select('id, full_name, email')
+    .eq('receive_all_lead_emails', true)
+    .eq('is_active', true)
+
+  if (admins && admins.length > 0) {
+    for (const admin of admins) {
+      if (admin.email && admin.email !== agent?.email) {
+        try {
+          console.log('Sending email to admin:', admin.email)
+          await sendActivityEmail({
+            leadId: lead.id,
+            activityType: source,
+            agentEmail: admin.email,
+            agentName: admin.full_name || 'Admin',
+            buildingName: params.propertyDetails?.buildingName,
+            buildingAddress: params.propertyDetails?.buildingAddress,
+            unitNumber: params.propertyDetails?.unitNumber,
+            message: params.message
+          })
+          console.log('Admin email sent to', admin.email)
+        } catch (err) {
+          console.error('Admin email error:', err)
+        }
+      }
+    }
   }
 
   return { success: true, lead }
