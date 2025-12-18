@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getCurrentUser, isAdmin } from '@/lib/auth/helpers'
 
@@ -148,7 +148,7 @@ export async function PUT(
   const updateData: Record<string, any> = {}
   
   const allowedFields = [
-    'full_name', 'email', 'phone', 'title', 'license_number',
+    'full_name', 'email', 'cell_phone', 'office_phone', 'whatsapp_number', 'title', 'license_number',
     'brokerage_name', 'brokerage_address', 'subdomain', 'custom_domain',
     'bio', 'profile_photo_url', 'notification_email', 'is_active',
     'parent_id', 'can_create_children', 'branding'

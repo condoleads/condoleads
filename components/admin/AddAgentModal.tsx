@@ -23,7 +23,9 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
-    phone: '',
+    cell_phone: '',
+    office_phone: '',
+    whatsapp_number: '',
     password: '',
     confirmPassword: '',
     title: 'Realtor',
@@ -130,7 +132,9 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
         setFormData({
           full_name: '',
           email: '',
-          phone: '',
+          cell_phone: '',
+    office_phone: '',
+    whatsapp_number: '',
           password: '',
           confirmPassword: '',
           title: 'Realtor',
@@ -260,12 +264,35 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                 <input
                   type="tel"
                   required
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                  value={formData.cell_phone}
+                  onChange={(e) => setFormData({...formData, cell_phone: e.target.value})}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   placeholder="416-555-0123"
                 />
               </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Office Phone</label>
+                  <input
+                    type="tel"
+                    value={formData.office_phone}
+                    onChange={(e) => setFormData({...formData, office_phone: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="416-555-0100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp Number</label>
+                  <input
+                    type="tel"
+                    value={formData.whatsapp_number}
+                    onChange={(e) => setFormData({...formData, whatsapp_number: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    placeholder="+1 416-555-0123"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Include country code for WhatsApp</p>
+                </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
