@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { requireAgent } from '@/lib/auth/helpers'
 import { getAgentLeads, getAllLeadsForAdmin } from '@/lib/actions/leads'
+import { getVisibleLeads } from '@/lib/hierarchy/agent-tree'
 import LeadsTable from '@/components/dashboard/LeadsTable'
 
 export default async function LeadsPage() {
@@ -13,7 +14,9 @@ export default async function LeadsPage() {
   // Fetch leads based on admin status
   const leadsResult = agent.is_admin 
     ? await getAllLeadsForAdmin()
-    : await getAgentLeads(agent.id)
+    : agent.can_create_children
+      ? { success: true, leads: await getVisibleLeads(agent.id) }
+      : await getAgentLeads(agent.id)
   const leads = leadsResult.success ? leadsResult.leads : []
 
   return (
