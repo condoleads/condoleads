@@ -141,7 +141,7 @@ export async function createLead(params: CreateLeadParams) {
         buildingName: params.propertyDetails?.buildingName,
         buildingAddress: params.propertyDetails?.buildingAddress,
         unitNumber: params.propertyDetails?.unitNumber,
-        message: params.message,
+        message: params.message
       })
       console.log('Ã¢Å“â€¦ Email sent successfully')
     } catch (emailError) {
@@ -170,9 +170,7 @@ export async function createLead(params: CreateLeadParams) {
           buildingName: params.propertyDetails?.buildingName,
           buildingAddress: params.propertyDetails?.buildingAddress,
           unitNumber: params.propertyDetails?.unitNumber,
-          message: params.message,
-          isManagerNotification: true,
-          teamAgentName: agent.full_name
+          message: params.message
         })
         console.log('Manager email sent')
       } catch (err) {
@@ -201,9 +199,7 @@ export async function createLead(params: CreateLeadParams) {
             buildingName: params.propertyDetails?.buildingName,
             buildingAddress: params.propertyDetails?.buildingAddress,
             unitNumber: params.propertyDetails?.unitNumber,
-            message: params.message,
-            isAdminNotification: true,
-            teamAgentName: agent?.full_name
+            message: params.message
           })
           console.log('Admin email sent to', admin.email)
         } catch (err) {
