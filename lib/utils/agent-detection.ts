@@ -1,10 +1,12 @@
-﻿import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
 interface Agent {
   id: string
   full_name: string
   email: string
-  phone: string | null
+  cell_phone: string | null
+  office_phone?: string | null
+  whatsapp_number?: string | null
   profile_photo_url: string | null
   bio: string | null
   brokerage_name: string | null

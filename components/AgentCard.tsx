@@ -10,7 +10,9 @@ interface AgentCardProps {
     id: string
     full_name: string
     email: string
-    phone?: string | null
+    cell_phone?: string | null
+    office_phone?: string | null
+    whatsapp_number?: string | null
     profile_photo_url?: string | null
     subdomain: string
     branding?: {
@@ -77,13 +79,13 @@ export function AgentCard({
             <span className="text-sm truncate">{agent.email}</span>
           </a>
           
-          {agent.phone && (
+          {agent.cell_phone && (
             <a 
-              href={`tel:${agent.phone}`}
+              href={`tel:${agent.cell_phone}`}
               className="flex items-center gap-3 bg-white/10 hover:bg-white/20 backdrop-blur-sm px-4 py-3 rounded-lg transition-all group"
             >
               <Phone className="w-5 h-5 group-hover:scale-110 transition-transform" />
-              <span className="text-sm">{agent.phone}</span>
+              <span className="text-sm">{agent.cell_phone}</span>
             </a>
           )}
           

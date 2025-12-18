@@ -238,7 +238,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
           __html: `window.__AGENT_DATA__ = ${JSON.stringify({
             full_name: agent.full_name,
             email: agent.email,
-            phone: agent.phone,
+            phone: agent.cell_phone,
             brokerage_name: agent.brokerage_name,
             brokerage_address: agent.brokerage_address,
             title: agent.title

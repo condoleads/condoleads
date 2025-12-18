@@ -4,7 +4,9 @@ interface HeroSectionProps {
   agent: {
     full_name: string;
     email: string;
-    phone?: string | null;
+    cell_phone?: string | null
+    office_phone?: string | null
+    whatsapp_number?: string | null;
     bio?: string;
     profile_photo_url?: string;
   };
@@ -73,13 +75,13 @@ export function HeroSection({ agent }: HeroSectionProps) {
                 <span className="truncate">{agent.email}</span>
               </a>
               
-              {agent.phone && (
+              {agent.cell_phone && (
                 <a 
-                  href={`tel:${agent.phone}`}
+                  href={`tel:${agent.cell_phone}`}
                   className="flex items-center justify-center gap-3 bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:from-green-600 hover:to-green-700 transition-all shadow-lg hover:shadow-2xl group"
                 >
                   <Phone className="w-6 h-6 group-hover:scale-110 transition-transform" />
-                  {agent.phone}
+                  {agent.cell_phone}
                 </a>
               )}
             </div>

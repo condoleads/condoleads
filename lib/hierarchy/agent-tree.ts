@@ -12,7 +12,9 @@ export interface Agent {
   id: string
   full_name: string
   email: string
-  phone?: string
+  cell_phone?: string
+  office_phone?: string
+  whatsapp_number?: string
   subdomain?: string
   custom_domain?: string
   parent_id?: string
