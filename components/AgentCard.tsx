@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { Mail, Phone, Home, Send } from 'lucide-react'
@@ -18,6 +18,7 @@ interface AgentCardProps {
       secondary_color?: string
     } | null
   }
+  // Optional context for different pages
   source?: 'home_page' | 'building_page' | 'property_inquiry'
   buildingId?: string
   buildingName?: string
@@ -38,19 +39,17 @@ export function AgentCard({
   listingAddress
 }: AgentCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
+
   const primaryColor = agent.branding?.primary_color || '#2563eb'
   const secondaryColor = agent.branding?.secondary_color || '#1e40af'
 
   return (
     <>
-      <div 
-        className="rounded-2xl p-6 text-white shadow-xl"
-        style={{ background: `linear-gradient(to bottom right, ${primaryColor}, ${secondaryColor})` }}
-      >
+      <div className="rounded-2xl p-6 text-white shadow-xl" style={{ background: `linear-gradient(to bottom right, ${primaryColor}, ${secondaryColor})` }}>
         <div className="flex items-center gap-4 mb-4">
           {agent.profile_photo_url ? (
-            <img
-              src={agent.profile_photo_url}
+            <img 
+              src={agent.profile_photo_url} 
               alt={agent.full_name}
               className="w-20 h-20 rounded-full border-4 border-white shadow-lg object-cover"
             />
@@ -61,24 +60,25 @@ export function AgentCard({
               </span>
             </div>
           )}
+          
           <div>
-            <p className="text-sm text-white/70 mb-1">Your Agent</p>
+            <p className="text-sm text-blue-200 mb-1">Your Agent</p>
             <h3 className="text-2xl font-bold">{agent.full_name}</h3>
-            <p className="text-white/70">Condo Specialist</p>
+            <p className="text-blue-200">Condo Specialist</p>
           </div>
         </div>
-
+        
         <div className="space-y-3">
-          
+          <a 
             href={`mailto:${agent.email}`}
             className="flex items-center gap-3 bg-white/10 hover:bg-white/20 backdrop-blur-sm px-4 py-3 rounded-lg transition-all group"
           >
             <Mail className="w-5 h-5 group-hover:scale-110 transition-transform" />
             <span className="text-sm truncate">{agent.email}</span>
           </a>
-
+          
           {agent.phone && (
-            
+            <a 
               href={`tel:${agent.phone}`}
               className="flex items-center gap-3 bg-white/10 hover:bg-white/20 backdrop-blur-sm px-4 py-3 rounded-lg transition-all group"
             >
@@ -86,17 +86,16 @@ export function AgentCard({
               <span className="text-sm">{agent.phone}</span>
             </a>
           )}
-
+          
           <button
             onClick={() => setIsModalOpen(true)}
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-100 px-4 py-3 rounded-lg transition-all font-semibold group"
-            style={{ color: primaryColor }}
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-100 px-4 py-3 rounded-lg transition-all font-semibold group" style={{ color: primaryColor }}
           >
             <Send className="w-5 h-5 group-hover:scale-110 transition-transform" />
             Send Message
           </button>
 
-          <Link
+          <Link 
             href="/"
             className="flex items-center gap-3 bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white px-4 py-3 rounded-lg transition-all font-semibold group justify-center"
           >
@@ -106,6 +105,7 @@ export function AgentCard({
         </div>
       </div>
 
+      {/* Contact Modal */}
       <ContactModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
