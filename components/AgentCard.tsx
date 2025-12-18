@@ -38,8 +38,6 @@ export function AgentCard({
   listingAddress
 }: AgentCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
-
-  // Get branding colors with fallbacks
   const primaryColor = agent.branding?.primary_color || '#2563eb'
   const secondaryColor = agent.branding?.secondary_color || '#1e40af'
 
@@ -63,7 +61,6 @@ export function AgentCard({
               </span>
             </div>
           )}
-
           <div>
             <p className="text-sm text-white/70 mb-1">Your Agent</p>
             <h3 className="text-2xl font-bold">{agent.full_name}</h3>
