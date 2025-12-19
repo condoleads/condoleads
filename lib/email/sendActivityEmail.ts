@@ -41,43 +41,43 @@ const PASSIVE_ACTIVITIES = [
   'clicked_get_estimate_cta'
 ]
 
-function calculateEngagement(activities: any[]): { score: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥ HOT' | 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â WARM' | 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â COLD', text: string } {
+function calculateEngagement(activities: any[]): { score: '🔥 HOT' | '🌡️ WARM' | '❄️ COLD', text: string } {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
   const recentActivities = activities.filter(a => new Date(a.created_at) > oneHourAgo)
 
   if (recentActivities.length >= 4) {
     return {
-      score: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥ HOT',
+      score: '🔥 HOT',
       text: `High engagement - ${recentActivities.length} actions in the last hour!`
     }
   }
   if (recentActivities.length >= 2) {
     return {
-      score: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â WARM',
+      score: '🌡️ WARM',
       text: `Actively browsing - ${recentActivities.length} recent actions`
     }
   }
   return {
-    score: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â COLD',
+    score: '❄️ COLD',
     text: 'New activity detected'
   }
 }
 
 function formatActivityForEmail(activity: any, fallbackBuilding?: { building_name?: string, canonical_address?: string }) {
   const activityIcons: Record<string, string> = {
-  contact_form: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§',
-  property_inquiry: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢',
-  estimator: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°',
-  estimator_used: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â°',
-  estimator_contact_submitted: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¾',
-  sale_evaluation_request: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â ',
-  sale_offer_inquiry: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥',
-  lease_evaluation_request: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¹',
-  lease_offer_inquiry: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥',
-  building_visit_request: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â',
-  viewed_transaction_history: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Â¹ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ',
-  registration: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦',
-    unit_history_inquiry: 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ'
+  contact_form: '📧',
+  property_inquiry: '🏢',
+  estimator: '💰',
+  estimator_used: '💰',
+  estimator_contact_submitted: '📞',
+  sale_evaluation_request: '📊',
+  sale_offer_inquiry: '🔥',
+  lease_evaluation_request: '📋',
+  lease_offer_inquiry: '🔥',
+  building_visit_request: '🗝️',
+  viewed_transaction_history: '📈',
+  registration: '✅',
+    unit_history_inquiry: '📜'
 }
 
   const activityNames: Record<string, string> = {
@@ -115,11 +115,11 @@ function formatActivityForEmail(activity: any, fallbackBuilding?: { building_nam
     const bName = activityData.buildingName || fallbackBuilding?.building_name
     const bAddress = activityData.buildingAddress || fallbackBuilding?.canonical_address
     const buildingInfo = bName
-      ? `${bName}${activityData.unitNumber ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${activityData.unitNumber}` : ''}${bAddress ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ${bAddress}` : ''}`
+      ? `${bName}${activityData.unitNumber ? ` • Unit ${activityData.unitNumber}` : ''}${bAddress ? ` • ${bAddress}` : ''}`
       : ''
 
   return {
-    icon: activityIcons[activity.activity_type] || 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢',
+    icon: activityIcons[activity.activity_type] || '📌',
     type: activityNames[activity.activity_type] || activity.activity_type,
     description,
     timestamp: timeText,
@@ -134,12 +134,12 @@ async function shouldSendActivityEmail(
   const supabase = createServiceClient()
 
   if (CRITICAL_ACTIVITIES.includes(activityType)) {
-    console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Critical activity - sending email')
+    console.log('✅ Critical activity - sending email')
     return true
   }
 
   if (PASSIVE_ACTIVITIES.includes(activityType)) {
-    console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Passive activity - no email')
+    console.log('❌ Passive activity - no email')
     return false
   }
 
@@ -155,12 +155,12 @@ async function shouldSendActivityEmail(
     if (lastEmail) {
       const hoursSinceLastEmail = (Date.now() - new Date(lastEmail.sent_at).getTime()) / (1000 * 60 * 60)
       if (hoursSinceLastEmail < 1) {
-        console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Email throttled - sent one recently')
+        console.log('⏸️ Email throttled - sent one recently')
         return false
       }
     }
 
-    console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ High-intent activity - sending email')
+    console.log('✅ High-intent activity - sending email')
     return true
   }
 
@@ -188,14 +188,14 @@ function extractActivityDetails(activityType: string, activityData: any): string
         details += `Building: ${activityData.buildingName}`
       }
       if (activityData.unitNumber) {
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
+        details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
       }
       if (activityData.source) {
         const sourceText = activityData.source.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Source: ${sourceText}` : `Source: ${sourceText}`
+        details += details ? ` • Source: ${sourceText}` : `Source: ${sourceText}`
       }
       if (activityData.userMessage) {
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
+        details += details ? ` • Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
       }
       break
 
@@ -205,14 +205,14 @@ function extractActivityDetails(activityType: string, activityData: any): string
       }
       if (activityData.bedrooms || activityData.bathrooms) {
         const bedBath = `${activityData.bedrooms || '?'}BR / ${activityData.bathrooms || '?'}BA`
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ${bedBath}` : bedBath
+        details += details ? ` • ${bedBath}` : bedBath
       }
       if (activityData.estimatedPrice) {
         const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(activityData.estimatedPrice)
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Estimated: ${price}` : `Estimated: ${price}`
+        details += details ? ` • Estimated: ${price}` : `Estimated: ${price}`
       }
       if (activityData.buildingName) {
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ${activityData.buildingName}` : activityData.buildingName
+        details += details ? ` • ${activityData.buildingName}` : activityData.buildingName
       }
       break
 
@@ -222,7 +222,7 @@ function extractActivityDetails(activityType: string, activityData: any): string
       }
       if (activityData.requestedDate) {
         const date = new Date(activityData.requestedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Requested: ${date}` : `Requested: ${date}`
+        details += details ? ` • Requested: ${date}` : `Requested: ${date}`
       }
       if (activityData.requestedTime) {
         details += details ? ` at ${activityData.requestedTime}` : activityData.requestedTime
@@ -234,10 +234,10 @@ function extractActivityDetails(activityType: string, activityData: any): string
         details += activityData.buildingName
       }
       if (activityData.unitNumber) {
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
+        details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
       }
       if (activityData.userMessage) {
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
+        details += details ? ` • Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
       }
       break
 
@@ -246,10 +246,10 @@ function extractActivityDetails(activityType: string, activityData: any): string
         details += activityData.buildingName
       }
       if (activityData.unitNumber) {
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
+        details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
       }
       if (activityData.buildingAddress) {
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ${activityData.buildingAddress}` : activityData.buildingAddress
+        details += details ? ` • ${activityData.buildingAddress}` : activityData.buildingAddress
       }
       break
 
@@ -261,7 +261,7 @@ function extractActivityDetails(activityType: string, activityData: any): string
         details += details ? ` at ${activityData.buildingName}` : activityData.buildingName
       }
       if (activityData.unitNumber) {
-        details += ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${activityData.unitNumber}`
+        details += ` • Unit ${activityData.unitNumber}`
       }
       break
 
@@ -272,24 +272,24 @@ function extractActivityDetails(activityType: string, activityData: any): string
             details += activityData.buildingName
           }
           if (activityData.unitNumber) {
-            details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
+            details += details ? ` • Unit ${activityData.unitNumber}` : `Unit ${activityData.unitNumber}`
           }
           if (activityData.buildingAddress) {
-            details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ${activityData.buildingAddress}` : activityData.buildingAddress
+            details += details ? ` • ${activityData.buildingAddress}` : activityData.buildingAddress
           }
           if (activityData.userMessage) {
-            details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
+            details += details ? ` • Message: "${activityData.userMessage}"` : `Message: "${activityData.userMessage}"`
           }
       if (activityData.estimatedPrice) {
         const price = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(activityData.estimatedPrice)
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Estimated: ${price}` : `Estimated: ${price}`
+        details += details ? ` • Estimated: ${price}` : `Estimated: ${price}`
       }
       if (activityData.bedrooms || activityData.bathrooms) {
         const bedBath = `${activityData.bedrooms || '?'}BR / ${activityData.bathrooms || '?'}BA`
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ${bedBath}` : bedBath
+        details += details ? ` • ${bedBath}` : bedBath
       }
       if (activityData.sqft) {
-        details += details ? ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ${activityData.sqft} sqft` : `${activityData.sqft} sqft`
+        details += details ? ` • ${activityData.sqft} sqft` : `${activityData.sqft} sqft`
       }
       break
 
@@ -325,11 +325,7 @@ export async function sendActivityEmail({
   buildingName: overrideBuildingName,
   buildingAddress: overrideBuildingAddress,
   unitNumber: overrideUnitNumber,
-  message: overrideMessage,
-  isManagerNotification = false,
-  isAdminNotification = false,
-  teamAgentName,
-  teamManagerName
+  message: overrideMessage
 }: {
   leadId: string
   activityType: string
@@ -339,13 +335,9 @@ export async function sendActivityEmail({
   buildingAddress?: string
   unitNumber?: string
   message?: string
-  isManagerNotification?: boolean
-  isAdminNotification?: boolean
-  teamAgentName?: string
-  teamManagerName?: string
 }) {
   try {
-    console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Âµ Checking if should send activity email...', { leadId, activityType })
+    console.log('🔵 Checking if should send activity email...', { leadId, activityType })
 
     const shouldSend = await shouldSendActivityEmail(leadId, activityType)
     if (!shouldSend) {
@@ -361,7 +353,7 @@ export async function sendActivityEmail({
       .single()
 
     if (!lead) {
-      console.error('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Lead not found')
+      console.error('❌ Lead not found')
       return { success: false, error: 'Lead not found' }
     }
 
@@ -373,7 +365,7 @@ export async function sendActivityEmail({
       .limit(10)
 
     if (!activities || activities.length === 0) {
-      console.error('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ No activities found')
+      console.error('❌ No activities found')
       return { success: false, error: 'No activities' }
     }
 
@@ -454,11 +446,7 @@ if (!buildingName && lead.building_id) {
       totalActivityCount: activities.length,
       leadUrl: `https://condoleads.ca/dashboard/leads/${leadId}`,
       callUrl: lead.contact_phone ? `tel:${lead.contact_phone}` : undefined,
-      whatsappUrl: lead.contact_phone ? `https://wa.me/${lead.contact_phone.replace(/\D/g, '')}` : undefined,
-        isManagerNotification,
-        isAdminNotification,
-        teamAgentName,
-        teamManagerName
+      whatsappUrl: lead.contact_phone ? `https://wa.me/${lead.contact_phone.replace(/\D/g, '')}` : undefined
     }
 
     const html = generateActivityEmailHtml(emailData)
@@ -466,22 +454,22 @@ if (!buildingName && lead.building_id) {
     const { data, error } = await resend.emails.send({
       from: 'CondoLeads <notifications@condoleads.ca>',
       to: agentEmail,
-      subject: `${engagement.score} ${isManagerNotification ? '[Team] ' : ''}${isAdminNotification ? '[Admin] ' : ''}Lead Activity: ${lead.contact_name} - ${subjectActivityName}${buildingName ? " - " + buildingName : ""}${unitNumber ? " Unit " + unitNumber : ""}${teamAgentName ? ` (Agent: ${teamAgentName})` : ''} (${activities.length} actions)`,
+      subject: `${engagement.score} Lead Activity: ${lead.contact_name} - ${subjectActivityName}${buildingName ? " - " + buildingName : ""}${unitNumber ? " Unit " + unitNumber : ""} (${activities.length} actions)`,
       html
     })
 
     if (error) {
-      console.error('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Error sending activity email:', error)
+      console.error('❌ Error sending activity email:', error)
       return { success: false, error: error.message }
     }
 
     await logEmailSent(leadId, activityType)
 
-    console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Activity email sent successfully:', data?.id)
+    console.log('✅ Activity email sent successfully:', data?.id)
     return { success: true, emailId: data?.id }
 
   } catch (error) {
-    console.error('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Error in sendActivityEmail:', error)
+    console.error('❌ Error in sendActivityEmail:', error)
     return { success: false, error: String(error) }
   }
 }

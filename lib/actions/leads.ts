@@ -38,7 +38,7 @@ export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: bo
   
   // If forceNew is true (form submissions), always create new lead
   if (params.forceNew) {
-    console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ Force creating new lead for form submission:', params.contactEmail)
+    console.log('Ã¢Å“Â¨ Force creating new lead for form submission:', params.contactEmail)
     return await createLead(params)
   }
   
@@ -51,7 +51,7 @@ export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: bo
     .single()
   
   if (existingLead && !searchError) {
-    console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Lead already exists:', existingLead.id)
+    console.log('Ã¢Å“â€¦ Lead already exists:', existingLead.id)
     
     // Update last activity timestamp
     await supabase
@@ -67,7 +67,7 @@ export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: bo
   }
   
   // Lead doesn't exist, create new one
-  console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¨ Creating new lead for:', params.contactEmail)
+  console.log('Ã¢Å“Â¨ Creating new lead for:', params.contactEmail)
   return await createLead(params)
 }
 export async function createLead(params: CreateLeadParams) {
@@ -124,7 +124,7 @@ export async function createLead(params: CreateLeadParams) {
   // Fetch agent details for email
   const { data: agent } = await supabase
     .from('agents')
-    .select('full_name, email, parent_id, parent:agents!parent_id(full_name)')
+    .select('full_name, email, parent_id')
     .eq('id', params.agentId)
     .single()
 
@@ -132,7 +132,7 @@ export async function createLead(params: CreateLeadParams) {
   // Send email notification to agent for NEW leads
   if (agent?.email) {
     try {
-      console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ Sending email for new lead:', { leadId: lead.id, source, agentEmail: agent.email })
+      console.log('Ã°Å¸â€œÂ§ Sending email for new lead:', { leadId: lead.id, source, agentEmail: agent.email })
       await sendActivityEmail({
         leadId: lead.id,
         activityType: source,
@@ -141,14 +141,14 @@ export async function createLead(params: CreateLeadParams) {
         buildingName: params.propertyDetails?.buildingName,
         buildingAddress: params.propertyDetails?.buildingAddress,
         unitNumber: params.propertyDetails?.unitNumber,
-        message: params.message,
+        message: params.message
       })
-      console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Email sent successfully')
+      console.log('Ã¢Å“â€¦ Email sent successfully')
     } catch (emailError) {
-      console.error('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Error sending email:', emailError)
+      console.error('Ã¢ÂÅ’ Error sending email:', emailError)
     }
   } else {
-    console.log('ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â No agent email found, skipping notification')
+    console.log('Ã¢Å¡Â Ã¯Â¸Â No agent email found, skipping notification')
   }
 
   // Send email to manager (parent) if they have receive_team_lead_emails enabled
@@ -170,9 +170,7 @@ export async function createLead(params: CreateLeadParams) {
           buildingName: params.propertyDetails?.buildingName,
           buildingAddress: params.propertyDetails?.buildingAddress,
           unitNumber: params.propertyDetails?.unitNumber,
-          message: params.message,
-          isManagerNotification: true,
-          teamAgentName: agent.full_name
+          message: params.message
         })
         console.log('Manager email sent')
       } catch (err) {
@@ -201,10 +199,7 @@ export async function createLead(params: CreateLeadParams) {
             buildingName: params.propertyDetails?.buildingName,
             buildingAddress: params.propertyDetails?.buildingAddress,
             unitNumber: params.propertyDetails?.unitNumber,
-            message: params.message,
-            isAdminNotification: true,
-              teamAgentName: agent?.full_name,
-              teamManagerName: agent?.parent?.[0]?.full_name
+            message: params.message
           })
           console.log('Admin email sent to', admin.email)
         } catch (err) {
