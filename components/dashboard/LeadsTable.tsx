@@ -8,9 +8,10 @@ interface LeadsTableProps {
   leads: any[]
   agentId: string
   isAdmin?: boolean
+  isManager?: boolean
 }
 
-export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTableProps) {
+export default function LeadsTable({ leads, agentId, isAdmin = false, isManager = false }: LeadsTableProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [qualityFilter, setQualityFilter] = useState('all')
@@ -44,9 +45,8 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
     'contact_form': 'Contact Form',
     'building_page': 'Building Page',
     'property_inquiry': 'Property Inquiry',
-    'list_your_unit': 'Request to List',
-      'unit_history_inquiry': 'Unit History Inquiry'
-    }
+    'list_your_unit': 'Request to List'
+  }
   return sourceLabels[source] || source.replace(/_/g, ' ')
 }
 
@@ -145,7 +145,7 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
           </select>
 
 
-          {isAdmin && (
+          {(isAdmin || isManager) && (
             <select
               value={agentFilter}
               onChange={(e) => setAgentFilter(e.target.value)}
@@ -186,7 +186,7 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
-                {isAdmin && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>}
+                {(isAdmin || isManager) && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Agent</th>}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Building</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tags</th>
@@ -204,11 +204,12 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
                     <p className="text-sm text-gray-500">{lead.contact_email}</p>
                     {lead.contact_phone && <p className="text-xs text-gray-400">{lead.contact_phone}</p>}
                   </td>
-                  {isAdmin && (
+                  {(isAdmin || isManager) && (
                     <td className="px-6 py-4">
                       {lead.agents ? (
                         <div>
                           <p className="text-sm font-medium text-gray-900">{lead.agents.full_name}</p>
+                            {lead.agents.parent && <p className="text-xs text-blue-600">Manager: {lead.agents.parent.full_name}</p>}
                           <p className="text-xs text-gray-500">{lead.agents.subdomain}.condoleads.ca</p>
                         </div>
                       ) : (
@@ -223,7 +224,7 @@ export default function LeadsTable({ leads, agentId, isAdmin = false }: LeadsTab
                         <div>
                           <p className="text-sm font-medium text-gray-900">
                             {lead.buildings.building_name}
-                            {(lead.mls_listings?.unit_number || lead.property_details?.unitNumber) && ` • Unit ${lead.mls_listings?.unit_number || lead.property_details?.unitNumber}`}
+                            {(lead.mls_listings?.unit_number || lead.property_details?.unitNumber) && ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${lead.mls_listings?.unit_number || lead.property_details?.unitNumber}`}
                           </p>
                           <p className="text-xs text-gray-500">{lead.buildings.canonical_address}</p>
                         </div>

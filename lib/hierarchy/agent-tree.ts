@@ -129,7 +129,7 @@ export async function getVisibleLeads(agentId: string) {
     .from('leads')
     .select(`
       *,
-      agents!leads_agent_id_fkey (id, full_name, email),
+      agents!leads_agent_id_fkey (id, full_name, email, parent_id, parent:agents!parent_id(id, full_name)),
       buildings (id, building_name, slug)
     `)
     .in('agent_id', allIds)
