@@ -209,8 +209,8 @@ export default function LeadsTable({ leads, agentId, isAdmin = false, isManager 
                       {lead.agents ? (
                         <div>
                           <p className="text-sm font-medium text-gray-900">{lead.agents.full_name}</p>
-                            {lead.agents.parent && <p className="text-xs text-blue-600">Manager: {lead.agents.parent.full_name}</p>}
-                          <p className="text-xs text-gray-500">{lead.agents.subdomain}.condoleads.ca</p>
+                            {isAdmin && lead.agents.parent && <p className="text-xs text-blue-600">Manager: {lead.agents.parent.full_name}</p>}
+                          {lead.agents.subdomain && <p className="text-xs text-gray-500">{lead.agents.subdomain}.condoleads.ca</p>}
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400">No agent</span>
@@ -224,7 +224,7 @@ export default function LeadsTable({ leads, agentId, isAdmin = false, isManager 
                         <div>
                           <p className="text-sm font-medium text-gray-900">
                             {lead.buildings.building_name}
-                            {(lead.mls_listings?.unit_number || lead.property_details?.unitNumber) && ` ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${lead.mls_listings?.unit_number || lead.property_details?.unitNumber}`}
+                            {(lead.mls_listings?.unit_number || lead.property_details?.unitNumber) && ` ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Unit ${lead.mls_listings?.unit_number || lead.property_details?.unitNumber}`}
                           </p>
                           <p className="text-xs text-gray-500">{lead.buildings.canonical_address}</p>
                         </div>

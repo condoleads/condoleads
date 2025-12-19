@@ -26,7 +26,7 @@ interface ActivityEmailData {
     timestamp: string
     buildingInfo?: string
   }>
-  engagementScore: 'ðŸ”¥ HOT' | 'ðŸŒ¡ï¸ WARM' | 'â„ï¸ COLD'
+  engagementScore: string
   engagementText: string
   totalActivityCount: number
   leadUrl: string
@@ -35,19 +35,20 @@ interface ActivityEmailData {
   isManagerNotification?: boolean
   isAdminNotification?: boolean
   teamAgentName?: string
+  teamManagerName?: string
 }
 
 export function generateActivityEmailHtml(data: ActivityEmailData): string {
   const activityIcons: Record<string, string> = {
-    contact_form: 'ðŸ“§',
-    property_inquiry: 'ðŸ¢',
-    estimator_used: 'ðŸ’°',
-    estimator_contact_submitted: 'ðŸ“ž',
-    sale_evaluation_request: 'ðŸ“Š',
-    lease_evaluation_request: 'ðŸ“‹',
-    building_visit_request: 'ðŸ—ï¸',
-    viewed_transaction_history: 'ðŸ“ˆ',
-    registration: 'âœ…'
+    contact_form: 'Ã°Å¸â€œÂ§',
+    property_inquiry: 'Ã°Å¸ÂÂ¢',
+    estimator_used: 'Ã°Å¸â€™Â°',
+    estimator_contact_submitted: 'Ã°Å¸â€œÅ¾',
+    sale_evaluation_request: 'Ã°Å¸â€œÅ ',
+    lease_evaluation_request: 'Ã°Å¸â€œâ€¹',
+    building_visit_request: 'Ã°Å¸Ââ€”Ã¯Â¸Â',
+    viewed_transaction_history: 'Ã°Å¸â€œË†',
+    registration: 'Ã¢Å“â€¦'
   }
 
   const activityNames: Record<string, string> = {
@@ -102,32 +103,32 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
   <div class="header">
     <h1 style="margin: 0; font-size: 24px;">${data.engagementScore} Lead Activity</h1>
     <p style="margin: 10px 0 0 0; opacity: 0.9;">${data.leadName} just took action!</p>
-      ${data.teamAgentName ? `<p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">${data.isAdminNotification ? "Admin View" : "Team Lead"} - Agent: ${data.teamAgentName}</p>` : ""}
+      ${data.teamAgentName ? `<p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">${data.isAdminNotification ? "Admin View" : "Team Lead"} - Agent: ${data.teamAgentName}${data.teamManagerName ? " | Manager: " + data.teamManagerName : ""}</p>` : ""}
     <span class="badge ${data.engagementScore.includes('HOT') ? 'hot' : data.engagementScore.includes('WARM') ? 'warm' : 'cold'}">${data.totalActivityCount} Total Actions</span>
   </div>
 
   <div style="background: white; padding: 30px;">
     <div class="section">
-      <div class="section-title">ðŸ“ LATEST ACTION</div>
+      <div class="section-title">Ã°Å¸â€œÂ LATEST ACTION</div>
       <div class="latest-action">
-        <div style="font-size: 24px; margin-bottom: 10px;">${activityIcons[data.latestActivity.type] || 'ðŸ“Œ'}</div>
+        <div style="font-size: 24px; margin-bottom: 10px;">${activityIcons[data.latestActivity.type] || 'Ã°Å¸â€œÅ’'}</div>
         <div style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 8px;">${activityNames[data.latestActivity.type] || data.latestActivity.description}</div>
         ${data.latestActivity.details ? `<div style="color: #6b7280; margin-bottom: 8px;">${data.latestActivity.details}</div>` : ''}
-        ${data.buildingName ? `<div style="color: #667eea; font-weight: 500;">ðŸ¢ ${data.buildingName}${data.unitNumber ? ` â€¢ Unit ${data.unitNumber}` : ``}${data.buildingAddress ? ` â€¢ ${data.buildingAddress}` : ``}</div>` : ''}
-        <div style="color: #6b7280; font-size: 13px; margin-top: 8px;">â° ${data.latestActivity.timestamp}</div>
+        ${data.buildingName ? `<div style="color: #667eea; font-weight: 500;">Ã°Å¸ÂÂ¢ ${data.buildingName}${data.unitNumber ? ` Ã¢â‚¬Â¢ Unit ${data.unitNumber}` : ``}${data.buildingAddress ? ` Ã¢â‚¬Â¢ ${data.buildingAddress}` : ``}</div>` : ''}
+        <div style="color: #6b7280; font-size: 13px; margin-top: 8px;">Ã¢ÂÂ° ${data.latestActivity.timestamp}</div>
       </div>
     </div>
 
     ${data.keyMilestones && data.keyMilestones.length > 0 ? `
       <div class="section">
-        <div class="section-title">â­ KEY MILESTONES (${data.keyMilestones.length} important actions)</div>
+        <div class="section-title">Ã¢Â­Â KEY MILESTONES (${data.keyMilestones.length} important actions)</div>
         ${data.keyMilestones.map(activity => `
           <div class="activity-item">
             <div class="activity-icon">${activity.icon}</div>
             <div class="activity-content">
               <div class="activity-type">${activity.type}</div>
               <div style="color: #6b7280; font-size: 14px; margin-bottom: 4px;">${activity.description}</div>
-              ${activity.buildingInfo ? `<div style="color: #667eea; font-size: 13px; margin-bottom: 4px;">ðŸ¢ ${activity.buildingInfo}</div>` : ''}
+              ${activity.buildingInfo ? `<div style="color: #667eea; font-size: 13px; margin-bottom: 4px;">Ã°Å¸ÂÂ¢ ${activity.buildingInfo}</div>` : ''}
               <div class="activity-time">${activity.timestamp}</div>
             </div>
           </div>
@@ -136,14 +137,14 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
       ` : ''}
 
       <div class="section">
-        <div class="section-title">ðŸ“Š RECENT ACTIVITY (Last ${Math.min(data.recentActivities.length, 20)})</div>
+        <div class="section-title">Ã°Å¸â€œÅ  RECENT ACTIVITY (Last ${Math.min(data.recentActivities.length, 20)})</div>
         ${data.recentActivities.slice(0, 20).map(activity => `
         <div class="activity-item">
           <div class="activity-icon">${activity.icon}</div>
           <div class="activity-content">
             <div class="activity-type">${activity.type}</div>
             <div style="color: #6b7280; font-size: 14px; margin-bottom: 4px;">${activity.description}</div>
-            ${activity.buildingInfo ? `<div style="color: #667eea; font-size: 13px; margin-bottom: 4px;">ðŸ¢ ${activity.buildingInfo}</div>` : ''}
+            ${activity.buildingInfo ? `<div style="color: #667eea; font-size: 13px; margin-bottom: 4px;">Ã°Å¸ÂÂ¢ ${activity.buildingInfo}</div>` : ''}
             <div class="activity-time">${activity.timestamp}</div>
           </div>
         </div>
@@ -151,7 +152,7 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
     </div>
 
     <div class="section">
-      <div class="section-title">ðŸŽ¯ ENGAGEMENT SCORE</div>
+      <div class="section-title">Ã°Å¸Å½Â¯ ENGAGEMENT SCORE</div>
       <div class="engagement">
         <div class="engagement-score">${data.engagementScore}</div>
         <div class="engagement-text">${data.engagementText}</div>
@@ -159,7 +160,7 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
     </div>
 
     <div class="section">
-      <div class="section-title">ðŸ‘¤ CONTACT INFO</div>
+      <div class="section-title">Ã°Å¸â€˜Â¤ CONTACT INFO</div>
       <div class="contact-info">
         <div class="contact-row">
           <div class="contact-label">Name:</div>
@@ -179,15 +180,15 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
     </div>
 
     <div class="actions">
-      <a href="${data.leadUrl}" class="btn btn-primary">ðŸ“‹ View Full Lead</a>
-      ${data.callUrl ? `<a href="${data.callUrl}" class="btn btn-success">ðŸ“ž Call Now</a>` : ''}
-      ${data.whatsappUrl ? `<a href="${data.whatsappUrl}" class="btn btn-success">ðŸ’¬ WhatsApp</a>` : ''}
+      <a href="${data.leadUrl}" class="btn btn-primary">Ã°Å¸â€œâ€¹ View Full Lead</a>
+      ${data.callUrl ? `<a href="${data.callUrl}" class="btn btn-success">Ã°Å¸â€œÅ¾ Call Now</a>` : ''}
+      ${data.whatsappUrl ? `<a href="${data.whatsappUrl}" class="btn btn-success">Ã°Å¸â€™Â¬ WhatsApp</a>` : ''}
     </div>
   </div>
 
   <div class="footer">
     <p>This is an automated notification from CondoLeads.</p>
-    <p>Respond quickly to convert hot leads! âš¡</p>
+    <p>Respond quickly to convert hot leads! Ã¢Å¡Â¡</p>
   </div>
 </body>
 </html>

@@ -30,7 +30,9 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         id,
         full_name,
         email,
-        subdomain
+        subdomain,
+        parent_id,
+        parent:agents!parent_id(id, full_name)
       )
     `)
     .eq('id', params.id)
