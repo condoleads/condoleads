@@ -5,6 +5,7 @@ import { getLeadNotes, getAgentBuildings } from '@/lib/actions/lead-management'
 import LeadDetailClient from '@/components/dashboard/LeadDetailClient'
 import ActivityTimeline from '@/components/dashboard/ActivityTimeline'
 import { getUserActivities, calculateEngagementScore } from '@/lib/actions/user-activity'
+import { canAgentSeeLead } from '@/lib/hierarchy/agent-tree'
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { error, agent } = await requireAgent()
@@ -34,15 +35,18 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
     `)
     .eq('id', params.id)
 
-  // If not admin, only show their own leads
-  if (!agent.is_admin) {
-    leadQuery = leadQuery.eq('agent_id', agent.id)
-  }
-
   const { data: lead, error: leadError } = await leadQuery.single()
 
   if (leadError || !lead) {
     redirect('/dashboard/leads')
+  }
+
+  // Check permissions: admin can see all, others need hierarchy check
+  if (!agent.is_admin) {
+    const canSee = await canAgentSeeLead(agent.id, lead.agent_id)
+    if (!canSee) {
+      redirect('/dashboard/leads')
+    }
   }
 
   // Fetch notes
