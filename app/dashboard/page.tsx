@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import DashboardLogout from '@/components/dashboard/DashboardLogout'
 import { requireAgent } from '@/lib/auth/helpers'
 import { getAgentLeads, getAllLeadsForAdmin } from '@/lib/actions/leads'
+import { getVisibleLeads } from '@/lib/hierarchy/agent-tree'
 
 export default async function DashboardPage() {
   const { error, agent } = await requireAgent()
@@ -11,9 +12,11 @@ export default async function DashboardPage() {
   }
 
   // Fetch leads based on admin status
-  const leadsResult = agent.is_admin 
+  const leadsResult = agent.is_admin
     ? await getAllLeadsForAdmin()
-    : await getAgentLeads(agent.id)
+    : agent.can_create_children
+      ? { success: true, leads: await getVisibleLeads(agent.id) }
+      : await getAgentLeads(agent.id)
   const leads = leadsResult.success ? leadsResult.leads : []
 
   const totalLeads = leads.length
