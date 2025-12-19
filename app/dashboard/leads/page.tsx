@@ -64,7 +64,7 @@ export default async function LeadsPage() {
             </p>
           </div>
 
-          <LeadsTable leads={leads} agentId={agent.id} isAdmin={agent.is_admin} isManager={agent.can_create_children} />
+          <LeadsTable leads={leads} agentId={agent.id} isAdmin={agent.is_admin} />
         </div>
       </div>
     </div>
