@@ -209,7 +209,7 @@ export default function LeadsTable({ leads, agentId, isAdmin = false, isManager 
                       {lead.agents ? (
                           <div>
                             <p className="text-sm font-medium text-gray-900">{lead.agents.full_name}</p>
-                            {isAdmin && lead.agents.parent?.[0] && <p className="text-xs text-blue-600">Manager: {lead.agents.parent[0].full_name}</p>}
+                            {isAdmin && lead.agents.parent && <p className="text-xs text-blue-600">Manager: {lead.agents.parent.full_name}</p>}
                             {lead.agents.subdomain && <p className="text-xs text-gray-500">{lead.agents.subdomain}.condoleads.ca</p>}
                           </div>
                       ) : (

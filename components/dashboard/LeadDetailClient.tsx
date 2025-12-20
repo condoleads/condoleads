@@ -116,7 +116,7 @@ export default function LeadDetailClient({ lead, agent, initialNotes, engagement
             {lead.agents && (
               <p className="text-sm text-gray-600 mt-1">
                 <strong>Agent:</strong> {lead.agents.full_name} ({lead.agents.subdomain}.condoleads.ca)
-              {lead.agents?.parent?.[0] && <p className="text-sm text-blue-600 mt-1"><strong>Manager:</strong> {lead.agents.parent[0].full_name}</p>}
+              {lead.agents?.parent && <p className="text-sm text-blue-600 mt-1"><strong>Manager:</strong> {lead.agents.parent.full_name}</p>}
               </p>
             )}
           </div>
