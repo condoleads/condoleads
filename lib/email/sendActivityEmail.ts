@@ -318,24 +318,32 @@ const ACTIVITY_TYPE_NAMES: Record<string, string> = {
 }
 
 export async function sendActivityEmail({
-  leadId,
-  activityType,
-  agentEmail,
-  agentName,
-  buildingName: overrideBuildingName,
-  buildingAddress: overrideBuildingAddress,
-  unitNumber: overrideUnitNumber,
-  message: overrideMessage
-}: {
-  leadId: string
-  activityType: string
-  agentEmail: string
-  agentName: string
-  buildingName?: string
-  buildingAddress?: string
-  unitNumber?: string
-  message?: string
-}) {
+    leadId,
+    activityType,
+    agentEmail,
+    agentName,
+    buildingName: overrideBuildingName,
+    buildingAddress: overrideBuildingAddress,
+    unitNumber: overrideUnitNumber,
+    message: overrideMessage,
+    isManagerNotification = false,
+    isAdminNotification = false,
+    teamAgentName,
+    teamManagerName
+  }: {
+    leadId: string
+    activityType: string
+    agentEmail: string
+    agentName: string
+    buildingName?: string
+    buildingAddress?: string
+    unitNumber?: string
+    message?: string
+    isManagerNotification?: boolean
+    isAdminNotification?: boolean
+    teamAgentName?: string
+    teamManagerName?: string
+  }) {
   try {
     console.log('🔵 Checking if should send activity email...', { leadId, activityType })
 
@@ -446,8 +454,12 @@ if (!buildingName && lead.building_id) {
       totalActivityCount: activities.length,
       leadUrl: `https://condoleads.ca/dashboard/leads/${leadId}`,
       callUrl: lead.contact_phone ? `tel:${lead.contact_phone}` : undefined,
-      whatsappUrl: lead.contact_phone ? `https://wa.me/${lead.contact_phone.replace(/\D/g, '')}` : undefined
-    }
+      whatsappUrl: lead.contact_phone ? `https://wa.me/${lead.contact_phone.replace(/\D/g, '')}` : undefined,
+        isManagerNotification,
+        isAdminNotification,
+        teamAgentName,
+        teamManagerName
+      }
 
     const html = generateActivityEmailHtml(emailData)
 

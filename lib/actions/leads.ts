@@ -152,12 +152,14 @@ export async function createLead(params: CreateLeadParams) {
   }
 
   // Send email to manager (parent) if they have receive_team_lead_emails enabled
-  if (agent?.parent_id) {
-    const { data: manager } = await supabase
+    let manager: any = null
+    if (agent?.parent_id) {
+      const { data: managerData } = await supabase
       .from('agents')
       .select('id, full_name, email, receive_team_lead_emails')
       .eq('id', agent.parent_id)
       .single()
+      manager = managerData
 
     if (manager?.receive_team_lead_emails && manager.email) {
       try {
@@ -192,15 +194,18 @@ export async function createLead(params: CreateLeadParams) {
         try {
           console.log('Sending email to admin:', admin.email)
           await sendActivityEmail({
-            leadId: lead.id,
-            activityType: source,
-            agentEmail: admin.email,
-            agentName: admin.full_name || 'Admin',
-            buildingName: params.propertyDetails?.buildingName,
-            buildingAddress: params.propertyDetails?.buildingAddress,
-            unitNumber: params.propertyDetails?.unitNumber,
-            message: params.message
-          })
+              leadId: lead.id,
+              activityType: source,
+              agentEmail: admin.email,
+              agentName: admin.full_name || 'Admin',
+              buildingName: params.propertyDetails?.buildingName,
+              buildingAddress: params.propertyDetails?.buildingAddress,
+              unitNumber: params.propertyDetails?.unitNumber,
+              message: params.message,
+              isAdminNotification: true,
+              teamAgentName: agent?.full_name,
+              teamManagerName: manager?.full_name
+            })
           console.log('Admin email sent to', admin.email)
         } catch (err) {
           console.error('Admin email error:', err)

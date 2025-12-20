@@ -32,6 +32,10 @@ interface ActivityEmailData {
   leadUrl: string
   callUrl?: string
   whatsappUrl?: string
+  isManagerNotification?: boolean
+  isAdminNotification?: boolean
+  teamAgentName?: string
+  teamManagerName?: string
 }
 
 export function generateActivityEmailHtml(data: ActivityEmailData): string {
@@ -99,6 +103,7 @@ export function generateActivityEmailHtml(data: ActivityEmailData): string {
   <div class="header">
     <h1 style="margin: 0; font-size: 24px;">${data.engagementScore} Lead Activity</h1>
     <p style="margin: 10px 0 0 0; opacity: 0.9;">${data.leadName} just took action!</p>
+    ${data.teamAgentName ? `<p style="margin: 5px 0 0 0; opacity: 0.9; font-size: 14px;">${data.isAdminNotification ? 'Admin View' : 'Team Lead'} - Agent: ${data.teamAgentName}${data.teamManagerName ? ' | Manager: ' + data.teamManagerName : ''}</p>` : ''}
     <span class="badge ${data.engagementScore.includes('HOT') ? 'hot' : data.engagementScore.includes('WARM') ? 'warm' : 'cold'}">${data.totalActivityCount} Total Actions</span>
   </div>
 
