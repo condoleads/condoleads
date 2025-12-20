@@ -295,8 +295,7 @@ export async function getAllLeadsForAdmin() {
           full_name,
           email,
           subdomain,
-          parent_id,
-          parent:agents!parent_id(id, full_name)
+          parent_id
         )
     `)
     .order('created_at', { ascending: false })
@@ -306,8 +305,33 @@ export async function getAllLeadsForAdmin() {
     return { success: false, leads: [], error: error.message }
   }
 
-  return { success: true, leads: leads || [] }
+  // Fetch parent (manager) names separately for agents with parent_id
+  const parentIds = [...new Set(leads?.filter(l => l.agents?.parent_id).map(l => l.agents.parent_id))]
+  
+  let parentMap: Record<string, string> = {}
+  if (parentIds.length > 0) {
+    const { data: parents } = await supabase
+      .from('agents')
+      .select('id, full_name')
+      .in('id', parentIds)
+    
+    if (parents) {
+      parentMap = parents.reduce((acc, p) => ({ ...acc, [p.id]: p.full_name }), {})
+    }
+  }
+
+  // Attach parent full_name to each lead's agent
+  const leadsWithParent = leads?.map(lead => ({
+    ...lead,
+    agents: lead.agents ? {
+      ...lead.agents,
+      parent: lead.agents.parent_id ? { full_name: parentMap[lead.agents.parent_id] } : null
+    } : null
+  }))
+
+  return { success: true, leads: leadsWithParent || [] }
 }
+ 
 
 
 
