@@ -262,7 +262,8 @@ export async function getAgentLeads(agentId: string) {
     `)
     .eq('agent_id', agentId)
     .order('created_at', { ascending: false })
-
+    
+        
   if (error) {
     console.error('Error fetching leads:', error)
     return { success: false, leads: [], error: error.message }
