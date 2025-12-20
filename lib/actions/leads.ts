@@ -285,11 +285,13 @@ export async function getAllLeadsForAdmin() {
         unparsed_address
       ),
       agents!leads_agent_id_fkey (
-        id,
-        full_name,
-        email,
-        subdomain
-      )
+          id,
+          full_name,
+          email,
+          subdomain,
+          parent_id,
+          parent:agents!parent_id(id, full_name)
+        )
     `)
     .order('created_at', { ascending: false })
 
