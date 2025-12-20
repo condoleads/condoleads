@@ -190,7 +190,7 @@ export async function createLead(params: CreateLeadParams) {
 
   if (admins && admins.length > 0) {
     for (const admin of admins) {
-      if (admin.email && admin.email !== agent?.email) {
+      if (admin.email && admin.email !== agent?.email && admin.email !== manager?.email) {
         try {
           console.log('Sending email to admin:', admin.email)
           await sendActivityEmail({
