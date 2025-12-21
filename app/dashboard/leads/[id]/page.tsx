@@ -27,17 +27,29 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
         canonical_address
       ),
       agents!leads_agent_id_fkey (
-        id,
-        full_name,
-        email,
-        subdomain,
-        parent_id,
-        parent:agents!parent_id(id, full_name)
-      )
+          id,
+          full_name,
+          email,
+          subdomain,
+          parent_id
+        )
     `)
     .eq('id', params.id)
 
   const { data: lead, error: leadError } = await leadQuery.single()
+    
+    // Fetch parent (manager) name if agent has parent_id
+    if (lead?.agents?.parent_id) {
+      const { data: parent } = await supabase
+        .from('agents')
+        .select('full_name')
+        .eq('id', lead.agents.parent_id)
+        .single()
+      
+      if (parent) {
+        lead.agents.parent = { full_name: parent.full_name }
+      }
+    }
 
   if (leadError || !lead) {
     redirect('/dashboard/leads')
