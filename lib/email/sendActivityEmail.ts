@@ -466,7 +466,7 @@ if (!buildingName && lead.building_id) {
     const { data, error } = await resend.emails.send({
       from: 'CondoLeads <notifications@condoleads.ca>',
       to: agentEmail,
-      subject: `${engagement.score} ${isManagerNotification ? '[Team] ' : ''}${isAdminNotification ? '[Admin] ' : ''}Lead Activity: ${lead.contact_name} - ${subjectActivityName}${buildingName ? " - " + buildingName : ""}${unitNumber ? " Unit " + unitNumber : ""}${teamAgentName ? ` (Agent: ${teamAgentName}${teamManagerName ? ', Manager: ' + teamManagerName : ''})` : ''} (${activities.length} actions)`,
+      subject: `${engagement.score} ${isManagerNotification ? '[Team] ' : ''}${isAdminNotification ? '[Admin] ' : ''}${lead.contact_name} - ${subjectActivityName}${buildingName ? " - " + buildingName : ""}${teamAgentName ? ` (${teamAgentName})` : ''}`,
       html
     })
 
