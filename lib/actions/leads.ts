@@ -2,6 +2,8 @@
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { headers } from 'next/headers'
 import { sendActivityEmail } from '@/lib/email/sendActivityEmail'
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 // Create service role client that bypasses RLS
 function createServiceClient() {
   return createServerClient(
@@ -151,6 +153,9 @@ export async function createLead(params: CreateLeadParams) {
     console.log(' No agent email found, skipping notification')
   }
 
+  // Add delay to avoid rate limiting
+  await delay(600)
+  
   // Send email to manager (parent) if they have receive_team_lead_emails enabled
     let manager: any = null
     if (agent?.parent_id) {
@@ -183,6 +188,9 @@ export async function createLead(params: CreateLeadParams) {
     }
   }
 
+  // Add delay to avoid rate limiting
+  await delay(600)
+  
   // Send email to admins with receive_all_lead_emails enabled
   console.log('DEBUG: Checking for admins to notify')
   const { data: admins } = await supabase
