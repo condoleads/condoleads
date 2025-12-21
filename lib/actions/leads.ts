@@ -165,15 +165,17 @@ export async function createLead(params: CreateLeadParams) {
       try {
         console.log('Sending email to manager:', manager.email)
         await sendActivityEmail({
-          leadId: lead.id,
-          activityType: source,
-          agentEmail: manager.email,
-          agentName: manager.full_name || 'Manager',
-          buildingName: params.propertyDetails?.buildingName,
-          buildingAddress: params.propertyDetails?.buildingAddress,
-          unitNumber: params.propertyDetails?.unitNumber,
-          message: params.message
-        })
+            leadId: lead.id,
+            activityType: source,
+            agentEmail: manager.email,
+            agentName: manager.full_name || 'Manager',
+            buildingName: params.propertyDetails?.buildingName,
+            buildingAddress: params.propertyDetails?.buildingAddress,
+            unitNumber: params.propertyDetails?.unitNumber,
+            message: params.message,
+            isManagerNotification: true,
+            teamAgentName: agent.full_name
+          })
         console.log('Manager email sent')
       } catch (err) {
         console.error('Manager email error:', err)
