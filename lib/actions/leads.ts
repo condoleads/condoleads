@@ -184,12 +184,13 @@ export async function createLead(params: CreateLeadParams) {
   }
 
   // Send email to admins with receive_all_lead_emails enabled
+  console.log('DEBUG: Checking for admins to notify')
   const { data: admins } = await supabase
     .from('agents')
     .select('id, full_name, email')
     .eq('receive_all_lead_emails', true)
     .eq('is_active', true)
-
+  console.log('DEBUG: Found admins:', admins?.length, admins?.map(a => a.email))
   if (admins && admins.length > 0) {
     for (const admin of admins) {
       if (admin.email && admin.email !== agent?.email && admin.email !== manager?.email) {
