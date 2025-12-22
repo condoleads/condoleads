@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
-import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
+import { getAgentForBuilding } from '@/lib/utils/agent-detection'
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import PropertyPageClient from './PropertyPageClient'
@@ -40,12 +40,12 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   // Get agent from subdomain with access verification
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const { displayAgent } = await getDisplayAgentForBuilding(host, listing.building_id)
+  const agent = await getAgentForBuilding(host, listing.building_id)
+
   // If no agent (not assigned to this building), show 404
-  if (!displayAgent) {
+  if (!agent) {
     notFound()
   }
-  const agent = displayAgent
 
   // Fetch media
   const { data: allMedia } = await supabase
