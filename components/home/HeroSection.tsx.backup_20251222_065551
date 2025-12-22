@@ -9,14 +9,10 @@ interface HeroSectionProps {
     whatsapp_number?: string | null;
     bio?: string;
     profile_photo_url?: string;
-    team_name?: string | null;
-    team_tagline?: string | null;
-    team_logo_url?: string | null;
   };
-  isTeamSite?: boolean;
 }
 
-export function HeroSection({ agent, isTeamSite = false }: HeroSectionProps) {
+export function HeroSection({ agent }: HeroSectionProps) {
   return (
     <div className="relative bg-gradient-to-br from-blue-900 via-blue-800 to-blue-600 text-white overflow-hidden">
       {/* Animated Background Elements */}
@@ -57,13 +53,10 @@ export function HeroSection({ agent, isTeamSite = false }: HeroSectionProps) {
               </div>
             </div>
             
-            {/* Agent/Team Name - Large and Bold */}
+            {/* Agent Name - Large and Bold */}
             <h1 className="text-5xl md:text-6xl font-black mb-3 bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
-              {isTeamSite && agent.team_name ? agent.team_name : agent.full_name}
+              {agent.full_name}
             </h1>
-            {isTeamSite && agent.team_name && (
-              <p className="text-xl text-blue-200 mb-2">Led by {agent.full_name}</p>
-            )}
             
             {/* Title with Icon */}
             <div className="flex items-center gap-2 mb-6">

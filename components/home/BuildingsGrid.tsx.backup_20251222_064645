@@ -13,12 +13,6 @@ interface Building {
   forLease: number;
   isFeatured?: boolean;
   photoUrl?: string | null;
-  assigned_agent?: {
-    id: string;
-    full_name: string;
-    slug: string;
-    profile_photo_url: string | null;
-  } | null;
 }
 
 interface Development {
@@ -36,10 +30,9 @@ interface BuildingsGridProps {
   buildings: Building[];
   developments?: Development[];
   agentName: string;
-  isTeamSite?: boolean;
 }
 
-export function BuildingsGrid({ buildings, developments = [], agentName, isTeamSite = false }: BuildingsGridProps) {
+export function BuildingsGrid({ buildings, developments = [], agentName }: BuildingsGridProps) {
   return (
     <div id="buildings" className="py-20 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -143,22 +136,6 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
                     <Building2 className="w-4 h-4" />
                     {building.street_number} {building.street_name}
                   </p>
-
-                  {/* Assigned Agent - Only on team sites */}
-                  {isTeamSite && building.assigned_agent && (
-                    <div className="flex items-center gap-2 mb-4 p-2 bg-blue-50 rounded-lg">
-                      <div className="w-8 h-8 rounded-full overflow-hidden bg-blue-200 flex-shrink-0">
-                        {building.assigned_agent.profile_photo_url ? (
-                          <img src={building.assigned_agent.profile_photo_url} alt={building.assigned_agent.full_name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-blue-600 font-semibold text-sm">
-                            {building.assigned_agent.full_name.charAt(0)}
-                          </div>
-                        )}
-                      </div>
-                      <span className="text-sm text-blue-700 font-medium">Agent: {building.assigned_agent.full_name}</span>
-                    </div>
-                  )}
 
                   {/* Listing Counts */}
                   <div className="flex gap-4 mb-4">

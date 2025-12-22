@@ -55,32 +55,14 @@ export default async function RootPage() {
     .single();
 
   console.log(' DEBUG: Agent query result:', { agent, agentError });
+
   if (!agent) notFound();
 
-  // Check if this is a manager site (team site)
-  const isTeamSite = agent.can_create_children === true;
-  let teamAgents: any[] = [];
-  let allAgentIds: string[] = [agent.id];
-
-  if (isTeamSite) {
-    // Get all agents under this manager
-    const { data: childAgents } = await supabase
-      .from('agents')
-      .select('id, full_name, slug, email, cell_phone, profile_photo_url, bio, title')
-      .eq('parent_id', agent.id)
-      .eq('is_active', true);
-    
-    teamAgents = childAgents || [];
-    allAgentIds = [agent.id, ...teamAgents.map(a => a.id)];
-    console.log(' DEBUG: Team site detected, agents:', allAgentIds.length);
-  }
-
-  // Fetch buildings for all relevant agents (team or solo)
+  // Fetch agent's directly assigned buildings
   const { data: agentBuildings } = await supabase
     .from('agent_buildings')
     .select(`
       is_featured,
-      agent_id,
       buildings (
         id,
         building_name,
@@ -90,15 +72,9 @@ export default async function RootPage() {
         street_name,
         city_district,
         development_id
-      ),
-      agents (
-        id,
-        full_name,
-        slug,
-        profile_photo_url
       )
     `)
-    .in('agent_id', allAgentIds)
+    .eq('agent_id', agent.id)
     .order('is_featured', { ascending: false });
 
   // Fetch agent's assigned developments
@@ -130,12 +106,7 @@ export default async function RootPage() {
   // Combine direct and development buildings, avoiding duplicates
   const directBuildingIds = new Set((agentBuildings || []).map((ab: any) => ab.buildings?.id));
   const combinedBuildings = [
-    ...(agentBuildings || []).map((ab: any) => ({ 
-      ...ab.buildings, 
-      is_featured: ab.is_featured, 
-      fromDevelopment: false,
-      assigned_agent: ab.agents || null
-    })),
+    ...(agentBuildings || []).map((ab: any) => ({ ...ab.buildings, is_featured: ab.is_featured, fromDevelopment: false })),
     ...developmentBuildings
       .filter((b: any) => !directBuildingIds.has(b.id))
       .map((b: any) => ({ ...b, is_featured: false, fromDevelopment: true }))
@@ -176,8 +147,7 @@ export default async function RootPage() {
         forLease,
         isFeatured: building.is_featured,
         fromDevelopment: building.fromDevelopment,
-        photoUrl: photo?.[0]?.media_url || null,
-        assigned_agent: building.assigned_agent || null
+        photoUrl: photo?.[0]?.media_url || null
       };
     })
   );
@@ -198,11 +168,9 @@ export default async function RootPage() {
           })};`
         }}
       />
-      <HomePage
-        agent={agent}
-        buildings={buildingsWithCounts.filter((b: any) => !b.fromDevelopment)}
-        isTeamSite={isTeamSite}
-        teamAgents={teamAgents}
+      <HomePage 
+        agent={agent} 
+        buildings={buildingsWithCounts.filter((b: any) => !b.fromDevelopment)} 
         developments={(agentDevelopments || []).map((ad: any) => {
           const devBuildings = developmentBuildings.filter((b: any) => b.development_id === ad.developments?.id);
           const devBuildingsWithCounts = buildingsWithCounts.filter((b: any) => b.development_id === ad.developments?.id);
