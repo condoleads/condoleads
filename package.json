@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@react-email/render": "^1.4.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.44.4",

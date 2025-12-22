@@ -4,7 +4,6 @@ import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import PropertyPageClient from './PropertyPageClient'
-import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
   const supabaseServer = createClient()
@@ -228,12 +227,6 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         development={development}
         />
     </main>
-    {/* AI Chat Widget */}
-    <ChatWidgetWrapper 
-      agent={{ id: agent.id, full_name: agent.full_name }} 
-      building={building ? { id: building.id, building_name: building.building_name, canonical_address: building.canonical_address } : null}
-      listing={{ id: listing.id, unit_number: listing.unit_number, list_price: listing.list_price, bedrooms_total: listing.bedrooms_total, bathrooms_total: listing.bathrooms_total }}
-    />
     </>
   )
 }
