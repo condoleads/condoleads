@@ -14,7 +14,6 @@ interface Agent {
   title: string | null
   subdomain: string
   custom_domain?: string | null
-  can_create_children?: boolean
   branding?: {
     primary_color?: string
     secondary_color?: string
@@ -190,89 +189,12 @@ export async function getAgentForBuilding(
   }
 
   console.log(' Agent access verified:', { agentName: agent.full_name, buildingId })
-    return agent
-  }
+  return agent
+}
 
-  /**
-   * Get the agent to display for a building on a team site
-   * For manager sites: returns assigned agent if building is assigned to team member
-   * For solo sites: returns site owner
-   */
-  export async function getDisplayAgentForBuilding(
-    host: string,
-    buildingId: string
-  ): Promise<{ siteOwner: Agent | null; displayAgent: Agent | null; isTeamSite: boolean }> {
-    const supabase = createClient()
-    
-    // Get site owner from host
-    const siteOwner = await getAgentFromHost(host)
-    if (!siteOwner) {
-      return { siteOwner: null, displayAgent: null, isTeamSite: false }
-    }
-
-    const isTeamSite = siteOwner.can_create_children === true
-
-    // If not a team site, just verify access and return site owner
-    if (!isTeamSite) {
-      const hasAccess = await verifyAgentBuildingAccess(siteOwner.id, buildingId)
-      if (!hasAccess) {
-        return { siteOwner, displayAgent: null, isTeamSite: false }
-      }
-      return { siteOwner, displayAgent: siteOwner, isTeamSite: false }
-    }
-
-    // For team sites, get all team member IDs
-    const { data: teamAgents } = await supabase
-      .from('agents')
-      .select('id')
-      .eq('parent_id', siteOwner.id)
-      .eq('is_active', true)
-
-    const allAgentIds = [siteOwner.id, ...(teamAgents || []).map(a => a.id)]
-
-    // Check if building is assigned to any team member
-    const { data: assignment } = await supabase
-      .from('agent_buildings')
-      .select(`
-        agent_id,
-        agents (
-          id,
-          full_name,
-          email,
-          cell_phone,
-          office_phone,
-          whatsapp_number,
-          profile_photo_url,
-          bio,
-          brokerage_name,
-          brokerage_address,
-          title,
-          subdomain,
-          custom_domain,
-          branding,
-          can_create_children
-        )
-      `)
-      .eq('building_id', buildingId)
-      .in('agent_id', allAgentIds)
-      .limit(1)
-      .single()
-
-    if (!assignment || !assignment.agents) {
-      // Building not assigned to team - no access
-      console.log(' Building not assigned to team:', { buildingId, siteOwner: siteOwner.full_name })
-      return { siteOwner, displayAgent: null, isTeamSite: true }
-    }
-
-    // Return the assigned agent as display agent
-    const displayAgent = assignment.agents as unknown as Agent
-    console.log(' Display agent for building:', { buildingId, displayAgent: displayAgent.full_name, siteOwner: siteOwner.full_name })
-    return { siteOwner, displayAgent, isTeamSite: true }
-  }
-
-  /**
-   * Get branding for an agent's site
-   */
+/**
+ * Get branding for an agent's site
+ */
 export function getAgentBranding(agent: Agent) {
   const branding = agent.branding || {}
   return {

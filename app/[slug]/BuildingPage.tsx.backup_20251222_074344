@@ -21,7 +21,7 @@ import BuildingSchema from './components/BuildingSchema'
 import { AgentCard } from '@/components/AgentCard'
 import Breadcrumb from '@/components/Breadcrumb'
 import { createClient } from '@/lib/supabase/server'
-import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
+import { getAgentForBuilding } from '@/lib/utils/agent-detection'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const { data: building } = await supabase
@@ -160,13 +160,13 @@ export default async function BuildingPage({ params }: { params: { slug: string 
 
   // Get agent from subdomain with access verification
   const headersList = headers()
-    const host = headersList.get('host') || ''
-    const { siteOwner, displayAgent, isTeamSite } = await getDisplayAgentForBuilding(host, building.id)
-    // If no display agent (not assigned to this building/team), show 404
-    if (!displayAgent) {
-      notFound()
-    }
-    const agent = displayAgent
+  const host = headersList.get('host') || ''
+  const agent = await getAgentForBuilding(host, building.id)
+
+  // If no agent (not assigned to this building), show 404
+  if (!agent) {
+    notFound()
+  }
   
   const { data: listings } = await supabase
     .from('mls_listings')
