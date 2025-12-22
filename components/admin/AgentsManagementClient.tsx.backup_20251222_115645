@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Users, TrendingUp, Building2, Plus, Pencil, Globe, UserCheck, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { Users, TrendingUp, Building2, Plus, Pencil, Globe, UserCheck, ChevronDown, ChevronRight } from 'lucide-react'
 import AddAgentModal from './AddAgentModal'
 import EditAgentModal from './EditAgentModal'
 
@@ -37,32 +37,6 @@ export default function AgentsManagementClient({ agents }: AgentsManagementClien
   const [showEditModal, setShowEditModal] = useState(false)
   const [editAgentId, setEditAgentId] = useState<string | null>(null)
   const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set())
-  const [preselectedParentId, setPreselectedParentId] = useState<string | null>(null)
-
-  async function removeFromTeam(agentId: string, agentName: string) {
-    if (!confirm(`Remove ${agentName} from this team? They will become a solo agent.`)) return
-    try {
-      const res = await fetch(`/api/admin/agents/${agentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parent_id: null })
-      })
-      const data = await res.json()
-      if (data.success) {
-        alert(`${agentName} removed from team`)
-        window.location.reload()
-      } else {
-        alert('Error: ' + data.error)
-      }
-    } catch (err) {
-      alert('Failed to remove agent from team')
-    }
-  }
-
-  function handleAddToTeam(managerId: string) {
-    setPreselectedParentId(managerId)
-    setShowAddModal(true)
-  }
 
   function toggleManagerExpand(managerId: string) {
     const newExpanded = new Set(expandedManagers)
@@ -265,12 +239,6 @@ export default function AgentsManagementClient({ agents }: AgentsManagementClien
                         <Building2 className="w-4 h-4" />
                         Assign
                       </a>
-                      {agent.can_create_children && (
-                        <button onClick={() => handleAddToTeam(agent.id)} className="flex items-center gap-1 px-3 py-1 text-sm text-green-600 hover:bg-green-50 rounded" title="Add Agent to Team">
-                          <Plus className="w-4 h-4" />
-                          Add Agent
-                        </button>
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -319,10 +287,6 @@ export default function AgentsManagementClient({ agents }: AgentsManagementClien
                             <Building2 className="w-3 h-3" />
                             Assign
                           </a>
-                          <button onClick={() => removeFromTeam(member.id, member.full_name)} className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded" title="Remove from Team">
-                            <X className="w-3 h-3" />
-                            Remove
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -342,9 +306,8 @@ export default function AgentsManagementClient({ agents }: AgentsManagementClien
 
       <AddAgentModal
         isOpen={showAddModal}
-        onClose={function() { setShowAddModal(false); setPreselectedParentId(null) }}
+        onClose={function() { setShowAddModal(false) }}
         onSuccess={handleAgentCreated}
-        preselectedParentId={preselectedParentId}
       />
 
       <EditAgentModal

@@ -16,17 +16,10 @@ interface AddAgentModalProps {
   onClose: () => void
   onSuccess: () => void
   existingAgents?: Agent[]
-  preselectedParentId?: string | null
 }
 
-export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgents = [], preselectedParentId = null }: AddAgentModalProps) {
+export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgents = [] }: AddAgentModalProps) {
   const [agents, setAgents] = useState<Agent[]>(existingAgents)
-  
-  useEffect(() => {
-    if (preselectedParentId) {
-      setFormData(prev => ({ ...prev, parent_id: preselectedParentId }))
-    }
-  }, [preselectedParentId, isOpen])
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
