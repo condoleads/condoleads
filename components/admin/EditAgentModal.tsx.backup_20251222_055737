@@ -47,10 +47,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     parent_id: '',
     can_create_children: false,
     primary_color: '#2563eb',
-    secondary_color: '#1e40af',
-    team_name: '',
-    team_tagline: '',
-    team_logo_url: ''
+    secondary_color: '#1e40af'
   })
 
   useEffect(() => {
@@ -104,10 +101,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
         parent_id: agent.parent_id || '',
         can_create_children: agent.can_create_children || false,
         primary_color: branding.primary_color || '#2563eb',
-        secondary_color: branding.secondary_color || '#1e40af',
-        team_name: agent.team_name || '',
-        team_tagline: agent.team_tagline || '',
-        team_logo_url: agent.team_logo_url || ''
+        secondary_color: branding.secondary_color || '#1e40af'
       })
       if (agent.profile_photo_url) setPhotoPreview(agent.profile_photo_url)
     } catch (err) { setError('Failed to load agent') }
@@ -150,10 +144,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
           is_active: formData.is_active,
           parent_id: formData.parent_id || null,
           can_create_children: formData.can_create_children,
-          branding: { primary_color: formData.primary_color, secondary_color: formData.secondary_color },
-          team_name: formData.can_create_children ? formData.team_name : null,
-          team_tagline: formData.can_create_children ? formData.team_tagline : null,
-          team_logo_url: formData.can_create_children ? formData.team_logo_url : null
+          branding: { primary_color: formData.primary_color, secondary_color: formData.secondary_color }
         })
       })
       const data = await response.json()
@@ -222,31 +213,6 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
                 </div>
               </div>
             </div>
-
-            {/* Team Settings - Only for Managers */}
-            {formData.can_create_children && (
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-orange-900 mb-4 flex items-center gap-2">
-                  <Users className="w-5 h-5" />Team Branding (Manager Site)
-                </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Team Name</label>
-                    <input type="text" value={formData.team_name} onChange={(e) => setFormData({...formData, team_name: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:outline-none" placeholder="King Shah Real Estate Team" />
-                    <p className="text-xs text-gray-500 mt-1">Displayed on your team website header</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Team Tagline</label>
-                    <input type="text" value={formData.team_tagline} onChange={(e) => setFormData({...formData, team_tagline: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:outline-none" placeholder="Your Trusted Condo Experts in Toronto" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Team Logo URL</label>
-                    <input type="url" value={formData.team_logo_url} onChange={(e) => setFormData({...formData, team_logo_url: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:outline-none" placeholder="https://example.com/logo.png" />
-                    {formData.team_logo_url && <img src={formData.team_logo_url} alt="Team Logo Preview" className="mt-2 h-12 object-contain" />}
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Personal Information */}
             <div>

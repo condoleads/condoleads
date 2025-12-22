@@ -151,8 +151,9 @@ export async function PUT(
     'full_name', 'email', 'cell_phone', 'office_phone', 'whatsapp_number', 'title', 'license_number',
     'brokerage_name', 'brokerage_address', 'subdomain', 'custom_domain',
     'bio', 'profile_photo_url', 'notification_email', 'is_active',
-    'parent_id', 'can_create_children', 'branding'
-  ]
+    'parent_id', 'can_create_children', 'branding',
+    'team_name', 'team_tagline', 'team_logo_url'
+    ]
 
   for (const field of allowedFields) {
     if (data[field] !== undefined) {
