@@ -2,7 +2,7 @@
 import { headers } from 'next/headers'
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
-import { getDisplayAgentForDevelopment } from '@/lib/utils/agent-detection'
+import { extractSubdomain, getAgentFromSubdomain } from '@/lib/utils/agent-detection'
 import { AgentCard } from '@/components/AgentCard'
 import Link from 'next/link'
 import DevelopmentListings from './components/DevelopmentListings'
@@ -17,12 +17,25 @@ interface DevelopmentPageProps {
 export default async function DevelopmentPage({ params, development }: DevelopmentPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const { displayAgent, isTeamSite } = await getDisplayAgentForDevelopment(host, development.id)
-  
-  if (!displayAgent) {
+  const subdomain = extractSubdomain(host)
+  let agent: any = null
+
+  if (subdomain) {
+    agent = await getAgentFromSubdomain(subdomain)
+  }
+
+  if (agent) {
+    const supabaseServer = createClient()
+    const { data: devAssignment } = await supabaseServer
+      .from('development_agents')
+      .select('id')
+      .eq('agent_id', agent.id)
+      .eq('development_id', development.id)
+      .single()
+    if (!devAssignment) { notFound() }
+  } else if (subdomain) {
     notFound()
   }
-  const agent = displayAgent
 
   const { data: buildings } = await supabase
     .from('buildings')

@@ -269,7 +269,68 @@ export async function getAgentForBuilding(
     console.log(' Display agent for building:', { buildingId, displayAgent: displayAgent.full_name, siteOwner: siteOwner.full_name })
     return { siteOwner, displayAgent, isTeamSite: true }
   }
+/**
+   * Get the agent to display for a development on a team site
+   */
+  export async function getDisplayAgentForDevelopment(
+    host: string,
+    developmentId: string
+  ): Promise<{ siteOwner: Agent | null; displayAgent: Agent | null; isTeamSite: boolean }> {
+    const supabase = createClient()
+    
+    const siteOwner = await getAgentFromHost(host)
+    if (!siteOwner) {
+      return { siteOwner: null, displayAgent: null, isTeamSite: false }
+    }
 
+    const isTeamSite = siteOwner.can_create_children === true
+
+    if (!isTeamSite) {
+      const { data: devAssignment } = await supabase
+        .from('development_agents')
+        .select('id')
+        .eq('agent_id', siteOwner.id)
+        .eq('development_id', developmentId)
+        .single()
+      
+      if (!devAssignment) {
+        return { siteOwner, displayAgent: null, isTeamSite: false }
+      }
+      return { siteOwner, displayAgent: siteOwner, isTeamSite: false }
+    }
+
+    const { data: teamAgents } = await supabase
+      .from('agents')
+      .select('id')
+      .eq('parent_id', siteOwner.id)
+      .eq('is_active', true)
+
+    const allAgentIds = [siteOwner.id, ...(teamAgents || []).map(a => a.id)]
+
+    const { data: assignment } = await supabase
+      .from('development_agents')
+      .select(`
+        agent_id,
+        agents (
+          id, full_name, email, cell_phone, office_phone, whatsapp_number,
+          profile_photo_url, bio, brokerage_name, brokerage_address, title,
+          subdomain, custom_domain, branding, can_create_children
+        )
+      `)
+      .eq('development_id', developmentId)
+      .in('agent_id', allAgentIds)
+      .limit(1)
+      .single()
+
+    if (!assignment || !assignment.agents) {
+      console.log(' Development not assigned to team:', { developmentId, siteOwner: siteOwner.full_name })
+      return { siteOwner, displayAgent: null, isTeamSite: true }
+    }
+
+    const displayAgent = assignment.agents as unknown as Agent
+    console.log(' Display agent for development:', { developmentId, displayAgent: displayAgent.full_name, siteOwner: siteOwner.full_name })
+    return { siteOwner, displayAgent, isTeamSite: true }
+  }
   /**
    * Get branding for an agent's site
    */
