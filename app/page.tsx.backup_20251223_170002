@@ -105,20 +105,13 @@ export default async function RootPage() {
   const { data: agentDevelopments } = await supabase
     .from('development_agents')
     .select(`
-      agent_id,
       developments (
         id,
         name,
         slug
-      ),
-      agents (
-        id,
-        full_name,
-        slug,
-        profile_photo_url
       )
     `)
-    .in('agent_id', allAgentIds);
+    .eq('agent_id', agent.id);
 
   // Get buildings from assigned developments
   const developmentIds = (agentDevelopments || [])
@@ -218,16 +211,15 @@ export default async function RootPage() {
           const forSale = devBuildingsWithCounts.reduce((sum: number, b: any) => sum + (b.forSale || 0), 0);
           const forLease = devBuildingsWithCounts.reduce((sum: number, b: any) => sum + (b.forLease || 0), 0);
           return {
-              id: ad.developments?.id,
-              name: ad.developments?.name,
-              slug: ad.developments?.slug,
-              buildingCount: devBuildings.length,
-              photoUrl: buildingWithPhoto?.photoUrl || null,
-              addresses: addresses,
-              forSale: forSale,
-              forLease: forLease,
-              assigned_agent: ad.agents || null
-            };
+            id: ad.developments?.id,
+            name: ad.developments?.name,
+            slug: ad.developments?.slug,
+            buildingCount: devBuildings.length,
+            photoUrl: buildingWithPhoto?.photoUrl || null,
+            addresses: addresses,
+            forSale: forSale,
+            forLease: forLease
+          };
         }).filter((d: any) => d.id)}
       />
     </>

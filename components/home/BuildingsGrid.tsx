@@ -30,6 +30,12 @@ interface Development {
   addresses?: string;
   forSale: number;
   forLease: number;
+  assigned_agent?: {
+    id: string;
+    full_name: string;
+    slug: string;
+    profile_photo_url: string | null;
+  } | null;
 }
 
 interface BuildingsGridProps {
@@ -90,6 +96,21 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
                     <p className="text-gray-500 text-sm mb-2 truncate" title={development.addresses}>{development.addresses}</p>
                   )}
                   <p className="text-gray-600 text-sm mb-3">{development.buildingCount} buildings</p>
+                  {/* Assigned Agent - Only on team sites */}
+                  {isTeamSite && development.assigned_agent && (
+                    <div className="flex items-center gap-2 mb-3 p-2 bg-purple-50 rounded-lg">
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-purple-200 flex-shrink-0">
+                        {development.assigned_agent.profile_photo_url ? (
+                          <img src={development.assigned_agent.profile_photo_url} alt={development.assigned_agent.full_name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-purple-600 font-semibold text-sm">
+                            {development.assigned_agent.full_name.charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-sm text-purple-700 font-medium">Agent: {development.assigned_agent.full_name}</span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-4 mb-4">
                     <div className="flex items-center gap-1">
                       <Home className="w-4 h-4 text-emerald-600" />

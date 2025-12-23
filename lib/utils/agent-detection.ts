@@ -203,22 +203,39 @@ export async function getAgentForBuilding(
     buildingId: string
   ): Promise<{ siteOwner: Agent | null; displayAgent: Agent | null; isTeamSite: boolean }> {
     const supabase = createClient()
-    
     // Get site owner from host
     const siteOwner = await getAgentFromHost(host)
     if (!siteOwner) {
       return { siteOwner: null, displayAgent: null, isTeamSite: false }
     }
-
     const isTeamSite = siteOwner.can_create_children === true
+
+    // Get building's development_id if it belongs to one
+    const { data: building } = await supabase
+      .from('buildings')
+      .select('development_id')
+      .eq('id', buildingId)
+      .single()
 
     // If not a team site, just verify access and return site owner
     if (!isTeamSite) {
       const hasAccess = await verifyAgentBuildingAccess(siteOwner.id, buildingId)
-      if (!hasAccess) {
-        return { siteOwner, displayAgent: null, isTeamSite: false }
+      if (hasAccess) {
+        return { siteOwner, displayAgent: siteOwner, isTeamSite: false }
       }
-      return { siteOwner, displayAgent: siteOwner, isTeamSite: false }
+      // Check development access if building is part of a development
+      if (building?.development_id) {
+        const { data: devAssignment } = await supabase
+          .from('development_agents')
+          .select('id')
+          .eq('agent_id', siteOwner.id)
+          .eq('development_id', building.development_id)
+          .single()
+        if (devAssignment) {
+          return { siteOwner, displayAgent: siteOwner, isTeamSite: false }
+        }
+      }
+      return { siteOwner, displayAgent: null, isTeamSite: false }
     }
 
     // For team sites, get all team member IDs
@@ -227,30 +244,17 @@ export async function getAgentForBuilding(
       .select('id')
       .eq('parent_id', siteOwner.id)
       .eq('is_active', true)
-
     const allAgentIds = [siteOwner.id, ...(teamAgents || []).map(a => a.id)]
 
-    // Check if building is assigned to any team member
+    // Check if building is directly assigned to any team member
     const { data: assignment } = await supabase
       .from('agent_buildings')
       .select(`
         agent_id,
         agents (
-          id,
-          full_name,
-          email,
-          cell_phone,
-          office_phone,
-          whatsapp_number,
-          profile_photo_url,
-          bio,
-          brokerage_name,
-          brokerage_address,
-          title,
-          subdomain,
-          custom_domain,
-          branding,
-          can_create_children
+          id, full_name, email, cell_phone, office_phone, whatsapp_number,
+          profile_photo_url, bio, brokerage_name, brokerage_address, title,
+          subdomain, custom_domain, branding, can_create_children
         )
       `)
       .eq('building_id', buildingId)
@@ -258,16 +262,39 @@ export async function getAgentForBuilding(
       .limit(1)
       .single()
 
-    if (!assignment || !assignment.agents) {
-      // Building not assigned to team - no access
-      console.log(' Building not assigned to team:', { buildingId, siteOwner: siteOwner.full_name })
-      return { siteOwner, displayAgent: null, isTeamSite: true }
+    if (assignment?.agents) {
+      const displayAgent = assignment.agents as unknown as Agent
+      console.log(' Display agent for building:', { buildingId, displayAgent: displayAgent.full_name, siteOwner: siteOwner.full_name })
+      return { siteOwner, displayAgent, isTeamSite: true }
     }
 
-    // Return the assigned agent as display agent
-    const displayAgent = assignment.agents as unknown as Agent
-    console.log(' Display agent for building:', { buildingId, displayAgent: displayAgent.full_name, siteOwner: siteOwner.full_name })
-    return { siteOwner, displayAgent, isTeamSite: true }
+    // Check if building's development is assigned to any team member
+    if (building?.development_id) {
+      const { data: devAssignment } = await supabase
+        .from('development_agents')
+        .select(`
+          agent_id,
+          agents (
+            id, full_name, email, cell_phone, office_phone, whatsapp_number,
+            profile_photo_url, bio, brokerage_name, brokerage_address, title,
+            subdomain, custom_domain, branding, can_create_children
+          )
+        `)
+        .eq('development_id', building.development_id)
+        .in('agent_id', allAgentIds)
+        .limit(1)
+        .single()
+
+      if (devAssignment?.agents) {
+        const displayAgent = devAssignment.agents as unknown as Agent
+        console.log(' Display agent for building (via development):', { buildingId, displayAgent: displayAgent.full_name, siteOwner: siteOwner.full_name })
+        return { siteOwner, displayAgent, isTeamSite: true }
+      }
+    }
+
+    // Building not assigned to team - no access
+    console.log(' Building not assigned to team:', { buildingId, siteOwner: siteOwner.full_name })
+    return { siteOwner, displayAgent: null, isTeamSite: true }
   }
 /**
    * Get the agent to display for a development on a team site
