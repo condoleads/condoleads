@@ -92,21 +92,14 @@ export async function POST(request: NextRequest) {
     const totalRooms = (activeResults.roomsAdded || 0) + (inactiveResults.roomsAdded || 0);
     const totalOpenHouses = (activeResults.openHousesAdded || 0) + (inactiveResults.openHousesAdded || 0);
     
-    const totalUpdated = (activeResults.updated || 0);
-    const totalUnchanged = (activeResults.unchanged || 0) + (inactiveResults.skipped || 0);
-    
     await createSyncHistory(
       buildingId,
       totalListingsFound,
       totalListingsCreated,
-      totalUpdated,
-      totalUnchanged,
       totalMedia,
       totalRooms,
       totalOpenHouses,
-      duration,
-      'manual',
-      null
+      duration
     );
     
 
@@ -1366,38 +1359,30 @@ function determineVOWAccess(listing: any): boolean {
 
 // Create sync history record
 async function createSyncHistory(
-    buildingId: string,
-    totalFound: number,
-    totalCreated: number,
-    totalUpdated: number,
-    totalUnchanged: number,
-    mediaCount: number,
-    roomCount: number,
-    openHouseCount: number,
-    duration: number,
-    triggeredBy: string = 'manual',
-    errorDetails: string | null = null
-  ) {
-    await supabase.from('sync_history').insert({
-      building_id: buildingId,
-      sync_type: 'incremental',
-      feed_type: 'dla',
-      listings_found: totalFound,
-      listings_created: totalCreated,
-      listings_updated: totalUpdated,
-      listings_unchanged: totalUnchanged,
-      media_records_created: mediaCount,
-      room_records_created: roomCount,
-      open_house_records_created: openHouseCount,
-      sync_status: errorDetails ? 'partial' : 'success',
-      started_at: new Date(Date.now() - duration * 1000).toISOString(),
-      completed_at: new Date().toISOString(),
-      duration_seconds: duration,
-      triggered_by: triggeredBy,
-      error_details: errorDetails,
-      created_at: new Date().toISOString()
-    });
-  }
+  buildingId: string,
+  totalFound: number,
+  totalCreated: number,
+  mediaCount: number,
+  roomCount: number,
+  openHouseCount: number,
+  duration: number
+) {
+  await supabase.from('sync_history').insert({
+    building_id: buildingId,
+    sync_type: 'incremental',
+    feed_type: 'dla',
+    listings_found: totalFound,
+    listings_created: totalCreated,
+    media_records_created: mediaCount,
+    room_records_created: roomCount,
+    open_house_records_created: openHouseCount,
+    sync_status: 'success',
+    started_at: new Date(Date.now() - duration * 1000).toISOString(),
+    completed_at: new Date().toISOString(),
+    duration_seconds: duration,
+    created_at: new Date().toISOString()
+  });
+}
 
 // Helper parsing functions
 function parseInteger(value: any): number | null {

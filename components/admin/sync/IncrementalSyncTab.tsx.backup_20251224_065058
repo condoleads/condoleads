@@ -27,35 +27,14 @@ interface SyncAllSummary {
   errors: number;
 }
 
-interface SyncHistoryRecord {
-  id: string;
-  building_id: string;
-  building_name?: string;
-  sync_type: string;
-  listings_found: number;
-  listings_created: number;
-  listings_updated: number;
-  listings_unchanged: number;
-  media_records_created: number;
-  sync_status: string;
-  started_at: string;
-  completed_at: string;
-  duration_seconds: number;
-  error_details: string | null;
-  triggered_by: string;
-}
-
 export default function IncrementalSyncTab() {
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncAllSummary, setSyncAllSummary] = useState<SyncAllSummary | null>(null);
-  const [syncHistory, setSyncHistory] = useState<SyncHistoryRecord[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     loadBuildings();
-    loadSyncHistory();
   }, []);
 
   const loadBuildings = async () => {
@@ -63,26 +42,18 @@ export default function IncrementalSyncTab() {
     try {
       const response = await fetch('/api/admin/buildings/list');
       const data = await response.json();
+      
       const buildingsWithStatus = data.buildings.map((b: any) => ({
         ...b,
         status: 'idle' as const,
         showDetails: false
       }));
+      
       setBuildings(buildingsWithStatus);
     } catch (error) {
       console.error('Failed to load buildings:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadSyncHistory = async () => {
-    try {
-      const response = await fetch('/api/admin/sync-history');
-      const data = await response.json();
-      setSyncHistory(data.history || []);
-    } catch (error) {
-      console.error('Failed to load sync history:', error);
     }
   };
 
@@ -366,7 +337,7 @@ export default function IncrementalSyncTab() {
           <h3 className="text-xl font-semibold text-purple-800 mb-4">
              Sync All Summary
           </h3>
-
+          
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-700">
@@ -374,21 +345,21 @@ export default function IncrementalSyncTab() {
               </div>
               <div className="text-xs text-purple-600">Buildings Processed</div>
             </div>
-
+            
             <div className="text-center">
               <div className="text-2xl font-bold text-green-700">
                 {syncAllSummary.totalActiveAdded}
               </div>
               <div className="text-xs text-green-600">Active Added</div>
             </div>
-
+            
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-700">
                 {syncAllSummary.totalActiveUpdated}
               </div>
               <div className="text-xs text-blue-600">Active Updated</div>
             </div>
-
+            
             <div className="text-center">
               <div className="text-2xl font-bold text-red-700">
                 {syncAllSummary.totalActiveRemoved}
@@ -396,7 +367,7 @@ export default function IncrementalSyncTab() {
               <div className="text-xs text-red-600">Active Removed</div>
             </div>
           </div>
-
+          
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-700">
@@ -404,14 +375,14 @@ export default function IncrementalSyncTab() {
               </div>
               <div className="text-xs text-orange-600">Inactive Added</div>
             </div>
-
+            
             <div className="text-center">
               <div className="text-2xl font-bold text-gray-700">
                 {syncAllSummary.totalDuration}s
               </div>
               <div className="text-xs text-gray-600">Total Duration</div>
             </div>
-
+            
             <div className="text-center">
               <div className={`text-2xl font-bold ${syncAllSummary.errors > 0 ? 'text-red-700' : 'text-green-700'}`}>
                 {syncAllSummary.errors}
@@ -421,76 +392,6 @@ export default function IncrementalSyncTab() {
           </div>
         </div>
       )}
-
-      {/* Sync History Section */}
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="px-6 py-4 border-b bg-gray-50 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-800">Sync History</h3>
-          <button
-            onClick={() => { setShowHistory(!showHistory); if (!showHistory) loadSyncHistory(); }}
-            className="text-sm text-blue-600 hover:text-blue-700"
-          >
-            {showHistory ? 'Hide History' : 'Show History'}
-          </button>
-        </div>
-        
-        {showHistory && (
-          <div className="overflow-x-auto">
-            {syncHistory.length === 0 ? (
-              <div className="p-8 text-center text-gray-500">No sync history found</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Building</th>
-                    <th className="text-left px-4 py-2 font-medium text-gray-600">Date</th>
-                    <th className="text-center px-4 py-2 font-medium text-gray-600">Found</th>
-                    <th className="text-center px-4 py-2 font-medium text-gray-600">Created</th>
-                    <th className="text-center px-4 py-2 font-medium text-gray-600">Updated</th>
-                    <th className="text-center px-4 py-2 font-medium text-gray-600">Media</th>
-                    <th className="text-center px-4 py-2 font-medium text-gray-600">Duration</th>
-                    <th className="text-center px-4 py-2 font-medium text-gray-600">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {syncHistory.slice(0, 50).map((record) => (
-                    <tr key={record.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2">
-                        <div className="font-medium text-gray-900">{record.building_name || 'Unknown'}</div>
-                        <div className="text-xs text-gray-500">{record.triggered_by || 'manual'}</div>
-                      </td>
-                      <td className="px-4 py-2 text-gray-600">
-                        {new Date(record.started_at).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2 text-center text-gray-700">{record.listings_found || 0}</td>
-                      <td className="px-4 py-2 text-center text-green-600 font-medium">{record.listings_created || 0}</td>
-                      <td className="px-4 py-2 text-center text-blue-600 font-medium">{record.listings_updated || 0}</td>
-                      <td className="px-4 py-2 text-center text-gray-600">{record.media_records_created || 0}</td>
-                      <td className="px-4 py-2 text-center text-gray-600">{record.duration_seconds?.toFixed(1) || '-'}s</td>
-                      <td className="px-4 py-2 text-center">
-                        <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
-                          record.sync_status === 'success' 
-                            ? 'bg-green-100 text-green-700' 
-                            : record.sync_status === 'partial'
-                            ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}>
-                          {record.sync_status}
-                        </span>
-                        {record.error_details && (
-                          <div className="text-xs text-red-500 mt-1 max-w-xs truncate" title={record.error_details}>
-                            {record.error_details}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
