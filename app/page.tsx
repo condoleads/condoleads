@@ -82,15 +82,16 @@ export default async function RootPage() {
       is_featured,
       agent_id,
       buildings (
-        id,
-        building_name,
-        slug,
-        canonical_address,
-        street_number,
-        street_name,
-        city_district,
-        development_id
-      ),
+          id,
+          building_name,
+          slug,
+          canonical_address,
+          street_number,
+          street_name,
+          city_district,
+          development_id,
+          cover_photo_url
+        ),
       agents (
         id,
         full_name,
@@ -107,11 +108,12 @@ export default async function RootPage() {
     .select(`
       agent_id,
       developments (
-        id,
-        name,
-        slug
-      ),
-      agents (
+          id,
+          name,
+          slug,
+          cover_photo_url
+        ),
+        agents (
         id,
         full_name,
         slug,
@@ -128,9 +130,9 @@ export default async function RootPage() {
   let developmentBuildings: any[] = [];
   if (developmentIds.length > 0) {
     const { data: devBuildings } = await supabase
-      .from('buildings')
-      .select('id, building_name, slug, canonical_address, street_number, street_name, city_district, development_id')
-      .in('development_id', developmentIds);
+        .from('buildings')
+        .select('id, building_name, slug, canonical_address, street_number, street_name, city_district, development_id, cover_photo_url')
+        .in('development_id', developmentIds);
     developmentBuildings = devBuildings || [];
   }
 
@@ -183,7 +185,7 @@ export default async function RootPage() {
         forLease,
         isFeatured: building.is_featured,
         fromDevelopment: building.fromDevelopment,
-        photoUrl: photo?.[0]?.media_url || null,
+        photoUrl: building.cover_photo_url || photo?.[0]?.media_url || null,
         assigned_agent: building.assigned_agent || null
       };
     })
@@ -222,7 +224,7 @@ export default async function RootPage() {
               name: ad.developments?.name,
               slug: ad.developments?.slug,
               buildingCount: devBuildings.length,
-              photoUrl: buildingWithPhoto?.photoUrl || null,
+              photoUrl: ad.developments?.cover_photo_url || buildingWithPhoto?.photoUrl || null,
               addresses: addresses,
               forSale: forSale,
               forLease: forLease,
