@@ -1,7 +1,6 @@
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getAgentFromHost, isCustomDomain } from '@/lib/utils/agent-detection';
 import { HomePage } from '@/components/HomePage';
 import LandingHeader from '@/components/landing/LandingHeader'
 import HeroSection from '@/components/landing/HeroSection'
@@ -21,18 +20,11 @@ export default async function RootPage() {
   const headersList = headers();
   const host = headersList.get('host') || '';
   
-  // Check custom domain first
-  let agent = null;
-  if (isCustomDomain(host)) {
-    agent = await getAgentFromHost(host);
-    console.log('?? DEBUG - Custom domain check:', host, 'Agent:', agent?.full_name);
-  }
-  
   const subdomain = extractSubdomain(host);
   console.log('?? DEBUG - Host:', host, 'Subdomain:', subdomain);
   
-  // If no subdomain AND no custom domain agent, show new landing page
-  if (!subdomain && !agent) {
+  // If no subdomain, show new landing page
+  if (!subdomain) {
     return (
       <>
         <LandingHeader />
@@ -54,19 +46,15 @@ export default async function RootPage() {
   
   console.log(' DEBUG: Subdomain extracted:', subdomain);
 
-  // Fetch agent by subdomain (if not already found via custom domain)
-  if (!agent && subdomain) {
-    const { data: subdomainAgent, error: agentError } = await supabase
-      .from('agents')
-      .select('*')
-      .eq('subdomain', subdomain)
-      .eq('is_active', true)
-      .single();
-    
-    console.log(' DEBUG: Agent query result:', { agent: subdomainAgent, agentError });
-    agent = subdomainAgent;
-  }
-  
+  // Fetch agent by subdomain
+  const { data: agent, error: agentError } = await supabase
+    .from('agents')
+    .select('*')
+    .eq('subdomain', subdomain)
+    .eq('is_active', true)
+    .single();
+
+  console.log(' DEBUG: Agent query result:', { agent, agentError });
   if (!agent) notFound();
 
   // Check if this is a manager site (team site)
