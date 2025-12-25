@@ -90,8 +90,7 @@ export default async function RootPage() {
           street_name,
           city_district,
           development_id,
-          cover_photo_url,
-          gallery_photos
+          cover_photo_url
         ),
       agents (
         id,
@@ -112,8 +111,7 @@ export default async function RootPage() {
           id,
           name,
           slug,
-          cover_photo_url,
-          gallery_photos
+          cover_photo_url
         ),
         agents (
         id,
@@ -133,7 +131,7 @@ export default async function RootPage() {
   if (developmentIds.length > 0) {
     const { data: devBuildings } = await supabase
         .from('buildings')
-        .select('id, building_name, slug, canonical_address, street_number, street_name, city_district, development_id, cover_photo_url, gallery_photos')
+        .select('id, building_name, slug, canonical_address, street_number, street_name, city_district, development_id, cover_photo_url')
         .in('development_id', developmentIds);
     developmentBuildings = devBuildings || [];
   }
@@ -188,8 +186,7 @@ export default async function RootPage() {
         isFeatured: building.is_featured,
         fromDevelopment: building.fromDevelopment,
         photoUrl: building.cover_photo_url || photo?.[0]?.media_url || null,
-          galleryPhotos: building.gallery_photos || [],
-          assigned_agent: building.assigned_agent || null
+        assigned_agent: building.assigned_agent || null
       };
     })
   );
@@ -228,7 +225,6 @@ export default async function RootPage() {
               slug: ad.developments?.slug,
               buildingCount: devBuildings.length,
               photoUrl: ad.developments?.cover_photo_url || buildingWithPhoto?.photoUrl || null,
-              galleryPhotos: ad.developments?.gallery_photos || [],
               addresses: addresses,
               forSale: forSale,
               forLease: forLease,

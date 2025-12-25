@@ -1,7 +1,5 @@
-﻿'use client';
-import { useState } from 'react';
-import Link from 'next/link';
-import { Building2, Home, Key, ChevronLeft, ChevronRight } from 'lucide-react';
+﻿import Link from 'next/link';
+import { Building2, Home, Key } from 'lucide-react';
 
 interface Building {
   id: string;
@@ -15,7 +13,6 @@ interface Building {
   forLease: number;
   isFeatured?: boolean;
   photoUrl?: string | null;
-  galleryPhotos?: string[];
   assigned_agent?: {
     id: string;
     full_name: string;
@@ -30,7 +27,6 @@ interface Development {
   slug: string;
   buildingCount: number;
   photoUrl?: string | null;
-  galleryPhotos?: string[];
   addresses?: string;
   forSale: number;
   forLease: number;
@@ -47,57 +43,6 @@ interface BuildingsGridProps {
   developments?: Development[];
   agentName: string;
   isTeamSite?: boolean;
-}
-
-function ImageCarousel({ photos, alt }: { photos: string[]; alt: string }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-
-  const goToPrevious = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setCurrentIndex((prev) => (prev === 0 ? photos.length - 1 : prev - 1));
-  };
-
-  const goToNext = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setCurrentIndex((prev) => (prev === photos.length - 1 ? 0 : prev + 1));
-  };
-
-  return (
-    <div className="relative w-full h-full">
-      <img
-        src={photos[currentIndex]}
-        alt={`${alt} - ${currentIndex + 1}`}
-        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-      />
-      {photos.length > 1 && (
-        <>
-          <button
-            onClick={goToPrevious}
-            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full transition-colors z-10"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            onClick={goToNext}
-            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full transition-colors z-10"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10">
-            {photos.map((_, idx) => (
-              <button
-                key={idx}
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCurrentIndex(idx); }}
-                className={`w-2 h-2 rounded-full transition-colors ${idx === currentIndex ? 'bg-white' : 'bg-white/50'}`}
-              />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 export function BuildingsGrid({ buildings, developments = [], agentName, isTeamSite = false }: BuildingsGridProps) {
@@ -128,20 +73,17 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
                 className="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-200 hover:border-purple-500"
               >
                 <div className="relative h-48 overflow-hidden">
-                   {development.galleryPhotos && development.galleryPhotos.length > 1 ? (
-                      <ImageCarousel photos={development.galleryPhotos} alt={development.name} />
-                    ) : development.photoUrl ? (
-                      <img
-                        src={development.photoUrl}
-                        alt={development.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
-                        <Building2 className="w-20 h-20 text-white/30" />
-                      </div>
-                    )}
-                  
+                  {development.photoUrl ? (
+                    <img
+                      src={development.photoUrl}
+                      alt={development.name}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
+                      <Building2 className="w-20 h-20 text-white/30" />
+                    </div>
+                  )}
                   <div className="absolute top-3 left-3">
                     <span className="px-3 py-1 bg-purple-600 text-white text-xs font-semibold rounded-full">Development</span>
                   </div>
