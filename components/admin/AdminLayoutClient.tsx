@@ -46,6 +46,9 @@ export default function AdminLayoutClient({
                 <a href="/admin/photos" className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
                     Photos
                   </a>
+                <a href="/admin/branding" className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
+                    Branding
+                  </a>
               </nav>
             </div>
             <div className="flex items-center gap-3">

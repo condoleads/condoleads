@@ -219,9 +219,11 @@ export default async function RootPage() {
             brokerage_name: agent.brokerage_name,
             brokerage_address: agent.brokerage_address,
             title: agent.title,
-            siteName: agent.custom_domain 
+            siteName: agent.site_title || (agent.custom_domain 
               ? agent.custom_domain.replace(/\.(ca|com|net|org)$/, '').split('.').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join('')
-              : agent.subdomain.charAt(0).toUpperCase() + agent.subdomain.slice(1)
+              : agent.subdomain.charAt(0).toUpperCase() + agent.subdomain.slice(1)),
+            siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+            ogImageUrl: agent.og_image_url
           })};`
         }}
       />
@@ -286,30 +288,64 @@ function extractSubdomain(host: string) {
 export async function generateMetadata() {
   const headersList = headers();
   const host = headersList.get('host') || '';
+  
+  // Check custom domain first
+  let agent = null;
+  const supabase = createClient();
+  
+  if (isCustomDomain(host)) {
+    const cleanDomain = host.replace(/^www\./, '');
+    const { data } = await supabase
+      .from('agents')
+      .select('full_name, bio, site_title, site_tagline, og_image_url, custom_domain')
+      .eq('custom_domain', cleanDomain)
+      .eq('is_active', true)
+      .single();
+    agent = data;
+  }
+  
   const subdomain = extractSubdomain(host);
-  console.log('?? DEBUG - Host:', host, 'Subdomain:', subdomain);
-
-  if (!subdomain) {
+  
+  if (!subdomain && !agent) {
     return {
       title: 'CondoLeads - Get Your AI-Powered Condo Leads Funnel Today',
       description: 'Stop sharing leads with competitors. Get your branded website with AI estimates that turn curious buyers into exclusive clients.'
     };
   }
-
-  const supabase = createClient();
-  const { data: agent } = await supabase
-    .from('agents')
-    .select('full_name, bio')
-    .eq('subdomain', subdomain)
-    .eq('is_active', true)
-    .single();
-
+  
+  // Fetch by subdomain if not found via custom domain
+  if (!agent && subdomain) {
+    const { data } = await supabase
+      .from('agents')
+      .select('full_name, bio, site_title, site_tagline, og_image_url, custom_domain')
+      .eq('subdomain', subdomain)
+      .eq('is_active', true)
+      .single();
+    agent = data;
+  }
+  
   if (!agent) {
     return { title: 'Agent Not Found' };
   }
-
+  
+  const siteTitle = agent.site_title || agent.full_name;
+  const tagline = agent.site_tagline || 'Toronto Condo Specialist';
+  const description = agent.bio || `Find luxury Toronto condos with ${agent.full_name}. Exclusive access to premium buildings.`;
+  
   return {
-    title: `${agent.full_name} - Toronto Condo Specialist`,
-    description: agent.bio || `Find luxury Toronto condos with ${agent.full_name}. Exclusive access to premium buildings.`,
+    title: `${siteTitle} - ${tagline}`,
+    description: description,
+    openGraph: {
+      title: `${siteTitle} - ${tagline}`,
+      description: description,
+      type: 'website',
+      images: agent.og_image_url ? [{ url: agent.og_image_url, width: 1200, height: 630 }] : [],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${siteTitle} - ${tagline}`,
+      description: description,
+      images: agent.og_image_url ? [agent.og_image_url] : [],
+    },
   };
 }
