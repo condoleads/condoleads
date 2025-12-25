@@ -3,7 +3,6 @@ import Link from 'next/link'
 import AuthStatus from '@/components/auth/AuthStatus'
 
 interface UniversalNavProps {
-  siteName?: string
   agentData?: {
     id?: string
     buildingId?: string
@@ -15,14 +14,14 @@ interface UniversalNavProps {
   }
 }
 
-export default function UniversalNav({ siteName, agentData }: UniversalNavProps) {
+export default function UniversalNav({ agentData }: UniversalNavProps) {
   return (
     <nav className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center">
-            <span className="text-2xl font-bold text-emerald-600">{siteName || 'CondoLeads'}</span>
+            <span className="text-2xl font-bold text-emerald-600">CondoLeads</span>
           </Link>
 
           {/* Navigation Links */}

@@ -34,7 +34,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
 
   return (
     <>
-      {showPublicLayout && <UniversalNav siteName={agentData?.siteName} agentData={agentData} />}
+      {showPublicLayout && <UniversalNav agentData={agentData} />}
       {children}
       {showPublicLayout && <Footer agentData={agentData} />}
     </>
