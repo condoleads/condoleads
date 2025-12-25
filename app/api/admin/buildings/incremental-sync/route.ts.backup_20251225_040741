@@ -14,7 +14,7 @@ const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_T
 export async function POST(request: NextRequest) {
   try {
     const startTime = Date.now(); // ADD THIS LINE
-    const { buildingId, triggeredBy = 'manual' } = await request.json();
+    const { buildingId } = await request.json();
 
 
     if (!buildingId) {
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       totalRooms,
       totalOpenHouses,
       duration,
-      triggeredBy,
+      'manual',
       null
     );
     
