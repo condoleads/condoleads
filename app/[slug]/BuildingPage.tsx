@@ -276,7 +276,10 @@ export default async function BuildingPage({ params }: { params: { slug: string 
             phone: agent.cell_phone,
             brokerage_name: agent.brokerage_name,
             brokerage_address: agent.brokerage_address,
-            title: agent.title
+            title: agent.title,
+            siteName: agent.site_title || agent.full_name,
+            siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+            ogImageUrl: agent.og_image_url
           })};`
         }}
       />

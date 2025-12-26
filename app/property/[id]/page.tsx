@@ -287,7 +287,10 @@ export default async function PropertyPage({ params }: { params: { id: string } 
             buildingAddress: building?.canonical_address || '',
             listingId: listing.id,
             listingAddress: listing.unparsed_address || '',
-            unitNumber: listing.unit_number || ''
+            unitNumber: listing.unit_number || '',
+            siteName: agent.site_title || agent.full_name,
+            siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+            ogImageUrl: agent.og_image_url
           })};`
         }}
       />

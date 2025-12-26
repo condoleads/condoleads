@@ -15,9 +15,6 @@ interface Agent {
   subdomain: string
   custom_domain?: string | null
   can_create_children?: boolean
-  site_title?: string | null
-  site_tagline?: string | null
-  og_image_url?: string | null
   branding?: {
     primary_color?: string
     secondary_color?: string
@@ -257,8 +254,7 @@ export async function getAgentForBuilding(
         agents (
           id, full_name, email, cell_phone, office_phone, whatsapp_number,
           profile_photo_url, bio, brokerage_name, brokerage_address, title,
-          subdomain, custom_domain, branding, can_create_children,
-          site_title, site_tagline, og_image_url
+          subdomain, custom_domain, branding, can_create_children
         )
       `)
       .eq('building_id', buildingId)
@@ -281,8 +277,7 @@ export async function getAgentForBuilding(
           agents (
             id, full_name, email, cell_phone, office_phone, whatsapp_number,
             profile_photo_url, bio, brokerage_name, brokerage_address, title,
-            subdomain, custom_domain, branding, can_create_children,
-            site_title, site_tagline, og_image_url
+            subdomain, custom_domain, branding, can_create_children
           )
         `)
         .eq('development_id', building.development_id)
@@ -346,8 +341,7 @@ export async function getAgentForBuilding(
         agents (
           id, full_name, email, cell_phone, office_phone, whatsapp_number,
           profile_photo_url, bio, brokerage_name, brokerage_address, title,
-          subdomain, custom_domain, branding, can_create_children,
-          site_title, site_tagline, og_image_url
+          subdomain, custom_domain, branding, can_create_children
         )
       `)
       .eq('development_id', developmentId)

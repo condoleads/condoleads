@@ -124,10 +124,26 @@ export default async function DevelopmentPage({ params, development }: Developme
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 pt-4">
-        <Breadcrumb items={[{ label: development.name }]} />
-      </div>
+    <>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.__AGENT_DATA__ = ${JSON.stringify({
+            full_name: agent.full_name,
+            email: agent.email,
+            phone: agent.cell_phone,
+            brokerage_name: agent.brokerage_name,
+            brokerage_address: agent.brokerage_address,
+            title: agent.title,
+            siteName: agent.site_title || agent.full_name,
+            siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+            ogImageUrl: agent.og_image_url
+          })};`
+        }}
+      />
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 pt-4">
+          <Breadcrumb items={[{ label: development.name }]} />
+        </div>
       <div className="bg-gradient-to-r from-blue-900 to-blue-700 text-white">
         <div className="max-w-7xl mx-auto px-4 py-16 text-center">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">{development.name}</h1>
@@ -183,5 +199,6 @@ export default async function DevelopmentPage({ params, development }: Developme
         addresses={addresses}
       />
     </div>
+    </>
   )
 }
