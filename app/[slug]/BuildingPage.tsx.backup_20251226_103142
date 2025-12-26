@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { supabase } from '@/lib/supabase/client'
-import { isCustomDomain } from '@/lib/utils/agent-detection'
 import { calculateAverage, calculateInventoryRate, extractAmenities, extractFeeIncludes } from '@/lib/utils/calculations'
 import BuildingHero from './components/BuildingHero'
 import BuildingHighlights from './components/BuildingHighlights'
@@ -26,46 +25,12 @@ import { createClient } from '@/lib/supabase/server'
 import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
-  const headersList = headers()
-  const host = headersList.get('host') || ''
-  
-  // Fetch agent branding based on host
-  let agentBranding: { site_title: string | null; site_tagline: string | null; og_image_url: string | null } | null = null
-  const serverSupabase = createClient()
-  
-  if (isCustomDomain(host)) {
-    const cleanDomain = host.replace(/^www\./, '')
-    const { data } = await serverSupabase
-      .from('agents')
-      .select('site_title, site_tagline, og_image_url')
-      .eq('custom_domain', cleanDomain)
-      .eq('is_active', true)
-      .single()
-    agentBranding = data
-  } else {
-    // Extract subdomain
-    const parts = host.split('.')
-    if (parts.length >= 3 && parts[1] === 'condoleads') {
-      const subdomain = parts[0]
-      const { data } = await serverSupabase
-        .from('agents')
-        .select('site_title, site_tagline, og_image_url')
-        .eq('subdomain', subdomain)
-        .eq('is_active', true)
-        .single()
-      agentBranding = data
-    }
-  }
-  
-  const siteName = agentBranding?.site_title || 'CondoLeads'
-  const siteTagline = agentBranding?.site_tagline || 'Toronto Condo Specialist'
-  const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
-  
   const { data: building } = await supabase
     .from('buildings')
     .select('id, building_name, canonical_address, year_built, total_units')
     .eq('slug', params.slug)
     .single()
+
   if (!building) {
     return { title: 'Building Not Found' }
   }
@@ -119,7 +84,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   
   description += `View floor plans, amenities, market stats, and transaction history.`
 
- const title = `${building.building_name} Condos - ${building.canonical_address} | ${siteName}`
+ const title = `${building.building_name} Condos - ${building.canonical_address} | Toronto Real Estate`
+  
   return {
     title,
     description,
@@ -136,16 +102,16 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     openGraph: {
       title,
       description,
-      url: `https://${host}/${params.slug}`,
-      siteName: siteName,
+      url: `https://condoleads.com/${params.slug}`,
+      siteName: 'CondoLeads',
       locale: 'en_CA',
       type: 'website',
       images: [
         {
-          url: ogImage,
+          url: '/og-image.jpg',
           width: 1200,
           height: 630,
-          alt: `${building.building_name} - ${siteName}`,
+          alt: `${building.building_name} - Toronto Condos`,
         },
       ],
     },
@@ -153,7 +119,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       card: 'summary_large_image',
       title,
       description,
-      images: [ogImage],
+      images: ['/og-image.jpg'],
     },
     robots: {
       index: true,
@@ -164,7 +130,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       },
     },
     alternates: {
-      canonical: `https://${host}/${params.slug}`,
+      canonical: `https://condoleads.com/${params.slug}`,
     },
   }
 }

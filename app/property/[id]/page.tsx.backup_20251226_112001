@@ -1,91 +1,10 @@
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
-import { getDisplayAgentForBuilding, isCustomDomain } from '@/lib/utils/agent-detection'
+import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import PropertyPageClient from './PropertyPageClient'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
-
-export async function generateMetadata({ params }: { params: { id: string } }) {
-  const headersList = headers()
-  const host = headersList.get('host') || ''
-  const serverSupabase = createClient()
-  
-  // Fetch agent branding based on host
-  let agentBranding: { site_title: string | null; site_tagline: string | null; og_image_url: string | null } | null = null
-  
-  if (isCustomDomain(host)) {
-    const cleanDomain = host.replace(/^www\./, '')
-    const { data } = await serverSupabase
-      .from('agents')
-      .select('site_title, site_tagline, og_image_url')
-      .eq('custom_domain', cleanDomain)
-      .eq('is_active', true)
-      .single()
-    agentBranding = data
-  } else {
-    const parts = host.split('.')
-    if (parts.length >= 3 && parts[1] === 'condoleads') {
-      const subdomain = parts[0]
-      const { data } = await serverSupabase
-        .from('agents')
-        .select('site_title, site_tagline, og_image_url')
-        .eq('subdomain', subdomain)
-        .eq('is_active', true)
-        .single()
-      agentBranding = data
-    }
-  }
-  
-  const siteName = agentBranding?.site_title || 'CondoLeads'
-  const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
-  
-  // Fetch listing data
-  const { data: listing } = await supabase
-    .from('mls_listings')
-    .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total, transaction_type, building_id')
-    .eq('id', params.id)
-    .single()
-  
-  if (!listing) {
-    return { title: 'Property Not Found' }
-  }
-  
-  // Fetch building name
-  const { data: building } = await supabase
-    .from('buildings')
-    .select('building_name')
-    .eq('id', listing.building_id)
-    .single()
-  
-  const price = listing.list_price ? `$${listing.list_price.toLocaleString()}` : ''
-  const beds = listing.bedrooms_total ? `${listing.bedrooms_total} Bed` : ''
-  const baths = listing.bathrooms_total ? `${listing.bathrooms_total} Bath` : ''
-  const type = listing.transaction_type === 'For Sale' ? 'For Sale' : 'For Rent'
-  
-  const title = `${listing.unparsed_address} | ${price} | ${siteName}`
-  const description = `${beds} ${baths} condo ${type.toLowerCase()} at ${listing.unparsed_address}${building ? ` in ${building.building_name}` : ''}. ${price}. View photos, floor plans, and schedule a showing.`
-  
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      url: `https://${host}/property/${params.id}`,
-      siteName: siteName,
-      locale: 'en_CA',
-      type: 'website',
-      images: [{ url: ogImage, width: 1200, height: 630, alt: listing.unparsed_address }],
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: [ogImage],
-    },
-  }
-}
 
 export default async function PropertyPage({ params }: { params: { id: string } }) {
   const supabaseServer = createClient()
