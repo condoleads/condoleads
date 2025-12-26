@@ -1,26 +1,11 @@
 ﻿import { notFound } from 'next/navigation'
-import { headers } from 'next/headers'
 import { isPropertySlug, parsePropertySlug } from '@/lib/utils/slugs'
-import BuildingPage, { generateMetadata as generateBuildingMetadata } from './BuildingPage'
-import DevelopmentPage, { generateDevelopmentMetadata } from './DevelopmentPage'
+import BuildingPage from './BuildingPage'
+import DevelopmentPage from './DevelopmentPage'
 import PropertyPage from '../property/[id]/page'
 import { supabase } from '@/lib/supabase/client'
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  // Check if it's a development slug first
-  const { data: development } = await supabase
-    .from('developments')
-    .select('id, name, slug')
-    .eq('slug', params.slug)
-    .single()
-  
-  if (development) {
-    return generateDevelopmentMetadata(development)
-  }
-  
-  // Fall back to building metadata
-  return generateBuildingMetadata({ params })
-}
+export { generateMetadata } from './BuildingPage'
 
 export default async function DynamicSlugPage({
   params

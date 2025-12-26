@@ -2,7 +2,7 @@
 import { headers } from 'next/headers'
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
-import { getDisplayAgentForDevelopment, isCustomDomain } from '@/lib/utils/agent-detection'
+import { getDisplayAgentForDevelopment } from '@/lib/utils/agent-detection'
 import { AgentCard } from '@/components/AgentCard'
 import Link from 'next/link'
 import DevelopmentListings from './components/DevelopmentListings'
@@ -12,72 +12,6 @@ import Breadcrumb from '@/components/Breadcrumb'
 interface DevelopmentPageProps {
   params: { slug: string }
   development: { id: string; name: string; slug: string }
-}
-
-export async function generateDevelopmentMetadata(development: { id: string; name: string; slug: string }) {
-  const headersList = headers()
-  const host = headersList.get('host') || ''
-  const serverSupabase = createClient()
-  
-  // Fetch agent branding based on host
-  let agentBranding: { site_title: string | null; site_tagline: string | null; og_image_url: string | null } | null = null
-  
-  if (isCustomDomain(host)) {
-    const cleanDomain = host.replace(/^www\./, '')
-    const { data } = await serverSupabase
-      .from('agents')
-      .select('site_title, site_tagline, og_image_url')
-      .eq('custom_domain', cleanDomain)
-      .eq('is_active', true)
-      .single()
-    agentBranding = data
-  } else {
-    const parts = host.split('.')
-    if (parts.length >= 3 && parts[1] === 'condoleads') {
-      const subdomain = parts[0]
-      const { data } = await serverSupabase
-        .from('agents')
-        .select('site_title, site_tagline, og_image_url')
-        .eq('subdomain', subdomain)
-        .eq('is_active', true)
-        .single()
-      agentBranding = data
-    }
-  }
-  
-  const siteName = agentBranding?.site_title || 'CondoLeads'
-  const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
-  
-  // Get building count and listing stats
-  const { data: buildings } = await supabase
-    .from('buildings')
-    .select('id')
-    .eq('development_id', development.id)
-  
-  const buildingCount = buildings?.length || 0
-  
-  const title = `${development.name} | ${buildingCount} Buildings | ${siteName}`
-  const description = `Explore ${development.name} - a premier Toronto development with ${buildingCount} buildings. View available condos for sale and rent, floor plans, amenities, and market insights.`
-  
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      url: `https://${host}/${development.slug}`,
-      siteName: siteName,
-      locale: 'en_CA',
-      type: 'website',
-      images: [{ url: ogImage, width: 1200, height: 630, alt: development.name }],
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: [ogImage],
-    },
-  }
 }
 
 export default async function DevelopmentPage({ params, development }: DevelopmentPageProps) {
