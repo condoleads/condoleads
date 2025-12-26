@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Search, Globe, Edit2, X, Check, Plus } from 'lucide-react'
+import { updateAgentBranding, addAgentCustomDomain, removeAgentCustomDomain } from './actions'
 
 interface Agent {
   id: string
@@ -29,8 +29,6 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState('')
   const [newDomain, setNewDomain] = useState('')
-  
-  const supabase = createClient()
 
   function startEditing(agent: Agent) {
     setEditingId(agent.id)
@@ -51,18 +49,15 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
     if (!editingId) return
     setSaving(true)
 
-    const { error } = await supabase
-      .from('agents')
-      .update({
-        custom_domain: editForm.custom_domain || null,
-        site_title: editForm.site_title || null,
-        site_tagline: editForm.site_tagline || null,
-        og_image_url: editForm.og_image_url || null
-      })
-      .eq('id', editingId)
+    const result = await updateAgentBranding(editingId, {
+      custom_domain: editForm.custom_domain || null,
+      site_title: editForm.site_title || null,
+      site_tagline: editForm.site_tagline || null,
+      og_image_url: editForm.og_image_url || null
+    })
 
-    if (error) {
-      alert('Error saving: ' + error.message)
+    if (!result.success) {
+      alert('Error saving: ' + result.error)
     } else {
       setAgents(prev => prev.map(a => 
         a.id === editingId 
@@ -76,20 +71,17 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
     setSaving(false)
   }
 
-  async function addCustomDomain() {
+  async function handleAddCustomDomain() {
     if (!selectedAgentId || !newDomain) {
       alert('Please select an agent and enter a domain')
       return
     }
     
     setSaving(true)
-    const { error } = await supabase
-      .from('agents')
-      .update({ custom_domain: newDomain })
-      .eq('id', selectedAgentId)
+    const result = await addAgentCustomDomain(selectedAgentId, newDomain)
 
-    if (error) {
-      alert('Error adding domain: ' + error.message)
+    if (!result.success) {
+      alert('Error adding domain: ' + result.error)
     } else {
       const addedAgent = allAgents.find(a => a.id === selectedAgentId)
       if (addedAgent) {
@@ -106,18 +98,10 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
   async function removeDomain(agentId: string) {
     if (!confirm('Remove custom domain from this agent?')) return
     
-    const { error } = await supabase
-      .from('agents')
-      .update({ 
-        custom_domain: null,
-        site_title: null,
-        site_tagline: null,
-        og_image_url: null
-      })
-      .eq('id', agentId)
+    const result = await removeAgentCustomDomain(agentId)
 
-    if (error) {
-      alert('Error: ' + error.message)
+    if (!result.success) {
+      alert('Error: ' + result.error)
     } else {
       setAgents(prev => prev.filter(a => a.id !== agentId))
     }
@@ -377,7 +361,7 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
                 Cancel
               </button>
               <button
-                onClick={addCustomDomain}
+                onClick={handleAddCustomDomain}
                 disabled={saving || !selectedAgentId || !newDomain}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
               >
