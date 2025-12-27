@@ -14,7 +14,10 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   if (isPropertySlug(params.slug)) {
     const { mlsNumber } = parsePropertySlug(params.slug)
     if (mlsNumber) {
-      const { data: listing } = await supabase
+      const { createClient } = await import('@/lib/supabase/server')
+      const serverSupabase = createClient()
+      
+      const { data: listing } = await serverSupabase
         .from('mls_listings')
         .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total, transaction_type, building_id, unit_number')
         .ilike('listing_key', mlsNumber)
@@ -47,7 +50,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
         }
         
         // Get building name
-        const { data: building } = await supabase
+        const { data: building } = await serverSupabase
           .from('buildings')
           .select('building_name')
           .eq('id', listing.building_id)
