@@ -18,10 +18,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       return { title: 'Property Not Found' }
     }
     
-    const serverSupabase = createClient()
-    
-    // Query listing
-    const { data: listing } = await serverSupabase
+    // Query listing (using client supabase - no RLS on mls_listings)
+    const { data: listing } = await supabase
       .from('mls_listings')
       .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total, transaction_type, building_id, unit_number')
       .ilike('listing_key', mlsNumber)
@@ -35,7 +33,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     let siteName = 'CondoLeads'
     if (!host.includes('condoleads.ca') && !host.includes('localhost') && !host.includes('vercel.app')) {
       const cleanDomain = host.replace(/^www\./, '')
-      const { data: agent } = await serverSupabase
+      const { data: agent } = await supabase
         .from('agents')
         .select('site_title')
         .eq('custom_domain', cleanDomain)
@@ -44,7 +42,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       if (agent?.site_title) siteName = agent.site_title
     } else if (host.includes('.condoleads.ca')) {
       const subdomain = host.split('.')[0]
-      const { data: agent } = await serverSupabase
+      const { data: agent } = await supabase
         .from('agents')
         .select('site_title')
         .eq('subdomain', subdomain)
@@ -54,7 +52,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     }
     
     // Get building name
-    const { data: building } = await serverSupabase
+    const { data: building } = await supabase
       .from('buildings')
       .select('building_name')
       .eq('id', listing.building_id)
