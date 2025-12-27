@@ -10,6 +10,10 @@ export async function updateAgentBranding(
     site_title?: string | null
     site_tagline?: string | null
     og_image_url?: string | null
+    google_analytics_id?: string | null
+    google_ads_id?: string | null
+    google_conversion_label?: string | null
+    facebook_pixel_id?: string | null
   }
 ) {
   const supabase = createClient()
@@ -20,7 +24,11 @@ export async function updateAgentBranding(
       custom_domain: data.custom_domain || null,
       site_title: data.site_title || null,
       site_tagline: data.site_tagline || null,
-      og_image_url: data.og_image_url || null
+      og_image_url: data.og_image_url || null,
+      google_analytics_id: data.google_analytics_id || null,
+      google_ads_id: data.google_ads_id || null,
+      google_conversion_label: data.google_conversion_label || null,
+      facebook_pixel_id: data.facebook_pixel_id || null
     })
     .eq('id', agentId)
 

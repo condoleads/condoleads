@@ -12,6 +12,10 @@ interface Agent {
   site_title: string | null
   site_tagline: string | null
   og_image_url: string | null
+  google_analytics_id: string | null
+  google_ads_id: string | null
+  google_conversion_label: string | null
+  facebook_pixel_id: string | null
   is_active: boolean
 }
 
@@ -36,7 +40,11 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       custom_domain: agent.custom_domain || '',
       site_title: agent.site_title || '',
       site_tagline: agent.site_tagline || '',
-      og_image_url: agent.og_image_url || ''
+      og_image_url: agent.og_image_url || '',
+      google_analytics_id: agent.google_analytics_id || '',
+      google_ads_id: agent.google_ads_id || '',
+      google_conversion_label: agent.google_conversion_label || '',
+      facebook_pixel_id: agent.facebook_pixel_id || ''
     })
   }
 
@@ -53,7 +61,11 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       custom_domain: editForm.custom_domain || null,
       site_title: editForm.site_title || null,
       site_tagline: editForm.site_tagline || null,
-      og_image_url: editForm.og_image_url || null
+      og_image_url: editForm.og_image_url || null,
+      google_analytics_id: editForm.google_analytics_id || null,
+      google_ads_id: editForm.google_ads_id || null,
+      google_conversion_label: editForm.google_conversion_label || null,
+      facebook_pixel_id: editForm.facebook_pixel_id || null
     })
 
     if (!result.success) {
@@ -309,12 +321,68 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
               <div className="w-48 h-24 rounded-lg overflow-hidden bg-gray-100 border">
                 <img 
                   src={editForm.og_image_url} 
-                  alt="Preview" 
+                  alt="Preview"
                   className="w-full h-full object-cover"
                   onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
                 />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Tracking & Ads Section */}
+      {editingId && (
+        <div className="mt-6 bg-white rounded-lg shadow p-6">
+          <h3 className="font-semibold text-gray-800 mb-4">Tracking & Advertising</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Configure Google Analytics, Google Ads, and Facebook Pixel for conversion tracking.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Google Analytics ID</label>
+              <input
+                type="text"
+                value={editForm.google_analytics_id || ''}
+                onChange={(e) => setEditForm({ ...editForm, google_analytics_id: e.target.value })}
+                placeholder="G-XXXXXXXXXX"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">GA4 Measurement ID</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Google Ads ID</label>
+              <input
+                type="text"
+                value={editForm.google_ads_id || ''}
+                onChange={(e) => setEditForm({ ...editForm, google_ads_id: e.target.value })}
+                placeholder="AW-XXXXXXXXXX"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Google Ads Account ID</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Google Conversion Label</label>
+              <input
+                type="text"
+                value={editForm.google_conversion_label || ''}
+                onChange={(e) => setEditForm({ ...editForm, google_conversion_label: e.target.value })}
+                placeholder="AbCdEfGhIjKlMnOp"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">For lead form submissions</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Facebook Pixel ID</label>
+              <input
+                type="text"
+                value={editForm.facebook_pixel_id || ''}
+                onChange={(e) => setEditForm({ ...editForm, facebook_pixel_id: e.target.value })}
+                placeholder="XXXXXXXXXXXXXXXX"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">For Facebook/Instagram retargeting</p>
+            </div>
           </div>
         </div>
       )}

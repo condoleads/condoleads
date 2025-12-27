@@ -62,19 +62,10 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
   const beds = listing.bedrooms_total ? `${listing.bedrooms_total} Bed` : ''
   const baths = listing.bathrooms_total ? `${listing.bathrooms_total} Bath` : ''
   const type = listing.transaction_type === 'For Sale' ? 'For Sale' : 'For Rent'
-  const unit = listing.unit_number ? `Unit ${listing.unit_number}` : ''
   
-  const titleParts = [
-    listing.unparsed_address,
-    unit,
-    building?.building_name,
-    price,
-    beds,
-    siteName
-  ].filter(Boolean)
-  
-  const title = titleParts.join(' | ')
+  const title = `${listing.unparsed_address} | ${price} | ${siteName}`
   const description = `${beds} ${baths} condo ${type.toLowerCase()} at ${listing.unparsed_address}${building ? ` in ${building.building_name}` : ''}. ${price}. View photos, floor plans, and schedule a showing.`
+  
   return {
     title,
     description,

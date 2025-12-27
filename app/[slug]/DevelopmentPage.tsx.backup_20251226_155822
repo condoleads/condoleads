@@ -48,17 +48,16 @@ export async function generateDevelopmentMetadata(development: { id: string; nam
   const siteName = agentBranding?.site_title || 'CondoLeads'
   const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
   
-  // Get buildings with addresses
-  const { data: buildings } = await serverSupabase
+  // Get building count and listing stats
+  const { data: buildings } = await supabase
     .from('buildings')
-    .select('id, canonical_address')
+    .select('id')
     .eq('development_id', development.id)
   
   const buildingCount = buildings?.length || 0
-  const addresses = buildings?.map(b => b.canonical_address).filter(Boolean).join(', ') || ''
   
-  const title = `${development.name} | ${addresses} | ${siteName}`
-  const description = `Explore ${development.name} at ${addresses}. ${buildingCount} buildings with condos for sale and rent. View floor plans, amenities, and market insights.`
+  const title = `${development.name} | ${buildingCount} Buildings | ${siteName}`
+  const description = `Explore ${development.name} - a premier Toronto development with ${buildingCount} buildings. View available condos for sale and rent, floor plans, amenities, and market insights.`
   
   return {
     title,
