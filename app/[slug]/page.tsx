@@ -5,11 +5,11 @@ import BuildingPage, { generateMetadata as generateBuildingMetadata } from './Bu
 import DevelopmentPage, { generateDevelopmentMetadata } from './DevelopmentPage'
 import PropertyPage from '../property/[id]/page'
 import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const { createClient } = await import('@/lib/supabase/server')
   
   // Check if it's a property slug first
   if (isPropertySlug(params.slug)) {
