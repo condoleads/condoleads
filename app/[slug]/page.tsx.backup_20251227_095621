@@ -10,29 +10,10 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const headersList = headers()
   const host = headersList.get('host') || ''
   const { createClient } = await import('@/lib/supabase/server')
+  const serverSupabase = createClient()
   
-  // Check if it's a property slug first
-  if (isPropertySlug(params.slug)) {
-    const { mlsNumber } = parsePropertySlug(params.slug)
-    if (!mlsNumber) {
-      return { title: 'Property Not Found' }
-    }
-    
-    const serverSupabase = createClient()
-    
-    // Query listing
-    const { data: listing } = await serverSupabase
-      .from('mls_listings')
-      .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total, transaction_type, building_id, unit_number')
-      .ilike('listing_key', mlsNumber)
-      .single()
-    
-    if (!listing) {
-      return { title: 'Property Not Found' }
-    }
-    
-    // Get siteName
-    let siteName = 'CondoLeads'
+  // Helper to get siteName from host
+  const getSiteName = async (): Promise<string> => {
     if (!host.includes('condoleads.ca') && !host.includes('localhost') && !host.includes('vercel.app')) {
       const cleanDomain = host.replace(/^www\./, '')
       const { data: agent } = await serverSupabase
@@ -41,7 +22,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
         .eq('custom_domain', cleanDomain)
         .eq('is_active', true)
         .single()
-      if (agent?.site_title) siteName = agent.site_title
+      return agent?.site_title || 'CondoLeads'
     } else if (host.includes('.condoleads.ca')) {
       const subdomain = host.split('.')[0]
       const { data: agent } = await serverSupabase
@@ -50,29 +31,48 @@ export async function generateMetadata({ params }: { params: { slug: string } })
         .eq('subdomain', subdomain)
         .eq('is_active', true)
         .single()
-      if (agent?.site_title) siteName = agent.site_title
+      return agent?.site_title || 'CondoLeads'
     }
-    
-    // Get building name
-    const { data: building } = await serverSupabase
-      .from('buildings')
-      .select('building_name')
-      .eq('id', listing.building_id)
-      .single()
-    
-    const price = listing.list_price ? `$${listing.list_price.toLocaleString()}` : ''
-    const beds = listing.bedrooms_total ? `${listing.bedrooms_total} Bed` : ''
-    const unit = listing.unit_number ? `Unit ${listing.unit_number}` : ''
-    
-    const titleParts = [listing.unparsed_address, unit, building?.building_name, price, beds, siteName].filter(Boolean)
-    const title = titleParts.join(' | ')
-    const description = `${beds} condo at ${listing.unparsed_address}${building ? ` in ${building.building_name}` : ''}. ${price}. View photos and schedule a showing.`
-    
-    return { title, description }
+    return 'CondoLeads'
+  }
+  
+  // Check if it's a property slug first
+  if (isPropertySlug(params.slug)) {
+    const { mlsNumber } = parsePropertySlug(params.slug)
+    if (mlsNumber) {
+      const { data: listing, error } = await serverSupabase
+        .from('mls_listings')
+        .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total, transaction_type, building_id, unit_number')
+        .ilike('listing_key', mlsNumber)
+        .single()
+      
+      console.log('Property metadata debug:', { mlsNumber, listing: listing?.id, error: error?.message })
+      
+      if (listing) {
+        const siteName = await getSiteName()
+        
+        // Get building name
+        const { data: building } = await serverSupabase
+          .from('buildings')
+          .select('building_name')
+          .eq('id', listing.building_id)
+          .single()
+        
+        const price = listing.list_price ? `$${listing.list_price.toLocaleString()}` : ''
+        const beds = listing.bedrooms_total ? `${listing.bedrooms_total} Bed` : ''
+        const unit = listing.unit_number ? `Unit ${listing.unit_number}` : ''
+        
+        const titleParts = [listing.unparsed_address, unit, building?.building_name, price, beds, siteName].filter(Boolean)
+        const title = titleParts.join(' | ')
+        const description = `${beds} condo at ${listing.unparsed_address}${building ? ` in ${building.building_name}` : ''}. ${price}. View photos and schedule a showing.`
+        
+        return { title, description }
+      }
+    }
+    return { title: 'Property Not Found' }
   }
   
   // Check if it's a development slug
-  const serverSupabase = createClient()
   const { data: development } = await serverSupabase
     .from('developments')
     .select('id, name, slug')
