@@ -4,44 +4,45 @@ import { useEffect, useState } from 'react'
 import UniversalNav from './UniversalNav'
 import Footer from './Footer'
 
-// Derive siteName from hostname immediately (runs on client)
-function getSiteNameFromHost(): string | null {
-  if (typeof window === 'undefined') return null
-  
-  const host = window.location.hostname
-  
-  // Check if custom domain (not condoleads.ca or localhost)
-  if (!host.includes('condoleads.ca') && !host.includes('localhost') && !host.includes('vercel.app')) {
-    const domainName = host.replace(/^www\./, '').replace(/\.(ca|com|net|org)$/, '')
-    return domainName.split('.').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
-  }
-  
-  // Subdomain
-  if (host.includes('.condoleads.ca')) {
-    const subdomain = host.split('.')[0]
-    return subdomain.charAt(0).toUpperCase() + subdomain.slice(1)
-  }
-  
-  return null
-}
-
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [agentData, setAgentData] = useState<any>(null)
-  const [initialSiteName] = useState<string | null>(() => getSiteNameFromHost())
+  const [siteName, setSiteName] = useState<string>('CondoLeads')
+  const [isAgentSite, setIsAgentSite] = useState<boolean>(false)
 
   // Don't show public nav/footer on admin, dashboard, or landing pages
   const isAdminPage = pathname.startsWith('/admin')
   const isDashboardPage = pathname.startsWith('/dashboard')
   const isLoginPage = pathname === '/login'
-  const isLandingPage = pathname === '/' && !agentData && !initialSiteName
-  const showPublicLayout = !isAdminPage && !isDashboardPage && !isLoginPage && !isLandingPage
 
+  // Derive siteName from hostname on mount
+  useEffect(() => {
+    const host = window.location.hostname
+    
+    // Check if custom domain (not condoleads.ca or localhost)
+    if (!host.includes('condoleads.ca') && !host.includes('localhost') && !host.includes('vercel.app')) {
+      const domainName = host.replace(/^www\./, '').replace(/\.(ca|com|net|org)$/, '')
+      const formatted = domainName.split('.').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+      setSiteName(formatted)
+      setIsAgentSite(true)
+    } else if (host.includes('.condoleads.ca')) {
+      // Subdomain
+      const subdomain = host.split('.')[0]
+      setSiteName(subdomain.charAt(0).toUpperCase() + subdomain.slice(1))
+      setIsAgentSite(true)
+    }
+  }, [])
+
+  // Listen for __AGENT_DATA__
   useEffect(() => {
     const checkAgentData = () => {
       const data = (window as any).__AGENT_DATA__
       if (data) {
         setAgentData(data)
+        if (data.siteName) {
+          setSiteName(data.siteName)
+        }
+        setIsAgentSite(true)
         return true
       }
       return false
@@ -49,7 +50,6 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
 
     if (checkAgentData()) return
 
-    // Use MutationObserver to detect when script adds data
     const observer = new MutationObserver(() => {
       if (checkAgentData()) {
         observer.disconnect()
@@ -69,8 +69,8 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
     }
   }, [pathname])
 
-  // Use agentData.siteName if available, otherwise use initialSiteName derived from hostname
-  const siteName = agentData?.siteName || initialSiteName
+  const isLandingPage = pathname === '/' && !isAgentSite
+  const showPublicLayout = !isAdminPage && !isDashboardPage && !isLoginPage && !isLandingPage
 
   return (
     <>
