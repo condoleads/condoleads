@@ -7,26 +7,7 @@ import PropertyPage from '../property/[id]/page'
 import { supabase } from '@/lib/supabase/client'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
-  // Check if it's a property slug first
-  if (isPropertySlug(params.slug)) {
-    const { mlsNumber } = parsePropertySlug(params.slug)
-    if (mlsNumber) {
-      const { data: listing } = await supabase
-        .from('mls_listings')
-        .select('id')
-        .eq('listing_key', mlsNumber)
-        .single()
-      
-      if (listing) {
-        // Import and use property metadata
-        const { generateMetadata: generatePropertyMetadata } = await import('../property/[id]/page')
-        return generatePropertyMetadata({ params: { id: listing.id } })
-      }
-    }
-    return { title: 'Property Not Found' }
-  }
-  
-  // Check if it's a development slug
+  // Check if it's a development slug first
   const { data: development } = await supabase
     .from('developments')
     .select('id, name, slug')
