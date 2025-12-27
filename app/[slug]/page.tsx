@@ -103,7 +103,7 @@ export default async function DynamicSlugPage({
       const { data: listing } = await serverSupabase
         .from('mls_listings')
         .select('id')
-        .ilike('listing_key', mlsNumber)
+        .eq('listing_key', mlsNumber)
         .single()
       if (!listing) {
         notFound()
