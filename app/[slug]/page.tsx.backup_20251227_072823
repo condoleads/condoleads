@@ -9,47 +9,45 @@ import { supabase } from '@/lib/supabase/client'
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const { createClient } = await import('@/lib/supabase/server')
-  const serverSupabase = createClient()
-  
-  // Helper to get siteName from host
-  const getSiteName = async (): Promise<string> => {
-    if (!host.includes('condoleads.ca') && !host.includes('localhost') && !host.includes('vercel.app')) {
-      const cleanDomain = host.replace(/^www\./, '')
-      const { data: agent } = await serverSupabase
-        .from('agents')
-        .select('site_title')
-        .eq('custom_domain', cleanDomain)
-        .eq('is_active', true)
-        .single()
-      return agent?.site_title || 'CondoLeads'
-    } else if (host.includes('.condoleads.ca')) {
-      const subdomain = host.split('.')[0]
-      const { data: agent } = await serverSupabase
-        .from('agents')
-        .select('site_title')
-        .eq('subdomain', subdomain)
-        .eq('is_active', true)
-        .single()
-      return agent?.site_title || 'CondoLeads'
-    }
-    return 'CondoLeads'
-  }
   
   // Check if it's a property slug first
   if (isPropertySlug(params.slug)) {
     const { mlsNumber } = parsePropertySlug(params.slug)
     if (mlsNumber) {
-      const { data: listing, error } = await serverSupabase
+      const { createClient } = await import('@/lib/supabase/server')
+      const serverSupabase = createClient()
+      
+      const { data: listing } = await serverSupabase
         .from('mls_listings')
         .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total, transaction_type, building_id, unit_number')
         .ilike('listing_key', mlsNumber)
         .single()
       
-      console.log('Property metadata debug:', { mlsNumber, listing: listing?.id, error: error?.message })
-      
       if (listing) {
-        const siteName = await getSiteName()
+        // Get agent branding
+        let siteName = 'CondoLeads'
+        const { createClient } = await import('@/lib/supabase/server')
+        const serverSupabase = createClient()
+        
+        if (!host.includes('condoleads.ca') && !host.includes('localhost') && !host.includes('vercel.app')) {
+          const cleanDomain = host.replace(/^www\./, '')
+          const { data: agent } = await serverSupabase
+            .from('agents')
+            .select('site_title')
+            .eq('custom_domain', cleanDomain)
+            .eq('is_active', true)
+            .single()
+          if (agent?.site_title) siteName = agent.site_title
+        } else if (host.includes('.condoleads.ca')) {
+          const subdomain = host.split('.')[0]
+          const { data: agent } = await serverSupabase
+            .from('agents')
+            .select('site_title')
+            .eq('subdomain', subdomain)
+            .eq('is_active', true)
+            .single()
+          if (agent?.site_title) siteName = agent.site_title
+        }
         
         // Get building name
         const { data: building } = await serverSupabase
@@ -73,7 +71,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
   
   // Check if it's a development slug
-  const { data: development } = await serverSupabase
+  const { data: development } = await supabase
     .from('developments')
     .select('id, name, slug')
     .eq('slug', params.slug)
