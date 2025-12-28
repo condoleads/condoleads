@@ -61,7 +61,7 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
     if (!finalBuildingId && params.registrationUrl) {
       const buildingInfo = await extractBuildingFromUrl(supabase, params.registrationUrl)
       if (buildingInfo) {
-        finalBuildingId = buildingInfo.id || undefined
+        finalBuildingId = buildingInfo.id
         if (!finalBuildingName) finalBuildingName = buildingInfo.building_name
         if (!finalBuildingAddress) finalBuildingAddress = buildingInfo.canonical_address
         console.log('📍 Extracted building from URL:', buildingInfo.building_name)
@@ -265,7 +265,7 @@ async function resolveAgentFromHost(supabase: any, host: string): Promise<string
   return DEFAULT_AGENT_ID
 }
 
-// Extract building OR development info from URL with flexible slug matching
+// Extract building info from URL with flexible slug matching
 async function extractBuildingFromUrl(
   supabase: any, 
   registrationUrl: string
@@ -280,124 +280,58 @@ async function extractBuildingFromUrl(
       return null
     }
     
-    console.log('🔍 Looking up building/development by slug:', slug)
+    console.log('🔍 Looking up building by slug:', slug)
     
-    // Try exact building match first
-    const { data: exactBuildingMatch } = await supabase
+    // Try exact match first
+    const { data: exactMatch } = await supabase
       .from('buildings')
       .select('id, building_name, canonical_address')
       .eq('slug', slug)
       .single()
     
-    if (exactBuildingMatch) {
-      console.log('📍 Found exact building match:', exactBuildingMatch.building_name)
-      return exactBuildingMatch
+    if (exactMatch) {
+      return exactMatch
     }
     
-    // Try exact development match
-    const { data: exactDevMatch } = await supabase
-      .from('developments')
-      .select('id, name, slug')
-      .eq('slug', slug)
-      .single()
-    
-    if (exactDevMatch) {
-      console.log('📍 Found development match:', exactDevMatch.name)
-      
-      // Get the first building in this development for the building_id
-      const { data: devBuildings } = await supabase
-        .from('buildings')
-        .select('id, building_name, canonical_address')
-        .eq('development_id', exactDevMatch.id)
-        .limit(1)
-        .single()
-      
-      if (devBuildings) {
-        // Return building info but with development name for display
-        return {
-          id: devBuildings.id,
-          building_name: exactDevMatch.name, // Use development name for display
-          canonical_address: devBuildings.canonical_address
-        }
-      }
-      
-      // No buildings linked, return development info without building_id
-      // We'll return null for id but the name will be captured in propertyDetails
-      return {
-        id: '', // No specific building
-        building_name: exactDevMatch.name,
-        canonical_address: ''
-      }
-    }
-    
-    // No exact match - try partial building match
+    // No exact match - try partial match
+    // Extract building name part (before the address portion)
+    // e.g., "the-thompson-residences-552-wellington-st-w-55-stewart-st-toronto" 
+    // -> try to match "the-thompson-residences%"
     const slugParts = slug.split('-')
     
     // Try progressively shorter prefixes to find a match
     for (let i = Math.min(slugParts.length, 6); i >= 2; i--) {
       const partialSlug = slugParts.slice(0, i).join('-')
       
-      // Check buildings
-      const { data: partialBuildingMatches } = await supabase
+      const { data: partialMatches } = await supabase
         .from('buildings')
         .select('id, building_name, canonical_address, slug')
         .ilike('slug', `${partialSlug}%`)
         .limit(5)
       
-      if (partialBuildingMatches && partialBuildingMatches.length > 0) {
-        if (partialBuildingMatches.length === 1) {
-          console.log(`📍 Found building via partial match (${partialSlug}):`, partialBuildingMatches[0].building_name)
-          return partialBuildingMatches[0]
+      if (partialMatches && partialMatches.length > 0) {
+        // If we have exactly one match, use it
+        if (partialMatches.length === 1) {
+          console.log(`📍 Found building via partial match (${partialSlug}):`, partialMatches[0].building_name)
+          return partialMatches[0]
         }
         
-        // Multiple matches - try to find the best one
-        for (const building of partialBuildingMatches) {
+        // Multiple matches - try to find the best one by checking if URL contains address parts
+        for (const building of partialMatches) {
+          // Check if the URL slug contains part of this building's slug
           if (slug.includes(building.slug.split('-').slice(0, 4).join('-'))) {
             console.log(`📍 Found best building match:`, building.building_name)
             return building
           }
         }
         
-        console.log(`📍 Using first partial building match:`, partialBuildingMatches[0].building_name)
-        return partialBuildingMatches[0]
-      }
-      
-      // Check developments with partial match
-      const { data: partialDevMatches } = await supabase
-        .from('developments')
-        .select('id, name, slug')
-        .ilike('slug', `${partialSlug}%`)
-        .limit(3)
-      
-      if (partialDevMatches && partialDevMatches.length > 0) {
-        const dev = partialDevMatches[0]
-        console.log(`📍 Found development via partial match (${partialSlug}):`, dev.name)
-        
-        // Get first building in development
-        const { data: devBuilding } = await supabase
-          .from('buildings')
-          .select('id, building_name, canonical_address')
-          .eq('development_id', dev.id)
-          .limit(1)
-          .single()
-        
-        if (devBuilding) {
-          return {
-            id: devBuilding.id,
-            building_name: dev.name,
-            canonical_address: devBuilding.canonical_address
-          }
-        }
-        
-        return {
-          id: '',
-          building_name: dev.name,
-          canonical_address: ''
-        }
+        // Return first match as fallback
+        console.log(`📍 Using first partial match:`, partialMatches[0].building_name)
+        return partialMatches[0]
       }
     }
     
-    console.log('⚠️ No building or development found for slug:', slug)
+    console.log('⚠️ No building found for slug:', slug)
     return null
     
   } catch (error) {
