@@ -59,11 +59,8 @@ export default function AuthStatus({
         onClose={() => setShowRegister(false)}
         agentId={agentId}
         buildingId={buildingId}
-        buildingName={buildingName}
-        buildingAddress={buildingAddress}
         listingId={listingId}
         listingAddress={listingAddress}
-        unitNumber={unitNumber}
         registrationSource={registrationSource}
       />
     </>
