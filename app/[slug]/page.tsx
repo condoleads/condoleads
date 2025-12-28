@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     const { data: listing } = await supabase
       .from('mls_listings')
       .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total, transaction_type, building_id, unit_number')
-      .ilike('listing_key', mlsNumber)
+      .eq('listing_key', mlsNumber)
       .single()
     
     if (!listing) {
