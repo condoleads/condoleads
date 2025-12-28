@@ -129,7 +129,6 @@ export default async function DevelopmentPage({ params, development }: Developme
       <script
         dangerouslySetInnerHTML={{
           __html: `window.__AGENT_DATA__ = ${JSON.stringify({
-            id: agent.id,
             full_name: agent.full_name,
             email: agent.email,
             phone: agent.cell_phone,
@@ -138,10 +137,8 @@ export default async function DevelopmentPage({ params, development }: Developme
             title: agent.title,
             siteName: agent.site_title || agent.full_name,
             siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
-            ogImageUrl: agent.og_image_url,
-            buildingName: development.name,
-            buildingAddress: addresses
-         })};`
+            ogImageUrl: agent.og_image_url
+          })};`
         }}
       />
       <div className="min-h-screen bg-gray-50">
