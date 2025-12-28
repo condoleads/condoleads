@@ -187,7 +187,6 @@ export default async function DevelopmentPage({ params, development }: Developme
           soldListings={soldListings}
           leasedListings={leasedListings}
           developmentName={development.name}
-          developmentAddresses={addresses}
           agentId={agent?.id || ''}
         />
       </div>
