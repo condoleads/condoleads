@@ -97,7 +97,7 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
 
     // Build source URL - DON'T double-concatenate!
     // params.registrationUrl is already the full URL from window.location.href
-    const sourceUrl = params.registrationUrl || undefined
+    const sourceUrl = params.registrationUrl || null
 
     // Determine if this should force create a new lead
     const formSubmissionSources = [
