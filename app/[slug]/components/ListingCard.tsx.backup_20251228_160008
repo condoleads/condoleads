@@ -373,27 +373,23 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
         )}
       </div>
       
-<RegisterModal
-  isOpen={showRegister}
-  onClose={() => {
-    setShowRegister(false)
-    setHistoryPending(false)
-  }}
-  onSuccess={() => {
-    setShowRegister(false)
-    if (historyPending) {
-      setHistoryPending(false)
-      setShowHistory(true)
-    } else {
-      onEstimateClick?.(extractExactSqft(listing.square_foot_source))
-    }
-  }}
-  registrationSource="listing_card"
-  buildingId={listing.building_id}
-  buildingName={buildingName}
-  unitNumber={listing.unit_number}
-  agentId={agentId}
-/>
+      <RegisterModal
+        isOpen={showRegister}
+        onClose={() => {
+          setShowRegister(false)
+          setHistoryPending(false)
+        }}
+        onSuccess={() => {
+          setShowRegister(false)
+          if (historyPending) {
+            setHistoryPending(false)
+            setShowHistory(true)
+          } else {
+            onEstimateClick?.(extractExactSqft(listing.square_foot_source))
+          }
+        }}
+        registrationSource="listing_card"
+      />
 
       <UnitHistoryModal
             isOpen={showHistory}
