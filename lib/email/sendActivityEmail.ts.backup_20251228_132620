@@ -382,10 +382,8 @@ if (activities.length === 0) {
     const latestActivity = activities[0]
     const latestFormatted = formatActivityForEmail(latestActivity, lead.buildings)
     // Get building name from lead's building relationship, activity data, or fetch it
-// Priority: override > property_details (has development name) > activity_data > buildings table
-let buildingName = overrideBuildingName || lead.property_details?.buildingName || latestActivity?.activity_data?.buildingName || lead.buildings?.building_name
-// For developments, don't show address to avoid confusion (Playground Condos vs Playground 1)
-let buildingAddress = overrideBuildingAddress || lead.property_details?.buildingAddress || latestActivity?.activity_data?.buildingAddress || lead.buildings?.canonical_address
+let buildingName = overrideBuildingName || lead.buildings?.building_name || latestActivity?.activity_data?.buildingName
+let buildingAddress = overrideBuildingAddress || lead.buildings?.canonical_address || latestActivity?.activity_data?.buildingAddress
 let unitNumber = overrideUnitNumber || latestActivity?.activity_data?.unitNumber
 
 // If still no building name but lead has building_id, fetch it
