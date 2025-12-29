@@ -51,6 +51,13 @@ export function HeroSection({ agent, isTeamSite = false }: HeroSectionProps) {
           </div>
         </div>
 
+        {/* Mobile Bio */}
+        {agent.bio && (
+          <p className="text-sm text-blue-100 mb-4 line-clamp-3">
+            {agent.bio}
+          </p>
+        )}
+
         {/* Mobile CTAs */}
         <div className="space-y-2">
           <a
