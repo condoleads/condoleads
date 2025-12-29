@@ -118,7 +118,7 @@ export default function DevelopmentListings({
   return (
     <>
       {/* Sticky Tab Navigation */}
-      <div id="listings" className="sticky top-0 z-10 bg-white shadow-md rounded-lg mb-6">
+      <div id="listings" className="sticky top-32 z-10 bg-white shadow-md rounded-lg mb-6">
         <div className="flex">
           {tabs.map((tab) => (
             <button
