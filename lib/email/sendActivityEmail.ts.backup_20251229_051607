@@ -379,16 +379,7 @@ if (activities.length === 0) {
 }
 
     const engagement = calculateEngagement(activities)
-    // Handle empty activities - create a placeholder for new leads
-    const latestActivity = activities[0] || {
-      activity_type: activityType,
-      activity_data: {
-        buildingName: overrideBuildingName,
-        buildingAddress: overrideBuildingAddress,
-        unitNumber: overrideUnitNumber
-      },
-      created_at: new Date().toISOString()
-    }
+    const latestActivity = activities[0]
     const latestFormatted = formatActivityForEmail(latestActivity, lead.buildings)
     // Get building name from lead's building relationship, activity data, or fetch it
 // Priority: override > property_details (has development name) > activity_data > buildings table
