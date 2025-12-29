@@ -183,7 +183,7 @@ export default async function DevelopmentPage({ params, development }: Developme
             )
           })}
         </div>
-        {agent && <div className="mb-12"><AgentCard agent={agent} source="building_page" buildingName={development.name} buildingAddress={addresses} /></div>}
+        {agent && <div className="mb-12"><AgentCard agent={agent} source="building_page" buildingId={buildings[0]?.id} buildingName={development.name} buildingAddress={addresses} /></div>}
         <DevelopmentListings
           forSaleActive={forSaleActive}
           forLeaseActive={forLeaseActive}
