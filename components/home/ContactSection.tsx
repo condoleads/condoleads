@@ -35,7 +35,8 @@ export function ContactSection({ agent }: ContactSectionProps) {
         contactName: formData.name,
         contactPhone: formData.phone || undefined,
         agentId: agent.id,
-        source: 'homepage_contact'
+        source: 'homepage_contact',
+        forceNew: true
       })
 
       // Track activity
