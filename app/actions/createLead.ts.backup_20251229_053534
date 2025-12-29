@@ -302,31 +302,33 @@ async function extractBuildingFromUrl(
       .single()
     
     if (exactDevMatch) {
-  console.log('📍 Found development match:', exactDevMatch.name)
-  // Get ALL buildings in this development for combined addresses
-  const { data: devBuildings } = await supabase
-    .from('buildings')
-    .select('id, building_name, canonical_address')
-    .eq('development_id', exactDevMatch.id)
-    .order('building_name')
-  
-  if (devBuildings && devBuildings.length > 0) {
-    // Combine all addresses with " & "
-    const allAddresses = devBuildings.map((b: any) => b.canonical_address).join(' & ')
-    // Return first building id but with development name and ALL addresses
-    return {
-      id: devBuildings[0].id,
-      building_name: exactDevMatch.name,
-      canonical_address: allAddresses
+      console.log('📍 Found development match:', exactDevMatch.name)
+      
+      // Get the first building in this development for the building_id
+      const { data: devBuildings } = await supabase
+        .from('buildings')
+        .select('id, building_name, canonical_address')
+        .eq('development_id', exactDevMatch.id)
+        .limit(1)
+        .single()
+      
+      if (devBuildings) {
+        // Return building info but with development name for display
+        return {
+          id: devBuildings.id,
+          building_name: exactDevMatch.name, // Use development name for display
+          canonical_address: devBuildings.canonical_address
+        }
+      }
+      
+      // No buildings linked, return development info without building_id
+      // We'll return null for id but the name will be captured in propertyDetails
+      return {
+        id: '', // No specific building
+        building_name: exactDevMatch.name,
+        canonical_address: ''
+      }
     }
-  }
-  // No buildings linked
-  return {
-    id: '',
-    building_name: exactDevMatch.name,
-    canonical_address: ''
-  }
-}
     
     // No exact match - try partial building match
     const slugParts = slug.split('-')
