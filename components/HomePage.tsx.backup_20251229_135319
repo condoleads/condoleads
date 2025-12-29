@@ -1,5 +1,4 @@
 import { HeroSection } from './home/HeroSection';
-import { StatsSection } from './home/StatsSection';
 import { HowItWorks } from './home/HowItWorks';
 import { BuildingsGrid } from './home/BuildingsGrid';
 import { EstimatorBanner } from './home/EstimatorBanner';
@@ -65,14 +64,6 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
     <div className="min-h-screen">
       {/* Hero Section */}
       <HeroSection agent={agent as any} isTeamSite={isTeamSite} />
-      
-      {/* Stats Section */}
-      <StatsSection 
-        buildingsCount={buildings.length}
-        developmentsCount={developments.length}
-        totalForSale={buildings.reduce((sum, b) => sum + (b.forSale || 0), 0) + developments.reduce((sum, d) => sum + (d.forSale || 0), 0)}
-        totalForLease={buildings.reduce((sum, b) => sum + (b.forLease || 0), 0) + developments.reduce((sum, d) => sum + (d.forLease || 0), 0)}
-      />
       {/* How It Works */}
       <HowItWorks />
       {/* Buildings Grid */}
