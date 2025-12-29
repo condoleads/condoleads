@@ -3,6 +3,7 @@ import { StatsSection } from './home/StatsSection';
 import { HowItWorks } from './home/HowItWorks';
 import { BuildingsGrid } from './home/BuildingsGrid';
 import { EstimatorBanner } from './home/EstimatorBanner';
+import { ContactSection } from './home/ContactSection';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
 import MobileContactBar from './MobileContactBar';
 
@@ -109,6 +110,9 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
       )}
       {/* Estimator CTA Banner */}
       <EstimatorBanner buildings={buildings} />
+
+      {/* Contact Section */}
+      <ContactSection agent={{ id: agent.id, full_name: agent.full_name, email: agent.email, cell_phone: agent.phone }} />
       {/* AI Chat Widget */}
       <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />
       
