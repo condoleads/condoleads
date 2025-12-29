@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+﻿import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
@@ -84,7 +84,6 @@ export async function generateDevelopmentMetadata(development: { id: string; nam
 export default async function DevelopmentPage({ params, development }: DevelopmentPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const serverSupabase = createClient()
   const { displayAgent, isTeamSite } = await getDisplayAgentForDevelopment(host, development.id)
   
   if (!displayAgent) {
@@ -92,7 +91,7 @@ export default async function DevelopmentPage({ params, development }: Developme
   }
   const agent = displayAgent
 
-  const { data: buildings } = await serverSupabase
+  const { data: buildings } = await supabase
     .from('buildings')
     .select('*')
     .eq('development_id', development.id)
@@ -102,7 +101,7 @@ export default async function DevelopmentPage({ params, development }: Developme
 
   const buildingIds = buildings.map((b: any) => b.id)
 
-  const { data: allListings } = await serverSupabase
+  const { data: allListings } = await supabase
     .from('mls_listings')
     .select('*, media (media_url, media_type, variant_type, order_number, preferred_photo_yn)')
     .in('building_id', buildingIds)
