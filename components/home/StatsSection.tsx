@@ -8,14 +8,14 @@ interface StatsSectionProps {
 }
 
 export function StatsSection({ buildingsCount, developmentsCount, totalForSale, totalForLease }: StatsSectionProps) {
-  const totalProperties = buildingsCount + developmentsCount;
+  const totalBuildings = buildingsCount + developmentsCount;
   const totalListings = totalForSale + totalForLease;
 
   const stats = [
     {
       icon: Building2,
-      value: totalProperties,
-      label: 'Properties',
+      value: totalBuildings,
+      label: 'Condo Buildings',
       sublabel: 'In Portfolio',
       color: 'from-blue-500 to-blue-600',
       bgColor: 'bg-blue-50',
