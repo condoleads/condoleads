@@ -8,7 +8,6 @@ import Link from 'next/link'
 import DevelopmentListings from './components/DevelopmentListings'
 import DevelopmentSEO from './components/DevelopmentSEO'
 import Breadcrumb from '@/components/Breadcrumb'
-import MobileContactBar from '@/components/MobileContactBar'
 
 interface DevelopmentPageProps {
   params: { slug: string }
@@ -204,12 +203,6 @@ export default async function DevelopmentPage({ params, development }: Developme
         totalSold={soldListings.length}
         totalLeased={leasedListings.length}
         addresses={addresses}
-      />
-      <MobileContactBar 
-        agent={agent} 
-        buildingId={buildings[0]?.id} 
-        buildingName={development.name} 
-        buildingAddress={addresses} 
       />
     </div>
     </>

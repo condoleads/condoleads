@@ -20,7 +20,6 @@ import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
 import DualCTASection from './components/DualCTASection'
 import BuildingSchema from './components/BuildingSchema'
 import { AgentCard } from '@/components/AgentCard'
-import MobileContactBar from '@/components/MobileContactBar'
 import Breadcrumb from '@/components/Breadcrumb'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import { createClient } from '@/lib/supabase/server'
@@ -451,15 +450,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         </div>
       </div>
     </div>
-    <MobileContactBar 
-      agent={agent} 
-      buildingId={building.id} 
-      buildingName={building.building_name} 
-      buildingAddress={building.canonical_address} 
-    />
     {/* AI Chat Widget */}
-    <ChatWidgetWrapper
-      agent={{ id: agent.id, full_name: agent.full_name }}
+    <ChatWidgetWrapper 
+      agent={{ id: agent.id, full_name: agent.full_name }} 
       building={{ id: building.id, building_name: building.building_name, canonical_address: building.canonical_address }}
     />
     </>
