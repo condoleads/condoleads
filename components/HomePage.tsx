@@ -4,6 +4,7 @@ import { HowItWorks } from './home/HowItWorks';
 import { BuildingsGrid } from './home/BuildingsGrid';
 import { EstimatorBanner } from './home/EstimatorBanner';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
+import MobileContactBar from './MobileContactBar';
 
 interface HomePageProps {
   agent: {
@@ -110,6 +111,17 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
       <EstimatorBanner buildings={buildings} />
       {/* AI Chat Widget */}
       <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />
+      
+      {/* Mobile Contact Bar */}
+      <MobileContactBar 
+        agent={{
+          id: agent.id,
+          full_name: agent.full_name,
+          email: agent.email,
+          cell_phone: agent.phone,
+          profile_photo_url: agent.profile_photo_url
+        }}
+      />
     </div>
   );
 }
