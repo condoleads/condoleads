@@ -2,7 +2,6 @@
 
 import { MLSListing } from '@/lib/types/building'
 import { formatPrice } from '@/lib/utils/formatters'
-import { getThumbnailUrl } from '@/lib/utils/image-helpers'
 import { useState } from 'react'
 
 interface ListingCardProps {
@@ -62,7 +61,7 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
         {photos.length > 0 ? (
           <>
             <img
-              src={getThumbnailUrl(photos[currentPhotoIndex].media_url)}
+              src={photos[currentPhotoIndex].media_url}
               alt={`Unit ${listing.unit_number} - Photo ${currentPhotoIndex + 1}`}
               className="w-full h-full object-cover"
             />
@@ -191,4 +190,3 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
     </article>
   )
 }
-
