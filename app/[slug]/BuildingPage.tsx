@@ -212,7 +212,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
       square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
       days_on_market, listing_contract_date, building_area_total,
-      association_amenities, association_fee_includes,
+      association_amenities, association_fee_includes, property_management_company, tax_year,
       media (
         media_url,
         variant_type,
