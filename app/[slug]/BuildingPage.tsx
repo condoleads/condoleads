@@ -208,10 +208,11 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     .from('mls_listings')
     .select(`
       id, building_id, listing_id, listing_key, standard_status, transaction_type,
-      list_price, close_price, unit_number, unparsed_address,
+      list_price, close_price, close_date, unit_number, unparsed_address,
       bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
       square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
-      days_on_market, listing_contract_date,
+      days_on_market, listing_contract_date, building_area_total,
+      association_amenities, association_fee_includes,
       media (
         media_url,
         variant_type,
