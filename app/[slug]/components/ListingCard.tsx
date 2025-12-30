@@ -165,7 +165,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
-              {photos.length > 1 && !shouldBlur && (
+              {(photos.length > 1 || !allPhotosLoaded) && !shouldBlur && (
                 <>
                   <button
                     onClick={(e) => { e.stopPropagation(); prevPhoto(); }}
@@ -187,7 +187,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                   </button>
 
                   <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
-                    {currentPhotoIndex + 1} / {photos.length}
+                    {currentPhotoIndex + 1} / {allPhotosLoaded ? photos.length : '...'}
                   </div>
                 </>
               )}
