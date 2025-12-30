@@ -207,9 +207,12 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   const { data: listings } = await supabase
     .from('mls_listings')
     .select(`
-      *,
+      id, building_id, listing_id, listing_key, standard_status, transaction_type,
+      list_price, close_price, unit_number, unparsed_address,
+      bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
+      square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
+      days_on_market, listing_contract_date,
       media (
-        id,
         media_url,
         variant_type,
         order_number,
