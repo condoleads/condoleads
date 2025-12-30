@@ -197,14 +197,17 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
               >
                 {/* Building Photo */}
                 <div className="relative h-48 overflow-hidden">
-                  {building.photoUrl ? (
-                    <img 
-                      src={building.photoUrl} 
+                  {building.galleryPhotos && building.galleryPhotos.length > 1 ? (
+                    <ImageCarousel photos={building.galleryPhotos} alt={building.building_name} />
+                  ) : building.photoUrl ? (
+                    <img
+                      src={building.photoUrl}
                       alt={building.building_name}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" loading="lazy"
                     />
                   ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+                  
+                  <div className="w-full h-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
                       <Building2 className="w-20 h-20 text-white/30" />
                     </div>
                   )}
