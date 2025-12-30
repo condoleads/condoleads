@@ -9,7 +9,7 @@ import { generatePropertySlug } from '@/lib/utils/slugs'
 import { useState, useCallback } from 'react'
 import { Clock } from 'lucide-react'
 import UnitHistoryModal from '@/components/property/UnitHistoryModal'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createBrowserClient } from '@supabase/ssr'
 
 interface ListingCardProps {
   listing: MLSListing
@@ -43,7 +43,10 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
     
     setLoadingPhotos(true)
     try {
-      const supabase = createClientComponentClient()
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
       const { data } = await supabase
         .from('media')
         .select('id, media_url, variant_type, order_number, preferred_photo_yn')
