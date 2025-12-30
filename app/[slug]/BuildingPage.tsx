@@ -225,6 +225,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     .order('list_price', { ascending: false })
 
   const allListings = listings || []
+
+  // Strip media for components that don't need it (reduces HTML payload)
+  const listingsWithoutMedia = allListings.map(l => ({ ...l, media: undefined }))
   
   // Filter media to thumbnails only to reduce HTML payload
   const filterMedia = (listing: any) => ({
@@ -389,7 +392,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
             <div id="highlights">
               <BuildingHighlights 
                 building={building}
-                listings={allListings}
+                listings={listingsWithoutMedia}
               />
             </div>
             
