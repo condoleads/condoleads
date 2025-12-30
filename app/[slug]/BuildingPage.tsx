@@ -214,6 +214,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       days_on_market, listing_contract_date, building_area_total,
       association_amenities, association_fee_includes, property_management_company, tax_year,
       media (
+        id,
         media_url,
         variant_type,
         order_number,
