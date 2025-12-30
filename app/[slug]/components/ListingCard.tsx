@@ -28,7 +28,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
   // Photos state - starts with initial photo from server, loads more on demand
   const initialPhotos = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
   const [photos, setPhotos] = useState(initialPhotos)
-  const [allPhotosLoaded, setAllPhotosLoaded] = useState(initialPhotos.length <= 1)
+  const [allPhotosLoaded, setAllPhotosLoaded] = useState(false)
   const [loadingPhotos, setLoadingPhotos] = useState(false)
   
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
