@@ -1,4 +1,5 @@
 ﻿'use client'
+
 import { useAuth } from '@/components/auth/AuthContext'
 import RegisterModal from '@/components/auth/RegisterModal'
 import Link from 'next/link'
@@ -6,11 +7,9 @@ import { MLSListing } from '@/lib/types/building'
 import { formatPrice } from '@/lib/utils/formatters'
 import { calculateDaysOnMarket } from '@/lib/utils/dom'
 import { generatePropertySlug } from '@/lib/utils/slugs'
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { Clock } from 'lucide-react'
 import UnitHistoryModal from '@/components/property/UnitHistoryModal'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-
 interface ListingCardProps {
   listing: MLSListing
   type: 'sale' | 'lease'
@@ -24,58 +23,15 @@ interface ListingCardProps {
 export default function ListingCard({ listing, type, onEstimateClick, buildingSlug, buildingName, buildingAddress, agentId }: ListingCardProps) {
   const isSale = type === 'sale'
   const isClosed = listing.standard_status === 'Closed'
-  
-  // Photos state - starts with initial photo from server, loads more on demand
-  const initialPhotos = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
-  const [photos, setPhotos] = useState(initialPhotos)
-  const [allPhotosLoaded, setAllPhotosLoaded] = useState(initialPhotos.length <= 1)
-  const [loadingPhotos, setLoadingPhotos] = useState(false)
-  
+  const photos = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
   const [showRegister, setShowRegister] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [historyPending, setHistoryPending] = useState(false)
   const { user } = useAuth()
-
-  // Fetch remaining photos on demand
-  const loadAllPhotos = useCallback(async () => {
-    if (allPhotosLoaded || loadingPhotos) return
-    
-    setLoadingPhotos(true)
-    try {
-      const supabase = createClientComponentClient()
-      const { data } = await supabase
-        .from('media')
-        .select('id, media_url, variant_type, order_number, preferred_photo_yn')
-        .eq('listing_id', listing.id)
-        .eq('variant_type', 'thumbnail')
-        .order('order_number', { ascending: true })
-      
-      if (data && data.length > 0) {
-        setPhotos(data)
-      }
-      setAllPhotosLoaded(true)
-    } catch (error) {
-      console.error('Error loading photos:', error)
-    } finally {
-      setLoadingPhotos(false)
-    }
-  }, [listing.id, allPhotosLoaded, loadingPhotos])
-
-  const nextPhoto = async () => {
-    // Load all photos on first navigation attempt
-    if (!allPhotosLoaded) {
-      await loadAllPhotos()
-    }
+  
+  const nextPhoto = () => {
     setCurrentPhotoIndex((prev) => (prev + 1) % photos.length)
-  }
-
-  const prevPhoto = async () => {
-    // Load all photos on first navigation attempt  
-    if (!allPhotosLoaded) {
-      await loadAllPhotos()
-    }
-    setCurrentPhotoIndex((prev) => (prev - 1 + photos.length) % photos.length)
   }
   
   const prevPhoto = () => {
