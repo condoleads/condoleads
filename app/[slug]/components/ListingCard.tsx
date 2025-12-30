@@ -78,10 +78,6 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
     setCurrentPhotoIndex((prev) => (prev - 1 + photos.length) % photos.length)
   }
   
-  const prevPhoto = () => {
-    setCurrentPhotoIndex((prev) => (prev - 1 + photos.length) % photos.length)
-  }
-  
   const getBadgeConfig = () => {
     if (isClosed) {
       if (isSale) {
