@@ -10,8 +10,8 @@
  * Convert large image URL to thumbnail for card displays
  * Reduces bandwidth by ~90% (500KB -> 15KB per image)
  */
-export function getThumbnailUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
+export function getThumbnailUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
   
   // Convert 1920:1920 large images to 240:240 thumbnails
   // Also remove the aq:size quality parameter that's only in large images
@@ -24,8 +24,8 @@ export function getThumbnailUrl(url: string | null | undefined): string | null {
  * Ensure URL is the large variant for galleries/hero images
  * Use this when you need full quality images
  */
-export function getLargeUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
+export function getLargeUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
   
   // If already large, return as-is
   if (url.includes('rs:fit:1920:1920')) return url;
