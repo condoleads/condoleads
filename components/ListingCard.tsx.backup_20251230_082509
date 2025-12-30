@@ -13,7 +13,7 @@ interface ListingCardProps {
 export default function ListingCard({ listing, type, onEstimateClick }: ListingCardProps) {
   const isSale = type === 'sale'
   const isClosed = listing.standard_status === 'Closed'
-  const photos = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
+  const photos = listing.media?.filter(m => m.variant_type === 'large') || []
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
   
   const nextPhoto = () => {
@@ -190,4 +190,3 @@ export default function ListingCard({ listing, type, onEstimateClick }: ListingC
     </article>
   )
 }
-

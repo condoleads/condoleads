@@ -87,7 +87,7 @@ export default function PhotoManagementPage() {
           .from('media')
           .select('media_url')
           .in('listing_id', listingIds)
-          .eq('variant_type', 'thumbnail')
+          .eq('variant_type', 'large')
           .order('preferred_photo_yn', { ascending: false })
           .limit(30)
         
@@ -113,7 +113,7 @@ export default function PhotoManagementPage() {
             .from('media')
             .select('media_url')
             .in('listing_id', listingIds)
-            .eq('variant_type', 'thumbnail')
+            .eq('variant_type', 'large')
             .order('preferred_photo_yn', { ascending: false })
             .limit(40)
           
