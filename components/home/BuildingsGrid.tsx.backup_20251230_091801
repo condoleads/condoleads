@@ -69,18 +69,18 @@ function ImageCarousel({ photos, alt }: { photos: string[]; alt: string }) {
       <img
         src={photos[currentIndex]}
         alt={`${alt} - ${currentIndex + 1}`}
-        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" loading="lazy"
+        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
       />
       {photos.length > 1 && (
         <>
           <button
-            onClick={goToPrevious} aria-label="Previous photo"
+            onClick={goToPrevious}
             className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full transition-colors z-10"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
-            onClick={goToNext} aria-label="Next photo"
+            onClick={goToNext}
             className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-1.5 rounded-full transition-colors z-10"
           >
             <ChevronRight className="w-4 h-4" />
@@ -90,8 +90,7 @@ function ImageCarousel({ photos, alt }: { photos: string[]; alt: string }) {
               <button
                 key={idx}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCurrentIndex(idx); }}
-                aria-label={`Go to photo ${idx + 1}`}
-                className={`w-4 h-4 rounded-full transition-colors ${idx === currentIndex ? "bg-white" : "bg-white/50"}`}
+                className={`w-2 h-2 rounded-full transition-colors ${idx === currentIndex ? 'bg-white' : 'bg-white/50'}`}
               />
             ))}
           </div>
@@ -135,7 +134,7 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
                       <img
                         src={development.photoUrl}
                         alt={development.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                       />
                     ) : (
                       <div className="w-full h-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center">
@@ -199,7 +198,7 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
                     <img 
                       src={building.photoUrl} 
                       alt={building.building_name}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
