@@ -109,16 +109,10 @@ export default async function DevelopmentPage({ params, development }: Developme
     .in('building_id', buildingIds)
     .order('list_price', { ascending: false })
 
-  // Filter media to thumbnails only to reduce HTML payload
-  const filterMedia = (listing: any) => ({
-    ...listing,
-    media: listing.media?.filter((m: any) => m.variant_type === 'thumbnail') || []
-  })
-
-  const forSaleActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active').map(filterMedia)
-  const forLeaseActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active').map(filterMedia)
-  const soldListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Closed').map(filterMedia)
-  const leasedListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Closed').map(filterMedia)
+  const forSaleActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active')
+  const forLeaseActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active')
+  const soldListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Closed')
+  const leasedListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Closed')
   const totalUnits = buildings.reduce((sum: number, b: any) => sum + (b.total_units || 0), 0)
   const addresses = buildings.map((b: any) => b.canonical_address).join(' & ')
 

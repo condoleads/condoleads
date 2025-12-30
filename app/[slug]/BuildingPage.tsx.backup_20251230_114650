@@ -220,20 +220,13 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     .order('list_price', { ascending: false })
 
   const allListings = listings || []
-  
-  // Filter media to thumbnails only to reduce HTML payload
-  const filterMedia = (listing: any) => ({
-    ...listing,
-    media: listing.media?.filter((m: any) => m.variant_type === 'thumbnail') || []
-  })
-  
   const activeListings = allListings.filter(l => l.standard_status === 'Active')
   const closedListings = allListings.filter(l => l.standard_status === 'Closed')
   
-  const activeSales = activeListings.filter(l => l.transaction_type === 'For Sale').map(filterMedia)
-  const activeRentals = activeListings.filter(l => l.transaction_type === 'For Lease').map(filterMedia)
-  const closedSales = closedListings.filter(l => l.transaction_type === 'For Sale').map(filterMedia)
-  const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lease').map(filterMedia)
+  const activeSales = activeListings.filter(l => l.transaction_type === 'For Sale')
+  const activeRentals = activeListings.filter(l => l.transaction_type === 'For Lease')
+  const closedSales = closedListings.filter(l => l.transaction_type === 'For Sale')
+  const closedRentals = closedListings.filter(l => l.transaction_type === 'For Lease')
 
   const amenities = extractAmenities(allListings)
   const feeIncludes = extractFeeIncludes(allListings)
