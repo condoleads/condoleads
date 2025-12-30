@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useAuth } from '@/components/auth/AuthContext'
 import RegisterModal from '@/components/auth/RegisterModal'
@@ -23,7 +23,7 @@ interface ListingCardProps {
 export default function ListingCard({ listing, type, onEstimateClick, buildingSlug, buildingName, buildingAddress, agentId }: ListingCardProps) {
   const isSale = type === 'sale'
   const isClosed = listing.standard_status === 'Closed'
-  const photos = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
+  const photos = listing.media?.filter(m => m.variant_type === 'large') || []
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
   const [showRegister, setShowRegister] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
