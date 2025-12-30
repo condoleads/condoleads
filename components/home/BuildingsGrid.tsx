@@ -1,8 +1,7 @@
-'use client';
+﻿'use client';
 import { useState } from 'react';
 import Link from 'next/link';
 import { Building2, Home, Key, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getThumbnailUrl } from '@/lib/utils/image-helpers';
 
 interface Building {
   id: string;
@@ -68,7 +67,7 @@ function ImageCarousel({ photos, alt }: { photos: string[]; alt: string }) {
   return (
     <div className="relative w-full h-full">
       <img
-        src={getThumbnailUrl(photos[currentIndex])}
+        src={photos[currentIndex]}
         alt={`${alt} - ${currentIndex + 1}`}
         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
       />
@@ -125,7 +124,7 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
             {developments.map((development) => (
               <Link
                 key={`dev-${development.id}`}
-                href={`/${development.slug}`} target="_blank"
+                href={`/${development.slug}`}
                 className="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-200 hover:border-purple-500"
               >
                 <div className="relative h-48 overflow-hidden">
@@ -133,7 +132,7 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
                       <ImageCarousel photos={development.galleryPhotos} alt={development.name} />
                     ) : development.photoUrl ? (
                       <img
-                        src={getThumbnailUrl(development.photoUrl)}
+                        src={development.photoUrl}
                         alt={development.name}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                       />
@@ -190,14 +189,14 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
             {buildings.map((building) => (
               <Link
                 key={building.id}
-                href={`/${building.slug}`} target="_blank"
+                href={`/${building.slug}`}
                 className="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-200 hover:border-blue-500"
               >
                 {/* Building Photo */}
                 <div className="relative h-48 overflow-hidden">
                   {building.photoUrl ? (
                     <img 
-                      src={getThumbnailUrl(building.photoUrl)} 
+                      src={building.photoUrl} 
                       alt={building.building_name}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                     />
@@ -285,4 +284,3 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
     </div>
   );
 }
-
