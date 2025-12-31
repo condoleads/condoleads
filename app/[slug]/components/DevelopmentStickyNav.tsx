@@ -1,4 +1,3 @@
-@"
 'use client'
 import { useState, useEffect } from 'react'
 import AuthStatus from '@/components/auth/AuthStatus'
@@ -33,7 +32,6 @@ export default function DevelopmentStickyNav({
       }
     }
 
-    // Initial check
     handleHashChange()
 
     window.addEventListener('scroll', handleScroll)
@@ -45,11 +43,9 @@ export default function DevelopmentStickyNav({
   }, [])
 
   const scrollToSection = (tabId: string) => {
-    // Update hash (this will trigger tab change in DevelopmentListings)
     window.location.hash = tabId
     setActiveTab(tabId)
     
-    // Scroll to listings section
     const element = document.getElementById('listings')
     if (element) {
       const offset = 80
@@ -140,4 +136,3 @@ export default function DevelopmentStickyNav({
     </nav>
   )
 }
-"@ | Set-Content -LiteralPath "app\[slug]\components\DevelopmentStickyNav.tsx" -Encoding UTF8
