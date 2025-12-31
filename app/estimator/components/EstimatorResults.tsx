@@ -613,7 +613,7 @@ export default function EstimatorResults({
                     </div>
                     
                   </a>
-                </div>
+            
               )
             })}
           </div>
