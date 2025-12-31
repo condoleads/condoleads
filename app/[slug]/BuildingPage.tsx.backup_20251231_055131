@@ -8,19 +8,9 @@ import BuildingHighlights from './components/BuildingHighlights'
 import ListingSection from './components/ListingSection'
 import MarketStats from './components/MarketStats'
 import BuildingAmenities from './components/BuildingAmenities'
-import dynamic from 'next/dynamic'
-const PriceChart = dynamic(() => import('./components/PriceChart'), { 
-  ssr: false,
-  loading: () => <div className="h-96 bg-slate-100 animate-pulse rounded-lg flex items-center justify-center"><span className="text-slate-400">Loading chart...</span></div>
-})
-const TransactionHistory = dynamic(() => import('./components/TransactionHistory'), { 
-  ssr: false,
-  loading: () => <div className="h-64 bg-slate-100 animate-pulse rounded-lg"></div>
-})
-const TransactionInsights = dynamic(() => import('./components/TransactionInsights'), { 
-  ssr: false,
-  loading: () => <div className="h-64 bg-slate-100 animate-pulse rounded-lg"></div>
-})
+import PriceChart from './components/PriceChart'
+import TransactionHistory from './components/TransactionHistory'
+import TransactionInsights from './components/TransactionInsights'
 import BuildingMap from './components/BuildingMap'
 import BuildingReviews from './components/BuildingReviews'
 import StickyNav from './components/StickyNav'
