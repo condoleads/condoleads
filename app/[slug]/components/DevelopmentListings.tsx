@@ -255,6 +255,7 @@ export default function DevelopmentListings({
           type={modalType}
           buildingName={developmentName}
           buildingId={selectedListing.building_id}
+          buildingSlug={selectedListing.building_slug}
           agentId={agentId}
           exactSqft={null}
         />

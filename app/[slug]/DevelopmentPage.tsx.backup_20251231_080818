@@ -111,12 +111,8 @@ export default async function DevelopmentPage({ params, development }: Developme
     .order('list_price', { ascending: false })
 
   // Filter media to thumbnails only to reduce HTML payload
-  // Create a map of building_id to building_slug
-  const buildingSlugMap = new Map(buildings.map((b: any) => [b.id, b.slug]))
-
   const filterMedia = (listing: any) => ({
     ...listing,
-    building_slug: buildingSlugMap.get(listing.building_id) || '',
     media: (listing.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
       .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
       .slice(0, 1) // Only first photo, rest loaded on demand
