@@ -181,6 +181,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
                 isSale={isSale}
                 buildingName={building?.name || ''}
                 buildingAddress={building?.address || ''}
+                buildingSlug={building?.slug || ''}
                 agentId={agent?.id || ''}
               />
             </div>

@@ -1,9 +1,11 @@
 ﻿'use client'
-
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MLSListing } from '@/lib/types/building'
-import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 import { extractExactSqft } from '@/lib/estimator/types'
+import { estimateSale } from '@/app/estimator/actions/estimate-sale'
+import { estimateRent } from '@/app/estimator/actions/estimate-rent'
+import EstimatorResults from '@/app/estimator/components/EstimatorResults'
+import { EstimateResult } from '@/lib/estimator/types'
 
 interface PropertyEstimateCTAProps {
   listing: MLSListing
@@ -11,79 +13,97 @@ interface PropertyEstimateCTAProps {
   isSale: boolean
   buildingName: string
   buildingAddress?: string
+  buildingSlug?: string
   agentId: string
 }
 
-export default function PropertyEstimateCTA({ listing, status, isSale, buildingName, buildingAddress, agentId }: PropertyEstimateCTAProps) {
-  const [modalOpen, setModalOpen] = useState(false)
-  const isClosed = status === 'Closed'
+export default function PropertyEstimateCTA({ listing, status, isSale, buildingName, buildingAddress, buildingSlug, agentId }: PropertyEstimateCTAProps) {
+  const [loading, setLoading] = useState(true)
+  const [result, setResult] = useState<EstimateResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
   const exactSqft = extractExactSqft(listing.square_foot_source)
 
-  const config = {
-    active_sale: {
-      title: 'Get Instant Sale Estimate',
-      description: 'See comparable sales and estimated market value',
-      buttonText: 'Get Free Estimate',
-      buttonColor: 'bg-emerald-600 hover:bg-emerald-700',
-      borderColor: 'border-emerald-500',
-      bgColor: 'bg-emerald-50'
-    },
-    closed_sale: {
-      title: 'What Would This Sell For Today?',
-      description: 'Get current market estimate based on recent sales',
-      buttonText: 'Get Current Estimate',
-      buttonColor: 'bg-blue-600 hover:bg-blue-700',
-      borderColor: 'border-blue-500',
-      bgColor: 'bg-blue-50'
-    },
-    active_lease: {
-      title: 'Get Instant Rent Estimate',
-      description: 'See comparable leases and estimated market rent',
-      buttonText: 'Get Free Estimate',
-      buttonColor: 'bg-sky-600 hover:bg-sky-700',
-      borderColor: 'border-sky-500',
-      bgColor: 'bg-sky-50'
-    },
-    closed_lease: {
-      title: 'What Would This Rent For Today?',
-      description: 'Get current rental estimate based on recent leases',
-      buttonText: 'Get Current Estimate',
-      buttonColor: 'bg-purple-600 hover:bg-purple-700',
-      borderColor: 'border-purple-500',
-      bgColor: 'bg-purple-50'
+  useEffect(() => {
+    const runEstimate = async () => {
+      setLoading(true)
+      setError(null)
+
+      const specs = {
+        bedrooms: listing.bedrooms_total || 0,
+        bathrooms: listing.bathrooms_total_integer || 0,
+        livingAreaRange: listing.living_area_range || '',
+        parking: listing.parking_total || 0,
+        hasLocker: !!(listing.locker && listing.locker !== 'None'),
+        buildingId: listing.building_id,
+        buildingSlug: buildingSlug,
+        ...(exactSqft !== null && { exactSqft }),
+        ...(listing.association_fee && { associationFee: listing.association_fee })
+      }
+
+      try {
+        const response = isSale
+          ? await estimateSale(specs, true)
+          : await estimateRent(specs, true)
+
+        if (response.success && response.data) {
+          setResult(response.data)
+        } else {
+          setError(response.error || 'Failed to calculate estimate')
+        }
+      } catch (err) {
+        setError('Failed to load estimate')
+      }
+
+      setLoading(false)
     }
+
+    runEstimate()
+  }, [listing, isSale, buildingSlug, exactSqft])
+
+  if (loading) {
+    return (
+      <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-6">
+        <div className="animate-pulse">
+          <div className="h-6 bg-slate-200 rounded w-2/3 mb-4"></div>
+          <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
+          <div className="h-4 bg-slate-200 rounded w-3/4 mb-4"></div>
+          <div className="h-12 bg-slate-200 rounded w-full"></div>
+        </div>
+        <p className="text-center text-slate-500 mt-4">Calculating estimate...</p>
+      </div>
+    )
   }
 
-  const key = isClosed
-    ? (isSale ? 'closed_sale' : 'closed_lease')
-    : (isSale ? 'active_sale' : 'active_lease')
-
-  const { title, description, buttonText, buttonColor, borderColor, bgColor } = config[key]
-
-  return (
-    <>
-      <div className={`${bgColor} border-2 ${borderColor} rounded-xl p-6 sticky top-4`}>
-        <h3 className="text-xl font-bold text-slate-900 mb-2">{title}</h3>
-        <p className="text-sm text-slate-600 mb-4">{description}</p>
-        <button
-          onClick={() => setModalOpen(true)}
-          className={`w-full ${buttonColor} text-white py-3 rounded-lg font-semibold transition-colors`}
-        >
-          {buttonText}
-        </button>
+  if (error) {
+    return (
+      <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6">
+        <h3 className="text-xl font-bold text-red-900 mb-2">Estimate Unavailable</h3>
+        <p className="text-sm text-red-600">{error}</p>
       </div>
+    )
+  }
 
-      <EstimatorBuyerModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        listing={listing}
+  if (result) {
+    return (
+      <EstimatorResults
+        result={result}
+        type={isSale ? 'sale' : 'lease'}
+        buildingId={listing.building_id}
         buildingName={buildingName}
         buildingAddress={buildingAddress}
-        buildingId={listing.building_id}
+        unitNumber={listing.unit_number || ''}
         agentId={agentId}
-        type={isSale ? 'sale' : 'lease'}
-        exactSqft={exactSqft}
+        propertySpecs={{
+          bedrooms: listing.bedrooms_total,
+          bathrooms: listing.bathrooms_total_integer,
+          livingAreaRange: listing.living_area_range,
+          parking: listing.parking_total,
+          locker: listing.locker
+        }}
       />
-    </>
-  )
+    )
+  }
+
+  return null
 }
