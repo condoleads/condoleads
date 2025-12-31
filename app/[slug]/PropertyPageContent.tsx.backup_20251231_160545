@@ -168,8 +168,8 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
                   listingId={listing.id}
                   listingAddress={listing.unparsed_address || ''}
                   buildingId={listing.building_id}
-                  buildingName={building?.building_name || ''}
-                  buildingAddress={building?.canonical_address || ''}
+                  buildingName={building?.name || ''}
+                  buildingAddress={building?.address || ''}
                   unitNumber={listing.unit_number || ''}
                   
                 />
@@ -179,16 +179,16 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
                 listing={listingWithBuilding}
                 status={status}
                 isSale={isSale}
-                buildingName={building?.building_name || ''}
-                buildingAddress={building?.canonical_address || ''}
+                buildingName={building?.name || ''}
+                buildingAddress={building?.address || ''}
                 buildingSlug={building?.slug || ''}
                 agentId={agent?.id || ''}
               />
             </div>
 
             <BuildingInfo
-              buildingName={building?.building_name || 'N/A'}
-              address={building?.canonical_address || listing.unparsed_address || 'N/A'}
+              buildingName={building?.name || 'N/A'}
+              address={building?.address || listing.unparsed_address || 'N/A'}
               yearBuilt={listing.year_built}
               totalUnits={null}
               parkingType={listing.parking_features}
