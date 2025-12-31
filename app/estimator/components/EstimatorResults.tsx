@@ -268,13 +268,7 @@ export default function EstimatorResults({
 
             <div className="space-y-4">
               {result.comparables.map((comp, idx) => (
-                <a 
-                  key={idx} 
-                  href={comp.buildingSlug && comp.unitNumber && comp.listingKey ? `/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}` : '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`block bg-slate-50 rounded-xl p-5 border-2 border-slate-200 ${comp.buildingSlug && comp.unitNumber && comp.listingKey ? 'hover:border-blue-400 hover:shadow-md cursor-pointer transition-all' : ''}`}
-                >
+                <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
@@ -310,8 +304,17 @@ export default function EstimatorResults({
                       </p>
                     </div>
                   )}
-                  
-                </a>
+                  {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
+                     <a                 
+                      href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      View Property Details →
+                    </a>
+                  )}
+                </div>
               ))}
             </div>
 
@@ -469,13 +472,7 @@ export default function EstimatorResults({
               const hasAdjustments = comp.adjustments && comp.adjustments.length > 0
 
               return (
-                <a 
-                  key={idx} 
-                  href={comp.buildingSlug && comp.unitNumber && comp.listingKey ? `/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}` : '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`block bg-slate-50 rounded-xl p-5 border-2 border-slate-200 ${comp.buildingSlug && comp.unitNumber && comp.listingKey ? 'hover:border-blue-400 hover:shadow-md cursor-pointer transition-all' : 'hover:border-slate-300 transition-colors'}`}
-                >
+                <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
@@ -611,9 +608,18 @@ export default function EstimatorResults({
                       <span className="text-xs text-slate-500">Originally listed:</span>
                       <span className="text-xs text-slate-500">{formatPrice(comp.listPrice)}</span>
                     </div>
-                    
-                  </a>
-            
+                    {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
+                      <a
+                        href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        View Property Details →
+                      </a>
+                    )}
+                  </div>
+                </div>
               )
             })}
           </div>
