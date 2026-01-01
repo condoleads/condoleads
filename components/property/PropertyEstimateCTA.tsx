@@ -40,6 +40,7 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
         ...(exactSqft !== null && { exactSqft }),
         ...(listing.association_fee && { associationFee: listing.association_fee })
       }
+      
 
       try {
         const response = isSale
