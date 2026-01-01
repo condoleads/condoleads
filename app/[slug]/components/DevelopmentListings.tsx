@@ -145,6 +145,7 @@ export default function DevelopmentListings({
                 onEstimateClick={() => handleEstimateClick(listing, 'sale')}
                 buildingName={developmentName}
                 buildingAddress={developmentAddresses}
+                buildingSlug={listing.building_slug}
                 agentId={agentId}
               />
             ))}
@@ -174,6 +175,7 @@ export default function DevelopmentListings({
                 onEstimateClick={() => handleEstimateClick(listing, 'lease')}
                 buildingName={developmentName}
                 buildingAddress={developmentAddresses}
+                buildingSlug={listing.building_slug}
                 agentId={agentId}
               />
             ))}
@@ -202,6 +204,7 @@ export default function DevelopmentListings({
                 type="sale"
                 buildingName={developmentName}
                 buildingAddress={developmentAddresses}
+                buildingSlug={listing.building_slug}
                 agentId={agentId}
               />
             ))}
@@ -230,6 +233,7 @@ export default function DevelopmentListings({
                 type="lease"
                 buildingName={developmentName}
                 buildingAddress={developmentAddresses}
+                buildingSlug={listing.building_slug}
                 agentId={agentId}
               />
             ))}
