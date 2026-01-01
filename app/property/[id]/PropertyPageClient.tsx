@@ -58,6 +58,7 @@ export default function PropertyPageClient({
 }: PropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
+  const shouldGateMLSData = !user  // MLS requirement: always gate history & estimates
   
   // Modal state for sticky bar CTAs
   const [showEstimatorModal, setShowEstimatorModal] = useState(false)
@@ -108,7 +109,7 @@ export default function PropertyPageClient({
             )}
 
             {unitHistory && unitHistory.length > 0 && (
-            <GatedContent shouldGate={shouldGate} sectionName="Transaction History" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+            <GatedContent shouldGate={shouldGateMLSData} sectionName="Transaction History" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
                 <UnitHistory
                   history={unitHistory}
                   unitNumber={listing.unit_number || 'N/A'}
@@ -118,7 +119,7 @@ export default function PropertyPageClient({
             )}
 
             {isClosed && (
-            <GatedContent shouldGate={shouldGate} sectionName="Price History" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+            <GatedContent shouldGate={shouldGateMLSData} sectionName="Price History" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
                 <PriceHistory
                   listPrice={listing.list_price}
                   closePrice={listing.close_price}
@@ -158,15 +159,17 @@ export default function PropertyPageClient({
                     
                   />
                   
-                  <PropertyEstimateCTA
-                    listing={{ ...listing, buildings: building }}
-                    status={status}
-                    isSale={isSale}
-                    buildingName={building?.building_name || ''}
-                    buildingAddress={building?.canonical_address || ''}
-                    buildingSlug={building?.slug || ''}
-                    agentId={agent.id}
-                  />
+                  <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+                    <PropertyEstimateCTA
+                      listing={{ ...listing, buildings: building }}
+                      status={status}
+                      isSale={isSale}
+                      buildingName={building?.building_name || ''}
+                      buildingAddress={building?.canonical_address || ''}
+                      buildingSlug={building?.slug || ''}
+                      agentId={agent.id}
+                    />
+                  </GatedContent>
 
                   <BuildingInfo
                     buildingName={building?.building_name || 'N/A'}
