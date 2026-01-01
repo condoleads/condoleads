@@ -36,6 +36,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
     .select('id, building_name, slug, canonical_address')
     .eq('id', listing.building_id)
     .single()
+    console.log('[PropertyPageContent] building:', building)
 
   // Fetch agent
   const { data: agentBuilding } = await supabaseServer

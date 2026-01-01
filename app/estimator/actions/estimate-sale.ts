@@ -24,6 +24,7 @@ export async function estimateSale(
   specs: UnitSpecs,
   includeAI: boolean = false
 ): Promise<{ success: boolean; data?: EstimateResult; error?: string }> {
+  console.log('[estimateSale] specs.buildingSlug:', specs.buildingSlug)
   try {
     const supabase = createServiceClient()
 

@@ -163,6 +163,7 @@ export default function PropertyPageClient({
                     isSale={isSale}
                     buildingName={building?.building_name || ''}
                     buildingAddress={building?.canonical_address || ''}
+                    buildingSlug={building?.slug || ''}
                     agentId={agent.id}
                   />
 

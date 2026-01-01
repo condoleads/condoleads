@@ -18,6 +18,7 @@ interface PropertyEstimateCTAProps {
 }
 
 export default function PropertyEstimateCTA({ listing, status, isSale, buildingName, buildingAddress, buildingSlug, agentId }: PropertyEstimateCTAProps) {
+  console.log('[PropertyEstimateCTA] buildingSlug prop:', buildingSlug)
   const [loading, setLoading] = useState(true)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
