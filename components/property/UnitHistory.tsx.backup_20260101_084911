@@ -1,8 +1,5 @@
-'use client'
 import { formatPrice } from '@/lib/utils/formatters'
 import { getStatusDisplay } from '@/lib/utils/dom'
-import { useAuth } from '@/components/auth/AuthContext'
-import { Lock } from 'lucide-react'
 
 interface HistoricalSale {
   id: string
@@ -14,18 +11,14 @@ interface HistoricalSale {
   transaction_type: string
   standard_status: string | null
   mls_status: string | null
-  listing_key?: string | null
 }
 
 interface UnitHistoryProps {
   history: HistoricalSale[]
   unitNumber: string
-  buildingSlug?: string
 }
 
-export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitHistoryProps) {
-  const { user } = useAuth()
-  
+export default function UnitHistory({ history, unitNumber }: UnitHistoryProps) {
   if (!history || history.length === 0) return null
 
   const formatDate = (dateString: string | null) => {
@@ -37,10 +30,6 @@ export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitH
     })
   }
 
-  // Show only first item for non-registered users
-  const displayHistory = user ? history : history.slice(0, 1)
-  const isGated = !user && history.length > 1
-
   return (
     <section className="bg-white rounded-xl shadow-sm p-6">
       <h2 className="text-2xl font-bold text-slate-900 mb-4">
@@ -49,11 +38,13 @@ export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitH
       <p className="text-slate-600 mb-6">
         Complete transaction history for this unit
       </p>
-      
+
       <div className="space-y-4">
-        {displayHistory.map((sale) => {
+        {history.map((sale) => {
           const isSale = sale.transaction_type === 'For Sale'
           const statusDisplay = getStatusDisplay(sale.standard_status, sale.mls_status, sale.transaction_type)
+          
+          // Use close_price for closed transactions, list_price for others
           const displayPrice = sale.close_price || sale.list_price
           const priceChange = sale.close_price && sale.list_price
             ? sale.close_price - sale.list_price
@@ -61,15 +52,14 @@ export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitH
           const priceChangePercent = sale.close_price && sale.list_price
             ? ((priceChange / sale.list_price) * 100).toFixed(1)
             : '0'
+
+          // Determine which date to show
           const displayDate = sale.close_date || sale.listing_contract_date
-          const dateLabel = sale.close_date ?
-            (statusDisplay.label === 'Sold' ? 'Sold' :
-             statusDisplay.label === 'Leased' ? 'Leased' :
-             statusDisplay.label === 'Expired' ? 'Expired' : 'Closed')
+          const dateLabel = sale.close_date ? 
+            (statusDisplay.label === 'Sold' ? 'Sold' : 
+             statusDisplay.label === 'Leased' ? 'Leased' : 
+             statusDisplay.label === 'Expired' ? 'Expired' : 'Closed') 
             : 'Listed'
-          const propertyUrl = buildingSlug && sale.listing_key 
-            ? `/${buildingSlug}-unit-${unitNumber}-${sale.listing_key.toLowerCase()}` 
-            : null
 
           return (
             <div key={sale.id} className="border border-slate-200 rounded-lg p-4">
@@ -94,6 +84,7 @@ export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitH
                   )}
                 </div>
               </div>
+              
               <div className="flex flex-wrap gap-4 text-sm text-slate-600">
                 {sale.close_price && sale.list_price && sale.close_price !== sale.list_price && (
                   <span>Listed: {formatPrice(sale.list_price)}</span>
@@ -105,47 +96,10 @@ export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitH
                   <span>• {sale.transaction_type === 'For Sale' ? 'Sale' : 'Lease'}</span>
                 )}
               </div>
-              {propertyUrl && (
-                <a 
-                  href={propertyUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
-                >
-                  View Property Details →
-                </a>
-              )}
             </div>
           )
         })}
       </div>
-
-      {/* Registration Gate */}
-      {isGated && (
-        <div className="mt-6 relative">
-          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/95 to-transparent z-10" />
-          <div className="relative z-20 text-center py-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-slate-100 rounded-full mb-4">
-              <Lock className="w-6 h-6 text-slate-500" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">
-              {history.length - 1} More Transactions Available
-            </h3>
-            <p className="text-slate-600 mb-4">
-              Register free to see the complete unit history
-            </p>
-            <button
-              onClick={() => {
-                const event = new CustomEvent('openAuthModal', { detail: { mode: 'register' } })
-                window.dispatchEvent(event)
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
-            >
-              Register to Unlock
-            </button>
-          </div>
-        </div>
-      )}
     </section>
   )
 }

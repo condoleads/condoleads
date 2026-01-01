@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from('mls_listings')
-    .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status, mls_status, listing_key')
+    .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status, mls_status')
     .eq('building_id', buildingId)
     .eq('unit_number', unitNumber)
     .order('close_date', { ascending: false, nullsFirst: false })

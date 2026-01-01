@@ -112,6 +112,7 @@ export default function PropertyPageClient({
                 <UnitHistory
                   history={unitHistory}
                   unitNumber={listing.unit_number || 'N/A'}
+                  buildingSlug={building?.slug || ''}
                 />
               </GatedContent>
             )}

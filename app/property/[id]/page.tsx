@@ -232,7 +232,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   // Fetch unit history - ALL statuses for complete transaction history
   const { data: unitHistory } = await supabase
     .from('mls_listings')
-    .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status, mls_status')
+    .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status, mls_status, listing_key')
     .eq('building_id', listing.building_id)
     .eq('unit_number', listing.unit_number)
     .neq('id', listing.id)
