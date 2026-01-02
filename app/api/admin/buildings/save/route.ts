@@ -1050,7 +1050,7 @@ async function ensureGeographicHierarchy(
       .from('treb_areas')
       .select('id')
       .eq('name', area)
-      .single();
+      .maybeSingle()
 
     let areaId: string;
     if (!existingArea) {
@@ -1073,7 +1073,7 @@ async function ensureGeographicHierarchy(
       .select('id')
       .eq('area_id', areaId)
       .eq('name', municipalityName)
-      .single();
+      .maybeSingle()
 
     let municipalityId: string;
     if (!existingMunicipality) {
@@ -1104,7 +1104,7 @@ async function ensureGeographicHierarchy(
       .select('id')
       .eq('municipality_id', municipalityId)
       .eq('name', communityName)
-      .single();
+      .maybeSingle()
 
     let communityId: string;
     if (!existingCommunity) {
