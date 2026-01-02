@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { redirect } from 'next/navigation'
 import { useRouter } from 'next/navigation'
@@ -48,6 +48,9 @@ export default function AdminLayoutClient({
                   </a>
                 <a href="/admin/branding" className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
                     Branding
+                  </a>
+                <a href="/admin/adjustments" className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
+                    Adjustments
                   </a>
               </nav>
             </div>

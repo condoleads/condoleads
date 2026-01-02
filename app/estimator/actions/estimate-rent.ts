@@ -1,71 +1,38 @@
-// app/estimator/actions/estimate-rent.ts
+﻿// app/estimator/actions/estimate-rent.ts
 'use server'
-
 import { findComparablesRentals } from '@/lib/estimator/comparable-matcher-rentals'
 import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
 import { getAIInsights } from '@/lib/estimator/ai-insights'
-import { EstimateResult, UnitSpecs, ADJUSTMENT_VALUES_LEASE } from '@/lib/estimator/types'
-import { createClient as createServerClient } from '@supabase/supabase-js'
-
-function createServiceClient() {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
+import { EstimateResult, UnitSpecs } from '@/lib/estimator/types'
+import { resolveAdjustments } from '@/lib/estimator/resolve-adjustments'
 
 /**
  * Server action to estimate monthly rent
  * Uses 5-tier matching: BINGO -> BINGO-ADJ -> RANGE -> RANGE-ADJ -> CONTACT
- * 
- * Value Priority: Building-specific > Universal Default > System Hardcoded
+ *
+ * Value Priority: Building (direct) -> Building (adj) -> Community -> Neighbourhood -> Municipality -> Area -> Generic -> Hardcoded
  */
 export async function estimateRent(
   specs: UnitSpecs,
   includeAI: boolean = false
 ): Promise<{ success: boolean; data?: EstimateResult & { parkingCost?: number; lockerCost?: number }; error?: string }> {
   try {
-    const supabase = createServiceClient()
-
-    // Fetch building-specific values
-    const { data: building } = await supabase
-      .from('buildings')
-      .select('parking_value_lease, locker_value_lease')
-      .eq('id', specs.buildingId)
-      .single()
-
-    // Fetch universal defaults from system_settings
-    const { data: systemSettings } = await supabase
-      .from('system_settings')
-      .select('setting_value')
-      .eq('setting_key', 'estimator_defaults')
-      .single()
-
-    const universalDefaults = systemSettings?.setting_value || {}
-
-    // Priority: Building-specific > Universal Default > System Hardcoded
-    const parkingValueLease = 
-      building?.parking_value_lease ?? 
-      universalDefaults.parking_value_lease ?? 
-      ADJUSTMENT_VALUES_LEASE.PARKING_PER_SPACE
-
-    const lockerValueLease = 
-      building?.locker_value_lease ?? 
-      universalDefaults.locker_value_lease ?? 
-      ADJUSTMENT_VALUES_LEASE.LOCKER
+    // Resolve adjustment values using hierarchy cascade
+    const adjustmentValues = await resolveAdjustments(specs.buildingId, 'lease')
+    console.log('[estimateRent] Resolved adjustments:', adjustmentValues)
 
     // Step 1: Find comparable leases using tiered matching
-    const matchResult = await findComparablesRentals(specs, { parkingPerSpace: parkingValueLease, locker: lockerValueLease })
+    const matchResult = await findComparablesRentals(specs, adjustmentValues)
     console.log(`[Rental Estimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}`)
 
     // Step 2: Calculate estimate based on tier
     const estimate = calculateEstimate(matchResult)
 
-    // Step 3: Calculate parking cost using priority values
-    const parkingCost = specs.parking > 0 ? specs.parking * parkingValueLease : 0
+    // Step 3: Calculate parking cost using resolved values
+    const parkingCost = specs.parking > 0 ? specs.parking * adjustmentValues.parkingPerSpace : 0
 
-    // Step 4: Calculate locker cost using priority values
-    const lockerCost = specs.hasLocker ? lockerValueLease : 0
+    // Step 4: Calculate locker cost using resolved values
+    const lockerCost = specs.hasLocker ? adjustmentValues.locker : 0
 
     // Step 5: Add AI insights if requested and we have a price
     let aiInsights = undefined
