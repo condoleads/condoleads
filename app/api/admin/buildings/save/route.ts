@@ -200,7 +200,7 @@ async function saveListingsWithCompleteDLAMapping(buildingId: string, listingsDa
   console.log('?? Saving listings with complete DLA mapping...');
   
   const savedListings: any[] = [];
-  const batchSize = 1;
+  const batchSize = 400;
   
   for (let i = 0; i < listingsData.length; i += batchSize) {
     const batch = listingsData.slice(i, i + batchSize);
@@ -840,7 +840,7 @@ async function saveMediaWithVariantFiltering(savedListings: any[], originalListi
   
   // Batch insert media
   if (mediaRecords.length > 0) {
-    const batchSize = 1;
+    const batchSize = 400;
     for (let i = 0; i < mediaRecords.length; i += batchSize) {
       const batch = mediaRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('media').insert(batch);
@@ -936,7 +936,7 @@ async function savePropertyRooms(savedListings: any[], originalListings: any[]) 
   }
   
   if (roomRecords.length > 0) {
-    const batchSize = 1;
+    const batchSize = 400;
     for (let i = 0; i < roomRecords.length; i += batchSize) {
       const batch = roomRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('property_rooms').insert(batch);
@@ -983,7 +983,7 @@ async function saveOpenHouses(savedListings: any[], originalListings: any[]) {
   }
   
   if (openHouseRecords.length > 0) {
-    const batchSize = 1;
+    const batchSize = 400;
     for (let i = 0; i < openHouseRecords.length; i += batchSize) {
       const batch = openHouseRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('open_houses').insert(batch);

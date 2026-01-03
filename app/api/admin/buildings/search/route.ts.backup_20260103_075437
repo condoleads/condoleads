@@ -145,56 +145,83 @@ export async function POST(request: NextRequest) {
     console.log(`After exclusion filter: ${filteredListings.length} listings (removed ${beforeExclusion - filteredListings.length})`);
     
     // ENHANCED DATA COLLECTION - Only if fullData requested
-    // PARALLEL BATCHES: Process 10 listings at a time for ~5x speedup
     if (fullData && filteredListings.length > 0) {
-      console.log('ENHANCED: Collecting PropertyRooms, Media, and OpenHouses data (PARALLEL)...');
+      console.log('ENHANCED: Collecting PropertyRooms, Media, and OpenHouses data...');
       
-      const BATCH_SIZE = 10;
-      const totalBatches = Math.ceil(filteredListings.length / BATCH_SIZE);
-      
-      // Helper function to fetch all enhanced data for one listing
-      const fetchEnhancedDataForListing = async (listing: any, index: number) => {
+      for (let i = 0; i < filteredListings.length; i++) {
+        const listing = filteredListings[i];
         const listingKey = listing.ListingKey;
-        if (!listingKey) return;
         
-        // Fetch rooms, media, and open houses in parallel for this listing
-        const [roomsResult, mediaResult, openHouseResult] = await Promise.all([
-          // Rooms
-          fetch(`${baseUrl}PropertyRooms?$filter=${encodeURIComponent(`ListingKey eq '${listingKey}'`)}&$top=50`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-          }).then(r => r.ok ? r.json() : { value: [] }).catch(() => ({ value: [] })),
+        if (!listingKey) continue;
+        
+        // Get PropertyRooms data
+        try {
+          const roomsFilter = `ListingKey eq '${listingKey}'`;
+          const roomsUrl = `${baseUrl}PropertyRooms?$filter=${encodeURIComponent(roomsFilter)}&$top=50`;
           
-          // Media
-          fetch(`${baseUrl}Media?$filter=${encodeURIComponent(`ResourceRecordKey eq '${listingKey}'`)}&$top=500`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-          }).then(r => r.ok ? r.json() : { value: [] }).catch(() => ({ value: [] })),
+          const roomsResponse = await fetch(roomsUrl, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json'
+            }
+          });
           
-          // Open Houses
-          fetch(`${baseUrl}OpenHouse?$filter=${encodeURIComponent(`ListingKey eq '${listingKey}'`)}&$top=20`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-          }).then(r => r.ok ? r.json() : { value: [] }).catch(() => ({ value: [] }))
-        ]);
-        
-        listing.PropertyRooms = roomsResult.value || [];
-        listing.Media = filterTwoVariants(mediaResult.value || []);
-        listing.OpenHouses = openHouseResult.value || [];
-        
-        if (index < 3) {
-          console.log(`Listing ${listingKey}: ${listing.PropertyRooms.length} rooms, ${listing.Media.length} media, ${listing.OpenHouses.length} open houses`);
+          if (roomsResponse.ok) {
+            const roomsData = await roomsResponse.json();
+            listing.PropertyRooms = roomsData.value || [];
+            if (i < 5) console.log(`Listing ${listingKey}: Found ${listing.PropertyRooms.length} rooms`);
+          }
+        } catch (roomsError) {
+          console.error(`Failed to get rooms for ${listingKey}:`, roomsError);
+          listing.PropertyRooms = [];
         }
-      };
-      
-      // Process in batches
-      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-        const start = batchIndex * BATCH_SIZE;
-        const batch = filteredListings.slice(start, start + BATCH_SIZE);
         
-        console.log(`Processing batch ${batchIndex + 1}/${totalBatches} (${batch.length} listings)...`);
+        // Get Media data
+        try {
+          const mediaFilter = `ResourceRecordKey eq '${listingKey}'`;
+          const mediaUrl = `${baseUrl}Media?$filter=${encodeURIComponent(mediaFilter)}&$top=500`;
+          
+          const mediaResponse = await fetch(mediaUrl, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (mediaResponse.ok) {
+            const mediaData = await mediaResponse.json();
+            listing.Media = filterTwoVariants(mediaData.value || []);
+            if (i < 5) console.log(`Listing ${listingKey}: Found ${listing.Media.length} media items`);
+          }
+        } catch (mediaError) {
+          console.error(`Failed to get media for ${listingKey}:`, mediaError);
+          listing.Media = [];
+        }
         
-        await Promise.all(batch.map((listing, idx) => fetchEnhancedDataForListing(listing, start + idx)));
+        // Get OpenHouses data
+        try {
+          const openHouseFilter = `ListingKey eq '${listingKey}'`;
+          const openHouseUrl = `${baseUrl}OpenHouse?$filter=${encodeURIComponent(openHouseFilter)}&$top=20`;
+          
+          const openHouseResponse = await fetch(openHouseUrl, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (openHouseResponse.ok) {
+            const openHouseData = await openHouseResponse.json();
+            listing.OpenHouses = openHouseData.value || [];
+            if (i < 5 && listing.OpenHouses.length > 0) {
+              console.log(`Listing ${listingKey}: Found ${listing.OpenHouses.length} open houses`);
+            }
+          }
+        } catch (openHouseError) {
+          console.error(`Failed to get open houses for ${listingKey}:`, openHouseError);
+          listing.OpenHouses = [];
+        }
       }
-      
-      console.log(`ENHANCED: Completed all ${filteredListings.length} listings in ${totalBatches} batches`);
     }
     
     // Categorization with 90-day date split
