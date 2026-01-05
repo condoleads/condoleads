@@ -1,0 +1,242 @@
+﻿import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function POST(request: NextRequest) {
+  try {
+    const { buildingIds } = await request.json();
+
+    if (!buildingIds || !Array.isArray(buildingIds) || buildingIds.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Building IDs array is required' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch building details
+    const { data: buildings, error: fetchError } = await supabase
+      .from('discovered_buildings')
+      .select('*')
+      .in('id', buildingIds);
+
+    if (fetchError) throw fetchError;
+
+    if (!buildings || buildings.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No buildings found' },
+        { status: 404 }
+      );
+    }
+
+    // Create a streaming response
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const sendProgress = (data: any) => {
+          controller.enqueue(encoder.encode(`data:${JSON.stringify(data)}\n\n`));
+        };
+
+        const BATCH_SIZE = 5;
+        let completed = 0;
+        let failed = 0;
+
+        // Process in batches of 5
+        for (let i = 0; i < buildings.length; i += BATCH_SIZE) {
+          const batch = buildings.slice(i, i + BATCH_SIZE);
+
+          // Process batch in parallel
+          const promises = batch.map(async (building) => {
+            try {
+              // Update status to syncing
+              await supabase
+                .from('discovered_buildings')
+                .update({ status: 'syncing' })
+                .eq('id', building.id);
+
+              sendProgress({
+                type: 'progress',
+                buildingId: building.id,
+                buildingName: building.building_name || `${building.street_number} ${building.street_name}`,
+                status: 'syncing',
+                progress: { current: i + batch.indexOf(building) + 1, total: buildings.length, completed, failed }
+              });
+
+              // Step 1: Search PropTx
+              const searchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/admin/buildings/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  streetNumber: building.street_number,
+                  streetName: building.street_name,
+                  city: building.city,
+                  buildingName: building.building_name || `${building.street_number} ${building.street_name}`,
+                  fullData: true
+                })
+              });
+
+              if (!searchResponse.ok) {
+                throw new Error('Search failed');
+              }
+
+              const searchData = await searchResponse.json();
+
+              if (!searchData.success || !searchData.allListings || searchData.allListings.length === 0) {
+                throw new Error('No listings found');
+              }
+
+              // Step 2: Save to database
+              const saveResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/admin/buildings/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  buildingData: {
+                    buildingName: building.building_name || searchData.building?.buildingName,
+                    streetNumber: building.street_number,
+                    streetName: building.street_name,
+                    city: building.city,
+                    slug: searchData.building?.slug,
+                    canonicalAddress: searchData.building?.canonicalAddress
+                  },
+                  listingsChunk: searchData.allListings,
+                  chunkIndex: 0,
+                  totalChunks: 1
+                })
+              });
+
+              if (!saveResponse.ok) {
+                throw new Error('Save failed');
+              }
+
+              const saveData = await saveResponse.json();
+
+              // Update discovered_building status
+              await supabase
+                .from('discovered_buildings')
+                .update({
+                  status: 'synced',
+                  building_id: saveData.building?.id || null,
+                  synced_at: new Date().toISOString(),
+                  retry_count: 0,
+                  failed_reason: null
+                })
+                .eq('id', building.id);
+
+              completed++;
+
+              sendProgress({
+                type: 'progress',
+                buildingId: building.id,
+                buildingName: building.building_name || `${building.street_number} ${building.street_name}`,
+                status: 'synced',
+                listingCount: searchData.allListings.length,
+                progress: { current: i + batch.indexOf(building) + 1, total: buildings.length, completed, failed }
+              });
+
+              return { success: true, buildingId: building.id };
+
+            } catch (error: any) {
+              console.error(`Sync failed for building ${building.id}:`, error);
+
+              // Retry logic
+              const currentRetry = building.retry_count || 0;
+              const maxRetries = 2;
+
+              if (currentRetry < maxRetries) {
+                await supabase
+                  .from('discovered_buildings')
+                  .update({
+                    status: 'pending',
+                    retry_count: currentRetry + 1,
+                    failed_reason: error.message
+                  })
+                  .eq('id', building.id);
+              } else {
+                await supabase
+                  .from('discovered_buildings')
+                  .update({
+                    status: 'failed',
+                    retry_count: currentRetry + 1,
+                    failed_reason: error.message
+                  })
+                  .eq('id', building.id);
+
+                failed++;
+              }
+
+              sendProgress({
+                type: 'progress',
+                buildingId: building.id,
+                buildingName: building.building_name || `${building.street_number} ${building.street_name}`,
+                status: currentRetry < maxRetries ? 'retrying' : 'failed',
+                error: error.message,
+                progress: { current: i + batch.indexOf(building) + 1, total: buildings.length, completed, failed }
+              });
+
+              return { success: false, buildingId: building.id, error: error.message };
+            }
+          });
+
+          // Wait for batch to complete
+          await Promise.all(promises);
+        }
+
+        // Update municipality/community counts
+        const firstBuilding = buildings[0];
+        if (firstBuilding.municipality_id) {
+          const { data: muniBuildings } = await supabase
+            .from('discovered_buildings')
+            .select('status')
+            .eq('municipality_id', firstBuilding.municipality_id);
+
+          const syncedCount = muniBuildings?.filter(b => b.status === 'synced').length || 0;
+
+          await supabase
+            .from('municipalities')
+            .update({ buildings_synced: syncedCount })
+            .eq('id', firstBuilding.municipality_id);
+        }
+
+        if (firstBuilding.community_id) {
+          const { data: commBuildings } = await supabase
+            .from('discovered_buildings')
+            .select('status')
+            .eq('community_id', firstBuilding.community_id);
+
+          const syncedCount = commBuildings?.filter(b => b.status === 'synced').length || 0;
+
+          await supabase
+            .from('communities')
+            .update({ buildings_synced: syncedCount })
+            .eq('id', firstBuilding.community_id);
+        }
+
+        // Send completion
+        sendProgress({
+          type: 'complete',
+          summary: { total: buildings.length, completed, failed }
+        });
+
+        controller.close();
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Sync error:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}

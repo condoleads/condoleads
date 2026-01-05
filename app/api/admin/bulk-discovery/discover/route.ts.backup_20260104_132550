@@ -1,0 +1,315 @@
+﻿import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+// Extract first meaningful word from street name for grouping
+function getStreetKey(streetName: string): string {
+  if (!streetName) return '';
+  
+  let s = streetName.toLowerCase().trim();
+  
+  // Remove garbage
+  s = s.replace(/\(.*?\)/g, '');           // Remove (anything)
+  s = s.replace(/unit\s*\d*.*/i, '');      // Remove unit...
+  s = s.replace(/\s*furnished.*/i, '');    // Remove furnished...
+  s = s.replace(/\s*furn$/i, '');          // Remove furn
+  s = s.replace(/\./g, ' ');               // Period to space
+  s = s.replace(/\s+/g, ' ').trim();       // Multiple spaces to one
+  
+  // Split and find first word with 3+ chars (skip common prefixes)
+  const skipWords = ['st', 'e', 'w', 'n', 's'];
+  const words = s.split(' ');
+  
+  for (const word of words) {
+    if (skipWords.includes(word)) continue;
+    if (word.length >= 3) return word;
+  }
+  
+  // Fallback
+  const cleaned = s.replace(/\s+/g, '');
+  return cleaned.length >= 3 ? cleaned : '';
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { communityId, communityName, municipalityId, municipalityName } = await request.json();
+
+    if (!municipalityId || !municipalityName) {
+      return NextResponse.json(
+        { success: false, error: 'Municipality is required' },
+        { status: 400 }
+      );
+    }
+
+    // Get area info
+    const { data: muniData } = await supabase
+      .from('municipalities')
+      .select('area_id, treb_areas(id, name)')
+      .eq('id', municipalityId)
+      .single();
+
+    const areaId = muniData?.area_id;
+
+    const baseUrl = process.env.PROPTX_RESO_API_URL;
+    const token = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_BEARER_TOKEN;
+
+    if (!baseUrl || !token) {
+      return NextResponse.json(
+        { success: false, error: 'PropTx configuration missing' },
+        { status: 500 }
+      );
+    }
+
+    // Build base filter
+    let baseFilter = `City eq '${municipalityName}' and PropertySubType eq 'Condo Apartment'`;
+    if (communityName) {
+      baseFilter += ` and CityRegion eq '${communityName}'`;
+    }
+
+    const select = 'StreetNumber,StreetName,StreetSuffix,City,CityRegion,BuildingName';
+    const headers = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/json'
+    };
+
+    console.log('Discovering buildings:', { municipalityName, communityName });
+
+    // ENHANCED: Query Active + Sold + Leased
+    const allListings: any[] = [];
+
+    // Query 1: Active (no status filter = default active)
+    const url1 = `${baseUrl}Property?$filter=${encodeURIComponent(baseFilter)}&$select=${select}&$top=10000`;
+    const resp1 = await fetch(url1, { headers });
+    if (resp1.ok) {
+      const data1 = await resp1.json();
+      allListings.push(...(data1.value || []));
+      console.log(`Active: ${data1.value?.length || 0}`);
+    }
+
+    // Query 2: Sold/Closed
+    const soldFilter = `${baseFilter} and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`;
+    const url2 = `${baseUrl}Property?$filter=${encodeURIComponent(soldFilter)}&$select=${select}&$top=15000`;
+    const resp2 = await fetch(url2, { headers });
+    if (resp2.ok) {
+      const data2 = await resp2.json();
+      allListings.push(...(data2.value || []));
+      console.log(`Sold: ${data2.value?.length || 0}`);
+    }
+
+    // Query 3: Leased
+    const leasedFilter = `${baseFilter} and (MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
+    const url3 = `${baseUrl}Property?$filter=${encodeURIComponent(leasedFilter)}&$select=${select}&$top=15000`;
+    const resp3 = await fetch(url3, { headers });
+    if (resp3.ok) {
+      const data3 = await resp3.json();
+      allListings.push(...(data3.value || []));
+      console.log(`Leased: ${data3.value?.length || 0}`);
+    }
+
+    console.log(`Total listings: ${allListings.length}`);
+
+    // ENHANCED: Group by street number + first word
+    const buildingMap = new Map<string, any>();
+
+    for (const listing of allListings) {
+      if (!listing.StreetNumber || !listing.StreetName) continue;
+
+      const streetKey = getStreetKey(listing.StreetName);
+      if (!streetKey || streetKey.length < 3) continue;
+
+      const key = `${listing.StreetNumber}|${streetKey}`.toLowerCase();
+      
+      if (!buildingMap.has(key)) {
+        buildingMap.set(key, {
+          street_number: listing.StreetNumber,
+          street_name: listing.StreetName,
+          street_suffix: listing.StreetSuffix || null,
+          street_key: streetKey,
+          city: listing.City,
+          proptx_community: listing.CityRegion || null,
+          names: new Map<string, number>(),
+          listing_count: 0,
+          variations: new Set<string>()
+        });
+      }
+
+      const building = buildingMap.get(key)!;
+      building.listing_count++;
+      building.variations.add(listing.StreetName);
+      
+      // Track building names
+      if (listing.BuildingName && listing.BuildingName.trim()) {
+        const name = listing.BuildingName.trim();
+        building.names.set(name, (building.names.get(name) || 0) + 1);
+      }
+    }
+
+    console.log(`Grouped into ${buildingMap.size} unique buildings`);
+
+    // Load existing discovered buildings for this area
+    let existingQuery = supabase
+      .from('discovered_buildings')
+      .select('id, street_number, street_key, status, building_id')
+      .eq('municipality_id', municipalityId);
+
+    if (communityId) {
+      existingQuery = existingQuery.eq('community_id', communityId);
+    }
+
+    const { data: existingBuildings } = await existingQuery;
+
+    const existingMap = new Map<string, any>();
+    for (const eb of existingBuildings || []) {
+      const key = `${eb.street_number}|${eb.street_key}`.toLowerCase();
+      existingMap.set(key, eb);
+    }
+
+    // Check which buildings exist in main buildings table (already synced)
+    const { data: syncedBuildings } = await supabase
+      .from('buildings')
+      .select('street_number, street_name, city');
+
+    const syncedSet = new Set<string>();
+    for (const sb of syncedBuildings || []) {
+      const streetKey = getStreetKey(sb.street_name);
+      const key = `${sb.street_number}|${streetKey}`.toLowerCase();
+      syncedSet.add(key);
+    }
+
+    // Resolve community_id if not provided
+    let resolvedCommunityId = communityId;
+
+    // Prepare upserts
+    const buildingsToUpsert = [];
+
+    for (const [key, building] of buildingMap) {
+      // Get best building name (most frequent)
+      let bestName: string | null = null;
+      let maxCount = 0;
+      for (const [name, count] of building.names) {
+        if (count > maxCount) {
+          maxCount = count;
+          bestName = name;
+        }
+      }
+
+      // Check existing status
+      const existing = existingMap.get(key);
+      const isSynced = syncedSet.has(key) || existing?.status === 'synced';
+
+      // Get community_id from PropTx community name if not set
+      if (!resolvedCommunityId && building.proptx_community) {
+        const { data: comm } = await supabase
+          .from('communities')
+          .select('id')
+          .eq('name', building.proptx_community)
+          .eq('municipality_id', municipalityId)
+          .maybeSingle();
+        if (comm) resolvedCommunityId = comm.id;
+      }
+
+      buildingsToUpsert.push({
+        id: existing?.id || undefined,  // Keep existing ID for update
+        area_id: areaId,
+        municipality_id: municipalityId,
+        community_id: resolvedCommunityId || null,
+        street_number: building.street_number,
+        street_name: building.street_name,
+        street_suffix: building.street_suffix,
+        street_key: building.street_key,
+        city: building.city,
+        building_name: existing?.building_name || bestName,  // Keep manual edits
+        building_name_original: bestName,
+        proptx_area: (muniData?.treb_areas as any)?.name || null,
+        proptx_municipality: municipalityName,
+        proptx_community: building.proptx_community,
+        listing_count: building.listing_count,
+        status: isSynced ? 'synced' : (existing?.status || 'pending'),
+        building_id: existing?.building_id || null,
+        discovered_at: existing ? undefined : new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    // Upsert in batches
+    const batchSize = 100;
+    for (let i = 0; i < buildingsToUpsert.length; i += batchSize) {
+      const batch = buildingsToUpsert.slice(i, i + batchSize);
+      
+      const { error: upsertError } = await supabase
+        .from('discovered_buildings')
+        .upsert(batch, {
+          onConflict: 'street_number,street_key,municipality_id',
+          ignoreDuplicates: false
+        });
+
+      if (upsertError) {
+        console.error('Upsert error:', upsertError);
+      }
+    }
+
+    // Update discovery status
+    const pendingCount = buildingsToUpsert.filter(b => b.status === 'pending').length;
+    const syncedCount = buildingsToUpsert.filter(b => b.status === 'synced').length;
+
+    if (communityId) {
+      await supabase
+        .from('communities')
+        .update({
+          discovery_status: syncedCount === buildingsToUpsert.length ? 'complete' : 'discovered',
+          buildings_discovered: buildingsToUpsert.length,
+          buildings_synced: syncedCount,
+          last_discovery_at: new Date().toISOString()
+        })
+        .eq('id', communityId);
+    }
+
+    await supabase
+      .from('municipalities')
+      .update({
+        discovery_status: 'discovered',
+        buildings_discovered: buildingsToUpsert.length,
+        buildings_synced: syncedCount,
+        last_discovery_at: new Date().toISOString()
+      })
+      .eq('id', municipalityId);
+
+    // Fetch ALL discovered buildings for this area (including previously discovered)
+    let fetchQuery = supabase
+      .from('discovered_buildings')
+      .select('*')
+      .eq('municipality_id', municipalityId)
+      .order('building_name', { ascending: true, nullsFirst: false });
+
+    if (communityId) {
+      fetchQuery = fetchQuery.eq('community_id', communityId);
+    }
+
+    const { data: savedBuildings, error: fetchError } = await fetchQuery;
+
+    if (fetchError) throw fetchError;
+
+    return NextResponse.json({
+      success: true,
+      buildings: savedBuildings || [],
+      summary: {
+        total: savedBuildings?.length || 0,
+        pending: savedBuildings?.filter(b => b.status === 'pending').length || 0,
+        synced: savedBuildings?.filter(b => b.status === 'synced').length || 0,
+        failed: savedBuildings?.filter(b => b.status === 'failed').length || 0,
+        newlyDiscovered: buildingsToUpsert.filter(b => !existingMap.has(`${b.street_number}|${b.street_key}`.toLowerCase())).length
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Discovery error:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}

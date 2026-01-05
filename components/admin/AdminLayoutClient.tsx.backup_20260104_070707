@@ -37,9 +37,6 @@ export default function AdminLayoutClient({
                 <a href="/admin/buildings/batch-sync" className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
                   Buildings
                 </a>
-                <a href="/admin/bulk-discovery" className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
-                  Bulk Discovery
-                </a>
                 <a href="/admin/leads" className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
                   Leads
                 </a>

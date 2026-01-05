@@ -1,0 +1,100 @@
+﻿import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+// GET - Fetch discovered buildings with filters
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const communityId = searchParams.get('communityId');
+    const municipalityId = searchParams.get('municipalityId');
+    const status = searchParams.get('status');
+
+    let query = supabase
+      .from('discovered_buildings')
+      .select('*')
+      .order('building_name', { ascending: true });
+
+    if (communityId) {
+      query = query.eq('community_id', communityId);
+    }
+    if (municipalityId) {
+      query = query.eq('municipality_id', municipalityId);
+    }
+    if (status && status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      success: true,
+      buildings: data || []
+    });
+
+  } catch (error: any) {
+    console.error('Fetch buildings error:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT - Update building names
+export async function PUT(request: NextRequest) {
+  try {
+    const { buildings } = await request.json();
+
+    if (!buildings || !Array.isArray(buildings)) {
+      return NextResponse.json(
+        { success: false, error: 'Buildings array is required' },
+        { status: 400 }
+      );
+    }
+
+    const results = [];
+
+    for (const building of buildings) {
+      const { id, building_name } = building;
+
+      if (!id) continue;
+
+      const { data, error } = await supabase
+        .from('discovered_buildings')
+        .update({
+          building_name,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error(`Failed to update building ${id}:`, error);
+        results.push({ id, success: false, error: error.message });
+      } else {
+        results.push({ id, success: true, data });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      results,
+      updated: results.filter(r => r.success).length
+    });
+
+  } catch (error: any) {
+    console.error('Update buildings error:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}

@@ -1,0 +1,14 @@
+﻿-- ROLLBACK SCRIPT - Generated: 2026-01-04 06:20:08
+-- Run this to restore original state if needed
+-- WARNING: Only deletes NEW records added by geo_insert.sql
+
+-- DO NOT DELETE EXISTING RECORDS - They are linked to buildings
+-- This rollback only removes NEW areas/municipalities/communities added
+
+-- To rollback: Delete only records that didn't exist before
+-- Records that existed before (DO NOT DELETE):
+-- - Toronto (area)
+-- - 34 Toronto municipalities (C01-C15, E01-E11, W01-W10)
+-- - 16 communities
+
+-- If you need full rollback, use Supabase point-in-time recovery
