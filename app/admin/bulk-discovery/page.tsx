@@ -194,6 +194,45 @@ export default function BulkDiscoveryPage() {
     }
   };
 
+  const handleDiscoverArea = async (area: Area) => {
+    const confirmDiscover = window.confirm(
+      `Discover all ${area.municipalities.length} municipalities under ${area.name}?\n\nThis may take several minutes.`
+    );
+    if (!confirmDiscover) return;
+
+    setSelectedCommunity(null);
+    setSelectedMunicipality(null);
+    setSelectedArea(area);
+    setDiscovering(true);
+    setDiscoveredBuildings([]);
+    setSelectedBuildings(new Set());
+
+    let allBuildings: DiscoveredBuilding[] = [];
+
+    for (const muni of area.municipalities) {
+      try {
+        const response = await fetch('/api/admin/bulk-discovery/discover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            municipalityId: muni.id,
+            municipalityName: muni.name
+          })
+        });
+        const data = await response.json();
+        if (data.success && data.buildings) {
+          allBuildings = [...allBuildings, ...data.buildings];
+          setDiscoveredBuildings([...allBuildings]);
+        }
+      } catch (error) {
+        console.error(`Discovery failed for ${muni.name}:`, error);
+      }
+    }
+
+    loadGeoTree();
+    setDiscovering(false);
+  };
+
   const handleDiscoverMunicipality = async (municipality: Municipality, area: Area) => {
     setSelectedCommunity(null);
     setSelectedMunicipality(municipality);
@@ -549,6 +588,13 @@ export default function BulkDiscoveryPage() {
                       <span className="font-medium text-gray-900 text-sm">{area.name}</span>
                     </button>
                     {getStatusBadge(area.buildings_discovered, area.buildings_synced)}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDiscoverArea(area); }}
+                      className="p-1 text-blue-600 hover:bg-blue-50 rounded ml-1"
+                      title={`Discover all municipalities in ${area.name}`}
+                    >
+                      <Search className="w-3 h-3" />
+                    </button>
                   </div>
 
                   {expandedAreas.has(area.id) && (
@@ -985,6 +1031,8 @@ export default function BulkDiscoveryPage() {
     </div>
   );
 }
+
+
 
 
 
