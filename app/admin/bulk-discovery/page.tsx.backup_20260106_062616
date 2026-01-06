@@ -248,29 +248,6 @@ export default function BulkDiscoveryPage() {
     setSelectedBuildings(new Set());
   };
 
-  const exportToCSV = () => {
-    const headers = ['Building Name', 'Street Number', 'Street Name', 'City', 'Status', 'Listings', 'URL Slug'];
-    const rows = filteredBuildings.map(b => [
-      b.building_name || '',
-      b.street_number || '',
-      b.street_name || '',
-      b.city || '',
-      b.status || '',
-      b.listing_count?.toString() || '0',
-      b.slug || ''
-    ]);
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    const locationName = selectedCommunity?.name || selectedMunicipality?.name || selectedArea?.name || 'buildings';
-    link.download = `discovery_${locationName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
-
   const addCondosToAll = async () => {
     const updated = discoveredBuildings.map(b => {
       if (!b.building_name) return b;
@@ -736,12 +713,6 @@ export default function BulkDiscoveryPage() {
                 >
                   Add "Condos" to Names
                 </button>
-                <button
-                  onClick={exportToCSV}
-                  className="text-sm px-3 py-1 bg-green-100 hover:bg-green-200 text-green-800 rounded"
-                >
-                  Export CSV
-                </button>
                 <div className="flex-1" />
                 <span className="text-sm text-gray-600">
                   {selectedBuildings.size} selected
@@ -986,9 +957,5 @@ export default function BulkDiscoveryPage() {
     </div>
   );
 }
-
-
-
-
 
 
