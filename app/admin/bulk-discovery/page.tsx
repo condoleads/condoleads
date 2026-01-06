@@ -249,15 +249,14 @@ export default function BulkDiscoveryPage() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Building Name', 'Street Number', 'Street Name', 'City', 'Status', 'Listings', 'URL Slug'];
+    const headers = ['Building Name', 'Street Number', 'Street Name', 'City', 'Status', 'Listings'];
     const rows = filteredBuildings.map(b => [
       b.building_name || '',
       b.street_number || '',
       b.street_name || '',
       b.city || '',
       b.status || '',
-      b.listing_count?.toString() || '0',
-      b.slug || ''
+      b.listing_count?.toString() || '0'
     ]);
     const csvContent = [
       headers.join(','),
@@ -986,6 +985,7 @@ export default function BulkDiscoveryPage() {
     </div>
   );
 }
+
 
 
 
