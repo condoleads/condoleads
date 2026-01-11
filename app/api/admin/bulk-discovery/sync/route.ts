@@ -1,7 +1,10 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { searchBuilding } from '@/lib/building-sync/search';
 import { saveBuilding } from '@/lib/building-sync/save';
+
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

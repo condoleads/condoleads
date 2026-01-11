@@ -30,7 +30,9 @@ const HARDCODED_DEFAULTS_LEASE = {
 
 /**
  * Resolves adjustment values using hierarchy cascade:
- * Building (direct fields) -> Building (adjustments) -> Community -> Neighbourhood -> Municipality -> Area -> Generic -> Hardcoded
+ * Building -> Community -> Municipality -> Area -> Generic -> Hardcoded
+ * 
+ * At each level: Manual Override > Calculated Value
  */
 export async function resolveAdjustments(
   buildingId: string,
@@ -38,8 +40,12 @@ export async function resolveAdjustments(
 ): Promise<ResolvedAdjustments> {
   const supabase = createServiceClient()
   const defaults = type === 'sale' ? HARDCODED_DEFAULTS_SALE : HARDCODED_DEFAULTS_LEASE
-  const parkingField = type === 'sale' ? 'parking_value_sale' : 'parking_value_lease'
-  const lockerField = type === 'sale' ? 'locker_value_sale' : 'locker_value_lease'
+  
+  // Field names for manual and calculated
+  const parkingManual = type === 'sale' ? 'parking_value_sale' : 'parking_value_lease'
+  const parkingCalculated = type === 'sale' ? 'parking_sale_calculated' : 'parking_lease_calculated'
+  const lockerManual = type === 'sale' ? 'locker_value_sale' : 'locker_value_lease'
+  const lockerCalculated = type === 'sale' ? 'locker_sale_calculated' : 'locker_lease_calculated'
 
   try {
     // Get building with full hierarchy
@@ -48,10 +54,6 @@ export async function resolveAdjustments(
       .select(`
         id,
         building_name,
-        parking_value_sale,
-        parking_value_lease,
-        locker_value_sale,
-        locker_value_lease,
         community_id,
         communities (
           id,
@@ -83,31 +85,19 @@ export async function resolveAdjustments(
     const municipalityId = municipality?.id
     const communityId = community?.id
 
-    // Get neighbourhood for this municipality
-    let neighbourhoodId = null
-    if (municipalityId) {
-      const { data: neighbourhoodMapping } = await supabase
-        .from('municipality_neighbourhoods')
-        .select('neighbourhood_id')
-        .eq('municipality_id', municipalityId)
-        .single()
-      neighbourhoodId = neighbourhoodMapping?.neighbourhood_id
-    }
-
-    // Fetch all adjustments from the table
+    // Fetch all relevant adjustments
     const { data: allAdjustments } = await supabase
       .from('adjustments')
       .select('*')
 
-    // Filter relevant adjustments
+    // Filter relevant adjustments (exclude neighbourhood - not in TREB hierarchy)
     const relevantAdjustments = (allAdjustments || []).filter(adj => {
       if (adj.building_id === buildingId) return true
-      if (communityId && adj.community_id === communityId) return true
-      if (neighbourhoodId && adj.neighbourhood_id === neighbourhoodId) return true
-      if (municipalityId && adj.municipality_id === municipalityId) return true
-      if (areaId && adj.area_id === areaId) return true
-      // Generic (all nulls)
-      if (!adj.building_id && !adj.community_id && !adj.neighbourhood_id && !adj.municipality_id && !adj.area_id) return true
+      if (communityId && adj.community_id === communityId && !adj.building_id) return true
+      if (municipalityId && adj.municipality_id === municipalityId && !adj.community_id && !adj.building_id) return true
+      if (areaId && adj.area_id === areaId && !adj.municipality_id && !adj.community_id && !adj.building_id) return true
+      // Generic (all nulls except neighbourhood which we ignore)
+      if (!adj.building_id && !adj.community_id && !adj.municipality_id && !adj.area_id) return true
       return false
     })
 
@@ -115,7 +105,6 @@ export async function resolveAdjustments(
     const adjustmentsByLevel: Record<string, any> = {
       building: null,
       community: null,
-      neighbourhood: null,
       municipality: null,
       area: null,
       generic: null
@@ -124,39 +113,42 @@ export async function resolveAdjustments(
     relevantAdjustments.forEach(adj => {
       if (adj.building_id) adjustmentsByLevel.building = adj
       else if (adj.community_id) adjustmentsByLevel.community = adj
-      else if (adj.neighbourhood_id) adjustmentsByLevel.neighbourhood = adj
       else if (adj.municipality_id) adjustmentsByLevel.municipality = adj
       else if (adj.area_id) adjustmentsByLevel.area = adj
-      else adjustmentsByLevel.generic = adj
+      else if (!adj.neighbourhood_id) adjustmentsByLevel.generic = adj // Exclude neighbourhood-only records
     })
 
-    // Building's own fields override everything
-    const buildingOverrides: Record<string, any> = {
-      [parkingField]: building[parkingField as keyof typeof building],
-      [lockerField]: building[lockerField as keyof typeof building]
-    }
-
-    // Resolve with cascade
-    const resolveField = (field: string): { value: number; source: string } => {
-      // First check building's own fields
-      if (buildingOverrides[field] !== null && buildingOverrides[field] !== undefined) {
-        return { value: buildingOverrides[field] as number, source: 'Building (direct)' }
-      }
-      // Then cascade through adjustment levels
-      const levels = ['building', 'community', 'neighbourhood', 'municipality', 'area', 'generic']
+    // Resolve with cascade: Manual > Calculated at each level
+    const resolveField = (manualField: string, calculatedField: string): { value: number; source: string } => {
+      const levels = ['building', 'community', 'municipality', 'area', 'generic']
+      
       for (const level of levels) {
         const adj = adjustmentsByLevel[level]
-        if (adj && adj[field] !== null && adj[field] !== undefined) {
-          return { value: parseFloat(adj[field]), source: level.charAt(0).toUpperCase() + level.slice(1) }
+        if (adj) {
+          // Check manual first
+          if (adj[manualField] !== null && adj[manualField] !== undefined) {
+            return { 
+              value: parseFloat(adj[manualField]), 
+              source: `${level.charAt(0).toUpperCase() + level.slice(1)} (manual)` 
+            }
+          }
+          // Then check calculated
+          if (adj[calculatedField] !== null && adj[calculatedField] !== undefined) {
+            return { 
+              value: parseFloat(adj[calculatedField]), 
+              source: `${level.charAt(0).toUpperCase() + level.slice(1)} (calculated)` 
+            }
+          }
         }
       }
+      
       // Fallback to hardcoded
-      const defaultVal = field.includes('parking') ? defaults.parkingPerSpace : defaults.locker
+      const defaultVal = manualField.includes('parking') ? defaults.parkingPerSpace : defaults.locker
       return { value: defaultVal, source: 'Hardcoded' }
     }
 
-    const parkingResolved = resolveField(parkingField)
-    const lockerResolved = resolveField(lockerField)
+    const parkingResolved = resolveField(parkingManual, parkingCalculated)
+    const lockerResolved = resolveField(lockerManual, lockerCalculated)
 
     console.log(`[resolveAdjustments] ${type} - Parking: $${parkingResolved.value} (${parkingResolved.source}), Locker: $${lockerResolved.value} (${lockerResolved.source})`)
 
