@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     const { messages, context, leadInfo } = body
 
     // Get agent's API key from database
-    const supabase = await createClient()
+    const supabase = createClient()
     const { data: agent, error: agentError } = await supabase
       .from('agents')
       .select('anthropic_api_key, full_name')
