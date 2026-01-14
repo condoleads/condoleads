@@ -1,0 +1,339 @@
+﻿// app/api/admin/market-analytics/calculate/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+const PROPTX_URL = process.env.PROPTX_RESO_API_URL || 'https://query.ampre.ca/odata/'
+const PROPTX_TOKEN = process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN
+
+// Fetch parking data for a specific location from PropTx
+async function fetchParkingForLocation(
+  field: 'CountyOrParish' | 'City' | 'CityRegion',
+  value: string,
+  maxRecords: number = 200
+): Promise<{ values: number[]; isToronto: boolean }> {
+  const valueEscaped = value.replace(/'/g, "''")
+  const filter = `PropertyType eq 'Residential Condo %26 Other' and (TransactionType eq 'For Lease' or StandardStatus eq 'Leased') and ${field} eq '${valueEscaped}' and ParkingMonthlyCost gt 0`
+  const url = `${PROPTX_URL}Property?$filter=${filter}&$select=${field},CountyOrParish,ParkingMonthlyCost&$top=${maxRecords}`
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${PROPTX_TOKEN}` }
+    })
+
+    if (!response.ok) return { values: [], isToronto: false }
+
+    const data = await response.json()
+    if (!data.value || data.value.length === 0) return { values: [], isToronto: false }
+
+    const isToronto = data.value.some((r: any) => r.CountyOrParish === 'Toronto')
+
+    // Filter: Toronto no limit, Non-Toronto max $250
+    const filtered = data.value.filter((r: any) => {
+      if (r.CountyOrParish === 'Toronto') return true
+      return r.ParkingMonthlyCost <= 250
+    })
+
+    const values = filtered.map((r: any) => r.ParkingMonthlyCost)
+    return { values, isToronto }
+  } catch (err) {
+    return { values: [], isToronto: false }
+  }
+}
+
+// Calculate average from values
+function calcAverage(values: number[]): number | null {
+  if (values.length === 0) return null
+  return Math.round(values.reduce((a, b) => a + b, 0) / values.length * 100) / 100
+}
+
+// Calculate building-level parking from mls_listings (no PropTx call needed)
+async function calculateBuildingParkingLease() {
+  const now = new Date().toISOString()
+  const results = { searched: 0, withData: 0, saved: 0, errors: [] as string[] }
+
+  // Get all building averages from mls_listings
+  const { data: buildingAverages, error: queryError } = await supabase
+    .rpc('calculate_building_parking_lease')
+
+  // If RPC doesn't exist, use raw query
+  if (queryError) {
+    // Fallback: direct query
+    const { data: rawData, error: rawError } = await supabase
+      .from('mls_listings')
+      .select('building_id, parking_monthly_cost, transaction_type, standard_status')
+      .not('building_id', 'is', null)
+      .gt('parking_monthly_cost', 0)
+
+    if (rawError || !rawData) {
+      results.errors.push(`Query error: ${rawError?.message}`)
+      return results
+    }
+
+    // Filter and group manually
+    const filtered = rawData.filter(r => 
+      r.transaction_type === 'For Lease' || 
+      ['Leased', 'Closed'].includes(r.standard_status)
+    )
+
+    const grouped: Record<string, number[]> = {}
+    for (const r of filtered) {
+      if (!grouped[r.building_id]) grouped[r.building_id] = []
+      grouped[r.building_id].push(parseFloat(r.parking_monthly_cost))
+    }
+
+    // Save each building
+    for (const [buildingId, values] of Object.entries(grouped)) {
+      results.searched++
+      if (values.length === 0) continue
+      
+      results.withData++
+      const average = calcAverage(values)
+
+      // Check existing adjustment
+      const { data: existing } = await supabase.from('adjustments').select('id')
+        .eq('building_id', buildingId)
+        .is('area_id', null)
+        .is('municipality_id', null)
+        .is('community_id', null)
+        .is('neighbourhood_id', null)
+        .maybeSingle()
+
+      const updateData = {
+        parking_lease_calculated: average,
+        parking_lease_count: values.length,
+        parking_lease_calculated_at: now,
+        updated_at: now
+      }
+
+      if (existing) {
+        const { error } = await supabase.from('adjustments').update(updateData).eq('id', existing.id)
+        if (!error) results.saved++
+        else results.errors.push(`Building ${buildingId}: ${error.message}`)
+      } else {
+        const { error } = await supabase.from('adjustments').insert({
+          building_id: buildingId,
+          ...updateData,
+          created_at: now
+        })
+        if (!error) results.saved++
+        else results.errors.push(`Building ${buildingId}: ${error.message}`)
+      }
+    }
+  }
+
+  return results
+}
+
+export async function POST(request: NextRequest) {
+  const results = {
+    areas: { searched: 0, withData: 0, saved: 0 },
+    municipalities: { searched: 0, withData: 0, saved: 0 },
+    communities: { searched: 0, withData: 0, saved: 0 },
+    buildings: { searched: 0, withData: 0, saved: 0 },
+    errors: [] as string[]
+  }
+
+  try {
+    const body = await request.json().catch(() => ({}))
+    const { type = 'parking_lease' } = body // parking_lease runs all levels // 'all', 'areas', 'municipalities', 'communities', 'buildings'
+    const now = new Date().toISOString()
+
+    // ==========================================
+    // LEVEL 1: AREAS
+    // ==========================================
+    if (type === 'all' || type === 'parking_lease' || type === 'areas') {
+      console.log('[Calculate] Starting Areas...')
+      const { data: areas } = await supabase.from('treb_areas').select('id, name')
+      
+      for (const area of (areas || [])) {
+        results.areas.searched++
+        const { values } = await fetchParkingForLocation('CountyOrParish', area.name)
+        
+        if (values.length > 0) {
+          results.areas.withData++
+          const average = calcAverage(values)
+          
+          const { data: existing } = await supabase.from('adjustments').select('id')
+            .eq('area_id', area.id)
+            .is('municipality_id', null)
+            .is('community_id', null)
+            .is('building_id', null)
+            .is('neighbourhood_id', null)
+            .maybeSingle()
+
+          const updateData = {
+            parking_lease_calculated: average,
+            parking_lease_count: values.length,
+            parking_lease_calculated_at: now,
+            updated_at: now
+          }
+
+          if (existing) {
+            const { error } = await supabase.from('adjustments').update(updateData).eq('id', existing.id)
+            if (!error) results.areas.saved++
+            else results.errors.push(`Area ${area.name}: ${error.message}`)
+          } else {
+            const { error } = await supabase.from('adjustments').insert({
+              area_id: area.id,
+              ...updateData,
+              created_at: now
+            })
+            if (!error) results.areas.saved++
+            else results.errors.push(`Area ${area.name}: ${error.message}`)
+          }
+        }
+      }
+      console.log(`[Calculate] Areas done: ${results.areas.saved} saved`)
+    }
+
+    // ==========================================
+    // LEVEL 2: MUNICIPALITIES
+    // ==========================================
+    if (type === 'all' || type === 'parking_lease' || type === 'municipalities') {
+      console.log('[Calculate] Starting Municipalities...')
+      const { data: municipalities } = await supabase.from('municipalities').select('id, name')
+      
+      for (const muni of (municipalities || [])) {
+        results.municipalities.searched++
+        const { values } = await fetchParkingForLocation('City', muni.name)
+        
+        if (values.length > 0) {
+          results.municipalities.withData++
+          const average = calcAverage(values)
+          
+          const { data: existing } = await supabase.from('adjustments').select('id')
+            .eq('municipality_id', muni.id)
+            .is('area_id', null)
+            .is('community_id', null)
+            .is('building_id', null)
+            .is('neighbourhood_id', null)
+            .maybeSingle()
+
+          const updateData = {
+            parking_lease_calculated: average,
+            parking_lease_count: values.length,
+            parking_lease_calculated_at: now,
+            updated_at: now
+          }
+
+          if (existing) {
+            const { error } = await supabase.from('adjustments').update(updateData).eq('id', existing.id)
+            if (!error) results.municipalities.saved++
+            else results.errors.push(`Muni ${muni.name}: ${error.message}`)
+          } else {
+            const { error } = await supabase.from('adjustments').insert({
+              municipality_id: muni.id,
+              ...updateData,
+              created_at: now
+            })
+            if (!error) results.municipalities.saved++
+            else results.errors.push(`Muni ${muni.name}: ${error.message}`)
+          }
+        }
+        
+        if (results.municipalities.searched % 100 === 0) {
+          console.log(`[Calculate] Municipalities progress: ${results.municipalities.searched}/${municipalities?.length}`)
+        }
+      }
+      console.log(`[Calculate] Municipalities done: ${results.municipalities.saved} saved`)
+    }
+
+    // ==========================================
+    // LEVEL 3: COMMUNITIES
+    // ==========================================
+    if (type === 'all' || type === 'parking_lease' || type === 'communities') {
+      console.log('[Calculate] Starting Communities...')
+      const { data: communities } = await supabase.from('communities').select('id, name, municipality_id')
+      
+      for (const comm of (communities || [])) {
+        results.communities.searched++
+        const { values } = await fetchParkingForLocation('CityRegion', comm.name)
+        
+        if (values.length > 0) {
+          results.communities.withData++
+          const average = calcAverage(values)
+          
+          const { data: existing } = await supabase.from('adjustments').select('id')
+            .eq('community_id', comm.id)
+            .is('area_id', null)
+            .is('municipality_id', null)
+            .is('building_id', null)
+            .is('neighbourhood_id', null)
+            .maybeSingle()
+
+          const updateData = {
+            parking_lease_calculated: average,
+            parking_lease_count: values.length,
+            parking_lease_calculated_at: now,
+            updated_at: now
+          }
+
+          if (existing) {
+            const { error } = await supabase.from('adjustments').update(updateData).eq('id', existing.id)
+            if (!error) results.communities.saved++
+            else results.errors.push(`Comm ${comm.name}: ${error.message}`)
+          } else {
+            const { error } = await supabase.from('adjustments').insert({
+              community_id: comm.id,
+              ...updateData,
+              created_at: now
+            })
+            if (!error) results.communities.saved++
+            else results.errors.push(`Comm ${comm.name}: ${error.message}`)
+          }
+        }
+        
+        if (results.communities.searched % 200 === 0) {
+          console.log(`[Calculate] Communities progress: ${results.communities.searched}/${communities?.length}`)
+        }
+      }
+      console.log(`[Calculate] Communities done: ${results.communities.saved} saved`)
+    }
+
+    // ==========================================
+    // LEVEL 4: BUILDINGS (from mls_listings, not PropTx)
+    // ==========================================
+    if (type === 'all' || type === 'parking_lease' || type === 'buildings') {
+      console.log('[Calculate] Starting Buildings...')
+      const buildingResults = await calculateBuildingParkingLease()
+      results.buildings = buildingResults
+      results.errors.push(...buildingResults.errors)
+      console.log(`[Calculate] Buildings done: ${results.buildings.saved} saved`)
+    }
+
+    return NextResponse.json({
+      success: true,
+      results,
+      summary: {
+        areas: `${results.areas.saved}/${results.areas.searched} (${results.areas.withData} with data)`,
+        municipalities: `${results.municipalities.saved}/${results.municipalities.searched} (${results.municipalities.withData} with data)`,
+        communities: `${results.communities.saved}/${results.communities.searched} (${results.communities.withData} with data)`,
+        buildings: `${results.buildings.saved}/${results.buildings.searched} (${results.buildings.withData} with data)`
+      }
+    })
+
+  } catch (error) {
+    console.error('[Calculate] Error:', error)
+    return NextResponse.json({ success: false, error: String(error), results }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('adjustments')
+      .select('*, treb_areas:area_id(name), municipalities:municipality_id(name, code), communities:community_id(name), buildings:building_id(building_name)')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return NextResponse.json({ success: true, adjustments: data })
+  } catch (error) {
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 })
+  }
+}
+

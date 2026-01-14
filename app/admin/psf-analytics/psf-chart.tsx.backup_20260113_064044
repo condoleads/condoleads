@@ -1,0 +1,263 @@
+// app/admin/psf-analytics/psf-chart.tsx
+
+'use client';
+
+import { useMemo, useState } from 'react';
+
+interface DataPoint {
+  period_year: number;
+  period_month: number;
+  all_avg_psf: number | null;
+  all_sample_size: number;
+  parking_avg_psf: number | null;
+  no_parking_avg_psf: number | null;
+  parking_sample_size?: number;
+  no_parking_sample_size?: number;
+  exact_sqft_count?: number;
+  midpoint_sqft_count?: number;
+}
+
+interface Props {
+  data: DataPoint[];
+  type: 'sale' | 'lease';
+  title?: string;
+}
+
+interface ChartDataPoint {
+  month: string;
+  monthLabel: string;
+  avgPsf: number | null;
+  parkingPsf: number | null;
+  noParkingPsf: number | null;
+  sampleSize: number;
+  parkingSampleSize: number;
+  noParkingSampleSize: number;
+  exactCount: number;
+  midpointCount: number;
+}
+
+export default function PSFChart({ data, type, title }: Props) {
+  const [hoveredPoint, setHoveredPoint] = useState<ChartDataPoint | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
+  const chartData = useMemo(() => {
+    if (!data || data.length === 0) return [];
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    return data
+      .filter(d => d.all_avg_psf !== null)
+      .map(d => ({
+        month: `${d.period_year}-${d.period_month.toString().padStart(2, '0')}`,
+        monthLabel: `${monthNames[d.period_month - 1]} ${d.period_year}`,
+        avgPsf: d.all_avg_psf,
+        parkingPsf: d.parking_avg_psf,
+        noParkingPsf: d.no_parking_avg_psf,
+        sampleSize: d.all_sample_size,
+        parkingSampleSize: d.parking_sample_size || 0,
+        noParkingSampleSize: d.no_parking_sample_size || 0,
+        exactCount: d.exact_sqft_count || 0,
+        midpointCount: d.midpoint_sqft_count || 0,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+  }, [data]);
+
+  if (chartData.length === 0) {
+    return (
+      <div className="bg-gray-50 border rounded-lg p-8 text-center text-gray-500">
+        No data available for chart
+      </div>
+    );
+  }
+
+  // Calculate chart dimensions
+  const maxPsf = Math.max(...chartData.map(d => d.avgPsf || 0));
+  const minPsf = Math.min(...chartData.map(d => d.avgPsf || 0));
+  const range = maxPsf - minPsf || 1;
+  const padding = range * 0.1;
+
+  const chartHeight = 250;
+  const chartWidth = Math.max(600, chartData.length * 40);
+
+  const getY = (psf: number) => {
+    return chartHeight - ((psf - minPsf + padding) / (range + padding * 2)) * chartHeight;
+  };
+
+  const getX = (index: number) => {
+    return (index / (chartData.length - 1)) * (chartWidth - 60) + 30;
+  };
+
+  // Generate path for line chart
+  const linePath = chartData
+    .map((d, i) => {
+      const x = getX(i);
+      const y = getY(d.avgPsf || 0);
+      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+    })
+    .join(' ');
+
+  const psfLabel = type === 'sale' ? '$/sqft' : '$/sqft/mo';
+  const avgPsfDisplay = Math.round(chartData.reduce((sum, d) => sum + (d.avgPsf || 0), 0) / chartData.length);
+
+  const handleMouseEnter = (d: ChartDataPoint, index: number) => {
+    const x = getX(index);
+    const y = getY(d.avgPsf || 0);
+    setHoveredPoint(d);
+    setTooltipPos({ x, y });
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredPoint(null);
+  };
+
+  return (
+    <div className="bg-white border rounded-lg p-4">
+      {title && <h3 className="font-semibold mb-4">{title}</h3>}
+      
+      {/* Summary stats */}
+      <div className="flex gap-6 mb-4 text-sm">
+        <div>
+          <span className="text-gray-500">Avg PSF:</span>{' '}
+          <span className="font-semibold">${avgPsfDisplay}{type === 'lease' ? '/mo' : ''}</span>
+        </div>
+        <div>
+          <span className="text-gray-500">Range:</span>{' '}
+          <span className="font-semibold">${Math.round(minPsf)} - ${Math.round(maxPsf)}</span>
+        </div>
+        <div>
+          <span className="text-gray-500">Months:</span>{' '}
+          <span className="font-semibold">{chartData.length}</span>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="overflow-x-auto relative">
+        <svg width={chartWidth} height={chartHeight + 40} className="min-w-full">
+          {/* Y-axis labels */}
+          <text x="5" y="15" className="text-xs fill-gray-500">${Math.round(maxPsf + padding)}</text>
+          <text x="5" y={chartHeight / 2} className="text-xs fill-gray-500">${Math.round((maxPsf + minPsf) / 2)}</text>
+          <text x="5" y={chartHeight - 5} className="text-xs fill-gray-500">${Math.round(minPsf - padding)}</text>
+
+          {/* Grid lines */}
+          <line x1="30" y1="0" x2="30" y2={chartHeight} stroke="#e5e7eb" strokeWidth="1" />
+          <line x1="30" y1={chartHeight} x2={chartWidth} y2={chartHeight} stroke="#e5e7eb" strokeWidth="1" />
+
+          {/* Horizontal grid */}
+          {[0.25, 0.5, 0.75].map(pct => (
+            <line
+              key={pct}
+              x1="30"
+              y1={chartHeight * pct}
+              x2={chartWidth}
+              y2={chartHeight * pct}
+              stroke="#f3f4f6"
+              strokeWidth="1"
+            />
+          ))}
+
+          {/* Line chart */}
+          <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2" />
+
+          {/* Data points with hover */}
+          {chartData.map((d, i) => {
+            const x = getX(i);
+            const y = getY(d.avgPsf || 0);
+            const isHovered = hoveredPoint?.month === d.month;
+            return (
+              <g key={d.month}>
+                {/* Invisible larger hit area for better hover */}
+                <circle
+                  cx={x}
+                  cy={y}
+                  r="12"
+                  fill="transparent"
+                  className="cursor-pointer"
+                  onMouseEnter={() => handleMouseEnter(d, i)}
+                  onMouseLeave={handleMouseLeave}
+                />
+                {/* Visible point */}
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={isHovered ? 6 : 4}
+                  fill={isHovered ? '#1d4ed8' : '#3b82f6'}
+                  className="transition-all duration-150 pointer-events-none"
+                />
+                {/* Show every 3rd label to avoid crowding */}
+                {i % 3 === 0 && (
+                  <text
+                    x={x}
+                    y={chartHeight + 20}
+                    textAnchor="middle"
+                    className="text-xs fill-gray-500"
+                  >
+                    {d.month.substring(2)}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Tooltip */}
+        {hoveredPoint && (
+          <div
+            className="absolute bg-gray-900 text-white text-sm rounded-lg px-3 py-2 shadow-lg pointer-events-none z-10"
+            style={{
+              left: tooltipPos.x,
+              top: tooltipPos.y - 80,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            <div className="font-semibold text-center border-b border-gray-700 pb-1 mb-1">
+              {hoveredPoint.monthLabel}
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-400">Avg PSF:</span>
+                <span className="font-semibold">${hoveredPoint.avgPsf?.toFixed(2)}{type === 'lease' ? '/mo' : ''}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-gray-400">Sales:</span>
+                <span>{hoveredPoint.sampleSize} units</span>
+              </div>
+              {hoveredPoint.parkingPsf && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-400">W/ Parking:</span>
+                  <span>${hoveredPoint.parkingPsf?.toFixed(2)} ({hoveredPoint.parkingSampleSize})</span>
+                </div>
+              )}
+              {hoveredPoint.noParkingPsf && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-gray-400">No Parking:</span>
+                  <span>${hoveredPoint.noParkingPsf?.toFixed(2)} ({hoveredPoint.noParkingSampleSize})</span>
+                </div>
+              )}
+              {(hoveredPoint.exactCount > 0 || hoveredPoint.midpointCount > 0) && (
+                <div className="flex justify-between gap-4 text-xs border-t border-gray-700 pt-1 mt-1">
+                  <span className="text-gray-400">Data Quality:</span>
+                  <span>{Math.round((hoveredPoint.exactCount / (hoveredPoint.exactCount + hoveredPoint.midpointCount)) * 100)}% exact</span>
+                </div>
+              )}
+            </div>
+            {/* Tooltip arrow */}
+            <div
+              className="absolute left-1/2 -translate-x-1/2 -bottom-2 w-0 h-0 border-l-8 border-r-8 border-t-8 border-transparent border-t-gray-900"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Legend */}
+      <div className="flex gap-4 mt-4 text-xs text-gray-500">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+          <span>Avg {psfLabel}</span>
+        </div>
+        <div className="text-gray-400">
+          Hover over points for details
+        </div>
+      </div>
+    </div>
+  );
+}

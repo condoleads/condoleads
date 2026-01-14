@@ -1,0 +1,872 @@
+﻿// app/api/admin/market-analytics/parking-sale/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+const PROPTX_URL = process.env.PROPTX_RESO_API_URL || 'https://query.ampre.ca/odata/'
+// VOW token required for ClosePrice access
+const PROPTX_VOW_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN
+
+interface SoldRecord {
+  ListingKey: string
+  StreetNumber: string
+  StreetName: string
+  ClosePrice: number
+  LivingAreaRange: string
+  ParkingTotal: number
+  TransactionType: string
+}
+
+interface BuildingSizeResult {
+  building: string
+  sizeRange: string
+  withCount: number
+  withoutCount: number
+  avgWith: number
+  avgWithout: number
+  difference: number
+  weight: number
+  isValid: boolean
+}
+
+interface CalculationResult {
+  success: boolean
+  level: string
+  name: string
+  geoId?: string
+  parkingValue: number | null
+  simpleAverage: number | null
+  dataPoints: {
+    addressesProcessed: number
+    buildingsWithData: number
+    soldRecords: number
+    validCombinations: number
+    excludedNoise: number
+    sampleSize: number
+    uniqueBuildings: number
+  }
+  details: BuildingSizeResult[]
+  calculatedAt: string
+}
+
+// Get unique condo addresses from PropTx for a geographic area
+async function getCondoAddresses(
+  geoField: 'CountyOrParish' | 'City' | 'CityRegion',
+  geoValue: string,
+  maxAddresses: number
+): Promise<string[]> {
+  const filter = `PropertySubType eq 'Condo Apartment' and ${geoField} eq '${geoValue.replace(/'/g, "''")}'`
+  const url = `${PROPTX_URL}Property?$filter=${encodeURIComponent(filter)}&$select=StreetNumber,StreetName&$top=5000`
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${PROPTX_VOW_TOKEN}`, 'Accept': 'application/json' }
+    })
+
+    if (!response.ok) {
+      console.error(`[ParkingSale] Failed to get addresses: ${response.status}`)
+      return []
+    }
+
+    const data = await response.json()
+    if (!data.value) return []
+
+    // Get unique addresses
+    const addresses = new Set<string>()
+    for (const record of data.value) {
+      if (record.StreetNumber && record.StreetName) {
+        addresses.add(`${record.StreetNumber}|${record.StreetName}`)
+      }
+    }
+
+    const uniqueAddresses = Array.from(addresses)
+    console.log(`[ParkingSale] Found ${uniqueAddresses.length} unique addresses for ${geoField}=${geoValue}`)
+
+    return uniqueAddresses.slice(0, maxAddresses)
+  } catch (error) {
+    console.error(`[ParkingSale] Error getting addresses:`, error)
+    return []
+  }
+}
+
+// Get sold data for a specific address with geo filter
+async function getSoldDataForAddress(
+  streetNumber: string,
+  streetName: string,
+  geoField: 'CountyOrParish' | 'City' | 'CityRegion',
+  geoValue: string
+): Promise<SoldRecord[]> {
+  const filter = `StreetNumber eq '${streetNumber}' and ${geoField} eq '${geoValue.replace(/'/g, "''")}' and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`
+  const select = 'ListingKey,StreetName,StreetNumber,ClosePrice,LivingAreaRange,ParkingTotal,TransactionType'
+  const url = `${PROPTX_URL}Property?$filter=${encodeURIComponent(filter)}&$select=${select}&$top=500`
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${PROPTX_VOW_TOKEN}`, 'Accept': 'application/json' }
+    })
+
+    if (!response.ok) return []
+
+    const data = await response.json()
+    if (!data.value) return []
+
+    // Filter by street name (first word match) and transaction type
+    const streetFirstWord = streetName.toLowerCase().split(' ')[0]
+    
+    return data.value.filter((r: any) =>
+      r.StreetName &&
+      r.StreetName.toLowerCase().includes(streetFirstWord) &&
+      r.TransactionType === 'For Sale' &&
+      r.ClosePrice > 0
+    )
+  } catch (error) {
+    return []
+  }
+}
+
+// Calculate parking value using Math Professor logic
+function calculateParkingValue(soldData: SoldRecord[], minSampleSize: number = 2): {
+  parkingValue: number | null
+  simpleAverage: number | null
+  results: BuildingSizeResult[]
+  validCount: number
+  excludedCount: number
+  sampleSize: number
+  uniqueBuildings: number
+} {
+  // Group by building (StreetNumber|StreetName)
+  const buildingGroups = new Map<string, SoldRecord[]>()
+  
+  for (const record of soldData) {
+    const key = `${record.StreetNumber}|${record.StreetName}`
+    if (!buildingGroups.has(key)) {
+      buildingGroups.set(key, [])
+    }
+    buildingGroups.get(key)!.push(record)
+  }
+
+  const allResults: BuildingSizeResult[] = []
+
+  // For each building, group by size range
+  for (const [building, records] of buildingGroups) {
+    const sizeGroups = new Map<string, SoldRecord[]>()
+    
+    for (const record of records) {
+      const sizeRange = record.LivingAreaRange || 'Unknown'
+      if (!sizeGroups.has(sizeRange)) {
+        sizeGroups.set(sizeRange, [])
+      }
+      sizeGroups.get(sizeRange)!.push(record)
+    }
+
+    // For each size range, calculate difference
+    for (const [sizeRange, sizeRecords] of sizeGroups) {
+      const withParking = sizeRecords.filter(r => r.ParkingTotal > 0)
+      const withoutParking = sizeRecords.filter(r => r.ParkingTotal === 0 || r.ParkingTotal === null)
+
+      if (withParking.length >= minSampleSize && withoutParking.length >= minSampleSize) {
+        const avgWith = withParking.reduce((sum, r) => sum + r.ClosePrice, 0) / withParking.length
+        const avgWithout = withoutParking.reduce((sum, r) => sum + r.ClosePrice, 0) / withoutParking.length
+        const difference = Math.round(avgWith - avgWithout)
+        const weight = Math.min(withParking.length, withoutParking.length)
+
+        allResults.push({
+          building,
+          sizeRange,
+          withCount: withParking.length,
+          withoutCount: withoutParking.length,
+          avgWith: Math.round(avgWith),
+          avgWithout: Math.round(avgWithout),
+          difference,
+          weight,
+          isValid: difference > 0
+        })
+      }
+    }
+  }
+
+  // Filter valid results (positive differences only)
+  const validResults = allResults.filter(r => r.isValid)
+  const excludedResults = allResults.filter(r => !r.isValid)
+
+  if (validResults.length === 0) {
+    return {
+      parkingValue: null,
+      simpleAverage: null,
+      results: allResults,
+      validCount: 0,
+      excludedCount: excludedResults.length,
+      sampleSize: 0,
+      uniqueBuildings: 0
+    }
+  }
+
+  // Calculate weighted average
+  const weightedSum = validResults.reduce((sum, r) => sum + (r.difference * r.weight), 0)
+  const totalWeight = validResults.reduce((sum, r) => sum + r.weight, 0)
+  const weightedAvg = Math.round(weightedSum / totalWeight)
+
+  // Calculate simple average for comparison
+  const simpleAvg = Math.round(validResults.reduce((sum, r) => sum + r.difference, 0) / validResults.length)
+
+  // Count unique buildings
+  const uniqueBuildings = new Set(validResults.map(r => r.building)).size
+
+  return {
+    parkingValue: weightedAvg,
+    simpleAverage: simpleAvg,
+    results: allResults,
+    validCount: validResults.length,
+    excludedCount: excludedResults.length,
+    sampleSize: totalWeight,
+    uniqueBuildings
+  }
+}
+
+// Save result to adjustments table
+async function saveToAdjustments(
+  level: 'area' | 'municipality' | 'community' | 'building',
+  geoId: string,
+  parkingValue: number,
+  count: number,
+  sampleSize: number,
+  simpleAvg: number,
+  buildings: number,
+  records: number
+): Promise<boolean> {
+  const now = new Date().toISOString()
+  
+  // Build the query based on level
+  let query = supabase.from('adjustments').select('id')
+
+  if (level === 'area') {
+    query = query.eq('area_id', geoId).is('municipality_id', null).is('community_id', null).is('building_id', null)
+  } else if (level === 'municipality') {
+    query = query.eq('municipality_id', geoId).is('area_id', null).is('community_id', null).is('building_id', null)
+  } else if (level === 'community') {
+    query = query.eq('community_id', geoId).is('area_id', null).is('municipality_id', null).is('building_id', null)
+  } else if (level === 'building') {
+    query = query.eq('building_id', geoId).is('area_id', null).is('municipality_id', null).is('community_id', null)
+  }
+
+  const { data: existing } = await query.maybeSingle()
+
+  const updateData = {
+    parking_sale_weighted_avg: parkingValue,
+    parking_sale_count: count,
+    parking_sale_sample_size: sampleSize,
+    parking_sale_simple_avg: simpleAvg,
+    parking_sale_buildings: buildings,
+    parking_sale_records: records,
+    parking_sale_calculated_at: now,
+    updated_at: now
+  }
+
+  if (existing) {
+    const { error } = await supabase
+      .from('adjustments')
+      .update(updateData)
+      .eq('id', existing.id)
+    
+    if (error) {
+      console.error(`[ParkingSale] Update error:`, error)
+      return false
+    }
+  } else {
+    const insertData: any = {
+      ...updateData,
+      created_at: now
+    }
+    
+    if (level === 'area') insertData.area_id = geoId
+    else if (level === 'municipality') insertData.municipality_id = geoId
+    else if (level === 'community') insertData.community_id = geoId
+    else if (level === 'building') insertData.building_id = geoId
+
+    const { error } = await supabase
+      .from('adjustments')
+      .insert(insertData)
+    
+    if (error) {
+      console.error(`[ParkingSale] Insert error:`, error)
+      return false
+    }
+  }
+
+  return true
+}
+
+// Main calculation for a geographic level - WITH PARALLEL BATCH PROCESSING
+async function calculateForGeo(
+  level: 'area' | 'municipality' | 'community',
+  geoField: 'CountyOrParish' | 'City' | 'CityRegion',
+  geoValue: string,
+  geoId: string,
+  maxBuildings: number
+): Promise<CalculationResult> {
+  const startTime = Date.now()
+  console.log(`[ParkingSale] Starting ${level} calculation for ${geoValue} (max ${maxBuildings} buildings)`)
+
+  // Step 1: Get unique addresses
+  const addresses = await getCondoAddresses(geoField, geoValue, maxBuildings)
+  
+  if (addresses.length === 0) {
+    return {
+      success: false,
+      level,
+      name: geoValue,
+      geoId,
+      parkingValue: null,
+      simpleAverage: null,
+      dataPoints: {
+        addressesProcessed: 0,
+        buildingsWithData: 0,
+        soldRecords: 0,
+        validCombinations: 0,
+        excludedNoise: 0,
+        sampleSize: 0,
+        uniqueBuildings: 0
+      },
+      details: [],
+      calculatedAt: new Date().toISOString()
+    }
+  }
+
+  // Step 2: Collect sold data using PARALLEL BATCH PROCESSING
+  const allSoldData: SoldRecord[] = []
+  let buildingsWithData = 0
+  const BATCH_SIZE = 20 // Process 20 addresses in parallel
+
+  const totalBatches = Math.ceil(addresses.length / BATCH_SIZE)
+  console.log(`[ParkingSale] Processing ${addresses.length} addresses in ${totalBatches} batches of ${BATCH_SIZE}`)
+
+  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+    const batchStart = batchIndex * BATCH_SIZE
+    const batch = addresses.slice(batchStart, batchStart + BATCH_SIZE)
+
+    // Process batch in parallel
+    const batchResults = await Promise.all(
+      batch.map(async (addr) => {
+        const [streetNum, streetName] = addr.split('|')
+        return getSoldDataForAddress(streetNum, streetName, geoField, geoValue)
+      })
+    )
+
+    // Collect results
+    for (const records of batchResults) {
+      if (records.length > 0) {
+        allSoldData.push(...records)
+        buildingsWithData++
+      }
+    }
+
+    // Progress logging every 5 batches
+    if ((batchIndex + 1) % 5 === 0 || batchIndex === totalBatches - 1) {
+      const processed = Math.min((batchIndex + 1) * BATCH_SIZE, addresses.length)
+      console.log(`[ParkingSale] Progress: ${processed}/${addresses.length} addresses, ${allSoldData.length} sold records`)
+    }
+  }
+
+  console.log(`[ParkingSale] Collected ${allSoldData.length} sold records from ${buildingsWithData} buildings`)
+
+  // Step 3: Calculate parking value
+  const {
+    parkingValue,
+    simpleAverage,
+    results,
+    validCount,
+    excludedCount,
+    sampleSize,
+    uniqueBuildings
+  } = calculateParkingValue(allSoldData)
+
+  // Step 4: Save to database if we have a value
+  if (parkingValue !== null && simpleAverage !== null) {
+    await saveToAdjustments(level, geoId, parkingValue, validCount, sampleSize, simpleAverage, uniqueBuildings, allSoldData.length)
+  }
+
+  const duration = ((Date.now() - startTime) / 1000 / 60).toFixed(1)
+  console.log(`[ParkingSale] Completed ${level} ${geoValue} in ${duration} minutes. Value: $${parkingValue}`)
+
+  return {
+    success: true,
+    level,
+    name: geoValue,
+    geoId,
+    parkingValue,
+    simpleAverage,
+    dataPoints: {
+      addressesProcessed: addresses.length,
+      buildingsWithData,
+      soldRecords: allSoldData.length,
+      validCombinations: validCount,
+      excludedNoise: excludedCount,
+      sampleSize,
+      uniqueBuildings
+    },
+    details: results,
+    calculatedAt: new Date().toISOString()
+  }
+}
+
+// Calculate parking sale for a single BUILDING
+async function calculateForBuilding(
+  buildingId: string,
+  streetNumber: string,
+  streetName: string,
+  city: string
+): Promise<CalculationResult> {
+  const startTime = Date.now()
+  console.log(`[ParkingSale] Starting building calculation for ${streetNumber} ${streetName}, ${city}`)
+
+  const filter = `StreetNumber eq '${streetNumber}' and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`
+  const select = 'ListingKey,StreetName,StreetNumber,ClosePrice,LivingAreaRange,ParkingTotal,TransactionType,City'
+  const url = `${PROPTX_URL}Property?$filter=${encodeURIComponent(filter)}&$select=${select}&$top=1000`
+
+  let allSoldData: SoldRecord[] = []
+
+  try {
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${PROPTX_VOW_TOKEN}`, 'Accept': 'application/json' }
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      if (data.value) {
+        const streetFirstWord = streetName.toLowerCase().split(' ')[0]
+        const cityFirstWord = city.toLowerCase().split(' ')[0]
+
+        allSoldData = data.value.filter((r: any) =>
+          r.StreetName &&
+          r.StreetName.toLowerCase().includes(streetFirstWord) &&
+          r.City &&
+          r.City.toLowerCase().includes(cityFirstWord) &&
+          r.TransactionType === 'For Sale' &&
+          r.ClosePrice > 0
+        )
+      }
+    }
+  } catch (error) {
+    console.error(`[ParkingSale] Error fetching building data:`, error)
+  }
+
+  console.log(`[ParkingSale] Found ${allSoldData.length} sold records for building`)
+
+  if (allSoldData.length === 0) {
+    return {
+      success: false,
+      level: 'building',
+      name: `${streetNumber} ${streetName}, ${city}`,
+      geoId: buildingId,
+      parkingValue: null,
+      simpleAverage: null,
+      dataPoints: {
+        addressesProcessed: 1,
+        buildingsWithData: 0,
+        soldRecords: 0,
+        validCombinations: 0,
+        excludedNoise: 0,
+        sampleSize: 0,
+        uniqueBuildings: 0
+      },
+      details: [],
+      calculatedAt: new Date().toISOString()
+    }
+  }
+
+  // Use minSampleSize=1 for building level (less restrictive than geo levels)
+  const { parkingValue, simpleAverage, results, validCount, excludedCount, sampleSize } = calculateParkingValue(allSoldData, 3)
+
+  if (parkingValue !== null && simpleAverage !== null) {
+    await saveToAdjustments('building', buildingId, parkingValue, validCount, sampleSize, simpleAverage, 1, allSoldData.length)
+  }
+
+  const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+  console.log(`[ParkingSale] Completed building in ${duration}s. Value: $${parkingValue}`)
+
+  return {
+    success: true,
+    level: 'building',
+    name: `${streetNumber} ${streetName}, ${city}`,
+    geoId: buildingId,
+    parkingValue,
+    simpleAverage,
+    dataPoints: {
+      addressesProcessed: 1,
+      buildingsWithData: allSoldData.length > 0 ? 1 : 0,
+      soldRecords: allSoldData.length,
+      validCombinations: validCount,
+      excludedNoise: excludedCount,
+      sampleSize,
+      uniqueBuildings: 1
+    },
+    details: results,
+    calculatedAt: new Date().toISOString()
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { 
+      level,           // 'area' | 'municipality' | 'community' | 'building' | 'all' | 'areas' | 'municipalities' | 'communities'
+      name,            // Geographic name (e.g., "Toronto", "Toronto C01", "Bay Street Corridor")
+      id,              // Optional: specific geo ID
+      maxBuildings     // Optional: override max buildings (default based on level)
+    } = body
+
+    // Validate
+    if (!level) {
+      return NextResponse.json({ success: false, error: 'Level is required' }, { status: 400 })
+    }
+
+    const results: CalculationResult[] = []
+
+    // ==========================================
+    // SYNC ALL LEVELS
+    // ==========================================
+    if (level === 'all' || level === 'parking_sale') {
+      console.log('[ParkingSale] Starting full sync with parallel batching...')
+      const GEO_BATCH_SIZE = 5
+
+      // Areas (limit 1500)
+      const { data: areas } = await supabase.from('treb_areas').select('id, name')
+      if (areas && areas.length > 0) {
+        const totalBatches = Math.ceil(areas.length / GEO_BATCH_SIZE)
+        for (let i = 0; i < totalBatches; i++) {
+          const batch = areas.slice(i * GEO_BATCH_SIZE, (i + 1) * GEO_BATCH_SIZE)
+          const batchResults = await Promise.all(
+            batch.map(area => calculateForGeo('area', 'CountyOrParish', area.name, area.id, 1500))
+          )
+          results.push(...batchResults)
+          console.log(`[ParkingSale] Areas: ${Math.min((i + 1) * GEO_BATCH_SIZE, areas.length)}/${areas.length}`)
+        }
+      }
+
+      // Municipalities (all)
+      const { data: municipalities } = await supabase.from('municipalities').select('id, name')
+      if (municipalities && municipalities.length > 0) {
+        const totalBatches = Math.ceil(municipalities.length / GEO_BATCH_SIZE)
+        for (let i = 0; i < totalBatches; i++) {
+          const batch = municipalities.slice(i * GEO_BATCH_SIZE, (i + 1) * GEO_BATCH_SIZE)
+          const batchResults = await Promise.all(
+            batch.map(muni => calculateForGeo('municipality', 'City', muni.name, muni.id, 10000))
+          )
+          results.push(...batchResults)
+          if ((i + 1) % 10 === 0 || i === totalBatches - 1) {
+            console.log(`[ParkingSale] Municipalities: ${Math.min((i + 1) * GEO_BATCH_SIZE, municipalities.length)}/${municipalities.length}`)
+          }
+        }
+      }
+
+      // Communities (all)
+      const { data: communities } = await supabase.from('communities').select('id, name')
+      if (communities && communities.length > 0) {
+        const totalBatches = Math.ceil(communities.length / GEO_BATCH_SIZE)
+        for (let i = 0; i < totalBatches; i++) {
+          const batch = communities.slice(i * GEO_BATCH_SIZE, (i + 1) * GEO_BATCH_SIZE)
+          const batchResults = await Promise.all(
+            batch.map(comm => calculateForGeo('community', 'CityRegion', comm.name, comm.id, 10000))
+          )
+          results.push(...batchResults)
+          if ((i + 1) % 20 === 0 || i === totalBatches - 1) {
+            console.log(`[ParkingSale] Communities: ${Math.min((i + 1) * GEO_BATCH_SIZE, communities.length)}/${communities.length}`)
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Full parking sale sync completed',
+        summary: {
+          areas: results.filter(r => r.level === 'area').length,
+          municipalities: results.filter(r => r.level === 'municipality').length,
+          communities: results.filter(r => r.level === 'community').length
+        },
+        results
+      })
+    }
+
+    // ==========================================
+    // SINGLE AREA
+    // ==========================================
+    if (level === 'area') {
+      if (!name && !id) {
+        return NextResponse.json({ success: false, error: 'Area name or id required' }, { status: 400 })
+      }
+
+      let areaId = id
+      let areaName = name
+
+      if (!areaId) {
+        const { data: area } = await supabase.from('treb_areas').select('id, name').eq('name', name).single()
+        if (!area) {
+          return NextResponse.json({ success: false, error: `Area not found: ${name}` }, { status: 404 })
+        }
+        areaId = area.id
+        areaName = area.name
+      } else if (!areaName) {
+        const { data: area } = await supabase.from('treb_areas').select('id, name').eq('id', id).single()
+        if (!area) {
+          return NextResponse.json({ success: false, error: `Area not found: ${id}` }, { status: 404 })
+        }
+        areaName = area.name
+      }
+
+      const result = await calculateForGeo('area', 'CountyOrParish', areaName, areaId, maxBuildings || 1500)
+      return NextResponse.json(result)
+    }
+
+    // ==========================================
+    // SINGLE MUNICIPALITY
+    // ==========================================
+    if (level === 'municipality') {
+      if (!name && !id) {
+        return NextResponse.json({ success: false, error: 'Municipality name or id required' }, { status: 400 })
+      }
+
+      let muniId = id
+      let muniName = name
+
+      if (!muniId) {
+        const { data: muni } = await supabase.from('municipalities').select('id, name').eq('name', name).single()
+        if (!muni) {
+          return NextResponse.json({ success: false, error: `Municipality not found: ${name}` }, { status: 404 })
+        }
+        muniId = muni.id
+        muniName = muni.name
+      } else if (!muniName) {
+        const { data: muni } = await supabase.from('municipalities').select('id, name').eq('id', id).single()
+        if (!muni) {
+          return NextResponse.json({ success: false, error: `Municipality not found: ${id}` }, { status: 404 })
+        }
+        muniName = muni.name
+      }
+
+      const result = await calculateForGeo('municipality', 'City', muniName, muniId, maxBuildings || 10000)
+      return NextResponse.json(result)
+    }
+
+    // ==========================================
+    // SINGLE COMMUNITY
+    // ==========================================
+    if (level === 'community') {
+      if (!name && !id) {
+        return NextResponse.json({ success: false, error: 'Community name or id required' }, { status: 400 })
+      }
+
+      let commId = id
+      let commName = name
+
+      if (!commId) {
+        const { data: comm } = await supabase.from('communities').select('id, name').eq('name', name).single()
+        if (!comm) {
+          return NextResponse.json({ success: false, error: `Community not found: ${name}` }, { status: 404 })
+        }
+        commId = comm.id
+        commName = comm.name
+      } else if (!commName) {
+        const { data: comm } = await supabase.from('communities').select('id, name').eq('id', id).single()
+        if (!comm) {
+          return NextResponse.json({ success: false, error: `Community not found: ${id}` }, { status: 404 })
+        }
+        commName = comm.name
+      }
+
+      const result = await calculateForGeo('community', 'CityRegion', commName, commId, maxBuildings || 10000)
+      return NextResponse.json(result)
+    }
+
+    // ==========================================
+    // SYNC ALL AREAS
+    // ==========================================
+    if (level === 'areas') {
+      const GEO_BATCH_SIZE = 5
+      const { data: areas } = await supabase.from('treb_areas').select('id, name')
+      if (areas && areas.length > 0) {
+        const totalBatches = Math.ceil(areas.length / GEO_BATCH_SIZE)
+        for (let i = 0; i < totalBatches; i++) {
+          const batch = areas.slice(i * GEO_BATCH_SIZE, (i + 1) * GEO_BATCH_SIZE)
+          const batchResults = await Promise.all(
+            batch.map(area => calculateForGeo('area', 'CountyOrParish', area.name, area.id, maxBuildings || 1500))
+          )
+          results.push(...batchResults)
+          console.log(`[ParkingSale] Areas: ${Math.min((i + 1) * GEO_BATCH_SIZE, areas.length)}/${areas.length}`)
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Processed ${results.length} areas`,
+        withValue: results.filter(r => r.parkingValue !== null).length,
+        results
+      })
+    }
+
+    // ==========================================
+    // SYNC ALL MUNICIPALITIES
+    // ==========================================
+    if (level === 'municipalities') {
+      const GEO_BATCH_SIZE = 5
+      const { data: municipalities } = await supabase.from('municipalities').select('id, name')
+      if (municipalities && municipalities.length > 0) {
+        const totalBatches = Math.ceil(municipalities.length / GEO_BATCH_SIZE)
+        for (let i = 0; i < totalBatches; i++) {
+          const batch = municipalities.slice(i * GEO_BATCH_SIZE, (i + 1) * GEO_BATCH_SIZE)
+          const batchResults = await Promise.all(
+            batch.map(muni => calculateForGeo('municipality', 'City', muni.name, muni.id, maxBuildings || 10000))
+          )
+          results.push(...batchResults)
+          if ((i + 1) % 10 === 0 || i === totalBatches - 1) {
+            console.log(`[ParkingSale] Municipalities: ${Math.min((i + 1) * GEO_BATCH_SIZE, municipalities.length)}/${municipalities.length}`)
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Processed ${results.length} municipalities`,
+        withValue: results.filter(r => r.parkingValue !== null).length,
+        results
+      })
+    }
+
+    // ==========================================
+    // SYNC ALL COMMUNITIES
+    // ==========================================
+    if (level === 'communities') {
+      const GEO_BATCH_SIZE = 5
+      const { data: communities } = await supabase.from('communities').select('id, name')
+      if (communities && communities.length > 0) {
+        const totalBatches = Math.ceil(communities.length / GEO_BATCH_SIZE)
+        for (let i = 0; i < totalBatches; i++) {
+          const batch = communities.slice(i * GEO_BATCH_SIZE, (i + 1) * GEO_BATCH_SIZE)
+          const batchResults = await Promise.all(
+            batch.map(comm => calculateForGeo('community', 'CityRegion', comm.name, comm.id, maxBuildings || 10000))
+          )
+          results.push(...batchResults)
+          if ((i + 1) % 20 === 0 || i === totalBatches - 1) {
+            console.log(`[ParkingSale] Communities: ${Math.min((i + 1) * GEO_BATCH_SIZE, communities.length)}/${communities.length}`)
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Processed ${results.length} communities`,
+        withValue: results.filter(r => r.parkingValue !== null).length,
+        results
+      })
+    }
+
+    // ==========================================
+    // SINGLE BUILDING
+    // ==========================================
+    if (level === 'building') {
+      if (!id) {
+        return NextResponse.json({ success: false, error: 'Building id required' }, { status: 400 })
+      }
+
+      const { data: building } = await supabase
+        .from('buildings')
+        .select('id, building_name, street_number, street_name, city_district')
+        .eq('id', id)
+        .single()
+
+      if (!building) {
+        return NextResponse.json({ success: false, error: `Building not found: ${id}` }, { status: 404 })
+      }
+
+      const result = await calculateForBuilding(building.id, building.street_number, building.street_name, building.city_district || 'Toronto')
+      return NextResponse.json(result)
+    }
+
+    // ==========================================
+    // SYNC ALL BUILDINGS
+    // ==========================================
+    if (level === 'buildings') {
+      console.log('[ParkingSale] Starting all buildings sync...')
+      const { data: buildings } = await supabase
+        .from('buildings')
+        .select('id, building_name, street_number, street_name, city')
+
+      if (!buildings || buildings.length === 0) {
+        return NextResponse.json({ success: true, message: 'No buildings found', results: [] })
+      }
+
+      const BATCH_SIZE = 10
+      const totalBatches = Math.ceil(buildings.length / BATCH_SIZE)
+      console.log(`[ParkingSale] Processing ${buildings.length} buildings in ${totalBatches} batches`)
+
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        const batchStart = batchIndex * BATCH_SIZE
+        const batch = buildings.slice(batchStart, batchStart + BATCH_SIZE)
+
+        const batchResults = await Promise.all(
+          batch.map(b => calculateForBuilding(b.id, b.street_number, b.street_name, b.city || 'Toronto'))
+        )
+
+        results.push(...batchResults)
+
+        if ((batchIndex + 1) % 5 === 0 || batchIndex === totalBatches - 1) {
+          console.log(`[ParkingSale] Buildings progress: ${Math.min((batchIndex + 1) * BATCH_SIZE, buildings.length)}/${buildings.length}`)
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Processed ${buildings.length} buildings`,
+        withValue: results.filter(r => r.parkingValue !== null).length,
+        results
+      })
+    }
+
+    return NextResponse.json({ success: false, error: `Invalid level: ${level}` }, { status: 400 })
+
+  } catch (error) {
+    console.error('[ParkingSale] Error:', error)
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  // Return current parking sale values
+  try {
+    const { data, error } = await supabase
+      .from('adjustments')
+      .select(`
+        id,
+        area_id,
+        municipality_id,
+        community_id,
+        building_id,
+        parking_sale_weighted_avg,
+        parking_sale_count,
+        parking_sale_sample_size,
+        parking_sale_calculated_at,
+        treb_areas:area_id(name),
+        municipalities:municipality_id(name, code),
+        communities:community_id(name),
+        buildings:building_id(building_name)
+      `)
+      .not('parking_sale_weighted_avg', 'is', null)
+      .order('parking_sale_calculated_at', { ascending: false })
+
+    if (error) throw error
+
+    return NextResponse.json({
+      success: true,
+      count: data?.length || 0,
+      adjustments: data
+    })
+  } catch (error) {
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 })
+  }
+}
+
+
+

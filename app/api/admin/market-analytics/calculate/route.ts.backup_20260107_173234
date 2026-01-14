@@ -1,0 +1,290 @@
+﻿// app/api/admin/market-analytics/calculate/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+const PROPTX_URL = process.env.PROPTX_RESO_API_URL || 'https://query.ampre.ca/odata/'
+const PROPTX_TOKEN = process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN
+
+interface ParkingRecord {
+  CountyOrParish: string
+  City: string
+  CityRegion: string
+  ParkingMonthlyCost: number
+}
+
+async function fetchParkingLeaseData(maxRecords: number = 50000): Promise<ParkingRecord[]> {
+  const found: ParkingRecord[] = []
+  let skip = 0
+  const batchSize = 500
+
+  while (skip < maxRecords) {
+    const filter = "PropertyType eq 'Residential Condo %26 Other' and (TransactionType eq 'For Lease' or StandardStatus eq 'Leased')"
+    const select = "CountyOrParish,City,CityRegion,ParkingMonthlyCost"
+    const url = `${PROPTX_URL}Property?$filter=${filter}&$select=${select}&$top=${batchSize}&$skip=${skip}`
+
+    try {
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${PROPTX_TOKEN}` }
+      })
+
+      if (!response.ok) break
+
+      const data = await response.json()
+      if (!data.value || data.value.length === 0) break
+
+      const filtered = data.value.filter((r: ParkingRecord) => {
+        if (!r.ParkingMonthlyCost || r.ParkingMonthlyCost <= 0) return false
+        if (r.CountyOrParish === 'Toronto') return true
+        return r.ParkingMonthlyCost <= 250
+      })
+
+      found.push(...filtered)
+      skip += batchSize
+
+      if (data.value.length < batchSize) break
+    } catch (err) {
+      break
+    }
+  }
+
+  return found
+}
+
+function calculateAverages(records: ParkingRecord[], minRecords: number = 10) {
+  const byArea: Record<string, number[]> = {}
+  const byMunicipality: Record<string, { area: string; values: number[] }> = {}
+  const byCommunity: Record<string, { area: string; municipality: string; values: number[] }> = {}
+
+  for (const r of records) {
+    const area = r.CountyOrParish || 'Unknown'
+    const municipality = r.City || 'Unknown'
+    const community = r.CityRegion || 'Unknown'
+    const value = r.ParkingMonthlyCost
+
+    if (!byArea[area]) byArea[area] = []
+    byArea[area].push(value)
+
+    if (!byMunicipality[municipality]) byMunicipality[municipality] = { area, values: [] }
+    byMunicipality[municipality].values.push(value)
+
+    const communityKey = `${municipality}|||${community}`
+    if (!byCommunity[communityKey]) byCommunity[communityKey] = { area, municipality, values: [] }
+    byCommunity[communityKey].values.push(value)
+  }
+
+  const areaAverages = Object.entries(byArea)
+    .filter(([_, values]) => values.length >= minRecords)
+    .map(([name, values]) => ({
+      name,
+      average: Math.round(values.reduce((a, b) => a + b, 0) / values.length * 100) / 100,
+      count: values.length
+    }))
+
+  const municipalityAverages = Object.entries(byMunicipality)
+    .filter(([_, data]) => data.values.length >= minRecords)
+    .map(([name, data]) => ({
+      name,
+      area: data.area,
+      average: Math.round(data.values.reduce((a, b) => a + b, 0) / data.values.length * 100) / 100,
+      count: data.values.length
+    }))
+
+  const communityAverages = Object.entries(byCommunity)
+    .filter(([_, data]) => data.values.length >= minRecords)
+    .map(([key, data]) => {
+      const [municipality, community] = key.split('|||')
+      return {
+        name: community,
+        municipality,
+        area: data.area,
+        average: Math.round(data.values.reduce((a, b) => a + b, 0) / data.values.length * 100) / 100,
+        count: data.values.length
+      }
+    })
+
+  return { areaAverages, municipalityAverages, communityAverages }
+}
+
+async function saveAdjustments(
+  type: 'parking_lease',
+  areaAverages: any[],
+  municipalityAverages: any[],
+  communityAverages: any[]
+) {
+  const now = new Date().toISOString()
+  const results = { areas: 0, municipalities: 0, communities: 0, errors: [] as string[] }
+
+  // Save Area level
+  for (const area of areaAverages) {
+    try {
+      const { data: areaRecord } = await supabase.from('treb_areas').select('id').eq('name', area.name).maybeSingle()
+      if (!areaRecord) {
+        results.errors.push(`Area not found: ${area.name}`)
+        continue
+      }
+
+      const { data: existing } = await supabase.from('adjustments').select('id')
+        .eq('area_id', areaRecord.id)
+        .is('municipality_id', null)
+        .is('community_id', null)
+        .is('building_id', null)
+        .is('neighbourhood_id', null)
+        .maybeSingle()
+
+      const updateData = { 
+        parking_lease_calculated: area.average, 
+        parking_lease_count: area.count, 
+        parking_lease_calculated_at: now, 
+        updated_at: now 
+      }
+
+      if (existing) {
+        const { error } = await supabase.from('adjustments').update(updateData).eq('id', existing.id)
+        if (error) results.errors.push(`Area update ${area.name}: ${error.message}`)
+        else results.areas++
+      } else {
+        const { error } = await supabase.from('adjustments').insert({ area_id: areaRecord.id, ...updateData, created_at: now })
+        if (error) results.errors.push(`Area insert ${area.name}: ${error.message}`)
+        else results.areas++
+      }
+    } catch (err) {
+      results.errors.push(`Area ${area.name}: ${err}`)
+    }
+  }
+
+  // Save Municipality level
+  for (const muni of municipalityAverages) {
+    try {
+      const { data: muniRecord } = await supabase.from('municipalities').select('id, area_id').eq('name', muni.name).maybeSingle()
+      if (!muniRecord) {
+        results.errors.push(`Municipality not found: ${muni.name}`)
+        continue
+      }
+
+      const { data: existing } = await supabase.from('adjustments').select('id')
+        .eq('municipality_id', muniRecord.id)
+        .is('community_id', null)
+        .is('building_id', null)
+        .is('neighbourhood_id', null)
+        .maybeSingle()
+
+      const updateData = { 
+        parking_lease_calculated: muni.average, 
+        parking_lease_count: muni.count, 
+        parking_lease_calculated_at: now, 
+        updated_at: now 
+      }
+
+      if (existing) {
+        const { error } = await supabase.from('adjustments').update(updateData).eq('id', existing.id)
+        if (error) results.errors.push(`Muni update ${muni.name}: ${error.message}`)
+        else results.municipalities++
+      } else {
+        const { error } = await supabase.from('adjustments').insert({ 
+          area_id: muniRecord.area_id, 
+          municipality_id: muniRecord.id, 
+          ...updateData, 
+          created_at: now 
+        })
+        if (error) results.errors.push(`Muni insert ${muni.name}: ${error.message}`)
+        else results.municipalities++
+      }
+    } catch (err) {
+      results.errors.push(`Municipality ${muni.name}: ${err}`)
+    }
+  }
+
+  // Save Community level
+  for (const comm of communityAverages) {
+    try {
+      const { data: muniRecord } = await supabase.from('municipalities').select('id, area_id').eq('name', comm.municipality).maybeSingle()
+      if (!muniRecord) {
+        results.errors.push(`Community's municipality not found: ${comm.municipality}`)
+        continue
+      }
+
+      const { data: commRecord } = await supabase.from('communities').select('id').eq('name', comm.name).eq('municipality_id', muniRecord.id).maybeSingle()
+      if (!commRecord) {
+        results.errors.push(`Community not found: ${comm.name} in ${comm.municipality}`)
+        continue
+      }
+
+      const { data: existing } = await supabase.from('adjustments').select('id')
+        .eq('community_id', commRecord.id)
+        .is('building_id', null)
+        .is('neighbourhood_id', null)
+        .maybeSingle()
+
+      const updateData = { 
+        parking_lease_calculated: comm.average, 
+        parking_lease_count: comm.count, 
+        parking_lease_calculated_at: now, 
+        updated_at: now 
+      }
+
+      if (existing) {
+        const { error } = await supabase.from('adjustments').update(updateData).eq('id', existing.id)
+        if (error) results.errors.push(`Comm update ${comm.name}: ${error.message}`)
+        else results.communities++
+      } else {
+        const { error } = await supabase.from('adjustments').insert({ 
+          area_id: muniRecord.area_id, 
+          municipality_id: muniRecord.id, 
+          community_id: commRecord.id, 
+          ...updateData, 
+          created_at: now 
+        })
+        if (error) results.errors.push(`Comm insert ${comm.name}: ${error.message}`)
+        else results.communities++
+      }
+    } catch (err) {
+      results.errors.push(`Community ${comm.name}: ${err}`)
+    }
+  }
+
+  return results
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { type = 'parking_lease', maxRecords = 50000, minRecords = 10 } = body
+
+    if (type !== 'parking_lease') {
+      return NextResponse.json({ success: false, error: 'Only parking_lease supported currently' }, { status: 400 })
+    }
+
+    const records = await fetchParkingLeaseData(maxRecords)
+    const { areaAverages, municipalityAverages, communityAverages } = calculateAverages(records, minRecords)
+    const saveResults = await saveAdjustments(type, areaAverages, municipalityAverages, communityAverages)
+
+    return NextResponse.json({
+      success: true,
+      totalRecords: records.length,
+      averages: { areas: areaAverages, municipalities: municipalityAverages, communities: communityAverages },
+      saved: saveResults
+    })
+
+  } catch (error) {
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    const { data, error } = await supabase
+      .from('adjustments')
+      .select('*, treb_areas:area_id(name), municipalities:municipality_id(name, code), communities:community_id(name), buildings:building_id(building_name)')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return NextResponse.json({ success: true, adjustments: data })
+  } catch (error) {
+    return NextResponse.json({ success: false, error: String(error) }, { status: 500 })
+  }
+}

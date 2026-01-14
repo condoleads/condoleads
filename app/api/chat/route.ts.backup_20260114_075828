@@ -3,6 +3,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
 import { getOrCreateLead } from '@/lib/actions/leads'
 
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!
+})
+
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -85,7 +89,7 @@ Capture their contact info to have the agent follow up.`
 
 function extractLeadInfo(messages: ChatMessage[]): { name?: string; email?: string; phone?: string } {
   const allText = messages.map(m => m.content).join(' ')
-
+  
   // Extract email
   const emailMatch = allText.match(/[\w.-]+@[\w.-]+\.\w+/)
   const email = emailMatch ? emailMatch[0] : undefined
@@ -116,35 +120,6 @@ export async function POST(request: NextRequest) {
     const body: ChatRequest = await request.json()
     const { messages, context, leadInfo } = body
 
-    // Get agent's API key from database
-    const supabase = await createClient()
-    const { data: agent, error: agentError } = await supabase
-      .from('agents')
-      .select('anthropic_api_key, full_name')
-      .eq('id', context.agentId)
-      .single()
-
-    if (agentError || !agent) {
-      console.error('Error fetching agent:', agentError)
-      return NextResponse.json(
-        { error: 'Agent not found' },
-        { status: 404 }
-      )
-    }
-
-    if (!agent.anthropic_api_key) {
-      console.error('Agent does not have an Anthropic API key configured:', context.agentId)
-      return NextResponse.json(
-        { error: 'AI chat is not configured for this agent. Please contact the agent directly.' },
-        { status: 400 }
-      )
-    }
-
-    // Create Anthropic client with agent's API key
-    const anthropic = new Anthropic({
-      apiKey: agent.anthropic_api_key
-    })
-
     // Build system prompt based on context
     const systemPrompt = buildSystemPrompt(context)
 
@@ -159,8 +134,8 @@ export async function POST(request: NextRequest) {
       }))
     })
 
-    const assistantMessage = response.content[0].type === 'text'
-      ? response.content[0].text
+    const assistantMessage = response.content[0].type === 'text' 
+      ? response.content[0].text 
       : ''
 
     // Extract lead info from conversation

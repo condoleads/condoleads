@@ -17,7 +17,6 @@ interface Agent {
   google_ads_id: string | null
   google_conversion_label: string | null
   facebook_pixel_id: string | null
-  anthropic_api_key: string | null
   is_active: boolean
 }
 
@@ -46,8 +45,7 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       google_analytics_id: agent.google_analytics_id || '',
       google_ads_id: agent.google_ads_id || '',
       google_conversion_label: agent.google_conversion_label || '',
-      facebook_pixel_id: agent.facebook_pixel_id || '',
-      anthropic_api_key: agent.anthropic_api_key || ''
+      facebook_pixel_id: agent.facebook_pixel_id || ''
     })
   }
 
@@ -68,8 +66,7 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       google_analytics_id: editForm.google_analytics_id || null,
       google_ads_id: editForm.google_ads_id || null,
       google_conversion_label: editForm.google_conversion_label || null,
-      facebook_pixel_id: editForm.facebook_pixel_id || null,
-      anthropic_api_key: editForm.anthropic_api_key || null
+      facebook_pixel_id: editForm.facebook_pixel_id || null
     })
 
     if (!result.success) {
@@ -372,35 +369,6 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
               />
               <p className="text-xs text-gray-500 mt-1">For Facebook/Instagram retargeting</p>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Chat Configuration */}
-      {editingId && (
-        <div className="mt-6 bg-white rounded-lg shadow p-6">
-          <h3 className="font-semibold text-gray-800 mb-4">AI Chat Configuration</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Enable AI-powered chat on this agent's website. The agent must provide their own Anthropic API key.
-          </p>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Anthropic API Key</label>
-            <input
-              type="password"
-              value={editForm.anthropic_api_key || ''}
-              onChange={(e) => setEditForm({ ...editForm, anthropic_api_key: e.target.value })}
-              placeholder="sk-ant-api03-..."
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono text-sm"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Get API key from <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.anthropic.com</a>
-            </p>
-            {editForm.anthropic_api_key && (
-              <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
-                <Check className="w-4 h-4" />
-                <span>API key configured - AI chat will be enabled</span>
-              </div>
-            )}
           </div>
         </div>
       )}

@@ -1,0 +1,481 @@
+﻿Addington Highlands
+Adelaide Metcalfe
+Adjala-Tosorontio
+Admaston/Bromley
+Ajax
+Alfred and Plantagenet
+Algoma Remote Area
+Algonquin Highlands
+Alnwick/Haldimand
+Alta Vista and Area
+Amaranth
+Amherstburg
+Antigua
+Armour
+Armstrong
+Arnprior
+Arran-Elderslie
+Ashfield-Colborne-Wawanosh
+Asphodel-Norwood
+Assiginack
+Athens
+Augusta
+Aurora
+Aylmer
+Bancroft
+Barbados
+Barrhaven
+Barrie
+Bayham
+Beacon Hill North - South and Area
+Beckwith
+Belair Park - Copeland Park and Area
+Belleville
+Bells Corners and South to Fallowfield
+Billings Bridge - Riverside Park and Area
+Black River Matheson
+Black River-Matheson
+Blackburn Hamlet
+Blandford-Blenheim
+Blind River
+Blossom Park - Airport and Area
+Blue Mountains
+Bluewater
+Bonfield
+Bonnechere Valley
+Bracebridge
+Bradford West Gwillimbury
+Brampton
+Brant
+Brantford
+Brighton
+Britannia - Lincoln Heights and Area
+Britannia Heights - Queensway Terrace N and Area
+Brock
+Brockton
+Brockville
+Brooke-Alvinston
+Brudenell, Lyndoch and Raglan
+Burk's Falls
+Burlington
+Burpee & Mills
+Caledon
+Callander
+Calvin
+Cambridge
+Carleton Place
+Carling
+Carlington - Central Park
+Carlingwood - Westboro and Area
+Carlow/Mayo
+Carlsbad Springs
+Carp - Dunrobin - Huntley - Fitzroy and Area
+Carp - Huntley Ward
+Casselman
+Cavan Monaghan
+Central Elgin
+Central Frontenac
+Central Huron
+Central Manitoulin
+Centre Hastings
+Centre Wellington
+Chamberlain
+Champlain
+Chatham-Kent
+Chatsworth
+Chisholm
+Cityview - Parkwoods Hills - Rideau Shore
+Clarence-Rockland
+Clarington
+Clearview
+Cobalt
+Cobourg
+Cochrane
+Cockburn Island
+Collingwood
+Constance Bay - Dunrobin - Kilmaurs - Woodlawn
+Cornwall
+Costa Rica
+Country Place - Pineglen - Crestview and Area
+Cramahe
+Crystal Bay - Rocky Point - Bayshore
+Curve Lake First Nation 35
+Cyrville - Carson Grove - Pineview
+Dawn-Euphemia
+Dawson
+Deep River
+Deleted
+Deseronto
+Dominican
+Douro-Dummer
+Dows Lake - Civic Hospital and Area
+Drummond/North Elmsley
+Dryden
+Dutton/Dunwich
+Dysart et al
+East Ferris
+East Garafraxa
+East Gwillimbury
+East Hawkesbury
+East Luther Grand Valley
+East Zorra-Tavistock
+Edwardsburgh/Cardinal
+Elizabethtown-Kitley
+Elliot Lake
+Elmvale Acres and Area
+Emo
+Englehart
+Enniskillen
+Erin
+Espanola
+Essa
+Essex
+Fallowfield Rd South of Ottawa
+Faraday
+Fauquier-Strickland
+First Nations
+Florida  Usa
+Fort Erie
+Fort Frances
+France
+French River
+Front of Leeds & Seeleys Bay
+Front of Yonge
+Frontenac
+Frontenac Islands
+Galway-Cavendish and Harvey
+Gananoque
+Georgian Bay
+Georgian Bluffs
+Georgina
+Georgina Islands
+Glebe - Ottawa East and Area
+Goderich
+Gore Bay
+Gravenhurst
+Greater Madawaska
+Greater Napanee
+Greater Sudbury
+Greely - Metcalfe - Osgoode - Vernon and Area
+Greenstone
+Grey Highlands
+Grimsby
+Guelph
+Guelph/Eramosa
+Haldimand
+Haldimand County
+Halton Hills
+Hamilton
+Hamilton Township
+Hanover
+Hastings Highlands
+Havelock-Belmont-Methuen
+Hawkesbury
+Head, Clara and Maria
+Hearst
+Hiawatha First Nation
+Highlands East
+Hornepayne
+Horton
+Howick
+Hudson
+Hunt Club - South Keys and Area
+Hunt Club - Windsor Park Village and Area
+Huntsville
+Huron East
+Huron Shores
+Huron-Kinloss
+Ignace
+Ingersoll
+Innisfil
+Iroquois Falls
+Jamaica
+Joly
+Kanata
+Kapuskasing
+Kawartha Lakes
+Kearney
+Kenora
+Killaloe, Hagarty and Richards
+Killarney
+Kincardine
+King
+Kingston
+Kingsville
+Kirkland Lake
+Kitchener
+Laird
+Lake of Bays
+Lake of the Woods
+Lakeshore
+Lambton Shores
+Lanark Highlands
+Lansdowne Village
+LaSalle
+Laurentian Hills
+Laurentian Valley
+Leamington
+Leeds and the Thousand Islands
+Leitrim
+Limerick
+Lincoln
+London East
+London North
+London South
+Lower Town - Sandy Hill
+Loyalist
+Lucan Biddulph
+Machar
+Madawaska Valley
+Madoc
+Magnetawan
+Malahide
+Manitoulin Remote Area
+Manor Park - Cardinal Glen and Area
+Manotick - Kars - Rideau Twp and Area
+Mapleton
+Marathon
+Markham
+Markstay-Warren
+Marmora and Lake
+Mattawa
+Mattawan
+Mattice-Val Cote
+McDougall
+McKellar
+McKellar Heights - Glabar Park and Area
+McMurrich/Monteith
+McNab/Braeside
+Meadowlands - Crestview and Area
+Meaford
+Melancthon
+Merrickville-Wolford
+Mexico
+Middlesex Centre
+Midland
+Milton
+Minden Hills
+Minto
+Mississauga
+Mississippi Mills
+Mono
+Montague
+Moonbeam
+Mooneys Bay - Carleton Heights and Area
+Morris Turnberry
+Mulmur
+Muskoka Lakes
+Native Leased Lands
+New Edinburgh - Lindenlea
+New Tecumseth
+Newbury
+Newmarket
+Niagara Falls
+Niagara-on-the-Lake
+Nipissing
+Norfolk
+North Algona Wilberforce
+North Bay
+North Dumfries
+North Dundas
+North Frontenac
+North Glengarry
+North Grenville
+North Huron
+North Kawartha
+North Middlesex
+North Perth
+North Stormont
+Northeastern Manitoulin and The Islands
+Northern Bruce Peninsula
+Norwich
+Oakville
+Oil Springs
+Oliver Paipoonge
+Orangeville
+Orillia
+Orleans - Convent Glen and Area
+Orleans - Cumberland and Area
+Oro-Medonte
+Oshawa
+Otonabee-South Monaghan
+Ottawa Centre
+Out of Area
+Overbrook - Castleheights and Area
+Owen Sound
+Palmbay
+Panama
+Papineau-Cameron
+Parkway Park - Queensway Terrace S and Area
+Parry Sound
+Parry Sound Remote Area
+Pelham
+Pembroke
+Penetanguishene
+Perry
+Perth
+Perth East
+Perth South
+Petawawa
+Peterborough
+Petrolia
+Pickering
+Plummer Additional
+Plympton-Wyoming
+Point Edward
+Port Colborne
+Port Hope
+Portugal
+Powassan
+Prescott
+Prince
+Prince Edward County
+Puslinch
+Qualicum - Bruce Farm - Greenbelt and Area
+Quebec
+Quinte West
+Ramara
+Red Lake
+Renfrew
+Richmond Hill
+Rideau Lakes
+Rockcliffe Park
+Roma/Italy
+Russell
+Ryerson
+Sables-Spanish Rivers
+Sarnia
+Saugeen Shores
+Sault Ste Marie
+Schreiber
+Scugog
+Seguin
+Selwyn
+Severn
+Shelburne
+Shuniah
+Smiths Falls
+Smooth Rock Falls
+South Algonquin
+South Bruce
+South Bruce Peninsula
+South Dundas
+South Frontenac
+South Glengarry
+South Huron
+South of Baseline to Knoxdale
+South River
+South Stormont
+Southgate
+Southwest Middlesex
+South-West Oxford
+Southwold
+Spanish
+Springwater
+St. Catharines
+St. Charles
+St. Clair
+St. Marys
+St. Thomas
+Stirling-Rawdon
+Stittsville - Munster - Richmond
+Stone Mills
+Stratford
+Strathroy-Caradoc
+Strong
+Sudbury Remote Area
+Sundridge
+Tanglewood - Grenfell Glen - Pineglen
+Tay
+Tay Valley
+Tecumseh
+Tehkummah
+Temagami
+Temiskaming Shores
+Thames Centre
+The Archipelago
+The Nation
+Thessalon
+Thorold
+Thunder Bay
+Tillsonburg
+Timiskaming
+Timiskaming Remote Area
+Timmins
+Tiny
+Tobago
+Toronto C01
+Toronto C02
+Toronto C03
+Toronto C04
+Toronto C06
+Toronto C07
+Toronto C08
+Toronto C09
+Toronto C10
+Toronto C11
+Toronto C12
+Toronto C13
+Toronto C14
+Toronto C15
+Toronto E01
+Toronto E02
+Toronto E03
+Toronto E04
+Toronto E05
+Toronto E06
+Toronto E07
+Toronto E08
+Toronto E09
+Toronto E10
+Toronto E11
+Toronto W01
+Toronto W02
+Toronto W03
+Toronto W04
+Toronto W05
+Toronto W06
+Toronto W07
+Toronto W08
+Toronto W09
+Toronto W10
+Trent Hills
+Trent Lakes
+Tudor & Cashel
+Tudor and Cashel
+Tunneys Pasture and Ottawa West
+Turks Caicos Island
+Tweed
+Tyendinaga
+Unorganized Townships
+Uxbridge
+Val Rita-Harty
+Vanier and Kingsview Park
+Vaughan
+Wainfleet
+Warwick
+Wasaga Beach
+Waterloo
+Wawa
+Welland
+Wellesley
+Wellington North
+West Centre Town
+West Elgin
+West Grey
+West Lincoln
+West Nipissing
+West Perth
+Westboro - Hampton Park
+Westport
+Whitby
+Whitchurch-Stouffville
+Whitestone
+Whitewater Region
+Wilmot
+Windsor
+Wollaston
+Woodroffe
+Woodstock
+Woolwich
+Zorra

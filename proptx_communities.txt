@@ -1,0 +1,1901 @@
+﻿02 - Front of Leeds & Seeleys Bay
+03 - Lansdowne Village
+04 - The Islands
+05 - Gananoque
+055 - Grimsby Escarpment
+056 - West Lincoln
+057 - Smithville
+058 - Bismark/Wellandport
+1000 - BC Bronte Creek
+1001 - BR Bronte
+1002 - CO Central
+1003 - CP College Park
+1004 - CV Clearview
+1005 - FA Falgarwood
+1006 - FD Ford
+1007 - GA Glen Abbey
+1008 - GO Glenorchy
+1009 - JC Joshua Creek
+101 - Town
+1010 - JM Joshua Meadows
+1011 - MO Morrison
+1012 - NW Northwest
+1013 - OO Old Oakville
+1014 - QE Queen Elizabeth
+1015 - RO River Oaks
+1016 - SH Sixteen Hollow
+1017 - SW Southwest
+1018 - WC Wedgewood Creek
+1019 - WM Westmount
+102 - Lakeshore
+1020 - WO West
+1021 - WP Winston Park
+1022 - WT West Oak Trails
+1023 - BE Beaty
+1024 - BM Bronte Meadows
+1025 - BW Bowes
+1026 - CB Cobban
+1027 - CL Clarke
+1028 - CO Coates
+1029 - DE Dempsey
+103 - River
+1030 - DG Derry Green
+1031 - DP Dorset Park
+1032 - FO Ford
+1033 - HA Harrison
+1034 - MN Milton North
+1035 - OM Old Milton
+1036 - SC Scott
+1037 - TM Timberlea
+1038 - WI Willmott
+1039 - MI Rural Milton
+104 - Rural
+1040 - OA Rural Oakville
+1041 - NA Rural Nassagaweya
+1044 - TR Rural Trafalgar
+1045 - AC Acton
+1048 - Limehouse
+1049 - Rural Halton Hills
+105 - St. Davids
+1050 - Stewarttown
+1051 - Walker
+106 - Queenston
+1064 - ES Rural Esquesing
+107 - Glendale
+108 - Virgil
+11 - Kingston East (Incl CFB Kingston)
+1101 - Chatelaine Village
+1102 - Bilberry Creek/Queenswood Heights
+1103 - Fallingbrook/Ridgemount
+1104 - Queenswood Heights South
+1105 - Fallingbrook/Pineridge
+1106 - Fallingbrook/Gardenway South
+1107 - Springridge/East Village
+1108 - Sarsfield/Bearbrook
+1109 - Vars & Area
+1110 - Camelot
+1111 - Navan
+1112 - Vars Village
+1113 - Cumberland Village
+1114 - Cumberland Estates
+1115 - Cumberland Ridge
+1116 - Cumberland West
+1117 - Avalon West
+1118 - Avalon East
+1119 - Notting Hill/Summerside
+13 - Kingston East (Incl Barret Crt)
+14 - Central City East
+1601 - Greely
+1602 - Metcalfe
+1603 - Osgoode
+1604 - Vernon
+1605 - Osgoode Twp North of Reg Rd 6
+1606 - Osgoode Twp South of Reg Rd 6
+1607 - Osgoode Twp (East) (Incl Kenmore)
+18 - Central City West
+2001 - Convent Glen
+2002 - Hiawatha Park/Convent Glen
+2003 - Orleans Wood
+2004 - Convent Glen North
+2005 - Convent Glen North
+2006 - Convent Glen South
+2007 - Convent Glen South
+2008 - Chapel Hill
+2009 - Chapel Hill
+2010 - Chateauneuf
+2011 - Orleans/Sunridge
+2012 - Chapel Hill South - Orleans Village
+2013 - Mer Bleue/Bradley Estates/Anderson Park
+205 - Church's Lane
+206 - Stamford
+207 - Casey
+208 - Mt. Carmel
+209 - Beaverdams
+210 - Downtown
+2101 - Rothwell Heights
+2102 - Beacon Hill North
+2103 - Beacon Hill North
+2104 - Canotek Industrial Park
+2105 - Beaconwood
+2106 - Cardinal Heights
+2107 - Beacon Hill South
+2108 - Beacon Hill South
+211 - Cherrywood
+212 - Morrison
+213 - Ascot
+214 - Clifton Hill
+215 - Hospital
+216 - Dorchester
+217 - Arad/Fallsview
+218 - West Wood
+219 - Forestview
+22 - East of Sir John A. Blvd
+220 - Oldfield
+2201 - Cyrville
+2202 - Carson Grove
+2203 - Cyrville Rd./Industrial Park
+2204 - Pineview
+221 - Marineland
+222 - Brown
+223 - Chippawa
+224 - Lyons Creek
+225 - Schisler
+23 - Rideau
+2301 - Blackburn Hamlet
+2302 - Blackburn Hamlet
+2303 - Blackburn Hamlet (South)
+2401 - Carlsbad Springs
+25 - West of Sir John A. Blvd
+2501 - Leitrim
+2601 - Cedardale
+2602 - Riverside South/Gloucester Glen
+2603 - Riverside South
+2604 - Emerald Woods/Sawmill Creek
+2605 - Blossom Park/Kemp Park/Findlay Creek
+2606 - Blossom Park/Leitrim
+2607 - Sawmill Creek/Timbermill
+2608 - Upper Hunt Club
+28 - City SouthWest
+3101 - Manor Park
+3102 - Manor Park
+3103 - Viscount Alexander Park
+3104 - CFB Rockcliffe and Area
+3201 - Rockcliffe
+3202 - Rockcliffe
+327 - Black Creek
+328 - Stevensville
+329 - Mulgrave
+33 - Wallace
+330 - Bertie Ridge
+3301 - New Edinburgh
+3302 - Lindenlea
+331 - Bowen
+332 - Central
+333 - Lakeshore
+334 - Crescent Park
+335 - Ridgeway
+336 - Point Abino
+337 - Crystal Beach
+3401 - Kingsview Park
+3402 - Vanier
+3403 - Vanier
+3404 - Vanier
+35 - East Gardiners Rd
+3501 - Overbrook
+3502 - Overbrook/Castle Heights
+3503 - Castle Heights
+3504 - Castle Heights/Rideau High
+3505 - Carson Meadows
+3601 - Eastway Gardens/Industrial Park
+3602 - Riverview Park
+3603 - Faircrest Heights
+3604 - Applewood Acres
+3605 - Alta Vista
+3606 - Alta Vista/Faircrest Heights
+3607 - Alta Vista
+3608 - Playfair Park
+3609 - Guildwood Estates - Urbandale Acres
+37 - South of Taylor-Kidd Blvd
+3701 - Elmvale Acres
+3702 - Elmvale Acres
+3703 - Elmvale Acres/Urbandale
+3704 - Hawthorne Meadows
+3705 - Sheffield Glen/Industrial Park
+3801 - Ridgemont
+3802 - Heron Gate
+3803 - Ellwood
+3804 - Heron Gate/Industrial Park
+3805 - South Keys
+3806 - Hunt Club Park/Greenboro
+3807 - St. Laurent Industrial Park
+3808 - Hunt Club Park
+39 - North of Taylor-Kidd Blvd
+400 East
+400 North
+400 West
+4001 - Lower Town/Byward Market
+4002 - Lower Town
+4003 - Sandy Hill
+4004 - Sandy Hill
+4101 - Ottawa Centre
+4102 - Ottawa Centre
+4103 - Ottawa Centre
+4104 - Ottawa Centre/Golden Triangle
+42 - City Northwest
+4201 - Mechanicsville
+4202 - Hintonburg
+4203 - Hintonburg
+4204 - West Centre Town
+4205 - West Centre Town
+4301 - Ottawa West/Tunneys Pasture
+4302 - Ottawa West
+4303 - Ottawa West
+436 - Port Weller
+437 - Lakeshore
+438 - Port Dalhousie
+439 - Martindale Pond
+44 - City North of 401
+440 - Rural Port
+4401 - Glebe
+4402 - Glebe
+4403 - Old Ottawa South
+4404 - Old Ottawa South/Rideau Gardens
+4405 - Ottawa East
+4406 - Ottawa East
+4407 - Ottawa East
+4408 - Ottawa East
+441 - Bunting/Linwell
+442 - Vine/Linwell
+443 - Lakeport
+444 - Carlton/Bunting
+445 - Facer
+446 - Fairview
+447 - Cushman/Industrial
+45 - Frontenac Centre
+450 - E. Chester
+4501 - Dows Lake
+4502 - West Centre Town
+4503 - West Centre Town
+4504 - Civic Hospital
+451 - Downtown
+452 - Haig
+453 - Grapeview
+455 - Secord Woods
+456 - Oakdale
+457 - Old Glenridge
+458 - Western Hill
+459 - Ridley
+460 - Burleigh Hill
+4601 - Billings Bridge
+4602 - Heron Park
+4603 - Brookfield Gardens
+4604 - Mooneys Bay/Riverside Park
+4605 - Riverside Park
+4606 - Riverside Park South
+4607 - Riverside Park South
+4608 - Mooneys Bay/Revelstoke
+461 - Glendale/Glenridge
+462 - Rykert/Vansickle
+463 - Rural Eighth
+47 - Frontenac South
+4701 - Courtland Park
+4702 - Carleton Square
+4703 - Carleton Heights
+4705 - Mooneys Bay
+4801 - Quinterra
+4802 - Hunt Club Woods
+4803 - Hunt Club/Western Community
+4804 - Hunt Club
+4805 - Hunt Club
+4806 - Hunt Club
+4807 - Windsor Park Village
+5001 - Westboro North
+5002 - Westboro South
+5003 - Westboro/Hampton Park
+510 - Deep River
+5101 - Woodroffe
+5102 - Westboro West
+5103 - Carlingwood
+5104 - McKellar/Highland
+5105 - Laurentianview
+511 - Chalk River and Laurentian Hills South
+512 - Head Twp
+513 - Laurentian Hills North
+520 - Petawawa
+5201 - McKellar Heights/Glabar Park
+5202 - McKellar Heights
+53 - Frontenac North
+530 - Pembroke
+5301 - Carlington
+5302 - Carlington
+5303 - Carlington
+5304 - Central Park
+531 - Laurentian Valley
+54 - Amherstview
+540 - Grimsby Beach
+540 - Renfrew
+5401 - Bel Air Park
+5403 - Bel Air Heights
+5404 - Woodward Industrial Park
+5405 - Copeland Park
+5406 - Copeland Park
+541 - Admaston/Bromley
+541 - Grimsby West
+542 - Greater Madawaska
+542 - Grimsby East
+544 - Horton Twp
+550 - Arnprior
+551 - Mcnab/Braeside Twps
+556 - Allanburg/Thorold South
+557 - Thorold Downtown
+558 - Confederation Heights
+559 - Cataract Road
+56 - Odessa
+560 - Eganville/Bonnechere Twp
+560 - Rolling Meadows
+561 - North Algona/Wilberforce Twp
+561 - Port Robinson
+562 - Hurricane/Merrittville
+57 - Bath
+570 - Madawaska Valley
+571 - Killaloe/Round Lake
+572 - Brudenell/Lyndoch/Raglan
+58 - Greater Napanee
+580 - Whitewater Region
+581 - Beachburg
+582 - Cobden
+6001 - Woodroffe
+6002 - Woodroffe
+601 - Village of Russell
+602 - Embrun
+603 - Russell Twp
+604 - Casselman
+605 - The Nation Municipality
+606 - Town of Rockland
+607 - Clarence/Rockland Twp
+608 - Plantagenet
+609 - Alfred
+610 - Alfred and Plantagenet Twp
+6101 - Britannia
+6102 - Britannia
+6103 - Lincoln Heights
+611 - L'Orignal
+612 - Hawkesbury
+613 - Vankleek Hill
+614 - Champlain Twp
+615 - East Hawkesbury Twp
+616 - Limoges
+62 - Addington Highlands
+6201 - Britannia Heights
+6202 - Fairfield Heights
+6203 - Queensway Terrace North
+6204 - Whitehaven
+63 - Stone Mills
+6301 - Redwood Park
+6302 - Parkway Park
+6303 - Queensway Terrace South/Ridgeview
+6304 - Parkway Park
+6305 - Kenson Park
+64 - Lennox and Addington - South
+662 - Fonthill
+663 - North Pelham
+664 - Fenwick
+7001 - Crystal Bay/Rocky Point
+7002 - Crystal Beach
+7003 - Lakeview Park
+7004 - Bayshore
+701 - Morrisburg
+702 - Iroquois
+703 - South Dundas (Matilda) Twp
+704 - South Dundas (Williamsburgh) Twp
+705 - Chesterville
+706 - Winchester
+707 - North Dundas (Winchester) Twp
+708 - North Dundas (Mountain) Twp
+709 - Finch
+710 - Moose Creek
+7102 - Bruce Farm/Graham Park/Qualicum/Bellands
+711 - North Stormont (Finch) Twp
+712 - North Stormont (Roxborough) Twp
+713 - Ingleside
+714 - Long Sault
+715 - South Stormont (Osnabruck) Twp
+716 - South Stormont (Cornwall) Twp
+717 - Cornwall
+718 - Maxville
+719 - Alexandria
+720 - North Glengarry (Kenyon) Twp
+7201 - City View/Skyline/Fisher Heights/Parkwood Hills
+7202 - Borden Farm/Stewart Farm/Carleton Heights/Parkwood Hills
+7203 - Merivale Industrial Park/Citiplace
+7204 - Rideau Shore
+721 - North Glengarry (Lochiel) Twp
+722 - Lancaster
+723 - South Glengarry (Charlottenburgh) Twp
+724 - South Glengarry (Lancaster) Twp
+7301 - Meadowlands/St. Claire Gardens
+7302 - Meadowlands/Crestview
+7401 - Rideau Heights/Industrial Park
+7402 - Pineglen/Country Place
+7403 - Rideau Heights/Ashdale/Rideau Glen
+7404 - Rideau Heights/Rideau River
+7501 - Tanglewood
+7502 - Merivale Industrial Park
+7503 - Merivale Gardens
+7601 - Leslie Park
+7602 - Briargreen
+7603 - Sheahan Estates/Trend Village
+7604 - Craig Henry/Woodvale
+7605 - Arlington Woods
+7606 - Manordale
+7607 - Centrepointe
+765 - Cooks Mills
+766 - Hwy 406/Welland
+767 - N. Welland
+768 - Welland Downtown
+769 - Prince Charles
+770 - West Welland
+7701 - Barrhaven - Pheasant Run
+7702 - Barrhaven - Knollsbrook
+7703 - Barrhaven - Cedargrove/Fraserdale
+7704 - Barrhaven - Heritage Park
+7705 - Barrhaven - On the Green
+7706 - Barrhaven - Longfields
+7707 - Barrhaven - Hearts Desire
+7708 - Barrhaven - Stonebridge
+7709 - Barrhaven - Strandherd
+771 - Coyle Creek
+7710 - Barrhaven East
+7711 - Barrhaven - Half Moon Bay
+772 - Broadway
+773 - Lincoln/Crowland
+774 - Dain City
+7801 - Bellwood - Industrial Park
+7802 - Westcliffe Estates
+7803 - Bells Corners
+7804 - Lynwood Village
+7805 - Arbeatha Park
+7806 - Cedar Hill/Orchard Estates
+7807 - Fallowfield
+7901 - South of Fallowfield Road
+8001 - Manotick Long Island & Nicholls Island
+8002 - Manotick Village & Manotick Estates
+8003 - Mahogany Community
+8004 - Manotick South to Roger Stevens
+8005 - Manotick East to Manotick Station
+8006 - Rideau Twp W of Hwy 16 North of Reg Rd 6
+8007 - Rideau Twp S of Reg Rd 6 E of Mccordick Rd.
+8008 - Rideau Twp S of Reg Rd 6 W of Mccordick Rd.
+8009 - North Gower
+801 - Kemptville
+8010 - Kars
+802 - North Grenville Twp (Kemptville East)
+803 - North Grenville Twp (Kemptville South)
+804 - Merrickville
+805 - Merrickville/Wolford Twp
+806 - Town of Cardinal
+807 - Edwardsburgh/Cardinal Twp
+808 - Prescott
+809 - Augusta Twp
+810 - Brockville
+811 - Elizabethtown Kitley (Old Kitley) Twp
+812 - Athens
+813 - R of Yonge & Escott Twp
+814 - Elizabethtown Kitley (Old K.) Twp
+815 - Westport
+816 - Rideau Lakes (North Crosby) Twp
+817 - Rideau Lakes (South Crosby) Twp
+818 - Rideau Lakes (Bastard) Twp
+819 - Rideau Lakes (South Burgess) Twp
+820 - Rideau Lakes (South Elmsley) Twp
+8201 - Fringewood
+8202 - Stittsville (Central)
+8203 - Stittsville (South)
+8204 - Richmond
+8205 - Munster
+8206 - Ashton
+8207 - Remainder of Stittsville & Area
+8208 - Btwn Franktown Rd. & Fallowfield Rd.
+8209 - Goulbourn Twp From Franktown Rd/South To Rideau
+8210 - Rideau Twp South To Roger Stevens Drive
+8211 - Stittsville (North)
+822 - Front of Yonge Twp
+823 - Front of Escott Twp
+824 - Rear of Leeds - Lansdowne Twp
+826 - Rideau Lakes (Newboro) Twp
+873 - Bethel
+874 - Sherkston
+875 - Killaly East
+876 - East Village
+877 - Main Street
+878 - Sugarloaf
+879 - Marshville/Winger
+880 - Lakeshore
+9001 - Kanata - Beaverbrook
+9002 - Kanata - Katimavik
+9003 - Kanata - Glencairn/Hazeldean
+9004 - Kanata - Bridlewood
+9005 - Kanata - Kanata (North West)
+9006 - Kanata - Kanata (North East)
+9007 - Kanata - Kanata Lakes/Heritage Hills
+9008 - Kanata - Morgan's Grant/South March
+9009 - Kanata - Rural Kanata (Central)
+901 - Smiths Falls
+9010 - Kanata - Emerald Meadows/Trailwest
+902 - Montague Twp
+903 - Drummond/North Elmsley (North Elmsley) Twp
+904 - Bathurst/Burgess & Sherbrooke (North Burgess) Twp
+905 - Bathurst/Burgess & Sherbrooke (South Sherbrooke) Twp
+906 - Bathurst/Burgess & Sherbrooke (Bathurst) Twp
+907 - Perth
+908 - Drummond N Elmsley (Drummond) Twp
+909 - Carleton Place
+910 - Beckwith Twp
+9101 - Carp
+9102 - Huntley Ward (North East)
+9103 - Huntley Ward (North West)
+9104 - Huntley Ward (South East)
+9105 - Huntley Ward (South West)
+911 - Almonte
+912 - Mississippi Mills (Ramsay) Twp
+913 - Lanark Highlands (Lanark) Twp
+914 - Lanark Highlands (Dalhousie) Twp
+915 - Lanark Highlands (North Sherbrooke) Twp
+916 - Lanark Highlands (Lavant) Twp
+917 - Lanark Highlands (Darling) Twp
+918 - Mississippi Mills - Pakenham
+919 - Lanark Highlands (Lanark Village)
+9301 - Constance Bay
+9302 - Woodlawn/Maclarens Landing/Kilmaurs
+9303 - Dunrobin
+9304 - Dunrobin Shores
+9401 - Fitzroy
+9402 - Kinburn
+9403 - Fitzroy Ward (South West)
+9404 - Fitzroy Ward (South East)
+980 - Lincoln-Jordan/Vineland
+981 - Lincoln Lake
+982 - Beamsville
+983 - Escarpment
+Aberfoyle
+Agincourt North
+Agincourt South-Malvern West
+Ahmic Harbour
+Aileen-Willowbrook
+Ailsa Craig
+Ainslie Wood
+Airport
+Airport Corporate
+Airport Employment Area
+Airport Road/ Highway 7 Business Centre
+Albion Falls
+Alcona
+Alderwood
+Alisa Craig
+Allandale
+Allandale Centre
+Allandale Heights
+Alliance
+Allison
+Alliston
+Alton
+Amberlea
+Ameliasburg Ward
+Ameliasburgh
+Amherstburg
+Ancaster
+Angus
+Angus Glen
+Annex
+Anson
+Anten Mills
+Appin
+Appleby
+Applewood
+Archipelago
+Archipelago North
+Archipelago South
+Ardagh
+Ardtrea
+Arkona
+Armitage
+Armour
+Arnstein
+Arran-Elderslie
+Arthur
+Ashburnham Ward 4
+Ashfield
+Ashfield Twp
+Atherley
+Athol
+Athol Ward
+Aurora Estates
+Aurora Grove
+Aurora Heights
+Aurora Highlands
+Aurora Village
+Avon
+Avondale
+Aylmer
+Baldwin
+Balfour
+Ballantrae
+Ballymote
+Baltimore
+Banbury-Don Mills
+Bancroft Ward
+Bangor Ward
+Barnstown
+Bartonville
+Bass Lake
+Bathurst Manor
+Batteaux
+Baxter
+Bay Ridges
+Bay Street Corridor
+Bayfield
+Bayshore
+Bayview
+Bayview Fairway-Bayview Country Club Estates
+Bayview Glen
+Bayview Hill
+Bayview Northeast
+Bayview Southeast
+Bayview Village
+Bayview Wellington
+Bayview Woods-Steeles
+Beachville
+Bear Lake
+Beasley
+Beaver Creek Business Park
+Beaverton
+Bedford Park-Nortown
+Beechborough-Greenbrook
+Beeton
+Belhaven
+Belleville Ward
+Belmont
+Belmont-Methuen
+Belwood
+Bendale
+Berczy
+Berrisfield
+Beverley Glen
+Bewdley
+Bexley
+Bicroft Ward
+Bills Corners
+Binbrook
+Birchaven
+Birchcliffe-Cliffside
+Birr
+Black Creek
+Blackstock
+Blake-Jones
+Blakeley
+Blanshard
+Blenheim
+Bloomfield
+Bloomfield Ward
+Blue Grass Meadows
+Blue Mountains
+Bluevale
+Blyth
+Bobcaygeon
+Bolton East
+Bolton North
+Bolton West
+Bond Head
+Bonfield
+Bonnington
+Bosanquet
+Bothwell
+Bowmanville
+Box Grove
+Bradford
+Bram East
+Bram West
+Bramalea North Industrial
+Bramalea Road South Gateway
+Bramalea South Industrial
+Bramalea West Industrial
+Brampton 407 Corridor
+Brampton East
+Brampton East Industrial
+Brampton North
+Brampton South
+Brampton West
+Brant
+Brant Hills
+Brantford Twp
+Brechin
+Brentwood
+Briar Hill-Belgravia
+Bridle Path-Sunnybrook-York Mills
+Bright
+Brighton
+Bristol-London
+Broadview North
+Brock Industrial
+Brock Ridge
+Brockton
+Bronte Creek
+Brooke Alvinston
+Brookhaven-Amesbury
+Brooklin
+Brookville/Haltonville
+Broughton
+Brownridge
+Brownsville
+Brucefield
+Bruleville
+Brunel
+Brussels
+Bryanston
+Buchanan
+Bullock
+Burford
+Burgessville
+Burkholme
+Burk's Falls
+Butler
+Buttonville
+Cabbagetown-South St. James Town
+Cache Bay
+Cachet
+Caledon East
+Caledon Village
+Caledonia-Fairbank
+Callander
+Calton
+Calvin
+Cameron
+Campbellford
+Campbellville
+Cannington
+Capreol
+Carden
+Cardiff Ward
+Cardwell
+Carling
+Carlisle
+Carlow Ward
+Carpenter
+Casa Loma
+Cashel Ward
+Castleton
+Cathedraltown
+Cavan Twp
+Cavan-Monaghan
+Cedar Grove
+Cedarwood
+Centennial
+Centennial Scarborough
+Central
+Central East
+Central Erin Mills
+Central Newmarket
+Central Park
+Central Timiskaming
+Central West
+Centre Hastings
+Centre Vespra
+Centremount
+Chaffey
+Chappel
+Chatham
+Chatham, Twp
+Chatham-Kent
+Chatsworth
+Chedoke Park
+Cheltenham
+Chisholm
+Churchill
+Churchill Meadows
+Church-Yonge Corridor
+City Centre
+City North of 401
+City Northwest
+Clairfields/Hanlon Business Park
+Clairlea-Birchmount
+Clanton Park
+Clarkson
+Cliffcrest
+Clinton
+Cobalt
+Coboconk
+Cobourg
+Cochrane
+Cochrane Unorganized
+Codrington
+Colborne
+Colborne Twp
+Coldwater
+Colgan
+College Heights
+Collingwood
+Columbus
+Commanda
+Commerce Valley
+Concord
+Cookstown
+Cooksville
+Cootes Paradise
+Copenhagen
+Corbeil
+Corinth
+Corktown
+Corman
+Cornell
+Corso Italia-Davenport
+Courtice
+Courtland
+Crampton
+Credit Valley
+Creditview
+Creemore
+Crerar
+Crescent Town
+Crestwood-Springfarm-Yorkhill
+Crieff/Aikensville/Killean
+Crosby
+Crown Point
+Crystal Falls
+Cundles East
+Curve Lake First Nation
+Dalton
+Danforth
+Danforth Village-East York
+Dashwood
+Dawn Euphemia
+Delaware Town
+Delhi
+Delta
+Denfield
+Deseronto (Town)
+Devil's Elbow
+Devil's Glen
+Devonsleigh
+Dixie
+Don Valley Village
+Doncrest
+Donevan
+Dorchester
+Dorset Park
+Douro-Dummer
+Dovercliffe Park/Old University
+Dovercourt-Wallace Emerson-Junction
+Downie
+Downsview-Roding-CFB
+Downtown
+Downtown Brampton
+Downtown Whitby
+Draper
+Drayton
+Dresden
+Drumbo
+Dudley
+Dufferin Grove
+Duffin Heights
+Dunbarton
+Dunchurch
+Dundas
+Dundurn
+Dungannon Ward
+Dunnville
+Durand
+Dutton
+Dysart
+Earlton
+East A
+East B
+East Bayfield
+East C
+East Credit
+East D
+East E
+East End-Danforth
+East F
+East Ferris
+East G
+East Gardiners Rd
+East H
+East I
+East J
+East K
+East L
+East M
+East Mills
+East N
+East O
+East P
+East Q
+East Wawanosh
+East Woodbridge
+East York
+Eastdale
+Eastmount
+Eastwood
+Eden
+Eden Mills
+Edenbridge-Humber Valley
+Edgar
+Edgehill Drive
+Eglinton East
+Egmondville
+Elder Mills
+Eldon
+Eleanor
+Ellice
+Elma
+Elms-Old Rexdale
+Elmvale
+Elora/Salem
+Elzevir (Twp)
+Embro
+Emily
+Emsdale
+Englehart
+Englemount-Lawrence
+Erieau
+Erin
+Erin Mills
+Erindale
+Eringate-Centennial-West Deane
+Essex
+Etobicoke West Mall
+Everett
+Exeter
+Exhibition Park
+Fairview
+Falkirk
+Faraday
+Farewell
+Fenelon
+Fenelon Falls
+Fergus
+Ferris
+Fessenden
+Fesserton
+Field
+Finlayson
+Flemingdon Park
+Fletcher's Creek South
+Fletcher's Creek Village
+Fletcher's Meadow
+Fletcher's West
+Forest
+Forest Hill North
+Forest Hill South
+Frankford Ward
+Franklin
+Freelton
+Freeman
+Frogmore
+Frontenac Centre
+Frontenac North
+Frontenac South
+Fruitland
+Fullarton
+Garden Hill
+Gateway
+General Hospital
+Georgetown
+Georgian Bluffs
+Georgian Drive
+Georgina Island
+German Mills
+Gershome
+Gibson
+Gilbert
+Gilford
+Gilkson
+Glamorgan
+Glen Shields
+Glen Williams
+Glencairn
+Glencoe
+Glenfield-Jane Heights
+Glenview
+Glenway Estates
+Goderich
+Goderich (Town)
+Goderich Twp
+Gore Industrial North
+Gore Industrial South
+Goreway Drive Corridor
+Gorham-College Manor
+Gourley
+Grafton
+Grand Bend
+Grand Valley
+Grandview
+Grange Road
+Granton
+Grayside
+Greater Napanee
+Greenford
+Greeningdon
+Green's Corners
+Greensborough
+Greensville
+Greenwood-Coxwell
+Grey
+Grey Highlands
+Grindstone
+Grove East
+Guildwood
+Guilford
+Gurnett
+Guthrie
+Hagerman
+Haileybury
+Haldimand
+Hallowell
+Hallowell Ward
+Hamilton Beach
+Hampton Heights
+Hannon
+Hanover
+Harburn
+Harcourt
+Harding
+Harpurhey Village
+Harriston
+Hastings
+Havelock
+Havelock-Belmont-Methuen
+Hawkestone
+Hawtrey
+Hay
+Headford Business Park
+Headon
+Hearst
+Heart Lake
+Heart Lake East
+Heart Lake West
+Henry Farm
+Hensall
+Henvey
+Herschel Ward
+Hiawatha First Nation
+Hibbert
+Hickson
+Hidden Valley
+High Park North
+High Park-Swansea
+Highbush
+Highgate
+Highland Creek
+Highway 427
+Hill Park
+Hillcrest Village
+Hillier
+Hillier Ward
+Hills of St Andrew
+Hillsdale
+Hindon
+Historic Lakeshore Communities
+Hockley
+Holland Landing
+Holly
+Homeside
+Horseshoe Valley
+Howick
+Howick Twp
+Hullett
+Humber Heights
+Humber Summit
+Humberlea-Pelmo Park W4
+Humberlea-Pelmo Park W5
+Humbermede
+Humewood-Cedarvale
+Humphrey
+Hungerford (Twp)
+Huntington
+Huron Heights-Leslie Valley
+Huron-Kinloss
+Hurontario
+Huttonville
+IF - Unorganized
+Ilderton
+Inch Park
+Industrial Burlington
+Industrial Sector
+Ingersoll - North
+Ingersoll - South
+Inglewood
+Innerkip
+Innis-Shore
+Iona
+Ionview
+Iroquoia Heights
+Iroquois Falls
+Islington Woods
+Islington-City Centre West
+Janetville
+Jefferson
+Jerome
+Jocko Point / Beaucage
+Joly
+Junction Area
+Junction/Onward Willow
+Kapuskasing
+Katrine
+Kearney
+Kedron
+Keelesdale-Eglinton West
+Kennedy
+Kennedy Park
+Kensington-Chinatown
+Kentley
+Kernighan
+Kerwood
+Keswick North
+Keswick South
+Kettle Point
+Kilworth
+Kincardine
+King City
+Kingsview Village-The Westway
+Kingsville
+Kingsway South
+Kinmount
+Kintore
+Kirkendall
+Kirkfield
+KL & Area
+KL Outside
+Kleinburg
+Komoka
+Kortright East
+Kortright Hills
+Kortright West
+Lafontaine
+Lake Ward
+Lakely
+Lakeshore
+Lakeview
+Lakeview Estates
+Lambton Baby Point
+Lambton Shores
+L'Amoreaux
+Landsdale
+Langstaff
+Langstaff South
+Langton
+Lansing-Westgate
+LaSalle
+Laurier
+Lavigne
+Lawfield
+Lawrence Park North
+Lawrence Park South
+Laxton/Digby/Longford
+Leamington
+Leaside
+Lefroy
+Legacy
+Letitia Heights
+Limerick
+Lindsay
+Lisgar
+Lisle
+Listowel
+Little Britain
+Little Lake
+Little Portugal
+Liverpool
+Livingstone
+Logan
+Long Branch
+Long Point
+Loretto
+Lorne Park
+Lount
+Lucan
+Lucknow
+Lutterworth
+Lynde Creek
+Lynden
+Macassa
+Macaulay
+Machar
+Madoc
+Magnetawan
+Malton
+Malvern
+Manilla
+Manvers
+Maple
+Maple Leaf
+Marchmont
+Mariposa
+Markham Village
+Markland Wood
+Markville
+Marmora Ward
+Marten River
+Matheson
+Matheson Unorganized
+Mattawa
+Mattawan
+Mattice-Val Cote
+Mavis-Erindale
+Mayo Ward
+McClintock
+McClure Ward
+McConkey
+McDougall
+McKellar
+McKillop
+McLaughlin
+Mclean
+McMurrich
+McQuesten
+Meadowlands
+Meadowvale
+Meadowvale Business Park
+Meadowvale Village
+Meaford
+Medora
+Melbourne
+Merlin
+Mewburn
+Middlefield
+Middlemiss
+Midhurst
+Midland
+Mill Pond
+Millbrook Village
+Milliken
+Milliken Mills East
+Milliken Mills West
+Milverton
+Mimico
+Minden
+Mineola
+Minesing
+Minto
+Mississauga Valleys
+Mitchell
+Moffat
+Monaghan Ward 2
+Monck (Bracebridge)
+Monck (Muskoka Lakes)
+Monmouth
+Mono Mills
+Monteagle Ward
+Monteith
+Moonstone
+Morningside
+Mornington
+Morris
+Morrison
+Morriston
+Moss Park
+Mossley
+Mount Brydges
+Mount Carmel
+Mount Dennis
+Mount Elgin
+Mount Forest
+Mount Hope
+Mount Olive-Silverstone-Jamestown
+Mount Pleasant East
+Mount Pleasant West
+Mountainside
+Mountview
+Mt Albert
+MTJ - 101 West
+MTJ - Beaurivage
+MTJ - Kamiskotia
+MTJ - Main Area
+MTJ - Mountjoy Rural
+Muirkirk
+Murray Ward
+Muskoka (N)
+Muskoka (S)
+Nairn
+Nanticoke
+Nashdale
+Native Leased Lands
+NE
+New Glasgow
+New Liskeard
+New Lowell
+New Sarum
+New Toronto
+Newbury
+Newcastle
+Newmarket Industrial Park
+Newtonbrook East
+Newtonbrook West
+Niagara
+Nickel Centre
+Nipissing
+Nobleton
+Normandale
+Normanhurst
+North A
+North B
+North Buxton
+North C
+North D
+North E
+North End
+North F
+North G
+North H
+North I
+North J
+North K
+North Kawartha
+North L
+North M
+North Marysburg Ward
+North Marysburgh
+North Monetville
+North N
+North O
+North P
+North Q
+North R
+North Richvale
+North Riverdale
+North S
+North Shore
+North St. James Town
+North T
+Northcrest Ward 5
+Northeast
+Northeast Ajax
+Northern Bruce Peninsula
+Northgate
+Northglen
+Northwest
+Northwest Ajax
+Northwest Brampton
+Northwest Sandalwood Parkway
+Northwood
+Northwood Park
+Norwich Town
+Norwood
+Nottawa
+Novar
+NW
+Oak Ridges
+Oak Ridges Lake Wilcox
+Oakland
+Oakley
+Oakridge
+Oakwood
+Oakwood Village
+Observatory
+O'Connor-Parkview
+Oil Springs
+Old Markham Village
+Omemee
+Onaping Falls
+O'Neill
+Ops
+Orangeville
+Orchard
+Orillia
+Orono
+Orwell
+Otonabee Ward 1
+Otonabee-South Monaghan
+Otterville
+Owen Sound
+Oxford Centre
+Painswick North
+Painswick South
+Palgrave
+Palmer
+Palmerston-Little Italy
+Papineau Cameron
+Paris
+Parkhill
+Parkview
+Parkway Belt Industrial Area
+Parkwoods-Donalda
+Parry Sound
+Patterson
+Pefferlaw
+Penetanguishene
+Perkinsfield
+Perry
+Petrolia
+Phelpston
+Picton
+Picton Ward
+Pine Grove
+Pine Valley Business Park
+Pinecrest
+Pineridge/Westminster Woods
+Plattsville
+Playter Estates-Danforth
+Pleasant View
+Plympton Wyoming
+Point Edward
+Pontypool
+Poplar Hill
+Porcupine - East
+Porcupine - West
+Port Burwell
+Port Credit
+Port Dover
+Port Franks
+Port Glasgow
+Port Hope
+Port Loring
+Port McNicoll
+Port Perry
+Port Rowan
+Port Severn
+Port Stanley
+Port Whitby
+Pottageville
+Powassan
+Prices Corners
+Princess-Rosethorn
+Princeton
+Pringle
+Pringle Creek
+Proudfoot
+Puslinch Lake Settlement Areas
+Putnam
+Queen Street Corridor
+Queen's Park
+Queensville
+Quinndale
+Raglan
+Raleigh
+Randall
+Rathwood
+Rawdon Ward
+Raymerville
+Rayside-Balfour
+Red Hill
+Redbridge
+Regent Park
+Remote Area
+Restoule
+Rexdale-Kipling
+Ridgetown
+Ridout
+River Valley
+Riverdale
+Riverside Park
+Rockcliffe-Smythe
+Rockton
+Rockwood
+Rodney
+Rolling Acres
+Rolston
+Romney
+Roncesvalles
+Rose
+Rosebank
+Rosedale
+Rosedale-Moore Park
+Roseland
+Rosemont
+Rouge E10
+Rouge E11
+Rouge Fairways
+Rouge Park
+Rouge River Estates
+Rouge Woods
+Rougemount
+Royal Orchard
+Runnymede-Bloor West Village
+Rural Adelaide Metcalfe
+Rural Adjala-Tosorontio
+Rural Alnwick/Haldimand
+Rural Amaranth
+Rural Ancaster
+Rural Asphodel-Norwood
+Rural Aurora
+Rural Barrie Southeast
+Rural Barrie Southwest
+Rural Bayham
+Rural Blandford-Blenheim
+Rural Bradford West Gwillimbury
+Rural Brighton
+Rural Brock
+Rural Burlington
+Rural Caledon
+Rural Cavan Monaghan
+Rural Central Elgin
+Rural Centre Wellington East
+Rural Centre Wellington West
+Rural Charlotteville
+Rural Clarington
+Rural Clearview
+Rural Cramahe
+Rural Douro-Dummer
+Rural Dundas
+Rural Dutton/Dunwich
+Rural East Garafraxa
+Rural East Gwillimbury
+Rural East Luther Grand Valley
+Rural East Zorra-Tavistock
+Rural Eldon
+Rural Erin
+Rural Essa
+Rural Flamborough
+Rural Galway-Cavendish and Harvey
+Rural Glanbrook
+Rural Guelph/Eramosa
+Rural Guelph/Eramosa East
+Rural Guelph/Eramosa West
+Rural Hamilton
+Rural Havelock-Belmont-Methuen
+Rural Houghton
+Rural Innisfil
+Rural King
+Rural Lucan Biddulph
+Rural Malahide
+Rural Mapleton
+Rural Markham
+Rural Melancthon
+Rural Middlesex Centre
+Rural Middleton
+Rural Milton West
+Rural Mono
+Rural Mulmur
+Rural N. Walsingham
+Rural New Tecumseth
+Rural North Middlesex
+Rural Norwich
+Rural Oro-Medonte
+Rural Oshawa
+Rural Otonabee-South Monaghan
+Rural Pickering
+Rural Port Hope
+Rural Puslinch East
+Rural Puslinch West
+Rural Raleigh
+Rural Ramara
+Rural Richmond Hill
+Rural S. Walsingham
+Rural Scugog
+Rural Severn
+Rural Somerville
+Rural Southwest Middlesex
+Rural South-West Oxford
+Rural Southwold
+Rural Springwater
+Rural Stoney Creek
+Rural Strathroy-Caradoc
+Rural Tay
+Rural Thames Centre
+Rural Tiny
+Rural Trent Hills
+Rural Uxbridge
+Rural Vaughan
+Rural Wellington North
+Rural West Elgin
+Rural Whitby
+Rural Whitchurch-Stouffville
+Rural Windham
+Rural Woodhouse
+Rural Zorra
+Rushdale
+Rustic
+Ryckmans
+Ryde
+Ryerson
+Rymal
+Samac
+Sandringham-Wellington
+Sandringham-Wellington North
+Sandy Hollow
+Sanford
+Sarnia
+Saugeen Shores
+Scarborough Village
+SCH - Gold Centre
+SCH - Goldmine Rural
+SCH - Main Area
+Schomberg
+Scotia
+SE
+Seaforth
+Sebringville
+Seguin
+Selwyn
+Shakespeare
+Shanty Bay
+Sharon
+Shedden
+Shelburne
+Sheldon
+Sherborne
+Sheridan
+Sheridan Park
+Sherwood
+Sherwood-Amberglen
+Shoreacres
+Sidney Ward
+Simcoe
+Sinclair
+Snelgrove
+Snow Valley
+Snowdon
+Somerville
+Sonoma Heights
+Sophiasburg Ward
+Sophiasburgh
+South A
+South Algonquin
+South B
+South BB
+South Bruce
+South Bruce Peninsula
+South C
+South D
+South Dumfries
+South E
+South East
+South Easthope
+South F
+South G
+South GG
+South H
+South HH
+South I
+South J
+South K
+South L
+South M
+South Marysburg Ward
+South Marysburgh
+South MM
+South N
+South O
+South P
+South Parkdale
+South Q
+South R
+South Richvale
+South River
+South Riverdale
+South S
+South Shore
+South T
+South U
+South V
+South W
+South West
+South X
+South Y
+South Z
+South ZZ
+Southam
+Southdown
+Southgate
+Southwold Town
+SP - Connaught Hill
+SP - Main Area
+Sparta
+Spence
+Springfield
+Sprucedale
+SRF
+St. Andrew-Windfields
+St. Clair
+St. George's
+St. Marys
+St. Patrick's Ward
+St. Thomas
+St. Williams
+Stanhope
+Stanley
+Stanley Twp
+Stayner
+Steeles
+Steeles Industrial
+Steeles West Industrial
+Stephen
+Stephenson
+Stevenson
+Stinson
+Stipley
+Stirling Ward
+Stisted
+Stone Mills
+Stonegate-Queensway
+Stonehaven-Wyndham
+Stoney Creek
+Stoney Creek Industrial
+Stoney Creek Mountain
+Stouffville
+Straffordville
+Stratford
+Strathcona
+Streetsville
+Stripley
+Strong
+Stroud
+Sturgeon Falls
+Sudbury
+Sugarbush
+Summerhill Estates
+Sunderland
+Sundridge
+Sunnidale
+Sunninghill
+Sutton & Jackson's Point
+SW
+Sweaburg
+Talbotville
+Tam O'Shanter-Sullivan
+Tansley
+Taunton
+Taunton North
+Tavistock
+Tecumseh
+Teeterville
+Temagami
+Templemead
+Thamesford
+Thamesville
+The Beaches
+Thedford
+Thistletown-Beaumonde Heights
+Thorncliffe Park
+Thorndale
+Thorne
+Thorner
+Thornhill
+Thornlea
+Thornton
+Thurlow Ward
+Tilbury
+Tilden Lake
+Tillsonburg
+TIM - Outside - Rural
+TM - Outside East
+TM - Outside West
+TM - TNW - Algonquin to Jubilee
+TNE - Central
+TNE - Hill District
+TNE - North
+TNW - Riverpark
+TNW - Rural
+TNW - Vic Heights
+Toronto Gore Rural Estate
+Tottenham
+Town Centre
+Town Ward 3
+Townsend
+Trenholme
+Trent Lakes
+Trenton Ward
+Trinity-Bellwoods
+Trout Creek
+TS - SE
+TS - SW
+TS - Trailer Parks
+Tuckersmith
+Tudor Ward
+Turkey Point
+Turnberry
+Tweed (Village)
+Twenty Place
+Tyandaga
+Tyendinaga Township
+Unionville
+University
+Uplands
+Uptown
+Usborne
+Uxbridge
+Vales of Castlemore
+Vales of Castlemore North
+Valley East
+Vanastra
+Vanessa
+Vanier
+Vaughan Corporate Centre
+Vaughan Grove
+Vellore Village
+Verner
+Verulam
+Victoria Harbour
+Victoria Manor-Jennings Gate
+Victoria North
+Victoria Square
+Victoria Village
+Vienna
+Village By The Arboretum
+Village East
+Village Green-South Unionville
+Villages of Glancaster
+Vincent
+Vinegar Hill
+Virginia
+Vittoria
+Wallace
+Wallaceburg
+Wallacetown
+Wallbridge
+Walsingham
+Wardsville
+Warkworth
+Warminister
+Wasaga Beach
+Washago
+Washington
+Waterdown
+Waterford
+Waterfront Communities C1
+Waterfront Communities C8
+Watford
+Watt
+Waubaushene
+Waverley
+Wellington
+Wellington Ward
+West
+West Bayfield
+West End
+West Grey
+West Hill
+West Humber-Clairville
+West Lorne
+West Shore
+West Wawanosh
+West Woodbridge
+West Woodbridge Industrial Area
+Westbrook
+Westcliffe
+Westdale
+Western Business Park
+Westgate
+Westminster-Branson
+Weston
+Weston-Pellam Park
+Wexford-Maryvale
+Whitby Industrial
+Whitestone
+Wicklow Ward
+Widdifield
+Williamsburg
+Willow West/Sugarbush/West Acres
+Willowdale East
+Willowdale West
+Willowridge-Martingrove-Richview
+Wilson
+Windfields
+Windham Centre
+Windsor
+Wingham
+Winona
+Winona Park
+Wismer
+Woburn
+Wollaston
+Wood (Gravenhurst)
+Wood (Muskoka Lakes)
+Woodbine Corridor
+Woodbine-Lumsden
+Woodland Hill
+Woodlands
+Woodstock - North
+Woodstock - South
+Woodville
+Wychwood
+Wyebridge
+Wyevale
+Yeoville
+Yonge-Eglinton
+Yonge-St. Clair
+York University Heights
+York/Watson Industrial Park
+Yorkdale-Glen Park
+Zurich
+zz-Inwood
