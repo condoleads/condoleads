@@ -26,9 +26,12 @@ export async function POST(request: NextRequest) {
     
     let allListings = [];
     
+    // Build city filter for PropTx API (prevents cross-city pollution)
+    const cityFilterPart = city?.trim() ? ` and contains(City,'${city.trim().split(' ')[0]}')` : '';
+    
     // STRATEGY 1: Active listings (keep existing working logic)
     console.log('STRATEGY 1: Active listings (street number based)');
-    const activeFilter = `StreetNumber eq '${streetNumber.trim()}'`;
+    const activeFilter = `StreetNumber eq '${streetNumber.trim()}'${cityFilterPart}`;
     const activeUrl = `${baseUrl}Property?$filter=${encodeURIComponent(activeFilter)}&$top=5000`;
     
     const activeResponse = await fetch(activeUrl, {
@@ -47,7 +50,7 @@ export async function POST(request: NextRequest) {
     //     // STRATEGY 2+3 COMBINED: Optimized search for completed transactions
     
     console.log('STRATEGY 2+3: Combined search for completed transactions');
-    const completedFilter = `StreetNumber eq '${streetNumber.trim()}' and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
+    const completedFilter = `StreetNumber eq '${streetNumber.trim()}'${cityFilterPart} and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
     const completedUrl = `${baseUrl}Property?$filter=${encodeURIComponent(completedFilter)}&$top=15000`;
     
     const completedResponse = await fetch(completedUrl, {

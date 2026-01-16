@@ -12,21 +12,66 @@ export interface PSFDataPoint {
   periodMonth: number
 }
 
-export interface GeoLevel {
+export interface GeoLevelData {
   id: string
   name: string
-  psf: PSFDataPoint | null
+  salePsf: PSFDataPoint | null
+  leasePsf: PSFDataPoint | null
+}
+
+export interface BuildingSummary {
+  saleAvgPsf: number | null
+  saleMedianPsf: number | null
+  saleCount: number
+  leaseAvgPsf: number | null
+  leaseMedianPsf: number | null
+  leaseCount: number
+  earliestTransaction: string | null
+  latestTransaction: string | null
+}
+
+export interface Transaction {
+  id: string
+  transaction_type: 'sale' | 'lease'
+  close_date: string
+  close_price: number
+  sqft: number
+  sqft_method: string
+  psf: number
+  has_parking: boolean
+  parking_spaces: number
+  living_area_range: string | null
 }
 
 export interface BuildingMarketData {
   building: {
     id: string
     name: string
-    psf: PSFDataPoint | null
+    salePsf: PSFDataPoint | null
+    leasePsf: PSFDataPoint | null
+    summary: BuildingSummary | null
+    transactions: Transaction[]
   }
-  community: GeoLevel | null
-  municipality: GeoLevel | null
-  area: GeoLevel | null
+  community: GeoLevelData | null
+  municipality: GeoLevelData | null
+  area: GeoLevelData | null
+  parking: {
+    sale: { value: number | null; level: string; source: string } | null
+    lease: { value: number | null; level: string; source: string } | null
+  }
+  locker: {
+    sale: { value: number | null; level: string; source: string } | null
+    lease: { value: number | null; level: string; source: string } | null
+  }
+  hasData: boolean
+}
+
+// Legacy interface for backward compatibility
+export interface LegacyMarketData {
+  building: { id: string; name: string; psf: PSFDataPoint | null }
+  community: { id: string; name: string; psf: PSFDataPoint | null } | null
+  municipality: { id: string; name: string; psf: PSFDataPoint | null } | null
+  area: { id: string; name: string; psf: PSFDataPoint | null } | null
   parking: {
     sale: { value: number | null; level: string; source: string } | null
     lease: { value: number | null; level: string; source: string } | null
@@ -50,7 +95,7 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
 
   if (!building) {
     return {
-      building: { id: buildingId, name: 'Unknown', psf: null },
+      building: { id: buildingId, name: 'Unknown', salePsf: null, leasePsf: null, summary: null, transactions: [] },
       community: null,
       municipality: null,
       area: null,
@@ -106,19 +151,33 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
     }
   }
 
-  // Get PSF data at all levels (latest period)
-  const [buildingPsf, communityPsf, municipalityPsf, areaPsf] = await Promise.all([
-    // Building level
+  // Fetch all data in parallel
+  const [
+    buildingSummary,
+    buildingTransactions,
+    communitySalePsf,
+    communityLeasePsf,
+    municipalitySalePsf,
+    municipalityLeasePsf,
+    areaSalePsf,
+    areaLeasePsf,
+    effectiveValues
+  ] = await Promise.all([
+    // Building summary from building_psf_summary
     supabase
-      .from('psf_monthly_sale')
-      .select('all_avg_psf, all_median_psf, all_sample_size, period_year, period_month')
+      .from('building_psf_summary')
+      .select('*')
       .eq('building_id', buildingId)
-      .order('period_year', { ascending: false })
-      .order('period_month', { ascending: false })
-      .limit(1)
       .single(),
-    
-    // Community level
+
+    // Building transactions from building_psf_transactions
+    supabase
+      .from('building_psf_transactions')
+      .select('*')
+      .eq('building_id', buildingId)
+      .order('close_date', { ascending: false }),
+
+    // Community sale PSF
     communityId ? supabase
       .from('psf_monthly_sale')
       .select('all_avg_psf, all_median_psf, all_sample_size, period_year, period_month')
@@ -128,8 +187,19 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
       .order('period_month', { ascending: false })
       .limit(1)
       .single() : Promise.resolve({ data: null }),
-    
-    // Municipality level
+
+    // Community lease PSF
+    communityId ? supabase
+      .from('psf_monthly_lease')
+      .select('all_avg_psf, all_median_psf, all_sample_size, period_year, period_month')
+      .eq('community_id', communityId)
+      .eq('geo_level', 'community')
+      .order('period_year', { ascending: false })
+      .order('period_month', { ascending: false })
+      .limit(1)
+      .single() : Promise.resolve({ data: null }),
+
+    // Municipality sale PSF
     municipalityId ? supabase
       .from('psf_monthly_sale')
       .select('all_avg_psf, all_median_psf, all_sample_size, period_year, period_month')
@@ -139,8 +209,19 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
       .order('period_month', { ascending: false })
       .limit(1)
       .single() : Promise.resolve({ data: null }),
-    
-    // Area level
+
+    // Municipality lease PSF
+    municipalityId ? supabase
+      .from('psf_monthly_lease')
+      .select('all_avg_psf, all_median_psf, all_sample_size, period_year, period_month')
+      .eq('municipality_id', municipalityId)
+      .eq('geo_level', 'municipality')
+      .order('period_year', { ascending: false })
+      .order('period_month', { ascending: false })
+      .limit(1)
+      .single() : Promise.resolve({ data: null }),
+
+    // Area sale PSF
     areaId ? supabase
       .from('psf_monthly_sale')
       .select('all_avg_psf, all_median_psf, all_sample_size, period_year, period_month')
@@ -149,13 +230,24 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
       .order('period_year', { ascending: false })
       .order('period_month', { ascending: false })
       .limit(1)
-      .single() : Promise.resolve({ data: null })
+      .single() : Promise.resolve({ data: null }),
+
+    // Area lease PSF
+    areaId ? supabase
+      .from('psf_monthly_lease')
+      .select('all_avg_psf, all_median_psf, all_sample_size, period_year, period_month')
+      .eq('area_id', areaId)
+      .eq('geo_level', 'area')
+      .order('period_year', { ascending: false })
+      .order('period_month', { ascending: false })
+      .limit(1)
+      .single() : Promise.resolve({ data: null }),
+
+    // Parking/locker values
+    getAllEffectiveValues(buildingId)
   ])
 
-  // Get parking/locker values using existing function
-  const effectiveValues = await getAllEffectiveValues(buildingId)
-
-  // Build response
+  // Format PSF data
   const formatPsf = (data: any): PSFDataPoint | null => {
     if (!data) return null
     return {
@@ -167,26 +259,81 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
     }
   }
 
+  // Format building summary
+  const formatSummary = (data: any): BuildingSummary | null => {
+    if (!data) return null
+    return {
+      saleAvgPsf: data.sale_avg_psf ? parseFloat(data.sale_avg_psf) : null,
+      saleMedianPsf: data.sale_median_psf ? parseFloat(data.sale_median_psf) : null,
+      saleCount: data.sale_count || 0,
+      leaseAvgPsf: data.lease_avg_psf ? parseFloat(data.lease_avg_psf) : null,
+      leaseMedianPsf: data.lease_median_psf ? parseFloat(data.lease_median_psf) : null,
+      leaseCount: data.lease_count || 0,
+      earliestTransaction: data.earliest_transaction,
+      latestTransaction: data.latest_transaction
+    }
+  }
+
+  // Format transactions
+  const formatTransactions = (data: any[]): Transaction[] => {
+    if (!data) return []
+    return data.map(t => ({
+      id: t.id,
+      transaction_type: t.transaction_type,
+      close_date: t.close_date,
+      close_price: t.close_price ? parseFloat(t.close_price) : 0,
+      sqft: t.sqft || 0,
+      sqft_method: t.sqft_method || 'unknown',
+      psf: t.psf ? parseFloat(t.psf) : 0,
+      has_parking: t.has_parking || false,
+      parking_spaces: t.parking_spaces || 0,
+      living_area_range: t.living_area_range
+    }))
+  }
+
+  // Build summary-based PSF for building (since we don't have monthly building data in psf_monthly tables)
+  const buildingSalePsf: PSFDataPoint | null = buildingSummary.data?.sale_avg_psf ? {
+    avg: parseFloat(buildingSummary.data.sale_avg_psf),
+    median: buildingSummary.data.sale_median_psf ? parseFloat(buildingSummary.data.sale_median_psf) : null,
+    sampleSize: buildingSummary.data.sale_count || 0,
+    periodYear: new Date().getFullYear(),
+    periodMonth: new Date().getMonth() + 1
+  } : null
+
+  const buildingLeasePsf: PSFDataPoint | null = buildingSummary.data?.lease_avg_psf ? {
+    avg: parseFloat(buildingSummary.data.lease_avg_psf),
+    median: buildingSummary.data.lease_median_psf ? parseFloat(buildingSummary.data.lease_median_psf) : null,
+    sampleSize: buildingSummary.data.lease_count || 0,
+    periodYear: new Date().getFullYear(),
+    periodMonth: new Date().getMonth() + 1
+  } : null
+
   const result: BuildingMarketData = {
     building: {
       id: building.id,
       name: building.building_name,
-      psf: formatPsf(buildingPsf.data)
+      salePsf: buildingSalePsf,
+      leasePsf: buildingLeasePsf,
+      summary: formatSummary(buildingSummary.data),
+      transactions: formatTransactions(buildingTransactions.data || [])
     },
     community: communityId ? {
       id: communityId,
       name: communityName || 'Unknown',
-      psf: formatPsf(communityPsf.data)
+      salePsf: formatPsf(communitySalePsf.data),
+      leasePsf: formatPsf(communityLeasePsf.data)
     } : null,
     municipality: municipalityId ? {
       id: municipalityId,
       name: municipalityName || 'Unknown',
-      psf: formatPsf(municipalityPsf.data)
+      salePsf: formatPsf(municipalitySalePsf.data),
+      leasePsf: formatPsf(municipalityLeasePsf.data)
     } : null,
     area: areaId ? {
       id: areaId,
       name: areaName || 'Unknown',
-      psf: formatPsf(areaPsf.data)
+      salePsf: formatPsf(areaSalePsf.data),
+      leasePsf: formatPsf(areaLeasePsf.data)
     } : null,
     parking: {
       sale: effectiveValues.parkingSale.value ? {
@@ -212,7 +359,7 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
         source: effectiveValues.lockerLease.source
       } : null
     },
-    hasData: !!(buildingPsf.data || communityPsf.data || municipalityPsf.data || areaPsf.data)
+    hasData: !!(buildingSummary.data || communitySalePsf.data || municipalitySalePsf.data || areaSalePsf.data)
   }
 
   return result
@@ -247,7 +394,7 @@ export async function getBuildingPSFTrend(buildingId: string, months: number = 1
       .order('period_year', { ascending: true })
       .order('period_month', { ascending: true })
       .limit(months),
-    
+
     // Community trend
     supabase
       .from('psf_monthly_sale')
@@ -257,7 +404,7 @@ export async function getBuildingPSFTrend(buildingId: string, months: number = 1
       .order('period_year', { ascending: true })
       .order('period_month', { ascending: true })
       .limit(months),
-    
+
     // Municipality trend
     community?.municipality_id ? supabase
       .from('psf_monthly_sale')
