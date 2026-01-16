@@ -1,4 +1,4 @@
-﻿// app/admin/psf-analytics/psf-dashboard.tsx
+// app/admin/psf-analytics/psf-dashboard.tsx
 
 'use client';
 
@@ -325,7 +325,7 @@ export default function PSFDashboard({ stats, logs }: Props) {
             {/* Left: Building Search */}
             <div className="col-span-1">
               <div className="bg-white border rounded-lg p-4">
-                <h3 className="font-semibold mb-3">Search Buildings</h3>
+                <h3 className="font-semibold mb-3">Search Buildings <span className="text-gray-500 font-normal">({buildings.length} total)</span></h3>
                 <input
                   type="text"
                   placeholder="Search by name..."
