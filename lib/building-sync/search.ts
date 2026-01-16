@@ -112,9 +112,18 @@ export async function searchBuilding(params: SearchParams): Promise<SearchResult
   try {
     let allListings: any[] = [];
 
-    // Build filter parts for PropTx API (complete address match)
-    const streetNamePart = streetName?.trim() ? ` and contains(StreetName,'${streetName.trim().split(' ')[0]}')` : '';
-    const cityPart = city?.trim() ? ` and contains(City,'${city.trim().split(' ')[0]}')` : '';
+    // Build filter parts for PropTx API (complete address match with all case variations)
+    const streetWord = streetName?.trim() ? streetName.trim().split(' ')[0] : '';
+    const streetLower = streetWord.toLowerCase();
+    const streetTitle = streetWord.charAt(0).toUpperCase() + streetWord.slice(1).toLowerCase();
+    const streetUpper = streetWord.toUpperCase();
+    const streetNamePart = streetWord ? ` and (contains(StreetName,'${streetLower}') or contains(StreetName,'${streetTitle}') or contains(StreetName,'${streetUpper}'))` : '';
+    
+    const cityWord = city?.trim() ? city.trim().split(' ')[0] : '';
+    const cityLower = cityWord.toLowerCase();
+    const cityTitle = cityWord.charAt(0).toUpperCase() + cityWord.slice(1).toLowerCase();
+    const cityUpper = cityWord.toUpperCase();
+    const cityPart = cityWord ? ` and (contains(City,'${cityLower}') or contains(City,'${cityTitle}') or contains(City,'${cityUpper}'))` : '';
     
     // STRATEGY 1: Active listings
     console.log(`[DirectSearch] Fetching active listings...`);
