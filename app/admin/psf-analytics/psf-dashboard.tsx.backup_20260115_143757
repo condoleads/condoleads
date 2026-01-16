@@ -4,7 +4,6 @@
 
 import { useState, useEffect } from 'react';
 import PSFChart from './psf-chart';
-import BuildingPSFChart from './building-psf-chart';
 import GeoTree from './geo-tree';
 
 interface Stats {
@@ -395,17 +394,9 @@ export default function PSFDashboard({ stats, logs }: Props) {
                     </div>
                   </div>
 
-                  {/* PSF Chart */}
-                    {buildingTransactions.length > 0 && (
-                      <BuildingPSFChart 
-                        transactions={buildingTransactions} 
-                        buildingName={selectedBuilding.building_name} 
-                      />
-                    )}
-
-                    {/* Transactions Table */}
-                    <div className="bg-white border rounded-lg p-4">
-                      <h3 className="font-semibold mb-3">Transaction History ({buildingTransactions.length})</h3>
+                  {/* Transactions Table */}
+                  <div className="bg-white border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3">Transaction History ({buildingTransactions.length})</h3>
                     <div className="max-h-96 overflow-y-auto">
                       <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-white border-b">

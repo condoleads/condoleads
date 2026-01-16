@@ -1,0 +1,99 @@
+﻿// app/api/admin/psf-analytics/buildings/[buildingId]/transactions/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { buildingId: string } }
+) {
+  const { buildingId } = params;
+
+  if (!buildingId) {
+    return NextResponse.json(
+      { success: false, error: 'Building ID required' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    // Get sales from building_psf_transactions
+    const { data: salesData, error: salesError } = await supabase
+      .from('building_psf_transactions')
+      .select('*')
+      .eq('building_id', buildingId)
+      .eq('transaction_type', 'sale')
+      .order('close_date', { ascending: false });
+
+    if (salesError) {
+      console.error('Error fetching sales:', salesError);
+    }
+
+    // Get leases from mls_listings (source data)
+    const { data: leasesData, error: leasesError } = await supabase
+      .from('mls_listings')
+      .select('close_date, close_price, calculated_sqft, sqft_method, price_per_sqft, living_area_range, unit_number, parking_included, total_parking_spaces')
+      .eq('building_id', buildingId)
+      .eq('transaction_type', 'For Lease')
+      .not('close_date', 'is', null)
+      .not('close_price', 'is', null)
+      .gt('calculated_sqft', 0)
+      .order('close_date', { ascending: false });
+
+    if (leasesError) {
+      console.error('Error fetching leases:', leasesError);
+    }
+
+    // Format sales
+    const sales = (salesData || []).map((t: any) => ({
+      id: t.id,
+      transaction_type: 'sale',
+      close_date: t.close_date,
+      close_price: t.close_price ? parseFloat(t.close_price) : null,
+      sqft: t.sqft,
+      sqft_method: t.sqft_method,
+      psf: t.psf ? parseFloat(t.psf) : null,
+      has_parking: t.has_parking,
+      parking_spaces: t.parking_spaces,
+      living_area_range: t.living_area_range,
+    }));
+
+    // Format leases
+    const leases = (leasesData || []).map((t: any, i: number) => ({
+      id: `lease-${i}`,
+      transaction_type: 'lease',
+      close_date: t.close_date,
+      close_price: t.close_price ? parseFloat(t.close_price) : null,
+      sqft: t.calculated_sqft,
+      sqft_method: t.sqft_method || 'unknown',
+      psf: t.price_per_sqft ? parseFloat(t.price_per_sqft) : 
+           (t.close_price && t.calculated_sqft ? parseFloat(t.close_price) / t.calculated_sqft : null),
+      has_parking: t.parking_included === 'Y' || t.parking_included === true,
+      parking_spaces: t.total_parking_spaces,
+      living_area_range: t.living_area_range,
+    }));
+
+    // Combine and sort by date
+    const transactions = [...sales, ...leases].sort((a, b) => 
+      new Date(b.close_date).getTime() - new Date(a.close_date).getTime()
+    );
+
+    return NextResponse.json({
+      success: true,
+      transactions,
+      count: transactions.length,
+      salesCount: sales.length,
+      leasesCount: leases.length,
+    });
+  } catch (error) {
+    console.error('Transactions API error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch transactions' },
+      { status: 500 }
+    );
+  }
+}

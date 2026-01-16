@@ -8,11 +8,6 @@
 const PROPTX_URL = process.env.PROPTX_RESO_API_URL || 'https://query.ampre.ca/odata/';
 const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN;
 
-// Get today's date in YYYY-MM-DD format for filtering out future closing dates
-function getTodayISO(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
 export interface PropTxRecord {
   ClosePrice: number;
   CloseDate: string;
@@ -55,7 +50,7 @@ export async function fetchSaleData(
   geoValue?: string,
   maxRecords: number = 50000
 ): Promise<FetchResult> {
-  const baseFilter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Sale' and ClosePrice gt 100000 and CloseDate le ${getTodayISO()}`;
+  const baseFilter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Sale' and ClosePrice gt 100000`;
   
   const filter = geoField && geoValue
     ? `${baseFilter} and ${geoField} eq '${geoValue.replace(/'/g, "''")}'`
@@ -72,7 +67,7 @@ export async function fetchLeaseData(
   geoValue?: string,
   maxRecords: number = 50000
 ): Promise<FetchResult> {
-  const baseFilter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Lease' and ClosePrice gt 500 and ClosePrice lt 15000 and CloseDate le ${getTodayISO()}`;
+  const baseFilter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Lease' and ClosePrice gt 500 and ClosePrice lt 15000`;
   
   const filter = geoField && geoValue
     ? `${baseFilter} and ${geoField} eq '${geoValue.replace(/'/g, "''")}'`
@@ -171,7 +166,7 @@ export async function fetchBuildingSaleData(
   const escapedCity = city.replace(/'/g, "''");
   
   // Use contains for street name to handle variations (St vs Street, etc.)
-  const filter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Sale' and ClosePrice gt 100000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and contains(StreetName,'${escapedStreetName}') and City eq '${escapedCity}'`;
+  const filter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Sale' and ClosePrice gt 100000 and StreetNumber eq '${streetNumber}' and contains(StreetName,'${escapedStreetName}') and City eq '${escapedCity}'`;
   
   return fetchFromPropTx(filter, maxRecords);
 }
@@ -188,7 +183,7 @@ export async function fetchBuildingLeaseData(
   const escapedStreetName = streetName.replace(/'/g, "''");
   const escapedCity = city.replace(/'/g, "''");
   
-  const filter = `PropertyType eq 'Residential Condo & Other' and (TransactionType eq 'For Lease' or StandardStatus eq 'Leased') and ClosePrice gt 0 and ClosePrice lt 15000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and contains(StreetName,'${escapedStreetName}') and City eq '${escapedCity}'`;
+  const filter = `PropertyType eq 'Residential Condo & Other' and (TransactionType eq 'For Lease' or StandardStatus eq 'Leased') and ClosePrice gt 0 and ClosePrice lt 15000 and StreetNumber eq '${streetNumber}' and contains(StreetName,'${escapedStreetName}') and City eq '${escapedCity}'`;
   
   return fetchFromPropTx(filter, maxRecords);
 }

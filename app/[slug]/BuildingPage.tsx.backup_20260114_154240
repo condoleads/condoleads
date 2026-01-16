@@ -296,9 +296,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     avgMaintenanceFee,
   }
 
-  // Fetch market intelligence data (PSF analytics, parking/locker values)
-  const marketData = await getBuildingMarketData(building.id)
-
   return (
     <>
       <script
@@ -414,7 +411,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
             <div id="market-stats">
               <MarketStats stats={stats} yearBuilt={building.year_built} />
             </div>
-            <MarketIntelligence data={marketData} />
+            
             {amenities.length > 0 && (
               <div id="amenities">
                 <BuildingAmenities amenities={amenities} feeIncludes={feeIncludes} />
