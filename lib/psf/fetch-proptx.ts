@@ -167,11 +167,12 @@ export async function fetchBuildingSaleData(
   city: string,
   maxRecords: number = 5000
 ): Promise<FetchResult> {
-  const escapedStreetName = streetName.replace(/'/g, "''");
-  const escapedCity = city.replace(/'/g, "''");
+  // Extract first word of street name (PropTx stores 'Hanna' not 'Hanna Ave')
+  const streetNameFirst = streetName.split(' ')[0].replace(/'/g, "''");
+  const cityFirst = city.split(' ')[0].replace(/'/g, "''");
   
   // Use contains for street name to handle variations (St vs Street, etc.)
-  const filter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Sale' and ClosePrice gt 100000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and contains(StreetName,'${escapedStreetName}') and City eq '${escapedCity}'`;
+  const filter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Sale' and ClosePrice gt 100000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and contains(StreetName,'${streetNameFirst}') and contains(City,'${cityFirst}')`;
   
   return fetchFromPropTx(filter, maxRecords);
 }
@@ -185,10 +186,11 @@ export async function fetchBuildingLeaseData(
   city: string,
   maxRecords: number = 5000
 ): Promise<FetchResult> {
-  const escapedStreetName = streetName.replace(/'/g, "''");
-  const escapedCity = city.replace(/'/g, "''");
+  // Extract first word of street name (PropTx stores 'Hanna' not 'Hanna Ave')
+  const streetNameFirst = streetName.split(' ')[0].replace(/'/g, "''");
+  const cityFirst = city.split(' ')[0].replace(/'/g, "''");
   
-  const filter = `PropertyType eq 'Residential Condo & Other' and (TransactionType eq 'For Lease' or StandardStatus eq 'Leased') and ClosePrice gt 0 and ClosePrice lt 15000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and contains(StreetName,'${escapedStreetName}') and City eq '${escapedCity}'`;
+  const filter = `PropertyType eq 'Residential Condo & Other' and (TransactionType eq 'For Lease' or StandardStatus eq 'Leased') and ClosePrice gt 0 and ClosePrice lt 15000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and contains(StreetName,'${streetNameFirst}') and contains(City,'${cityFirst}')`;
   
   return fetchFromPropTx(filter, maxRecords);
 }
