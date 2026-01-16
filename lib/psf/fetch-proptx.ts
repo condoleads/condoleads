@@ -167,12 +167,18 @@ export async function fetchBuildingSaleData(
   city: string,
   maxRecords: number = 5000
 ): Promise<FetchResult> {
-  // Extract first word of street name (PropTx stores 'Hanna' not 'Hanna Ave')
-  const streetNameFirst = streetName.split(' ')[0].replace(/'/g, "''");
-  const cityFirst = city.split(' ')[0].replace(/'/g, "''");
+  // Extract first word and create all case variations (PropTx is case-sensitive)
+  const streetWord = streetName.split(' ')[0].replace(/'/g, "''");
+  const streetLower = streetWord.toLowerCase();
+  const streetTitle = streetWord.charAt(0).toUpperCase() + streetWord.slice(1).toLowerCase();
+  const streetUpper = streetWord.toUpperCase();
+  const cityWord = city.split(' ')[0].replace(/'/g, "''");
+  const cityLower = cityWord.toLowerCase();
+  const cityTitle = cityWord.charAt(0).toUpperCase() + cityWord.slice(1).toLowerCase();
+  const cityUpper = cityWord.toUpperCase();
   
-  // Use contains for street name to handle variations (St vs Street, etc.)
-  const filter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Sale' and ClosePrice gt 100000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and contains(tolower(StreetName),tolower('${streetNameFirst}')) and contains(tolower(City),tolower('${cityFirst}'))`;
+  // Query all case variations for 100% coverage
+  const filter = `PropertyType eq 'Residential Condo & Other' and StandardStatus eq 'Closed' and TransactionType eq 'For Sale' and ClosePrice gt 100000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and (contains(StreetName,'${streetLower}') or contains(StreetName,'${streetTitle}') or contains(StreetName,'${streetUpper}')) and (contains(City,'${cityLower}') or contains(City,'${cityTitle}') or contains(City,'${cityUpper}'))`;
   
   return fetchFromPropTx(filter, maxRecords);
 }
@@ -186,11 +192,18 @@ export async function fetchBuildingLeaseData(
   city: string,
   maxRecords: number = 5000
 ): Promise<FetchResult> {
-  // Extract first word of street name (PropTx stores 'Hanna' not 'Hanna Ave')
-  const streetNameFirst = streetName.split(' ')[0].replace(/'/g, "''");
-  const cityFirst = city.split(' ')[0].replace(/'/g, "''");
+  // Extract first word and create all case variations (PropTx is case-sensitive)
+  const streetWord = streetName.split(' ')[0].replace(/'/g, "''");
+  const streetLower = streetWord.toLowerCase();
+  const streetTitle = streetWord.charAt(0).toUpperCase() + streetWord.slice(1).toLowerCase();
+  const streetUpper = streetWord.toUpperCase();
+  const cityWord = city.split(' ')[0].replace(/'/g, "''");
+  const cityLower = cityWord.toLowerCase();
+  const cityTitle = cityWord.charAt(0).toUpperCase() + cityWord.slice(1).toLowerCase();
+  const cityUpper = cityWord.toUpperCase();
   
-  const filter = `PropertyType eq 'Residential Condo & Other' and (TransactionType eq 'For Lease' or StandardStatus eq 'Leased') and ClosePrice gt 0 and ClosePrice lt 15000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and contains(tolower(StreetName),tolower('${streetNameFirst}')) and contains(tolower(City),tolower('${cityFirst}'))`;
+  // Query all case variations for 100% coverage
+  const filter = `PropertyType eq 'Residential Condo & Other' and (TransactionType eq 'For Lease' or StandardStatus eq 'Leased') and ClosePrice gt 0 and ClosePrice lt 15000 and CloseDate le ${getTodayISO()} and StreetNumber eq '${streetNumber}' and (contains(StreetName,'${streetLower}') or contains(StreetName,'${streetTitle}') or contains(StreetName,'${streetUpper}')) and (contains(City,'${cityLower}') or contains(City,'${cityTitle}') or contains(City,'${cityUpper}'))`;
   
   return fetchFromPropTx(filter, maxRecords);
 }
