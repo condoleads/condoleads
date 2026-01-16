@@ -150,12 +150,13 @@ async function fetchPropTxListings(building: any) {
 
   let allListings: any[] = [];
 
-  // Build city filter for PropTx API (prevents cross-city pollution)
-  const cityFilterPart = city?.trim() ? ` and contains(City,'${city.trim().split(' ')[0]}')` : '';
+  // Build filter parts for PropTx API (complete address match)
+  const streetNamePart = streetName?.trim() ? ` and contains(StreetName,'${streetName.trim().split(' ')[0]}')` : '';
+  const cityPart = city?.trim() ? ` and contains(City,'${city.trim().split(' ')[0]}')` : '';
 
   // STRATEGY 1: Active listings (exact street number match)
   console.log('STRATEGY 1: Active listings (street number based)');
-  const activeFilter = `StreetNumber eq '${streetNumber}'${cityFilterPart}`;
+  const activeFilter = `StreetNumber eq '${streetNumber}'${streetNamePart}${cityPart}`;
   const activeUrl = `${PROPTX_API_URL}Property?$filter=${encodeURIComponent(activeFilter)}&$top=5000`;
 
   try {
@@ -177,7 +178,7 @@ async function fetchPropTxListings(building: any) {
 
   // STRATEGY 2+3: Completed transactions (Closed/Sold/Leased)
   console.log('STRATEGY 2+3: Combined search for completed transactions');
-  const completedFilter = `StreetNumber eq '${streetNumber}'${cityFilterPart} and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
+  const completedFilter = `StreetNumber eq '${streetNumber}'${streetNamePart}${cityPart} and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
   const completedUrl = `${PROPTX_API_URL}Property?$filter=${encodeURIComponent(completedFilter)}&$top=15000`;
 
   try {

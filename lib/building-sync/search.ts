@@ -112,12 +112,13 @@ export async function searchBuilding(params: SearchParams): Promise<SearchResult
   try {
     let allListings: any[] = [];
 
-    // Build city filter for PropTx API (prevents cross-city pollution)
-    const cityFilterPart = city?.trim() ? ` and contains(City,'${city.trim().split(' ')[0]}')` : '';
+    // Build filter parts for PropTx API (complete address match)
+    const streetNamePart = streetName?.trim() ? ` and contains(StreetName,'${streetName.trim().split(' ')[0]}')` : '';
+    const cityPart = city?.trim() ? ` and contains(City,'${city.trim().split(' ')[0]}')` : '';
     
     // STRATEGY 1: Active listings
     console.log(`[DirectSearch] Fetching active listings...`);
-    const activeFilter = `StreetNumber eq '${streetNumber.trim()}'${cityFilterPart}`;
+    const activeFilter = `StreetNumber eq '${streetNumber.trim()}'${streetNamePart}${cityPart}`;
     const activeUrl = `${PROPTX_BASE_URL}Property?$filter=${encodeURIComponent(activeFilter)}&$top=5000`;
 
     const activeResponse = await fetch(activeUrl, { headers });
@@ -129,7 +130,7 @@ export async function searchBuilding(params: SearchParams): Promise<SearchResult
     
     // STRATEGY 2: Completed transactions
     console.log(`[DirectSearch] Fetching completed transactions...`);
-    const completedFilter = `StreetNumber eq '${streetNumber.trim()}'${cityFilterPart} and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
+    const completedFilter = `StreetNumber eq '${streetNumber.trim()}'${streetNamePart}${cityPart} and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
     const completedUrl = `${PROPTX_BASE_URL}Property?$filter=${encodeURIComponent(completedFilter)}&$top=15000`;
 
     const completedResponse = await fetch(completedUrl, { headers });
