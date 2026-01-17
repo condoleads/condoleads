@@ -1,6 +1,5 @@
 // lib/ai/session-manager.ts
 import { createClient } from '@/lib/supabase/server'
-import { v4 as uuidv4 } from 'uuid'
 
 export interface ChatSession {
   id: string
@@ -43,7 +42,7 @@ export async function getOrCreateSession(
   }
 
   // Create new session
-  const sessionToken = uuidv4()
+  const sessionToken = crypto.randomUUID()
   const { data: newSession, error: createError } = await supabase
     .from('chat_sessions')
     .insert({
