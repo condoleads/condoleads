@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import PropertyPageClient from './PropertyPageClient'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
+import { getListingInvestmentData } from '@/lib/market/get-listing-investment-data'
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const headersList = headers()
@@ -275,6 +276,17 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .order('list_price', { ascending: true })
     .limit(8)
 
+    // Fetch investment analysis data
+  const investmentData = await getListingInvestmentData(
+    listing.building_id,
+    listing.list_price,
+    listing.calculated_sqft,
+    listing.living_area_range,
+    listing.association_fee,
+    listing.tax_annual_amount,
+    listing.transaction_type
+  )
+
   const isSale = listing.transaction_type === 'For Sale'
   const isClosed = listing.standard_status === 'Closed'
   const status = isClosed ? 'Closed' : 'Active'
@@ -319,6 +331,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         agent={agent}
         building={building}
         development={development}
+        investmentData={investmentData}
         />
     </main>
     {/* AI Chat Widget */}

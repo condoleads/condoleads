@@ -43,6 +43,18 @@ export interface Transaction {
   living_area_range: string | null
 }
 
+export interface InvestmentMetrics {
+  buildingGrossYield: number | null
+  buildingNetYield: number | null
+  buildingAvgMaintenance: number | null
+  buildingAvgTax: number | null
+  buildingAvgSqft: number | null
+  communityGrossYield: number | null
+  municipalityGrossYield: number | null
+  yieldVsCommunity: number | null
+  yieldVsMunicipality: number | null
+}
+
 export interface BuildingMarketData {
   building: {
     id: string
@@ -63,6 +75,7 @@ export interface BuildingMarketData {
     sale: { value: number | null; level: string; source: string } | null
     lease: { value: number | null; level: string; source: string } | null
   }
+  investment: InvestmentMetrics | null
   hasData: boolean
 }
 
@@ -101,6 +114,7 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
       area: null,
       parking: { sale: null, lease: null },
       locker: { sale: null, lease: null },
+      investment: null,
       hasData: false
     }
   }
@@ -161,7 +175,8 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
     municipalityLeasePsf,
     areaSalePsf,
     areaLeasePsf,
-    effectiveValues
+    effectiveValues,
+    buildingExpenses
   ] = await Promise.all([
     // Building summary from building_psf_summary
     supabase
@@ -244,7 +259,14 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
       .single() : Promise.resolve({ data: null }),
 
     // Parking/locker values
-    getAllEffectiveValues(buildingId)
+    getAllEffectiveValues(buildingId),
+
+    // Building average expenses (for investment yield calculation)
+    supabase
+      .from('mls_listings')
+      .select('association_fee, tax_annual_amount, calculated_sqft, living_area_range')
+      .eq('building_id', buildingId)
+      .not('association_fee', 'is', null)
   ])
 
   // Format PSF data
@@ -308,6 +330,77 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
     periodMonth: new Date().getMonth() + 1
   } : null
 
+  // Calculate investment metrics
+  const calculateInvestmentMetrics = (): InvestmentMetrics | null => {
+    const buildingSalePsfVal = buildingSummary.data?.sale_avg_psf ? parseFloat(buildingSummary.data.sale_avg_psf) : null
+    const buildingLeasePsfVal = buildingSummary.data?.lease_avg_psf ? parseFloat(buildingSummary.data.lease_avg_psf) : null
+    
+    const expenseData = buildingExpenses.data || []
+    let avgMaintenance: number | null = null
+    let avgTax: number | null = null
+    let avgSqft: number | null = null
+    
+    if (expenseData.length > 0) {
+      const maintVals = expenseData.map(e => e.association_fee ? parseFloat(e.association_fee) : null).filter((v): v is number => v !== null)
+      const taxVals = expenseData.map(e => e.tax_annual_amount ? parseFloat(e.tax_annual_amount) : null).filter((v): v is number => v !== null)
+      const sqftVals = expenseData.map(e => {
+        if (e.calculated_sqft) return parseFloat(e.calculated_sqft)
+        if (e.living_area_range) {
+          const m = e.living_area_range.match(/(\d+)-(\d+)/)
+          if (m) return (parseInt(m[1]) + parseInt(m[2])) / 2
+        }
+        return null
+      }).filter((v): v is number => v !== null)
+      
+      if (maintVals.length > 0) avgMaintenance = maintVals.reduce((a, b) => a + b, 0) / maintVals.length
+      if (taxVals.length > 0) avgTax = taxVals.reduce((a, b) => a + b, 0) / taxVals.length
+      if (sqftVals.length > 0) avgSqft = sqftVals.reduce((a, b) => a + b, 0) / sqftVals.length
+    }
+    
+    let buildingGrossYield: number | null = null
+    if (buildingSalePsfVal && buildingLeasePsfVal) {
+      buildingGrossYield = (buildingLeasePsfVal * 12 / buildingSalePsfVal) * 100
+    }
+    
+    let buildingNetYield: number | null = null
+    if (buildingSalePsfVal && buildingLeasePsfVal && avgSqft) {
+      const annualRent = buildingLeasePsfVal * avgSqft * 12
+      const annualExp = (avgMaintenance || 0) * 12 + (avgTax || 0)
+      const price = buildingSalePsfVal * avgSqft
+      if (price > 0) buildingNetYield = ((annualRent - annualExp) / price) * 100
+    }
+    
+    const commSalePsf = communitySalePsf.data?.all_avg_psf ? parseFloat(communitySalePsf.data.all_avg_psf) : null
+    const commLeasePsf = communityLeasePsf.data?.all_avg_psf ? parseFloat(communityLeasePsf.data.all_avg_psf) : null
+    let communityGrossYield: number | null = null
+    if (commSalePsf && commLeasePsf) communityGrossYield = (commLeasePsf * 12 / commSalePsf) * 100
+    
+    const muniSalePsf = municipalitySalePsf.data?.all_avg_psf ? parseFloat(municipalitySalePsf.data.all_avg_psf) : null
+    const muniLeasePsf = municipalityLeasePsf.data?.all_avg_psf ? parseFloat(municipalityLeasePsf.data.all_avg_psf) : null
+    let municipalityGrossYield: number | null = null
+    if (muniSalePsf && muniLeasePsf) municipalityGrossYield = (muniLeasePsf * 12 / muniSalePsf) * 100
+    
+    const yieldVsCommunity = buildingGrossYield && communityGrossYield ? buildingGrossYield - communityGrossYield : null
+    const yieldVsMunicipality = buildingGrossYield && municipalityGrossYield ? buildingGrossYield - municipalityGrossYield : null
+    
+    if (!buildingGrossYield) return null
+    
+    return {
+      buildingGrossYield: parseFloat(buildingGrossYield.toFixed(2)),
+      buildingNetYield: buildingNetYield ? parseFloat(buildingNetYield.toFixed(2)) : null,
+      buildingAvgMaintenance: avgMaintenance ? parseFloat(avgMaintenance.toFixed(0)) : null,
+      buildingAvgTax: avgTax ? parseFloat(avgTax.toFixed(0)) : null,
+      buildingAvgSqft: avgSqft ? parseFloat(avgSqft.toFixed(0)) : null,
+      communityGrossYield: communityGrossYield ? parseFloat(communityGrossYield.toFixed(2)) : null,
+      municipalityGrossYield: municipalityGrossYield ? parseFloat(municipalityGrossYield.toFixed(2)) : null,
+      yieldVsCommunity: yieldVsCommunity ? parseFloat(yieldVsCommunity.toFixed(2)) : null,
+      yieldVsMunicipality: yieldVsMunicipality ? parseFloat(yieldVsMunicipality.toFixed(2)) : null
+    }
+  }
+
+  const investmentMetrics = calculateInvestmentMetrics()
+
+
   const result: BuildingMarketData = {
     building: {
       id: building.id,
@@ -359,6 +452,7 @@ export async function getBuildingMarketData(buildingId: string): Promise<Buildin
         source: effectiveValues.lockerLease.source
       } : null
     },
+    investment: investmentMetrics,
     hasData: !!(buildingSummary.data || communitySalePsf.data || municipalitySalePsf.data || areaSalePsf.data)
   }
 

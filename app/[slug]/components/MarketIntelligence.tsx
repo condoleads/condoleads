@@ -5,6 +5,7 @@ import { TrendingUp, Car, Package, Building2, MapPin, Map } from 'lucide-react'
 import PSFTrendChart from './PSFTrendChart'
 import PSFComparisonTable from './PSFComparisonTable'
 import PSFAnalysis from './PSFAnalysis'
+import InvestmentAnalysis from './InvestmentAnalysis'
 
 interface PSFData {
   avg: number | null
@@ -65,6 +66,17 @@ interface MarketData {
     sale: { value: number | null; level: string; source: string } | null
     lease: { value: number | null; level: string; source: string } | null
   }
+  investment: {
+    buildingGrossYield: number | null
+    buildingNetYield: number | null
+    buildingAvgMaintenance: number | null
+    buildingAvgTax: number | null
+    buildingAvgSqft: number | null
+    communityGrossYield: number | null
+    municipalityGrossYield: number | null
+    yieldVsCommunity: number | null
+    yieldVsMunicipality: number | null
+  } | null
   hasData: boolean
 }
 
@@ -265,6 +277,19 @@ export default function MarketIntelligence({ data }: MarketIntelligenceProps) {
           municipality={data.municipality}
           area={data.area}
         />
+
+        {/* Investment Analysis */}
+        {data.investment && (
+          <InvestmentAnalysis
+            investment={data.investment}
+            buildingName={data.building.name}
+            communityName={data.community?.name || null}
+            municipalityName={data.municipality?.name || null}
+            leaseAvgPsf={data.building.summary?.leaseAvgPsf || null}
+            saleAvgPsf={data.building.summary?.saleAvgPsf || null}
+            transactions={data.building.transactions}
+          />
+        )}
 
         {/* Parking and Locker Values */}
         {(data.parking.sale || data.parking.lease || data.locker.sale || data.locker.lease) && (

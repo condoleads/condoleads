@@ -22,6 +22,8 @@ import ExitIntentPopup from '@/components/property/ExitIntentPopup'
 import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 import Breadcrumb from '@/components/Breadcrumb'
 import PropertySEO from '@/components/property/PropertySEO'
+import InvestmentAnalysis from '@/components/property/InvestmentAnalysis'
+import type { InvestmentData } from '@/lib/market/get-listing-investment-data'
 
 interface PropertyPageClientProps {
   listing: any
@@ -38,6 +40,8 @@ interface PropertyPageClientProps {
   agent?: any
   building?: any
   development?: { id: string; name: string; slug: string } | null
+  investmentData?: InvestmentData
+
 }
 
 export default function PropertyPageClient({
@@ -54,7 +58,8 @@ export default function PropertyPageClient({
   isClosed,
   agent,
   building,
-  development
+  development,
+  investmentData
 }: PropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
@@ -95,6 +100,16 @@ export default function PropertyPageClient({
           {/* LEFT COLUMN - Main Content */}
           <div className="lg:col-span-2 space-y-8">
             <PropertyDescription description={listing.public_remarks} />
+
+            {/* Investment Analysis - Shows ROI, price context */}
+            {investmentData && isSale && (
+              <InvestmentAnalysis
+               data={investmentData}
+               listPrice={listing.list_price}
+               buildingName={building?.building_name || 'Building'}
+               isSale={isSale}
+               />
+            )}
 
             <GatedContent shouldGate={shouldGate} sectionName="Property Details" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
               <PropertyDetails listing={listing} />
@@ -249,3 +264,4 @@ export default function PropertyPageClient({
     </>
   )
 }
+
