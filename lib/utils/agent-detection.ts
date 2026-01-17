@@ -23,6 +23,12 @@ interface Agent {
     secondary_color?: string
     logo_url?: string
   } | null
+  // AI Chat fields
+  ai_chat_enabled?: boolean
+  anthropic_api_key?: string | null
+  ai_system_prompt?: string | null
+  ai_welcome_message?: string | null
+  ai_vip_message_threshold?: number | null
 }
 
 export function extractSubdomain(host: string): string | null {
