@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/client'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServerClient } from '@/lib/supabase/server'
 import { getDisplayAgentForBuilding, isCustomDomain } from '@/lib/utils/agent-detection'
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
@@ -114,7 +114,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   // Fetch building data
   const { data: building } = await supabase
     .from('buildings')
-    .select('id, building_name, slug, canonical_address, development_id')
+    .select('id, building_name, slug, canonical_address, development_id, community_id')
     .eq('id', listing.building_id)
     .single()
 
@@ -138,6 +138,10 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     notFound()
   }
   const agent = displayAgent
+
+  // Get current user for chat widget
+  const authClient = await createServerClient()
+  const { data: { user } } = await authClient.auth.getUser()
 
   // Fetch media
   const { data: allMedia } = await supabase
@@ -335,10 +339,23 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         />
     </main>
     {/* AI Chat Widget */}
-    <ChatWidgetWrapper 
-      agent={{ id: agent.id, full_name: agent.full_name }} 
-      building={building ? { id: building.id, building_name: building.building_name, canonical_address: building.canonical_address } : null}
+    <ChatWidgetWrapper
+      agent={{ 
+        id: agent.id, 
+        full_name: agent.full_name,
+        ai_chat_enabled: agent.ai_chat_enabled,
+        anthropic_api_key: agent.anthropic_api_key,
+        ai_welcome_message: agent.ai_welcome_message,
+        ai_vip_message_threshold: agent.ai_vip_message_threshold
+      }}
+      building={building ? { 
+        id: building.id, 
+        building_name: building.building_name, 
+        canonical_address: building.canonical_address,
+        community_id: building.community_id
+      } : null}
       listing={{ id: listing.id, unit_number: listing.unit_number, list_price: listing.list_price, bedrooms_total: listing.bedrooms_total, bathrooms_total: listing.bathrooms_total }}
+      user={user ? { id: user.id, email: user.email || '', name: user.user_metadata?.full_name } : null}
     />
     </>
   )

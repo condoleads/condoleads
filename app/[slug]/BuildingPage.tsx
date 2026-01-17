@@ -35,7 +35,7 @@ import { AgentCard } from '@/components/AgentCard'
 import MobileContactBar from '@/components/MobileContactBar'
 import Breadcrumb from '@/components/Breadcrumb'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServerClient } from '@/lib/supabase/server'
 import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
@@ -215,6 +215,10 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       notFound()
     }
     const agent = displayAgent
+
+  // Get current user for chat widget
+  const authClient = await createServerClient()
+  const { data: { user } } = await authClient.auth.getUser()
   
   const { data: listings } = await supabase
     .from('mls_listings')
@@ -531,8 +535,21 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     />
     {/* AI Chat Widget */}
     <ChatWidgetWrapper
-      agent={{ id: agent.id, full_name: agent.full_name }}
-      building={{ id: building.id, building_name: building.building_name, canonical_address: building.canonical_address }}
+      agent={{ 
+        id: agent.id, 
+        full_name: agent.full_name,
+        ai_chat_enabled: agent.ai_chat_enabled,
+        anthropic_api_key: agent.anthropic_api_key,
+        ai_welcome_message: agent.ai_welcome_message,
+        ai_vip_message_threshold: agent.ai_vip_message_threshold
+      }}
+      building={{ 
+        id: building.id, 
+        building_name: building.building_name, 
+        canonical_address: building.canonical_address,
+        community_id: building.community_id
+      }}
+      user={user ? { id: user.id, email: user.email || '', name: user.user_metadata?.full_name } : null}
     />
     </>
   )

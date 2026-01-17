@@ -1,7 +1,8 @@
+// app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { getOrCreateLead } from '@/lib/actions/leads'
+import { getBuildingMarketContext, getCommunityMarketContext, getListingMarketContext, buildMarketDataPrompt, MarketContext } from '@/lib/ai/context-builder'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -15,6 +16,7 @@ interface ChatRequest {
     buildingName?: string
     buildingAddress?: string
     buildingId?: string
+    communityId?: string
     listingId?: string
     unitNumber?: string
     listPrice?: number
@@ -22,52 +24,48 @@ interface ChatRequest {
     bathrooms?: number
     agentId: string
     agentName: string
+    vipThreshold: number
   }
-  leadInfo?: {
-    name?: string
-    email?: string
-    phone?: string
-  }
+  sessionId?: string
+  userId?: string
 }
 
-function buildSystemPrompt(context: ChatRequest['context']): string {
-  const basePrompt = `You are a friendly, professional real estate assistant for a Toronto condo specialist team. Your role is to:
-1. Answer questions about condos, buildings, and listings
+function buildSystemPrompt(
+  context: ChatRequest['context'], 
+  agentCustomPrompt: string | null,
+  marketDataPrompt: string,
+  isVip: boolean
+): string {
+  const basePrompt = `You are a friendly, professional real estate assistant for ${context.agentName}, a Toronto condo specialist. Your role is to:
+1. Answer questions about condos, buildings, and listings using REAL market data
 2. Help visitors find the right condo for their needs
-3. Prequalify leads by understanding their budget, timeline, and preferences
-4. Capture contact information when appropriate
-5. Schedule viewings or connect them with an agent when ready
+3. Provide accurate pricing and investment insights
+4. Connect serious buyers with ${context.agentName} when ready
 
 Guidelines:
 - Be warm, helpful, and conversational
-- Keep responses concise (2-3 sentences usually)
-- Ask one question at a time to prequalify
-- When someone seems interested, naturally ask for their contact info
-- If they provide contact info, confirm you'll have the agent reach out
-- Never make up information about specific listings or prices
-- If you don't know something specific, offer to have the agent follow up
+- Keep responses concise (2-3 sentences usually, more for detailed questions)
+- ALWAYS use the market data provided below when answering pricing/investment questions
+- Cite data sources: "Based on X transactions..." or "The average in this building..."
+- If you don't have specific data, say so honestly
+- ${isVip ? 'This is a VIP user - provide extra detailed analysis and recommendations' : 'Encourage the user to become a VIP for unlimited access'}
 
-Agent for this site: ${context.agentName}
+${agentCustomPrompt ? `\nAgent's Custom Instructions:\n${agentCustomPrompt}\n` : ''}
 `
 
+  let pageContext = ''
   if (context.pageType === 'home') {
-    return basePrompt + `
+    pageContext = `
 The visitor is on the homepage browsing available buildings.
-Help them explore options and find what they're looking for.
-Ask about their preferences: location, budget, size, timeline.`
-  }
-
-  if (context.pageType === 'building') {
-    return basePrompt + `
+Help them explore options based on their preferences: location, budget, size, timeline.`
+  } else if (context.pageType === 'building') {
+    pageContext = `
 The visitor is viewing: ${context.buildingName}
 Address: ${context.buildingAddress}
 
-Help them learn about this building - amenities, units available, pricing trends.
-If they're interested, help prequalify them and capture their info.`
-  }
-
-  if (context.pageType === 'property') {
-    return basePrompt + `
+Help them understand this building's value, pricing trends, and investment potential.`
+  } else if (context.pageType === 'property') {
+    pageContext = `
 The visitor is viewing a specific unit:
 Building: ${context.buildingName}
 ${context.unitNumber ? `Unit: ${context.unitNumber}` : ''}
@@ -75,83 +73,107 @@ ${context.listPrice ? `List Price: $${context.listPrice.toLocaleString()}` : ''}
 ${context.bedrooms ? `Bedrooms: ${context.bedrooms}` : ''}
 ${context.bathrooms ? `Bathrooms: ${context.bathrooms}` : ''}
 
-They're likely interested in this specific unit. Answer questions about it.
-Help them schedule a viewing or make an offer if interested.
-Capture their contact info to have the agent follow up.`
+Answer questions about this specific unit. Help them understand if it's a good value.`
   }
 
-  return basePrompt
-}
-
-function extractLeadInfo(messages: ChatMessage[]): { name?: string; email?: string; phone?: string } {
-  const allText = messages.map(m => m.content).join(' ')
-
-  // Extract email
-  const emailMatch = allText.match(/[\w.-]+@[\w.-]+\.\w+/)
-  const email = emailMatch ? emailMatch[0] : undefined
-
-  // Extract phone (various formats)
-  const phoneMatch = allText.match(/(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}/)
-  const phone = phoneMatch ? phoneMatch[0] : undefined
-
-  // Extract name (harder - look for "I'm X" or "My name is X" patterns)
-  const namePatterns = [
-    /(?:I'm|I am|my name is|this is|call me)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i,
-    /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+here/i
-  ]
-  let name: string | undefined
-  for (const pattern of namePatterns) {
-    const match = allText.match(pattern)
-    if (match) {
-      name = match[1]
-      break
-    }
-  }
-
-  return { name, email, phone }
+  return basePrompt + pageContext + marketDataPrompt
 }
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+  
   try {
     const body: ChatRequest = await request.json()
-    const { messages, context, leadInfo } = body
+    const { messages, context, sessionId, userId } = body
 
-    // Get agent's API key from database
     const supabase = createClient()
+
+    // Get current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Please log in to use the chat' },
+        { status: 401 }
+      )
+    }
+
+    // Get agent's settings
     const { data: agent, error: agentError } = await supabase
       .from('agents')
-      .select('anthropic_api_key, full_name')
+      .select('anthropic_api_key, full_name, ai_chat_enabled, ai_system_prompt, ai_vip_message_threshold')
       .eq('id', context.agentId)
       .single()
 
     if (agentError || !agent) {
-      console.error('Error fetching agent:', agentError)
       return NextResponse.json(
         { error: 'Agent not found' },
         { status: 404 }
       )
     }
 
-    if (!agent.anthropic_api_key) {
-      console.error('Agent does not have an Anthropic API key configured:', context.agentId)
+    if (!agent.ai_chat_enabled || !agent.anthropic_api_key) {
       return NextResponse.json(
-        { error: 'AI chat is not configured for this agent. Please contact the agent directly.' },
+        { error: 'AI chat is not enabled for this agent.' },
         { status: 400 }
       )
     }
 
-    // Create Anthropic client with agent's API key
+    // Get or verify session
+    let session = null
+    let messageCount = 0
+    let isVip = false
+
+    if (sessionId) {
+      const { data: existingSession } = await supabase
+        .from('chat_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .eq('user_id', user.id)
+        .single()
+
+      if (existingSession) {
+        session = existingSession
+        messageCount = existingSession.message_count || 0
+        isVip = existingSession.status === 'vip'
+      }
+    }
+
+    // Build market data context
+    const marketContext: MarketContext = {}
+
+    if (context.buildingId) {
+      marketContext.building = await getBuildingMarketContext(context.buildingId) || undefined
+      
+      // Get community context if we have building
+      if (context.communityId) {
+        marketContext.community = await getCommunityMarketContext(context.communityId) || undefined
+      }
+    }
+
+    if (context.listingId && marketContext.building) {
+      marketContext.listing = await getListingMarketContext(context.listingId, marketContext.building) || undefined
+    }
+
+    const marketDataPrompt = buildMarketDataPrompt(marketContext)
+
+    // Build system prompt
+    const systemPrompt = buildSystemPrompt(
+      context, 
+      agent.ai_system_prompt, 
+      marketDataPrompt,
+      isVip
+    )
+
+    // Create Anthropic client
     const anthropic = new Anthropic({
       apiKey: agent.anthropic_api_key
     })
 
-    // Build system prompt based on context
-    const systemPrompt = buildSystemPrompt(context)
-
     // Call Claude
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
+      max_tokens: isVip ? 1000 : 500,
       system: systemPrompt,
       messages: messages.map(m => ({
         role: m.role,
@@ -163,43 +185,70 @@ export async function POST(request: NextRequest) {
       ? response.content[0].text
       : ''
 
-    // Extract lead info from conversation
-    const extractedInfo = extractLeadInfo(messages)
-    const finalLeadInfo = {
-      name: leadInfo?.name || extractedInfo.name,
-      email: leadInfo?.email || extractedInfo.email,
-      phone: leadInfo?.phone || extractedInfo.phone
+    const responseTime = Date.now() - startTime
+    const tokensUsed = response.usage?.input_tokens + response.usage?.output_tokens
+
+    // Save messages to database
+    if (session) {
+      // Save user message
+      const userMsg = messages[messages.length - 1]
+      await supabase.from('chat_messages').insert({
+        session_id: session.id,
+        role: 'user',
+        content: userMsg.content,
+        page_context: {
+          pageType: context.pageType,
+          buildingId: context.buildingId,
+          listingId: context.listingId
+        }
+      })
+
+      // Save assistant message
+      await supabase.from('chat_messages').insert({
+        session_id: session.id,
+        role: 'assistant',
+        content: assistantMessage,
+        market_data_used: marketContext,
+        tokens_used: tokensUsed,
+        response_time_ms: responseTime
+      })
+
+      // Update session context
+      await supabase
+        .from('chat_sessions')
+        .update({
+          current_page_type: context.pageType,
+          current_page_id: context.buildingId || context.listingId,
+          last_activity_at: new Date().toISOString()
+        })
+        .eq('id', session.id)
     }
 
-    // If we have email, create/update lead
-    let leadCreated = false
-    if (finalLeadInfo.email && context.agentId) {
-      try {
-        await getOrCreateLead({
-          agentId: context.agentId,
-          contactName: finalLeadInfo.name || 'Chat Visitor',
-          contactEmail: finalLeadInfo.email,
-          contactPhone: finalLeadInfo.phone || '',
-          source: 'ai_chatbot',
-          buildingId: context.buildingId,
-          listingId: context.listingId,
-          propertyDetails: {
-            buildingName: context.buildingName,
-            buildingAddress: context.buildingAddress,
-            unitNumber: context.unitNumber
-          },
-          message: `AI Chat Conversation:\n${messages.map(m => `${m.role}: ${m.content}`).join('\n')}\nassistant: ${assistantMessage}`
-        })
-        leadCreated = true
-      } catch (err) {
-        console.error('Error creating lead from chat:', err)
+    // Check if should show VIP prompt
+    const vipThreshold = agent.ai_vip_message_threshold || 5
+    const newMessageCount = messageCount + 1
+    let showVipPrompt = false
+
+    if (!isVip && session) {
+      // Show VIP prompt at threshold, and every 5 messages after if declined
+      if (newMessageCount === vipThreshold) {
+        showVipPrompt = true
+      } else if (session.vip_prompted_at && newMessageCount >= vipThreshold + 5) {
+        // Check if 5 messages since last prompt
+        const messagesSincePrompt = newMessageCount - vipThreshold
+        if (messagesSincePrompt % 5 === 0) {
+          showVipPrompt = true
+        }
       }
     }
 
     return NextResponse.json({
       message: assistantMessage,
-      leadInfo: finalLeadInfo,
-      leadCreated
+      messageCount: newMessageCount,
+      sessionStatus: isVip ? 'vip' : 'active',
+      showVipPrompt,
+      tokensUsed,
+      responseTimeMs: responseTime
     })
 
   } catch (error) {

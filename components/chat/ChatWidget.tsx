@@ -1,7 +1,9 @@
+// components/chat/ChatWidget.tsx
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { MessageCircle, X, Send, Loader2, User, Bot } from 'lucide-react'
+import { MessageCircle, X, Send, Loader2, User, Bot, Star } from 'lucide-react'
+import VipPrompt from './VipPrompt'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -13,6 +15,7 @@ interface ChatContext {
   buildingName?: string
   buildingAddress?: string
   buildingId?: string
+  communityId?: string
   listingId?: string
   unitNumber?: string
   listPrice?: number
@@ -20,18 +23,29 @@ interface ChatContext {
   bathrooms?: number
   agentId: string
   agentName: string
+  welcomeMessage?: string
+  vipThreshold: number
 }
 
 interface ChatWidgetProps {
   context: ChatContext
+  user: {
+    id: string
+    email: string
+    name?: string
+  }
 }
 
-export default function ChatWidget({ context }: ChatWidgetProps) {
+export default function ChatWidget({ context, user }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [leadInfo, setLeadInfo] = useState<{ name?: string; email?: string; phone?: string }>({})
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionStatus, setSessionStatus] = useState<'active' | 'vip'>('active')
+  const [messageCount, setMessageCount] = useState(0)
+  const [showVipPrompt, setShowVipPrompt] = useState(false)
+  const [vipLoading, setVipLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -49,20 +63,55 @@ export default function ChatWidget({ context }: ChatWidgetProps) {
     }
   }, [isOpen])
 
-  // Initial greeting when chat opens
+  // Initialize session when chat opens
   useEffect(() => {
-    if (isOpen && messages.length === 0) {
-      let greeting = ''
-      if (context.pageType === 'home') {
-        greeting = `Hi there! 👋 I'm here to help you find your perfect condo. Are you looking to buy or rent?`
-      } else if (context.pageType === 'building') {
-        greeting = `Hi! 👋 I can help you learn more about ${context.buildingName || 'this building'}. What would you like to know?`
-      } else if (context.pageType === 'property') {
-        greeting = `Hi! 👋 Interested in ${context.unitNumber ? `Unit ${context.unitNumber}` : 'this unit'}${context.buildingName ? ` at ${context.buildingName}` : ''}? I can answer your questions or help schedule a viewing!`
+    if (isOpen && !sessionId) {
+      initializeSession()
+    }
+  }, [isOpen])
+
+  async function initializeSession() {
+    try {
+      const response = await fetch('/api/chat/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: context.agentId })
+      })
+      
+      const data = await response.json()
+      
+      if (data.sessionId) {
+        setSessionId(data.sessionId)
+        setSessionStatus(data.status || 'active')
+        setMessageCount(data.messageCount || 0)
+        
+        // Load existing messages if any
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages)
+        } else {
+          // Show welcome message
+          const greeting = context.welcomeMessage || getDefaultGreeting()
+          setMessages([{ role: 'assistant', content: greeting }])
+        }
       }
+    } catch (error) {
+      console.error('Error initializing session:', error)
+      // Fallback to greeting without session
+      const greeting = context.welcomeMessage || getDefaultGreeting()
       setMessages([{ role: 'assistant', content: greeting }])
     }
-  }, [isOpen, context])
+  }
+
+  function getDefaultGreeting(): string {
+    if (context.pageType === 'home') {
+      return `Hi${user.name ? ` ${user.name}` : ''}! 👋 I'm here to help you find your perfect condo. Are you looking to buy or rent?`
+    } else if (context.pageType === 'building') {
+      return `Hi${user.name ? ` ${user.name}` : ''}! 👋 I can help you learn more about ${context.buildingName || 'this building'}. What would you like to know?`
+    } else if (context.pageType === 'property') {
+      return `Hi${user.name ? ` ${user.name}` : ''}! 👋 Interested in ${context.unitNumber ? `Unit ${context.unitNumber}` : 'this unit'}${context.buildingName ? ` at ${context.buildingName}` : ''}? I can answer your questions or help schedule a viewing!`
+    }
+    return `Hi! 👋 How can I help you today?`
+  }
 
   async function sendMessage(e?: React.FormEvent) {
     e?.preventDefault()
@@ -80,35 +129,78 @@ export default function ChatWidget({ context }: ChatWidgetProps) {
         body: JSON.stringify({
           messages: [...messages, { role: 'user', content: userMessage }],
           context,
-          leadInfo
+          sessionId,
+          userId: user.id
         })
       })
 
       const data = await response.json()
 
       if (data.error) {
-        setMessages(prev => [...prev, { 
-          role: 'assistant', 
-          content: "I'm sorry, I'm having trouble connecting. Please try again or contact us directly." 
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: "I'm sorry, I'm having trouble connecting. Please try again or contact us directly."
         }])
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: data.message }])
-        if (data.leadInfo) {
-          setLeadInfo(data.leadInfo)
+        
+        // Update message count and check for VIP prompt
+        const newCount = (data.messageCount || messageCount + 1)
+        setMessageCount(newCount)
+        
+        if (data.showVipPrompt && sessionStatus !== 'vip') {
+          setShowVipPrompt(true)
         }
-        if (data.leadCreated) {
-          console.log('Lead created from chat!')
+        
+        if (data.sessionStatus) {
+          setSessionStatus(data.sessionStatus)
         }
       }
     } catch (error) {
       console.error('Chat error:', error)
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: "I'm sorry, something went wrong. Please try again." 
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: "I'm sorry, something went wrong. Please try again."
       }])
     } finally {
       setIsLoading(false)
     }
+  }
+
+  async function handleVipAccept(phone?: string) {
+    setVipLoading(true)
+    try {
+      const response = await fetch('/api/chat/vip-upgrade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, phone })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setSessionStatus('vip')
+        setShowVipPrompt(false)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `🌟 Welcome to VIP! You now have unlimited access. ${phone ? `${context.agentName} will reach out to you shortly.` : ''} How can I help you further?`
+        }])
+      }
+    } catch (error) {
+      console.error('VIP upgrade error:', error)
+    } finally {
+      setVipLoading(false)
+    }
+  }
+
+  function handleVipDecline() {
+    setShowVipPrompt(false)
+    // Mark as prompted in API
+    fetch('/api/chat/vip-prompted', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId })
+    }).catch(console.error)
   }
 
   return (
@@ -117,30 +209,59 @@ export default function ChatWidget({ context }: ChatWidgetProps) {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 ${
-          isOpen 
-            ? 'bg-gray-600 hover:bg-gray-700' 
-            : 'bg-blue-600 hover:bg-blue-700 animate-pulse hover:animate-none'
+          isOpen
+            ? 'bg-gray-600 hover:bg-gray-700'
+            : 'bg-blue-600 hover:bg-blue-700'
         }`}
         aria-label={isOpen ? 'Close chat' : 'Open chat'}
       >
         {isOpen ? (
           <X className="w-6 h-6 text-white" />
         ) : (
-          <MessageCircle className="w-6 h-6 text-white" />
+          <>
+            <MessageCircle className="w-6 h-6 text-white" />
+            {sessionStatus === 'vip' && (
+              <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center">
+                <Star className="w-3 h-3 text-white" />
+              </div>
+            )}
+          </>
         )}
       </button>
 
       {/* Chat Window */}
       {isOpen && (
         <div className="fixed bottom-24 right-6 z-50 w-[380px] max-w-[calc(100vw-48px)] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+          {/* VIP Prompt Overlay */}
+          {showVipPrompt && (
+            <VipPrompt
+              agentName={context.agentName}
+              onAccept={handleVipAccept}
+              onDecline={handleVipDecline}
+              isLoading={vipLoading}
+            />
+          )}
+
           {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 flex items-center gap-3">
+          <div className={`px-4 py-3 flex items-center gap-3 ${
+            sessionStatus === 'vip' 
+              ? 'bg-gradient-to-r from-amber-500 to-amber-600' 
+              : 'bg-gradient-to-r from-blue-600 to-blue-700'
+          }`}>
             <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <Bot className="w-6 h-6 text-white" />
+              {sessionStatus === 'vip' ? (
+                <Star className="w-6 h-6 text-white" />
+              ) : (
+                <Bot className="w-6 h-6 text-white" />
+              )}
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-white">Condo Assistant</h3>
-              <p className="text-xs text-blue-100">Powered by AI • {context.agentName}</p>
+              <h3 className="font-semibold text-white">
+                {sessionStatus === 'vip' ? 'VIP Assistant' : 'Condo Assistant'}
+              </h3>
+              <p className="text-xs text-white/80">
+                {sessionStatus === 'vip' ? '⭐ VIP Access' : 'Powered by AI'} • {context.agentName}
+              </p>
             </div>
           </div>
 
@@ -154,12 +275,14 @@ export default function ChatWidget({ context }: ChatWidgetProps) {
                 }`}
               >
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.role === 'user' 
-                    ? 'bg-blue-600' 
-                    : 'bg-gray-200'
+                  message.role === 'user'
+                    ? 'bg-blue-600'
+                    : sessionStatus === 'vip' ? 'bg-amber-500' : 'bg-gray-200'
                 }`}>
                   {message.role === 'user' ? (
                     <User className="w-4 h-4 text-white" />
+                  ) : sessionStatus === 'vip' ? (
+                    <Star className="w-4 h-4 text-white" />
                   ) : (
                     <Bot className="w-4 h-4 text-gray-600" />
                   )}
@@ -177,8 +300,14 @@ export default function ChatWidget({ context }: ChatWidgetProps) {
             ))}
             {isLoading && (
               <div className="flex items-start gap-2">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-gray-600" />
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  sessionStatus === 'vip' ? 'bg-amber-500' : 'bg-gray-200'
+                }`}>
+                  {sessionStatus === 'vip' ? (
+                    <Star className="w-4 h-4 text-white" />
+                  ) : (
+                    <Bot className="w-4 h-4 text-gray-600" />
+                  )}
                 </div>
                 <div className="bg-white px-4 py-3 rounded-2xl rounded-bl-md shadow-sm border border-gray-100">
                   <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
@@ -203,7 +332,11 @@ export default function ChatWidget({ context }: ChatWidgetProps) {
               <button
                 type="submit"
                 disabled={!input.trim() || isLoading}
-                className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                className={`w-10 h-10 rounded-full text-white flex items-center justify-center disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors ${
+                  sessionStatus === 'vip' 
+                    ? 'bg-amber-500 hover:bg-amber-600' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 <Send className="w-4 h-4" />
               </button>
