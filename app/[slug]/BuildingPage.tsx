@@ -549,9 +549,8 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         canonical_address: building.canonical_address,
         community_id: building.community_id
       }}
-      user={user ? { id: user.id, email: user.email || '', name: user.user_metadata?.full_name } : null}
-    />
-    </>
+      
+      </>
   )
 }
 

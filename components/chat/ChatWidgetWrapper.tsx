@@ -2,6 +2,8 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import ChatWidget from './ChatWidget'
 import ChatLocked from './ChatLocked'
 
@@ -27,20 +29,49 @@ interface ChatWidgetWrapperProps {
     bedrooms_total?: number
     bathrooms_total?: number
   } | null
-  user?: {
-    id: string
-    email: string
-    name?: string
-  } | null
 }
 
-export default function ChatWidgetWrapper({ 
-  agent, 
-  building, 
-  listing, 
-  user 
+export default function ChatWidgetWrapper({
+  agent,
+  building,
+  listing
 }: ChatWidgetWrapperProps) {
   const pathname = usePathname()
+  const [user, setUser] = useState<{ id: string; email: string; name?: string } | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const supabase = createClient()
+    
+    const getUser = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (authUser) {
+        setUser({
+          id: authUser.id,
+          email: authUser.email || '',
+          name: authUser.user_metadata?.full_name
+        })
+      }
+      setIsLoading(false)
+    }
+
+    getUser()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email || '',
+          name: session.user.user_metadata?.full_name
+        })
+      } else {
+        setUser(null)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   // Skip chat on admin/dashboard pages
   if (pathname.startsWith('/admin') || pathname.startsWith('/dashboard') || pathname.startsWith('/login') || pathname.startsWith('/register')) {
@@ -49,9 +80,14 @@ export default function ChatWidgetWrapper({
 
   // Check if AI chat is enabled for this agent
   const aiEnabled = agent.ai_chat_enabled && agent.has_api_key
-  
+
   // If AI not enabled, don't show chat at all
   if (!aiEnabled) {
+    return null
+  }
+
+  // Show nothing while checking auth (prevents hydration mismatch)
+  if (isLoading) {
     return null
   }
 
@@ -86,8 +122,8 @@ export default function ChatWidgetWrapper({
   }
 
   return (
-    <ChatWidget 
-      context={context} 
+    <ChatWidget
+      context={context}
       user={user}
     />
   )

@@ -138,11 +138,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     notFound()
   }
   const agent = displayAgent
-
-  // Get current user for chat widget
-  const authClient = await createServerClient()
-  const { data: { user } } = await authClient.auth.getUser()
-
+  
   // Fetch media
   const { data: allMedia } = await supabase
     .from('media')
