@@ -93,7 +93,7 @@ export default function ChatWidgetWrapper({
 
   // If user not logged in, show locked state
   if (!user) {
-    return <ChatLocked agentName={agent.full_name} />
+    return <ChatLocked agentName={agent.full_name} agentId={agent.id} buildingId={building?.id} buildingName={building?.building_name} buildingAddress={building?.canonical_address} />
   }
 
   // Determine page type

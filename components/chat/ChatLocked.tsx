@@ -3,14 +3,25 @@
 
 import { useState } from 'react'
 import { MessageCircle, Lock, X, Bot } from 'lucide-react'
-import Link from 'next/link'
+import RegisterModal from '@/components/auth/RegisterModal'
 
 interface ChatLockedProps {
   agentName: string
+  agentId?: string
+  buildingId?: string
+  buildingName?: string
+  buildingAddress?: string
 }
 
-export default function ChatLocked({ agentName }: ChatLockedProps) {
+export default function ChatLocked({ 
+  agentName,
+  agentId,
+  buildingId,
+  buildingName,
+  buildingAddress
+}: ChatLockedProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
 
   return (
     <>
@@ -36,7 +47,7 @@ export default function ChatLocked({ agentName }: ChatLockedProps) {
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-white">AI Condo Assistant</h3>
-              <p className="text-xs text-blue-100">Powered by AI • {agentName}</p>
+              <p className="text-xs text-blue-100">Powered by AI  {agentName}</p>
             </div>
             <button
               onClick={() => setIsOpen(false)}
@@ -51,37 +62,51 @@ export default function ChatLocked({ agentName }: ChatLockedProps) {
             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Lock className="w-8 h-8 text-blue-600" />
             </div>
-            
             <h4 className="text-lg font-semibold text-gray-900 mb-2">
               Sign Up Free to Chat
             </h4>
-            
             <p className="text-sm text-gray-600 mb-6">
               Get instant answers about condos, pricing, investments, and more from our AI assistant. It's free!
             </p>
-
+            
             <div className="space-y-3">
-              <Link
-                href="/register"
+              <button
+                onClick={() => {
+                  setIsOpen(false)
+                  setShowRegister(true)
+                }}
                 className="block w-full py-3 px-4 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Create Free Account
-              </Link>
-              
-              <Link
-                href="/login"
+              </button>
+              <button
+                onClick={() => {
+                  setIsOpen(false)
+                  setShowRegister(true)
+                }}
                 className="block w-full py-3 px-4 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
               >
                 Already have an account? Log in
-              </Link>
+              </button>
             </div>
-
+            
             <p className="text-xs text-gray-500 mt-4">
               No spam. No commitment. Just helpful condo insights.
             </p>
           </div>
         </div>
       )}
+
+      {/* Register Modal */}
+      <RegisterModal
+        isOpen={showRegister}
+        onClose={() => setShowRegister(false)}
+        agentId={agentId}
+        buildingId={buildingId}
+        buildingName={buildingName}
+        buildingAddress={buildingAddress}
+        registrationSource="ai_chat"
+      />
     </>
   )
 }
