@@ -264,7 +264,8 @@ export async function getAgentForBuilding(
           id, full_name, email, cell_phone, office_phone, whatsapp_number,
           profile_photo_url, bio, brokerage_name, brokerage_address, title,
           subdomain, custom_domain, branding, can_create_children,
-          site_title, site_tagline, og_image_url
+          site_title, site_tagline, og_image_url,
+          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_vip_message_threshold
         )
       `)
       .eq('building_id', buildingId)
@@ -285,11 +286,12 @@ export async function getAgentForBuilding(
         .select(`
           agent_id,
           agents (
-            id, full_name, email, cell_phone, office_phone, whatsapp_number,
-            profile_photo_url, bio, brokerage_name, brokerage_address, title,
-            subdomain, custom_domain, branding, can_create_children,
-            site_title, site_tagline, og_image_url
-          )
+          id, full_name, email, cell_phone, office_phone, whatsapp_number,
+          profile_photo_url, bio, brokerage_name, brokerage_address, title,
+          subdomain, custom_domain, branding, can_create_children,
+          site_title, site_tagline, og_image_url,
+          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_vip_message_threshold
+        )
         `)
         .eq('development_id', building.development_id)
         .in('agent_id', allAgentIds)
@@ -353,7 +355,8 @@ export async function getAgentForBuilding(
           id, full_name, email, cell_phone, office_phone, whatsapp_number,
           profile_photo_url, bio, brokerage_name, brokerage_address, title,
           subdomain, custom_domain, branding, can_create_children,
-          site_title, site_tagline, og_image_url
+          site_title, site_tagline, og_image_url,
+          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_vip_message_threshold
         )
       `)
       .eq('development_id', developmentId)
