@@ -34,13 +34,18 @@ function buildSystemPrompt(
   context: ChatRequest['context'], 
   agentCustomPrompt: string | null,
   marketDataPrompt: string,
-  isVip: boolean
+  isVip: boolean,
+  agentContact: { email: string; phone: string | null }
 ): string {
   const basePrompt = `You are a friendly, professional real estate assistant for ${context.agentName}, a Toronto condo specialist. Your role is to:
 1. Answer questions about condos, buildings, and listings using REAL market data
 2. Help visitors find the right condo for their needs
 3. Provide accurate pricing and investment insights
 4. Connect serious buyers with ${context.agentName} when ready
+
+Agent Contact Information (use when connecting users):
+- Email: ${agentContact.email}
+- Phone: ${agentContact.phone || 'Not available'}
 
 Guidelines:
 - Be warm, helpful, and conversational
@@ -103,7 +108,7 @@ export async function POST(request: NextRequest) {
     // Get agent's settings
     const { data: agent, error: agentError } = await supabase
       .from('agents')
-      .select('anthropic_api_key, full_name, ai_chat_enabled, ai_system_prompt, ai_vip_message_threshold')
+      .select('anthropic_api_key, full_name, email, cell_phone, ai_chat_enabled, ai_system_prompt, ai_vip_message_threshold')
       .eq('id', context.agentId)
       .single()
 
@@ -161,10 +166,11 @@ export async function POST(request: NextRequest) {
 
     // Build system prompt
     const systemPrompt = buildSystemPrompt(
-      context, 
-      agent.ai_system_prompt, 
+      context,
+      agent.ai_system_prompt,
       marketDataPrompt,
-      isVip
+      isVip,
+      { email: agent.email, phone: agent.cell_phone }
     )
 
     // Create Anthropic client
