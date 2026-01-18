@@ -1,7 +1,7 @@
 // app/api/chat/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { createRouteHandlerClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { getBuildingMarketContext, getCommunityMarketContext, getListingMarketContext, buildMarketDataPrompt, MarketContext } from '@/lib/ai/context-builder'
 
 interface ChatMessage {
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
     const body: ChatRequest = await request.json()
     const { messages, context, sessionId, userId } = body
 
-    const supabase = createRouteHandlerClient(request)
+    const supabase = createClient()
     
     // Verify userId from request body (client already authenticated via ChatWidgetWrapper)
     if (!userId) {
