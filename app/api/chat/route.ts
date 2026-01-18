@@ -87,15 +87,33 @@ export async function POST(request: NextRequest) {
     const { messages, context, sessionId, userId } = body
 
     const supabase = createRouteHandlerClient(request)
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    console.log(' Chat API auth check:', { hasUser: !!user, userId: user?.id, authError: authError?.message })
-    if (authError || !user) {
+    
+    // Verify userId from request body (client already authenticated via ChatWidgetWrapper)
+    if (!userId) {
+      console.log(' Chat API auth check: No userId provided')
       return NextResponse.json(
         { error: 'Please log in to use the chat' },
         { status: 401 }
       )
     }
+    
+    // Verify user exists in leads table
+    const { data: userRecord, error: userError } = await supabase
+      .from('leads')
+      .select('id, email')
+      .eq('user_id', userId)
+      .single()
+    
+    console.log(' Chat API auth check:', { userId, hasRecord: !!userRecord, error: userError?.message })
+    
+    if (!userRecord) {
+      return NextResponse.json(
+        { error: 'Please log in to use the chat' },
+        { status: 401 }
+      )
+    }
+    
+    const user = { id: userId, email: userRecord.email }
 
     // Get agent's settings
     const { data: agent, error: agentError } = await supabase
