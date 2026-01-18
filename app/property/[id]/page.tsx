@@ -138,7 +138,11 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     notFound()
   }
   const agent = displayAgent
-  
+
+  // Get current user for chat widget
+  const authClient = await createServerClient()
+  const { data: { user } } = await authClient.auth.getUser()
+
   // Fetch media
   const { data: allMedia } = await supabase
     .from('media')
@@ -340,7 +344,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         id: agent.id, 
         full_name: agent.full_name,
         ai_chat_enabled: agent.ai_chat_enabled,
-        has_api_key: !!agent.anthropic_api_key,
+        anthropic_api_key: agent.anthropic_api_key,
         ai_welcome_message: agent.ai_welcome_message,
         ai_vip_message_threshold: agent.ai_vip_message_threshold
       }}

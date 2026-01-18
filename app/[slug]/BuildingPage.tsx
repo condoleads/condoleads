@@ -539,7 +539,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         id: agent.id, 
         full_name: agent.full_name,
         ai_chat_enabled: agent.ai_chat_enabled,
-        has_api_key: !!agent.anthropic_api_key,
+        anthropic_api_key: agent.anthropic_api_key,
         ai_welcome_message: agent.ai_welcome_message,
         ai_vip_message_threshold: agent.ai_vip_message_threshold
       }}
@@ -549,8 +549,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         canonical_address: building.canonical_address,
         community_id: building.community_id
       }}
-      
-      </>
+      user={user ? { id: user.id, email: user.email || '', name: user.user_metadata?.full_name } : null}
+    />
+    </>
   )
 }
 
