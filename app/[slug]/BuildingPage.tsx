@@ -216,9 +216,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     }
     const agent = displayAgent
 
-  // Get current user for chat widget
-  const authClient = await createServerClient()
-  const { data: { user } } = await authClient.auth.getUser()
   
   const { data: listings } = await supabase
     .from('mls_listings')
