@@ -87,10 +87,9 @@ export async function POST(request: NextRequest) {
     const { messages, context, sessionId, userId } = body
 
     const supabase = await createServerClient()
-
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+    console.log(' Chat API auth check:', { hasUser: !!user, userId: user?.id, authError: authError?.message })
     if (authError || !user) {
       return NextResponse.json(
         { error: 'Please log in to use the chat' },
