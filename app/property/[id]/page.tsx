@@ -344,7 +344,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         id: agent.id, 
         full_name: agent.full_name,
         ai_chat_enabled: agent.ai_chat_enabled,
-        anthropic_api_key: agent.anthropic_api_key,
+        has_api_key: !!agent.anthropic_api_key,
         ai_welcome_message: agent.ai_welcome_message,
         ai_vip_message_threshold: agent.ai_vip_message_threshold
       }}
@@ -355,7 +355,6 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         community_id: building.community_id
       } : null}
       listing={{ id: listing.id, unit_number: listing.unit_number, list_price: listing.list_price, bedrooms_total: listing.bedrooms_total, bathrooms_total: listing.bathrooms_total }}
-      user={user ? { id: user.id, email: user.email || '', name: user.user_metadata?.full_name } : null}
     />
     </>
   )
