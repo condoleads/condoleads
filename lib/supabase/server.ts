@@ -46,3 +46,31 @@ export async function createServerClient() {
     }
   )
 }
+
+// Route Handler client (reads cookies from request) - for API routes
+export function createRouteHandlerClient(request: Request) {
+  const cookieHeader = request.headers.get('cookie') || ''
+  
+  return createSupabaseServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          // Parse cookies from header
+          const cookies: { name: string; value: string }[] = []
+          cookieHeader.split(';').forEach(cookie => {
+            const [name, ...rest] = cookie.trim().split('=')
+            if (name) {
+              cookies.push({ name, value: rest.join('=') })
+            }
+          })
+          return cookies
+        },
+        setAll() {
+          // Route handlers can't set cookies this way
+        },
+      },
+    }
+  )
+}
