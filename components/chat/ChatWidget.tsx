@@ -74,6 +74,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
     try {
       const response = await fetch('/api/chat/session', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId: context.agentId })
       })
@@ -125,6 +126,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...messages, { role: 'user', content: userMessage }],
@@ -172,6 +174,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
     try {
       const response = await fetch('/api/chat/vip-upgrade', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, phone })
       })
@@ -198,7 +201,8 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
     // Mark as prompted in API
     fetch('/api/chat/vip-prompted', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sessionId })
     }).catch(console.error)
   }
