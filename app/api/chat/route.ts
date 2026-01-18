@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
     // Verify user exists in leads table
     const { data: userRecord, error: userError } = await supabase
       .from('leads')
-      .select('id, email')
+      .select('id, contact_email')
       .eq('user_id', userId)
       .single()
     
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const user = { id: userId, email: userRecord.email }
+    const user = { id: userId, email: userRecord.contact_email }
 
     // Get agent's settings
     const { data: agent, error: agentError } = await supabase
