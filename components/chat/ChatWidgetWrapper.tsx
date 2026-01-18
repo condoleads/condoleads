@@ -10,7 +10,7 @@ interface ChatWidgetWrapperProps {
     id: string
     full_name: string
     ai_chat_enabled?: boolean
-    anthropic_api_key?: string | null
+    has_api_key?: boolean
     ai_welcome_message?: string | null
     ai_vip_message_threshold?: number | null
   }
@@ -48,7 +48,7 @@ export default function ChatWidgetWrapper({
   }
 
   // Check if AI chat is enabled for this agent
-  const aiEnabled = agent.ai_chat_enabled && agent.anthropic_api_key
+  const aiEnabled = agent.ai_chat_enabled && agent.has_api_key
   
   // If AI not enabled, don't show chat at all
   if (!aiEnabled) {
