@@ -42,6 +42,7 @@ export interface MarketContext {
 }
 
 export async function getBuildingMarketContext(buildingId: string): Promise<MarketContext['building'] | null> {
+  console.log(' getBuildingMarketContext START:', { buildingId })
   const supabase = createClient()
   
   // Get building details
@@ -61,8 +62,11 @@ export async function getBuildingMarketContext(buildingId: string): Promise<Mark
     `)
     .eq('id', buildingId)
     .single()
-
-  if (!building) return null
+  console.log(' getBuildingMarketContext building query:', { found: !!building, name: building?.building_name })
+  if (!building) {
+    console.log(' getBuildingMarketContext: Building not found', { buildingId })
+    return null
+  }
 
   // Get building PSF summary
   const { data: psfSummary } = await supabase
