@@ -289,6 +289,15 @@ export async function POST(request: NextRequest) {
         showVipPrompt 
       })
       
+      console.log('VIP Debug:', { 
+        messageCount, 
+        newMessageCount, 
+        vipThreshold, 
+        isVip, 
+        hasSession: !!session, 
+        showVipPrompt 
+      })
+      
       return NextResponse.json({
         message: assistantMessage,
         messageCount: newMessageCount,
