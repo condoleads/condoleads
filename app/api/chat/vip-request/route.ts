@@ -100,19 +100,21 @@ export async function POST(request: NextRequest) {
 
     // Format budget and timeline for display
     const budgetDisplay = budgetRange ? budgetRange.replace(/-/g, ' - ').replace('plus', '+') : 'Not specified'
-    const timelineDisplay = {
+    const timelineMap: Record<string, string> = {
       'immediate': 'Immediate (0-3 months)',
       'soon': 'Soon (3-6 months)',
       'planning': 'Planning (6-12 months)',
       'exploring': 'Just Exploring'
-    }[timeline] || 'Not specified'
+    }
+    const timelineDisplay = timeline ? timelineMap[timeline] || 'Not specified' : 'Not specified'
     
-    const buyerTypeDisplay = {
-      'buyer': ' Buyer',
-      'renter': ' Renter',
-      'seller': ' Seller',
-      'investor': ' Investor'
-    }[buyerType] || buyerType
+    const buyerTypeMap: Record<string, string> = {
+      'buyer': '🏠 Buyer',
+      'renter': '🔑 Renter',
+      'seller': '💰 Seller',
+      'investor': '📈 Investor'
+    }
+    const buyerTypeDisplay = buyerType ? buyerTypeMap[buyerType] || buyerType : 'Not specified'
 
     // Send email to agent
     const agentEmail = agent.notification_email || agent.email
