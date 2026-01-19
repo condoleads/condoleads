@@ -163,6 +163,13 @@ export async function POST(request: NextRequest) {
     }
 
     const marketDataPrompt = buildMarketDataPrompt(marketContext)
+    console.log(' Chat API market context:', { 
+      hasBuildingId: !!context.buildingId, 
+      buildingId: context.buildingId,
+      hasMarketBuilding: !!marketContext.building,
+      saleAvgPsf: marketContext.building?.saleAvgPsf,
+      marketDataPromptLength: marketDataPrompt.length 
+    })
 
     // Build system prompt
     const systemPrompt = buildSystemPrompt(
