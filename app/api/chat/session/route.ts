@@ -9,6 +9,9 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('Session API: Service role key exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY)
+    console.log('Session API: URL exists:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
+    
     const { agentId, userId } = await request.json()
     const supabase = supabaseAdmin
     
