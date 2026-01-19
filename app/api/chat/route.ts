@@ -271,15 +271,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      message: assistantMessage,
-      messageCount: newMessageCount,
-      sessionStatus: isVip ? 'vip' : 'active',
-      showVipPrompt,
-      tokensUsed,
-      responseTimeMs: responseTime
-    })
-
+    console.log('VIP Debug:', { 
+        messageCount, 
+        newMessageCount, 
+        vipThreshold, 
+        isVip, 
+        hasSession: !!session, 
+        showVipPrompt 
+      })
+      
+      console.log('VIP Debug:', { 
+        messageCount, 
+        newMessageCount, 
+        vipThreshold, 
+        isVip, 
+        hasSession: !!session, 
+        showVipPrompt 
+      })
+      
+      return NextResponse.json({
+        message: assistantMessage,
+        messageCount: newMessageCount,
+        sessionStatus: isVip ? 'vip' : 'active',
+        showVipPrompt,
+        tokensUsed,
+        responseTimeMs: responseTime
+      })
   } catch (error) {
     console.error('Chat API error:', error)
     return NextResponse.json(

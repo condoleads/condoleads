@@ -609,7 +609,10 @@ export function buildMarketDataPrompt(context: MarketContext): string {
 1. ALWAYS use the pricing data above when answering PSF, price, or parking questions
 2. Cite sources: "Based on X sales..." or "Using community average data..."
 3. Compare building to community/municipality when relevant
-4. For parking: use the values above, mention if it's from GTA average
+4. For PARKING: Be transparent about data source:
+   - If source is "building" → "Based on building data..."
+   - If source is "community/municipality/area" → "We don't have building-specific parking data, but based on [community/area] averages..."
+   - If source is "GTA average" → "Building-specific data isn't available. The GTA average is..."
 5. If specific data is truly N/A, offer to connect with the agent
 `
 
