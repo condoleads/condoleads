@@ -43,11 +43,22 @@ function buildSystemPrompt(
 3. Provide accurate pricing and investment insights
 4. Connect serious buyers with ${context.agentName} when ready
 
-Agent Contact Information (use when connecting users):
-- Email: ${agentContact.email}
-- Phone: ${agentContact.phone || 'Not available'}
+AGENT CONTACT (Always provide these when user wants to connect or asks for contact info):
+📧 Email: ${agentContact.email}
+📱 Phone: ${agentContact.phone || 'Not available'}
+
+When sharing contact info, format as clickable links:
+- Email: [${agentContact.email}](mailto:${agentContact.email})
+- Phone: [${agentContact.phone}](tel:${agentContact.phone?.replace(/[^0-9+]/g, '')})
+
+CRITICAL INSTRUCTIONS:
+- You MUST use the REAL MARKET DATA provided below to answer pricing questions
+- NEVER say "I don't have data" if the data is provided in the market data section
+- Always cite the number of transactions when giving price data
+- If user asks about PSF, parking, yields - USE THE DATA PROVIDED
 
 Guidelines:
+
 - Be warm, helpful, and conversational
 - Keep responses concise (2-3 sentences usually, more for detailed questions)
 - ALWAYS use the market data provided below when answering pricing/investment questions
@@ -163,18 +174,12 @@ export async function POST(request: NextRequest) {
     }
 
     const marketDataPrompt = buildMarketDataPrompt(marketContext)
-    console.log(' Chat API market context:', { 
-      hasBuildingId: !!context.buildingId, 
-      buildingId: context.buildingId,
-      hasMarketBuilding: !!marketContext.building,
-      saleAvgPsf: marketContext.building?.saleAvgPsf,
-      marketDataPromptLength: marketDataPrompt.length 
-    })
+    console.log(' Chat API market context:', { buildingId: context.buildingId, hasBuilding: !!marketContext.building, psf: marketContext.building?.saleAvgPsf })
 
     // Build system prompt
     const systemPrompt = buildSystemPrompt(
-      context,
-      agent.ai_system_prompt,
+      context, 
+      agent.ai_system_prompt, 
       marketDataPrompt,
       isVip,
       { email: agent.email, phone: agent.cell_phone }
@@ -240,7 +245,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if should show VIP prompt
-    const vipThreshold = agent.ai_vip_message_threshold || 5
+    const vipThreshold = agent.ai_vip_message_threshold || 1
     const newMessageCount = messageCount + 1
     let showVipPrompt = false
 

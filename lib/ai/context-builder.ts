@@ -5,6 +5,8 @@ export interface MarketContext {
   building?: {
     name: string
     address: string
+    communityName: string | null
+    municipalityName: string | null
     saleAvgPsf: number | null
     leaseAvgPsf: number | null
     grossYield: number | null
@@ -13,7 +15,11 @@ export interface MarketContext {
     avgTax: number | null
     parkingSale: number | null
     parkingLease: number | null
+    lockerSale: number | null
+    lockerLease: number | null
     transactionCount: number
+    saleCount: number
+    leaseCount: number
   }
   community?: {
     name: string
@@ -42,10 +48,9 @@ export interface MarketContext {
 }
 
 export async function getBuildingMarketContext(buildingId: string): Promise<MarketContext['building'] | null> {
-  console.log(' getBuildingMarketContext START:', { buildingId })
   const supabase = createClient()
   
-  // Get building details
+  // Get building details with geographic hierarchy
   const { data: building } = await supabase
     .from('buildings')
     .select(`
@@ -53,20 +58,17 @@ export async function getBuildingMarketContext(buildingId: string): Promise<Mark
       canonical_address,
       community_id,
       communities (
-        community_name,
+        name,
         municipality_id,
         municipalities (
-          municipality_name
+          name
         )
       )
     `)
     .eq('id', buildingId)
     .single()
-  console.log(' getBuildingMarketContext building query:', { found: !!building, name: building?.building_name })
-  if (!building) {
-    console.log(' getBuildingMarketContext: Building not found', { buildingId })
-    return null
-  }
+
+  if (!building) return null
 
   // Get building PSF summary
   const { data: psfSummary } = await supabase
@@ -92,11 +94,11 @@ export async function getBuildingMarketContext(buildingId: string): Promise<Mark
     if (taxVals.length > 0) avgTax = Math.round(taxVals.reduce((a, b) => a + b, 0) / taxVals.length)
   }
 
-  // Get parking values
-  const { data: parking } = await supabase
-    .from('effective_parking_values')
-    .select('sale_value, lease_value')
-    .eq('building_id', buildingId)
+  // Get parking values from buildings table directly
+  const { data: buildingParking } = await supabase
+    .from('buildings')
+    .select('parking_value_sale, parking_value_lease, locker_value_sale, locker_value_lease')
+    .eq('id', buildingId)
     .single()
 
   // Calculate yields
@@ -113,15 +115,21 @@ export async function getBuildingMarketContext(buildingId: string): Promise<Mark
   return {
     name: building.building_name,
     address: building.canonical_address,
+    communityName: (building.communities as any)?.name || null,
+    municipalityName: (building.communities as any)?.municipalities?.name || null,
     saleAvgPsf,
     leaseAvgPsf,
     grossYield,
     netYield,
     avgMaintenance,
     avgTax,
-    parkingSale: parking?.sale_value ? parseFloat(parking.sale_value) : null,
-    parkingLease: parking?.lease_value ? parseFloat(parking.lease_value) : null,
-    transactionCount: (psfSummary?.sale_count || 0) + (psfSummary?.lease_count || 0)
+    parkingSale: buildingParking?.parking_value_sale ? parseFloat(buildingParking.parking_value_sale) : null,
+    parkingLease: buildingParking?.parking_value_lease ? parseFloat(buildingParking.parking_value_lease) : null,
+    lockerSale: buildingParking?.locker_value_sale ? parseFloat(buildingParking.locker_value_sale) : null,
+    lockerLease: buildingParking?.locker_value_lease ? parseFloat(buildingParking.locker_value_lease) : null,
+    transactionCount: (psfSummary?.sale_count || 0) + (psfSummary?.lease_count || 0),
+    saleCount: psfSummary?.sale_count || 0,
+    leaseCount: psfSummary?.lease_count || 0
   }
 }
 
@@ -130,7 +138,7 @@ export async function getCommunityMarketContext(communityId: string): Promise<Ma
   
   const { data: community } = await supabase
     .from('communities')
-    .select('community_name')
+    .select('name')
     .eq('id', communityId)
     .single()
 
@@ -164,7 +172,7 @@ export async function getCommunityMarketContext(communityId: string): Promise<Ma
   }
 
   return {
-    name: community.community_name,
+    name: community.name,
     saleAvgPsf,
     leaseAvgPsf,
     grossYield
@@ -238,14 +246,25 @@ export function buildMarketDataPrompt(context: MarketContext): string {
     prompt += `
 ### Building: ${b.name}
 - Address: ${b.address}
-- Average Sale PSF: ${b.saleAvgPsf ? `$${b.saleAvgPsf.toLocaleString()}/sqft` : 'N/A'}
-- Average Lease PSF: ${b.leaseAvgPsf ? `$${b.leaseAvgPsf.toFixed(2)}/sqft/month` : 'N/A'}
+- Community: ${b.communityName || 'N/A'}
+- Municipality: ${b.municipalityName || 'N/A'}
+
+**PRICING DATA (USE THIS!):**
+- Average Sale PSF: ${b.saleAvgPsf ? `$${Math.round(b.saleAvgPsf)}/sqft` : 'N/A'} (based on ${b.saleCount} sales)
+- Average Lease PSF: ${b.leaseAvgPsf ? `$${b.leaseAvgPsf.toFixed(2)}/sqft/month` : 'N/A'} (based on ${b.leaseCount} leases)
 - Gross Yield: ${b.grossYield ? `${b.grossYield}%` : 'N/A'}
+
+**CARRYING COSTS:**
 - Avg Maintenance Fee: ${b.avgMaintenance ? `$${b.avgMaintenance}/month` : 'N/A'}
 - Avg Property Tax: ${b.avgTax ? `$${b.avgTax}/year` : 'N/A'}
-- Parking (Sale): ${b.parkingSale ? `$${b.parkingSale.toLocaleString()}` : 'N/A'}
-- Parking (Lease): ${b.parkingLease ? `$${b.parkingLease}/month` : 'N/A'}
-- Total Transactions: ${b.transactionCount}
+
+**PARKING & LOCKER:**
+- Parking Sale Value: ${b.parkingSale ? `$${b.parkingSale.toLocaleString()}` : 'Data not available'}
+- Parking Lease Value: ${b.parkingLease ? `$${b.parkingLease}/month` : 'Data not available'}
+- Locker Sale Value: ${b.lockerSale ? `$${b.lockerSale.toLocaleString()}` : 'Data not available'}
+- Locker Lease Value: ${b.lockerLease ? `$${b.lockerLease}/month` : 'Data not available'}
+
+- Total Transactions Analyzed: ${b.transactionCount}
 `
   }
 
