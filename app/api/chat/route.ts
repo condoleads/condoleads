@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
-import { getBuildingMarketContext, getCommunityMarketContext, getListingMarketContext, buildMarketDataPrompt, MarketContext } from '@/lib/ai/context-builder'
+import { getBuildingMarketContext, getCommunityMarketContext, getMunicipalityMarketContext, getAreaMarketContext, getListingMarketContext, buildMarketDataPrompt, MarketContext } from '@/lib/ai/context-builder'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -157,15 +157,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build market data context
+   // Build market data context with full geo hierarchy
     const marketContext: MarketContext = {}
-
     if (context.buildingId) {
       marketContext.building = await getBuildingMarketContext(context.buildingId) || undefined
       
-      // Get community context if we have building
-      if (context.communityId) {
-        marketContext.community = await getCommunityMarketContext(context.communityId) || undefined
+      // Get community context
+      if (marketContext.building?.communityId) {
+        marketContext.community = await getCommunityMarketContext(marketContext.building.communityId) || undefined
+      }
+      
+      // Get municipality context
+      if (marketContext.building?.municipalityId) {
+        marketContext.municipality = await getMunicipalityMarketContext(marketContext.building.municipalityId) || undefined
+      }
+      
+      // Get area context
+      if (marketContext.building?.areaId) {
+        marketContext.area = await getAreaMarketContext(marketContext.building.areaId) || undefined
       }
     }
 
