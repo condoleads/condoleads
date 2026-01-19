@@ -2,18 +2,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
 export async function POST(request: NextRequest) {
   try {
     console.log('Session API: Service role key exists:', !!process.env.SUPABASE_SERVICE_ROLE_KEY)
     console.log('Session API: URL exists:', !!process.env.NEXT_PUBLIC_SUPABASE_URL)
     
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    
     const { agentId, userId } = await request.json()
-    const supabase = supabaseAdmin
     
     // Verify userId from request body (client already authenticated via ChatWidgetWrapper)
     if (!userId) {
