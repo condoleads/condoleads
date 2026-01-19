@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { MessageCircle, X, Send, Loader2, User, Bot, Star } from 'lucide-react'
 import VipPrompt from './VipPrompt'
+import { renderMessageContent } from '@/lib/utils/link-parser'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -298,7 +299,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
                       : 'bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-md'
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <p className="text-sm whitespace-pre-wrap">{renderMessageContent(message.content)}</p>
                 </div>
               </div>
             ))}
