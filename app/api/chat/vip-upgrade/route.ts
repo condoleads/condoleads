@@ -1,4 +1,4 @@
-// app/api/chat/vip-upgrade/route.ts
+﻿// app/api/chat/vip-upgrade/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
 
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verify session belongs to user
+    // Verify session belongs to user and get current message count
     const { data: session, error: sessionError } = await supabase
       .from('chat_sessions')
       .select('*, agents(full_name, email, notification_email)')
@@ -32,13 +32,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update session to VIP
+    // Calculate new message limit: current count + 10
+    const currentCount = session.message_count || 0
+    const newLimit = currentCount + 10
+
+    // Update session with VIP status and message grant
     const { error: updateError } = await supabase
       .from('chat_sessions')
       .update({
         status: 'vip',
         vip_accepted_at: new Date().toISOString(),
         vip_phone: phone || null,
+        vip_messages_granted: newLimit,
         updated_at: new Date().toISOString()
       })
       .eq('id', sessionId)
@@ -51,6 +56,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('VIP Upgrade:', { sessionId, currentCount, newLimit, phone: phone ? 'provided' : 'none' })
+
     // Update lead if exists, or create one
     if (session.lead_id) {
       await supabase
@@ -58,7 +65,7 @@ export async function POST(request: NextRequest) {
         .update({
           contact_phone: phone || undefined,
           quality: 'hot',
-          notes: 'VIP upgrade from AI chat',
+          notes: `VIP upgrade from AI chat - granted ${newLimit} messages`,
           updated_at: new Date().toISOString()
         })
         .eq('id', session.lead_id)
@@ -81,7 +88,7 @@ export async function POST(request: NextRequest) {
           source: 'ai_chatbot_vip',
           quality: 'hot',
           status: 'new',
-          notes: 'VIP upgrade from AI chat'
+          notes: `VIP upgrade from AI chat - granted ${newLimit} messages`
         })
         .select()
         .single()
@@ -95,11 +102,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // TODO: Send notification email to agent about VIP upgrade
-    // This would use your existing email system
-
     return NextResponse.json({
       success: true,
+      messagesRemaining: 10,
+      messageLimit: newLimit,
       message: 'Upgraded to VIP successfully'
     })
 

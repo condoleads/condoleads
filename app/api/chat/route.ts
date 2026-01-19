@@ -254,31 +254,45 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if should show VIP prompt
-    const vipThreshold = agent.ai_vip_message_threshold || 1
-    const newMessageCount = messageCount + 1
-    let showVipPrompt = false
+      const vipThreshold = agent.ai_vip_message_threshold || 1
+      const newMessageCount = messageCount + 1
+      let showVipPrompt = false
+      let vipMessagesRemaining = 0
 
-    if (!isVip && session) {
-      // Show VIP prompt at threshold, and every 5 messages after if declined
-      if (newMessageCount === vipThreshold) {
-        showVipPrompt = true
-      } else if (session.vip_prompted_at && newMessageCount >= vipThreshold + 5) {
-        // Check if 5 messages since last prompt
-        const messagesSincePrompt = newMessageCount - vipThreshold
-        if (messagesSincePrompt % 5 === 0) {
-          showVipPrompt = true
+      if (session) {
+        if (!isVip) {
+          // Non-VIP: Show prompt at threshold
+          if (newMessageCount === vipThreshold) {
+            showVipPrompt = true
+          } else if (session.vip_prompted_at && newMessageCount >= vipThreshold + 5) {
+            // Re-prompt every 5 messages after decline
+            const messagesSincePrompt = newMessageCount - vipThreshold
+            if (messagesSincePrompt % 5 === 0) {
+              showVipPrompt = true
+            }
+          }
+        } else {
+          // VIP user: Check if they have exhausted their granted messages
+          const vipLimit = session.vip_messages_granted || 0
+          vipMessagesRemaining = Math.max(0, vipLimit - newMessageCount)
+          
+          if (vipLimit > 0 && newMessageCount >= vipLimit) {
+            // VIP exhausted their 10 messages - prompt for another 10
+            showVipPrompt = true
+          }
         }
       }
-    }
 
-    console.log('VIP Debug:', { 
-        messageCount, 
-        newMessageCount, 
-        vipThreshold, 
-        isVip, 
-        hasSession: !!session, 
-        showVipPrompt 
-      })
+    console.log('VIP Debug:', {
+          messageCount,
+          newMessageCount,
+          vipThreshold,
+          isVip,
+          vipMessagesRemaining,
+          vipLimit: session?.vip_messages_granted || 0,
+          hasSession: !!session,
+          showVipPrompt
+        })
       
       console.log('VIP Debug:', { 
         messageCount, 
@@ -299,13 +313,14 @@ export async function POST(request: NextRequest) {
       })
       
       return NextResponse.json({
-        message: assistantMessage,
-        messageCount: newMessageCount,
-        sessionStatus: isVip ? 'vip' : 'active',
-        showVipPrompt,
-        tokensUsed,
-        responseTimeMs: responseTime
-      })
+          message: assistantMessage,
+          messageCount: newMessageCount,
+          sessionStatus: isVip ? 'vip' : 'active',
+          showVipPrompt,
+          vipMessagesRemaining,
+          tokensUsed,
+          responseTimeMs: responseTime
+        })
   } catch (error) {
     console.error('Chat API error:', error)
     return NextResponse.json(
