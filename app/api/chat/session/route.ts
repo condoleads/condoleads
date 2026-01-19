@@ -4,18 +4,18 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
-    const { agentId } = await request.json()
+    const { agentId, userId } = await request.json()
     const supabase = createClient()
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
     
-    if (authError || !user) {
+    // Verify userId from request body (client already authenticated via ChatWidgetWrapper)
+    if (!userId) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - no userId provided' },
         { status: 401 }
       )
     }
+    
+    const user = { id: userId }
 
     // Check if agent has AI enabled
     const { data: agent, error: agentError } = await supabase

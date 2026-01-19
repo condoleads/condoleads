@@ -77,7 +77,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId: context.agentId })
+        body: JSON.stringify({ agentId: context.agentId, userId: user.id })
       })
       
       const data = await response.json()
