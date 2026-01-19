@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { MessageCircle, X, Send, Loader2, User, Bot, Star } from 'lucide-react'
 import VipPrompt from './VipPrompt'
+import VipRequestForm, { VipRequestData } from './VipRequestForm'
 import { renderMessageContent } from '@/lib/utils/link-parser'
 
 interface ChatMessage {
@@ -46,6 +47,9 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   const [sessionStatus, setSessionStatus] = useState<'active' | 'vip'>('active')
   const [messageCount, setMessageCount] = useState(0)
   const [showVipPrompt, setShowVipPrompt] = useState(false)
+  const [showVipForm, setShowVipForm] = useState(false)
+  const [vipRequestId, setVipRequestId] = useState<string | null>(null)
+  const [vipRequestStatus, setVipRequestStatus] = useState<'idle' | 'pending' | 'approved' | 'denied'>('idle')
   const [vipLoading, setVipLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -70,6 +74,39 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
       initializeSession()
     }
   }, [isOpen])
+
+  // Poll for VIP request approval
+  useEffect(() => {
+    if (!vipRequestId || vipRequestStatus !== 'pending') return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/chat/vip-request?requestId=${vipRequestId}`)
+        const data = await response.json()
+
+        if (data.status === 'approved') {
+          setVipRequestStatus('approved')
+          setSessionStatus('vip')
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have 10 additional messages. How can I help you further?`
+          }])
+          clearInterval(pollInterval)
+        } else if (data.status === 'denied') {
+          setVipRequestStatus('denied')
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `Thanks for your interest! ${context.agentName} will reach out to you directly. In the meantime, feel free to browse our listings.`
+          }])
+          clearInterval(pollInterval)
+        }
+      } catch (error) {
+        console.error('Error polling VIP status:', error)
+      }
+    }, 5000) // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval)
+  }, [vipRequestId, vipRequestStatus, context.agentName])
 
   async function initializeSession() {
     try {
@@ -170,31 +207,63 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
     }
   }
 
-  async function handleVipAccept(phone?: string) {
+  function handleVipAccept() {
+    // Show the questionnaire form instead of instant upgrade
+    setShowVipPrompt(false)
+    setShowVipForm(true)
+  }
+
+  async function handleVipRequestSubmit(data: VipRequestData) {
     setVipLoading(true)
     try {
-      const response = await fetch('/api/chat/vip-upgrade', {
+      const response = await fetch('/api/chat/vip-request', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, phone })
+        body: JSON.stringify({
+          sessionId,
+          phone: data.phone,
+          fullName: data.fullName,
+          email: data.email,
+          budgetRange: data.budgetRange,
+          timeline: data.timeline,
+          buyerType: data.buyerType,
+          requirements: data.requirements,
+          pageUrl: window.location.href,
+          buildingName: context.buildingName
+        })
       })
-      
-      const data = await response.json()
-      
-      if (data.success) {
-        setSessionStatus('vip')
-        setShowVipPrompt(false)
+
+      const result = await response.json()
+
+      if (result.success) {
+        setVipRequestId(result.requestId)
+        setVipRequestStatus('pending')
+        setShowVipForm(false)
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: `🌟 Welcome to VIP! You now have unlimited access. ${phone ? `${context.agentName} will reach out to you shortly.` : ''} How can I help you further?`
+          content: `✨ Thanks ${data.fullName}! Your VIP request has been sent to ${context.agentName}. You'll be notified once it's approved. This usually takes just a few minutes!`
+        }])
+      } else {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Sorry, there was an error submitting your request. Please try again.`
         }])
       }
     } catch (error) {
-      console.error('VIP upgrade error:', error)
+      console.error('VIP request error:', error)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Sorry, there was an error submitting your request. Please try again.`
+      }])
     } finally {
       setVipLoading(false)
     }
+  }
+
+  function handleVipFormCancel() {
+    setShowVipForm(false)
+    setShowVipPrompt(true)
   }
 
   function handleVipDecline() {
@@ -238,14 +307,25 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
       {isOpen && (
         <div className="fixed bottom-24 right-6 z-50 w-[380px] max-w-[calc(100vw-48px)] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
           {/* VIP Prompt Overlay */}
-          {showVipPrompt && (
-            <VipPrompt
-              agentName={context.agentName}
-              onAccept={handleVipAccept}
-              onDecline={handleVipDecline}
-              isLoading={vipLoading}
-            />
-          )}
+            {showVipPrompt && (
+              <VipPrompt
+                agentName={context.agentName}
+                onAccept={handleVipAccept}
+                onDecline={handleVipDecline}
+                isLoading={vipLoading}
+              />
+            )}
+
+            {/* VIP Request Form */}
+            {showVipForm && (
+              <VipRequestForm
+                agentName={context.agentName}
+                buildingName={context.buildingName}
+                onSubmit={handleVipRequestSubmit}
+                onCancel={handleVipFormCancel}
+                isLoading={vipLoading}
+              />
+            )}
 
           {/* Header */}
           <div className={`px-4 py-3 flex items-center gap-3 ${
