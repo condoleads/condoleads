@@ -89,8 +89,9 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
           setSessionStatus('vip')
           setMessages(prev => [...prev, {
             role: 'assistant',
-            content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have 10 additional messages. How can I help you further?`
+            content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have 10 additional messages. Feel free to share more about what you're looking for!`
           }])
+          setShowVipForm(true) // Show qualifying form after approval
           clearInterval(pollInterval)
         } else if (data.status === 'denied') {
           setVipRequestStatus('denied')
@@ -207,10 +208,53 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
     }
   }
 
-  function handleVipAccept() {
-    // Show the questionnaire form instead of instant upgrade
-    setShowVipPrompt(false)
-    setShowVipForm(true)
+  async function handleVipAccept(phone: string) {
+    // Phone submitted - send VIP request to agent for approval
+    setVipLoading(true)
+    try {
+      const response = await fetch('/api/chat/vip-request', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          phone,
+          fullName: '',
+          email: '',
+          budgetRange: '',
+          timeline: '',
+          buyerType: '',
+          requirements: '',
+          pageUrl: window.location.href,
+          buildingName: context.buildingName
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setVipRequestId(result.requestId)
+        setVipRequestStatus('pending')
+        setShowVipPrompt(false)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `📱 Thanks! Your request has been sent to ${context.agentName}. You'll be notified once approved - usually within a few minutes!`
+        }])
+      } else {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Sorry, there was an error: ${result.error || 'Please try again.'}`
+        }])
+      }
+    } catch (error) {
+      console.error('VIP request error:', error)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Sorry, there was an error submitting your request. Please try again.`
+      }])
+    } finally {
+      setVipLoading(false)
+    }
   }
 
   async function handleVipRequestSubmit(data: VipRequestData) {
