@@ -75,15 +75,16 @@ export async function POST(request: NextRequest) {
 
     // Get user email from profiles if available
     let userEmail = email
-    if (!userEmail && session.user_id) {
+    let userName = fullName
+    if (session.user_id) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('email, full_name')
         .eq('id', session.user_id)
         .single()
       if (profile) {
-        userEmail = profile.email
-        if (!fullName) fullName = profile.full_name
+        if (!userEmail) userEmail = profile.email
+        if (!userName) userName = profile.full_name
       }
     }
 
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
         session_id: sessionId,
         agent_id: agent.id,
         phone,
-        full_name: fullName || 'Chat User',
+        full_name: userName || 'Chat User',
         email: userEmail,
         budget_range: budgetRange,
         timeline,
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
 
     // Build email HTML
     const emailHtml = buildApprovalEmailHtml({
-      fullName: fullName || 'Chat User',
+      fullName: userName || 'Chat User',
       phone,
       email: userEmail,
       buildingName,
