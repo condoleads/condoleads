@@ -1,6 +1,18 @@
 ﻿// app/api/chat/vip-approve/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
+import { Resend } from 'resend'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
+const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
+
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,12 +28,12 @@ export async function GET(request: NextRequest) {
       return createHtmlResponse('error', 'Invalid action. Must be approve or deny.')
     }
 
-    const supabase = createClient()
+    const supabase = createServiceClient()
 
     // Find the VIP request by token
     const { data: vipRequest, error: findError } = await supabase
       .from('vip_requests')
-      .select('*, chat_sessions(*)')
+      .select('*, chat_sessions(*), agents(full_name, email, notification_email)')
       .eq('approval_token', token)
       .single()
 
@@ -45,6 +57,7 @@ export async function GET(request: NextRequest) {
     }
 
     const newStatus = action === 'approve' ? 'approved' : 'denied'
+    const agent = vipRequest.agents
 
     // Update VIP request status
     const { error: updateError } = await supabase
@@ -84,7 +97,7 @@ export async function GET(request: NextRequest) {
             contact_phone: vipRequest.phone,
             contact_name: vipRequest.full_name,
             quality: 'hot',
-            notes: `VIP approved - ${vipRequest.buyer_type}, Budget: ${vipRequest.budget_range || 'N/A'}, Timeline: ${vipRequest.timeline || 'N/A'}`,
+            notes: `VIP approved - ${vipRequest.buyer_type || 'N/A'}, Budget: ${vipRequest.budget_range || 'N/A'}, Timeline: ${vipRequest.timeline || 'N/A'}`,
             updated_at: new Date().toISOString()
           })
           .eq('id', vipRequest.chat_sessions.lead_id)
@@ -100,7 +113,7 @@ export async function GET(request: NextRequest) {
             source: 'ai_chatbot_vip',
             quality: 'hot',
             status: 'new',
-            notes: `VIP approved - ${vipRequest.buyer_type}, Budget: ${vipRequest.budget_range || 'N/A'}, Timeline: ${vipRequest.timeline || 'N/A'}`
+            notes: `VIP approved - ${vipRequest.buyer_type || 'N/A'}, Budget: ${vipRequest.budget_range || 'N/A'}, Timeline: ${vipRequest.timeline || 'N/A'}`
           })
           .select()
           .single()
@@ -113,17 +126,65 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Send approval email to user
+      if (vipRequest.email) {
+        try {
+          await resend.emails.send({
+            from: 'CondoLeads <notifications@condoleads.ca>',
+            to: vipRequest.email,
+            subject: ` VIP Access Approved - ${agent.full_name}`,
+            html: buildUserApprovalEmail(vipRequest.full_name, agent.full_name, vipRequest.building_name)
+          })
+          console.log('Approval email sent to user:', vipRequest.email)
+        } catch (emailError) {
+          console.error('Failed to send user approval email:', emailError)
+        }
+      }
+
       console.log('VIP Approved:', { requestId: vipRequest.id, sessionId: vipRequest.session_id, newLimit })
-      return createHtmlResponse('approved', `VIP access granted to ${vipRequest.full_name}. They now have 10 additional messages.`)
+      return createHtmlResponse('approved', `VIP access granted to ${vipRequest.full_name || vipRequest.phone}. They now have 10 additional messages.`)
     } else {
+      // Denied - no email to user, just block
       console.log('VIP Denied:', { requestId: vipRequest.id, sessionId: vipRequest.session_id })
-      return createHtmlResponse('denied', `VIP request from ${vipRequest.full_name} has been denied.`)
+      return createHtmlResponse('denied', `VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`)
     }
 
   } catch (error) {
     console.error('VIP approve error:', error)
     return createHtmlResponse('error', 'An unexpected error occurred.')
   }
+}
+
+function buildUserApprovalEmail(userName: string | null, agentName: string, buildingName: string | null): string {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+        <div style="font-size: 48px; margin-bottom: 12px;"></div>
+        <h1 style="color: white; margin: 0; font-size: 24px;">VIP Access Approved!</h1>
+      </div>
+      
+      <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          Hi ${userName || 'there'}!
+        </p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          Great news! <strong>${agentName}</strong> has approved your VIP access request${buildingName ? ` for <strong>${buildingName}</strong>` : ''}.
+        </p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          You now have <strong>10 additional messages</strong> with the AI assistant. Head back to the chat to continue your conversation!
+        </p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          ${agentName} may also reach out to you directly to help with your condo search.
+        </p>
+      </div>
+
+      <div style="padding: 16px 24px; background: white; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+        <p style="margin: 0; color: #6b7280; font-size: 14px;">
+          Questions? Contact ${agentName} directly.
+        </p>
+      </div>
+    </div>
+  `
 }
 
 function createHtmlResponse(status: string, message: string): NextResponse {

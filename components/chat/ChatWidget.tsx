@@ -156,6 +156,11 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   async function sendMessage(e?: React.FormEvent) {
     e?.preventDefault()
     if (!input.trim() || isLoading) return
+    
+    // Block sending if waiting for VIP approval or denied
+    if (vipRequestStatus === 'pending' || vipRequestStatus === 'denied') {
+      return
+    }
 
     const userMessage = input.trim()
     setInput('')
