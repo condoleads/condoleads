@@ -43,9 +43,6 @@ export default function VipRequestForm({
   const validate = (): boolean => {
     const newErrors: Partial<VipRequestData> = {}
     
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required'
-    }
     if (!formData.fullName.trim()) {
       newErrors.fullName = 'Name is required'
     }
@@ -102,23 +99,7 @@ export default function VipRequestForm({
           {errors.fullName && <p className="text-xs text-red-500 mt-1">{errors.fullName}</p>}
         </div>
 
-        {/* Phone */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Phone Number *
-          </label>
-          <input
-            type="tel"
-            value={formData.phone}
-            onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-            className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${
-              errors.phone ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="416-555-1234"
-          />
-          {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone}</p>}
-        </div>
-
+        
         {/* Email */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">

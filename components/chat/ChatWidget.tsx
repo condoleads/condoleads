@@ -50,6 +50,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   const [showVipForm, setShowVipForm] = useState(false)
   const [vipRequestId, setVipRequestId] = useState<string | null>(null)
   const [vipRequestStatus, setVipRequestStatus] = useState<'idle' | 'pending' | 'approved' | 'denied'>('idle')
+  const [questionnaireSubmitted, setQuestionnaireSubmitted] = useState(false)
   const [vipLoading, setVipLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -87,11 +88,21 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
         if (data.status === 'approved') {
           setVipRequestStatus('approved')
           setSessionStatus('vip')
-          setMessages(prev => [...prev, {
-            role: 'assistant',
-            content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have 10 additional messages. Feel free to share more about what you're looking for!`
-          }])
-          setShowVipForm(true) // Show qualifying form after approval
+          
+          if (questionnaireSubmitted) {
+            // Questionnaire already filled - unlock chat
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have 10 additional messages. How can I help you?`
+            }])
+          } else {
+            // Questionnaire not filled - keep form showing
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              content: `🌟 ${context.agentName} has approved your request! Please complete the questionnaire to unlock your VIP access.`
+            }])
+            setShowVipForm(true)
+          }
           clearInterval(pollInterval)
         } else if (data.status === 'denied') {
           setVipRequestStatus('denied')
@@ -286,11 +297,22 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
       const result = await response.json()
 
       if (result.success) {
+        setQuestionnaireSubmitted(true)
         setShowVipForm(false)
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: `✨ Thanks ${data.fullName || 'for the details'}! ${context.agentName} will review your request shortly. We'll notify you once approved!`
-        }])
+        
+        if (vipRequestStatus === 'approved') {
+          // Already approved - unlock chat now
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `✨ Thanks ${data.fullName || 'for the details'}! Your VIP access is now active. You have 10 messages - how can I help?`
+          }])
+        } else {
+          // Still waiting for approval
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `✨ Thanks ${data.fullName || 'for the details'}! We're waiting for ${context.agentName} to approve your request. You'll be notified shortly!`
+          }])
+        }
       } else {
         setMessages(prev => [...prev, {
           role: 'assistant',
@@ -459,7 +481,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
                   onChange={(e) => setInput(e.target.value)}
                   placeholder={vipRequestStatus === 'pending' ? "Waiting for agent approval..." : vipRequestStatus === 'denied' ? "Access denied" : "Type a message..."}
                   className="flex-1 px-4 py-2 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
-                  disabled={isLoading || vipRequestStatus === 'pending' || vipRequestStatus === 'denied'}
+                  disabled={isLoading || vipRequestStatus === 'denied' || (vipRequestStatus === 'pending') || (vipRequestStatus === 'approved' && !questionnaireSubmitted)}
                 />
               <button
                 type="submit"
