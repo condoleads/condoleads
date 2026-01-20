@@ -1,9 +1,19 @@
 ﻿// app/api/chat/vip-request/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
+const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
+
+// Use service client to bypass RLS
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,27 +30,24 @@ export async function POST(request: NextRequest) {
       buildingName 
     } = await request.json()
 
-    const supabase = createClient()
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    if (!sessionId || !phone) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+        { error: 'Session ID and phone are required' },
+        { status: 400 }
       )
     }
+
+    const supabase = createServiceClient()
 
     // Get session and agent info
     const { data: session, error: sessionError } = await supabase
       .from('chat_sessions')
       .select('*, agents(id, full_name, email, notification_email)')
       .eq('id', sessionId)
-      .eq('user_id', user.id)
       .single()
 
     if (sessionError || !session) {
+      console.error('Session not found:', sessionError)
       return NextResponse.json(
         { error: 'Session not found' },
         { status: 404 }
@@ -66,6 +73,20 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Get user email from profiles if available
+    let userEmail = email
+    if (!userEmail && session.user_id) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email, full_name')
+        .eq('id', session.user_id)
+        .single()
+      if (profile) {
+        userEmail = profile.email
+        if (!fullName) fullName = profile.full_name
+      }
+    }
+
     // Create VIP request
     const { data: vipRequest, error: insertError } = await supabase
       .from('vip_requests')
@@ -73,8 +94,8 @@ export async function POST(request: NextRequest) {
         session_id: sessionId,
         agent_id: agent.id,
         phone,
-        full_name: fullName,
-        email: email || user.email,
+        full_name: fullName || 'Chat User',
+        email: userEmail,
         budget_range: budgetRange,
         timeline,
         buyer_type: buyerType,
@@ -98,23 +119,17 @@ export async function POST(request: NextRequest) {
     const approveUrl = `${baseUrl}/api/chat/vip-approve?token=${vipRequest.approval_token}&action=approve`
     const denyUrl = `${baseUrl}/api/chat/vip-approve?token=${vipRequest.approval_token}&action=deny`
 
-    // Format budget and timeline for display
-    const budgetDisplay = budgetRange ? budgetRange.replace(/-/g, ' - ').replace('plus', '+') : 'Not specified'
-    const timelineMap: Record<string, string> = {
-      'immediate': 'Immediate (0-3 months)',
-      'soon': 'Soon (3-6 months)',
-      'planning': 'Planning (6-12 months)',
-      'exploring': 'Just Exploring'
-    }
-    const timelineDisplay = timeline ? timelineMap[timeline] || 'Not specified' : 'Not specified'
-    
-    const buyerTypeMap: Record<string, string> = {
-      'buyer': '🏠 Buyer',
-      'renter': '🔑 Renter',
-      'seller': '💰 Seller',
-      'investor': '📈 Investor'
-    }
-    const buyerTypeDisplay = buyerType ? buyerTypeMap[buyerType] || buyerType : 'Not specified'
+    // Build email HTML
+    const emailHtml = buildApprovalEmailHtml({
+      fullName: fullName || 'Chat User',
+      phone,
+      email: userEmail,
+      buildingName,
+      pageUrl,
+      approveUrl,
+      denyUrl,
+      agentName: agent.full_name
+    })
 
     // Send email to agent
     const agentEmail = agent.notification_email || agent.email
@@ -123,87 +138,34 @@ export async function POST(request: NextRequest) {
       await resend.emails.send({
         from: 'CondoLeads <notifications@condoleads.ca>',
         to: agentEmail,
-        subject: ` VIP Request from ${fullName} - ${buyerTypeDisplay}`,
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 12px 12px 0 0;">
-              <h1 style="color: white; margin: 0; font-size: 24px;"> New VIP Access Request</h1>
-            </div>
-            
-            <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
-              <h2 style="margin-top: 0; color: #1f2937;">Contact Information</h2>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; width: 120px;">Name:</td>
-                  <td style="padding: 8px 0; color: #1f2937; font-weight: 600;">${fullName}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280;">Phone:</td>
-                  <td style="padding: 8px 0; color: #1f2937; font-weight: 600;">
-                    <a href="tel:${phone}" style="color: #2563eb;">${phone}</a>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280;">Email:</td>
-                  <td style="padding: 8px 0; color: #1f2937;">
-                    <a href="mailto:${email || user.email}" style="color: #2563eb;">${email || user.email}</a>
-                  </td>
-                </tr>
-              </table>
-
-              <h2 style="margin-top: 24px; color: #1f2937;">Requirements</h2>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; width: 120px;">Type:</td>
-                  <td style="padding: 8px 0; color: #1f2937; font-weight: 600;">${buyerTypeDisplay}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280;">Budget:</td>
-                  <td style="padding: 8px 0; color: #1f2937;">${budgetDisplay}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280;">Timeline:</td>
-                  <td style="padding: 8px 0; color: #1f2937;">${timelineDisplay}</td>
-                </tr>
-                ${buildingName ? `
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280;">Building:</td>
-                  <td style="padding: 8px 0; color: #1f2937;">${buildingName}</td>
-                </tr>
-                ` : ''}
-                ${requirements ? `
-                <tr>
-                  <td style="padding: 8px 0; color: #6b7280; vertical-align: top;">Notes:</td>
-                  <td style="padding: 8px 0; color: #1f2937;">${requirements}</td>
-                </tr>
-                ` : ''}
-              </table>
-            </div>
-
-            <div style="padding: 24px; text-align: center; background: white; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-              <p style="margin: 0 0 16px; color: #6b7280;">Approve to grant this user VIP access with 10 additional chat messages.</p>
-              
-              <div style="display: inline-block;">
-                <a href="${approveUrl}" style="display: inline-block; padding: 14px 32px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px;">
-                   Approve VIP
-                </a>
-                <a href="${denyUrl}" style="display: inline-block; padding: 14px 32px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
-                   Deny
-                </a>
-              </div>
-              
-              <p style="margin: 16px 0 0; font-size: 12px; color: #9ca3af;">
-                This request expires in 24 hours. You can also manage requests in your dashboard.
-              </p>
-            </div>
-          </div>
-        `
+        subject: ` VIP Access Request - ${phone}`,
+        html: emailHtml
       })
-      console.log('VIP request email sent to:', agentEmail)
+      console.log('VIP request email sent to agent:', agentEmail)
     } catch (emailError) {
-      console.error('Failed to send VIP request email:', emailError)
-      // Don't fail the request if email fails
+      console.error('Failed to send agent email:', emailError)
     }
+
+    // Send copy to admin
+    try {
+      await resend.emails.send({
+        from: 'CondoLeads <notifications@condoleads.ca>',
+        to: ADMIN_EMAIL,
+        subject: ` VIP Request [${agent.full_name}] - ${phone}`,
+        html: emailHtml
+      })
+      console.log('VIP request email sent to admin:', ADMIN_EMAIL)
+    } catch (emailError) {
+      console.error('Failed to send admin email:', emailError)
+    }
+
+    console.log('VIP Request created:', { 
+      requestId: vipRequest.id, 
+      sessionId, 
+      phone,
+      agentEmail,
+      adminEmail: ADMIN_EMAIL
+    })
 
     return NextResponse.json({
       success: true,
@@ -231,7 +193,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Request ID required' }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = createServiceClient()
 
     const { data: vipRequest, error } = await supabase
       .from('vip_requests')
@@ -252,4 +214,75 @@ export async function GET(request: NextRequest) {
     console.error('VIP status check error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+function buildApprovalEmailHtml(data: {
+  fullName: string
+  phone: string
+  email?: string
+  buildingName?: string
+  pageUrl?: string
+  approveUrl: string
+  denyUrl: string
+  agentName: string
+}): string {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 12px 12px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 24px;"> New VIP Access Request</h1>
+        <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0;">Someone wants to chat more with your AI assistant</p>
+      </div>
+      
+      <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+        <h2 style="margin-top: 0; color: #1f2937; font-size: 18px;"> Contact Information</h2>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280; width: 100px;">Phone:</td>
+            <td style="padding: 8px 0; color: #1f2937; font-weight: 600;">
+              <a href="tel:${data.phone}" style="color: #2563eb; text-decoration: none;">${data.phone}</a>
+            </td>
+          </tr>
+          ${data.fullName && data.fullName !== 'Chat User' ? `
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">Name:</td>
+            <td style="padding: 8px 0; color: #1f2937;">${data.fullName}</td>
+          </tr>
+          ` : ''}
+          ${data.email ? `
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">Email:</td>
+            <td style="padding: 8px 0; color: #1f2937;">
+              <a href="mailto:${data.email}" style="color: #2563eb; text-decoration: none;">${data.email}</a>
+            </td>
+          </tr>
+          ` : ''}
+          ${data.buildingName ? `
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">Building:</td>
+            <td style="padding: 8px 0; color: #1f2937;">${data.buildingName}</td>
+          </tr>
+          ` : ''}
+        </table>
+      </div>
+
+      <div style="padding: 24px; text-align: center; background: white; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+        <p style="margin: 0 0 20px; color: #6b7280;">
+          Approve to grant this visitor <strong>10 additional chat messages</strong> with your AI assistant.
+        </p>
+        
+        <div>
+          <a href="${data.approveUrl}" style="display: inline-block; padding: 14px 32px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px;">
+             Approve VIP
+          </a>
+          <a href="${data.denyUrl}" style="display: inline-block; padding: 14px 32px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
+             Deny
+          </a>
+        </div>
+        
+        <p style="margin: 20px 0 0; font-size: 12px; color: #9ca3af;">
+          This request expires in 24 hours. You can also manage requests in your dashboard.
+        </p>
+      </div>
+    </div>
+  `
 }
