@@ -233,14 +233,16 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
       const result = await response.json()
 
       if (result.success) {
-        setVipRequestId(result.requestId)
-        setVipRequestStatus('pending')
-        setShowVipPrompt(false)
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: `📱 Thanks! Your request has been sent to ${context.agentName}. You'll be notified once approved - usually within a few minutes!`
-        }])
-      } else {
+          setVipRequestId(result.requestId)
+          setVipRequestStatus('pending')
+          setShowVipPrompt(false)
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `📱 Thanks! Your request has been sent to ${context.agentName}. While you wait, please tell us a bit more about what you're looking for!`
+          }])
+          // Show questionnaire while waiting for approval
+          setShowVipForm(true)
+        } else {
         setMessages(prev => [...prev, {
           role: 'assistant',
           content: `Sorry, there was an error: ${result.error || 'Please try again.'}`
@@ -260,33 +262,29 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   async function handleVipRequestSubmit(data: VipRequestData) {
     setVipLoading(true)
     try {
-      const response = await fetch('/api/chat/vip-request', {
+      // Update existing VIP request with questionnaire data
+      const response = await fetch('/api/chat/vip-questionnaire', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId,
-          phone: data.phone,
+          requestId: vipRequestId,
           fullName: data.fullName,
           email: data.email,
           budgetRange: data.budgetRange,
           timeline: data.timeline,
           buyerType: data.buyerType,
-          requirements: data.requirements,
-          pageUrl: window.location.href,
-          buildingName: context.buildingName
+          requirements: data.requirements
         })
       })
 
       const result = await response.json()
 
       if (result.success) {
-        setVipRequestId(result.requestId)
-        setVipRequestStatus('pending')
         setShowVipForm(false)
         setMessages(prev => [...prev, {
           role: 'assistant',
-          content: `✨ Thanks ${data.fullName}! Your VIP request has been sent to ${context.agentName}. You'll be notified once it's approved. This usually takes just a few minutes!`
+          content: `✨ Thanks ${data.fullName || 'for the details'}! ${context.agentName} will review your request shortly. We'll notify you once approved!`
         }])
       } else {
         setMessages(prev => [...prev, {
@@ -450,17 +448,17 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
           <form onSubmit={sendMessage} className="p-3 bg-white border-t border-gray-100">
             <div className="flex items-center gap-2">
               <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 px-4 py-2 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
-                disabled={isLoading}
-              />
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={vipRequestStatus === 'pending' ? "Waiting for agent approval..." : vipRequestStatus === 'denied' ? "Access denied" : "Type a message..."}
+                  className="flex-1 px-4 py-2 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
+                  disabled={isLoading || vipRequestStatus === 'pending' || vipRequestStatus === 'denied'}
+                />
               <button
                 type="submit"
-                disabled={!input.trim() || isLoading}
+                disabled={!input.trim() || isLoading || vipRequestStatus === 'pending' || vipRequestStatus === 'denied'}
                 className={`w-10 h-10 rounded-full text-white flex items-center justify-center disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors ${
                   sessionStatus === 'vip' 
                     ? 'bg-amber-500 hover:bg-amber-600' 
