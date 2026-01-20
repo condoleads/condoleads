@@ -50,8 +50,9 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   const [showVipForm, setShowVipForm] = useState(false)
   const [vipRequestId, setVipRequestId] = useState<string | null>(null)
   const [vipRequestStatus, setVipRequestStatus] = useState<'idle' | 'pending' | 'approved' | 'denied'>('idle')
-  const [questionnaireSubmitted, setQuestionnaireSubmitted] = useState(false)
   const [vipLoading, setVipLoading] = useState(false)
+  const [questionnaireSubmitted, setQuestionnaireSubmitted] = useState(false)
+  const [vipRequired, setVipRequired] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -168,8 +169,28 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
     e?.preventDefault()
     if (!input.trim() || isLoading) return
     
-    // Block sending if waiting for VIP approval or denied
-    if (vipRequestStatus === 'pending' || vipRequestStatus === 'denied') {
+    // Enforce VIP flow
+    if (vipRequired && vipRequestStatus === 'idle') {
+      // Haven't submitted phone yet - show VIP prompt
+      setShowVipPrompt(true)
+      return
+    }
+    
+    if (vipRequestStatus === 'pending') {
+      // Waiting for approval - show questionnaire if not filled
+      if (!questionnaireSubmitted) {
+        setShowVipForm(true)
+      }
+      return
+    }
+    
+    if (vipRequestStatus === 'approved' && !questionnaireSubmitted) {
+      // Approved but questionnaire not filled
+      setShowVipForm(true)
+      return
+    }
+    
+    if (vipRequestStatus === 'denied') {
       return
     }
 
@@ -206,8 +227,9 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
         setMessageCount(newCount)
         
         if (data.showVipPrompt && sessionStatus !== 'vip') {
-          setShowVipPrompt(true)
-        }
+            setShowVipPrompt(true)
+            setVipRequired(true)
+          }
         
         if (data.sessionStatus) {
           setSessionStatus(data.sessionStatus)
@@ -331,19 +353,24 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   }
 
   function handleVipFormCancel() {
-    setShowVipForm(false)
-    setShowVipPrompt(true)
+    // If they've submitted phone, they must fill questionnaire
+    if (vipRequestStatus === 'pending' || vipRequestStatus === 'approved') {
+      // Just close temporarily, will reopen on any action
+      setShowVipForm(false)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `Please complete the questionnaire to continue. It helps ${context.agentName} assist you better!`
+      }])
+    } else {
+      // Haven't submitted phone yet - go back to VIP prompt
+      setShowVipForm(false)
+      setShowVipPrompt(true)
+    }
   }
 
   function handleVipDecline() {
     setShowVipPrompt(false)
-    // Mark as prompted in API
-    fetch('/api/chat/vip-prompted', {
-      method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId })
-    }).catch(console.error)
+    // Note: vipRequired stays true - will show again on next message attempt
   }
 
   return (
@@ -481,7 +508,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
                   onChange={(e) => setInput(e.target.value)}
                   placeholder={vipRequestStatus === 'pending' ? "Waiting for agent approval..." : vipRequestStatus === 'denied' ? "Access denied" : "Type a message..."}
                   className="flex-1 px-4 py-2 bg-gray-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
-                  disabled={isLoading || vipRequestStatus === 'denied' || (vipRequestStatus === 'pending') || (vipRequestStatus === 'approved' && !questionnaireSubmitted)}
+                  disabled={isLoading || vipRequestStatus === 'pending' || vipRequestStatus === 'denied'}
                 />
               <button
                 type="submit"
