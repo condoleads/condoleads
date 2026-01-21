@@ -77,8 +77,7 @@ export async function POST(request: NextRequest) {
     let userEmail = email
     let userName = fullName
     let userPhone = ''
-    
-    console.log('Session data:', { sessionId, user_id: session.user_id, hasUserId: !!session.user_id })
+    let profileDebug: any = null
     
     if (session.user_id) {
       // Get name and phone from user_profiles
@@ -88,7 +87,7 @@ export async function POST(request: NextRequest) {
         .eq('id', session.user_id)
         .single()
       
-      console.log('Profile lookup:', { userId: session.user_id, profile, profileError, currentUserName: userName })
+      profileDebug = { profile, profileError: profileError?.message }
       
       if (profile && profile.full_name) {
         userName = profile.full_name
@@ -184,7 +183,8 @@ console.log('VIP Request created:', {
       adminEmail: ADMIN_EMAIL,
       userName,
       userEmail,
-      sessionUserId: session.user_id
+      sessionUserId: session.user_id,
+      profileDebug
     })
 
     return NextResponse.json({
