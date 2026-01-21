@@ -198,6 +198,34 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send admin email:', emailError)
     }
 
+    // Update lead with questionnaire details
+    if (vipRequest.lead_id) {
+      try {
+        await supabase
+          .from('leads')
+          .update({
+            contact_name: userName || undefined,
+            property_details: {
+              vip_questionnaire: {
+                budget_range: budgetRange,
+                timeline: timeline,
+                buyer_type: buyerType,
+                requirements: requirements,
+                submitted_at: new Date().toISOString()
+              }
+            },
+            message: `VIP Chat - ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`,
+            tags: [buyerType, budgetRange, timeline].filter(Boolean),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', vipRequest.lead_id)
+        
+        console.log('Lead updated with questionnaire:', { leadId: vipRequest.lead_id })
+      } catch (leadError) {
+        console.error('Error updating lead with questionnaire:', leadError)
+      }
+    }
+
     console.log('VIP Questionnaire updated:', { requestId, fullName, buyerType, budgetRange })
 
     return NextResponse.json({

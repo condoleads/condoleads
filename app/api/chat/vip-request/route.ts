@@ -130,6 +130,66 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Create or update lead for dashboard visibility
+    let leadId = null
+    try {
+      // Check if lead already exists for this user/agent combo
+      const { data: existingLead } = await supabase
+        .from('leads')
+        .select('id, contact_name')
+        .eq('agent_id', agent.id)
+        .eq('contact_email', userEmail)
+        .single()
+
+      if (existingLead) {
+        leadId = existingLead.id
+        // Update existing lead with VIP info
+        await supabase
+          .from('leads')
+          .update({
+            contact_phone: phone,
+            contact_name: userName || existingLead.contact_name,
+            message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
+            source: 'vip_chat_request',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', leadId)
+      } else {
+        // Create new lead
+        const { data: newLead } = await supabase
+          .from('leads')
+          .insert({
+            agent_id: agent.id,
+            user_id: session.user_id,
+            contact_name: userName || 'Chat User',
+            contact_email: userEmail,
+            contact_phone: phone,
+            source: 'vip_chat_request',
+            source_url: pageUrl,
+            message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
+            status: 'new',
+            quality: 'hot'
+          })
+          .select('id')
+          .single()
+        
+        if (newLead) leadId = newLead.id
+      }
+
+      // Link lead to VIP request
+      if (leadId) {
+        await supabase
+          .from('vip_requests')
+          .update({ lead_id: leadId })
+          .eq('id', vipRequest.id)
+      }
+
+      console.log('Lead created/updated for VIP request:', { leadId, vipRequestId: vipRequest.id })
+    } catch (leadError) {
+      console.error('Error creating lead for VIP request:', leadError)
+      // Don't fail the VIP request if lead creation fails
+    }
+
     // Build approval URLs
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://condoleads.ca'
     const approveUrl = `${baseUrl}/api/chat/vip-approve?token=${vipRequest.approval_token}&action=approve`
