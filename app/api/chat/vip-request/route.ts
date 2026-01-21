@@ -73,35 +73,27 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Get user data from user_profiles and leads
+    // Get user data from user_profiles and auth.users
     let userEmail = email
     let userName = fullName
     let userPhone = ''
     
-    // Get name and phone from user_profiles
     if (session.user_id) {
+      // Get name and phone from user_profiles
       const { data: profile } = await supabase
         .from('user_profiles')
         .select('full_name, phone')
         .eq('id', session.user_id)
         .single()
       if (profile) {
-        if (!userName) userName = profile.full_name
+        if (!userName || userName === 'Chat User') userName = profile.full_name
         if (profile.phone && profile.phone !== '00000000000') userPhone = profile.phone
       }
-    }
-    
-    // Get email from leads
-    if (session.lead_id) {
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('contact_email, contact_name, contact_phone')
-        .eq('id', session.lead_id)
-        .single()
-      if (lead) {
-        if (!userEmail) userEmail = lead.contact_email
-        if (!userName || userName === 'Chat User') userName = lead.contact_name
-        if (!userPhone && lead.contact_phone && lead.contact_phone !== '00000000000') userPhone = lead.contact_phone
+      
+      // Get email from auth.users
+      const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(session.user_id)
+      if (authUser && authUser.user && !authError) {
+        if (!userEmail) userEmail = authUser.user.email
       }
     }
 
