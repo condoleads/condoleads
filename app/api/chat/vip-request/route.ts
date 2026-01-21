@@ -176,12 +176,15 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send admin email:', emailError)
     }
 
-    console.log('VIP Request created:', { 
-      requestId: vipRequest.id, 
-      sessionId, 
+console.log('VIP Request created:', {
+      requestId: vipRequest.id,
+      sessionId,
       phone,
       agentEmail,
-      adminEmail: ADMIN_EMAIL
+      adminEmail: ADMIN_EMAIL,
+      userName,
+      userEmail,
+      sessionUserId: session.user_id
     })
 
     return NextResponse.json({
