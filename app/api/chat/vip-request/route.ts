@@ -78,6 +78,8 @@ export async function POST(request: NextRequest) {
     let userName = fullName
     let userPhone = ''
     
+    console.log('Session data:', { sessionId, user_id: session.user_id, hasUserId: !!session.user_id })
+    
     if (session.user_id) {
       // Get name and phone from user_profiles
       const { data: profile, error: profileError } = await supabase
