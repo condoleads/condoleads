@@ -80,14 +80,19 @@ export async function POST(request: NextRequest) {
     
     if (session.user_id) {
       // Get name and phone from user_profiles
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('full_name, phone')
         .eq('id', session.user_id)
         .single()
-      if (profile) {
-        if (!userName || userName === 'Chat User') userName = profile.full_name
-        if (profile.phone && profile.phone !== '00000000000') userPhone = profile.phone
+      
+      console.log('Profile lookup:', { userId: session.user_id, profile, profileError, currentUserName: userName })
+      
+      if (profile && profile.full_name) {
+        userName = profile.full_name
+      }
+      if (profile && profile.phone && profile.phone !== '00000000000') {
+        userPhone = profile.phone
       }
       
       // Get email from auth.users
