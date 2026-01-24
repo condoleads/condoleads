@@ -90,8 +90,9 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
           setVipRequestStatus('approved')
           setSessionStatus('vip')
           
-          if (questionnaireSubmitted) {
+          if (data.questionnaireCompleted || questionnaireSubmitted) {
             // Questionnaire already filled - unlock chat
+            setQuestionnaireSubmitted(true)
             setMessages(prev => [...prev, {
               role: 'assistant',
               content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have 10 additional messages. How can I help you?`
@@ -355,12 +356,16 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   function handleVipFormCancel() {
     // If they've submitted phone, they must fill questionnaire
     if (vipRequestStatus === 'pending' || vipRequestStatus === 'approved') {
-      // Just close temporarily, will reopen on any action
+      // Close form, show message, then reopen - they can't skip questionnaire
       setShowVipForm(false)
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `Please complete the questionnaire to continue. It helps ${context.agentName} assist you better!`
       }])
+      // Reopen form after brief delay
+      setTimeout(() => {
+        setShowVipForm(true)
+      }, 2000)
     } else {
       // Haven't submitted phone yet - go back to VIP prompt
       setShowVipForm(false)

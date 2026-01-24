@@ -43,9 +43,6 @@ export default function VipRequestForm({
   const validate = (): boolean => {
     const newErrors: Partial<VipRequestData> = {}
     
-    if (!formData.fullName.trim()) {
-      newErrors.fullName = 'Name is required'
-    }
     if (!formData.buyerType) {
       newErrors.buyerType = 'Please select your interest'
     }
@@ -82,38 +79,7 @@ export default function VipRequestForm({
           </div>
         )}
 
-        {/* Name */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Your Name *
-          </label>
-          <input
-            type="text"
-            value={formData.fullName}
-            onChange={(e) => setFormData(prev => ({ ...prev, fullName: e.target.value }))}
-            className={`w-full px-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${
-              errors.fullName ? 'border-red-500' : 'border-gray-300'
-            }`}
-            placeholder="John Smith"
-          />
-          {errors.fullName && <p className="text-xs text-red-500 mt-1">{errors.fullName}</p>}
-        </div>
-
         
-        {/* Email */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            Email (optional)
-          </label>
-          <input
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-            placeholder="john@email.com"
-          />
-        </div>
-
         {/* Buyer Type */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">

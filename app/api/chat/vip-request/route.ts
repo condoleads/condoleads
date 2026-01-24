@@ -73,18 +73,33 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Get user email from profiles if available
+    // Get user data from user_profiles and auth.users
     let userEmail = email
     let userName = fullName
+    let userPhone = ''
+    let profileDebug: any = null
+    
     if (session.user_id) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('email, full_name')
+      // Get name and phone from user_profiles
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('full_name, phone')
         .eq('id', session.user_id)
         .single()
-      if (profile) {
-        if (!userEmail) userEmail = profile.email
-        if (!userName) userName = profile.full_name
+      
+      profileDebug = { profile, profileError: profileError?.message }
+      
+      if (profile && profile.full_name) {
+        userName = profile.full_name
+      }
+      if (profile && profile.phone && profile.phone !== '00000000000') {
+        userPhone = profile.phone
+      }
+      
+      // Get email from auth.users
+      const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(session.user_id)
+      if (authUser && authUser.user && !authError) {
+        if (!userEmail) userEmail = authUser.user.email
       }
     }
 
@@ -113,6 +128,66 @@ export async function POST(request: NextRequest) {
         { error: 'Failed to create request' },
         { status: 500 }
       )
+    }
+
+    // Create or update lead for dashboard visibility
+    let leadId = null
+    try {
+      // Check if lead already exists for this user/agent combo
+      const { data: existingLead } = await supabase
+        .from('leads')
+        .select('id, contact_name')
+        .eq('agent_id', agent.id)
+        .eq('contact_email', userEmail)
+        .single()
+
+      if (existingLead) {
+        leadId = existingLead.id
+        // Update existing lead with VIP info
+        await supabase
+          .from('leads')
+          .update({
+            contact_phone: phone,
+            contact_name: userName || existingLead.contact_name,
+            message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
+            source: 'vip_chat_request',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', leadId)
+      } else {
+        // Create new lead
+        const { data: newLead } = await supabase
+          .from('leads')
+          .insert({
+            agent_id: agent.id,
+            user_id: session.user_id,
+            contact_name: userName || 'Chat User',
+            contact_email: userEmail,
+            contact_phone: phone,
+            source: 'vip_chat_request',
+            source_url: pageUrl,
+            message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
+            status: 'new',
+            quality: 'hot'
+          })
+          .select('id')
+          .single()
+        
+        if (newLead) leadId = newLead.id
+      }
+
+      // Link lead to VIP request
+      if (leadId) {
+        await supabase
+          .from('vip_requests')
+          .update({ lead_id: leadId })
+          .eq('id', vipRequest.id)
+      }
+
+      console.log('Lead created/updated for VIP request:', { leadId, vipRequestId: vipRequest.id })
+    } catch (leadError) {
+      console.error('Error creating lead for VIP request:', leadError)
+      // Don't fail the VIP request if lead creation fails
     }
 
     // Build approval URLs
@@ -160,12 +235,16 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send admin email:', emailError)
     }
 
-    console.log('VIP Request created:', { 
-      requestId: vipRequest.id, 
-      sessionId, 
+console.log('VIP Request created:', {
+      requestId: vipRequest.id,
+      sessionId,
       phone,
       agentEmail,
-      adminEmail: ADMIN_EMAIL
+      adminEmail: ADMIN_EMAIL,
+      userName,
+      userEmail,
+      sessionUserId: session.user_id,
+      profileDebug
     })
 
     return NextResponse.json({
@@ -197,19 +276,23 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient()
 
     const { data: vipRequest, error } = await supabase
-      .from('vip_requests')
-      .select('status, responded_at')
-      .eq('id', requestId)
-      .single()
+        .from('vip_requests')
+        .select('status, responded_at, buyer_type')
+        .eq('id', requestId)
+        .single()
 
-    if (error || !vipRequest) {
-      return NextResponse.json({ error: 'Request not found' }, { status: 404 })
-    }
+      if (error || !vipRequest) {
+        return NextResponse.json({ error: 'Request not found' }, { status: 404 })
+      }
 
-    return NextResponse.json({
-      status: vipRequest.status,
-      respondedAt: vipRequest.responded_at
-    })
+      // Check if questionnaire was filled (buyer_type is required field)
+      const questionnaireCompleted = !!vipRequest.buyer_type
+
+      return NextResponse.json({
+        status: vipRequest.status,
+        respondedAt: vipRequest.responded_at,
+        questionnaireCompleted
+      })
 
   } catch (error) {
     console.error('VIP status check error:', error)
