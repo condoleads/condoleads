@@ -73,33 +73,18 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Get user data from user_profiles and auth.users
+    // Get user email from profiles if available
     let userEmail = email
     let userName = fullName
-    let userPhone = ''
-    let profileDebug: any = null
-    
     if (session.user_id) {
-      // Get name and phone from user_profiles
-      const { data: profile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('full_name, phone')
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email, full_name')
         .eq('id', session.user_id)
         .single()
-      
-      profileDebug = { profile, profileError: profileError?.message }
-      
-      if (profile && profile.full_name) {
-        userName = profile.full_name
-      }
-      if (profile && profile.phone && profile.phone !== '00000000000') {
-        userPhone = profile.phone
-      }
-      
-      // Get email from auth.users
-      const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(session.user_id)
-      if (authUser && authUser.user && !authError) {
-        if (!userEmail) userEmail = authUser.user.email
+      if (profile) {
+        if (!userEmail) userEmail = profile.email
+        if (!userName) userName = profile.full_name
       }
     }
 
@@ -175,16 +160,12 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send admin email:', emailError)
     }
 
-console.log('VIP Request created:', {
-      requestId: vipRequest.id,
-      sessionId,
+    console.log('VIP Request created:', { 
+      requestId: vipRequest.id, 
+      sessionId, 
       phone,
       agentEmail,
-      adminEmail: ADMIN_EMAIL,
-      userName,
-      userEmail,
-      sessionUserId: session.user_id,
-      profileDebug
+      adminEmail: ADMIN_EMAIL
     })
 
     return NextResponse.json({
@@ -216,23 +197,19 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient()
 
     const { data: vipRequest, error } = await supabase
-        .from('vip_requests')
-        .select('status, responded_at, buyer_type')
-        .eq('id', requestId)
-        .single()
+      .from('vip_requests')
+      .select('status, responded_at')
+      .eq('id', requestId)
+      .single()
 
-      if (error || !vipRequest) {
-        return NextResponse.json({ error: 'Request not found' }, { status: 404 })
-      }
+    if (error || !vipRequest) {
+      return NextResponse.json({ error: 'Request not found' }, { status: 404 })
+    }
 
-      // Check if questionnaire was filled (buyer_type is required field)
-      const questionnaireCompleted = !!vipRequest.buyer_type
-
-      return NextResponse.json({
-        status: vipRequest.status,
-        respondedAt: vipRequest.responded_at,
-        questionnaireCompleted
-      })
+    return NextResponse.json({
+      status: vipRequest.status,
+      respondedAt: vipRequest.responded_at
+    })
 
   } catch (error) {
     console.error('VIP status check error:', error)
