@@ -169,6 +169,28 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send admin email:', emailError)
     }
 
+    // Create lead for VIP request
+    try {
+      await supabase
+        .from('leads')
+        .insert({
+          agent_id: agent.id,
+          user_id: session.user_id,
+          contact_name: userName || 'Chat User',
+          contact_email: userEmail,
+          contact_phone: phone,
+          source: 'vip_chat_request',
+          source_url: pageUrl,
+          building_id: session.building_id,
+          message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
+          status: 'new',
+          quality: 'hot'
+        })
+      console.log('Lead created for VIP request')
+    } catch (leadError) {
+      console.error('Failed to create lead for VIP request:', leadError)
+    }
+
     console.log('VIP Request created:', { 
       requestId: vipRequest.id, 
       sessionId, 

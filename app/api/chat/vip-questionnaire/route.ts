@@ -198,6 +198,27 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send admin email:', emailError)
     }
 
+    // Create lead for questionnaire
+    try {
+      await supabase
+        .from('leads')
+        .insert({
+          agent_id: agent.id,
+          user_id: vipRequest.chat_sessions?.user_id,
+          contact_name: userName || 'Chat User',
+          contact_email: userEmail,
+          contact_phone: vipRequest.phone,
+          source: 'vip_questionnaire',
+          source_url: vipRequest.page_url,
+          message: `VIP Questionnaire - ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`,
+          status: 'new',
+          quality: 'hot'
+        })
+      console.log('Lead created for questionnaire')
+    } catch (leadError) {
+      console.error('Failed to create lead for questionnaire:', leadError)
+    }
+
     console.log('VIP Questionnaire updated:', { requestId, fullName, buyerType, budgetRange })
 
     return NextResponse.json({
