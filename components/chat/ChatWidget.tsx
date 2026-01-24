@@ -355,16 +355,12 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   function handleVipFormCancel() {
     // If they've submitted phone, they must fill questionnaire
     if (vipRequestStatus === 'pending' || vipRequestStatus === 'approved') {
-      // Close form, show message, then reopen - they can't skip questionnaire
+      // Just close temporarily, will reopen on any action
       setShowVipForm(false)
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `Please complete the questionnaire to continue. It helps ${context.agentName} assist you better!`
       }])
-      // Reopen form after brief delay
-      setTimeout(() => {
-        setShowVipForm(true)
-      }, 2000)
     } else {
       // Haven't submitted phone yet - go back to VIP prompt
       setShowVipForm(false)
