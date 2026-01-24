@@ -170,25 +170,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Create lead for VIP request
-    try {
-      await supabase
-        .from('leads')
-        .insert({
-          agent_id: agent.id,
-          user_id: session.user_id,
-          contact_name: userName || 'Chat User',
-          contact_email: userEmail,
-          contact_phone: phone,
-          source: 'vip_chat_request',
-          source_url: pageUrl,
-          building_id: session.building_id,
-          message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
-          status: 'new',
-          quality: 'hot'
-        })
-      console.log('Lead created for VIP request')
-    } catch (leadError) {
+    const { error: leadError } = await supabase
+      .from('leads')
+      .insert({
+        agent_id: agent.id,
+        user_id: session.user_id,
+        contact_name: userName || 'Chat User',
+        contact_email: userEmail,
+        contact_phone: phone,
+        source: 'vip_chat_request',
+        source_url: pageUrl,
+        building_id: session.building_id,
+        message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
+        status: 'new',
+        quality: 'hot'
+      })
+    if (leadError) {
       console.error('Failed to create lead for VIP request:', leadError)
+    } else {
+      console.log('Lead created for VIP request')
     }
 
     console.log('VIP Request created:', { 
