@@ -73,33 +73,35 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Get user data from user_profiles and auth.users
+    // Get user data from user_profiles and leads
     let userEmail = email
     let userName = fullName
     let userPhone = ''
-    let profileDebug: any = null
     
+    // Get name and phone from user_profiles
     if (session.user_id) {
-      // Get name and phone from user_profiles
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from('user_profiles')
         .select('full_name, phone')
         .eq('id', session.user_id)
         .single()
-      
-      profileDebug = { profile, profileError: profileError?.message }
-      
-      if (profile && profile.full_name) {
-        userName = profile.full_name
+      if (profile) {
+        if (!userName) userName = profile.full_name
+        if (profile.phone && profile.phone !== '00000000000') userPhone = profile.phone
       }
-      if (profile && profile.phone && profile.phone !== '00000000000') {
-        userPhone = profile.phone
-      }
-      
-      // Get email from auth.users
-      const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(session.user_id)
-      if (authUser && authUser.user && !authError) {
-        if (!userEmail) userEmail = authUser.user.email
+    }
+    
+    // Get email from leads
+    if (session.lead_id) {
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('contact_email, contact_name, contact_phone')
+        .eq('id', session.lead_id)
+        .single()
+      if (lead) {
+        if (!userEmail) userEmail = lead.contact_email
+        if (!userName || userName === 'Chat User') userName = lead.contact_name
+        if (!userPhone && lead.contact_phone && lead.contact_phone !== '00000000000') userPhone = lead.contact_phone
       }
     }
 
@@ -128,42 +130,6 @@ export async function POST(request: NextRequest) {
         { error: 'Failed to create request' },
         { status: 500 }
       )
-    }
-
-    // Create NEW lead for VIP request (separate from registration lead)
-    let leadId = null
-    try {
-      const { data: newLead } = await supabase
-        .from('leads')
-        .insert({
-          agent_id: agent.id,
-          user_id: session.user_id,
-          contact_name: userName || 'Chat User',
-          contact_email: userEmail,
-          contact_phone: phone,
-          source: 'vip_chat_request',
-          source_url: pageUrl,
-          message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
-          status: 'new',
-          quality: 'hot'
-        })
-        .select('id')
-        .single()
-      
-      if (newLead) leadId = newLead.id
-
-      // Link lead to VIP request
-      if (leadId) {
-        await supabase
-          .from('vip_requests')
-          .update({ lead_id: leadId })
-          .eq('id', vipRequest.id)
-      }
-
-      console.log('Lead created/updated for VIP request:', { leadId, vipRequestId: vipRequest.id })
-    } catch (leadError) {
-      console.error('Error creating lead for VIP request:', leadError)
-      // Don't fail the VIP request if lead creation fails
     }
 
     // Build approval URLs
@@ -211,16 +177,12 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send admin email:', emailError)
     }
 
-console.log('VIP Request created:', {
-      requestId: vipRequest.id,
-      sessionId,
+    console.log('VIP Request created:', { 
+      requestId: vipRequest.id, 
+      sessionId, 
       phone,
       agentEmail,
-      adminEmail: ADMIN_EMAIL,
-      userName,
-      userEmail,
-      sessionUserId: session.user_id,
-      profileDebug
+      adminEmail: ADMIN_EMAIL
     })
 
     return NextResponse.json({
