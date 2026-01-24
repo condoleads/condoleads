@@ -198,32 +198,38 @@ export async function POST(request: NextRequest) {
       console.error('Failed to send admin email:', emailError)
     }
 
-    // Update lead with questionnaire details
-    if (vipRequest.lead_id) {
-      try {
-        await supabase
-          .from('leads')
-          .update({
-            contact_name: userName || undefined,
-            property_details: {
-              vip_questionnaire: {
-                budget_range: budgetRange,
-                timeline: timeline,
-                buyer_type: buyerType,
-                requirements: requirements,
-                submitted_at: new Date().toISOString()
-              }
-            },
-            message: `VIP Chat - ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`,
-            tags: [buyerType, budgetRange, timeline].filter(Boolean),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', vipRequest.lead_id)
-        
-        console.log('Lead updated with questionnaire:', { leadId: vipRequest.lead_id })
-      } catch (leadError) {
-        console.error('Error updating lead with questionnaire:', leadError)
-      }
+    // Create NEW lead for questionnaire (separate from VIP request lead)
+    try {
+      const { data: newLead } = await supabase
+        .from('leads')
+        .insert({
+          agent_id: agent.id,
+          user_id: vipRequest.chat_sessions?.user_id,
+          contact_name: userName || 'Chat User',
+          contact_email: userEmail,
+          contact_phone: vipRequest.phone,
+          source: 'vip_questionnaire',
+          source_url: vipRequest.page_url,
+          message: `VIP Questionnaire - ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`,
+          property_details: {
+            vip_questionnaire: {
+              budget_range: budgetRange,
+              timeline: timeline,
+              buyer_type: buyerType,
+              requirements: requirements,
+              submitted_at: new Date().toISOString()
+            }
+          },
+          tags: [buyerType, budgetRange, timeline].filter(Boolean),
+          status: 'new',
+          quality: 'hot'
+        })
+        .select('id')
+        .single()
+      
+      console.log('Questionnaire lead created:', { leadId: newLead?.id })
+    } catch (leadError) {
+      console.error('Error creating questionnaire lead:', leadError)
     }
 
     console.log('VIP Questionnaire updated:', { requestId, fullName, buyerType, budgetRange })

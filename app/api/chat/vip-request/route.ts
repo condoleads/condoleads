@@ -130,51 +130,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create or update lead for dashboard visibility
+    // Create NEW lead for VIP request (separate from registration lead)
     let leadId = null
     try {
-      // Check if lead already exists for this user/agent combo
-      const { data: existingLead } = await supabase
+      const { data: newLead } = await supabase
         .from('leads')
-        .select('id, contact_name')
-        .eq('agent_id', agent.id)
-        .eq('contact_email', userEmail)
+        .insert({
+          agent_id: agent.id,
+          user_id: session.user_id,
+          contact_name: userName || 'Chat User',
+          contact_email: userEmail,
+          contact_phone: phone,
+          source: 'vip_chat_request',
+          source_url: pageUrl,
+          message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
+          status: 'new',
+          quality: 'hot'
+        })
+        .select('id')
         .single()
-
-      if (existingLead) {
-        leadId = existingLead.id
-        // Update existing lead with VIP info
-        await supabase
-          .from('leads')
-          .update({
-            contact_phone: phone,
-            contact_name: userName || existingLead.contact_name,
-            message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
-            source: 'vip_chat_request',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', leadId)
-      } else {
-        // Create new lead
-        const { data: newLead } = await supabase
-          .from('leads')
-          .insert({
-            agent_id: agent.id,
-            user_id: session.user_id,
-            contact_name: userName || 'Chat User',
-            contact_email: userEmail,
-            contact_phone: phone,
-            source: 'vip_chat_request',
-            source_url: pageUrl,
-            message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
-            status: 'new',
-            quality: 'hot'
-          })
-          .select('id')
-          .single()
-        
-        if (newLead) leadId = newLead.id
-      }
+      
+      if (newLead) leadId = newLead.id
 
       // Link lead to VIP request
       if (leadId) {
