@@ -90,8 +90,9 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
           setVipRequestStatus('approved')
           setSessionStatus('vip')
           
-          if (questionnaireSubmitted) {
+          if (data.questionnaireCompleted || questionnaireSubmitted) {
             // Questionnaire already filled - unlock chat
+            setQuestionnaireSubmitted(true)
             setMessages(prev => [...prev, {
               role: 'assistant',
               content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have 10 additional messages. How can I help you?`

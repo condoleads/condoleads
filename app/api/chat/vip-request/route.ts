@@ -73,18 +73,27 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Get user email from profiles if available
+    // Get user data from user_profiles and auth.users
     let userEmail = email
     let userName = fullName
+    let userPhone = ''
+    
     if (session.user_id) {
+      // Get name and phone from user_profiles
       const { data: profile } = await supabase
-        .from('profiles')
-        .select('email, full_name')
+        .from('user_profiles')
+        .select('full_name, phone')
         .eq('id', session.user_id)
         .single()
       if (profile) {
-        if (!userEmail) userEmail = profile.email
-        if (!userName) userName = profile.full_name
+        if (!userName || userName === 'Chat User') userName = profile.full_name
+        if (profile.phone && profile.phone !== '00000000000') userPhone = profile.phone
+      }
+      
+      // Get email from auth.users
+      const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(session.user_id)
+      if (authUser && authUser.user && !authError) {
+        if (!userEmail) userEmail = authUser.user.email
       }
     }
 
@@ -197,19 +206,23 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient()
 
     const { data: vipRequest, error } = await supabase
-      .from('vip_requests')
-      .select('status, responded_at')
-      .eq('id', requestId)
-      .single()
+        .from('vip_requests')
+        .select('status, responded_at, buyer_type')
+        .eq('id', requestId)
+        .single()
 
-    if (error || !vipRequest) {
-      return NextResponse.json({ error: 'Request not found' }, { status: 404 })
-    }
+      if (error || !vipRequest) {
+        return NextResponse.json({ error: 'Request not found' }, { status: 404 })
+      }
 
-    return NextResponse.json({
-      status: vipRequest.status,
-      respondedAt: vipRequest.responded_at
-    })
+      // Check if questionnaire was filled (buyer_type is required field)
+      const questionnaireCompleted = !!vipRequest.buyer_type
+
+      return NextResponse.json({
+        status: vipRequest.status,
+        respondedAt: vipRequest.responded_at,
+        questionnaireCompleted
+      })
 
   } catch (error) {
     console.error('VIP status check error:', error)
