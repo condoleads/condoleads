@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     // Get the VIP request with session and agent info
     const { data: vipRequest, error: fetchError } = await supabase
       .from('vip_requests')
-      .select('*, agents(id, full_name, email, notification_email), chat_sessions(user_id)')
+      .select('*, agents(id, full_name, email, notification_email), chat_sessions(user_id, current_page_type, current_page_id)')
       .eq('id', requestId)
       .single()
 
@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
         contact_phone: vipRequest.phone,
         source: 'vip_questionnaire',
         source_url: vipRequest.page_url,
+        building_id: vipRequest.chat_sessions?.current_page_type === 'building' ? vipRequest.chat_sessions?.current_page_id : null,
         message: `VIP Questionnaire - ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`,
         status: 'new',
         quality: 'hot'

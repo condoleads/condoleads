@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
         contact_phone: phone,
         source: 'vip_chat_request',
         source_url: pageUrl,
-        building_id: session.building_id,
+        building_id: session.current_page_type === 'building' ? session.current_page_id : null,
         message: `VIP Chat Request - ${buildingName || 'General Inquiry'}`,
         status: 'new',
         quality: 'hot'
