@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     // Get session and agent info
     const { data: session, error: sessionError } = await supabase
       .from('chat_sessions')
-      .select('*, agents(id, full_name, email, notification_email)')
+      .select('*, agents(id, full_name, email, notification_email, vip_auto_approve)')
       .eq('id', sessionId)
       .single()
 
@@ -97,6 +97,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Check if agent has auto-approve enabled
+    const isAutoApprove = agent.vip_auto_approve === true
+
     // Create VIP request
     const { data: vipRequest, error: insertError } = await supabase
       .from('vip_requests')
@@ -111,7 +114,9 @@ export async function POST(request: NextRequest) {
         buyer_type: buyerType,
         requirements,
         page_url: pageUrl,
-        building_name: buildingName
+        building_name: buildingName,
+        status: isAutoApprove ? 'approved' : 'pending',
+        responded_at: isAutoApprove ? new Date().toISOString() : null
       })
       .select()
       .single()
@@ -191,13 +196,52 @@ export async function POST(request: NextRequest) {
       console.log('Lead created for VIP request')
     }
 
-    console.log('VIP Request created:', { 
-      requestId: vipRequest.id, 
-      sessionId, 
+    console.log('VIP Request created:', {
+      requestId: vipRequest.id,
+      sessionId,
       phone,
       agentEmail,
-      adminEmail: ADMIN_EMAIL
+      adminEmail: ADMIN_EMAIL,
+      autoApproved: isAutoApprove
     })
+
+    // If auto-approve, update session and send user email
+    if (isAutoApprove) {
+      // Update session with VIP status
+      const newLimit = (session.vip_messages_granted || 2) + 10
+      await supabase
+        .from('chat_sessions')
+        .update({
+          status: 'vip',
+          vip_accepted_at: new Date().toISOString(),
+          vip_phone: phone,
+          vip_messages_granted: newLimit,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', sessionId)
+
+      // Send approval email to user
+      if (userEmail) {
+        try {
+          await resend.emails.send({
+            from: 'CondoLeads <notifications@condoleads.ca>',
+            to: userEmail,
+            subject: `✨ VIP Access Approved - ${agent.full_name}`,
+            html: buildUserApprovalEmailHtml(userName, agent.full_name, buildingName)
+          })
+          console.log('Auto-approval email sent to user:', userEmail)
+        } catch (emailError) {
+          console.error('Failed to send user approval email:', emailError)
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        requestId: vipRequest.id,
+        status: 'approved',
+        message: 'VIP access automatically approved'
+      })
+    }
 
     return NextResponse.json({
       success: true,
@@ -317,6 +361,35 @@ function buildApprovalEmailHtml(data: {
         
         <p style="margin: 20px 0 0; font-size: 12px; color: #9ca3af;">
           This request expires in 24 hours. You can also manage requests in your dashboard.
+        </p>
+      </div>
+    </div>
+  `
+}
+
+function buildUserApprovalEmailHtml(userName: string | null, agentName: string, buildingName?: string): string {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+        <div style="font-size: 48px; margin-bottom: 12px;">✨</div>
+        <h1 style="color: white; margin: 0; font-size: 24px;">VIP Access Approved!</h1>
+      </div>
+      <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-radius: 0 0 12px 12px;">
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          Hi ${userName || 'there'}!
+        </p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          Great news! <strong>${agentName}</strong> has approved your VIP access request${buildingName ? ` for <strong>${buildingName}</strong>` : ''}.
+        </p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          You now have <strong>10 additional messages</strong> with the AI assistant. Head back to the chat to continue your conversation!
+        </p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          ${agentName} may also reach out to you directly to help with your condo search.
+        </p>
+        <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
+          Best regards,<br/>
+          The CondoLeads Team
         </p>
       </div>
     </div>

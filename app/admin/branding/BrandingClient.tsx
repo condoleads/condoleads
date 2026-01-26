@@ -19,8 +19,9 @@ interface Agent {
   facebook_pixel_id: string | null
   anthropic_api_key: string | null
   ai_chat_enabled: boolean | null
+  vip_auto_approve: boolean | null
   is_active: boolean
-  }
+}
 
 interface BrandingClientProps {
   initialAgents: Agent[]
@@ -49,7 +50,8 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       google_conversion_label: agent.google_conversion_label || '',
       facebook_pixel_id: agent.facebook_pixel_id || '',
       anthropic_api_key: agent.anthropic_api_key || '',
-      ai_chat_enabled: agent.ai_chat_enabled ?? true
+      ai_chat_enabled: agent.ai_chat_enabled ?? true,
+      vip_auto_approve: agent.vip_auto_approve ?? false
     })
   }
 
@@ -72,7 +74,8 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       google_conversion_label: editForm.google_conversion_label || null,
       facebook_pixel_id: editForm.facebook_pixel_id || null,
       anthropic_api_key: editForm.anthropic_api_key || null,
-      ai_chat_enabled: editForm.ai_chat_enabled ?? true
+      ai_chat_enabled: editForm.ai_chat_enabled ?? true,
+      vip_auto_approve: editForm.vip_auto_approve ?? false
     })
 
     if (!result.success) {
@@ -430,11 +433,39 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
               <p className="text-xs text-gray-500 mt-2">
                 Status: <span className={editForm.ai_chat_enabled ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
                   {editForm.ai_chat_enabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </p>
+                  </span>
+                </p>
+              </div>
+              
+              {/* VIP Auto-Approve Toggle */}
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Auto-Approve VIP Requests</label>
+                    <p className="text-xs text-gray-500">Automatically approve VIP chat requests without manual approval</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditForm({ ...editForm, vip_auto_approve: !editForm.vip_auto_approve })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      editForm.vip_auto_approve ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        editForm.vip_auto_approve ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Status: <span className={editForm.vip_auto_approve ? 'text-green-600 font-medium' : 'text-orange-600 font-medium'}>
+                    {editForm.vip_auto_approve ? 'Auto-Approve' : 'Manual Approval'}
+                  </span>
+                </p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
       {/* Add Custom Domain Modal */}
       {showAddModal && (

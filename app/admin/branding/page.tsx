@@ -6,7 +6,7 @@ export default async function BrandingPage() {
   
   const { data: agents, error } = await supabase
     .from('agents')
-    .select('id, full_name, subdomain, custom_domain, site_title, site_tagline, og_image_url, google_analytics_id, google_ads_id, google_conversion_label, facebook_pixel_id, anthropic_api_key, ai_chat_enabled, is_active')
+    .select('id, full_name, subdomain, custom_domain, site_title, site_tagline, og_image_url, google_analytics_id, google_ads_id, google_conversion_label, facebook_pixel_id, anthropic_api_key, ai_chat_enabled, vip_auto_approve, is_active')
     .order('full_name')
   
   if (error) {
