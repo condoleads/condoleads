@@ -15,6 +15,7 @@ export async function updateAgentBranding(
     google_conversion_label?: string | null
     facebook_pixel_id?: string | null
     anthropic_api_key?: string | null
+    ai_chat_enabled?: boolean | null
   }
 ) {
   const supabase = createClient()
@@ -30,9 +31,10 @@ export async function updateAgentBranding(
       google_ads_id: data.google_ads_id || null,
       google_conversion_label: data.google_conversion_label || null,
       facebook_pixel_id: data.facebook_pixel_id || null,
-      anthropic_api_key: data.anthropic_api_key || null
-    })
-    .eq('id', agentId)
+        anthropic_api_key: data.anthropic_api_key || null,
+        ai_chat_enabled: data.ai_chat_enabled ?? true
+      })
+      .eq('id', agentId)
 
   if (error) {
     console.error('Error updating agent branding:', error)

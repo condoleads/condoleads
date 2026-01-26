@@ -18,8 +18,9 @@ interface Agent {
   google_conversion_label: string | null
   facebook_pixel_id: string | null
   anthropic_api_key: string | null
+  ai_chat_enabled: boolean | null
   is_active: boolean
-}
+  }
 
 interface BrandingClientProps {
   initialAgents: Agent[]
@@ -47,7 +48,8 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       google_ads_id: agent.google_ads_id || '',
       google_conversion_label: agent.google_conversion_label || '',
       facebook_pixel_id: agent.facebook_pixel_id || '',
-      anthropic_api_key: agent.anthropic_api_key || ''
+      anthropic_api_key: agent.anthropic_api_key || '',
+      ai_chat_enabled: agent.ai_chat_enabled ?? true
     })
   }
 
@@ -69,7 +71,8 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       google_ads_id: editForm.google_ads_id || null,
       google_conversion_label: editForm.google_conversion_label || null,
       facebook_pixel_id: editForm.facebook_pixel_id || null,
-      anthropic_api_key: editForm.anthropic_api_key || null
+      anthropic_api_key: editForm.anthropic_api_key || null,
+      ai_chat_enabled: editForm.ai_chat_enabled ?? true
     })
 
     if (!result.success) {
@@ -396,14 +399,42 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
               Get API key from <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.anthropic.com</a>
             </p>
             {editForm.anthropic_api_key && (
-              <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
-                <Check className="w-4 h-4" />
-                <span>API key configured - AI chat will be enabled</span>
+                <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                  <Check className="w-4 h-4" />
+                  <span>API key configured</span>
+                </div>
+              )}
+            </div>
+            
+            {/* Chat Enable/Disable Toggle */}
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Enable AI Chat Widget</label>
+                  <p className="text-xs text-gray-500">Show the chat widget on agent's building and property pages</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditForm({ ...editForm, ai_chat_enabled: !editForm.ai_chat_enabled })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    editForm.ai_chat_enabled ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      editForm.ai_chat_enabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
               </div>
-            )}
+              <p className="text-xs text-gray-500 mt-2">
+                Status: <span className={editForm.ai_chat_enabled ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                  {editForm.ai_chat_enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Add Custom Domain Modal */}
       {showAddModal && (
