@@ -175,11 +175,12 @@ export default async function RootPage() {
   
   console.log('🏢 DEBUG: Total buildings to process:', allBuildingIds.length);
 
-// Query 1: Get ALL listings for ALL buildings in ONE query (with higher limit)
+// Query 1: Get ACTIVE listings only (for counting For Sale/For Lease on cards)
   const { data: allListings } = await supabase
     .from('mls_listings')
-    .select('id, building_id, transaction_type, standard_status')
+    .select('id, building_id, transaction_type')
     .in('building_id', allBuildingIds)
+    .eq('standard_status', 'Active')
     .limit(5000);
 
   console.log('📊 DEBUG: Fetched', allListings?.length || 0, 'listings');
