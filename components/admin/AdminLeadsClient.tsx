@@ -58,6 +58,8 @@ export default function AdminLeadsClient({
   const [filterQuality, setFilterQuality] = useState<string>('all')
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'status'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
+  const [deleting, setDeleting] = useState(false)
 
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
@@ -167,10 +169,35 @@ export default function AdminLeadsClient({
         alert('Failed to delete lead')
       }
     } catch (error) {
-      console.error('Error deleting lead:', error)
-      alert('Error deleting lead')
+        console.error('Error deleting lead:', error)
+        alert('Error deleting lead')
+      }
     }
-  }
+
+    // Delete multiple leads
+    const handleDeleteSelected = async () => {
+      if (!confirm(`Are you sure you want to delete ${selectedLeads.size} leads?`)) return
+      setDeleting(true)
+      try {
+        const response = await fetch('/api/admin/leads/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leadIds: Array.from(selectedLeads) })
+        })
+        if (response.ok) {
+          setLeads(leads.filter(l => !selectedLeads.has(l.id)))
+          setSelectedLeads(new Set())
+          alert('Leads deleted successfully')
+        } else {
+          alert('Failed to delete leads')
+        }
+      } catch (error) {
+        console.error('Error deleting leads:', error)
+        alert('Error deleting leads')
+      } finally {
+        setDeleting(false)
+      }
+    }
 
   const getStatusColor = (status: string) => {
     switch(status) {
@@ -335,12 +362,23 @@ export default function AdminLeadsClient({
             </button>
           </div>
 
-          <button
-            onClick={exportToCSV}
-            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            Export to CSV
-          </button>
+          <div className="flex gap-2">
+              {selectedLeads.size > 0 && (
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={deleting}
+                  className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400"
+                >
+                  {deleting ? 'Deleting...' : `Delete Selected (${selectedLeads.size})`}
+                </button>
+              )}
+              <button
+                onClick={exportToCSV}
+                className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Export to CSV
+              </button>
+            </div>
         </div>
       </div>
 
@@ -354,9 +392,23 @@ export default function AdminLeadsClient({
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <input
+                      type="checkbox"
+                      checked={selectedLeads.size === filteredLeads.length && filteredLeads.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedLeads(new Set(filteredLeads.map(l => l.id)))
+                        } else {
+                          setSelectedLeads(new Set())
+                        }
+                      }}
+                      className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                    />
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Contact
@@ -365,11 +417,14 @@ export default function AdminLeadsClient({
                   Agent
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Building
-                </th>
+                    Building
+                  </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
+                    Source
+                  </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Quality
                 </th>
@@ -388,8 +443,24 @@ export default function AdminLeadsClient({
               ) : (
                 filteredLeads.map((lead) => (
                   <tr key={lead.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(lead.created_at).toLocaleDateString()}
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedLeads.has(lead.id)}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedLeads)
+                            if (e.target.checked) {
+                              newSelected.add(lead.id)
+                            } else {
+                              newSelected.delete(lead.id)
+                            }
+                            setSelectedLeads(newSelected)
+                          }}
+                          className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(lead.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">
@@ -403,9 +474,12 @@ export default function AdminLeadsClient({
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
                       {lead.buildings?.building_name || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(lead.status)}`}>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900">
+                        {lead.source || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(lead.status)}`}>
                         {lead.status || 'new'}
                       </span>
                     </td>
