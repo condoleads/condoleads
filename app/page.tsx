@@ -182,29 +182,7 @@ export default async function RootPage() {
     .in('building_id', allBuildingIds)
     .limit(5000);
 
-  // Query 2: Get ALL media for ALL listings (batched to avoid .in() limits)
-  const allListingIds = (allListings || []).map(l => l.id);
-
-  let allMedia: any[] = [];
-  if (allListingIds.length > 0) {
-    // Batch in chunks of 500 to avoid Supabase .in() clause limits
-    const BATCH_SIZE = 500;
-    for (let i = 0; i < allListingIds.length; i += BATCH_SIZE) {
-      const batchIds = allListingIds.slice(i, i + BATCH_SIZE);
-      const { data: mediaBatch } = await supabase
-        .from('media')
-        .select('listing_id, media_url, preferred_photo_yn, order_number')
-        .in('listing_id', batchIds)
-        .eq('variant_type', 'large')
-        .limit(5000);
-
-      if (mediaBatch) {
-        allMedia = [...allMedia, ...mediaBatch];
-      }
-    }
-  }
-
-  console.log('📊 DEBUG: Fetched', allListings?.length || 0, 'listings and', allMedia.length, 'media items');
+  console.log('📊 DEBUG: Fetched', allListings?.length || 0, 'listings');
 
   // ============================================
   // Process data in memory (no more DB queries!)
@@ -218,23 +196,7 @@ export default async function RootPage() {
     listingsByBuilding.set(listing.building_id, existing);
   });
 
-  // Group media by listing_id and find best photo per listing
-  const mediaByListing = new Map<string, any>();
-  allMedia
-    .sort((a, b) => {
-      // Sort by preferred_photo_yn DESC, then order_number ASC
-      if (a.preferred_photo_yn !== b.preferred_photo_yn) {
-        return b.preferred_photo_yn ? 1 : -1;
-      }
-      return (a.order_number || 999) - (b.order_number || 999);
-    })
-    .forEach(media => {
-      // Only keep first (best) photo per listing
-      if (!mediaByListing.has(media.listing_id)) {
-        mediaByListing.set(media.listing_id, media);
-      }
-    });
-
+  
   // Build final buildings array with counts and photos
   const buildingsWithCounts = combinedBuildings.map((building) => {
     const buildingListings = listingsByBuilding.get(building.id) || [];
@@ -247,17 +209,8 @@ export default async function RootPage() {
       l => l.transaction_type === 'For Lease' && l.standard_status === 'Active'
     ).length;
 
-    // Find first available photo from this building's listings
-    let photoUrl = building.cover_photo_url;
-    if (!photoUrl) {
-      for (const listing of buildingListings) {
-        const media = mediaByListing.get(listing.id);
-        if (media?.media_url) {
-          photoUrl = media.media_url;
-          break;
-        }
-      }
-    }
+// Use admin-set cover photo
+    const photoUrl = building.cover_photo_url;
 
     return {
       ...building,
