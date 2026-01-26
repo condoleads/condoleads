@@ -175,24 +175,33 @@ export default async function RootPage() {
   
   console.log('🏢 DEBUG: Total buildings to process:', allBuildingIds.length);
 
-  // Query 1: Get ALL listings for ALL buildings in ONE query
+// Query 1: Get ALL listings for ALL buildings in ONE query (with higher limit)
   const { data: allListings } = await supabase
     .from('mls_listings')
     .select('id, building_id, transaction_type, standard_status')
-    .in('building_id', allBuildingIds);
+    .in('building_id', allBuildingIds)
+    .limit(5000);
 
-  // Query 2: Get ALL media for ALL listings in ONE query
+  // Query 2: Get ALL media for ALL listings (batched to avoid .in() limits)
   const allListingIds = (allListings || []).map(l => l.id);
-  
+
   let allMedia: any[] = [];
   if (allListingIds.length > 0) {
-    const { data: mediaBatch } = await supabase
-      .from('media')
-      .select('listing_id, media_url, preferred_photo_yn, order_number')
-      .in('listing_id', allListingIds)
-      .eq('variant_type', 'large');
-    
-    allMedia = mediaBatch || [];
+    // Batch in chunks of 500 to avoid Supabase .in() clause limits
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < allListingIds.length; i += BATCH_SIZE) {
+      const batchIds = allListingIds.slice(i, i + BATCH_SIZE);
+      const { data: mediaBatch } = await supabase
+        .from('media')
+        .select('listing_id, media_url, preferred_photo_yn, order_number')
+        .in('listing_id', batchIds)
+        .eq('variant_type', 'large')
+        .limit(5000);
+
+      if (mediaBatch) {
+        allMedia = [...allMedia, ...mediaBatch];
+      }
+    }
   }
 
   console.log('📊 DEBUG: Fetched', allListings?.length || 0, 'listings and', allMedia.length, 'media items');
