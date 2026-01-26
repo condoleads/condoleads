@@ -166,45 +166,101 @@ export default async function RootPage() {
 
   console.log(' DEBUG: Found buildings:', combinedBuildings.length);
 
-  // Get listing counts and photos for each building
-  const buildingsWithCounts = await Promise.all(
-    combinedBuildings.map(async (building) => {
+  // ============================================
+  // OPTIMIZED: Batch all queries instead of N+1
+  // ============================================
+  
+  // Get ALL building IDs for batch queries
+  const allBuildingIds = combinedBuildings.map(b => b.id).filter(Boolean);
+  
+  console.log('🏢 DEBUG: Total buildings to process:', allBuildingIds.length);
 
-      // Get listings for counts
-      const { data: listings } = await supabase
-        .from('mls_listings')
-        .select('id, transaction_type, standard_status')
-        .eq('building_id', building.id);
+  // Query 1: Get ALL listings for ALL buildings in ONE query
+  const { data: allListings } = await supabase
+    .from('mls_listings')
+    .select('id, building_id, transaction_type, standard_status')
+    .in('building_id', allBuildingIds);
 
-      const forSale = listings?.filter(
-        l => l.transaction_type === 'For Sale' && l.standard_status === 'Active'
-      ).length || 0;
-      const forLease = listings?.filter(
-        l => l.transaction_type === 'For Lease' && l.standard_status === 'Active'
-      ).length || 0;
+  // Query 2: Get ALL media for ALL listings in ONE query
+  const allListingIds = (allListings || []).map(l => l.id);
+  
+  let allMedia: any[] = [];
+  if (allListingIds.length > 0) {
+    const { data: mediaBatch } = await supabase
+      .from('media')
+      .select('listing_id, media_url, preferred_photo_yn, order_number')
+      .in('listing_id', allListingIds)
+      .eq('variant_type', 'large');
+    
+    allMedia = mediaBatch || [];
+  }
 
-      // Get first photo from building's listings
-      const { data: photo } = await supabase
-        .from('media')
-        .select('media_url')
-        .in('listing_id', listings?.map(l => l.id) || [])
-        .eq('variant_type', 'large')
-        .order('preferred_photo_yn', { ascending: false })
-        .order('order_number', { ascending: true })
-        .limit(1);
+  console.log('📊 DEBUG: Fetched', allListings?.length || 0, 'listings and', allMedia.length, 'media items');
 
-      return {
-        ...building,
-        forSale,
-        forLease,
-        isFeatured: building.is_featured,
-        fromDevelopment: building.fromDevelopment,
-        photoUrl: building.cover_photo_url || photo?.[0]?.media_url || null,
-          galleryPhotos: building.gallery_photos || [],
-          assigned_agent: building.assigned_agent || null
-      };
+  // ============================================
+  // Process data in memory (no more DB queries!)
+  // ============================================
+
+  // Group listings by building_id
+  const listingsByBuilding = new Map<string, any[]>();
+  (allListings || []).forEach(listing => {
+    const existing = listingsByBuilding.get(listing.building_id) || [];
+    existing.push(listing);
+    listingsByBuilding.set(listing.building_id, existing);
+  });
+
+  // Group media by listing_id and find best photo per listing
+  const mediaByListing = new Map<string, any>();
+  allMedia
+    .sort((a, b) => {
+      // Sort by preferred_photo_yn DESC, then order_number ASC
+      if (a.preferred_photo_yn !== b.preferred_photo_yn) {
+        return b.preferred_photo_yn ? 1 : -1;
+      }
+      return (a.order_number || 999) - (b.order_number || 999);
     })
-  );
+    .forEach(media => {
+      // Only keep first (best) photo per listing
+      if (!mediaByListing.has(media.listing_id)) {
+        mediaByListing.set(media.listing_id, media);
+      }
+    });
+
+  // Build final buildings array with counts and photos
+  const buildingsWithCounts = combinedBuildings.map((building) => {
+    const buildingListings = listingsByBuilding.get(building.id) || [];
+    
+    const forSale = buildingListings.filter(
+      l => l.transaction_type === 'For Sale' && l.standard_status === 'Active'
+    ).length;
+    
+    const forLease = buildingListings.filter(
+      l => l.transaction_type === 'For Lease' && l.standard_status === 'Active'
+    ).length;
+
+    // Find first available photo from this building's listings
+    let photoUrl = building.cover_photo_url;
+    if (!photoUrl) {
+      for (const listing of buildingListings) {
+        const media = mediaByListing.get(listing.id);
+        if (media?.media_url) {
+          photoUrl = media.media_url;
+          break;
+        }
+      }
+    }
+
+    return {
+      ...building,
+      forSale,
+      forLease,
+      isFeatured: building.is_featured,
+      fromDevelopment: building.fromDevelopment,
+      photoUrl: photoUrl || null,
+      galleryPhotos: building.gallery_photos || [],
+      assigned_agent: building.assigned_agent || null
+    };
+  });
 
   console.log(' DEBUG: Buildings with counts:', buildingsWithCounts.length);
 
