@@ -6,6 +6,7 @@ import RegisterModal from '@/components/auth/RegisterModal'
 
 import { useState } from 'react'
 import { estimateSale } from '../actions/estimate-sale'
+import { estimateRent } from '../actions/estimate-rent'
 import { EstimateResult } from '@/lib/estimator/types'
 import EstimatorResults from './EstimatorResults'
 
@@ -22,6 +23,7 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showRegister, setShowRegister] = useState(false)
+  const [estimateType, setEstimateType] = useState<'sale' | 'lease'>('sale')
   const { user } = useAuth()
 
   const [specs, setSpecs] = useState({
@@ -60,11 +62,9 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
     setError(null)
     setResult(null)
 
-    const response = await estimateSale({
-      ...specs,
-      buildingId,
-      buildingSlug
-    }, true) // includeAI = true
+    const response = estimateType === 'sale'
+      ? await estimateSale({ ...specs, buildingId, buildingSlug }, true)
+      : await estimateRent({ ...specs, buildingId, buildingSlug }, true)
 
     if (response.success && response.data) {
       setResult(response.data)
@@ -87,6 +87,34 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
           <p className="text-lg text-slate-600">
             Get a free market estimate for your unit in {buildingName}
           </p>
+          
+          {/* Sale/Lease Toggle */}
+          <div className="flex justify-center mt-6">
+            <div className="inline-flex rounded-xl bg-slate-200 p-1">
+              <button
+                type="button"
+                onClick={() => setEstimateType('sale')}
+                className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+                  estimateType === 'sale'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                I Want to Sell
+              </button>
+              <button
+                type="button"
+                onClick={() => setEstimateType('lease')}
+                className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+                  estimateType === 'lease'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                I Want to Lease
+              </button>
+            </div>
+          </div>
         </div>
 
         {!result && (
@@ -227,7 +255,7 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
               disabled={loading}
               className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white py-4 px-8 rounded-xl font-semibold text-lg transition-colors shadow-lg"
             >
-              {loading ? 'Analyzing Market Data...' : 'Get Free Estimate'}
+              {loading ? 'Analyzing Market Data...' : `Get Free ${estimateType === 'sale' ? 'Sale' : 'Rental'} Estimate`}
             </button>
 
             {/* Error Message */}
@@ -243,14 +271,14 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
         {/* Results */}
         {result && (
           <div>
-            <EstimatorResults 
+            <EstimatorResults
                 result={result}
                 buildingId={buildingId}
                 buildingName={buildingName}
                 buildingAddress={buildingAddress}
                 agentId={agentId}
                 propertySpecs={specs}
-                type="estimator"
+                type={estimateType}
               />
             <div className="mt-6">
             <button
