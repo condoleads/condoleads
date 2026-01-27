@@ -44,11 +44,12 @@ interface DiscoveredBuilding {
   failed_reason: string | null;
 }
 
-function generateSlug(buildingName: string | null, streetNumber: string, streetName: string, city: string): string {
+function generateSlug(buildingName: string | null, streetNumber: string, streetName: string, streetSuffix: string | null, city: string): string {
   const parts = [];
   if (buildingName?.trim()) parts.push(buildingName.toLowerCase());
   if (streetNumber?.trim()) parts.push(streetNumber);
   if (streetName?.trim()) parts.push(streetName.toLowerCase());
+  if (streetSuffix?.trim()) parts.push(streetSuffix.toLowerCase());
   
   let cleanCity = city || '';
   cleanCity = cleanCity.replace(/\s+(C\d+|E\d+|W\d+)$/i, '').trim();
@@ -856,7 +857,7 @@ export default function BulkDiscoveryPage() {
                   </thead>
                   <tbody>
                     {filteredBuildings.map(building => {
-                      const currentSlug = generateSlug(building.building_name, building.street_number, building.street_name, building.city);
+                      const currentSlug = generateSlug(building.building_name, building.street_number, building.street_name, building.street_suffix, building.city);
                       const fullAddress = `${building.street_number} ${building.street_name}${building.street_suffix ? ' ' + building.street_suffix : ''}, ${building.city}`;
                       const isEditable = building.status !== 'synced' && building.status !== 'syncing';
                       const isRetrying = retryingId === building.id;
