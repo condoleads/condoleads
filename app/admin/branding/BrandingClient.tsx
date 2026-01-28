@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Globe, Edit2, X, Check, Plus } from 'lucide-react'
+import { Search, Globe, Edit2, X, Check, Plus, Settings, Zap } from 'lucide-react'
 import { updateAgentBranding, addAgentCustomDomain, removeAgentCustomDomain } from './actions'
 import ImageUpload from '@/components/admin/ImageUpload'
 
@@ -19,7 +19,18 @@ interface Agent {
   facebook_pixel_id: string | null
   anthropic_api_key: string | null
   ai_chat_enabled: boolean | null
+  ai_estimator_enabled: boolean | null
   vip_auto_approve: boolean | null
+  // AI limits
+  ai_free_messages: number | null
+  ai_auto_approve_limit: number | null
+  ai_manual_approve_limit: number | null
+  ai_hard_cap: number | null
+  // Estimator limits
+  estimator_free_attempts: number | null
+  estimator_auto_approve_attempts: number | null
+  estimator_manual_approve_attempts: number | null
+  estimator_hard_cap: number | null
   is_active: boolean
 }
 
@@ -51,7 +62,18 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       facebook_pixel_id: agent.facebook_pixel_id || '',
       anthropic_api_key: agent.anthropic_api_key || '',
       ai_chat_enabled: agent.ai_chat_enabled ?? true,
-      vip_auto_approve: agent.vip_auto_approve ?? false
+      ai_estimator_enabled: agent.ai_estimator_enabled ?? false,
+      vip_auto_approve: agent.vip_auto_approve ?? false,
+      // AI limits
+      ai_free_messages: agent.ai_free_messages ?? 1,
+      ai_auto_approve_limit: agent.ai_auto_approve_limit ?? 10,
+      ai_manual_approve_limit: agent.ai_manual_approve_limit ?? 10,
+      ai_hard_cap: agent.ai_hard_cap ?? 25,
+      // Estimator limits
+      estimator_free_attempts: agent.estimator_free_attempts ?? 3,
+      estimator_auto_approve_attempts: agent.estimator_auto_approve_attempts ?? 10,
+      estimator_manual_approve_attempts: agent.estimator_manual_approve_attempts ?? 10,
+      estimator_hard_cap: agent.estimator_hard_cap ?? 25
     })
   }
 
@@ -75,14 +97,25 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       facebook_pixel_id: editForm.facebook_pixel_id || null,
       anthropic_api_key: editForm.anthropic_api_key || null,
       ai_chat_enabled: editForm.ai_chat_enabled ?? true,
-      vip_auto_approve: editForm.vip_auto_approve ?? false
+      ai_estimator_enabled: editForm.ai_estimator_enabled ?? false,
+      vip_auto_approve: editForm.vip_auto_approve ?? false,
+      // AI limits
+      ai_free_messages: editForm.ai_free_messages ?? 1,
+      ai_auto_approve_limit: editForm.ai_auto_approve_limit ?? 10,
+      ai_manual_approve_limit: editForm.ai_manual_approve_limit ?? 10,
+      ai_hard_cap: editForm.ai_hard_cap ?? 25,
+      // Estimator limits
+      estimator_free_attempts: editForm.estimator_free_attempts ?? 3,
+      estimator_auto_approve_attempts: editForm.estimator_auto_approve_attempts ?? 10,
+      estimator_manual_approve_attempts: editForm.estimator_manual_approve_attempts ?? 10,
+      estimator_hard_cap: editForm.estimator_hard_cap ?? 25
     })
 
     if (!result.success) {
       alert('Error saving: ' + result.error)
     } else {
-      setAgents(prev => prev.map(a => 
-        a.id === editingId 
+      setAgents(prev => prev.map(a =>
+        a.id === editingId
           ? { ...a, ...editForm } as Agent
           : a
       ))
@@ -98,7 +131,7 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       alert('Please select an agent and enter a domain')
       return
     }
-    
+
     setSaving(true)
     const result = await addAgentCustomDomain(selectedAgentId, newDomain)
 
@@ -119,7 +152,7 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
 
   async function removeDomain(agentId: string) {
     if (!confirm('Remove custom domain from this agent?')) return
-    
+
     const result = await removeAgentCustomDomain(agentId)
 
     if (!result.success) {
@@ -129,7 +162,7 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
     }
   }
 
-  const filteredAgents = agents.filter(a => 
+  const filteredAgents = agents.filter(a =>
     a.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (a.custom_domain && a.custom_domain.toLowerCase().includes(searchTerm.toLowerCase()))
   )
@@ -256,9 +289,9 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
                         <div className="text-xs text-gray-500">{agent.subdomain}.condoleads.ca</div>
                       </td>
                       <td className="px-6 py-4">
-                        <a 
-                          href={`https://${agent.custom_domain}`} 
-                          target="_blank" 
+                        <a
+                          href={`https://${agent.custom_domain}`}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="text-purple-600 hover:underline flex items-center gap-1 font-medium"
                         >
@@ -385,7 +418,10 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
       {/* AI Chat Configuration */}
       {editingId && (
         <div className="mt-6 bg-white rounded-lg shadow p-6">
-          <h3 className="font-semibold text-gray-800 mb-4">AI Chat Configuration</h3>
+          <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <Zap className="w-5 h-5 text-blue-600" />
+            AI Chat Configuration
+          </h3>
           <p className="text-sm text-gray-600 mb-4">
             Enable AI-powered chat on this agent's website. The agent must provide their own Anthropic API key.
           </p>
@@ -402,77 +438,253 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
               Get API key from <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.anthropic.com</a>
             </p>
             {editForm.anthropic_api_key && (
-                <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
-                  <Check className="w-4 h-4" />
-                  <span>API key configured</span>
-                </div>
-              )}
-            </div>
-            
-            {/* Chat Enable/Disable Toggle */}
-            <div className="mt-4 pt-4 border-t">
-              <div className="flex items-center justify-between">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Enable AI Chat Widget</label>
-                  <p className="text-xs text-gray-500">Show the chat widget on agent's building and property pages</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditForm({ ...editForm, ai_chat_enabled: !editForm.ai_chat_enabled })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    editForm.ai_chat_enabled ? 'bg-blue-600' : 'bg-gray-300'
+              <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                <Check className="w-4 h-4" />
+                <span>API key configured</span>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Enable/Disable Toggle */}
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Enable AI Chat Widget</label>
+                <p className="text-xs text-gray-500">Show the chat widget on agent's building and property pages</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditForm({ ...editForm, ai_chat_enabled: !editForm.ai_chat_enabled })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  editForm.ai_chat_enabled ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    editForm.ai_chat_enabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      editForm.ai_chat_enabled ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Status: <span className={editForm.ai_chat_enabled ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
-                  {editForm.ai_chat_enabled ? 'Enabled' : 'Disabled'}
-                  </span>
-                </p>
-              </div>
-              
-              {/* VIP Auto-Approve Toggle */}
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Auto-Approve VIP Requests</label>
-                    <p className="text-xs text-gray-500">Automatically approve VIP chat requests without manual approval</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditForm({ ...editForm, vip_auto_approve: !editForm.vip_auto_approve })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      editForm.vip_auto_approve ? 'bg-blue-600' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        editForm.vip_auto_approve ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Status: <span className={editForm.vip_auto_approve ? 'text-green-600 font-medium' : 'text-orange-600 font-medium'}>
-                    {editForm.vip_auto_approve ? 'Auto-Approve' : 'Manual Approval'}
-                  </span>
-                </p>
-              </div>
+                />
+              </button>
             </div>
-          )}
+            <p className="text-xs text-gray-500 mt-2">
+              Status: <span className={editForm.ai_chat_enabled ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                {editForm.ai_chat_enabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </p>
+          </div>
+
+          {/* AI Estimator Toggle */}
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Enable AI Estimator</label>
+                <p className="text-xs text-gray-500">Use AI for enhanced property valuations (Sale/Lease offers)</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditForm({ ...editForm, ai_estimator_enabled: !editForm.ai_estimator_enabled })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  editForm.ai_estimator_enabled ? 'bg-emerald-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    editForm.ai_estimator_enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Status: <span className={editForm.ai_estimator_enabled ? 'text-emerald-600 font-medium' : 'text-gray-600 font-medium'}>
+                {editForm.ai_estimator_enabled ? 'AI Enhanced' : 'Basic Calculation'}
+              </span>
+            </p>
+          </div>
+
+          {/* VIP Auto-Approve Toggle */}
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Auto-Approve VIP Requests</label>
+                <p className="text-xs text-gray-500">Automatically approve VIP chat requests without manual approval</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditForm({ ...editForm, vip_auto_approve: !editForm.vip_auto_approve })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  editForm.vip_auto_approve ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    editForm.vip_auto_approve ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Status: <span className={editForm.vip_auto_approve ? 'text-green-600 font-medium' : 'text-orange-600 font-medium'}>
+                {editForm.vip_auto_approve ? 'Auto-Approve' : 'Manual Approval'}
+              </span>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* AI Usage Limits (Shared Pool) - When AI Chat OR AI Estimator is enabled */}
+      {editingId && (editForm.ai_chat_enabled || editForm.ai_estimator_enabled) && (
+        <div className="mt-6 bg-white rounded-lg shadow p-6">
+          <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <Settings className="w-5 h-5 text-purple-600" />
+            AI Usage Limits (Shared Pool)
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Configure limits for all AI-powered features. 
+            {editForm.ai_chat_enabled && editForm.ai_estimator_enabled 
+              ? ' AI Chat and AI Estimator share this pool.'
+              : editForm.ai_chat_enabled 
+                ? ' Used by AI Chat.'
+                : ' Used by AI Estimator.'}
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Free Messages</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editForm.ai_free_messages ?? 1}
+                onChange={(e) => setEditForm({ ...editForm, ai_free_messages: parseInt(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Before phone required</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Auto-Approve</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editForm.ai_auto_approve_limit ?? 10}
+                onChange={(e) => setEditForm({ ...editForm, ai_auto_approve_limit: parseInt(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">After questionnaire</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Manual Approve</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editForm.ai_manual_approve_limit ?? 10}
+                onChange={(e) => setEditForm({ ...editForm, ai_manual_approve_limit: parseInt(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Per agent approval</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hard Cap</label>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={editForm.ai_hard_cap ?? 25}
+                onChange={(e) => setEditForm({ ...editForm, ai_hard_cap: parseInt(e.target.value) || 25 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Maximum total</p>
+            </div>
+          </div>
+          <div className="mt-4 p-3 bg-purple-50 rounded-lg">
+            <p className="text-sm text-purple-800">
+              <strong>AI Flow:</strong> {editForm.ai_free_messages ?? 1} free → Phone required → {editForm.ai_auto_approve_limit ?? 10} after questionnaire → 
+              +{editForm.ai_manual_approve_limit ?? 10} per approval → Max {editForm.ai_hard_cap ?? 25} total
+            </p>
+            {editForm.ai_chat_enabled && editForm.ai_estimator_enabled && (
+              <p className="text-xs text-purple-600 mt-2">
+                ⚡ Chat messages + AI estimates count toward the same pool
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Estimator Limits (Basic Mode) - When AI Estimator is OFF */}
+      {editingId && !editForm.ai_estimator_enabled && (
+        <div className="mt-6 bg-white rounded-lg shadow p-6">
+          <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <Settings className="w-5 h-5 text-emerald-600" />
+            Estimator Limits (Basic Mode)
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Configure limits for the basic Property Estimator (no AI). Enable AI Estimator above to use AI-powered valuations with shared AI limits.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Free Estimates</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editForm.estimator_free_attempts ?? 3}
+                onChange={(e) => setEditForm({ ...editForm, estimator_free_attempts: parseInt(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Before phone required</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Auto-Approve</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editForm.estimator_auto_approve_attempts ?? 10}
+                onChange={(e) => setEditForm({ ...editForm, estimator_auto_approve_attempts: parseInt(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">After questionnaire</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Manual Approve</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editForm.estimator_manual_approve_attempts ?? 10}
+                onChange={(e) => setEditForm({ ...editForm, estimator_manual_approve_attempts: parseInt(e.target.value) || 0 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Per agent approval</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hard Cap</label>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={editForm.estimator_hard_cap ?? 25}
+                onChange={(e) => setEditForm({ ...editForm, estimator_hard_cap: parseInt(e.target.value) || 25 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-1">Maximum total</p>
+            </div>
+          </div>
+          <div className="mt-4 p-3 bg-emerald-50 rounded-lg">
+            <p className="text-sm text-emerald-800">
+              <strong>Basic Estimator Flow:</strong> {editForm.estimator_free_attempts ?? 3} free → Phone required → {editForm.estimator_auto_approve_attempts ?? 10} after questionnaire → 
+              +{editForm.estimator_manual_approve_attempts ?? 10} per approval → Max {editForm.estimator_hard_cap ?? 25} total
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Add Custom Domain Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Custom Domain</h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Select Agent</label>
@@ -487,7 +699,7 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
                   ))}
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Custom Domain</label>
                 <input

@@ -9,6 +9,7 @@ import EstimatorResults from './EstimatorResults'
 interface EstimatorBuyerProps {
   buildingId: string
   buildingName: string
+  agentId: string
   // Pre-filled from listing data
   bedrooms: number
   bathrooms: number
@@ -20,6 +21,7 @@ interface EstimatorBuyerProps {
 export default function EstimatorBuyer({
   buildingId,
   buildingName,
+  agentId,
   bedrooms,
   bathrooms,
   livingAreaRange,
@@ -41,7 +43,8 @@ export default function EstimatorBuyer({
       livingAreaRange,
       parking,
       hasLocker,
-      buildingId
+      buildingId,
+      agentId
     }, true) // includeAI = true
 
     if (response.success && response.data) {

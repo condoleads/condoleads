@@ -5,6 +5,7 @@ import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
 import { getAIInsights } from '@/lib/estimator/ai-insights'
 import { EstimateResult, UnitSpecs } from '@/lib/estimator/types'
 import { resolveAdjustments } from '@/lib/estimator/resolve-adjustments'
+import { createClient } from '@/lib/supabase/server'
 
 /**
  * Server action to estimate condo sale price
@@ -31,9 +32,21 @@ export async function estimateSale(
 
     // Step 3: Add AI insights if requested and we have a price to analyze
     let aiInsights = undefined
-    if (includeAI && estimate.showPrice && estimate.estimatedPrice > 0) {
+    if (includeAI && estimate.showPrice && estimate.estimatedPrice > 0 && specs.agentId) {
       try {
-        aiInsights = await getAIInsights(specs, estimate.estimatedPrice, matchResult.comparables)
+        // Check agent's AI estimator settings
+        const supabase = createClient()
+        const { data: agent } = await supabase
+          .from('agents')
+          .select('ai_estimator_enabled, anthropic_api_key')
+          .eq('id', specs.agentId)
+          .single()
+
+        if (agent?.ai_estimator_enabled && agent?.anthropic_api_key) {
+          aiInsights = await getAIInsights(specs, estimate.estimatedPrice, matchResult.comparables, agent.anthropic_api_key)
+        } else {
+          console.log('[estimateSale] AI insights skipped - not enabled or no API key')
+        }
       } catch (aiError) {
         console.log('AI insights unavailable:', aiError)
       }

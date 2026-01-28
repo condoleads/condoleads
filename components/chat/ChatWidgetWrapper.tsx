@@ -14,7 +14,7 @@ interface ChatWidgetWrapperProps {
     ai_chat_enabled?: boolean
     has_api_key?: boolean
     ai_welcome_message?: string | null
-    ai_vip_message_threshold?: number | null
+    ai_free_messages?: number | null
   }
   building?: {
     id: string
@@ -118,7 +118,7 @@ export default function ChatWidgetWrapper({
     agentId: agent.id,
     agentName: agent.full_name,
     welcomeMessage: agent.ai_welcome_message || undefined,
-    vipThreshold: agent.ai_vip_message_threshold || 5
+    vipThreshold: agent.ai_free_messages || 1
   }
 
   return (

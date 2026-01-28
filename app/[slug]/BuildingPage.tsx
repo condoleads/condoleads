@@ -538,7 +538,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         ai_chat_enabled: agent.ai_chat_enabled,
         has_api_key: !!agent.anthropic_api_key,
         ai_welcome_message: agent.ai_welcome_message,
-        ai_vip_message_threshold: agent.ai_vip_message_threshold
+        ai_free_messages: agent.ai_free_messages
       }}
       building={{ 
         id: building.id, 

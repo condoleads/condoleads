@@ -2,69 +2,94 @@
 import { ComparableSale, UnitSpecs } from './types'
 
 /**
- * Generates AI insights about the price estimate
- * Currently returns mock data - replace with real Anthropic API call when ready
+ * Generates AI insights about the price estimate using Anthropic API
  */
 export async function getAIInsights(
   specs: UnitSpecs,
   estimatedPrice: number,
-  comparables: ComparableSale[]
+  comparables: ComparableSale[],
+  apiKey: string
 ): Promise<{
   summary: string
   keyFactors: string[]
   marketTrend: string
 }> {
   
-  // TODO: Replace with actual Anthropic API call
-  // When ready, add ANTHROPIC_API_KEY to .env.local and uncomment below:
-  
-  /*
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 800,
-      messages: [{
-        role: "user",
-        content: `Analyze this Toronto condo price estimate:
-        
-Unit: ${specs.bedrooms} bed, ${specs.bathrooms} bath, ${specs.livingAreaRange} sqft
-Parking: ${specs.parking}, Locker: ${specs.hasLocker ? 'Yes' : 'No'}
-Estimated Price: $${estimatedPrice.toLocaleString()}
+  const prompt = `You are a Toronto real estate market analyst. Analyze this condo price estimate and provide insights.
 
-Recent Sales:
+Unit Details:
+- Bedrooms: ${specs.bedrooms}
+- Bathrooms: ${specs.bathrooms}
+- Size: ${specs.livingAreaRange} sqft
+- Parking spaces: ${specs.parking}
+- Locker: ${specs.hasLocker ? 'Yes' : 'No'}
+- Estimated Price: $${estimatedPrice.toLocaleString()}
+
+Recent Comparable Sales (${comparables.length} found):
 ${comparables.slice(0, 5).map(c => 
-  `- ${c.bedrooms}bed ${c.livingAreaRange}sqft sold for $${c.closePrice.toLocaleString()} (${c.daysOnMarket} days)`
+  `- ${c.bedrooms}bed, ${c.bathrooms}bath, ${c.livingAreaRange}sqft sold for $${c.closePrice.toLocaleString()} (${c.daysOnMarket} days on market)`
 ).join('\n')}
 
-Provide brief insights in JSON format:
+Respond ONLY with valid JSON in this exact format, no other text:
 {
-  "summary": "2-3 sentence overview",
-  "keyFactors": ["factor1", "factor2", "factor3"],
-  "marketTrend": "1 sentence trend analysis"
+  "summary": "2-3 sentence market overview for this unit",
+  "keyFactors": ["factor1", "factor2", "factor3", "factor4"],
+  "marketTrend": "1 sentence about current market conditions"
 }`
-      }]
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      })
     })
-  })
-  
-  const data = await response.json()
-  return JSON.parse(data.content[0].text)
-  */
-  
-  // MOCK DATA - Remove when API is active
-  await new Promise(resolve => setTimeout(resolve, 500)) // Simulate API delay
-  
-  return {
-    summary: `Based on ${comparables.length} recent sales, this ${specs.bedrooms}-bedroom unit is well-positioned in the current market. Units with similar specifications have shown consistent pricing, with ${specs.parking > 0 ? 'parking adding significant value' : 'no parking reflecting lower price points'}.`,
-    keyFactors: [
-      `${specs.bedrooms}-bedroom units in high demand`,
-      specs.parking > 0 ? 'Parking space adds $50k-$100k premium' : 'No parking reduces price by $75k+',
-      specs.hasLocker ? 'Locker storage increases appeal' : 'Limited storage may affect pricing',
-      `Market moving at ${comparables[0]?.daysOnMarket < 30 ? 'fast' : 'moderate'} pace`
-    ],
-    marketTrend: comparables[0]?.daysOnMarket < 40 
-      ? 'Strong seller\'s market with units selling quickly above asking price.'
-      : 'Balanced market conditions providing negotiation opportunities for buyers.'
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[getAIInsights] API error:', response.status, errorText)
+      throw new Error(`API error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const content = data.content?.[0]?.text
+
+    if (!content) {
+      throw new Error('No content in API response')
+    }
+
+    // Parse JSON response
+    const parsed = JSON.parse(content)
+    
+    return {
+      summary: parsed.summary || 'Analysis unavailable',
+      keyFactors: parsed.keyFactors || [],
+      marketTrend: parsed.marketTrend || 'Market trend unavailable'
+    }
+
+  } catch (error) {
+    console.error('[getAIInsights] Error:', error)
+    
+    // Return fallback insights on error
+    return {
+      summary: `Based on ${comparables.length} recent comparable sales, this ${specs.bedrooms}-bedroom unit is positioned competitively in the current market.`,
+      keyFactors: [
+        `${specs.bedrooms}-bedroom units in demand`,
+        specs.parking > 0 ? 'Parking adds value' : 'No parking may affect price',
+        specs.hasLocker ? 'Locker included' : 'No locker',
+        `${comparables.length} recent comparables found`
+      ],
+      marketTrend: 'Market conditions based on recent sales data.'
+    }
   }
 }

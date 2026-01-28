@@ -53,6 +53,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
   const [vipLoading, setVipLoading] = useState(false)
   const [questionnaireSubmitted, setQuestionnaireSubmitted] = useState(false)
   const [vipRequired, setVipRequired] = useState(false)
+  const [messagesGranted, setMessagesGranted] = useState<number>(10)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -93,9 +94,11 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
           if (data.questionnaireCompleted || questionnaireSubmitted) {
             // Questionnaire already filled - unlock chat
             setQuestionnaireSubmitted(true)
+            const granted = data.messagesGranted || 10
+            setMessagesGranted(granted)
             setMessages(prev => [...prev, {
               role: 'assistant',
-              content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have 10 additional messages. How can I help you?`
+              content: `🌟 Great news! ${context.agentName} has approved your VIP access! You now have ${granted} additional messages. How can I help you?`
             }])
           } else {
             // Questionnaire not filled - keep form showing
@@ -327,7 +330,7 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
           // Already approved - unlock chat now
           setMessages(prev => [...prev, {
             role: 'assistant',
-            content: `✨ Thanks ${data.fullName || 'for the details'}! Your VIP access is now active. You have 10 messages - how can I help?`
+            content: `✨ Thanks ${data.fullName || 'for the details'}! Your VIP access is now active. You have ${messagesGranted} messages - how can I help?`
           }])
         } else {
           // Still waiting for approval

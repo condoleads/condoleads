@@ -1,5 +1,4 @@
 'use server'
-
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
@@ -16,7 +15,18 @@ export async function updateAgentBranding(
     facebook_pixel_id?: string | null
     anthropic_api_key?: string | null
     ai_chat_enabled?: boolean | null
+    ai_estimator_enabled?: boolean | null
     vip_auto_approve?: boolean | null
+    // AI limits
+    ai_free_messages?: number | null
+    ai_auto_approve_limit?: number | null
+    ai_manual_approve_limit?: number | null
+    ai_hard_cap?: number | null
+    // Estimator limits
+    estimator_free_attempts?: number | null
+    estimator_auto_approve_attempts?: number | null
+    estimator_manual_approve_attempts?: number | null
+    estimator_hard_cap?: number | null
   }
 ) {
   const supabase = createClient()
@@ -34,9 +44,20 @@ export async function updateAgentBranding(
       facebook_pixel_id: data.facebook_pixel_id || null,
       anthropic_api_key: data.anthropic_api_key || null,
       ai_chat_enabled: data.ai_chat_enabled ?? true,
-      vip_auto_approve: data.vip_auto_approve ?? false
+      ai_estimator_enabled: data.ai_estimator_enabled ?? false,
+      vip_auto_approve: data.vip_auto_approve ?? false,
+      // AI limits (with defaults)
+      ai_free_messages: data.ai_free_messages ?? 1,
+      ai_auto_approve_limit: data.ai_auto_approve_limit ?? 10,
+      ai_manual_approve_limit: data.ai_manual_approve_limit ?? 10,
+      ai_hard_cap: data.ai_hard_cap ?? 25,
+      // Estimator limits (with defaults)
+      estimator_free_attempts: data.estimator_free_attempts ?? 3,
+      estimator_auto_approve_attempts: data.estimator_auto_approve_attempts ?? 10,
+      estimator_manual_approve_attempts: data.estimator_manual_approve_attempts ?? 10,
+      estimator_hard_cap: data.estimator_hard_cap ?? 25
     })
-      .eq('id', agentId)
+    .eq('id', agentId)
 
   if (error) {
     console.error('Error updating agent branding:', error)
@@ -49,7 +70,7 @@ export async function updateAgentBranding(
 
 export async function addAgentCustomDomain(agentId: string, domain: string) {
   const supabase = createClient()
-  
+
   const { error } = await supabase
     .from('agents')
     .update({ custom_domain: domain })
@@ -66,10 +87,10 @@ export async function addAgentCustomDomain(agentId: string, domain: string) {
 
 export async function removeAgentCustomDomain(agentId: string) {
   const supabase = createClient()
-  
+
   const { error } = await supabase
     .from('agents')
-    .update({ 
+    .update({
       custom_domain: null,
       site_title: null,
       site_tagline: null,

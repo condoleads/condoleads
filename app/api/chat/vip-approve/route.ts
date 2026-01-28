@@ -14,6 +14,32 @@ function createServiceClient() {
   )
 }
 
+/**
+ * Calculate messages to grant based on agent config and request source
+ * 
+ * Logic:
+ * - If request_source = 'chat' → use ai_manual_approve_limit
+ * - If request_source = 'estimator' AND ai_estimator_enabled → use ai_manual_approve_limit (shared pool)
+ * - If request_source = 'estimator' AND !ai_estimator_enabled → use estimator_manual_approve_attempts
+ */
+function calculateMessagesToGrant(agent: any, requestSource: string): number {
+  const DEFAULT_AI_MANUAL = 10
+  const DEFAULT_ESTIMATOR_MANUAL = 10
+
+  if (requestSource === 'chat') {
+    return agent.ai_manual_approve_limit ?? DEFAULT_AI_MANUAL
+  }
+
+  // Estimator request
+  if (agent.ai_estimator_enabled) {
+    // AI Estimator enabled → use shared AI pool
+    return agent.ai_manual_approve_limit ?? DEFAULT_AI_MANUAL
+  }
+
+  // Basic estimator mode
+  return agent.estimator_manual_approve_attempts ?? DEFAULT_ESTIMATOR_MANUAL
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -30,10 +56,18 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // Find the VIP request by token
+    // Find the VIP request by token - include agent config fields
     const { data: vipRequest, error: findError } = await supabase
       .from('vip_requests')
-      .select('*, chat_sessions(*), agents(full_name, email, notification_email)')
+      .select(`
+        *, 
+        chat_sessions(*), 
+        agents(
+          full_name, email, notification_email,
+          ai_chat_enabled, ai_estimator_enabled,
+          ai_manual_approve_limit, estimator_manual_approve_attempts
+        )
+      `)
       .eq('approval_token', token)
       .single()
 
@@ -52,19 +86,24 @@ export async function GET(request: NextRequest) {
         .from('vip_requests')
         .update({ status: 'expired' })
         .eq('id', vipRequest.id)
-      
+
       return createHtmlResponse('expired', 'This request has expired.')
     }
 
     const newStatus = action === 'approve' ? 'approved' : 'denied'
     const agent = vipRequest.agents
+    const requestSource = vipRequest.request_source || 'chat'
 
-    // Update VIP request status
+    // Calculate messages to grant based on config
+    const messagesToGrant = calculateMessagesToGrant(agent, requestSource)
+
+    // Update VIP request status with messages_granted
     const { error: updateError } = await supabase
       .from('vip_requests')
       .update({
         status: newStatus,
-        responded_at: new Date().toISOString()
+        responded_at: new Date().toISOString(),
+        messages_granted: action === 'approve' ? messagesToGrant : 0
       })
       .eq('id', vipRequest.id)
 
@@ -74,10 +113,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (action === 'approve') {
-      // Grant VIP access to the session
-      const currentCount = vipRequest.chat_sessions?.message_count || 0
-      const newLimit = currentCount + 10
+      // Calculate new limit
+      const currentGranted = vipRequest.chat_sessions?.vip_messages_granted || 0
+      const currentApprovals = vipRequest.chat_sessions?.manual_approvals_count || 0
+      const newLimit = currentGranted + messagesToGrant
 
+      // Grant VIP access to the session
       await supabase
         .from('chat_sessions')
         .update({
@@ -85,6 +126,8 @@ export async function GET(request: NextRequest) {
           vip_accepted_at: new Date().toISOString(),
           vip_phone: vipRequest.phone,
           vip_messages_granted: newLimit,
+          manual_approvals_count: currentApprovals + 1,
+          last_approval_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .eq('id', vipRequest.session_id)
@@ -132,8 +175,8 @@ export async function GET(request: NextRequest) {
           await resend.emails.send({
             from: 'CondoLeads <notifications@condoleads.ca>',
             to: vipRequest.email,
-            subject: ` VIP Access Approved - ${agent.full_name}`,
-            html: buildUserApprovalEmail(vipRequest.full_name, agent.full_name, vipRequest.building_name)
+            subject: `✨ VIP Access Approved - ${agent.full_name}`,
+            html: buildUserApprovalEmail(vipRequest.full_name, agent.full_name, vipRequest.building_name, messagesToGrant)
           })
           console.log('Approval email sent to user:', vipRequest.email)
         } catch (emailError) {
@@ -141,8 +184,14 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      console.log('VIP Approved:', { requestId: vipRequest.id, sessionId: vipRequest.session_id, newLimit })
-      return createHtmlResponse('approved', `VIP access granted to ${vipRequest.full_name || vipRequest.phone}. They now have 10 additional messages.`)
+      console.log('VIP Approved:', { 
+        requestId: vipRequest.id, 
+        sessionId: vipRequest.session_id, 
+        messagesToGrant,
+        newLimit,
+        requestSource
+      })
+      return createHtmlResponse('approved', `VIP access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${messagesToGrant} additional messages.`)
     } else {
       // Denied - no email to user, just block
       console.log('VIP Denied:', { requestId: vipRequest.id, sessionId: vipRequest.session_id })
@@ -155,14 +204,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function buildUserApprovalEmail(userName: string | null, agentName: string, buildingName: string | null): string {
+function buildUserApprovalEmail(userName: string | null, agentName: string, buildingName: string | null, messagesGranted: number): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
-        <div style="font-size: 48px; margin-bottom: 12px;"></div>
+        <div style="font-size: 48px; margin-bottom: 12px;">✨</div>
         <h1 style="color: white; margin: 0; font-size: 24px;">VIP Access Approved!</h1>
       </div>
-      
+
       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
         <p style="color: #374151; font-size: 16px; line-height: 1.6;">
           Hi ${userName || 'there'}!
@@ -171,7 +220,7 @@ function buildUserApprovalEmail(userName: string | null, agentName: string, buil
           Great news! <strong>${agentName}</strong> has approved your VIP access request${buildingName ? ` for <strong>${buildingName}</strong>` : ''}.
         </p>
         <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-          You now have <strong>10 additional messages</strong> with the AI assistant. Head back to the chat to continue your conversation!
+          You now have <strong>${messagesGranted} additional messages</strong> with the AI assistant. Head back to the chat to continue your conversation!
         </p>
         <p style="color: #374151; font-size: 16px; line-height: 1.6;">
           ${agentName} may also reach out to you directly to help with your condo search.
@@ -189,11 +238,11 @@ function buildUserApprovalEmail(userName: string | null, agentName: string, buil
 
 function createHtmlResponse(status: string, message: string): NextResponse {
   const colors = {
-    approved: { bg: '#10b981', icon: '', title: 'Approved!' },
-    denied: { bg: '#ef4444', icon: '', title: 'Denied' },
-    error: { bg: '#ef4444', icon: '', title: 'Error' },
-    expired: { bg: '#f59e0b', icon: '', title: 'Expired' },
-    already_processed: { bg: '#6b7280', icon: 'ℹ', title: 'Already Processed' }
+    approved: { bg: '#10b981', icon: '✅', title: 'Approved!' },
+    denied: { bg: '#ef4444', icon: '❌', title: 'Denied' },
+    error: { bg: '#ef4444', icon: '⚠️', title: 'Error' },
+    expired: { bg: '#f59e0b', icon: '⏰', title: 'Expired' },
+    already_processed: { bg: '#6b7280', icon: 'ℹ️', title: 'Already Processed' }
   }
 
   const config = colors[status as keyof typeof colors] || colors.error

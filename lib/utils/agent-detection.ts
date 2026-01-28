@@ -28,7 +28,7 @@ interface Agent {
   anthropic_api_key?: string | null
   ai_system_prompt?: string | null
   ai_welcome_message?: string | null
-  ai_vip_message_threshold?: number | null
+  ai_free_messages?: number | null
 }
 
 export function extractSubdomain(host: string): string | null {
@@ -265,7 +265,7 @@ export async function getAgentForBuilding(
           profile_photo_url, bio, brokerage_name, brokerage_address, title,
           subdomain, custom_domain, branding, can_create_children,
           site_title, site_tagline, og_image_url,
-          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_vip_message_threshold
+          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_free_messages
         )
       `)
       .eq('building_id', buildingId)
@@ -290,7 +290,7 @@ export async function getAgentForBuilding(
           profile_photo_url, bio, brokerage_name, brokerage_address, title,
           subdomain, custom_domain, branding, can_create_children,
           site_title, site_tagline, og_image_url,
-          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_vip_message_threshold
+          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_free_messages
         )
         `)
         .eq('development_id', building.development_id)
@@ -356,7 +356,7 @@ export async function getAgentForBuilding(
           profile_photo_url, bio, brokerage_name, brokerage_address, title,
           subdomain, custom_domain, branding, can_create_children,
           site_title, site_tagline, og_image_url,
-          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_vip_message_threshold
+          ai_chat_enabled, anthropic_api_key, ai_welcome_message, ai_free_messages
         )
       `)
       .eq('development_id', developmentId)

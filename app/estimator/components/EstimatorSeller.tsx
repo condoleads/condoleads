@@ -9,6 +9,7 @@ import { estimateSale } from '../actions/estimate-sale'
 import { estimateRent } from '../actions/estimate-rent'
 import { EstimateResult } from '@/lib/estimator/types'
 import EstimatorResults from './EstimatorResults'
+import EstimatorVipWrapper, { useEstimatorContext } from '@/components/estimator/EstimatorVipWrapper'
 
 interface EstimatorSellerProps {
   buildingId: string
@@ -19,12 +20,53 @@ interface EstimatorSellerProps {
 }
 
 export default function EstimatorSeller({ buildingId, buildingSlug, buildingName, buildingAddress, agentId }: EstimatorSellerProps) {
+  const { user } = useAuth()
+
+  // If no user, show register-gated version
+  if (!user) {
+    return <EstimatorSellerInner 
+      buildingId={buildingId} 
+      buildingSlug={buildingSlug} 
+      buildingName={buildingName} 
+      buildingAddress={buildingAddress} 
+      agentId={agentId}
+      userId={null}
+    />
+  }
+
+  // User logged in - wrap with VIP flow
+  return (
+    <EstimatorVipWrapper
+      agentId={agentId}
+      userId={user.id}
+      buildingName={buildingName}
+      buildingId={buildingId}
+    >
+      <EstimatorSellerInner 
+        buildingId={buildingId} 
+        buildingSlug={buildingSlug} 
+        buildingName={buildingName} 
+        buildingAddress={buildingAddress} 
+        agentId={agentId}
+        userId={user.id}
+      />
+    </EstimatorVipWrapper>
+  )
+}
+
+interface EstimatorSellerInnerProps extends EstimatorSellerProps {
+  userId: string | null
+}
+
+function EstimatorSellerInner({ buildingId, buildingSlug, buildingName, buildingAddress, agentId, userId }: EstimatorSellerInnerProps) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showRegister, setShowRegister] = useState(false)
   const [estimateType, setEstimateType] = useState<'sale' | 'lease'>('sale')
-  const { user } = useAuth()
+  
+  // Get context from wrapper (null if not logged in / outside wrapper)
+  const estimatorContext = useEstimatorContext()
 
   const [specs, setSpecs] = useState({
   bedrooms: 2,
@@ -53,9 +95,18 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
 
   const handleEstimate = async () => {
     // Check if user is logged in
-    if (!user) {
+    if (!userId) {
       setShowRegister(true)
       return
+    }
+
+    // Check usage BEFORE running estimate (gatekeeper)
+    if (estimatorContext) {
+      const canProceed = await estimatorContext.requestEstimate()
+      if (!canProceed) {
+        // VIP flow triggered - don't run estimate
+        return
+      }
     }
 
     setLoading(true)
@@ -63,8 +114,8 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
     setResult(null)
 
     const response = estimateType === 'sale'
-      ? await estimateSale({ ...specs, buildingId, buildingSlug }, true)
-      : await estimateRent({ ...specs, buildingId, buildingSlug }, true)
+      ? await estimateSale({ ...specs, buildingId, buildingSlug, agentId }, true)
+      : await estimateRent({ ...specs, buildingId, buildingSlug, agentId }, true)
 
     if (response.success && response.data) {
       setResult(response.data)

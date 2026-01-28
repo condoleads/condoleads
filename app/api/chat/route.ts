@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     // Get agent's settings
     const { data: agent, error: agentError } = await supabase
       .from('agents')
-      .select('anthropic_api_key, full_name, email, cell_phone, ai_chat_enabled, ai_system_prompt, ai_vip_message_threshold')
+      .select('anthropic_api_key, full_name, email, cell_phone, ai_chat_enabled, ai_system_prompt, ai_free_messages')
       .eq('id', context.agentId)
       .single()
 
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if should show VIP prompt
-      const vipThreshold = agent.ai_vip_message_threshold || 1
+      const vipThreshold = agent.ai_free_messages || 1
       const newMessageCount = messageCount + 1
       let showVipPrompt = false
       let vipMessagesRemaining = 0

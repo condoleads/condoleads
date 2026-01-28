@@ -22,6 +22,7 @@ export interface UnitSpecs {
   hasLocker: boolean
   buildingId: string
   buildingSlug?: string  // For generating view links
+  agentId?: string  // For AI feature access control
   taxAnnualAmount?: number  // Optional - for better matching
   exactSqft?: number  // Optional - extracted from square_foot_source
   associationFee?: number  // Optional - maintenance fee for comparison

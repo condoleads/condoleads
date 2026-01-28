@@ -9,9 +9,10 @@ interface VipPromptProps {
   onAccept: (phone: string) => void
   onDecline: () => void
   isLoading?: boolean
+  variant?: 'chat' | 'inline' // NEW: inline for estimator
 }
 
-export default function VipPrompt({ agentName, onAccept, onDecline, isLoading }: VipPromptProps) {
+export default function VipPrompt({ agentName, onAccept, onDecline, isLoading, variant = 'chat' }: VipPromptProps) {
   const [phone, setPhone] = useState('')
   const [error, setError] = useState('')
 
@@ -28,6 +29,100 @@ export default function VipPrompt({ agentName, onAccept, onDecline, isLoading }:
     onAccept(phone.trim())
   }
 
+  // Inline variant for estimator - centered card
+  if (variant === 'inline') {
+    return (
+      <div className="w-full max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-amber-500 to-amber-600 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Star className="w-5 h-5 text-white" />
+              <h3 className="font-semibold text-white">Get VIP Access</h3>
+            </div>
+            <button
+              onClick={onDecline}
+              className="text-white/80 hover:text-white"
+              disabled={isLoading}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Star className="w-8 h-8 text-amber-500" />
+            </div>
+            <h4 className="text-lg font-semibold text-gray-900 mb-2">
+              Unlock More Estimates
+            </h4>
+            <p className="text-sm text-gray-600">
+              Enter your phone number and {agentName} will approve your VIP access shortly.
+            </p>
+          </div>
+
+          {/* Phone Input */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <Phone className="w-4 h-4 inline mr-1" />
+              Phone Number *
+            </label>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value)
+                setError('')
+              }}
+              placeholder="416-555-1234"
+              className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 ${
+                error ? 'border-red-500' : 'border-gray-300'
+              }`}
+              disabled={isLoading}
+            />
+            {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
+          </div>
+
+          <p className="text-xs text-gray-500 text-center mb-4">
+            {agentName} will call or text you to assist with your search.
+          </p>
+
+          {/* Buttons */}
+          <div className="space-y-2">
+            <button
+              onClick={handleSubmit}
+              disabled={isLoading}
+              className="w-full py-3 px-4 bg-amber-500 text-white font-medium rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Star className="w-4 h-4" />
+                  Request VIP Access
+                </>
+              )}
+            </button>
+            <button
+              onClick={onDecline}
+              disabled={isLoading}
+              className="w-full py-2 px-4 text-gray-600 text-sm hover:text-gray-800 transition-colors disabled:opacity-50"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Default chat variant - absolute positioning
   return (
     <div className="absolute inset-0 bg-white z-10 flex flex-col">
       {/* Header */}
