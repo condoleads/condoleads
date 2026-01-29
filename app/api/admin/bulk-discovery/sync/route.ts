@@ -131,9 +131,16 @@ export async function POST(request: NextRequest) {
 
               // STEP 1: Direct search (no HTTP)
               console.log(`[BulkSync] Searching: ${buildingName}`);
+              // Combine street name with suffix and direction
+              const fullStreetName = [
+                building.street_name,
+                building.street_suffix,
+                building.street_dir_suffix
+              ].filter(Boolean).join(' ');
+
               const searchResult = await searchBuilding({
                 streetNumber: building.street_number,
-                streetName: building.street_name,
+                streetName: fullStreetName,
                 city: building.city,
                 buildingName: buildingName
               });
@@ -150,7 +157,7 @@ export async function POST(request: NextRequest) {
                 {
                   buildingName: buildingName,
                   streetNumber: building.street_number,
-                  streetName: building.street_name,
+                  streetName: fullStreetName,
                   city: building.city,
                   slug: searchResult.building?.slug || '',
                   canonicalAddress: searchResult.building?.canonicalAddress || ''

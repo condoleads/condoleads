@@ -33,6 +33,7 @@ interface DiscoveredBuilding {
   street_number: string;
   street_name: string;
   street_suffix: string | null;
+  street_dir_suffix: string | null;
   city: string;
   building_name: string | null;
   building_name_original: string | null;
@@ -44,12 +45,13 @@ interface DiscoveredBuilding {
   failed_reason: string | null;
 }
 
-function generateSlug(buildingName: string | null, streetNumber: string, streetName: string, streetSuffix: string | null, city: string): string {
-  const parts = [];
-  if (buildingName?.trim()) parts.push(buildingName.toLowerCase());
-  if (streetNumber?.trim()) parts.push(streetNumber);
-  if (streetName?.trim()) parts.push(streetName.toLowerCase());
-  if (streetSuffix?.trim()) parts.push(streetSuffix.toLowerCase());
+function generateSlug(buildingName: string | null, streetNumber: string, streetName: string, streetSuffix: string | null, streetDirSuffix: string | null, city: string): string {
+    const parts = [];
+    if (buildingName?.trim()) parts.push(buildingName.toLowerCase());
+    if (streetNumber?.trim()) parts.push(streetNumber);
+    if (streetName?.trim()) parts.push(streetName.toLowerCase());
+    if (streetSuffix?.trim()) parts.push(streetSuffix.toLowerCase());
+    if (streetDirSuffix?.trim()) parts.push(streetDirSuffix.toLowerCase());
   
   let cleanCity = city || '';
   cleanCity = cleanCity.replace(/\s+(C\d+|E\d+|W\d+)$/i, '').trim();
@@ -857,8 +859,8 @@ export default function BulkDiscoveryPage() {
                   </thead>
                   <tbody>
                     {filteredBuildings.map(building => {
-                      const currentSlug = generateSlug(building.building_name, building.street_number, building.street_name, building.street_suffix, building.city);
-                      const fullAddress = `${building.street_number} ${building.street_name}${building.street_suffix ? ' ' + building.street_suffix : ''}, ${building.city}`;
+                      const currentSlug = generateSlug(building.building_name, building.street_number, building.street_name, building.street_suffix, building.street_dir_suffix, building.city);
+                      const fullAddress = `${building.street_number} ${building.street_name}${building.street_suffix ? ' ' + building.street_suffix : ''}${building.street_dir_suffix ? ' ' + building.street_dir_suffix : ''}, ${building.city}`;
                       const isEditable = building.status !== 'synced' && building.status !== 'syncing';
                       const isRetrying = retryingId === building.id;
                       

@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
       baseFilter += ` and CityRegion eq '${communityName}'`;
     }
 
-    const select = 'StreetNumber,StreetName,StreetSuffix,City,CityRegion,BuildingName';
+    const select = 'StreetNumber,StreetName,StreetSuffix,StreetDirSuffix,City,CityRegion,BuildingName';
     const headers = {
       'Authorization': `Bearer ${token}`,
       'Accept': 'application/json'
@@ -277,6 +277,7 @@ export async function POST(request: NextRequest) {
           street_number: listing.StreetNumber,
           street_name: listing.StreetName,
           street_suffix: listing.StreetSuffix || null,
+          street_dir_suffix: listing.StreetDirSuffix || null,
           street_key: streetKey,
           city: listing.City,
           proptx_community: cityRegion,
@@ -373,6 +374,7 @@ export async function POST(request: NextRequest) {
         street_number: building.street_number,
         street_name: building.street_name,
         street_suffix: building.street_suffix,
+        street_dir_suffix: building.street_dir_suffix,
         street_key: building.street_key,
         city: building.city,
         building_name: finalName,
