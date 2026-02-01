@@ -438,8 +438,33 @@ export default function BulkDiscoveryPage() {
   const saveEditedAddress = async (buildingId: string) => {
     const parts = editedAddress.split(',')[0].trim();
     const words = parts.split(' ');
+    
+    // Parse address components
     const streetNumber = words[0] || '';
-    const streetName = words.slice(1).join(' ') || '';
+    const remainingWords = words.slice(1);
+    
+    // Known street suffixes and directions
+    const streetSuffixes = ['street', 'st', 'avenue', 'ave', 'road', 'rd', 'drive', 'dr', 'boulevard', 'blvd', 'court', 'ct', 'place', 'pl', 'lane', 'ln', 'way', 'circle', 'cir', 'crescent', 'cres', 'trail', 'trl', 'parkway', 'pkwy'];
+    const directions = ['e', 'w', 'n', 's', 'ne', 'nw', 'se', 'sw'];
+    
+    let streetName = '';
+    let streetSuffix: string | null = null;
+    let streetDirSuffix: string | null = null;
+    
+    // Check last word for direction
+    if (remainingWords.length > 0 && directions.includes(remainingWords[remainingWords.length - 1].toLowerCase())) {
+      streetDirSuffix = remainingWords.pop()!.toUpperCase();
+    }
+    
+    // Check last word for street suffix
+    if (remainingWords.length > 0 && streetSuffixes.includes(remainingWords[remainingWords.length - 1].toLowerCase())) {
+      const suffix = remainingWords.pop()!;
+      // Capitalize properly
+      streetSuffix = suffix.charAt(0).toUpperCase() + suffix.slice(1).toLowerCase();
+    }
+    
+    // Remaining words are the street name
+    streetName = remainingWords.join(' ');
 
     const response = await fetch('/api/admin/bulk-discovery/buildings', {
       method: 'PUT',
@@ -448,7 +473,9 @@ export default function BulkDiscoveryPage() {
         buildings: [{
           id: buildingId,
           street_number: streetNumber,
-          street_name: streetName
+          street_name: streetName,
+          street_suffix: streetSuffix,
+          street_dir_suffix: streetDirSuffix
         }]
       })
     });
@@ -458,7 +485,9 @@ export default function BulkDiscoveryPage() {
         prev.map(b => b.id === buildingId ? {
           ...b,
           street_number: streetNumber,
-          street_name: streetName
+          street_name: streetName,
+          street_suffix: streetSuffix,
+          street_dir_suffix: streetDirSuffix
         } : b)
       );
     }

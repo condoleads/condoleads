@@ -213,7 +213,10 @@ export async function searchBuilding(params: SearchParams): Promise<SearchResult
           fetch(`${PROPTX_BASE_URL}PropertyRooms?$filter=${encodeURIComponent(`ListingKey eq '${listingKey}'`)}&$top=50`, { headers })
             .then(r => r.ok ? r.json() : { value: [] }).catch(() => ({ value: [] })),
           fetch(`${PROPTX_BASE_URL}Media?$filter=${encodeURIComponent(`ResourceRecordKey eq '${listingKey}'`)}&$top=500`, { headers })
-            .then(r => r.ok ? r.json() : { value: [] }).catch(() => ({ value: [] })),
+            .then(r => {
+              if (!r.ok) console.error(`[DirectSearch] Media fetch failed for ${listingKey}: ${r.status}`);
+              return r.ok ? r.json() : { value: [] };
+            }).catch(err => { console.error(`[DirectSearch] Media fetch error for ${listingKey}:`, err.message); return { value: [] }; }),
           fetch(`${PROPTX_BASE_URL}OpenHouse?$filter=${encodeURIComponent(`ListingKey eq '${listingKey}'`)}&$top=20`, { headers })
             .then(r => r.ok ? r.json() : { value: [] }).catch(() => ({ value: [] }))
         ]);
