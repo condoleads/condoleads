@@ -88,7 +88,6 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     .from('mls_listings')
     .select('list_price, bedrooms_total, transaction_type, standard_status')
     .eq('building_id', building.id)
-    console.log(' LISTINGS DEBUG:', { count: listings?.length, error, buildingId: building.id, firstListing: listings?.[0] })
 
   const activeSales = listings?.filter(l => l.transaction_type === 'For Sale' && l.standard_status === 'Active') || []
   const activeRentals = listings?.filter(l => l.transaction_type === 'For Lease' && l.standard_status === 'Active') || []
@@ -188,8 +187,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     .select('*')
     .eq('slug', params.slug)
     .single()
-
-  console.log(' BUILDING DEBUG:', { slug: params.slug, buildingId: building?.id, buildingName: building?.building_name })
 
   // Fetch development if building belongs to one
   let development: { id: string; name: string; slug: string } | null = null
