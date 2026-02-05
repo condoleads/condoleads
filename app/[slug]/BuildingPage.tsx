@@ -11,6 +11,61 @@ import MarketIntelligence from './components/MarketIntelligence'
 import { getBuildingMarketData } from '@/lib/market/get-building-analytics'
 import BuildingAmenities from './components/BuildingAmenities'
 import dynamic from 'next/dynamic'
+import { unstable_cache } from 'next/cache'
+
+// Cached query functions for performance (60 second cache)
+const getCachedBuilding = unstable_cache(
+  async (slug: string) => {
+    const { data } = await supabase
+      .from('buildings')
+      .select('*')
+      .eq('slug', slug)
+      .single()
+    return data
+  },
+  ['building'],
+  { revalidate: 60 }
+)
+
+const getCachedListings = unstable_cache(
+  async (buildingId: string) => {
+    const { data } = await supabase
+      .from('mls_listings')
+      .select(`
+        id, building_id, listing_id, listing_key, standard_status, transaction_type,
+        list_price, close_price, close_date, unit_number, unparsed_address,
+        bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
+        square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
+        days_on_market, listing_contract_date, building_area_total,
+        association_amenities, association_fee_includes, property_management_company, tax_year,
+        media (
+          id,
+          media_url,
+          variant_type,
+          order_number,
+          preferred_photo_yn
+        )
+      `)
+      .eq('building_id', buildingId)
+      .order('list_price', { ascending: false })
+    return data
+  },
+  ['listings'],
+  { revalidate: 60 }
+)
+
+const getCachedDevelopment = unstable_cache(
+  async (developmentId: string) => {
+    const { data } = await supabase
+      .from('developments')
+      .select('id, name, slug')
+      .eq('id', developmentId)
+      .single()
+    return data
+  },
+  ['development'],
+  { revalidate: 60 }
+)
 const PriceChart = dynamic(() => import('./components/PriceChart'), { 
   ssr: false,
   loading: () => <div className="h-96 bg-slate-100 animate-pulse rounded-lg flex items-center justify-center"><span className="text-slate-400">Loading chart...</span></div>
@@ -182,12 +237,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 export default async function BuildingPage({ params }: { params: { slug: string } }) {
-  // First query: Get building (required for all other queries)
-  const { data: building } = await supabase
-    .from('buildings')
-    .select('*')
-    .eq('slug', params.slug)
-    .single()
+  // First query: Get building (CACHED for performance)
+  const building = await getCachedBuilding(params.slug)
 
   if (!building) {
     notFound()
@@ -197,45 +248,24 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   const headersList = headers()
   const host = headersList.get('host') || ''
 
-  // Run all dependent queries in PARALLEL for performance
-  const [devResult, agentResult, listingsResult, marketData] = await Promise.all([
-    // Development query (conditional)
+  // Run all dependent queries in PARALLEL with caching for performance
+  const [development, agentResult, listings, marketData] = await Promise.all([
+    // Development query (conditional) - CACHED
     building.development_id
-      ? supabase.from('developments').select('id, name, slug').eq('id', building.development_id).single()
-      : Promise.resolve({ data: null }),
+      ? getCachedDevelopment(building.development_id)
+      : Promise.resolve(null),
     
-    // Agent query
+    // Agent query (NOT cached - depends on host)
     getDisplayAgentForBuilding(host, building.id),
     
-    // Listings query with media
-    supabase
-      .from('mls_listings')
-      .select(`
-        id, building_id, listing_id, listing_key, standard_status, transaction_type,
-        list_price, close_price, close_date, unit_number, unparsed_address,
-        bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
-        square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
-        days_on_market, listing_contract_date, building_area_total,
-        association_amenities, association_fee_includes, property_management_company, tax_year,
-        media (
-          id,
-          media_url,
-          variant_type,
-          order_number,
-          preferred_photo_yn
-        )
-      `)
-      .eq('building_id', building.id)
-      .order('list_price', { ascending: false }),
+    // Listings query - CACHED
+    getCachedListings(building.id),
     
     // Market intelligence data
     getBuildingMarketData(building.id)
   ])
 
-  // Extract results
-  const development = devResult.data
   const { siteOwner, displayAgent, isTeamSite } = agentResult
-  const listings = listingsResult.data
 
   // If no display agent (not assigned to this building/team), show 404
   if (!displayAgent) {
