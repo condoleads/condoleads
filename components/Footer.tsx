@@ -19,7 +19,7 @@ export default function Footer({ agentData }: FooterProps) {
     return (
       <footer className="bg-slate-900 text-white mt-20">
         <div className="max-w-7xl mx-auto px-6 py-12">
-          <div className="grid md:grid-cols-3 gap-8 mb-8">
+          <div className="grid md:grid-cols-4 gap-8 mb-8">
             {/* Agent Info */}
             <div>
               <h3 className="text-2xl font-bold mb-2">{agentData.full_name}</h3>
@@ -39,8 +39,8 @@ export default function Footer({ agentData }: FooterProps) {
               <h4 className="font-semibold mb-4 text-lg">Contact</h4>
               <ul className="space-y-3 text-sm">
                 <li>
-                  <a 
-                    href={`mailto:${agentData.email}`} 
+                  <a
+                    href={`mailto:${agentData.email}`}
                     className="text-slate-300 hover:text-emerald-400 transition-colors flex items-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -50,7 +50,7 @@ export default function Footer({ agentData }: FooterProps) {
                   </a>
                 </li>
                 <li>
-                  <a 
+                  <a
                     href={`tel:${agentData.phone.replace(/\D/g, '')}`}
                     className="text-slate-300 hover:text-emerald-400 transition-colors flex items-center gap-2"
                   >
@@ -72,9 +72,25 @@ export default function Footer({ agentData }: FooterProps) {
                 <li><a href="#estimate" className="text-slate-400 hover:text-white transition-colors">Get Estimate</a></li>
               </ul>
             </div>
+
+            {/* Legal Links */}
+            <div>
+              <h4 className="font-semibold mb-4 text-lg">Legal</h4>
+              <ul className="space-y-2 text-sm">
+                <li><a href="/privacy-policy" className="text-slate-400 hover:text-white transition-colors">Privacy Policy</a></li>
+                <li><a href="/terms-of-service" className="text-slate-400 hover:text-white transition-colors">Terms of Service</a></li>
+              </ul>
+            </div>
           </div>
 
-          <div className="border-t border-slate-800 pt-8 text-center text-sm text-slate-400">
+          {/* MLS Disclaimer */}
+          <div className="border-t border-slate-800 pt-6 mb-6">
+            <p className="text-xs text-slate-500 leading-relaxed">
+              The trademarks MLS&reg;, Multiple Listing Service&reg; and the associated logos are owned by The Canadian Real Estate Association (CREA) and identify the quality of services provided by real estate professionals who are members of CREA. The trademarks REALTOR&reg;, REALTORS&reg;, and the REALTOR&reg; logo are controlled by CREA and identify real estate professionals who are members of CREA. Data is deemed reliable but is not guaranteed accurate by TRREB.
+            </p>
+          </div>
+
+          <div className="border-t border-slate-800 pt-6 text-center text-sm text-slate-400">
             <p>&copy; {currentYear} {agentData.full_name}. All rights reserved.</p>
           </div>
         </div>

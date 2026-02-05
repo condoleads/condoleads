@@ -46,11 +46,20 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     is_active: true,
     parent_id: '',
     can_create_children: false,
-    primary_color: '#2563eb',
-    secondary_color: '#1e40af',
-    team_name: '',
-    team_tagline: '',
-    team_logo_url: ''
+   primary_color: '#2563eb',
+   secondary_color: '#1e40af',
+   legal_entity_name: '',
+   legal_contact_email: '',
+   legal_contact_phone: '',
+   legal_contact_address: '',
+   privacy_policy_date: '',
+   use_custom_privacy: false,
+   custom_privacy_policy: '',
+   use_custom_terms: false,
+   custom_terms_of_service: '',
+   team_name: '',
+   team_tagline: '',
+   team_logo_url: ''
   })
 
   useEffect(() => {
@@ -105,6 +114,15 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
         can_create_children: agent.can_create_children || false,
         primary_color: branding.primary_color || '#2563eb',
         secondary_color: branding.secondary_color || '#1e40af',
+        legal_entity_name: branding.legal_entity_name || '',
+        legal_contact_email: branding.legal_contact_email || '',
+        legal_contact_phone: branding.legal_contact_phone || '',
+        legal_contact_address: branding.legal_contact_address || '',
+        privacy_policy_date: branding.privacy_policy_date || '',
+        use_custom_privacy: !!branding.custom_privacy_policy,
+        custom_privacy_policy: branding.custom_privacy_policy || '',
+        use_custom_terms: !!branding.custom_terms_of_service,
+        custom_terms_of_service: branding.custom_terms_of_service || '',
         team_name: agent.team_name || '',
         team_tagline: agent.team_tagline || '',
         team_logo_url: agent.team_logo_url || ''
@@ -150,7 +168,17 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
           is_active: formData.is_active,
           parent_id: formData.parent_id || null,
           can_create_children: formData.can_create_children,
-          branding: { primary_color: formData.primary_color, secondary_color: formData.secondary_color },
+          branding: {
+          primary_color: formData.primary_color,
+          secondary_color: formData.secondary_color,
+          legal_entity_name: formData.legal_entity_name || null,
+          legal_contact_email: formData.legal_contact_email || null,
+          legal_contact_phone: formData.legal_contact_phone || null,
+          legal_contact_address: formData.legal_contact_address || null,
+          privacy_policy_date: formData.privacy_policy_date || null,
+            custom_privacy_policy: formData.use_custom_privacy ? formData.custom_privacy_policy || null : null,
+            custom_terms_of_service: formData.use_custom_terms ? formData.custom_terms_of_service || null : null,
+          },
           team_name: formData.can_create_children ? formData.team_name : null,
           team_tagline: formData.can_create_children ? formData.team_tagline : null,
           team_logo_url: formData.can_create_children ? formData.team_logo_url : null
@@ -364,6 +392,73 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
                       <input type="url" value={formData.profile_photo_url} onChange={(e) => { setFormData({...formData, profile_photo_url: e.target.value}); setPhotoPreview(e.target.value) }} className="w-full mt-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm" placeholder="https://example.com/photo.jpg" />
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Legal / Privacy Settings */}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-purple-900 mb-2 flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                Legal &amp; Privacy Settings
+              </h3>
+              <p className="text-sm text-purple-700 mb-4">Override contact info shown on Privacy Policy and Terms of Service pages. Leave blank to use agent profile info.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Legal Entity Name</label>
+                  <input type="text" value={formData.legal_entity_name} onChange={(e) => setFormData({...formData, legal_entity_name: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" placeholder="e.g. King Shah Real Estate Inc." />
+                  <p className="text-xs text-gray-500 mt-1">Business name for legal pages (defaults to agent full name)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Legal Contact Email</label>
+                  <input type="email" value={formData.legal_contact_email} onChange={(e) => setFormData({...formData, legal_contact_email: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" placeholder="Defaults to agent email" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Legal Contact Phone</label>
+                  <input type="tel" value={formData.legal_contact_phone} onChange={(e) => setFormData({...formData, legal_contact_phone: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" placeholder="Defaults to agent phone" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Legal Mailing Address</label>
+                  <input type="text" value={formData.legal_contact_address} onChange={(e) => setFormData({...formData, legal_contact_address: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" placeholder="Defaults to brokerage address" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Privacy Policy Effective Date</label>
+                  <input type="date" value={formData.privacy_policy_date} onChange={(e) => setFormData({...formData, privacy_policy_date: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+                  <p className="text-xs text-gray-500 mt-1">Defaults to January 1, 2025 if not set</p>
+                </div>
+
+                {/* Custom Privacy Policy Toggle */}
+                <div className="md:col-span-2 mt-4 pt-4 border-t border-purple-200">
+                  <label className="flex items-center gap-3 cursor-pointer mb-3">
+                    <input type="checkbox" checked={formData.use_custom_privacy} onChange={(e) => setFormData({...formData, use_custom_privacy: e.target.checked})} className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500" />
+                    <div>
+                      <span className="font-medium text-gray-700">Use Custom Privacy Policy</span>
+                      <p className="text-xs text-gray-500">Replace the default template with your own privacy policy text</p>
+                    </div>
+                  </label>
+                  {formData.use_custom_privacy && (
+                    <div>
+                      <textarea value={formData.custom_privacy_policy} onChange={(e) => setFormData({...formData, custom_privacy_policy: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none font-mono text-sm" rows={12} placeholder="Paste your custom privacy policy here...&#10;&#10;Use blank lines to separate paragraphs.&#10;Lines starting with ## become headings.&#10;Lines starting with - become bullet points." />
+                      <p className="text-xs text-gray-500 mt-1">Formatting: blank lines = new paragraph, ## = heading, - = bullet point</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Custom Terms of Service Toggle */}
+                <div className="md:col-span-2 mt-2">
+                  <label className="flex items-center gap-3 cursor-pointer mb-3">
+                    <input type="checkbox" checked={formData.use_custom_terms} onChange={(e) => setFormData({...formData, use_custom_terms: e.target.checked})} className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500" />
+                    <div>
+                      <span className="font-medium text-gray-700">Use Custom Terms of Service</span>
+                      <p className="text-xs text-gray-500">Replace the default template with your own terms of service text</p>
+                    </div>
+                  </label>
+                  {formData.use_custom_terms && (
+                    <div>
+                      <textarea value={formData.custom_terms_of_service} onChange={(e) => setFormData({...formData, custom_terms_of_service: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none font-mono text-sm" rows={12} placeholder="Paste your custom terms of service here...&#10;&#10;Use blank lines to separate paragraphs.&#10;Lines starting with ## become headings.&#10;Lines starting with - become bullet points." />
+                      <p className="text-xs text-gray-500 mt-1">Formatting: blank lines = new paragraph, ## = heading, - = bullet point</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
