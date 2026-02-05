@@ -182,57 +182,66 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 export default async function BuildingPage({ params }: { params: { slug: string } }) {
+  // First query: Get building (required for all other queries)
   const { data: building } = await supabase
     .from('buildings')
     .select('*')
     .eq('slug', params.slug)
     .single()
 
-  // Fetch development if building belongs to one
-  let development: { id: string; name: string; slug: string } | null = null
-  if (building?.development_id) {
-    const { data: devData } = await supabase
-      .from('developments')
-      .select('id, name, slug')
-      .eq('id', building.development_id)
-      .single()
-    development = devData
-  }
-
   if (!building) {
     notFound()
   }
 
-  // Get agent from subdomain with access verification
+  // Get host for agent lookup
   const headersList = headers()
-    const host = headersList.get('host') || ''
-    const { siteOwner, displayAgent, isTeamSite } = await getDisplayAgentForBuilding(host, building.id)
-    // If no display agent (not assigned to this building/team), show 404
-    if (!displayAgent) {
-      notFound()
-    }
-    const agent = displayAgent
+  const host = headersList.get('host') || ''
 
-  
-  const { data: listings } = await supabase
-    .from('mls_listings')
-    .select(`
-      id, building_id, listing_id, listing_key, standard_status, transaction_type,
-      list_price, close_price, close_date, unit_number, unparsed_address,
-      bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
-      square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
-      days_on_market, listing_contract_date, building_area_total,
-      association_amenities, association_fee_includes, property_management_company, tax_year,
-      media (
-        id,
-        media_url,
-        variant_type,
-        order_number,
-        preferred_photo_yn
-      )
-    `)
-    .eq('building_id', building.id)
-    .order('list_price', { ascending: false })
+  // Run all dependent queries in PARALLEL for performance
+  const [devResult, agentResult, listingsResult, marketData] = await Promise.all([
+    // Development query (conditional)
+    building.development_id
+      ? supabase.from('developments').select('id, name, slug').eq('id', building.development_id).single()
+      : Promise.resolve({ data: null }),
+    
+    // Agent query
+    getDisplayAgentForBuilding(host, building.id),
+    
+    // Listings query with media
+    supabase
+      .from('mls_listings')
+      .select(`
+        id, building_id, listing_id, listing_key, standard_status, transaction_type,
+        list_price, close_price, close_date, unit_number, unparsed_address,
+        bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
+        square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
+        days_on_market, listing_contract_date, building_area_total,
+        association_amenities, association_fee_includes, property_management_company, tax_year,
+        media (
+          id,
+          media_url,
+          variant_type,
+          order_number,
+          preferred_photo_yn
+        )
+      `)
+      .eq('building_id', building.id)
+      .order('list_price', { ascending: false }),
+    
+    // Market intelligence data
+    getBuildingMarketData(building.id)
+  ])
+
+  // Extract results
+  const development = devResult.data
+  const { siteOwner, displayAgent, isTeamSite } = agentResult
+  const listings = listingsResult.data
+
+  // If no display agent (not assigned to this building/team), show 404
+  if (!displayAgent) {
+    notFound()
+  }
+  const agent = displayAgent
 
   const allListings = listings || []
 
@@ -295,7 +304,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   }
 
   // Fetch market intelligence data (PSF analytics, parking/locker values)
-  const marketData = await getBuildingMarketData(building.id)
 
   return (
     <>
