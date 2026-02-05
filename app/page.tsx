@@ -24,12 +24,10 @@ export default async function RootPage() {
   // Check custom domain first
   let agent = null;
   if (isCustomDomain(host)) {
-    agent = await getAgentFromHost(host);
-    console.log('?? DEBUG - Custom domain check:', host, 'Agent:', agent?.full_name);
+    agent = await getAgentFromHost(host);    
   }
   
   const subdomain = extractSubdomain(host);
-  console.log('?? DEBUG - Host:', host, 'Subdomain:', subdomain);
   
   // If no subdomain AND no custom domain agent, show new landing page
   if (!subdomain && !agent) {
@@ -52,7 +50,6 @@ export default async function RootPage() {
   
   const supabase = createClient();
   
-  console.log(' DEBUG: Subdomain extracted:', subdomain);
 
   // Fetch agent by subdomain (if not already found via custom domain)
   if (!agent && subdomain) {
@@ -61,9 +58,8 @@ export default async function RootPage() {
       .select('*')
       .eq('subdomain', subdomain)
       .eq('is_active', true)
-      .single();
-    
-    console.log(' DEBUG: Agent query result:', { agent: subdomainAgent, agentError });
+      .single();    
+  
     agent = subdomainAgent;
   }
   
@@ -83,8 +79,7 @@ export default async function RootPage() {
       .eq('is_active', true);
     
     teamAgents = childAgents || [];
-    allAgentIds = [agent.id, ...teamAgents.map(a => a.id)];
-    console.log(' DEBUG: Team site detected, agents:', allAgentIds.length);
+    allAgentIds = [agent.id, ...teamAgents.map(a => a.id)];  
   }
 
   // Fetch buildings for all relevant agents (team or solo)
@@ -164,7 +159,6 @@ export default async function RootPage() {
       .map((b: any) => ({ ...b, is_featured: false, fromDevelopment: true }))
   ];
 
-  console.log(' DEBUG: Found buildings:', combinedBuildings.length);
 
   // ============================================
   // OPTIMIZED: Batch all queries instead of N+1
@@ -173,7 +167,6 @@ export default async function RootPage() {
   // Get ALL building IDs for batch queries
   const allBuildingIds = combinedBuildings.map(b => b.id).filter(Boolean);
   
-  console.log('🏢 DEBUG: Total buildings to process:', allBuildingIds.length);
 
 // Query 1: Get ACTIVE listings only (for counting For Sale/For Lease on cards)
   const { data: allListings } = await supabase
@@ -183,7 +176,6 @@ export default async function RootPage() {
     .eq('standard_status', 'Active')
     .limit(5000);
 
-  console.log('📊 DEBUG: Fetched', allListings?.length || 0, 'listings');
 
   // ============================================
   // Process data in memory (no more DB queries!)
@@ -225,7 +217,6 @@ export default async function RootPage() {
     };
   });
 
-  console.log(' DEBUG: Buildings with counts:', buildingsWithCounts.length);
 
   return (
     <>
