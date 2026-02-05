@@ -10,6 +10,34 @@ import DevelopmentSEO from './components/DevelopmentSEO'
 import Breadcrumb from '@/components/Breadcrumb'
 import MobileContactBar from '@/components/MobileContactBar'
 import DevelopmentStickyNav from './components/DevelopmentStickyNav'
+import { unstable_cache } from 'next/cache'
+
+// Cached query functions for performance (60 second cache)
+const getCachedDevelopmentBuildings = unstable_cache(
+  async (developmentId: string) => {
+    const { data } = await supabase
+      .from('buildings')
+      .select('*')
+      .eq('development_id', developmentId)
+      .order('building_name')
+    return data
+  },
+  ['dev-buildings'],
+  { revalidate: 60 }
+)
+
+const getCachedDevelopmentListings = unstable_cache(
+  async (buildingIds: string[]) => {
+    const { data } = await supabase
+      .from('mls_listings')
+      .select('id, building_id, listing_id, listing_key, standard_status, transaction_type, list_price, close_price, unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer, property_type, living_area_range, square_foot_source, parking_total, locker, association_fee, tax_annual_amount, days_on_market, listing_contract_date, media (id, media_url, variant_type, order_number, preferred_photo_yn)')
+      .in('building_id', buildingIds)
+      .order('list_price', { ascending: false })
+    return data
+  },
+  ['dev-listings'],
+  { revalidate: 60 }
+)
 
 interface DevelopmentPageProps {
   params: { slug: string }
@@ -94,21 +122,13 @@ export default async function DevelopmentPage({ params, development }: Developme
   }
   const agent = displayAgent
 
-  const { data: buildings } = await serverSupabase
-    .from('buildings')
-    .select('*')
-    .eq('development_id', development.id)
-    .order('building_name')
+  const buildings = await getCachedDevelopmentBuildings(development.id)
 
   if (!buildings || buildings.length === 0) { notFound() }
 
   const buildingIds = buildings.map((b: any) => b.id)
 
-  const { data: allListings } = await serverSupabase
-    .from('mls_listings')
-    .select('id, building_id, listing_id, listing_key, standard_status, transaction_type, list_price, close_price, unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer, property_type, living_area_range, square_foot_source, parking_total, locker, association_fee, tax_annual_amount, days_on_market, listing_contract_date, media (id, media_url, variant_type, order_number, preferred_photo_yn)')
-    .in('building_id', buildingIds)
-    .order('list_price', { ascending: false })
+  const allListings = await getCachedDevelopmentListings(buildingIds)
 
   // Filter media to thumbnails only to reduce HTML payload
   // Create a map of building_id to building_slug
