@@ -8,8 +8,8 @@ import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 interface ListingSectionProps {
   activeSales: MLSListing[]
   activeRentals: MLSListing[]
-  closedSales: MLSListing[]
-  closedRentals: MLSListing[]
+  closedSalesCount: number
+  closedRentalsCount: number
   buildingId: string
   buildingAddress?: string
   buildingName: string
@@ -22,8 +22,8 @@ type TabType = 'for-sale' | 'for-lease' | 'sold' | 'leased'
 export default function ListingSection({
   activeSales = [],
   activeRentals = [],
-  closedSales = [],
-  closedRentals = [],
+  closedSalesCount = 0,
+  closedRentalsCount = 0,
   buildingId,
   buildingAddress,
   buildingName,
@@ -36,30 +36,62 @@ export default function ListingSection({
   const [selectedListing, setSelectedListing] = useState<MLSListing | null>(null)
   const [modalType, setModalType] = useState<'sale' | 'lease'>('sale')
   const [exactSqft, setExactSqft] = useState<number | null>(null)
-  
+
+  // Lazy-loaded data for sold/leased tabs
+  const [closedSales, setClosedSales] = useState<any[]>([])
+  const [closedRentals, setClosedRentals] = useState<any[]>([])
+  const [loadingSold, setLoadingSold] = useState(false)
+  const [loadingLeased, setLoadingLeased] = useState(false)
+  const [soldLoaded, setSoldLoaded] = useState(false)
+  const [leasedLoaded, setLeasedLoaded] = useState(false)
+
   const itemsPerPage = 6
+
+  // Fetch sold/leased data on tab click
+  const fetchClosedListings = async (type: 'sold' | 'leased') => {
+    if (type === 'sold' && soldLoaded) return
+    if (type === 'leased' && leasedLoaded) return
+
+    const setLoading = type === 'sold' ? setLoadingSold : setLoadingLeased
+    const setData = type === 'sold' ? setClosedSales : setClosedRentals
+    const setLoaded = type === 'sold' ? setSoldLoaded : setLeasedLoaded
+
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/building-listings?buildingId=${buildingId}&type=${type}`)
+      const json = await res.json()
+      setData(json.listings || [])
+      setLoaded(true)
+    } catch (err) {
+      console.error(`Failed to fetch ${type} listings:`, err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const tabs = [
     { id: 'for-sale' as TabType, label: 'For Sale', count: activeSales?.length || 0, data: activeSales || [] },
     { id: 'for-lease' as TabType, label: 'For Lease', count: activeRentals?.length || 0, data: activeRentals || [] },
-    { id: 'sold' as TabType, label: 'Sold', count: closedSales?.length || 0, data: closedSales || [] },
-    { id: 'leased' as TabType, label: 'Leased', count: closedRentals?.length || 0, data: closedRentals || [] },
+    { id: 'sold' as TabType, label: 'Sold', count: closedSalesCount, data: closedSales },
+    { id: 'leased' as TabType, label: 'Leased', count: closedRentalsCount, data: closedRentals },
   ]
 
   const currentData = tabs.find(tab => tab.id === activeTab)?.data || []
   const isSaleTab = activeTab === 'for-sale' || activeTab === 'sold'
+  const isLoading = (activeTab === 'sold' && loadingSold) || (activeTab === 'leased' && loadingLeased)
 
   const handleTabChange = (tabId: TabType) => {
     setActiveTab(tabId)
     setCurrentPage(1)
+    if (tabId === 'sold') fetchClosedListings('sold')
+    if (tabId === 'leased') fetchClosedListings('leased')
   }
 
   const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'lease', exactSqft: number | null) => {
-  setSelectedListing(listing)
-  setModalType(type)
-  setModalOpen(true)
-  // Store exactSqft in state to pass to modal
-}
+    setSelectedListing(listing)
+    setModalType(type)
+    setModalOpen(true)
+  }
 
   const totalPages = Math.ceil(currentData.length / itemsPerPage)
   const startIndex = (currentPage - 1) * itemsPerPage
@@ -72,7 +104,7 @@ export default function ListingSection({
         <div className="absolute inset-0 opacity-10">
           <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
         </div>
-        
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 relative z-10 w-full overflow-hidden">
           <h2 className="text-2xl sm:text-4xl md:text-5xl font-black text-white text-center mb-4">
             Get Instant<br className="sm:hidden" /> Digital Estimates
@@ -104,19 +136,24 @@ export default function ListingSection({
       </section>
 
       <section className="max-w-7xl mx-auto px-6 py-12">
-        {paginatedData.length > 0 ? (
+        {isLoading ? (
+          <div className="flex justify-center items-center py-20">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+            <span className="ml-3 text-gray-600">Loading listings...</span>
+          </div>
+        ) : paginatedData.length > 0 ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               {paginatedData.map((listing) => (
                 <ListingCard
-                    key={listing.id}
-                    listing={listing}
-                    type={isSaleTab ? 'sale' : 'lease'}
-                    onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'lease', exactSqft)}
-                    buildingSlug={buildingSlug}
-                    buildingName={buildingName}
-                    agentId={agentId}
-                  />
+                  key={listing.id}
+                  listing={listing}
+                  type={isSaleTab ? 'sale' : 'lease'}
+                  onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'lease', exactSqft)}
+                  buildingSlug={buildingSlug}
+                  buildingName={buildingName}
+                  agentId={agentId}
+                />
               ))}
             </div>
 
@@ -129,7 +166,7 @@ export default function ListingSection({
                 >
                   Previous
                 </button>
-                
+
                 <div className="flex gap-2">
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
                     <button
@@ -162,27 +199,28 @@ export default function ListingSection({
           </>
         ) : (
           <div className="text-center py-20">
-            <p className="text-xl text-slate-500">No listings available in this category.</p>
+            <p className="text-xl text-slate-500">
+              {(activeTab === 'sold' && !soldLoaded) || (activeTab === 'leased' && !leasedLoaded)
+                ? 'Loading...'
+                : 'No listings available in this category.'}
+            </p>
           </div>
         )}
       </section>
 
       {/* Estimator Modal */}
       <EstimatorBuyerModal
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          listing={selectedListing}
-          buildingName={buildingName}
-          buildingAddress={buildingAddress}
-          buildingId={buildingId}
-          buildingSlug={buildingSlug}
-          agentId={agentId}
-          type={modalType}
-          exactSqft={exactSqft}
-        />
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        listing={selectedListing}
+        buildingName={buildingName}
+        buildingAddress={buildingAddress}
+        buildingId={buildingId}
+        buildingSlug={buildingSlug}
+        agentId={agentId}
+        type={modalType}
+        exactSqft={exactSqft}
+      />
     </>
   )
 }
-
-
-
