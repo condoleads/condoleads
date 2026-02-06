@@ -142,8 +142,17 @@ export default async function DevelopmentPage({ params, development }: Developme
   ])
   const allActiveListings = activeListingsPerBuilding.flat()
   const closedListings = countResult.data || []
-  const soldCount = closedListings.filter(l => l.transaction_type === 'For Sale').length
-  const leasedCount = closedListings.filter(l => l.transaction_type === 'For Lease').length
+  // Fetch closed listings WITHOUT media for stats/calculations
+  const { data: closedListingsRaw } = await supabase
+    .from('mls_listings')
+    .select('id, building_id, transaction_type, standard_status, list_price, close_price, close_date, days_on_market, bedrooms_total, bathrooms_total_integer, living_area_range, unit_number')
+    .in('building_id', buildingIds)
+    .eq('standard_status', 'Closed')
+
+  const closedSales = (closedListingsRaw || []).filter((l: any) => l.transaction_type === 'For Sale')
+  const closedRentals = (closedListingsRaw || []).filter((l: any) => l.transaction_type === 'For Lease')
+  const soldCount = closedSales.length
+  const leasedCount = closedRentals.length
 
   // Filter media to thumbnails only to reduce HTML payload
   // Create a map of building_id to building_slug
