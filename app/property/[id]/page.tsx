@@ -156,7 +156,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       .select('media_url, order_number')
       .eq('listing_id', listing.id)
       .eq('variant_type', 'large')
-      .order('order_number'),
+      .order('order_number')
+      .limit(4),
 
     // 2. Unit history
     supabase

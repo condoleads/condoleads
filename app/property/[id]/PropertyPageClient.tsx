@@ -73,6 +73,7 @@ export default function PropertyPageClient({
     <>
       <PropertyGallery
         photos={largePhotos}
+        listingId={listing.id}
         shouldBlur={shouldGate}
           buildingId={listing.building_id}
         maxPhotos={shouldGate ? 2 : undefined}
