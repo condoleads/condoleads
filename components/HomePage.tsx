@@ -3,6 +3,7 @@ import { StatsSection } from './home/StatsSection';
 import { HowItWorks } from './home/HowItWorks';
 import { BuildingsGrid } from './home/BuildingsGrid';
 import { EstimatorBanner } from './home/EstimatorBanner';
+import { VIPTiers } from './home/VIPTiers';
 import { ContactSection } from './home/ContactSection';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
 import MobileContactBar from './MobileContactBar';
