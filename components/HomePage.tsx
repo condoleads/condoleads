@@ -72,7 +72,7 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
       <HeroSection agent={agent as any} isTeamSite={isTeamSite} />
       
       {/* Market Ticker */}
-      <MarketTicker />
+      <MarketTicker agentId={agent.id} />
 
       {/* Stats Section */}
       <StatsSection 

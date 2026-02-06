@@ -208,14 +208,14 @@ export function HeroSection({ agent, isTeamSite = false }: HeroSectionProps) {
                   <p className="text-sm font-semibold text-white">AI Condo Advisor</p>
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    <p className="text-xs text-green-300">Online  analyzing 500+ buildings</p>
+                    <p className="text-xs text-green-300">Online  ready to help</p>
                   </div>
                 </div>
               </div>
               <div className="p-5 space-y-4">
                 <div className="flex justify-end">
                   <div className="bg-blue-500/20 border border-blue-400/20 rounded-2xl rounded-br-md px-4 py-2.5 max-w-[80%]">
-                    <p className="text-sm text-blue-100">What&apos;s the market like at 88 Scott?</p>
+                    <p className="text-sm text-blue-100">What can you tell me about this building?</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
