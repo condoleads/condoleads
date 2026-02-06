@@ -150,13 +150,8 @@ export default async function DevelopmentPage({ params, development }: Developme
 
   const forSaleActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active').map(filterMedia)
   const forLeaseActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active').map(filterMedia)
-  const filterMediaNoImages = (listing: any) => ({
-    ...listing,
-    building_slug: buildingSlugMap.get(listing.building_id) || '',
-    media: [] // No images server-side - loaded on tab click
-  })
-  const soldListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Closed').map(filterMediaNoImages)
-  const leasedListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Closed').map(filterMediaNoImages)
+  const soldCount = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Closed').length
+  const leasedCount = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Closed').length
   const totalUnits = buildings.reduce((sum: number, b: any) => sum + (b.total_units || 0), 0)
   const addresses = buildings.map((b: any) => b.canonical_address).join(' & ')
 
@@ -193,8 +188,8 @@ export default async function DevelopmentPage({ params, development }: Developme
       <DevelopmentStickyNav
         forSaleCount={forSaleActive.length}
         forLeaseCount={forLeaseActive.length}
-        soldCount={soldListings.length}
-        leasedCount={leasedListings.length}
+        soldCount={soldCount}
+        leasedCount={leasedCount}
         agentId={agent?.id}
       />
       <div className="min-h-screen bg-gray-50 pt-16 md:pt-20">
@@ -219,11 +214,11 @@ export default async function DevelopmentPage({ params, development }: Developme
                 <div className="text-blue-200 text-xs md:text-sm">For Lease</div>
               </a>
               <a href="#sold" className="bg-white/10 rounded-lg p-2 md:p-4 hover:bg-white/20 transition-colors cursor-pointer">
-                <div className="text-xl md:text-3xl font-bold">{soldListings.length}</div>
+                <div className="text-xl md:text-3xl font-bold">{soldCount}</div>
                 <div className="text-blue-200 text-xs md:text-sm">Sold</div>
               </a>
               <a href="#leased" className="bg-white/10 rounded-lg p-2 md:p-4 hover:bg-white/20 transition-colors cursor-pointer">
-                <div className="text-xl md:text-3xl font-bold">{leasedListings.length}</div>
+                <div className="text-xl md:text-3xl font-bold">{leasedCount}</div>
                 <div className="text-blue-200 text-xs md:text-sm">Leased</div>
               </a>
             </div>
@@ -279,8 +274,9 @@ export default async function DevelopmentPage({ params, development }: Developme
             <DevelopmentListings
               forSaleActive={forSaleActive}
               forLeaseActive={forLeaseActive}
-              soldListings={soldListings}
-              leasedListings={leasedListings}
+              soldCount={soldCount}
+              leasedCount={leasedCount}
+              developmentId={development.id}
               developmentName={development.name}
               developmentAddresses={addresses}
               agentId={agent?.id || ''}
@@ -324,8 +320,8 @@ export default async function DevelopmentPage({ params, development }: Developme
           buildings={buildings}
           totalForSale={forSaleActive.length}
           totalForLease={forLeaseActive.length}
-          totalSold={soldListings.length}
-          totalLeased={leasedListings.length}
+          totalSold={soldCount}
+          totalLeased={leasedCount}
           addresses={addresses}
         />
         <MobileContactBar
