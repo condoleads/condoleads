@@ -5,7 +5,11 @@ import { createClient } from '@/lib/supabase/server'
 import { getDisplayAgentForDevelopment, isCustomDomain } from '@/lib/utils/agent-detection'
 import { AgentCard } from '@/components/AgentCard'
 import Link from 'next/link'
-import DevelopmentListings from './components/DevelopmentListings'
+import dynamic from 'next/dynamic'
+const DevelopmentListings = dynamic(() => import('./components/DevelopmentListings'), {
+  loading: () => <div className="py-8 text-center text-gray-500">Loading listings...</div>,
+  ssr: false
+})
 import DevelopmentSEO from './components/DevelopmentSEO'
 import Breadcrumb from '@/components/Breadcrumb'
 import MobileContactBar from '@/components/MobileContactBar'
