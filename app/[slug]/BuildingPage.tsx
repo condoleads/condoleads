@@ -452,8 +452,8 @@ export default async function BuildingPage({ params }: { params: { slug: string 
               <ListingSection
                   activeSales={activeSales}
                   activeRentals={activeRentals}
-                  closedSales={closedSales}
-                  closedRentals={closedRentals}
+                  closedSalesCount={closedSales.length}
+                  closedRentalsCount={closedRentals.length}
                   buildingId={building.id}
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
