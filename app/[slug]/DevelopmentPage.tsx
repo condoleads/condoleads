@@ -5,11 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getDisplayAgentForDevelopment, isCustomDomain } from '@/lib/utils/agent-detection'
 import { AgentCard } from '@/components/AgentCard'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
-const DevelopmentListings = dynamic(() => import('./components/DevelopmentListings'), {
-  loading: () => <div className="py-8 text-center text-gray-500">Loading listings...</div>,
-  ssr: false
-})
+import DevelopmentListings from './components/DevelopmentListings'
 import DevelopmentSEO from './components/DevelopmentSEO'
 import Breadcrumb from '@/components/Breadcrumb'
 import MobileContactBar from '@/components/MobileContactBar'
@@ -154,8 +150,13 @@ export default async function DevelopmentPage({ params, development }: Developme
 
   const forSaleActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active').map(filterMedia)
   const forLeaseActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active').map(filterMedia)
-  const soldListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Closed').map(filterMedia)
-  const leasedListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Closed').map(filterMedia)
+  const filterMediaNoImages = (listing: any) => ({
+    ...listing,
+    building_slug: buildingSlugMap.get(listing.building_id) || '',
+    media: [] // No images server-side - loaded on tab click
+  })
+  const soldListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Closed').map(filterMediaNoImages)
+  const leasedListings = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Closed').map(filterMediaNoImages)
   const totalUnits = buildings.reduce((sum: number, b: any) => sum + (b.total_units || 0), 0)
   const addresses = buildings.map((b: any) => b.canonical_address).join(' & ')
 
