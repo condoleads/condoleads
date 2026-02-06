@@ -118,7 +118,6 @@ export default function TransactionHistory({
                 buildingName={buildingName}
                 buildingAddress={buildingAddress}
                 unitNumber={unitNumber}
-                triggerSource="Transaction History"
               />
             )}
           </div>
