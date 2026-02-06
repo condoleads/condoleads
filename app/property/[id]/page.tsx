@@ -140,38 +140,112 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const agent = displayAgent
 
 
-  // Fetch media
-  const { data: largePhotos } = await supabase
-    .from('media')
-    .select('media_url, order_number')
-    .eq('listing_id', listing.id)
-    .eq('variant_type', 'large')
-    .order('order_number')
+// Run ALL independent queries in PARALLEL
+  const [
+    largePhotosResult,
+    unitHistoryResult,
+    roomsResult,
+    amenitiesResult,
+    availableListingsResult,
+    investmentData,
+    similarResult1
+  ] = await Promise.all([
+    // 1. Media - large photos only
+    supabase
+      .from('media')
+      .select('media_url, order_number')
+      .eq('listing_id', listing.id)
+      .eq('variant_type', 'large')
+      .order('order_number'),
 
-  // Fetch similar SOLD listings with smart fallback
-  // Try 1: Exact match (same bed/bath)
-  let { data: similarListings } = await supabase
-    .from('mls_listings')
-    .select(`
-      *,
-      media (
-        id,
-        media_url,
-        order_number,
-        variant_type
-      )
-    `)
-    .eq('building_id', listing.building_id)
-    .eq('transaction_type', listing.transaction_type)
-    .eq('standard_status', 'Closed')
-    .eq('bedrooms_total', listing.bedrooms_total)
-    .eq('bathrooms_total_integer', listing.bathrooms_total_integer)
-    .neq('id', listing.id)
-    .order('close_date', { ascending: false })
-    .limit(8)
+    // 2. Unit history
+    supabase
+      .from('mls_listings')
+      .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status, mls_status, listing_key')
+      .eq('building_id', listing.building_id)
+      .eq('unit_number', listing.unit_number)
+      .neq('id', listing.id)
+      .order('close_date', { ascending: false, nullsFirst: false })
+      .order('listing_contract_date', { ascending: false })
+      .limit(20),
+
+    // 3. Room dimensions
+    supabase
+      .from('property_rooms')
+      .select('*')
+      .eq('listing_id', listing.id)
+      .order('order_number'),
+
+    // 4. Amenities
+    supabase
+      .from('property_amenities')
+      .select('*')
+      .eq('listing_id', listing.id),
+
+    // 5. Available listings in same building
+    supabase
+      .from('mls_listings')
+      .select(`
+        *,
+        media (
+          id,
+          media_url,
+          order_number,
+          variant_type
+        )
+      `)
+      .eq('building_id', listing.building_id)
+      .eq('transaction_type', listing.transaction_type)
+      .eq('standard_status', 'Active')
+      .neq('id', listing.id)
+      .order('list_price', { ascending: true })
+      .limit(8),
+
+    // 6. Investment data
+    getListingInvestmentData(
+      listing.building_id,
+      listing.list_price,
+      listing.calculated_sqft,
+      listing.living_area_range,
+      listing.association_fee,
+      listing.tax_annual_amount,
+      listing.transaction_type
+    ),
+
+    // 7. Similar SOLD - Try 1: exact bed/bath match
+    supabase
+      .from('mls_listings')
+      .select(`
+        *,
+        media (
+          id,
+          media_url,
+          order_number,
+          variant_type
+        )
+      `)
+      .eq('building_id', listing.building_id)
+      .eq('transaction_type', listing.transaction_type)
+      .eq('standard_status', 'Closed')
+      .eq('bedrooms_total', listing.bedrooms_total)
+      .eq('bathrooms_total_integer', listing.bathrooms_total_integer)
+      .neq('id', listing.id)
+      .order('close_date', { ascending: false })
+      .limit(8)
+  ])
+
+  const largePhotos = largePhotosResult.data
+  const unitHistory = unitHistoryResult.data
+  const rooms = roomsResult.data
+  const amenitiesData = amenitiesResult.data
+  const amenities = amenitiesData?.filter(a => a.category === 'amenity') || []
+  const feeIncludes = amenitiesData?.filter(a => a.category === 'fee_includes') || []
+
+  // Similar listings - cascading fallback (sequential, but runs AFTER parallel batch)
+  let similarListings = similarResult1.data || []
 
   // Try 2: If less than 4, get same bedrooms only
-  if (!similarListings || similarListings.length < 4) {
+  if (similarListings.length < 4) {
     const { data: moreSimilar } = await supabase
       .from('mls_listings')
       .select(`
@@ -190,17 +264,16 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       .neq('id', listing.id)
       .order('close_date', { ascending: false })
       .limit(8)
-    
-    // Merge and deduplicate
+
     if (moreSimilar) {
-      const existingIds = new Set(similarListings?.map(l => l.id) || [])
+      const existingIds = new Set(similarListings.map(l => l.id))
       const newListings = moreSimilar.filter(l => !existingIds.has(l.id))
-      similarListings = [...(similarListings || []), ...newListings]
+      similarListings = [...similarListings, ...newListings]
     }
   }
 
-  // Try 3: If still less than 4, get any sold units in building
-  if (!similarListings || similarListings.length < 4) {
+  // Try 3: If still less than 4, get any sold units
+  if (similarListings.length < 4) {
     const { data: anySold } = await supabase
       .from('mls_listings')
       .select(`
@@ -218,90 +291,29 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       .neq('id', listing.id)
       .order('close_date', { ascending: false })
       .limit(8)
-    
-    // Merge and deduplicate
+
     if (anySold) {
-      const existingIds = new Set(similarListings?.map(l => l.id) || [])
+      const existingIds = new Set(similarListings.map(l => l.id))
       const newListings = anySold.filter(l => !existingIds.has(l.id))
-      similarListings = [...(similarListings || []), ...newListings]
+      similarListings = [...similarListings, ...newListings]
     }
   }
 
-  // Limit to 8 total
-  similarListings = similarListings?.slice(0, 8) || []
-
-  // Strip to thumbnail media only (reduces payload massively)
-  similarListings = similarListings.map(l => ({
+  // Limit to 8 and strip to thumbnail media only
+  similarListings = similarListings.slice(0, 8).map(l => ({
     ...l,
     media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
       .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
       .slice(0, 1)
   }))
 
-  // Fetch unit history - ALL statuses for complete transaction history
-  const { data: unitHistory } = await supabase
-    .from('mls_listings')
-    .select('id, list_price, close_price, close_date, listing_contract_date, days_on_market, transaction_type, standard_status, mls_status, listing_key')
-    .eq('building_id', listing.building_id)
-    .eq('unit_number', listing.unit_number)
-    .neq('id', listing.id)
-    .order('close_date', { ascending: false, nullsFirst: false })
-    .order('listing_contract_date', { ascending: false })
-    .limit(20)
-
-  // Fetch room dimensions
-  const { data: rooms } = await supabase
-    .from('property_rooms')
-    .select('*')
-    .eq('listing_id', listing.id)
-    .order('order_number')
-
-  // Fetch amenities
-  const { data: amenitiesData } = await supabase
-    .from('property_amenities')
-    .select('*')
-    .eq('listing_id', listing.id)
-
-  const amenities = amenitiesData?.filter(a => a.category === 'amenity') || []
-  const feeIncludes = amenitiesData?.filter(a => a.category === 'fee_includes') || []
-
-  // Fetch available listings in same building WITH media variant_type
-  const { data: availableListings } = await supabase
-    .from('mls_listings')
-    .select(`
-      *,
-      media (
-        id,
-        media_url,
-        order_number,
-        variant_type
-      )
-    `)
-    .eq('building_id', listing.building_id)
-    .eq('transaction_type', listing.transaction_type)
-    .eq('standard_status', 'Active')
-    .neq('id', listing.id)
-    .order('list_price', { ascending: true })
-    .limit(8)
-
-    // Strip to thumbnail media only
-  const filteredAvailable = (availableListings || []).map(l => ({
+  // Strip available listings to thumbnail media only
+  const filteredAvailable = (availableListingsResult.data || []).map(l => ({
     ...l,
     media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
       .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
       .slice(0, 1)
   }))
-
-    // Fetch investment analysis data
-  const investmentData = await getListingInvestmentData(
-    listing.building_id,
-    listing.list_price,
-    listing.calculated_sqft,
-    listing.living_area_range,
-    listing.association_fee,
-    listing.tax_annual_amount,
-    listing.transaction_type
-  )
 
   const isSale = listing.transaction_type === 'For Sale'
   const isClosed = listing.standard_status === 'Closed'
