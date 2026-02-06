@@ -38,7 +38,7 @@ const getCachedDevelopmentBuildings = unstable_cache(
       .order('list_price', { ascending: false })
     return data
   },
-  ['dev-listings'],
+  ['dev-listings-v2'],
   { revalidate: 60 }
 )
 
