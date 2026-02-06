@@ -28,17 +28,16 @@ const getCachedDevelopmentBuildings = unstable_cache(
 
  { revalidate: 60 }
 
- const getCachedDevelopmentListings = unstable_cache(
-  async (buildingIdsJson: string) => {
-    const buildingIds = JSON.parse(buildingIdsJson) as string[]
+const getCachedListingsForBuilding = unstable_cache(
+  async (buildingId: string) => {
     const { data } = await supabase
       .from('mls_listings')
       .select('id, building_id, listing_id, listing_key, standard_status, transaction_type, list_price, close_price, unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer, property_type, living_area_range, square_foot_source, parking_total, locker, association_fee, tax_annual_amount, days_on_market, listing_contract_date, media (id, media_url, variant_type, order_number, preferred_photo_yn)')
-      .in('building_id', buildingIds)
+      .eq('building_id', buildingId)
       .order('list_price', { ascending: false })
-    return data
+    return data || []
   },
-  ['dev-listings-v2'],
+  ['dev-building-listings'],
   { revalidate: 60 }
 )
 
@@ -131,7 +130,11 @@ export default async function DevelopmentPage({ params, development }: Developme
 
   const buildingIds = buildings.map((b: any) => b.id)
 
-  const allListings = await getCachedDevelopmentListings(JSON.stringify(buildingIds))
+  // Fetch listings per building in PARALLEL (each cached separately for reliability)
+  const listingsPerBuilding = await Promise.all(
+    buildingIds.map(id => getCachedListingsForBuilding(id))
+  )
+  const allListings = listingsPerBuilding.flat()
 
   // Filter media to thumbnails only to reduce HTML payload
   // Create a map of building_id to building_slug
