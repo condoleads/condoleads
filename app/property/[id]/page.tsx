@@ -141,13 +141,12 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
 
   // Fetch media
-  const { data: allMedia } = await supabase
+  const { data: largePhotos } = await supabase
     .from('media')
     .select('media_url, order_number')
     .eq('listing_id', listing.id)
+    .eq('variant_type', 'large')
     .order('order_number')
-
-  const largePhotos = allMedia?.filter(m => m.media_url.includes('1920:1920')) || []
 
   // Fetch similar SOLD listings with smart fallback
   // Try 1: Exact match (same bed/bath)
@@ -231,6 +230,14 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   // Limit to 8 total
   similarListings = similarListings?.slice(0, 8) || []
 
+  // Strip to thumbnail media only (reduces payload massively)
+  similarListings = similarListings.map(l => ({
+    ...l,
+    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
+      .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
+      .slice(0, 1)
+  }))
+
   // Fetch unit history - ALL statuses for complete transaction history
   const { data: unitHistory } = await supabase
     .from('mls_listings')
@@ -276,6 +283,14 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     .neq('id', listing.id)
     .order('list_price', { ascending: true })
     .limit(8)
+
+    // Strip to thumbnail media only
+  const filteredAvailable = (availableListings || []).map(l => ({
+    ...l,
+    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
+      .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
+      .slice(0, 1)
+  }))
 
     // Fetch investment analysis data
   const investmentData = await getListingInvestmentData(
@@ -325,7 +340,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         amenities={amenities}
         feeIncludes={feeIncludes}
         similarListings={similarListings || []}
-        availableListings={availableListings || []}
+        availableListings={filteredAvailable}
         isSale={isSale}
         status={status}
         isClosed={isClosed}
