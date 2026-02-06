@@ -27,7 +27,7 @@ const getCachedBuilding = unstable_cache(
   { revalidate: 60 }
 )
 
-const getCachedListings = unstable_cache(
+const getCachedActiveListings = unstable_cache(
   async (buildingId: string) => {
     const { data } = await supabase
       .from('mls_listings')
@@ -47,10 +47,32 @@ const getCachedListings = unstable_cache(
         )
       `)
       .eq('building_id', buildingId)
+      .eq('standard_status', 'Active')
       .order('list_price', { ascending: false })
     return data
   },
-  ['listings'],
+  ['active-listings'],
+  { revalidate: 60 }
+)
+
+const getCachedClosedListings = unstable_cache(
+  async (buildingId: string) => {
+    const { data } = await supabase
+      .from('mls_listings')
+      .select(`
+        id, building_id, listing_id, listing_key, standard_status, transaction_type,
+        list_price, close_price, close_date, unit_number, unparsed_address,
+        bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
+        square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
+        days_on_market, listing_contract_date, building_area_total,
+        association_amenities, association_fee_includes, property_management_company, tax_year
+      `)
+      .eq('building_id', buildingId)
+      .eq('standard_status', 'Closed')
+      .order('list_price', { ascending: false })
+    return data
+  },
+  ['closed-listings'],
   { revalidate: 60 }
 )
 
@@ -249,7 +271,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   const host = headersList.get('host') || ''
 
   // Run all dependent queries in PARALLEL with caching for performance
-  const [development, agentResult, listings, marketData] = await Promise.all([
+  const [development, agentResult, activeListingsRaw, closedListingsRaw, marketData] = await Promise.all([
     // Development query (conditional) - CACHED
     building.development_id
       ? getCachedDevelopment(building.development_id)
@@ -259,7 +281,8 @@ export default async function BuildingPage({ params }: { params: { slug: string 
     getDisplayAgentForBuilding(host, building.id),
     
     // Listings query - CACHED
-    getCachedListings(building.id),
+    getCachedActiveListings(building.id),
+    getCachedClosedListings(building.id),
     
     // Market intelligence data
     getBuildingMarketData(building.id)
@@ -273,11 +296,13 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   }
   const agent = displayAgent
 
-  const allListings = listings || []
+  const activeListings = activeListingsRaw || []
+  const closedListings = closedListingsRaw || []
+  const allListings = [...activeListings, ...closedListings]
 
   // Strip media for components that don't need it (reduces HTML payload)
   const listingsWithoutMedia = allListings.map(l => ({ ...l, media: undefined }))
-  
+
   // Filter media to thumbnails only to reduce HTML payload
   const filterMedia = (listing: any) => ({
     ...listing,
@@ -285,9 +310,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
       .slice(0, 1) // Only first photo, rest loaded on demand
   })
-  
-  const activeListings = allListings.filter(l => l.standard_status === 'Active')
-  const closedListings = allListings.filter(l => l.standard_status === 'Closed')
   
   const activeSales = activeListings.filter(l => l.transaction_type === 'For Sale').map(filterMedia)
   const activeRentals = activeListings.filter(l => l.transaction_type === 'For Lease').map(filterMedia)
