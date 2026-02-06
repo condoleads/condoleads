@@ -28,16 +28,17 @@ const getCachedDevelopmentBuildings = unstable_cache(
 
  { revalidate: 60 }
 
-const getCachedListingsForBuilding = unstable_cache(
+const getCachedActiveListings = unstable_cache(
   async (buildingId: string) => {
     const { data } = await supabase
       .from('mls_listings')
       .select('id, building_id, listing_id, listing_key, standard_status, transaction_type, list_price, close_price, unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer, property_type, living_area_range, square_foot_source, parking_total, locker, association_fee, tax_annual_amount, days_on_market, listing_contract_date, media (id, media_url, variant_type, order_number, preferred_photo_yn)')
       .eq('building_id', buildingId)
+      .eq('standard_status', 'Active')
       .order('list_price', { ascending: false })
     return data || []
   },
-  ['dev-building-listings'],
+  ['dev-active-listings'],
   { revalidate: 60 }
 )
 
@@ -130,11 +131,19 @@ export default async function DevelopmentPage({ params, development }: Developme
 
   const buildingIds = buildings.map((b: any) => b.id)
 
-  // Fetch listings per building in PARALLEL (each cached separately for reliability)
-  const listingsPerBuilding = await Promise.all(
-    buildingIds.map(id => getCachedListingsForBuilding(id))
-  )
-  const allListings = listingsPerBuilding.flat()
+  // Fetch ONLY active listings (full data) + counts for sold/leased
+  const [activeListingsPerBuilding, countResult] = await Promise.all([
+    Promise.all(buildingIds.map(id => getCachedActiveListings(id))),
+    supabase
+      .from('mls_listings')
+      .select('transaction_type, standard_status')
+      .in('building_id', buildingIds)
+      .eq('standard_status', 'Closed')
+  ])
+  const allActiveListings = activeListingsPerBuilding.flat()
+  const closedListings = countResult.data || []
+  const soldCount = closedListings.filter(l => l.transaction_type === 'For Sale').length
+  const leasedCount = closedListings.filter(l => l.transaction_type === 'For Lease').length
 
   // Filter media to thumbnails only to reduce HTML payload
   // Create a map of building_id to building_slug
@@ -148,10 +157,8 @@ export default async function DevelopmentPage({ params, development }: Developme
       .slice(0, 1) // Only first photo, rest loaded on demand
   })
 
-  const forSaleActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active').map(filterMedia)
-  const forLeaseActive = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active').map(filterMedia)
-  const soldCount = (allListings || []).filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Closed').length
-  const leasedCount = (allListings || []).filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Closed').length
+  const forSaleActive = allActiveListings.filter((l: any) => l.transaction_type === 'For Sale').map(filterMedia)
+  const forLeaseActive = allActiveListings.filter((l: any) => l.transaction_type === 'For Lease').map(filterMedia)
   const totalUnits = buildings.reduce((sum: number, b: any) => sum + (b.total_units || 0), 0)
   const addresses = buildings.map((b: any) => b.canonical_address).join(' & ')
 
@@ -288,9 +295,9 @@ export default async function DevelopmentPage({ params, development }: Developme
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Buildings in {development.name}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {buildings.map((building: any) => {
-                const bListings = (allListings || []).filter((l: any) => l.building_id === building.id)
-                const bForSale = bListings.filter((l: any) => l.transaction_type === 'For Sale' && l.standard_status === 'Active').length
-                const bForLease = bListings.filter((l: any) => l.transaction_type === 'For Lease' && l.standard_status === 'Active').length
+                const bListings = allActiveListings.filter((l: any) => l.building_id === building.id)
+                const bForSale = bListings.filter((l: any) => l.transaction_type === 'For Sale').length
+                const bForLease = bListings.filter((l: any) => l.transaction_type === 'For Lease').length
                 return (
                   <div key={building.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
                     <h3 className="font-bold text-lg text-gray-900 mb-1">{building.building_name}</h3>
