@@ -4,6 +4,8 @@ import { HowItWorks } from './home/HowItWorks';
 import { BuildingsGrid } from './home/BuildingsGrid';
 import { EstimatorBanner } from './home/EstimatorBanner';
 import { VIPTiers } from './home/VIPTiers';
+import { MarketTicker } from './home/MarketTicker';
+import { ScrollReveal } from './home/useScrollReveal';
 import { ContactSection } from './home/ContactSection';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
 import MobileContactBar from './MobileContactBar';
@@ -69,6 +71,9 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
       {/* Hero Section */}
       <HeroSection agent={agent as any} isTeamSite={isTeamSite} />
       
+      {/* Market Ticker */}
+      <MarketTicker />
+
       {/* Stats Section */}
       <StatsSection 
         buildingsCount={buildings.length}
