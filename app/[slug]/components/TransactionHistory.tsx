@@ -114,6 +114,7 @@ export default function TransactionHistory({
             {/* Register Modal */}
             {showRegister && (
               <RegisterModal
+                isOpen={showRegister}
                 onClose={() => setShowRegister(false)}
                 buildingName={buildingName}
                 buildingAddress={buildingAddress}
