@@ -334,7 +334,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     <main className="min-h-screen bg-gray-50">
       <PropertyPageClient
         listing={listing}
-        largePhotos={largePhotos}
+        largePhotos={largePhotos || []}
         rooms={rooms || []}
         unitHistory={unitHistory || []}
         amenities={amenities}
