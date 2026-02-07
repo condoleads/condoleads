@@ -117,6 +117,9 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
       {/* Estimator CTA Banner */}
       <EstimatorBanner buildings={buildings} />
 
+      {/* VIP Access Tiers */}
+      <VIPTiers />
+
       {/* Contact Section */}
       <ContactSection agent={{ id: agent.id, full_name: agent.full_name, email: agent.email, cell_phone: agent.phone }} />
       {/* AI Chat Widget */}
@@ -137,4 +140,3 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
 }
 
 export default HomePage;
-
