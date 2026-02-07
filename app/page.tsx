@@ -171,7 +171,7 @@ export default async function RootPage() {
 // Query 1: Get ACTIVE listings only (for counting For Sale/For Lease on cards)
   const { data: allListings } = await supabase
     .from('mls_listings')
-    .select('id, building_id, transaction_type')
+    .select('id, building_id, transaction_type, standard_status')
     .in('building_id', allBuildingIds)
     .eq('standard_status', 'Active')
     .limit(5000);
