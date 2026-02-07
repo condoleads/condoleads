@@ -4,6 +4,7 @@ import { HowItWorks } from './home/HowItWorks';
 import { BuildingsGrid } from './home/BuildingsGrid';
 import { EstimatorBanner } from './home/EstimatorBanner';
 import { VIPTiers } from './home/VIPTiers';
+import { CMASection } from './home/CMASection';
 import { MarketTicker } from './home/MarketTicker';
 import { ScrollReveal } from './home/useScrollReveal';
 import { ContactSection } from './home/ContactSection';
@@ -74,17 +75,26 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
       {/* Market Ticker */}
       <MarketTicker agentId={agent.id} />
 
+      {/* VIP Access */}
+      <VIPTiers />
+
+      {/* Buy or Sell - CMA Section */}
+      <CMASection />
+
+      {/* How It Works */}
+      <HowItWorks />
+
       {/* Stats Section */}
-      <StatsSection 
+      <StatsSection
         buildingsCount={buildings.length}
         developmentsCount={developments.length}
         totalForSale={buildings.reduce((sum, b) => sum + (b.forSale || 0), 0) + developments.reduce((sum, d) => sum + (d.forSale || 0), 0)}
         totalForLease={buildings.reduce((sum, b) => sum + (b.forLease || 0), 0) + developments.reduce((sum, d) => sum + (d.forLease || 0), 0)}
       />
-      {/* How It Works */}
-      <HowItWorks />
+
       {/* Buildings Grid */}
       <BuildingsGrid buildings={buildings} developments={developments} agentName={agent.full_name} isTeamSite={isTeamSite} />
+
       {/* Team Section - Only for manager sites */}
       {isTeamSite && teamAgents.length > 0 && (
         <section className="py-16 bg-gray-50">
@@ -117,8 +127,6 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
       {/* Estimator CTA Banner */}
       <EstimatorBanner buildings={buildings} />
 
-      {/* VIP Access Tiers */}
-      <VIPTiers />
 
       {/* Contact Section */}
       <ContactSection agent={{ id: agent.id, full_name: agent.full_name, email: agent.email, cell_phone: agent.phone }} />
