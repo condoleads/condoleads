@@ -1,146 +1,83 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Eye, Shield, Crown, MessageSquare, Calculator, BarChart3, History, ArrowDown, Sparkles } from 'lucide-react'
-
-function JourneyStep({ step, index, isVisible }: { step: any; index: number; isVisible: boolean }) {
-  const Icon = step.icon
-  return (
-    <div
-      className={`relative flex items-start gap-6 md:gap-10 transition-all duration-700 ${
-        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-      }`}
-      style={{ transitionDelay: `${index * 200}ms` }}
-    >
-      <div className="flex flex-col items-center flex-shrink-0">
-        <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-500 ${
-          isVisible ? step.dotColor : 'bg-gray-200'
-        }`}>
-          <Icon className={`w-6 h-6 ${isVisible ? 'text-white' : 'text-gray-400'}`} />
-        </div>
-        {index < 2 && (
-          <div className="relative w-0.5 h-20 md:h-24 mt-2">
-            <div className="absolute inset-0 bg-gray-200 rounded-full" />
-            <div
-              className={`absolute inset-x-0 top-0 bg-gradient-to-b ${step.lineColor} rounded-full transition-all duration-1000 ease-out`}
-              style={{ height: isVisible ? '100%' : '0%', transitionDelay: `${index * 200 + 400}ms` }}
-            />
-          </div>
-        )}
-      </div>
-      <div className={`flex-1 pb-8 md:pb-12`}>
-        <div className={`rounded-2xl p-6 transition-all duration-500 ${step.cardBg} ${
-          isVisible ? 'shadow-md' : ''
-        }`}>
-          <div className="flex items-center gap-3 mb-1">
-            <span className={`text-xs font-bold uppercase tracking-wider ${step.labelColor}`}>
-              {step.label}
-            </span>
-          </div>
-          <h3 className={`text-xl font-bold mb-2 ${step.titleColor}`}>{step.title}</h3>
-          <p className={`text-sm mb-4 ${step.descColor}`}>{step.description}</p>
-          <div className="flex flex-wrap gap-2">
-            {step.features.map((f: string, i: number) => (
-              <span
-                key={i}
-                className={`inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-full transition-all duration-300 ${step.chipStyle}`}
-                style={{ transitionDelay: `${index * 200 + 300 + i * 80}ms`, opacity: isVisible ? 1 : 0 }}
-              >
-                {f}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-const journeySteps = [
-  {
-    icon: Eye,
-    label: 'Start Here',
-    title: 'Explore Freely',
-    description: 'Browse active listings, building details, amenities, and market stats  no account needed.',
-    features: ['Active Listings', 'Building Stats', 'Amenities', '1 Free AI Chat', 'Market Overview'],
-    dotColor: 'bg-slate-600',
-    lineColor: 'from-slate-500 to-blue-500',
-    cardBg: 'bg-slate-50 border border-slate-200',
-    labelColor: 'text-slate-500',
-    titleColor: 'text-slate-900',
-    descColor: 'text-slate-600',
-    chipStyle: 'bg-white text-slate-700 border border-slate-200',
-  },
-  {
-    icon: Shield,
-    label: 'Free Registration',
-    title: 'Unlock Market Intelligence',
-    description: 'Register with your name and email to access sold prices, transaction history, and extended AI features.',
-    features: ['Sold & Leased Prices', 'Transaction History', 'AI Price Estimates', 'Extended AI Chat', 'All Photos'],
-    dotColor: 'bg-blue-600',
-    lineColor: 'from-blue-500 to-amber-500',
-    cardBg: 'bg-blue-50 border border-blue-200',
-    labelColor: 'text-blue-600',
-    titleColor: 'text-blue-900',
-    descColor: 'text-blue-700',
-    chipStyle: 'bg-white text-blue-700 border border-blue-200',
-  },
-  {
-    icon: Crown,
-    label: 'VIP Access',
-    title: 'Full Platform Access',
-    description: 'Your agent reviews your registration and unlocks unlimited AI, direct connection, and priority support.',
-    features: ['Unlimited AI Chat', 'Unlimited Estimates', 'Direct Agent Line', 'Priority Alerts', 'Personal Advisor'],
-    dotColor: 'bg-amber-500',
-    lineColor: '',
-    cardBg: 'bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200',
-    labelColor: 'text-amber-600',
-    titleColor: 'text-amber-900',
-    descColor: 'text-amber-700',
-    chipStyle: 'bg-white text-amber-700 border border-amber-200',
-  },
-]
+import { Search, Sparkles, Crown, ArrowRight } from 'lucide-react'
 
 export function VIPTiers() {
-  const [visible, setVisible] = useState<boolean[]>([false, false, false])
+  const [active, setActive] = useState(-1)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
-
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          setVisible([true, true, true])
+          let i = 0
+          const interval = setInterval(() => {
+            setActive(i)
+            i++
+            if (i > 2) clearInterval(interval)
+          }, 400)
           observer.disconnect()
         }
       },
-      { threshold: 0.15 }
+      { threshold: 0.3 }
     )
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
 
+  const steps = [
+    { icon: Search, label: 'Browse', sub: 'Explore free', color: 'from-slate-500 to-slate-600', glow: 'shadow-slate-200' },
+    { icon: Sparkles, label: 'Register', sub: 'Unlock insights', color: 'from-blue-500 to-blue-600', glow: 'shadow-blue-200' },
+    { icon: Crown, label: 'VIP', sub: 'Full AI access', color: 'from-amber-500 to-amber-600', glow: 'shadow-amber-200' },
+  ]
+
   return (
-    <section className="py-20 bg-white" ref={ref}>
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-14">
-          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50 to-amber-50 text-blue-700 px-4 py-2 rounded-full text-sm font-semibold mb-4 border border-blue-100">
-            <Sparkles className="w-4 h-4" />
-            How It Works
-          </div>
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
-            Your Journey to Smarter Decisions
-          </h2>
-          <p className="text-lg text-gray-500 max-w-xl mx-auto">
-            More you engage, more intelligence you unlock
-          </p>
+    <section className="py-16 bg-gradient-to-b from-white to-slate-50" ref={ref}>
+      <div className="max-w-4xl mx-auto px-4 text-center">
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
+          Agent-Approved VIP Access
+        </h2>
+        <p className="text-gray-500 mb-10 text-base">
+          Unlock full AI insights in three simple steps
+        </p>
+
+        <div className="flex items-center justify-center gap-3 md:gap-6">
+          {steps.map((s, i) => {
+            const Icon = s.icon
+            const isActive = i <= active
+            return (
+              <div key={i} className="flex items-center gap-3 md:gap-6">
+                <div className={`flex flex-col items-center transition-all duration-500 ${
+                  isActive ? 'opacity-100 scale-100' : 'opacity-30 scale-90'
+                }`}>
+                  <div className={`w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-gradient-to-br ${s.color} flex items-center justify-center shadow-lg ${
+                    isActive ? s.glow : ''
+                  } transition-all duration-500`}>
+                    <Icon className="w-7 h-7 md:w-8 md:h-8 text-white" />
+                  </div>
+                  <p className="mt-3 font-bold text-gray-900 text-sm md:text-base">{s.label}</p>
+                  <p className="text-xs text-gray-500">{s.sub}</p>
+                </div>
+                {i < 2 && (
+                  <div className={`transition-all duration-500 ${
+                    i < active ? 'opacity-100 text-blue-500' : 'opacity-20 text-gray-300'
+                  }`}>
+                    <ArrowRight className="w-5 h-5 md:w-6 md:h-6" />
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
-        <div className="relative">
-          {journeySteps.map((step, i) => (
-            <JourneyStep key={i} step={step} index={i} isVisible={visible[i]} />
-          ))}
+
+        <div className={`mt-10 inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-700 ${
+          active >= 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`}>
+          <Crown className="w-4 h-4 text-amber-600" />
+          Your agent personally approves VIP access for the full AI experience
         </div>
       </div>
     </section>
