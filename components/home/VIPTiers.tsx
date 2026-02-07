@@ -1,160 +1,146 @@
 'use client'
 
-import { Eye, Shield, Crown, Check, Lock, MessageSquare, Calculator, BarChart3, History } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Eye, Shield, Crown, MessageSquare, Calculator, BarChart3, History, ArrowDown, Sparkles } from 'lucide-react'
+
+function JourneyStep({ step, index, isVisible }: { step: any; index: number; isVisible: boolean }) {
+  const Icon = step.icon
+  return (
+    <div
+      className={`relative flex items-start gap-6 md:gap-10 transition-all duration-700 ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+      }`}
+      style={{ transitionDelay: `${index * 200}ms` }}
+    >
+      <div className="flex flex-col items-center flex-shrink-0">
+        <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all duration-500 ${
+          isVisible ? step.dotColor : 'bg-gray-200'
+        }`}>
+          <Icon className={`w-6 h-6 ${isVisible ? 'text-white' : 'text-gray-400'}`} />
+        </div>
+        {index < 2 && (
+          <div className="relative w-0.5 h-20 md:h-24 mt-2">
+            <div className="absolute inset-0 bg-gray-200 rounded-full" />
+            <div
+              className={`absolute inset-x-0 top-0 bg-gradient-to-b ${step.lineColor} rounded-full transition-all duration-1000 ease-out`}
+              style={{ height: isVisible ? '100%' : '0%', transitionDelay: `${index * 200 + 400}ms` }}
+            />
+          </div>
+        )}
+      </div>
+      <div className={`flex-1 pb-8 md:pb-12`}>
+        <div className={`rounded-2xl p-6 transition-all duration-500 ${step.cardBg} ${
+          isVisible ? 'shadow-md' : ''
+        }`}>
+          <div className="flex items-center gap-3 mb-1">
+            <span className={`text-xs font-bold uppercase tracking-wider ${step.labelColor}`}>
+              {step.label}
+            </span>
+          </div>
+          <h3 className={`text-xl font-bold mb-2 ${step.titleColor}`}>{step.title}</h3>
+          <p className={`text-sm mb-4 ${step.descColor}`}>{step.description}</p>
+          <div className="flex flex-wrap gap-2">
+            {step.features.map((f: string, i: number) => (
+              <span
+                key={i}
+                className={`inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-full transition-all duration-300 ${step.chipStyle}`}
+                style={{ transitionDelay: `${index * 200 + 300 + i * 80}ms`, opacity: isVisible ? 1 : 0 }}
+              >
+                {f}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const journeySteps = [
+  {
+    icon: Eye,
+    label: 'Start Here',
+    title: 'Explore Freely',
+    description: 'Browse active listings, building details, amenities, and market stats  no account needed.',
+    features: ['Active Listings', 'Building Stats', 'Amenities', '1 Free AI Chat', 'Market Overview'],
+    dotColor: 'bg-slate-600',
+    lineColor: 'from-slate-500 to-blue-500',
+    cardBg: 'bg-slate-50 border border-slate-200',
+    labelColor: 'text-slate-500',
+    titleColor: 'text-slate-900',
+    descColor: 'text-slate-600',
+    chipStyle: 'bg-white text-slate-700 border border-slate-200',
+  },
+  {
+    icon: Shield,
+    label: 'Free Registration',
+    title: 'Unlock Market Intelligence',
+    description: 'Register with your name and email to access sold prices, transaction history, and extended AI features.',
+    features: ['Sold & Leased Prices', 'Transaction History', 'AI Price Estimates', 'Extended AI Chat', 'All Photos'],
+    dotColor: 'bg-blue-600',
+    lineColor: 'from-blue-500 to-amber-500',
+    cardBg: 'bg-blue-50 border border-blue-200',
+    labelColor: 'text-blue-600',
+    titleColor: 'text-blue-900',
+    descColor: 'text-blue-700',
+    chipStyle: 'bg-white text-blue-700 border border-blue-200',
+  },
+  {
+    icon: Crown,
+    label: 'VIP Access',
+    title: 'Full Platform Access',
+    description: 'Your agent reviews your registration and unlocks unlimited AI, direct connection, and priority support.',
+    features: ['Unlimited AI Chat', 'Unlimited Estimates', 'Direct Agent Line', 'Priority Alerts', 'Personal Advisor'],
+    dotColor: 'bg-amber-500',
+    lineColor: '',
+    cardBg: 'bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200',
+    labelColor: 'text-amber-600',
+    titleColor: 'text-amber-900',
+    descColor: 'text-amber-700',
+    chipStyle: 'bg-white text-amber-700 border border-amber-200',
+  },
+]
 
 export function VIPTiers() {
+  const [visible, setVisible] = useState<boolean[]>([false, false, false])
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible([true, true, true])
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.15 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <section className="py-20 bg-gradient-to-b from-white to-slate-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Access Levels
+    <section className="py-20 bg-white" ref={ref}>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-14">
+          <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50 to-amber-50 text-blue-700 px-4 py-2 rounded-full text-sm font-semibold mb-4 border border-blue-100">
+            <Sparkles className="w-4 h-4" />
+            How It Works
+          </div>
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
+            Your Journey to Smarter Decisions
           </h2>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Start exploring for free, then unlock deeper market intelligence as you go
+          <p className="text-lg text-gray-500 max-w-xl mx-auto">
+            More you engage, more intelligence you unlock
           </p>
         </div>
-
-        <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
-          {/* Free Tier */}
-          <div className="relative bg-white rounded-2xl border border-gray-200 p-8 hover:shadow-lg transition-all duration-300">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center">
-                <Eye className="w-6 h-6 text-slate-600" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Browse</h3>
-                <p className="text-sm text-gray-500">No account needed</p>
-              </div>
-            </div>
-
-            <ul className="space-y-3 mb-6">
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700">Active listings for sale & lease</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700">Building amenities & details</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700">1 free AI chat message</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700">Market stats overview</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Lock className="w-5 h-5 text-gray-300 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-400">Sold & leased prices</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Lock className="w-5 h-5 text-gray-300 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-400">Transaction history</span>
-              </li>
-            </ul>
-
-            <a href="#buildings" className="block w-full text-center py-3 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition-colors">
-              Start Browsing
-            </a>
-          </div>
-
-          {/* Registered Tier */}
-          <div className="relative bg-white rounded-2xl border-2 border-blue-500 p-8 shadow-lg shadow-blue-100/50">
-            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-              <span className="bg-blue-600 text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider">
-                Free Registration
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
-                <Shield className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Registered</h3>
-                <p className="text-sm text-blue-600 font-medium">Name + email</p>
-              </div>
-            </div>
-
-            <ul className="space-y-3 mb-6">
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700">Everything in Browse, plus:</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <History className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700 font-medium">Sold & leased prices</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <BarChart3 className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700 font-medium">Full transaction history</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Calculator className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700 font-medium">AI price estimates</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <MessageSquare className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700 font-medium">Extended AI chat access</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <span className="text-gray-700">All property photos</span>
-              </li>
-            </ul>
-
-            <a href="#buildings" className="block w-full text-center py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-md">
-              Register Free
-            </a>
-          </div>
-
-          {/* VIP Tier */}
-          <div className="relative bg-gradient-to-b from-slate-900 to-slate-800 rounded-2xl p-8 text-white hover:shadow-xl transition-all duration-300">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl bg-amber-400/20 flex items-center justify-center">
-                <Crown className="w-6 h-6 text-amber-400" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold">VIP Access</h3>
-                <p className="text-sm text-amber-300 font-medium">Agent approved</p>
-              </div>
-            </div>
-
-            <ul className="space-y-3 mb-6">
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span className="text-slate-200">Everything in Registered, plus:</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <MessageSquare className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span className="text-white font-medium">Unlimited AI conversations</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Calculator className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span className="text-white font-medium">Unlimited price estimates</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Crown className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span className="text-white font-medium">Direct agent connection</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span className="text-slate-200">Priority response from agent</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <Check className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span className="text-slate-200">Personalized market alerts</span>
-              </li>
-            </ul>
-
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-              <p className="text-sm text-slate-300 text-center leading-relaxed">
-                VIP access is granted after registration when your agent reviews and approves your request  typically within minutes.
-              </p>
-            </div>
-          </div>
+        <div className="relative">
+          {journeySteps.map((step, i) => (
+            <JourneyStep key={i} step={step} index={i} isVisible={visible[i]} />
+          ))}
         </div>
       </div>
     </section>
