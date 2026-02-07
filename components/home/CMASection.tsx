@@ -28,7 +28,7 @@ export function CMASection() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid md:grid-cols-2 gap-6 lg:gap-8">
 
-          {/* Left  Buying / Renting */}
+          {/* Left — Buying / Renting */}
           <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 p-8 text-white transition-all duration-700 ${
             visible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-12'
           }`}>
@@ -70,7 +70,7 @@ export function CMASection() {
                 })}
               </div>
 
-              
+              <a
                 href="#buildings"
                 className={`inline-flex items-center gap-2 bg-white text-blue-700 font-semibold px-6 py-3 rounded-xl hover:bg-blue-50 transition-all duration-500 delay-500 ${
                   visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
@@ -82,7 +82,7 @@ export function CMASection() {
             </div>
           </div>
 
-          {/* Right  Selling / Leasing */}
+          {/* Right — Selling / Leasing */}
           <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-700 p-8 text-white transition-all duration-700 ${
             visible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12'
           }`}>
@@ -97,7 +97,7 @@ export function CMASection() {
                   <TrendingUp className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold">What's Your Unit Worth?</h3>
+                  <h3 className="text-2xl font-bold">{"What's Your Unit Worth?"}</h3>
                   <p className="text-emerald-200 text-sm">Get prepared before contacting a realtor</p>
                 </div>
               </div>
@@ -124,7 +124,7 @@ export function CMASection() {
                 })}
               </div>
 
-              
+              <a
                 href="/estimator"
                 className={`inline-flex items-center gap-2 bg-white text-emerald-700 font-semibold px-6 py-3 rounded-xl hover:bg-emerald-50 transition-all duration-500 delay-500 ${
                   visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
