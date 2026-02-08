@@ -18,6 +18,7 @@ export default function BuildingCard({ building }: BuildingCardProps) {
   return (
     <a
       href={href}
+      target="_blank"
       className="group block border rounded-lg overflow-hidden hover:shadow-lg transition-all"
     >
       <div className="aspect-[4/3] bg-gray-100 relative overflow-hidden">
