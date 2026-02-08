@@ -1,313 +1,393 @@
-﻿// app/admin-homes/bulk-sync/page.tsx
-'use client'
+"use client";
+import { useState, useEffect, useRef } from 'react';
+import { ChevronRight, ChevronDown, Home, MapPin, RefreshCw, Search, CheckCircle, Clock, Loader2, Download, Play } from 'lucide-react';
 
-import { useState, useEffect } from 'react'
-
-interface Area { id: string; name: string }
-interface Municipality { id: string; name: string; area_id: string; homes_count: number }
-interface Community { id: string; name: string; municipality_id: string; homes_count: number }
+interface Area { id: string; name: string; homes_count: number; municipalities: Municipality[]; }
+interface Municipality { id: string; name: string; homes_count: number; communities: Community[]; }
+interface Community { id: string; name: string; homes_count: number; }
+interface Preview { forSale: number; forLease: number; sold: number; leased: number; }
+interface SyncSummary { listings: number; media: number; rooms: number; openHouses: number; skipped: number; }
 
 export default function HomesBulkSync() {
-  const [areas, setAreas] = useState<Area[]>([])
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([])
-  const [communities, setCommunities] = useState<Community[]>([])
+  const [geoTree, setGeoTree] = useState<Area[]>([]);
+  const [expandedAreas, setExpandedAreas] = useState<Set<string>>(new Set());
+  const [expandedMunis, setExpandedMunis] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
 
-  const [selectedArea, setSelectedArea] = useState('')
-  const [selectedMunicipality, setSelectedMunicipality] = useState('')
-  const [selectedMunicipalityName, setSelectedMunicipalityName] = useState('')
-  const [selectedCommunity, setSelectedCommunity] = useState('')
-  const [selectedCommunityName, setSelectedCommunityName] = useState('')
+  const [selArea, setSelArea] = useState<Area | null>(null);
+  const [selMuni, setSelMuni] = useState<Municipality | null>(null);
+  const [selComm, setSelComm] = useState<Community | null>(null);
 
-  const [previewing, setPreviewing] = useState(false)
-  const [preview, setPreview] = useState<{ active: number; sold: number; leased: number } | null>(null)
+  const [mode, setMode] = useState<'empty' | 'dbStats' | 'preview' | 'syncing' | 'complete'>('empty');
+  const [dbStats, setDbStats] = useState<{total: number; active: number; sold: number; leased: number; subtypes: Record<string, number>} | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncLogs, setSyncLogs] = useState<string[]>([]);
+  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
+  const logEndRef = useRef<HTMLDivElement>(null);
 
-  const [syncing, setSyncing] = useState(false)
-  const [syncLogs, setSyncLogs] = useState<string[]>([])
-  const [syncComplete, setSyncComplete] = useState(false)
-  const [syncSummary, setSyncSummary] = useState<any>(null)
+  useEffect(() => { loadGeoTree(); }, []);
+  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [syncLogs]);
 
-  // Load areas on mount
-  useEffect(() => {
-    fetch('/api/admin/bulk-discovery/geo-tree?level=areas')
-      .then(r => r.json())
-      .then(data => { if (data.success) setAreas(data.items || []) })
-  }, [])
-
-  // Load municipalities when area selected
-  useEffect(() => {
-    if (!selectedArea) { setMunicipalities([]); return }
-    fetch(`/api/admin/bulk-discovery/geo-tree?level=municipalities&areaId=${selectedArea}`)
-      .then(r => r.json())
-      .then(data => { if (data.success) setMunicipalities(data.items || []) })
-  }, [selectedArea])
-
-  // Load communities when municipality selected
-  useEffect(() => {
-    if (!selectedMunicipality) { setCommunities([]); return }
-    fetch(`/api/admin/bulk-discovery/geo-tree?level=communities&municipalityId=${selectedMunicipality}`)
-      .then(r => r.json())
-      .then(data => { if (data.success) setCommunities(data.items || []) })
-  }, [selectedMunicipality])
-
-  // Preview counts from PropTx
-  const handlePreview = async () => {
-    if (!selectedMunicipalityName) return
-    setPreviewing(true)
-    setPreview(null)
-    setSyncComplete(false)
-    setSyncSummary(null)
-    setSyncLogs([])
-
+  const loadGeoTree = async () => {
     try {
-      const res = await fetch('/api/admin-homes/discover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          municipalityName: selectedMunicipalityName,
-          communityName: selectedCommunityName || undefined
-        })
-      })
-      const data = await res.json()
-      if (data.success) {
-        setPreview(data.counts)
-      } else {
-        setSyncLogs([`Error: ${data.error}`])
-      }
-    } catch (err: any) {
-      setSyncLogs([`Error: ${err.message}`])
-    }
-    setPreviewing(false)
-  }
+      setLoading(true);
+      const r = await fetch('/api/admin-homes/geo-tree');
+      const d = await r.json();
+      if (d.success) setGeoTree(d.tree);
+    } catch (e) { console.error('Geo tree failed:', e); }
+    finally { setLoading(false); }
+  };
 
-  // Start sync with SSE
+  const toggleArea = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const s = new Set(expandedAreas);
+    s.has(id) ? s.delete(id) : s.add(id);
+    setExpandedAreas(s);
+  };
+
+  const toggleMuni = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const s = new Set(expandedMunis);
+    s.has(id) ? s.delete(id) : s.add(id);
+    setExpandedMunis(s);
+  };
+
+  const loadDbStats = async (areaId?: string, muniId?: string, commId?: string) => {
+    try {
+      const params = new URLSearchParams();
+      if (commId) params.set('communityId', commId);
+      else if (muniId) params.set('municipalityId', muniId);
+      else if (areaId) params.set('areaId', areaId);
+      const r = await fetch('/api/admin-homes/db-stats?' + params);
+      const d = await r.json();
+      if (d.success) { setDbStats(d.stats); setMode('dbStats'); }
+    } catch (e) { console.error('DB stats failed:', e); }
+  };
+
+  const handleSelectMuni = (muni: Municipality, area: Area) => {
+    setSelArea(area); setSelMuni(muni); setSelComm(null);
+    setPreview(null); setSyncLogs([]); setSyncSummary(null);
+    loadDbStats(undefined, muni.id);
+  };
+
+  const handleSelectComm = (comm: Community, muni: Municipality, area: Area) => {
+    setSelArea(area); setSelMuni(muni); setSelComm(comm);
+    setPreview(null); setSyncLogs([]); setSyncSummary(null);
+    loadDbStats(undefined, undefined, comm.id);
+  };
+
+  const handleSelectArea = (area: Area) => {
+    setSelArea(area); setSelMuni(null); setSelComm(null);
+    setPreview(null); setSyncLogs([]); setSyncSummary(null);
+    loadDbStats(area.id);
+  };
+
+  const handlePreviewMuni = async (muni: Municipality, area: Area) => {
+    setSelArea(area); setSelMuni(muni); setSelComm(null);
+    setSyncLogs([]); setSyncSummary(null);
+    setPreviewing(true); setMode('preview');
+    try {
+      const r = await fetch('/api/admin-homes/discover', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ municipalityName: muni.name })
+      });
+      const d = await r.json();
+      if (d.success) setPreview(d.counts); else setPreview(null);
+    } catch (e) { console.error('Preview failed:', e); }
+    finally { setPreviewing(false); }
+  };
+
+  const handlePreviewComm = async (comm: Community, muni: Municipality, area: Area) => {
+    setSelArea(area); setSelMuni(muni); setSelComm(comm);
+    setSyncLogs([]); setSyncSummary(null);
+    setPreviewing(true); setMode('preview');
+    try {
+      const r = await fetch('/api/admin-homes/discover', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ municipalityName: muni.name, communityName: comm.name })
+      });
+      const d = await r.json();
+      if (d.success) setPreview(d.counts); else setPreview(null);
+    } catch (e) { console.error('Preview failed:', e); }
+    finally { setPreviewing(false); }
+  };
+
   const handleSync = async () => {
-    if (!selectedMunicipality || !selectedMunicipalityName) return
-    setSyncing(true)
-    setSyncLogs([])
-    setSyncComplete(false)
-    setSyncSummary(null)
-
+    if (!selMuni) return;
+    setSyncing(true); setMode('syncing');
+    setSyncLogs([]); setSyncSummary(null);
     try {
-      const res = await fetch('/api/admin-homes/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const r = await fetch('/api/admin-homes/sync', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          municipalityId: selectedMunicipality,
-          municipalityName: selectedMunicipalityName,
-          communityName: selectedCommunityName || undefined
+          municipalityId: selMuni.id,
+          municipalityName: selMuni.name,
+          communityName: selComm?.name || undefined
         })
-      })
-
-      const reader = res.body?.getReader()
-      if (!reader) { setSyncing(false); return }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
+      });
+      const reader = r.body?.getReader();
+      if (!reader) { setSyncing(false); return; }
+      const decoder = new TextDecoder();
+      let buffer = '';
       while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
         for (const line of lines) {
-          if (!line.startsWith('data:')) continue
+          if (!line.startsWith('data:')) continue;
           try {
-            const data = JSON.parse(line.substring(5))
-            if (data.type === 'progress') {
-              setSyncLogs(prev => [...prev, data.message])
-            } else if (data.type === 'complete') {
-              setSyncComplete(true)
-              setSyncSummary(data.summary)
-              setSyncLogs(prev => [...prev, ` Sync complete!`])
+            const data = JSON.parse(line.substring(5));
+            if (data.type === 'progress') setSyncLogs(prev => [...prev, data.message]);
+            else if (data.type === 'complete') {
+              setSyncSummary(data.summary);
+              setSyncLogs(prev => [...prev, 'Sync complete!']);
+              setMode('complete');
+              loadGeoTree();
             } else if (data.type === 'error') {
-              setSyncLogs(prev => [...prev, ` Error: ${data.message}`])
+              setSyncLogs(prev => [...prev, 'Error: ' + data.message]);
             }
           } catch {}
         }
       }
-    } catch (err: any) {
-      setSyncLogs(prev => [...prev, ` Error: ${err.message}`])
-    }
-    setSyncing(false)
-  }
+    } catch (e: any) { setSyncLogs(prev => [...prev, 'Error: ' + e.message]); }
+    setSyncing(false);
+  };
+
+  const getHomeBadge = (count: number) => {
+    if (count === 0) return <span className="text-xs text-gray-400">&mdash;</span>;
+    return <span className="text-xs text-green-600 font-medium">{count.toLocaleString()}</span>;
+  };
+
+  const locationLabel = selComm?.name || selMuni?.name || selArea?.name || '';
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900">Bulk Sync  Residential Homes</h1>
-      <p className="text-gray-500 mt-1">Sync freehold properties from PropTx by geographic area</p>
-
-      {/* Geographic Selection */}
-      <div className="bg-white rounded-lg border mt-6 p-4">
-        <h2 className="text-lg font-semibold mb-3">Select Geography</h2>
-        <div className="grid grid-cols-3 gap-4">
-          {/* Area */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Area</label>
-            <select
-              value={selectedArea}
-              onChange={(e) => {
-                setSelectedArea(e.target.value)
-                setSelectedMunicipality('')
-                setSelectedMunicipalityName('')
-                setSelectedCommunity('')
-                setSelectedCommunityName('')
-                setPreview(null)
-              }}
-              className="w-full border rounded px-3 py-2 text-sm"
-            >
-              <option value="">Select Area...</option>
-              {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-          </div>
-
-          {/* Municipality */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Municipality</label>
-            <select
-              value={selectedMunicipality}
-              onChange={(e) => {
-                const muni = municipalities.find(m => m.id === e.target.value)
-                setSelectedMunicipality(e.target.value)
-                setSelectedMunicipalityName(muni?.name || '')
-                setSelectedCommunity('')
-                setSelectedCommunityName('')
-                setPreview(null)
-              }}
-              disabled={!selectedArea}
-              className="w-full border rounded px-3 py-2 text-sm disabled:bg-gray-100"
-            >
-              <option value="">Select Municipality...</option>
-              {municipalities.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.name} {m.homes_count > 0 ? `(${m.homes_count} homes)` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Community (Optional) */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Community (Optional)</label>
-            <select
-              value={selectedCommunity}
-              onChange={(e) => {
-                const comm = communities.find(c => c.id === e.target.value)
-                setSelectedCommunity(e.target.value)
-                setSelectedCommunityName(comm?.name || '')
-                setPreview(null)
-              }}
-              disabled={!selectedMunicipality}
-              className="w-full border rounded px-3 py-2 text-sm disabled:bg-gray-100"
-            >
-              <option value="">All Communities</option>
-              {communities.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.name} {c.homes_count > 0 ? `(${c.homes_count} homes)` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Bulk Sync Residential Homes</h1>
+          <p className="text-gray-600">Sync freehold properties from PropTx by geographic area</p>
         </div>
-
-        <div className="mt-4 flex gap-3">
-          <button
-            onClick={handlePreview}
-            disabled={!selectedMunicipalityName || previewing || syncing}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
-          >
-            {previewing ? ' Counting...' : ' Preview Available Homes'}
-          </button>
-        </div>
+        <button onClick={loadGeoTree} className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">
+          <RefreshCw className="w-4 h-4" /> Refresh
+        </button>
       </div>
 
-      {/* Preview Results */}
-      {preview && (
-        <div className="bg-white rounded-lg border mt-4 p-4">
-          <h2 className="text-lg font-semibold mb-3">
-            PropTx Preview: {selectedMunicipalityName}
-            {selectedCommunityName ? ` / ${selectedCommunityName}` : ''}
+      <div className="grid grid-cols-12 gap-6">
+        {/* LEFT PANEL */}
+        <div className="col-span-4 bg-white rounded-lg border border-gray-200 p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+          <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <MapPin className="w-5 h-5 text-green-600" /> Geographic Areas
           </h2>
-          <div className="grid grid-cols-4 gap-4">
-            <div className="bg-green-50 rounded p-3 text-center">
-              <p className="text-2xl font-bold text-green-700">{preview.active.toLocaleString()}</p>
-              <p className="text-xs text-green-600">Active</p>
+          {loading ? (
+            <div className="flex items-center justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+          ) : (
+            <div className="space-y-1">
+              {geoTree.map(area => (
+                <div key={area.id} className="border-b border-gray-100 last:border-0">
+                  <div className={`flex items-center justify-between py-2 px-2 rounded hover:bg-gray-50 ${selArea?.id === area.id && !selMuni ? 'bg-green-50 border border-green-200' : ''}`}>
+                    <button onClick={(e) => { toggleArea(area.id, e); handleSelectArea(area); }} className="flex items-center gap-2 flex-1 text-left">
+                      {expandedAreas.has(area.id) ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+                      <span className="font-medium text-gray-900 text-sm">{area.name}</span>
+                    </button>
+                    {getHomeBadge(area.homes_count)}
+                  </div>
+
+                  {expandedAreas.has(area.id) && (
+                    <div className="ml-4 space-y-1">
+                      {area.municipalities.map(muni => (
+                        <div key={muni.id}>
+                          <div className={`flex items-center justify-between py-1 px-2 rounded ${selMuni?.id === muni.id && !selComm ? 'bg-green-50 border border-green-200' : 'hover:bg-gray-50'}`}>
+                            <div className="flex items-center gap-1 flex-1">
+                              <button onClick={(e) => toggleMuni(muni.id, e)} className="p-0.5">
+                                {expandedMunis.has(muni.id) ? <ChevronDown className="w-3 h-3 text-gray-400" /> : <ChevronRight className="w-3 h-3 text-gray-400" />}
+                              </button>
+                              <button onClick={() => handleSelectMuni(muni, area)} className="text-sm text-gray-700 hover:text-green-600">{muni.name}</button>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {getHomeBadge(muni.homes_count)}
+                              <button onClick={(e) => { e.stopPropagation(); handlePreviewMuni(muni, area); }} className="p-1 text-green-600 hover:bg-green-50 rounded" title={'Preview homes in ' + muni.name}>
+                                <Search className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {expandedMunis.has(muni.id) && (
+                            <div className="ml-6 space-y-1">
+                              {muni.communities.map(comm => (
+                                <div key={comm.id} className={`flex items-center justify-between py-1 px-2 rounded ${selComm?.id === comm.id ? 'bg-green-50 border border-green-200' : 'hover:bg-gray-50'}`}>
+                                  <button onClick={() => handleSelectComm(comm, muni, area)} className="text-xs text-gray-600 hover:text-green-600 text-left flex-1">{comm.name}</button>
+                                  <div className="flex items-center gap-1">
+                                    {getHomeBadge(comm.homes_count)}
+                                    <button onClick={(e) => { e.stopPropagation(); handlePreviewComm(comm, muni, area); }} className="p-1 text-green-600 hover:bg-green-50 rounded" title={'Preview homes in ' + comm.name}>
+                                      <Search className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-            <div className="bg-gray-50 rounded p-3 text-center">
-              <p className="text-2xl font-bold text-gray-700">{preview.sold.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">Sold</p>
-            </div>
-            <div className="bg-gray-50 rounded p-3 text-center">
-              <p className="text-2xl font-bold text-gray-700">{preview.leased.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">Leased</p>
-            </div>
-            <div className="bg-green-50 rounded p-3 text-center">
-              <p className="text-2xl font-bold text-green-800">
-                {(preview.active + preview.sold + preview.leased).toLocaleString()}
-              </p>
-              <p className="text-xs text-green-600">Total</p>
-            </div>
+          )}
+        </div>
+
+        {/* RIGHT PANEL */}
+        <div className="col-span-8 bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Home className="w-5 h-5 text-green-600" />
+            <h2 className="font-semibold text-gray-900">{locationLabel ? 'Homes  ' + locationLabel : 'Select a location'}</h2>
           </div>
 
-          <div className="mt-4 flex gap-3 items-center">
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="px-6 py-2 bg-green-700 text-white rounded hover:bg-green-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
-            >
-              {syncing ? ' Syncing...' : ' Sync All Homes'}
-            </button>
-            <p className="text-xs text-gray-500">
-              This will fetch all listings with full data (media, rooms, open houses)
+          {selArea && (
+            <p className="text-sm text-gray-500 mb-4 flex items-center gap-1">
+              <span className="text-green-600">{selArea.name}</span>
+              {selMuni && (<><ChevronRight className="w-3 h-3" /><span className={selComm ? 'text-green-600' : 'text-green-700 font-medium'}>{selMuni.name}</span></>)}
+              {selComm && (<><ChevronRight className="w-3 h-3" /><span className="text-green-700 font-medium">{selComm.name}</span></>)}
             </p>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Sync Progress */}
-      {syncLogs.length > 0 && (
-        <div className="bg-white rounded-lg border mt-4 p-4">
-          <h2 className="text-lg font-semibold mb-3">
-            {syncing ? ' Sync Progress' : syncComplete ? ' Sync Complete' : 'Sync Log'}
-          </h2>
-          <div className="bg-gray-900 text-green-400 rounded p-3 font-mono text-xs max-h-64 overflow-y-auto">
-            {syncLogs.map((log, i) => (
-              <div key={i} className="py-0.5">{log}</div>
-            ))}
-          </div>
-        </div>
-      )}
+          {mode === 'empty' && (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-500">
+              <Home className="w-12 h-12 mb-4 text-gray-300" />
+              <p>Select a location and click the search icon to preview available homes</p>
+            </div>
+          )}
 
-      {/* Sync Summary */}
-      {syncSummary && (
-        <div className="bg-green-50 rounded-lg border border-green-200 mt-4 p-4">
-          <h2 className="text-lg font-semibold text-green-800 mb-3">Sync Summary</h2>
-          <div className="grid grid-cols-5 gap-3">
-            <div className="text-center">
-              <p className="text-xl font-bold text-green-700">{syncSummary.listings}</p>
-              <p className="text-xs text-green-600">Listings</p>
+          {mode === 'dbStats' && dbStats && (
+            <div>
+              <div className="grid grid-cols-4 gap-4 mb-6">
+                <div className="bg-green-50 rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-green-700">{dbStats.total.toLocaleString()}</p>
+                  <p className="text-xs text-green-600">Total in DB</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-blue-700">{dbStats.active.toLocaleString()}</p>
+                  <p className="text-xs text-blue-600">Active</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-gray-700">{dbStats.sold.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">Sold</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-gray-700">{dbStats.leased.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">Leased</p>
+                </div>
+              </div>
+
+              {dbStats.subtypes && Object.keys(dbStats.subtypes).length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2">By Property Type</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {Object.entries(dbStats.subtypes).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+                      <div key={type} className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
+                        <span className="text-gray-700">{type.trim()}</span>
+                        <span className="font-medium text-green-700">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {dbStats.total === 0 && <p className="text-sm text-gray-500 mb-4">No homes synced yet. Click the search icon to preview available homes from PropTx.</p>}
+
+              {selMuni && (
+                <button onClick={() => selComm ? handlePreviewComm(selComm, selMuni!, selArea!) : handlePreviewMuni(selMuni!, selArea!)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                  <Search className="w-4 h-4" /> Preview from PropTx
+                </button>
+              )}
             </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-green-700">{syncSummary.media}</p>
-              <p className="text-xs text-green-600">Media</p>
+          )}
+
+          {mode === 'preview' && (
+            <div>
+              {previewing ? (
+                <div className="flex flex-col items-center py-12"><Loader2 className="w-8 h-8 animate-spin text-green-500 mb-4" /><p className="text-gray-600">Counting homes in PropTx...</p></div>
+              ) : preview ? (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">PropTx Preview</h3>
+                  <div className="grid grid-cols-5 gap-3 mb-6">
+                    <div className="bg-green-50 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-green-700">{preview.forSale.toLocaleString()}</p>
+                      <p className="text-xs text-green-600">For Sale</p>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-blue-700">{preview.forLease.toLocaleString()}</p>
+                      <p className="text-xs text-blue-600">For Lease</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-gray-700">{preview.sold.toLocaleString()}</p>
+                      <p className="text-xs text-gray-500">Sold</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-gray-700">{preview.leased.toLocaleString()}</p>
+                      <p className="text-xs text-gray-500">Leased</p>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-4 text-center">
+                      <p className="text-2xl font-bold text-green-800">{(preview.forSale + preview.forLease + preview.sold + preview.leased).toLocaleString()}</p>
+                      <p className="text-xs text-green-600">Total</p>
+                    </div>
+                  </div>
+
+                  {(preview.forSale + preview.forLease + preview.sold + preview.leased) > 5000 && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-sm text-yellow-800">
+                      Warning: Large dataset ({(preview.forSale + preview.forLease + preview.sold + preview.leased).toLocaleString()} listings). Sync will process in chunks of 50.
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3">
+                    <button onClick={handleSync} disabled={syncing} className="flex items-center gap-2 px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50 text-sm font-medium">
+                      <Play className="w-4 h-4" /> Sync All Homes
+                    </button>
+                    <p className="text-xs text-gray-500">Fetches full data with media, rooms, and open houses</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-500 py-8 text-center">No data returned from PropTx.</p>
+              )}
             </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-green-700">{syncSummary.rooms}</p>
-              <p className="text-xs text-green-600">Rooms</p>
+          )}
+
+          {(mode === 'syncing' || mode === 'complete') && (
+            <div>
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  {syncing ? <><Loader2 className="w-4 h-4 animate-spin text-green-500" /> Sync Progress</> : <><CheckCircle className="w-4 h-4 text-green-500" /> Sync Complete</>}
+                </h3>
+                <div className="bg-gray-900 text-green-400 rounded-lg p-4 font-mono text-xs max-h-72 overflow-y-auto">
+                  {syncLogs.map((log, i) => <div key={i} className="py-0.5">{log}</div>)}
+                  <div ref={logEndRef} />
+                </div>
+              </div>
+
+              {syncSummary && (
+                <div className="bg-green-50 rounded-lg border border-green-200 p-4">
+                  <h3 className="text-sm font-semibold text-green-800 mb-3">Sync Summary</h3>
+                  <div className="grid grid-cols-5 gap-3">
+                    <div className="text-center"><p className="text-xl font-bold text-green-700">{syncSummary.listings.toLocaleString()}</p><p className="text-xs text-green-600">Listings</p></div>
+                    <div className="text-center"><p className="text-xl font-bold text-green-700">{syncSummary.media.toLocaleString()}</p><p className="text-xs text-green-600">Media</p></div>
+                    <div className="text-center"><p className="text-xl font-bold text-green-700">{syncSummary.rooms.toLocaleString()}</p><p className="text-xs text-green-600">Rooms</p></div>
+                    <div className="text-center"><p className="text-xl font-bold text-green-700">{syncSummary.openHouses.toLocaleString()}</p><p className="text-xs text-green-600">Open Houses</p></div>
+                    <div className="text-center"><p className="text-xl font-bold text-gray-500">{syncSummary.skipped.toLocaleString()}</p><p className="text-xs text-gray-400">Skipped</p></div>
+                  </div>
+                  <div className="mt-4 flex gap-3">
+                    <button onClick={() => selComm ? handlePreviewComm(selComm, selMuni!, selArea!) : handlePreviewMuni(selMuni!, selArea!)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"><RefreshCw className="w-4 h-4" /> Re-sync</button>
+                    <button onClick={() => { setMode('dbStats'); loadDbStats(undefined, selMuni?.id, selComm?.id); }} className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"><Download className="w-4 h-4" /> View DB Stats</button>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-green-700">{syncSummary.openHouses}</p>
-              <p className="text-xs text-green-600">Open Houses</p>
-            </div>
-            <div className="text-center">
-              <p className="text-xl font-bold text-gray-500">{syncSummary.skipped}</p>
-              <p className="text-xs text-gray-400">Skipped</p>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
-  )
+  );
 }

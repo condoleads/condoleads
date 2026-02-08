@@ -238,7 +238,7 @@ export async function searchHomes(params: HomesSearchParams): Promise<HomesSearc
 }
 
 // Preview function - just counts, no enhanced data fetch
-export async function previewHomes(params: HomesSearchParams): Promise<{ success: boolean; counts?: { active: number; sold: number; leased: number }; error?: string }> {
+export async function previewHomes(params: HomesSearchParams): Promise<{ success: boolean; counts?: { forSale: number; forLease: number; sold: number; leased: number }; error?: string }> {
   const { municipalityName, communityName } = params;
 
   if (!PROPTX_BASE_URL || !PROPTX_TOKEN) {
@@ -258,11 +258,17 @@ export async function previewHomes(params: HomesSearchParams): Promise<{ success
 
     const selectMin = 'ListingKey';
 
-    // Count active
-    const activeUrl = `${PROPTX_BASE_URL}Property?$filter=${encodeURIComponent(baseFilter)}&$select=${selectMin}&$top=1&$count=true`;
-    const activeResp = await fetch(activeUrl, { headers });
-    const activeData = await activeResp.json();
-    const activeCount = activeData['@odata.count'] || 0;
+    // Count For Sale (Active + For Sale)
+    const forSaleUrl = `${PROPTX_BASE_URL}Property?$filter=${encodeURIComponent(`${baseFilter} and StandardStatus eq 'Active' and TransactionType eq 'For Sale'`)}&$select=${selectMin}&$top=1&$count=true`;
+    const forSaleResp = await fetch(forSaleUrl, { headers });
+    const forSaleData = await forSaleResp.json();
+    const forSaleCount = forSaleData['@odata.count'] || 0;
+
+    // Count For Lease (Active + For Lease)
+    const forLeaseUrl = `${PROPTX_BASE_URL}Property?$filter=${encodeURIComponent(`${baseFilter} and StandardStatus eq 'Active' and TransactionType eq 'For Lease'`)}&$select=${selectMin}&$top=1&$count=true`;
+    const forLeaseResp = await fetch(forLeaseUrl, { headers });
+    const forLeaseData = await forLeaseResp.json();
+    const forLeaseCount = forLeaseData['@odata.count'] || 0;
 
     // Count sold
     const soldUrl = `${PROPTX_BASE_URL}Property?$filter=${encodeURIComponent(`${baseFilter} and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`  )}&$select=${selectMin}&$top=1&$count=true`;
@@ -278,7 +284,7 @@ export async function previewHomes(params: HomesSearchParams): Promise<{ success
 
     return {
       success: true,
-      counts: { active: activeCount, sold: soldCount, leased: leasedCount }
+      counts: { forSale: forSaleCount, forLease: forLeaseCount, sold: soldCount, leased: leasedCount }
     };
   } catch (error: any) {
     return { success: false, error: error.message };

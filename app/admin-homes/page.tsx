@@ -1,20 +1,17 @@
-﻿// app/admin-homes/page.tsx
 import { createClient } from '@/lib/supabase/server'
 
 export default async function AdminHomesDashboard() {
   const supabase = createClient()
 
-  // Get residential listing counts by subtype
   const { data: subtypeCounts } = await supabase
     .from('mls_listings')
     .select('property_subtype, standard_status')
     .is('building_id', null)
     .in('property_subtype', [
-      'Detached', 'Semi-Detached', 'Semi-Detached ', 'Att/Row/Townhouse', 
+      'Detached', 'Semi-Detached', 'Semi-Detached ', 'Att/Row/Townhouse',
       'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'
     ])
 
-  // Count by subtype
   const subtypeMap: Record<string, { active: number; closed: number; total: number }> = {}
   for (const row of subtypeCounts || []) {
     const key = (row.property_subtype || 'Unknown').trim()
@@ -28,7 +25,6 @@ export default async function AdminHomesDashboard() {
   const totalActive = subtypeCounts?.filter(r => r.standard_status === 'Active').length || 0
   const totalClosed = subtypeCounts?.filter(r => r.standard_status === 'Closed').length || 0
 
-  // Get municipality counts
   const { data: muniCounts } = await supabase
     .from('municipalities')
     .select('id, name, homes_count')
@@ -36,7 +32,6 @@ export default async function AdminHomesDashboard() {
     .order('homes_count', { ascending: false })
     .limit(20)
 
-  // Get area counts
   const { data: areaCounts } = await supabase
     .from('treb_areas')
     .select('id, name, homes_count')
@@ -49,7 +44,6 @@ export default async function AdminHomesDashboard() {
       <h1 className="text-2xl font-bold text-gray-900">Residential Homes Dashboard</h1>
       <p className="text-gray-500 mt-1">Freehold properties synced from PropTx</p>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-4 gap-4 mt-6">
         <div className="bg-white rounded-lg border p-4">
           <p className="text-sm text-gray-500">Total Homes</p>
@@ -69,7 +63,6 @@ export default async function AdminHomesDashboard() {
         </div>
       </div>
 
-      {/* Property Types */}
       <div className="bg-white rounded-lg border mt-6 p-4">
         <h2 className="text-lg font-semibold mb-3">By Property Type</h2>
         <table className="w-full text-sm">
@@ -96,7 +89,6 @@ export default async function AdminHomesDashboard() {
         </table>
       </div>
 
-      {/* Top Municipalities */}
       {muniCounts && muniCounts.length > 0 && (
         <div className="bg-white rounded-lg border mt-6 p-4">
           <h2 className="text-lg font-semibold mb-3">Top Municipalities (Homes Synced)</h2>
@@ -111,22 +103,11 @@ export default async function AdminHomesDashboard() {
         </div>
       )}
 
-      {/* Quick Actions */}
       <div className="bg-white rounded-lg border mt-6 p-4">
         <h2 className="text-lg font-semibold mb-3">Quick Actions</h2>
         <div className="flex gap-3">
-          
-            href="/admin-homes/bulk-sync"
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-sm font-medium"
-          >
-             Sync Homes
-          </a>
-          
-            href="/admin-homes/listings"
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium"
-          >
-             Browse Listings
-          </a>
+          <a href="/admin-homes/bulk-sync" className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-sm font-medium">Sync Homes</a>
+          <a href="/admin-homes/listings" className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium">Browse Listings</a>
         </div>
       </div>
     </div>
