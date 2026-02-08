@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import GeoListingSection from './components/GeoListingSection'
-import BuildingCard from './components/BuildingCard'
+import BuildingsGrid from './components/BuildingsGrid'
 
 const LISTING_SELECT = `
   id, building_id, listing_id, listing_key, standard_status, transaction_type,
@@ -77,16 +77,15 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           {buildings.length} buildings &middot; {counts.forSale + counts.forLease} active listings &middot; {counts.sold} sold &middot; {counts.leased} leased
         </p>
 
-        {buildings.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Buildings in {community.name}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {buildings.map((b) => (
-                <BuildingCard key={b.id} building={b} />
-              ))}
-            </div>
-          </div>
-        )}
+        <div className="mt-8">
+          <BuildingsGrid
+            initialBuildings={buildings}
+            totalBuildings={buildings.length}
+            geoType="community"
+            geoId={community.id}
+            title={"Buildings in " + community.name}
+          />
+        </div>
 
         <div className="mt-10">
           <h2 className="text-xl font-semibold mb-4">Listings</h2>

@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import GeoListingSection from './components/GeoListingSection'
+import BuildingsGrid from './components/BuildingsGrid'
 
 const LISTING_SELECT = `
   id, building_id, listing_id, listing_key, standard_status, transaction_type,
@@ -28,8 +29,17 @@ export default async function AreaPage({ area }: AreaPageProps) {
   const host = headersList.get('host') || ''
   const geoFilter = { column: 'area_id' as const, value: area.id }
 
-  const [municipalitiesResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult] = await Promise.all([
+  const [municipalitiesResult, buildingCountResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult] = await Promise.all([
     supabase.from('municipalities').select('id, name, slug').eq('area_id', area.id).order('name'),
+    supabase.from('municipalities').select('id').eq('area_id', area.id).then(async (res) => {
+      const muniIds = (res.data || []).map(m => m.id)
+      if (muniIds.length === 0) return { count: 0 }
+      const { data: comms } = await supabase.from('communities').select('id').in('municipality_id', muniIds)
+      const commIds = (comms || []).map(c => c.id)
+      if (commIds.length === 0) return { count: 0 }
+      const { count } = await supabase.from('buildings').select('id', { count: 'exact', head: true }).in('community_id', commIds)
+      return { count: count || 0 }
+    }),
     supabase.from('mls_listings').select(LISTING_SELECT).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale').order('list_price', { ascending: false }).limit(24),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale'),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Lease'),
@@ -51,6 +61,7 @@ export default async function AreaPage({ area }: AreaPageProps) {
     leased: leasedCount.count || 0,
   }
 
+  const buildingCount = (buildingCountResult as any)?.count || 0
   const agent = agentResult
 
   return (
@@ -71,6 +82,16 @@ export default async function AreaPage({ area }: AreaPageProps) {
             </div>
           </div>
         )}
+
+        <div className="mt-8">
+          <BuildingsGrid
+            initialBuildings={[]}
+            totalBuildings={buildingCount}
+            geoType="area"
+            geoId={area.id}
+            title="Buildings"
+          />
+        </div>
 
         <div className="mt-8">
           <h2 className="text-xl font-semibold mb-4">Listings</h2>
