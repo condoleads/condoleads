@@ -64,7 +64,7 @@ export default async function AreaPage({ area }: AreaPageProps) {
             <h2 className="text-xl font-semibold mb-4">Municipalities</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {municipalities.map((m) => (
-                <a key={m.id} href={`/${m.slug}`} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
+                <a key={m.id} href={'/' + m.slug} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
                   <span className="font-medium text-gray-900">{m.name}</span>
                 </a>
               ))}

@@ -54,13 +54,14 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   }
 
   const agent = agentResult
+  const areaHref = area ? '/' + area.slug : '#'
 
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {area && (
           <nav className="text-sm text-gray-500 mb-4">
-            <a href={`/${area.slug}`} className="hover:text-blue-600">{area.name}</a>
+            <a href={areaHref} className="hover:text-blue-600">{area.name}</a>
             <span className="mx-2">&rsaquo;</span>
             <span className="text-gray-900">{municipality.name}</span>
           </nav>
@@ -73,7 +74,7 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
             <h2 className="text-xl font-semibold mb-4">Communities</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {communities.map((c) => (
-                <a key={c.id} href={`/${c.slug}`} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
+                <a key={c.id} href={'/' + c.slug} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
                   <span className="font-medium text-gray-900">{c.name}</span>
                 </a>
               ))}
