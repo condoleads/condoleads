@@ -1,14 +1,17 @@
 // lib/homes-sync/search.ts
-// Search PropTx for Residential Freehold properties by geography
+// Search PropTx for residential properties by geography
+// Supports: Residential Freehold, Residential Condo & Other, or Both
 // Reuses: two-variant media filter, parallel batch enhanced data fetch
-// Difference from building search: queries by City/CityRegion, no building grouping
 
 const PROPTX_BASE_URL = process.env.PROPTX_RESO_API_URL;
 const PROPTX_TOKEN = process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN;
 
+export type PropertyTypeFilter = 'freehold' | 'condo' | 'both';
+
 export interface HomesSearchParams {
   municipalityName: string;
   communityName?: string;
+  propertyType?: PropertyTypeFilter;
 }
 
 export interface HomesSearchResult {
@@ -21,6 +24,18 @@ export interface HomesSearchResult {
     total: number;
   };
   error?: string;
+}
+
+// Build PropTx PropertyType filter based on selection
+function buildPropertyTypeFilter(propertyType: PropertyTypeFilter = 'freehold'): string {
+  switch (propertyType) {
+    case 'freehold':
+      return "PropertyType eq 'Residential Freehold'";
+    case 'condo':
+      return "PropertyType eq 'Residential Condo & Other'";
+    case 'both':
+      return "(PropertyType eq 'Residential Freehold' or PropertyType eq 'Residential Condo & Other')";
+  }
 }
 
 // Two-variant media filter (identical to building-sync/search.ts)
@@ -105,9 +120,9 @@ async function fetchAllListings(
 }
 
 export async function searchHomes(params: HomesSearchParams): Promise<HomesSearchResult> {
-  const { municipalityName, communityName } = params;
+  const { municipalityName, communityName, propertyType = 'freehold' } = params;
 
-  console.log(`[HomesSearch] Starting: ${municipalityName}${communityName ? ' / ' + communityName : ''}`);
+  console.log(`[HomesSearch] Starting: ${municipalityName}${communityName ? ' / ' + communityName : ''} (${propertyType})`);
 
   if (!municipalityName) {
     return { success: false, error: 'Municipality name is required' };
@@ -123,14 +138,12 @@ export async function searchHomes(params: HomesSearchParams): Promise<HomesSearc
   };
 
   try {
-    // Build base filter for Residential Freehold
-    let baseFilter = `PropertyType eq 'Residential Freehold' and City eq '${municipalityName}'`;
+    // Build base filter with dynamic property type
+    const propTypeFilter = buildPropertyTypeFilter(propertyType);
+    let baseFilter = `${propTypeFilter} and City eq '${municipalityName}'`;
     if (communityName) {
       baseFilter += ` and CityRegion eq '${communityName}'`;
     }
-
-    // We do NOT use $select for the main sync - we need ALL fields for complete DLA mapping
-    // Only use $select for counting/preview
 
     let allListings: any[] = [];
 
@@ -239,7 +252,7 @@ export async function searchHomes(params: HomesSearchParams): Promise<HomesSearc
 
 // Preview function - just counts, no enhanced data fetch
 export async function previewHomes(params: HomesSearchParams): Promise<{ success: boolean; counts?: { forSale: number; forLease: number; sold: number; leased: number }; error?: string }> {
-  const { municipalityName, communityName } = params;
+  const { municipalityName, communityName, propertyType = 'freehold' } = params;
 
   if (!PROPTX_BASE_URL || !PROPTX_TOKEN) {
     return { success: false, error: 'PropTx configuration missing' };
@@ -251,7 +264,8 @@ export async function previewHomes(params: HomesSearchParams): Promise<{ success
   };
 
   try {
-    let baseFilter = `PropertyType eq 'Residential Freehold' and City eq '${municipalityName}'`;
+    const propTypeFilter = buildPropertyTypeFilter(propertyType);
+    let baseFilter = `${propTypeFilter} and City eq '${municipalityName}'`;
     if (communityName) {
       baseFilter += ` and CityRegion eq '${communityName}'`;
     }
@@ -271,7 +285,7 @@ export async function previewHomes(params: HomesSearchParams): Promise<{ success
     const forLeaseCount = forLeaseData['@odata.count'] || 0;
 
     // Count sold
-    const soldUrl = `${PROPTX_BASE_URL}Property?$filter=${encodeURIComponent(`${baseFilter} and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`  )}&$select=${selectMin}&$top=1&$count=true`;
+    const soldUrl = `${PROPTX_BASE_URL}Property?$filter=${encodeURIComponent(`${baseFilter} and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`)}&$select=${selectMin}&$top=1&$count=true`;
     const soldResp = await fetch(soldUrl, { headers });
     const soldData = await soldResp.json();
     const soldCount = soldData['@odata.count'] || 0;

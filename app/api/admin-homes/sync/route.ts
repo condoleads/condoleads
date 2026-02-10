@@ -16,6 +16,16 @@ const supabase = createClient(
 const CHUNK_SIZE = 50;
 const ENHANCED_BATCH_SIZE = 10;
 
+type PropertyTypeFilter = 'freehold' | 'condo' | 'both';
+
+function buildPropTxTypeFilter(pt: PropertyTypeFilter): string {
+  switch (pt) {
+    case 'freehold': return "PropertyType eq 'Residential Freehold'";
+    case 'condo': return "PropertyType eq 'Residential Condo & Other'";
+    case 'both': return "(PropertyType eq 'Residential Freehold' or PropertyType eq 'Residential Condo & Other')";
+  }
+}
+
 function filterTwoVariants(allMediaItems: any[]) {
   if (!allMediaItems || allMediaItems.length === 0) return [];
   const sorted = [...allMediaItems].sort((a, b) => (parseInt(a.Order) || 999) - (parseInt(b.Order) || 999));
@@ -78,27 +88,30 @@ async function fetchEnhancedData(listings: any[], headers: any) {
 }
 
 async function updateHierarchyCounts(municipalityId: string, areaId: string) {
+  // Count ALL residential listings (freehold + condo) for geo hierarchy
+  const allResTypes = ['Residential Freehold', 'Residential Condo & Other'];
+
   const { count: muniCount } = await supabase
     .from('mls_listings').select('id', { count: 'exact', head: true })
-    .eq('municipality_id', municipalityId).eq('property_type', 'Residential Freehold');
+    .eq('municipality_id', municipalityId).in('property_type', allResTypes);
   await supabase.from('municipalities').update({ homes_count: muniCount || 0 }).eq('id', municipalityId);
 
   const { data: communities } = await supabase.from('communities').select('id').eq('municipality_id', municipalityId);
   for (const comm of communities || []) {
     const { count: commCount } = await supabase
       .from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq('community_id', comm.id).eq('property_type', 'Residential Freehold');
+      .eq('community_id', comm.id).in('property_type', allResTypes);
     await supabase.from('communities').update({ homes_count: commCount || 0 }).eq('id', comm.id);
   }
 
   const { count: areaCount } = await supabase
     .from('mls_listings').select('id', { count: 'exact', head: true })
-    .eq('area_id', areaId).eq('property_type', 'Residential Freehold');
+    .eq('area_id', areaId).in('property_type', allResTypes);
   await supabase.from('treb_areas').update({ homes_count: areaCount || 0 }).eq('id', areaId);
 }
 
 export async function POST(request: NextRequest) {
-  const { municipalityId, municipalityName, communityName } = await request.json();
+  const { municipalityId, municipalityName, communityName, propertyType } = await request.json();
 
   if (!municipalityId || !municipalityName) {
     return new Response(JSON.stringify({ error: 'municipalityId and municipalityName required' }), { status: 400 });
@@ -106,6 +119,8 @@ export async function POST(request: NextRequest) {
   if (!PROPTX_BASE_URL || !PROPTX_TOKEN) {
     return new Response(JSON.stringify({ error: 'PropTx configuration missing' }), { status: 500 });
   }
+
+  const ptFilter: PropertyTypeFilter = propertyType || 'freehold';
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -125,9 +140,10 @@ export async function POST(request: NextRequest) {
 
         const headers = { 'Authorization': 'Bearer ' + PROPTX_TOKEN, 'Accept': 'application/json' };
 
-        let baseFilter = "PropertyType eq 'Residential Freehold' and City eq '" + municipalityName + "'";
+        const propTypeFilter = buildPropTxTypeFilter(ptFilter);
+        let baseFilter = propTypeFilter + " and City eq '" + municipalityName + "'";
         if (communityName) baseFilter += " and CityRegion eq '" + communityName + "'";
-        progress('Filter: ' + (communityName ? municipalityName + ' / ' + communityName : municipalityName));
+        progress('Filter: ' + (communityName ? municipalityName + ' / ' + communityName : municipalityName) + ' (' + ptFilter + ')');
 
         progress('Fetching active listings from PropTx...');
         const activeListings = await fetchBasicListings(baseFilter, headers, progress);

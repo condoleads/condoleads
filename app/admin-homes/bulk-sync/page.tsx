@@ -2,11 +2,25 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronRight, ChevronDown, Home, MapPin, RefreshCw, Search, CheckCircle, Clock, Loader2, Download, Play } from 'lucide-react';
 
+type PropertyTypeFilter = 'freehold' | 'condo' | 'both';
+
 interface Area { id: string; name: string; homes_count: number; municipalities: Municipality[]; }
 interface Municipality { id: string; name: string; homes_count: number; communities: Community[]; }
 interface Community { id: string; name: string; homes_count: number; }
 interface Preview { forSale: number; forLease: number; sold: number; leased: number; }
 interface SyncSummary { listings: number; media: number; rooms: number; openHouses: number; skipped: number; }
+
+const PT_LABELS: Record<PropertyTypeFilter, string> = {
+  freehold: 'Freehold',
+  condo: 'Condo',
+  both: 'All Residential'
+};
+
+const PT_COLORS: Record<PropertyTypeFilter, string> = {
+  freehold: 'bg-green-600 text-white',
+  condo: 'bg-blue-600 text-white',
+  both: 'bg-purple-600 text-white'
+};
 
 export default function HomesBulkSync() {
   const [geoTree, setGeoTree] = useState<Area[]>([]);
@@ -17,6 +31,7 @@ export default function HomesBulkSync() {
   const [selArea, setSelArea] = useState<Area | null>(null);
   const [selMuni, setSelMuni] = useState<Municipality | null>(null);
   const [selComm, setSelComm] = useState<Community | null>(null);
+  const [propertyType, setPropertyType] = useState<PropertyTypeFilter>('freehold');
 
   const [mode, setMode] = useState<'empty' | 'dbStats' | 'preview' | 'syncing' | 'complete'>('empty');
   const [dbStats, setDbStats] = useState<{total: number; active: number; sold: number; leased: number; subtypes: Record<string, number>} | null>(null);
@@ -60,6 +75,7 @@ export default function HomesBulkSync() {
       if (commId) params.set('communityId', commId);
       else if (muniId) params.set('municipalityId', muniId);
       else if (areaId) params.set('areaId', areaId);
+      params.set('propertyType', propertyType);
       const r = await fetch('/api/admin-homes/db-stats?' + params);
       const d = await r.json();
       if (d.success) { setDbStats(d.stats); setMode('dbStats'); }
@@ -84,6 +100,23 @@ export default function HomesBulkSync() {
     loadDbStats(area.id);
   };
 
+  // Re-fetch stats when property type changes
+  const handlePropertyTypeChange = (pt: PropertyTypeFilter) => {
+    setPropertyType(pt);
+    setPreview(null); setSyncLogs([]); setSyncSummary(null);
+    // Re-fetch db stats if a location is selected
+    if (selComm) {
+      const params = new URLSearchParams({ communityId: selComm.id, propertyType: pt });
+      fetch('/api/admin-homes/db-stats?' + params).then(r => r.json()).then(d => { if (d.success) { setDbStats(d.stats); setMode('dbStats'); } });
+    } else if (selMuni) {
+      const params = new URLSearchParams({ municipalityId: selMuni.id, propertyType: pt });
+      fetch('/api/admin-homes/db-stats?' + params).then(r => r.json()).then(d => { if (d.success) { setDbStats(d.stats); setMode('dbStats'); } });
+    } else if (selArea) {
+      const params = new URLSearchParams({ areaId: selArea.id, propertyType: pt });
+      fetch('/api/admin-homes/db-stats?' + params).then(r => r.json()).then(d => { if (d.success) { setDbStats(d.stats); setMode('dbStats'); } });
+    }
+  };
+
   const handlePreviewMuni = async (muni: Municipality, area: Area) => {
     setSelArea(area); setSelMuni(muni); setSelComm(null);
     setSyncLogs([]); setSyncSummary(null);
@@ -91,7 +124,7 @@ export default function HomesBulkSync() {
     try {
       const r = await fetch('/api/admin-homes/discover', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ municipalityName: muni.name })
+        body: JSON.stringify({ municipalityName: muni.name, propertyType })
       });
       const d = await r.json();
       if (d.success) setPreview(d.counts); else setPreview(null);
@@ -106,7 +139,7 @@ export default function HomesBulkSync() {
     try {
       const r = await fetch('/api/admin-homes/discover', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ municipalityName: muni.name, communityName: comm.name })
+        body: JSON.stringify({ municipalityName: muni.name, communityName: comm.name, propertyType })
       });
       const d = await r.json();
       if (d.success) setPreview(d.counts); else setPreview(null);
@@ -124,7 +157,8 @@ export default function HomesBulkSync() {
         body: JSON.stringify({
           municipalityId: selMuni.id,
           municipalityName: selMuni.name,
-          communityName: selComm?.name || undefined
+          communityName: selComm?.name || undefined,
+          propertyType
         })
       });
       const reader = r.body?.getReader();
@@ -168,8 +202,8 @@ export default function HomesBulkSync() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Bulk Sync Residential Homes</h1>
-          <p className="text-gray-600">Sync freehold properties from PropTx by geographic area</p>
+          <h1 className="text-2xl font-bold text-gray-900">Bulk Sync Residential Properties</h1>
+          <p className="text-gray-600">Sync freehold and condo properties from PropTx by geographic area</p>
         </div>
         <button onClick={loadGeoTree} className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">
           <RefreshCw className="w-4 h-4" /> Refresh
@@ -209,7 +243,7 @@ export default function HomesBulkSync() {
                             </div>
                             <div className="flex items-center gap-1">
                               {getHomeBadge(muni.homes_count)}
-                              <button onClick={(e) => { e.stopPropagation(); handlePreviewMuni(muni, area); }} className="p-1 text-green-600 hover:bg-green-50 rounded" title={'Preview homes in ' + muni.name}>
+                              <button onClick={(e) => { e.stopPropagation(); handlePreviewMuni(muni, area); }} className="p-1 text-green-600 hover:bg-green-50 rounded" title={'Preview in ' + muni.name}>
                                 <Search className="w-3 h-3" />
                               </button>
                             </div>
@@ -222,7 +256,7 @@ export default function HomesBulkSync() {
                                   <button onClick={() => handleSelectComm(comm, muni, area)} className="text-xs text-gray-600 hover:text-green-600 text-left flex-1">{comm.name}</button>
                                   <div className="flex items-center gap-1">
                                     {getHomeBadge(comm.homes_count)}
-                                    <button onClick={(e) => { e.stopPropagation(); handlePreviewComm(comm, muni, area); }} className="p-1 text-green-600 hover:bg-green-50 rounded" title={'Preview homes in ' + comm.name}>
+                                    <button onClick={(e) => { e.stopPropagation(); handlePreviewComm(comm, muni, area); }} className="p-1 text-green-600 hover:bg-green-50 rounded" title={'Preview in ' + comm.name}>
                                       <Search className="w-3 h-3" />
                                     </button>
                                   </div>
@@ -242,9 +276,26 @@ export default function HomesBulkSync() {
 
         {/* RIGHT PANEL */}
         <div className="col-span-8 bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Home className="w-5 h-5 text-green-600" />
-            <h2 className="font-semibold text-gray-900">{locationLabel ? 'Homes  ' + locationLabel : 'Select a location'}</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Home className="w-5 h-5 text-green-600" />
+              <h2 className="font-semibold text-gray-900">{locationLabel ? locationLabel : 'Select a location'}</h2>
+            </div>
+
+            {/* Property Type Selector */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              {(['freehold', 'condo', 'both'] as PropertyTypeFilter[]).map(pt => (
+                <button
+                  key={pt}
+                  onClick={() => handlePropertyTypeChange(pt)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    propertyType === pt ? PT_COLORS[pt] : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                  }`}
+                >
+                  {PT_LABELS[pt]}
+                </button>
+              ))}
+            </div>
           </div>
 
           {selArea && (
@@ -252,13 +303,14 @@ export default function HomesBulkSync() {
               <span className="text-green-600">{selArea.name}</span>
               {selMuni && (<><ChevronRight className="w-3 h-3" /><span className={selComm ? 'text-green-600' : 'text-green-700 font-medium'}>{selMuni.name}</span></>)}
               {selComm && (<><ChevronRight className="w-3 h-3" /><span className="text-green-700 font-medium">{selComm.name}</span></>)}
+              <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium ${PT_COLORS[propertyType]}`}>{PT_LABELS[propertyType]}</span>
             </p>
           )}
 
           {mode === 'empty' && (
             <div className="flex flex-col items-center justify-center py-16 text-gray-500">
               <Home className="w-12 h-12 mb-4 text-gray-300" />
-              <p>Select a location and click the search icon to preview available homes</p>
+              <p>Select a location and click the search icon to preview available properties</p>
             </div>
           )}
 
@@ -297,7 +349,7 @@ export default function HomesBulkSync() {
                 </div>
               )}
 
-              {dbStats.total === 0 && <p className="text-sm text-gray-500 mb-4">No homes synced yet. Click the search icon to preview available homes from PropTx.</p>}
+              {dbStats.total === 0 && <p className="text-sm text-gray-500 mb-4">No properties synced yet. Click the search icon to preview available listings from PropTx.</p>}
 
               {selMuni && (
                 <button onClick={() => selComm ? handlePreviewComm(selComm, selMuni!, selArea!) : handlePreviewMuni(selMuni!, selArea!)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
@@ -310,7 +362,7 @@ export default function HomesBulkSync() {
           {mode === 'preview' && (
             <div>
               {previewing ? (
-                <div className="flex flex-col items-center py-12"><Loader2 className="w-8 h-8 animate-spin text-green-500 mb-4" /><p className="text-gray-600">Counting homes in PropTx...</p></div>
+                <div className="flex flex-col items-center py-12"><Loader2 className="w-8 h-8 animate-spin text-green-500 mb-4" /><p className="text-gray-600">Counting properties in PropTx...</p></div>
               ) : preview ? (
                 <div>
                   <h3 className="text-sm font-semibold text-gray-700 mb-3">PropTx Preview</h3>
@@ -345,7 +397,7 @@ export default function HomesBulkSync() {
 
                   <div className="flex items-center gap-3">
                     <button onClick={handleSync} disabled={syncing} className="flex items-center gap-2 px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 disabled:opacity-50 text-sm font-medium">
-                      <Play className="w-4 h-4" /> Sync All Homes
+                      <Play className="w-4 h-4" /> Sync {PT_LABELS[propertyType]}
                     </button>
                     <p className="text-xs text-gray-500">Fetches full data with media, rooms, and open houses</p>
                   </div>
