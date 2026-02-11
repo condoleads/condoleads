@@ -1,4 +1,4 @@
-﻿// lib/homes-sync/save.ts
+// lib/homes-sync/save.ts
 // Adapted from lib/building-sync/save.ts
 // Reuses: Complete 470+ DLA field mapping, media (2-variant), rooms, open houses
 // Difference: No building creation, building_id = null, direct geo UUID assignment, upsert-based
@@ -223,8 +223,7 @@ async function saveListings(
 
 function mapCompleteDLAFields(listing: any, areaId: string, municipalityId: string, communityId: string | null) {
   return {
-    // ===== RELATIONSHIP (HOMES: no building) =====
-    building_id: null,
+    // ===== RELATIONSHIP (HOMES: geo sync never touches building_id) =====
     area_id: areaId,
     municipality_id: municipalityId,
     community_id: communityId,

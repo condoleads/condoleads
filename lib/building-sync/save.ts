@@ -1,4 +1,4 @@
-﻿// lib/building-sync/save.ts
+// lib/building-sync/save.ts
 // Direct save function with COMPLETE 470+ DLA field mapping - no HTTP overhead
 
 import { createClient } from '@supabase/supabase-js';
@@ -140,6 +140,9 @@ export async function saveBuilding(buildingData: BuildingData, listingsData: any
     // STEP 7: Link to geographic hierarchy
     await linkBuildingToHierarchy(building.id, listingsData);
 
+
+    // STEP 7.5: Backfill geo IDs on listings from building hierarchy
+    await backfillListingGeoIds(building.id);
     // STEP 8: Create sync history
     const duration = (Date.now() - startTime) / 1000;
     await createSyncHistory(building.id, listingsData.length, savedListings.length, mediaCount, roomCount, openHouseCount, duration);
@@ -1090,6 +1093,63 @@ async function linkBuildingToHierarchy(buildingId: string, listingsData: any[]):
       .from('buildings')
       .update({ community_id: communityId })
       .eq('id', buildingId);
+  }
+}
+
+// =====================================================
+// STEP 7.5: BACKFILL GEO IDS ON LISTINGS
+// After building sync, ensure all listings have area_id, municipality_id, community_id
+// This prevents geo sync from losing building association and vice versa
+// =====================================================
+
+export async function backfillListingGeoIds(buildingId: string): Promise<void> {
+  try {
+    // Get building community chain
+    const { data: building } = await supabase
+      .from('buildings')
+      .select('community_id')
+      .eq('id', buildingId)
+      .single();
+
+    if (!building?.community_id) {
+      console.log('[DirectSave] No community_id on building, skipping geo backfill');
+      return;
+    }
+
+    // Get municipality and area from community
+    const { data: community } = await supabase
+      .from('communities')
+      .select('id, municipality_id')
+      .eq('id', building.community_id)
+      .single();
+
+    if (!community?.municipality_id) return;
+
+    const { data: municipality } = await supabase
+      .from('municipalities')
+      .select('id, area_id')
+      .eq('id', community.municipality_id)
+      .single();
+
+    if (!municipality?.area_id) return;
+
+    // Update all listings for this building with geo IDs
+    const { error, count } = await supabase
+      .from('mls_listings')
+      .update({
+        area_id: municipality.area_id,
+        municipality_id: community.municipality_id,
+        community_id: building.community_id
+      })
+      .eq('building_id', buildingId);
+
+    if (error) {
+      console.error('[DirectSave] Geo backfill error:', error.message);
+    } else {
+      console.log(`[DirectSave] Geo IDs backfilled for building ${buildingId}`);
+    }
+  } catch (err: any) {
+    console.error('[DirectSave] Geo backfill failed:', err.message);
   }
 }
 

@@ -1,6 +1,7 @@
 // app/api/admin/buildings/incremental-sync/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
+import { backfillListingGeoIds } from '@/lib/building-sync/save';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -101,6 +102,9 @@ export async function POST(request: NextRequest) {
     const totalUpdated = (activeResults.updated || 0);
     const totalUnchanged = (activeResults.unchanged || 0) + (inactiveResults.skipped || 0);
     
+
+    // Backfill geo IDs on all listings for this building
+    await backfillListingGeoIds(buildingId);
     await createSyncHistory(
       buildingId,
       totalListingsFound,
