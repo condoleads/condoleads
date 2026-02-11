@@ -143,6 +143,43 @@ export async function saveBuilding(buildingData: BuildingData, listingsData: any
 
     // STEP 7.5: Backfill geo IDs on listings from building hierarchy
     await backfillListingGeoIds(building.id);
+    
+    // STEP 7.6: Auto-assign building cover photo and gallery
+    try {
+      const { data: coverRow } = await supabase
+        .from('media')
+        .select('media_url, listing_id')
+        .in('listing_id', savedListings.map((l: any) => l.id))
+        .eq('order_number', 0)
+        .eq('variant_type', 'large')
+        .limit(1);
+
+      const { data: galleryRows } = await supabase
+        .from('media')
+        .select('media_url, listing_id')
+        .in('listing_id', savedListings.map((l: any) => l.id))
+        .eq('order_number', 0)
+        .eq('variant_type', 'thumbnail')
+        .limit(3);
+
+      const coverUrl = coverRow?.[0]?.media_url || null;
+      const galleryUrls = [...new Set(galleryRows?.map((g: any) => g.media_url) || [])];
+
+      if (coverUrl || galleryUrls.length > 0) {
+        await supabase
+          .from('buildings')
+          .update({
+            ...(coverUrl ? { cover_photo_url: coverUrl } : {}),
+            ...(galleryUrls.length > 0 ? { gallery_photos: galleryUrls } : {})
+          })
+          .eq('id', building.id);
+        console.log(`[DirectSave] Building images auto-assigned: cover=${!!coverUrl}, gallery=${galleryUrls.length}`);
+      }
+    } catch (imgErr: any) {
+      console.error('[DirectSave] Auto-assign images failed:', imgErr.message);
+    }
+
+
     // STEP 8: Create sync history
     const duration = (Date.now() - startTime) / 1000;
     await createSyncHistory(building.id, listingsData.length, savedListings.length, mediaCount, roomCount, openHouseCount, duration);

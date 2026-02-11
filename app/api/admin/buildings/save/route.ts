@@ -94,10 +94,47 @@ export async function POST(request: NextRequest) {
     const duration = (Date.now() - startTime) / 1000;
     await createSyncHistory(building.id, listingsData.length, savedListings.length, mediaCount, roomCount, openHouseCount, duration);
     
-    // STEP 7.5: Backfill geo IDs on last chunk (after all listings saved)
+    // STEP 7.5: Backfill geo IDs + auto-assign building images on last chunk
     if (chunkIndex === totalChunks - 1) {
       console.log(`[Save] Last chunk - running geo ID backfill for building ${building.id}`);
       await backfillListingGeoIds(building.id);
+
+      // Auto-assign cover photo and gallery from listing media
+      try {
+        const { data: coverData } = await supabase
+          .from('media')
+          .select('media_url, mls_listings!inner(building_id, standard_status)')
+          .eq('mls_listings.building_id', building.id)
+          .eq('order_number', 0)
+          .eq('variant_type', 'large')
+          .order('mls_listings(standard_status)', { ascending: true })
+          .limit(1);
+
+        const { data: galleryData } = await supabase
+          .from('media')
+          .select('media_url, mls_listings!inner(building_id, standard_status, listing_key)')
+          .eq('mls_listings.building_id', building.id)
+          .eq('order_number', 0)
+          .eq('variant_type', 'thumbnail')
+          .order('mls_listings(standard_status)', { ascending: true })
+          .limit(3);
+
+        const coverUrl = coverData?.[0]?.media_url || null;
+        const galleryUrls = [...new Set(galleryData?.map((g: any) => g.media_url) || [])];
+
+        if (coverUrl || galleryUrls.length > 0) {
+          await supabase
+            .from('buildings')
+            .update({
+              ...(coverUrl ? { cover_photo_url: coverUrl } : {}),
+              ...(galleryUrls.length > 0 ? { gallery_photos: galleryUrls } : {})
+            })
+            .eq('id', building.id);
+          console.log(`[Save] Building images auto-assigned: cover=${!!coverUrl}, gallery=${galleryUrls.length}`);
+        }
+      } catch (imgErr: any) {
+        console.error('[Save] Auto-assign images failed:', imgErr.message);
+      }
     }
 
     return NextResponse.json({
