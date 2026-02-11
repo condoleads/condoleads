@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { backfillListingGeoIds } from '@/lib/building-sync/save';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -60,8 +61,10 @@ export async function POST(request: NextRequest) {
         for (const oldId of oldBuildingIds) {
           await supabase.from('psf_monthly_sale').update({ building_id: building.id }).eq('building_id', oldId);
           await supabase.from('psf_monthly_lease').update({ building_id: building.id }).eq('building_id', oldId);
-          // Now safe to delete old building
-          await supabase.from('buildings').delete().eq('id', oldId);
+          // Now safe to delete old building (only if different from new one)
+          if (oldId !== building.id) {
+            await supabase.from('buildings').delete().eq('id', oldId);
+          }
           console.log(`✅ Migrated PSF data and deleted old building: ${oldId}`);
         }
       }
@@ -91,6 +94,12 @@ export async function POST(request: NextRequest) {
     const duration = (Date.now() - startTime) / 1000;
     await createSyncHistory(building.id, listingsData.length, savedListings.length, mediaCount, roomCount, openHouseCount, duration);
     
+    // STEP 7.5: Backfill geo IDs on last chunk (after all listings saved)
+    if (chunkIndex === totalChunks - 1) {
+      console.log(`[Save] Last chunk - running geo ID backfill for building ${building.id}`);
+      await backfillListingGeoIds(building.id);
+    }
+
     return NextResponse.json({
       success: true,
       chunk: chunkIndex,
