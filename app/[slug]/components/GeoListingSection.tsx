@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
 import ListingCard from './ListingCard'
+import HomeListingCard from './HomeListingCard'
 
 interface GeoListingSectionProps {
   initialListings: MLSListing[]
@@ -113,14 +114,25 @@ export default function GeoListingSection({
 
       {!loading && listings.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {listings.map((listing) => (
-            <ListingCard
-              key={listing.id}
-              listing={listing}
-              type={getType()}
-              agentId={agentId}
-            />
-          ))}
+          {listings.map((listing) => {
+            const isHome = listing.property_type === 'Residential Freehold' || 
+              (!listing.building_id && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].some(t => listing.property_subtype?.trim() === t))
+            return isHome ? (
+              <HomeListingCard
+                key={listing.id}
+                listing={listing}
+                type={getType()}
+                agentId={agentId}
+              />
+            ) : (
+              <ListingCard
+                key={listing.id}
+                listing={listing}
+                type={getType()}
+                agentId={agentId}
+              />
+            )
+          })}
         </div>
       )}
 
