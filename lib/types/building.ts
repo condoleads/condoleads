@@ -43,6 +43,53 @@ export interface MLSListing {
   neighborhood?: string | null
   heat_type?: string | null
   listing_contract_date?: string | null
+
+  // Home/Residential fields
+  property_subtype?: string | null
+  approximate_age?: string | null
+  legal_stories?: string | null
+  new_construction_yn?: boolean | null
+
+  // Lot fields
+  lot_width?: string | null
+  lot_depth?: string | null
+  lot_size_area?: number | null
+  lot_size_area_units?: string | null
+  lot_size_dimensions?: string | null
+  lot_size_range_acres?: string | null
+  lot_type?: string | null
+  lot_shape?: string | null
+  lot_features?: string[] | null
+  lot_irregularities?: string | null
+  frontage_length?: string | null
+
+  // Basement
+  basement?: string | string[] | null
+  basement_yn?: boolean | null
+
+  // Garage
+  garage_yn?: boolean | null
+  attached_garage_yn?: boolean | null
+  garage_type?: string | null
+  garage_parking_spaces?: number | null
+
+  // Heating/Cooling
+  heat_source?: string | null
+  cooling?: string[] | null
+
+  // Construction & Exterior
+  construction_materials?: string[] | null
+  foundation_details?: string[] | null
+  roof?: string[] | null
+  exterior_features?: string[] | null
+  structure_type?: string[] | null
+
+  // Special features
+  fireplace_yn?: boolean | null
+  fireplaces_total?: number | null
+  pool_features?: string[] | null
+  waterfront_yn?: boolean | null
+
   media?: Array<{
     id: string
     media_url: string
