@@ -11,6 +11,9 @@ const LISTING_SELECT = `
   living_area_range, square_foot_source, parking_total, locker,
   association_fee, tax_annual_amount, days_on_market, listing_contract_date,
   building_area_total,
+  lot_width, lot_depth, lot_size_dimensions, lot_size_area, lot_size_area_units,
+  frontage_length, basement, garage_type, garage_yn, approximate_age,
+  legal_stories, architectural_style, cooling, pool_features, fireplace_yn,
   media (id, media_url, variant_type, order_number, preferred_photo_yn)
 `
 
