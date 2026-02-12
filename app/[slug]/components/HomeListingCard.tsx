@@ -280,6 +280,7 @@ export default function HomeListingCard({ listing, type, agentId }: HomeListingC
 
       {showRegister && (
         <RegisterModal
+          isOpen={showRegister}
           onClose={() => setShowRegister(false)}
           agentId={agentId || ''}
           registrationSource="home_listing_card"
