@@ -210,7 +210,10 @@ export default function HomeListingCard({ listing, type, agentId }: HomeListingC
           ) : (
             <>
               {/* Address */}
-              <h3 className="text-base font-bold text-slate-900 truncate mb-1">{addressDisplay}</h3>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-base font-bold text-slate-900 truncate">{addressDisplay}</h3>
+              </div>
+              <span className="inline-block text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded mb-1">{listing.property_subtype?.trim() || 'Home'}</span>
 
               {/* Row 1: Beds / Baths / Sqft */}
               <div className="flex items-center gap-2 text-sm text-slate-700 mb-1">
@@ -227,10 +230,17 @@ export default function HomeListingCard({ listing, type, agentId }: HomeListingC
                 )}
               </div>
 
-              {/* Row 2: Lot size / Garage */}
+              {/* Row 2: Frontage / Lot / Garage */}
               <div className="flex items-center gap-2 text-sm text-slate-700 mb-2">
+                {listing.lot_width && parseFloat(String(listing.lot_width)) > 0 && (
+                  <>
+                    <span className="text-slate-400">Frontage:</span>
+                    <span className="font-semibold">{parseFloat(String(listing.lot_width))}ft</span>
+                  </>
+                )}
                 {lotDisplay && (
                   <>
+                    {listing.lot_width && parseFloat(String(listing.lot_width)) > 0 && <span className="text-slate-300">|</span>}
                     <span className="text-slate-400">Lot:</span>
                     <span className="font-semibold">{lotDisplay}</span>
                   </>
