@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react'
 import { EstimateResult, TEMPERATURE_CONFIG } from '@/lib/estimator/types'
 import { formatPrice } from '@/lib/utils/formatters'
+import { generateHomePropertySlug } from '@/lib/utils/slugs'
 import { MessageSquare, AlertTriangle, Phone } from 'lucide-react'
 import { getOrCreateLead } from '@/lib/actions/leads'
 import { trackActivity } from '@/lib/actions/user-activity'
@@ -314,6 +315,19 @@ export default function EstimatorResults({
                       View Property Details →
                     </a>
                   )}
+                  {!comp.unitNumber && comp.listingKey && comp.unparsedAddress && (
+                      <a
+                        href={generateHomePropertySlug({
+                          unparsed_address: comp.unparsedAddress,
+                          listing_key: comp.listingKey
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        View Property Details →
+                      </a>
+                    )}
                 </div>
               ))}
             </div>
@@ -611,6 +625,19 @@ export default function EstimatorResults({
                     {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
                       <a
                         href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        View Property Details →
+                      </a>
+                    )}
+                     {!comp.unitNumber && comp.listingKey && comp.unparsedAddress && (
+                      <a
+                        href={generateHomePropertySlug({
+                          unparsed_address: comp.unparsedAddress,
+                          listing_key: comp.listingKey
+                        })}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"

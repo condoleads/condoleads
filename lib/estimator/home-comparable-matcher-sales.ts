@@ -2,381 +2,365 @@
 import { createClient } from '@/lib/supabase/client'
 import {
   ComparableSale,
-  HomeUnitSpecs,
   PriceAdjustment,
   MatchTier,
   extractExactSqft,
   assignTemperature,
-  getBasementScore,
-  getBasementValue,
-  getGarageValue,
-  AGE_RANGES,
-  FRONTAGE_VALUE_PER_FT,
 } from './types'
+
+export interface HomeSpecs {
+  bedrooms: number
+  bathrooms: number
+  propertySubtype: string          // 'Detached', 'Semi-Detached', etc.
+  communityId: string | null
+  municipalityId: string | null
+  livingAreaRange?: string
+  exactSqft?: number | null
+  parking?: number
+  lotWidth?: number | null
+  lotDepth?: number | null
+  lotArea?: number | null
+  garageType?: string | null
+  basement?: string | null
+  approximateAge?: string | null
+  agentId?: string
+}
 
 interface HomeMatchResult {
   tier: MatchTier
   comparables: ComparableSale[]
-  municipalityName?: string
+  geoLevel: 'community' | 'municipality' | 'none'
 }
 
-const SIMILAR_SUBTYPES: Record<string, string[]> = {
-  'Detached': ['Detached', 'Semi-Detached', 'Link'],
-  'Semi-Detached': ['Semi-Detached', 'Detached', 'Link'],
-  'Link': ['Link', 'Semi-Detached', 'Detached'],
-  'Att/Row/Townhouse': ['Att/Row/Townhouse'],
-  'Duplex': ['Duplex', 'Triplex', 'Fourplex', 'Multiplex'],
-  'Triplex': ['Triplex', 'Duplex', 'Fourplex', 'Multiplex'],
-  'Fourplex': ['Fourplex', 'Triplex', 'Duplex', 'Multiplex'],
-  'Multiplex': ['Multiplex', 'Fourplex', 'Triplex', 'Duplex'],
-}
+const HOME_SELECT = `id, listing_key, close_price, list_price, bedrooms_total, 
+  bathrooms_total_integer, living_area_range, parking_total, locker, 
+  days_on_market, close_date, tax_annual_amount, square_foot_source, 
+  association_fee, unit_number, property_subtype, street_name, street_number,
+  lot_width, lot_depth, lot_size_area, garage_type, basement, approximate_age`
 
-export async function findHomeComparablesSales(specs: HomeUnitSpecs): Promise<HomeMatchResult> {
+/**
+ * Home Comparable Matcher - Cascading Geographic Search
+ * Tier 1: Community level (same neighborhood)
+ * Tier 2: Municipality level (wider area fallback)
+ * Within each tier: exact sqft → range → bedroom-only
+ */
+export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchResult> {
   const supabase = createClient()
   const twoYearsAgo = new Date()
   twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
 
-  // Get municipality name for frontage pricing
-  let municipalityName = 'default'
-  if (specs.municipalityId) {
-    const { data: mun } = await supabase
-      .from('municipalities')
-      .select('name')
-      .eq('id', specs.municipalityId)
-      .single()
-    if (mun) municipalityName = mun.name
-  }
+  // Determine property subtypes to match
+  const subtypes = getCompatibleSubtypes(specs.propertySubtype)
 
-  // Level 1: Same community + same subtype
-  let { data: allSales, error } = await supabase
-    .from('mls_listings')
-    .select(`id, unit_number, listing_key, unparsed_address, close_price, list_price,
-      bedrooms_total, bathrooms_total_integer, living_area_range, square_foot_source,
-      lot_width, lot_depth, lot_size_area, frontage_length,
-      basement, garage_type, garage_yn, approximate_age, legal_stories,
-      pool_features, fireplace_yn, cooling, tax_annual_amount,
-      parking_total, locker, days_on_market, close_date, property_subtype`)
-    .eq('community_id', specs.communityId)
-    .eq('standard_status', 'Closed')
-    .eq('transaction_type', 'For Sale')
-    .not('close_price', 'is', null)
-    .gte('close_date', twoYearsAgo.toISOString())
-    .gt('close_price', 100000)
-    .order('close_date', { ascending: false })
-    .limit(200)
-
-  if (error) {
-    console.error('[homeComps] Error:', error)
-    return { tier: 'CONTACT', comparables: [], municipalityName }
-  }
-
-  // Filter by subtype (exact match first)
-  let filtered = (allSales || []).filter(s => s.property_subtype?.trim() === specs.propertySubtype)
-
-  // If < 5 comps, expand to similar subtypes
-  if (filtered.length < 5) {
-    const similar = SIMILAR_SUBTYPES[specs.propertySubtype] || [specs.propertySubtype]
-    filtered = (allSales || []).filter(s => similar.includes(s.property_subtype?.trim() || ''))
-  }
-
-  // Level 2: Expand to municipality if still < 5
-  if (filtered.length < 5 && specs.municipalityId) {
-    const { data: munSales } = await supabase
+  // TIER 1: Community level
+  if (specs.communityId) {
+    const { data: communitySales } = await supabase
       .from('mls_listings')
-      .select(`id, unit_number, listing_key, unparsed_address, close_price, list_price,
-        bedrooms_total, bathrooms_total_integer, living_area_range, square_foot_source,
-        lot_width, lot_depth, lot_size_area, frontage_length,
-        basement, garage_type, garage_yn, approximate_age, legal_stories,
-        pool_features, fireplace_yn, cooling, tax_annual_amount,
-        parking_total, locker, days_on_market, close_date, property_subtype`)
-      .eq('municipality_id', specs.municipalityId)
+      .select(HOME_SELECT)
+      .eq('community_id', specs.communityId)
+      .in('property_subtype', subtypes)
       .eq('standard_status', 'Closed')
-      .eq('transaction_type', 'For Sale')
       .not('close_price', 'is', null)
-      .gte('close_date', twoYearsAgo.toISOString())
       .gt('close_price', 100000)
+      .gte('close_date', twoYearsAgo.toISOString())
       .order('close_date', { ascending: false })
       .limit(200)
 
-    if (munSales) {
-      const existingIds = new Set(filtered.map(f => f.id))
-      const similar = SIMILAR_SUBTYPES[specs.propertySubtype] || [specs.propertySubtype]
-      const extra = munSales.filter(s =>
-        !existingIds.has(s.id) && similar.includes(s.property_subtype?.trim() || '')
-      )
-      filtered = [...filtered, ...extra]
+    if (communitySales && communitySales.length > 0) {
+      const result = matchWithinPool(communitySales, specs)
+      if (result.comparables.length >= 3) {
+        return { ...result, geoLevel: 'community' }
+      }
     }
   }
 
-  // Strict filter: same bedrooms
-  const bedroomMatches = filtered.filter(s => s.bedrooms_total === specs.bedrooms)
+  // TIER 2: Municipality level (fallback)
+  if (specs.municipalityId) {
+    const { data: muniSales } = await supabase
+      .from('mls_listings')
+      .select(HOME_SELECT)
+      .eq('municipality_id', specs.municipalityId)
+      .in('property_subtype', subtypes)
+      .eq('standard_status', 'Closed')
+      .not('close_price', 'is', null)
+      .gt('close_price', 100000)
+      .gte('close_date', twoYearsAgo.toISOString())
+      .order('close_date', { ascending: false })
+      .limit(300)
 
-  if (bedroomMatches.length === 0) {
-    return { tier: 'CONTACT', comparables: [], municipalityName }
+    if (muniSales && muniSales.length > 0) {
+      const result = matchWithinPool(muniSales, specs)
+      if (result.comparables.length > 0) {
+        return { ...result, geoLevel: 'municipality' }
+      }
+    }
   }
 
-  // Score and adjust each comparable
-  const scored = bedroomMatches.map(comp => {
-    let score = 100
-    const adjustments: PriceAdjustment[] = []
-    let adjustedPrice = comp.close_price
+  return { tier: 'CONTACT', comparables: [], geoLevel: 'none' }
+}
 
-    // --- SCORING ---
+/**
+ * Match within a pool of sales using tiered logic:
+ * 1. Exact bed+bath + sqft ±10% + same property subtype
+ * 2. Exact bed+bath + same range + same property subtype
+ * 3. Exact bed + bath ±1 + same property subtype (widest net)
+ */
+function matchWithinPool(sales: any[], specs: HomeSpecs): { tier: MatchTier; comparables: ComparableSale[] } {
+  // Strict bed+bath matches first
+  const bedBathMatches = sales.filter(s =>
+    s.bedrooms_total === specs.bedrooms &&
+    s.bathrooms_total_integer === specs.bathrooms
+  )
 
-    // Bathroom similarity
-    const bathDiff = Math.abs(
-      (specs.bathrooms || 0) - (Math.floor(parseFloat(String(comp.bathrooms_total_integer)) || 0))
-    )
-    if (bathDiff === 0) score += 20
-    else if (bathDiff === 1) score += 10
-    else score -= 20
-
-    // Frontage similarity (#1 factor)
-    const userFrontage = specs.frontage || specs.lotWidth || null
-    const compFrontage = comp.lot_width ? parseFloat(String(comp.lot_width)) :
-      (comp.frontage_length ? parseFloat(String(comp.frontage_length)) : null)
-
-    if (userFrontage && compFrontage) {
-      const fDiff = Math.abs(userFrontage - compFrontage)
-      const fDiffPct = fDiff / userFrontage
-      if (fDiff <= 2) score += 40
-      else if (fDiff <= 5) score += 30
-      else if (fDiffPct <= 0.15) score += 20
-      else if (fDiffPct <= 0.30) score += 10
-      else score -= 20
-    }
-
-    // Lot depth
-    const userDepth = specs.lotDepth || null
-    const compDepth = comp.lot_depth ? parseFloat(String(comp.lot_depth)) : null
-    if (userDepth && compDepth) {
-      const dPct = Math.abs(userDepth - compDepth) / userDepth
-      if (dPct <= 0.10) score += 10
-      else if (dPct <= 0.25) score += 5
-      else score -= 5
-    }
-
-    // Square footage (tiered)
-    const userSqft = specs.exactSqft || null
-    const compSqft = extractExactSqft(comp.square_foot_source)
-    const userRange = specs.livingAreaRange || null
-    const compRange = comp.living_area_range || null
-
-    if (userSqft && compSqft) {
-      const sDiff = Math.abs(userSqft - compSqft)
-      if (sDiff <= 100) score += 30
-      else if (sDiff <= 200) score += 20
-      else if (sDiff <= 400) score += 10
-      else score -= 10
-    } else if (userSqft && compRange) {
-      const parts = compRange.split('-').map(Number)
-      if (parts.length === 2 && userSqft >= parts[0] && userSqft <= parts[1]) score += 25
-      else if (parts.length === 2 && userSqft >= parts[0] - 200 && userSqft <= parts[1] + 200) score += 12
-      else score -= 10
-    } else if (compSqft && userRange) {
-      const parts = userRange.split('-').map(Number)
-      if (parts.length === 2 && compSqft >= parts[0] && compSqft <= parts[1]) score += 25
-      else if (parts.length === 2 && compSqft >= parts[0] - 200 && compSqft <= parts[1] + 200) score += 12
-      else score -= 10
-    } else if (userRange && compRange) {
-      if (userRange === compRange) score += 20
-      else {
-        const uMid = userRange.split('-').map(Number).reduce((a: number, b: number) => a + b, 0) / 2
-        const cMid = compRange.split('-').map(Number).reduce((a: number, b: number) => a + b, 0) / 2
-        if (Math.abs(uMid - cMid) <= 300) score += 10
-        else score -= 10
+  // SUB-TIER A: Exact sqft ±10%
+  if (specs.exactSqft && specs.exactSqft > 0) {
+    const tolerance = specs.exactSqft * 0.10
+    const sqftMatches = bedBathMatches.filter(s => {
+      const compSqft = extractExactSqft(s.square_foot_source)
+      return compSqft && compSqft >= specs.exactSqft! - tolerance && compSqft <= specs.exactSqft! + tolerance
+    })
+    if (sqftMatches.length >= 3) {
+      return {
+        tier: 'BINGO',
+        comparables: sqftMatches.slice(0, 10).map(s => createHomeComparable(s, specs))
       }
     }
+  }
 
-    // Age similarity
-    if (specs.approximateAge && comp.approximate_age) {
-      const uIdx = AGE_RANGES.indexOf(specs.approximateAge)
-      const cIdx = AGE_RANGES.indexOf(comp.approximate_age)
-      if (uIdx >= 0 && cIdx >= 0) {
-        const ageDiff = Math.abs(uIdx - cIdx)
-        if (ageDiff === 0) score += 15
-        else if (ageDiff === 1) score += 8
-        else if (ageDiff >= 3) score -= 10
+  // SUB-TIER B: Same living area range
+  if (specs.livingAreaRange) {
+    const rangeMatches = bedBathMatches.filter(s => s.living_area_range === specs.livingAreaRange)
+    if (rangeMatches.length >= 3) {
+      return {
+        tier: 'RANGE',
+        comparables: rangeMatches.slice(0, 10).map(s => createHomeComparable(s, specs))
       }
     }
+  }
 
-    // Stories match
-    const userStories = specs.legalStories || 0
-    const compStories = comp.legal_stories ? parseFloat(comp.legal_stories) : 0
-    if (userStories && compStories) {
-      if (userStories === compStories) score += 10
-      else if (Math.abs(userStories - compStories) <= 0.5) score += 5
-      else score -= 5
-    }
+  // SUB-TIER C: Bed match + bath ±1 (widest)
+  const looseBathMatches = sales.filter(s =>
+    s.bedrooms_total === specs.bedrooms &&
+    Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) <= 1
+  )
 
-    // Tax proximity
-    if (specs.taxAnnualAmount && comp.tax_annual_amount) {
-      const taxDiff = Math.abs(specs.taxAnnualAmount - Number(comp.tax_annual_amount)) / specs.taxAnnualAmount
-      if (taxDiff <= 0.10) score += 10
-      else if (taxDiff <= 0.25) score += 5
-    }
-
-    // Recency bonus
-    const monthsAgo = (Date.now() - new Date(comp.close_date).getTime()) / (1000 * 60 * 60 * 24 * 30)
-    if (monthsAgo < 6) score += 10
-    else if (monthsAgo < 12) score += 5
-
-    // --- ADJUSTMENTS ---
-
-    // Bathroom adjustment
-    const compBath = Math.floor(parseFloat(String(comp.bathrooms_total_integer)) || 0)
-    const bathAdj = (specs.bathrooms - compBath) * 25000
-    if (bathAdj !== 0) {
-      adjustedPrice += bathAdj
-      adjustments.push({
-        type: 'bathroom',
-        difference: specs.bathrooms - compBath,
-        adjustmentAmount: bathAdj,
-        reason: `Your home has ${Math.abs(specs.bathrooms - compBath)} ${specs.bathrooms > compBath ? 'more' : 'fewer'} bathroom(s)`
-      })
-    }
-
-    // Frontage adjustment (>3ft diff)
-    if (userFrontage && compFrontage && Math.abs(userFrontage - compFrontage) > 3) {
-      const pricePerFt = FRONTAGE_VALUE_PER_FT[municipalityName] || FRONTAGE_VALUE_PER_FT['default']
-      const fAdj = (userFrontage - compFrontage) * pricePerFt
-      adjustedPrice += fAdj
-      adjustments.push({
-        type: 'parking' as const, // reusing type for display
-        difference: Math.round(userFrontage - compFrontage),
-        adjustmentAmount: fAdj,
-        reason: `Your lot is ${Math.abs(userFrontage - compFrontage).toFixed(0)}ft ${userFrontage > compFrontage ? 'wider' : 'narrower'} (${pricePerFt.toLocaleString()}/ft in ${municipalityName})`
-      })
-    }
-
-    // Lot depth adjustment (>15ft diff)
-    if (userDepth && compDepth && Math.abs(userDepth - compDepth) > 15) {
-      const dAdj = (userDepth - compDepth) * 1000
-      adjustedPrice += dAdj
-      adjustments.push({
-        type: 'parking' as const,
-        difference: Math.round(userDepth - compDepth),
-        adjustmentAmount: dAdj,
-        reason: `Your lot is ${Math.abs(userDepth - compDepth).toFixed(0)}ft ${userDepth > compDepth ? 'deeper' : 'shallower'}`
-      })
-    }
-
-    // Basement adjustment
-    const userBasement = getBasementScore(specs.basementType || null)
-    const compBasement = getBasementScore(comp.basement)
-    const userBVal = getBasementValue(userBasement, true)
-    const compBVal = getBasementValue(compBasement, true)
-    const bAdj = userBVal - compBVal
-    if (bAdj !== 0) {
-      adjustedPrice += bAdj
-      adjustments.push({
-        type: 'locker' as const,
-        difference: bAdj > 0 ? 1 : -1,
-        adjustmentAmount: bAdj,
-        reason: `Basement: yours (${userBasement}) vs comp (${compBasement})`
-      })
-    }
-
-    // Garage adjustment
-    const userGVal = getGarageValue(specs.garageType || null, true)
-    const compGVal = getGarageValue(comp.garage_type, true)
-    const gAdj = userGVal - compGVal
-    if (gAdj !== 0) {
-      adjustedPrice += gAdj
-      adjustments.push({
-        type: 'parking' as const,
-        difference: gAdj > 0 ? 1 : -1,
-        adjustmentAmount: gAdj,
-        reason: `Garage: yours (${specs.garageType || 'None'}) vs comp (${comp.garage_type || 'None'})`
-      })
-    }
-
-    // Pool adjustment
-    const userPool = specs.hasPool || false
-    const compPool = comp.pool_features && comp.pool_features.length > 0 &&
-      !comp.pool_features.every((p: string) => p.toLowerCase() === 'none')
-    if (userPool !== compPool) {
-      const pAdj = userPool ? 30000 : -30000
-      adjustedPrice += pAdj
-      adjustments.push({
-        type: 'locker' as const,
-        difference: userPool ? 1 : -1,
-        adjustmentAmount: pAdj,
-        reason: userPool ? 'Your home has a pool' : 'Comp has a pool, yours does not'
-      })
-    }
-
-    // Fireplace adjustment
-    if ((specs.hasFireplace || false) !== (comp.fireplace_yn || false)) {
-      const fpAdj = specs.hasFireplace ? 5000 : -5000
-      adjustedPrice += fpAdj
-      adjustments.push({
-        type: 'locker' as const,
-        difference: specs.hasFireplace ? 1 : -1,
-        adjustmentAmount: fpAdj,
-        reason: specs.hasFireplace ? 'Your home has a fireplace' : 'Comp has fireplace, yours does not'
-      })
-    }
-
-    // Central air adjustment
-    const userAC = specs.hasCentralAir || false
-    const compAC = comp.cooling && Array.isArray(comp.cooling) &&
-      comp.cooling.some((c: string) => c.toLowerCase().includes('central'))
-    if (userAC !== compAC) {
-      const acAdj = userAC ? 10000 : -10000
-      adjustedPrice += acAdj
-      adjustments.push({
-        type: 'locker' as const,
-        difference: userAC ? 1 : -1,
-        adjustmentAmount: acAdj,
-        reason: userAC ? 'Your home has central air' : 'Comp has central air, yours does not'
-      })
-    }
-
-    // Determine match quality
-    let quality: 'Perfect' | 'Excellent' | 'Good' | 'Fair' = 'Fair'
-    if (adjustments.length === 0 && score >= 180) quality = 'Perfect'
-    else if (adjustments.length <= 1 && score >= 150) quality = 'Excellent'
-    else if (adjustments.length <= 2 && score >= 120) quality = 'Good'
-
-    const temperature = assignTemperature(comp.close_date)
+  if (looseBathMatches.length >= 3) {
+    // Score and sort by similarity
+    const scored = looseBathMatches.map(s => ({
+      sale: s,
+      score: scoreHomeSimilarity(s, specs)
+    }))
+    scored.sort((a, b) => b.score - a.score)
 
     return {
-      closePrice: comp.close_price,
-      listPrice: comp.list_price,
-      bedrooms: comp.bedrooms_total,
-      bathrooms: Math.floor(parseFloat(String(comp.bathrooms_total_integer)) || 0),
-      livingAreaRange: comp.living_area_range || '',
-      parking: comp.parking_total || 0,
-      locker: comp.locker,
-      daysOnMarket: comp.days_on_market || 0,
-      closeDate: comp.close_date,
-      taxAnnualAmount: comp.tax_annual_amount ? Number(comp.tax_annual_amount) : undefined,
-      exactSqft: compSqft || undefined,
-      userExactSqft: userSqft || undefined,
-      unitNumber: comp.unparsed_address || comp.unit_number || undefined,
-      listingKey: comp.listing_key || undefined,
-      temperature,
-      matchQuality: quality,
-      matchScore: score,
-      adjustments,
-      adjustedPrice,
-    } as ComparableSale
-  })
+      tier: 'RANGE-ADJ',
+      comparables: scored.slice(0, 10).map(s => createHomeComparable(s.sale, specs))
+    }
+  }
 
-  // Sort by score descending, take top 10
-  scored.sort((a: ComparableSale, b: ComparableSale) => (b.matchScore || 0) - (a.matchScore || 0))
-  const top = scored.slice(0, 10)
+  // SUB-TIER D: Just bedrooms match (last resort before CONTACT)
+  const bedOnlyMatches = sales.filter(s => s.bedrooms_total === specs.bedrooms)
+  if (bedOnlyMatches.length >= 2) {
+    const scored = bedOnlyMatches.map(s => ({
+      sale: s,
+      score: scoreHomeSimilarity(s, specs)
+    }))
+    scored.sort((a, b) => b.score - a.score)
 
-  // Determine tier
-  const perfect = top.filter(c => c.matchQuality === 'Perfect').length
-  const excellent = top.filter(c => c.matchQuality === 'Excellent').length
-  let tier: MatchTier = 'CONTACT'
-  if (perfect >= 3) tier = 'BINGO'
-  else if (perfect >= 1 || excellent >= 3) tier = 'BINGO-ADJ'
-  else if (excellent >= 1) tier = 'RANGE'
-  else if (top.length >= 3) tier = 'RANGE-ADJ'
-  else if (top.length >= 1) tier = 'MAINT-ADJ'
+    return {
+      tier: 'MAINT',
+      comparables: scored.slice(0, 10).map(s => createHomeComparable(s.sale, specs))
+    }
+  }
 
-  return { tier, comparables: top, municipalityName }
+  // CONTACT: Return whatever we have
+  if (sales.length > 0) {
+    return {
+      tier: 'CONTACT',
+      comparables: sales.slice(0, 5).map(s => createHomeComparable(s, specs))
+    }
+  }
+
+  return { tier: 'CONTACT', comparables: [] }
+}
+
+/**
+ * Score similarity between a comparable and the subject home
+ */
+function scoreHomeSimilarity(sale: any, specs: HomeSpecs): number {
+  let score = 100
+
+  // Bathroom match
+  const bathDiff = Math.abs((sale.bathrooms_total_integer || 0) - specs.bathrooms)
+  if (bathDiff === 0) score += 20
+  else if (bathDiff === 1) score += 10
+  else score -= 20
+
+  // Exact sqft comparison
+  if (specs.exactSqft && specs.exactSqft > 0) {
+    const compSqft = extractExactSqft(sale.square_foot_source)
+    if (compSqft) {
+      const sqftDiff = Math.abs(compSqft - specs.exactSqft)
+      if (sqftDiff <= 50) score += 40
+      else if (sqftDiff <= 100) score += 30
+      else if (sqftDiff <= 200) score += 20
+      else if (sqftDiff <= 300) score += 10
+      else score -= 5
+    }
+  } else if (specs.livingAreaRange) {
+    // Range comparison
+    if (sale.living_area_range === specs.livingAreaRange) score += 30
+    else if (isAdjacentRange(sale.living_area_range, specs.livingAreaRange)) score += 15
+    else score -= 10
+  }
+
+  // Parking similarity
+  const parkDiff = Math.abs((sale.parking_total || 0) - (specs.parking || 0))
+  if (parkDiff === 0) score += 15
+  else if (parkDiff === 1) score += 5
+  else score -= 10
+
+  // Lot size similarity (if both have data)
+  if (specs.lotArea && sale.lot_size_area) {
+    const lotDiff = Math.abs(sale.lot_size_area - specs.lotArea) / specs.lotArea
+    if (lotDiff <= 0.1) score += 20
+    else if (lotDiff <= 0.2) score += 10
+    else if (lotDiff <= 0.3) score += 5
+    else score -= 5
+  }
+
+  // Garage type match
+  if (specs.garageType && sale.garage_type) {
+    if (sale.garage_type === specs.garageType) score += 10
+  }
+
+  // Approximate age bracket match
+  if (specs.approximateAge && sale.approximate_age) {
+    if (sale.approximate_age === specs.approximateAge) score += 10
+    else if (isAdjacentAgeBracket(sale.approximate_age, specs.approximateAge)) score += 5
+  }
+
+  // Recency bonus: more recent sales weighted higher
+  if (sale.close_date) {
+    const monthsAgo = (Date.now() - new Date(sale.close_date).getTime()) / (1000 * 60 * 60 * 24 * 30)
+    if (monthsAgo <= 3) score += 15
+    else if (monthsAgo <= 6) score += 10
+    else if (monthsAgo <= 12) score += 5
+  }
+
+  return score
+}
+
+/**
+ * Create a ComparableSale from a home sale record
+ */
+function createHomeComparable(sale: any, specs: HomeSpecs): ComparableSale {
+  const adjustments: PriceAdjustment[] = []
+
+  // Bathroom adjustment
+  const bathDiff = specs.bathrooms - (sale.bathrooms_total_integer || 0)
+  if (bathDiff !== 0) {
+    adjustments.push({
+      type: 'bathroom' as any,
+      difference: bathDiff,
+      adjustmentAmount: bathDiff * 25000,
+      reason: bathDiff > 0
+        ? `Your home has ${Math.abs(bathDiff)} more bathroom${Math.abs(bathDiff) > 1 ? 's' : ''}`
+        : `Comparable has ${Math.abs(bathDiff)} more bathroom${Math.abs(bathDiff) > 1 ? 's' : ''}`
+    })
+  }
+
+  // Parking adjustment
+  const parkDiff = (specs.parking || 0) - (sale.parking_total || 0)
+  if (parkDiff !== 0) {
+    adjustments.push({
+      type: 'parking',
+      difference: parkDiff,
+      adjustmentAmount: parkDiff * 30000,
+      reason: parkDiff > 0
+        ? `Your home has ${Math.abs(parkDiff)} more parking space${Math.abs(parkDiff) > 1 ? 's' : ''}`
+        : `Comparable has ${Math.abs(parkDiff)} more parking space${Math.abs(parkDiff) > 1 ? 's' : ''}`
+    })
+  }
+
+  let adjustedPrice = sale.close_price
+  adjustments.forEach(a => { adjustedPrice += a.adjustmentAmount })
+
+  let matchQuality: 'Perfect' | 'Excellent' | 'Good' | 'Fair' = 'Good'
+  if (adjustments.length === 0) matchQuality = 'Perfect'
+  else if (adjustments.length === 1) matchQuality = 'Excellent'
+
+  return {
+    closePrice: sale.close_price,
+    listPrice: sale.list_price,
+    bedrooms: sale.bedrooms_total,
+    bathrooms: sale.bathrooms_total_integer || 0,
+    livingAreaRange: sale.living_area_range || 'Unknown',
+    parking: sale.parking_total || 0,
+    locker: sale.locker || 'None',
+    daysOnMarket: sale.days_on_market || 0,
+    closeDate: sale.close_date,
+    taxAnnualAmount: sale.tax_annual_amount,
+    exactSqft: extractExactSqft(sale.square_foot_source) ?? undefined,
+    userExactSqft: specs.exactSqft || undefined,
+    associationFee: sale.association_fee,
+    unitNumber: sale.street_number ? `${sale.street_number} ${sale.street_name || ''}`.trim() : sale.unit_number,
+    listingKey: sale.listing_key,
+    temperature: assignTemperature(sale.close_date),
+    matchTier: 'RANGE' as MatchTier,
+    matchQuality,
+    adjustments: adjustments.length > 0 ? adjustments : undefined,
+    adjustedPrice: adjustments.length > 0 ? adjustedPrice : undefined,
+  }
+}
+
+/**
+ * Get compatible property subtypes for matching
+ * e.g., Semi-Detached can compare with Att/Row/Townhouse
+ */
+function getCompatibleSubtypes(subtype: string): string[] {
+  const detachedTypes = ['Detached']
+  const attachedTypes = ['Semi-Detached', 'Att/Row/Townhouse', 'Link']
+  const multiTypes = ['Duplex', 'Triplex', 'Fourplex', 'Multiplex']
+
+  if (detachedTypes.includes(subtype)) return detachedTypes
+  if (attachedTypes.includes(subtype)) return attachedTypes
+  if (multiTypes.includes(subtype)) return multiTypes
+  return [subtype]
+}
+
+/**
+ * Check if two living area ranges are adjacent
+ */
+function isAdjacentRange(range1: string | null, range2: string): boolean {
+  if (!range1) return false
+  const mid1 = getRangeMidpoint(range1)
+  const mid2 = getRangeMidpoint(range2)
+  if (!mid1 || !mid2) return false
+  const diff = Math.abs(mid1 - mid2)
+  return diff <= 200 // Within one range bracket
+}
+
+function getRangeMidpoint(range: string | null): number | null {
+  if (!range) return null
+  const match = range.match(/^(\d+)-(\d+)$/)
+  if (!match) return null
+  return (parseInt(match[1]) + parseInt(match[2])) / 2
+}
+
+/**
+ * Check if approximate age brackets are adjacent
+ */
+function isAdjacentAgeBracket(age1: string, age2: string): boolean {
+  const brackets = ['0-5', '6-15', '16-30', '31-50', '51-99', '100+']
+  const idx1 = brackets.indexOf(age1)
+  const idx2 = brackets.indexOf(age2)
+  if (idx1 === -1 || idx2 === -1) return false
+  return Math.abs(idx1 - idx2) <= 1
+}
+
+function parseLotDimension(val: string | number | null): number | null {
+  if (!val) return null
+  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/[^\d.]/g, ''))
+  return isNaN(num) ? null : num
 }

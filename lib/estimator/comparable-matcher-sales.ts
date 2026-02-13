@@ -34,7 +34,7 @@ export async function findComparables(specs: UnitSpecs, customValues?: Adjustmen
   
   const { data: allSales, error } = await supabase
     .from('mls_listings')
-    .select('id, unit_number, listing_key, close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date, tax_annual_amount, square_foot_source, association_fee')
+    .select('id, unit_number, listing_key, close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date, tax_annual_amount, square_foot_source, association_fee, unparsed_address')
     .eq('building_id', specs.buildingId)
     .eq('standard_status', 'Closed')
     .not('close_price', 'is', null)
@@ -240,6 +240,7 @@ function findReferenceComparables(allSales: any[], specs: UnitSpecs): Comparable
       unitNumber: sale.unit_number,
       listingKey: sale.listing_key,
       buildingSlug: specs.buildingSlug,
+      unparsedAddress: sale.unparsed_address,
       temperature: assignTemperature(sale.close_date),
       matchTier: 'CONTACT' as MatchTier,
       matchQuality: 'Fair' as const,
@@ -308,6 +309,7 @@ function createComparable(sale: any, specs: UnitSpecs, applyAdjustments: boolean
     unitNumber: sale.unit_number,
     listingKey: sale.listing_key,
     buildingSlug: specs.buildingSlug,
+    unparsedAddress: sale.unparsed_address,
     temperature: assignTemperature(sale.close_date),
     matchTier: (adjustments.length > 0 ? 'ADJUSTED' : 'EXACT') as any, // Will be overwritten by caller
     matchQuality,

@@ -1,11 +1,11 @@
-import { notFound } from 'next/navigation'
+﻿import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
-import { isPropertySlug, parsePropertySlug } from '@/lib/utils/slugs'
-import BuildingPage, { generateMetadata as generateBuildingMetadata } from './BuildingPage'
+import { isPropertySlug, parsePropertySlug, isHomePropertySlug, parseHomePropertySlug } from '@/lib/utils/slugs'
 import DevelopmentPage, { generateDevelopmentMetadata } from './DevelopmentPage'
 import AreaPage, { generateAreaMetadata } from './AreaPage'
 import MunicipalityPage, { generateMunicipalityMetadata } from './MunicipalityPage'
 import CommunityPage, { generateCommunityMetadata } from './CommunityPage'
+import BuildingPage, { generateMetadata as generateBuildingMetadata } from './BuildingPage'
 import PropertyPage, { generateMetadata as generatePropertyMetadata } from '../property/[id]/page'
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
@@ -13,7 +13,8 @@ import { createClient } from '@/lib/supabase/server'
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  
+  const serverSupabase = createClient()
+
   // Check if it's a property slug first
   if (isPropertySlug(params.slug)) {
     const { mlsNumber } = parsePropertySlug(params.slug)
@@ -21,8 +22,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       return { title: 'Property Not Found' }
     }
     
-    const serverSupabase = createClient()
-    
+     
     // Query listing ID only
     const { data: listing } = await serverSupabase
       .from('mls_listings')
@@ -37,9 +37,19 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     return generatePropertyMetadata({ params: { id: listing.id } })
   }
 
+
+  // Check if it's a home property slug (e.g., 123-main-street-burlington-w12569682)
+  if (isHomePropertySlug(params.slug)) {
+    const { mlsNumber: homeMls } = parseHomePropertySlug(params.slug)
+    if (!homeMls) return { title: 'Property Not Found' }
+    const { data: homeListing } = await serverSupabase
+      .from('mls_listings').select('id').eq('listing_key', homeMls).single()
+    if (!homeListing) return { title: 'Property Not Found' }
+    return generatePropertyMetadata({ params: { id: homeListing.id } })
+  }
+
   // Check if it's a development slug
-  const serverSupabase = createClient()
-  const { data: development } = await serverSupabase
+    const { data: development } = await serverSupabase
     .from('developments')
     .select('id, name, slug')
     .eq('slug', params.slug)
@@ -112,6 +122,19 @@ export default async function DynamicSlugPage({
       // Render property page with the found ID
       return <PropertyPage params={{ id: listing.id }} />
     }
+
+
+  // Home Property URL: /123-main-street-burlington-w12569682
+  if (isHomePropertySlug(params.slug)) {
+    const { mlsNumber: homeMls } = parseHomePropertySlug(params.slug)
+    if (!homeMls) notFound()
+    const { createClient: createServerClient } = await import('@/lib/supabase/server')
+    const homeSupabase = createServerClient()
+    const { data: homeListing } = await homeSupabase
+      .from('mls_listings').select('id').eq('listing_key', homeMls).single()
+    if (!homeListing) notFound()
+    return <PropertyPage params={{ id: homeListing.id }} />
+  }
 
   // Check if it's a development slug
   const { data: development } = await supabase

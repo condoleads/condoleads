@@ -1,30 +1,58 @@
 // app/estimator/actions/estimate-home-rent.ts
 'use server'
 import { findHomeComparablesRentals } from '@/lib/estimator/home-comparable-matcher-rentals'
+import { HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
 import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
-import { getAIInsights } from '@/lib/estimator/ai-insights'
-import { EstimateResult, HomeUnitSpecs } from '@/lib/estimator/types'
+import { EstimateResult } from '@/lib/estimator/types'
 import { createClient } from '@/lib/supabase/server'
 
 /**
  * Server action to estimate home rental price
- * Uses community-based matching with fallback to municipality
- * Reduced lot/frontage weight vs sales (tenants care more about the house than land)
+ * Uses cascading geographic matching: Community → Municipality
  */
 export async function estimateHomeRent(
-  specs: HomeUnitSpecs,
+  specs: HomeSpecs,
   includeAI: boolean = false
-): Promise<{ success: boolean; data?: EstimateResult; error?: string }> {
-  console.log('[estimateHomeRent] community:', specs.communityId, 'subtype:', specs.propertySubtype)
+): Promise<{ success: boolean; data?: EstimateResult; error?: string; geoLevel?: string }> {
+  console.log('[estimateHomeRent] specs:', {
+    bedrooms: specs.bedrooms,
+    bathrooms: specs.bathrooms,
+    propertySubtype: specs.propertySubtype,
+    communityId: specs.communityId,
+    municipalityId: specs.municipalityId,
+  })
+
   try {
-    // Step 1: Find comparable rentals
+    // Step 1: Find comparable home leases using geographic cascading
     const matchResult = await findHomeComparablesRentals(specs)
-    console.log(`[estimateHomeRent] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}`)
+    console.log(`[HomeRentalEstimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}, geo: ${matchResult.geoLevel}`)
+
+    if (matchResult.comparables.length === 0) {
+      return {
+        success: true,
+        data: {
+          estimatedPrice: 0,
+          priceRange: { low: 0, high: 0 },
+          confidence: 'Low',
+          confidenceMessage: 'Not enough data for automated estimate',
+          comparables: [],
+          showPrice: false,
+          matchTier: 'CONTACT',
+          marketSpeed: {
+            avgDaysOnMarket: 0,
+            status: 'Moderate' as const,
+            message: 'Not enough data to determine market speed'
+          }
+        },
+        geoLevel: matchResult.geoLevel,
+        error: 'Not enough comparable leases in this area. Contact the agent for a rental assessment.'
+      }
+    }
 
     // Step 2: Calculate estimate
     const estimate = calculateEstimate(matchResult)
 
-    // Step 3: Add AI insights if requested
+    // Step 3: AI insights
     let aiInsights = undefined
     if (includeAI && estimate.showPrice && estimate.estimatedPrice > 0 && specs.agentId) {
       try {
@@ -36,37 +64,34 @@ export async function estimateHomeRent(
           .single()
 
         if (agent?.ai_estimator_enabled && agent?.anthropic_api_key) {
-          const pseudoSpecs = {
+          const { getAIInsights } = await import('@/lib/estimator/ai-insights')
+          const unitSpecs = {
             bedrooms: specs.bedrooms,
             bathrooms: specs.bathrooms,
             livingAreaRange: specs.livingAreaRange || '',
-            parking: 0,
+            parking: specs.parking || 0,
             hasLocker: false,
-            buildingId: specs.communityId,
-            exactSqft: specs.exactSqft,
-            taxAnnualAmount: specs.taxAnnualAmount,
+            buildingId: '',
+            agentId: specs.agentId,
+            exactSqft: specs.exactSqft || undefined,
           }
-          aiInsights = await getAIInsights(pseudoSpecs, estimate.estimatedPrice, matchResult.comparables, agent.anthropic_api_key)
-        } else {
-          console.log('[estimateHomeRent] AI insights skipped - not enabled or no API key')
+          aiInsights = await getAIInsights(unitSpecs, estimate.estimatedPrice, matchResult.comparables, agent.anthropic_api_key)
         }
       } catch (aiError) {
-        console.log('AI insights unavailable:', aiError)
+        console.log('[estimateHomeRent] AI insights unavailable:', aiError)
       }
     }
 
     return {
       success: true,
-      data: {
-        ...estimate,
-        aiInsights
-      }
+      data: { ...estimate, aiInsights },
+      geoLevel: matchResult.geoLevel,
     }
   } catch (error) {
-    console.error('Error estimating home rental price:', error)
+    console.error('Error estimating home rent:', error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to calculate estimate'
+      error: error instanceof Error ? error.message : 'Failed to calculate home rental estimate'
     }
   }
 }

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
 import ListingCard from './ListingCard'
 import HomeListingCard from './HomeListingCard'
+import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
+import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuyerModal'
 
 interface GeoListingSectionProps {
   initialListings: MLSListing[]
@@ -32,6 +34,13 @@ export default function GeoListingSection({
   const [totalCount, setTotalCount] = useState(initialTotal)
   const [loading, setLoading] = useState(false)
   const [initialTabLoaded, setInitialTabLoaded] = useState(true)
+
+  // Estimator modal state
+  const [modalOpen, setModalOpen] = useState(false)
+  const [selectedListing, setSelectedListing] = useState<MLSListing | null>(null)
+  const [modalType, setModalType] = useState<'sale' | 'rent'>('sale')
+  const [modalExactSqft, setModalExactSqft] = useState<number | null>(null)
+  const [selectedIsHome, setSelectedIsHome] = useState(false)
 
   const totalPages = Math.ceil(totalCount / pageSize)
 
@@ -79,6 +88,17 @@ export default function GeoListingSection({
     return activeTab === 'for-lease' || activeTab === 'leased' ? 'lease' : 'sale'
   }
 
+  // Handle estimate click from both condo and home cards
+  const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'lease', exactSqft: number | null) => {
+    const isHome = listing.property_type === 'Residential Freehold' ||
+      (!listing.building_id && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].includes(listing.property_subtype?.trim() || ''))
+    setSelectedListing(listing)
+    setModalType(type === 'lease' ? 'rent' : 'sale')
+    setModalExactSqft(exactSqft)
+    setSelectedIsHome(isHome)
+    setModalOpen(true)
+  }
+
   const tabs: { key: TabType; label: string; count: number }[] = [
     { key: 'for-sale', label: 'For Sale', count: counts.forSale },
     { key: 'for-lease', label: 'For Lease', count: counts.forLease },
@@ -115,20 +135,23 @@ export default function GeoListingSection({
       {!loading && listings.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {listings.map((listing) => {
-            const isHome = listing.property_type === 'Residential Freehold' || 
+            const isHome = listing.property_type === 'Residential Freehold' ||
               (!listing.building_id && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].some(t => listing.property_subtype?.trim() === t))
+            const currentType = getType()
             return isHome ? (
               <HomeListingCard
                 key={listing.id}
                 listing={listing}
-                type={getType()}
+                type={currentType}
+                onEstimateClick={(exactSqft) => handleEstimateClick(listing, currentType, exactSqft)}
                 agentId={agentId}
               />
             ) : (
               <ListingCard
                 key={listing.id}
                 listing={listing}
-                type={getType()}
+                type={currentType}
+                onEstimateClick={(exactSqft) => handleEstimateClick(listing, currentType, exactSqft)}
                 agentId={agentId}
               />
             )
@@ -160,6 +183,32 @@ export default function GeoListingSection({
             Next
           </button>
         </div>
+      )}
+
+      {/* Condo Estimator Modal */}
+      {!selectedIsHome && (
+        <EstimatorBuyerModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          listing={selectedListing}
+          buildingName={(selectedListing as any)?.building_name || selectedListing?.unparsed_address || ''}
+          buildingId={selectedListing?.building_id || ''}
+          type={modalType === 'rent' ? 'lease' : 'sale'}
+          exactSqft={modalExactSqft}
+          agentId={agentId}
+        />
+      )}
+
+      {/* Home Estimator Modal */}
+      {selectedIsHome && (
+        <HomeEstimatorBuyerModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          listing={selectedListing}
+          agentId={agentId}
+          type={modalType}
+          exactSqft={modalExactSqft}
+        />
       )}
     </div>
   )

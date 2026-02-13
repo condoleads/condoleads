@@ -69,6 +69,8 @@ export interface ComparableSale {
   unitNumber?: string
   listingKey?: string
   buildingSlug?: string
+  unparsedAddress?: string
+
   
   // Match classification
   temperature?: Temperature
