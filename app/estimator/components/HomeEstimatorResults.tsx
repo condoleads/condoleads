@@ -76,12 +76,12 @@ export default function HomeEstimatorResults({
   }
 
   const tierLabels: Record<string, { label: string; description: string }> = {
-    'BINGO': { label: 'Perfect Matches', description: 'Identical units with exact sqft (±10%)' },
-    'BINGO-ADJ': { label: 'Perfect Matches (Adjusted)', description: 'Identical sqft with parking/locker adjustments' },
-    'RANGE': { label: 'Same Size Units', description: 'Same sqft range with matching specs' },
-    'RANGE-ADJ': { label: 'Same Size Units (Adjusted)', description: 'Same sqft range with parking/locker adjustments' },
-    'MAINT': { label: 'Similar Size Units', description: 'Similar maintenance fee (±20%) as size proxy' },
-    'MAINT-ADJ': { label: 'Similar Size Units (Adjusted)', description: 'Similar maintenance with parking/locker adjustments' },
+    'BINGO': { label: 'Best Matches', description: 'Similar homes with exact sqft (+-10%)' },
+    'BINGO-ADJ': { label: 'Best Matches (Adjusted)', description: 'Similar sqft with lot & feature adjustments' },
+    'RANGE': { label: 'Comparable Homes', description: 'Same sqft range with matching specs' },
+    'RANGE-ADJ': { label: 'Comparable Homes (Adjusted)', description: 'Same sqft range with lot & feature adjustments' },
+    'MAINT': { label: 'Similar Homes', description: 'Similar size homes in your area' },
+    'MAINT-ADJ': { label: 'Similar Homes (Adjusted)', description: 'Similar homes with lot & feature adjustments' },
     'CONTACT': { label: 'Market Reference', description: 'Recent sales for context only' }
   }
 
@@ -91,8 +91,9 @@ export default function HomeEstimatorResults({
 
     const specs = propertySpecs || {}
     const message = result.showPrice 
-      ? `Received estimate for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Would like to discuss accurate valuation.`
-      : `Requesting valuation for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}. ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Unit requires professional analysis - no automated estimate available.`
+    ? `Received estimate for ${buildingName}${unitNumber ? ` — ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Would like to discuss accurate valuation.`
+    : `Requesting valuation for ${buildingName}${unitNumber ? ` — ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}. ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Property requires professional analysis - no automated estimate available.`
+
 
     console.log('🔍 DEBUG EstimatorResults:', { agentId, buildingId, buildingName })
 
@@ -179,7 +180,7 @@ export default function HomeEstimatorResults({
             </div>
             <h2 className="text-3xl font-bold mb-3">Expert Valuation Required</h2>
             <p className="text-lg text-blue-100 max-w-lg mx-auto">
-              {result.confidenceMessage || 'Your unit has unique characteristics that require professional analysis for accurate pricing.'}
+              {result.confidenceMessage || 'Your home has unique characteristics that require professional analysis for accurate pricing.'}
             </p>
           </div>
 
@@ -262,7 +263,7 @@ export default function HomeEstimatorResults({
               <div>
                 <h3 className="text-lg font-bold text-slate-900">Market Reference (Not Direct Comparables)</h3>
                 <p className="text-sm text-slate-600 mt-1">
-                  These recent sales in your building differ from your unit but provide market context.
+                  These recent sales in your area differ from your home but provide market context.
                 </p>
               </div>
             </div>
@@ -273,8 +274,8 @@ export default function HomeEstimatorResults({
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        {comp.unitNumber && (
-                          <span className="text-sm font-semibold text-slate-500">Unit {comp.unitNumber}</span>
+                        {comp.unparsedAddress && (
+                          <span className="text-sm font-semibold text-slate-500">{comp.unparsedAddress.split(',')[0]}</span>
                         )}
                         <span className="font-bold text-slate-900">
                           {comp.bedrooms} bed, {comp.bathrooms} bath
@@ -286,7 +287,7 @@ export default function HomeEstimatorResults({
                         )}
                       </div>
                       <p className="text-sm text-slate-600">
-                        {comp.livingAreaRange} sqft • {comp.parking} parking • {comp.locker === 'Owned' ? 'Has locker' : 'No locker'}
+                        {comp.livingAreaRange} sqft • {comp.parking} parking
                       </p>
                       <p className="text-xs text-slate-500 mt-1">
                         {isSale ? 'Sold' : 'Leased'}: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -324,7 +325,7 @@ export default function HomeEstimatorResults({
             </div>
 
             <p className="text-xs text-slate-500 mt-4 text-center">
-              ⚠️ These are for reference only. Contact agent for accurate valuation of your specific unit.
+              ⚠️ These are for reference only. Contact agent for accurate valuation of your home.
             </p>
           </div>
         )}
@@ -346,7 +347,7 @@ export default function HomeEstimatorResults({
             {!isSale && <span className="text-2xl font-normal">/mo</span>}
           </h2>
           <p className="text-sm text-slate-500 mb-3">
-            (average of {result.comparables.length} {result.matchTier === 'BINGO' ? 'identical' : 'comparable'} unit{result.comparables.length > 1 ? 's' : ''})
+            (average of {result.comparables.length} comparable home{result.comparables.length > 1 ? 's' : ''})
           </p>
 
           {/* Current Market Price - Most Recent Sale */}
@@ -466,10 +467,10 @@ export default function HomeEstimatorResults({
           <h3 className="text-lg font-bold text-slate-900 mb-4">
             {result.matchTier === 'BINGO' ? 'Perfect Matches' : 
              result.matchTier === 'BINGO-ADJ' ? 'Perfect Matches (Adjusted)' : 
-             result.matchTier === 'RANGE' ? 'Same Size Units' :
-             result.matchTier === 'RANGE-ADJ' ? 'Same Size Units (Adjusted)' :
-             result.matchTier === 'MAINT' ? 'Similar Size Units' :
-             result.matchTier === 'MAINT-ADJ' ? 'Similar Size Units (Adjusted)' :
+             result.matchTier === 'RANGE' ? 'Comparable Homes' :
+             result.matchTier === 'RANGE-ADJ' ? 'Comparable Homes (Adjusted)' :
+             result.matchTier === 'MAINT' ? 'Similar Homes' :
+             result.matchTier === 'MAINT-ADJ' ? 'Similar Homes (Adjusted)' :
              'Comparables'} ({result.comparables.length})
           </h3>
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
@@ -481,8 +482,8 @@ export default function HomeEstimatorResults({
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        {comp.unitNumber && (
-                          <span className="text-sm font-semibold text-slate-500">Unit {comp.unitNumber}</span>
+                        {comp.unparsedAddress && (
+                          <span className="text-sm font-semibold text-slate-500">{comp.unparsedAddress.split(',')[0]}</span>
                         )}
                         <p className="font-bold text-slate-900 text-lg">
                           {comp.bedrooms} bed, {comp.bathrooms} bath
@@ -495,7 +496,7 @@ export default function HomeEstimatorResults({
                         )}
                       </div>
                       <p className="text-sm text-slate-600">
-                        {comp.exactSqft ? `${comp.exactSqft} sqft` : comp.livingAreaRange + ' sqft'} • {comp.parking} parking • {comp.locker === 'Owned' ? 'Has locker' : 'No locker'}
+                        {comp.exactSqft ? `${comp.exactSqft} sqft` : comp.livingAreaRange + ' sqft'} • {comp.parking} parking
                       </p>
                       <p className="text-xs text-slate-500 mt-1">
                         {isSale ? 'Sold' : 'Leased'}: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} • {comp.daysOnMarket} days on market
@@ -604,7 +605,7 @@ export default function HomeEstimatorResults({
                     {isSale && !hasAdjustments && result.matchTier === 'BINGO' && (
                       <div className="pt-3 mt-3 border-t-2 border-emerald-300">
                         <p className="text-sm font-semibold text-emerald-700 text-center">
-                          ✨ Identical unit specifications - no adjustments needed
+                          ✨ Very similar home - no adjustments needed
                         </p>
                       </div>
                     )}
@@ -637,7 +638,7 @@ export default function HomeEstimatorResults({
         {/* Standard Disclaimer */}
         <div className="text-xs text-slate-500 pt-4 border-t">
           <p>
-            * This estimate is based on recent {isSale ? 'sales' : 'lease'} data and market analysis. Actual market {isSale ? 'value' : 'rent'} may vary based on unit condition, view, finishes, and current market conditions. Contact an agent for a professional evaluation.
+            * This estimate is based on recent {isSale ? 'sales' : 'lease'} data and market analysis. Actual market {isSale ? 'value' : 'rent'} may vary based on home condition, lot features, finishes, and current market conditions. Contact an agent for a professional evaluation.
           </p>
         </div>
       </div>
