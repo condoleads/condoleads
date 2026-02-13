@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { estimateHomeSale } from '../actions/estimate-home-sale'
 import { EstimateResult } from '@/lib/estimator/types'
-import EstimatorResults from './EstimatorResults'
+import HomeEstimatorResults from './HomeEstimatorResults'
 import { MLSListing } from '@/lib/types/building'
 import { useAuth } from '@/components/auth/AuthContext'
 import VipPrompt from '@/components/chat/VipPrompt'
@@ -518,7 +518,7 @@ export default function HomeEstimatorBuyerModal({
 
           {/* Results */}
           {result && !showVipPrompt && !showVipForm && !showWaiting && !showBlocked && !loading && (
-            <EstimatorResults
+            <HomeEstimatorResults
               result={result}
               buildingId=""
               buildingName={displayAddress}
