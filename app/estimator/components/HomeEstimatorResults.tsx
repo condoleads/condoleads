@@ -287,7 +287,7 @@ export default function HomeEstimatorResults({
                         )}
                       </div>
                       <p className="text-sm text-slate-600">
-                        {comp.livingAreaRange} sqft • {comp.parking} parking
+                        {comp.livingAreaRange} sqft • {comp.parking} parking spot(s)
                       </p>
                       <p className="text-xs text-slate-500 mt-1">
                         {isSale ? 'Sold' : 'Leased'}: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -496,7 +496,7 @@ export default function HomeEstimatorResults({
                         )}
                       </div>
                       <p className="text-sm text-slate-600">
-                        {comp.exactSqft ? `${comp.exactSqft} sqft` : comp.livingAreaRange + ' sqft'} • {comp.parking} parking
+                        {comp.exactSqft ? `${comp.exactSqft} sqft` : comp.livingAreaRange + ' sqft'} • {comp.parking} parking spot(s)
                       </p>
                       <p className="text-xs text-slate-500 mt-1">
                         {isSale ? 'Sold' : 'Leased'}: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} • {comp.daysOnMarket} days on market
