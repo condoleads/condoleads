@@ -34,7 +34,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
 
   const [municipalityResult, buildingsResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult] = await Promise.all([
     supabase.from('municipalities').select('name, slug, area_id').eq('id', community.municipality_id).single(),
-    supabase.from('buildings').select('id, building_name, slug, canonical_address, cover_photo_url, total_units, year_built').eq('community_id', community.id).order('building_name'),
+    supabase.from('buildings').select('id', { count: 'exact', head: true }).eq('community_id', community.id),
     supabase.from('mls_listings').select(LISTING_SELECT).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale').order('list_price', { ascending: false }).limit(24),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale'),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Lease'),
@@ -44,7 +44,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
   ])
 
   const municipality = municipalityResult.data
-  const buildings = buildingsResult.data || []
+  const buildingCount = buildingsResult.count || 0
   const initialListings = (initialListingsResult.data || []).map((l: any) => ({
     ...l,
     media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || []).sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999)).slice(0, 1)
@@ -77,13 +77,12 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
         </nav>
         <h1 className="text-3xl font-bold text-gray-900">{community.name} Real Estate</h1>
         <p className="text-gray-600 mt-2">
-          {buildings.length} buildings &middot; {counts.forSale + counts.forLease} active listings &middot; {counts.sold} sold &middot; {counts.leased} leased
+          {buildingCount} buildings &middot; {counts.forSale + counts.forLease} active listings &middot; {counts.sold} sold &middot; {counts.leased} leased
         </p>
 
         <div className="mt-8">
           <BuildingsGrid
-            initialBuildings={buildings}
-            totalBuildings={buildings.length}
+            totalBuildings={buildingCount}
             geoType="community"
             geoId={community.id}
             title={"Buildings in " + community.name}
