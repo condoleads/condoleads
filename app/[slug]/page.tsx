@@ -7,6 +7,7 @@ import MunicipalityPage, { generateMunicipalityMetadata } from './MunicipalityPa
 import CommunityPage, { generateCommunityMetadata } from './CommunityPage'
 import BuildingPage, { generateMetadata as generateBuildingMetadata } from './BuildingPage'
 import PropertyPage, { generateMetadata as generatePropertyMetadata } from '../property/[id]/page'
+import HomePropertyPage, { generateHomeMetadata } from '../property/[id]/HomePropertyPage'
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
 
@@ -45,7 +46,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     const { data: homeListing } = await serverSupabase
       .from('mls_listings').select('id').eq('listing_key', homeMls).single()
     if (!homeListing) return { title: 'Property Not Found' }
-    return generatePropertyMetadata({ params: { id: homeListing.id } })
+    return generateHomeMetadata({ params: { id: homeListing.id } })
   }
 
   // Check if it's a development slug
@@ -133,7 +134,7 @@ export default async function DynamicSlugPage({
     const { data: homeListing } = await homeSupabase
       .from('mls_listings').select('id').eq('listing_key', homeMls).single()
     if (!homeListing) notFound()
-    return <PropertyPage params={{ id: homeListing.id }} />
+    return <HomePropertyPage params={{ id: homeListing.id }} />
   }
 
   // Check if it's a development slug
@@ -184,3 +185,6 @@ export default async function DynamicSlugPage({
   // Building URL: /x2-condos-101-charles-st-e-toronto
   return <BuildingPage params={params} />
 }
+
+
+

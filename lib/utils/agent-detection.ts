@@ -385,3 +385,23 @@ export function getAgentBranding(agent: Agent) {
     siteName: agent.brokerage_name || agent.full_name
   }
 }
+/**
+ * Get agent to display for a home property page.
+ * Homes don't have building_id, so we use the site owner directly.
+ * Future: check agent_property_access for geo-based restrictions.
+ */
+export async function getDisplayAgentForHome(
+  host: string
+): Promise<{ siteOwner: Agent | null; displayAgent: Agent | null; isTeamSite: boolean }> {
+  const siteOwner = await getAgentFromHost(host)
+  if (!siteOwner) {
+    return { siteOwner: null, displayAgent: null, isTeamSite: false }
+  }
+  const isTeamSite = siteOwner.can_create_children === true
+
+  // For now, return site owner as display agent for all homes
+  // TODO: When agent_property_access is populated, add geo-based checks:
+  // - Check if agent has homes_access for the listing's community/municipality/area
+  // - For team sites, find assigned team member for that geo
+  return { siteOwner, displayAgent: siteOwner, isTeamSite }
+}
