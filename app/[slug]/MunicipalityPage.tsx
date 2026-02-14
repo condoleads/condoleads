@@ -2,6 +2,9 @@ import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import GeoPageTabs from './components/GeoPageTabs'
+import GeoSEOContent from './components/GeoSEOContent'
+import GeoInterlinking from './components/GeoInterlinking'
+import CommunityCard from './components/CommunityCard'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -22,7 +25,7 @@ interface MunicipalityPageProps { municipality: MunicipalityData }
 export async function generateMunicipalityMetadata(municipality: MunicipalityData) {
   return {
     title: `${municipality.name} Real Estate | Condos & Homes for Sale`,
-    description: `Browse condos and homes for sale in ${municipality.name}.`,
+    description: `Browse condos and homes for sale in ${municipality.name}. Explore communities, condo buildings, and market intelligence.`,
   }
 }
 
@@ -31,8 +34,9 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   const host = headersList.get('host') || ''
   const geoFilter = { column: 'municipality_id' as const, value: municipality.id }
 
-  const [areaResult, communitiesResult, buildingCountResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult] = await Promise.all([
+  const [areaResult, communitiesResult, buildingCountResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult, siblingMunicipalitiesResult] = await Promise.all([
     supabase.from('treb_areas').select('name, slug').eq('id', municipality.area_id).single(),
+    // Communities with listing counts via RPC-style: fetch communities then enrich
     supabase.from('communities').select('id, name, slug').eq('municipality_id', municipality.id).order('name'),
     supabase.from('communities').select('id').eq('municipality_id', municipality.id).then(async (res) => {
       const ids = (res.data || []).map(c => c.id)
@@ -46,6 +50,7 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Sale'),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Lease'),
     getAgentFromHost(host),
+    supabase.from('municipalities').select('id, name, slug').eq('area_id', municipality.area_id).order('name'),
   ])
 
   const area = areaResult.data
@@ -63,6 +68,37 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   }
 
   const buildingCount = (buildingCountResult as any)?.count || 0
+
+  // Enrich communities with listing counts
+  const communityIds = communities.map(c => c.id)
+  let communityCounts: Record<string, { forSale: number; forLease: number; buildingCount: number }> = {}
+  if (communityIds.length > 0) {
+    const [saleResult, leaseResult, buildingResult] = await Promise.all([
+      supabase.from('mls_listings').select('community_id').in('community_id', communityIds).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale'),
+      supabase.from('mls_listings').select('community_id').in('community_id', communityIds).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Lease'),
+      supabase.from('buildings').select('community_id').in('community_id', communityIds),
+    ])
+    for (const id of communityIds) {
+      communityCounts[id] = {
+        forSale: (saleResult.data || []).filter(l => l.community_id === id).length,
+        forLease: (leaseResult.data || []).filter(l => l.community_id === id).length,
+        buildingCount: (buildingResult.data || []).filter(b => b.community_id === id).length,
+      }
+    }
+  }
+
+  const enrichedCommunities = communities.map(c => ({
+    ...c,
+    forSale: communityCounts[c.id]?.forSale || 0,
+    forLease: communityCounts[c.id]?.forLease || 0,
+    buildingCount: communityCounts[c.id]?.buildingCount || 0,
+  }))
+
+  const siblingMunicipalities = (siblingMunicipalitiesResult.data || []).map(m => ({
+    name: m.name,
+    slug: m.slug,
+  }))
+
   const agent = agentResult
   const areaHref = area ? '/' + area.slug : '#'
 
@@ -92,18 +128,33 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
           />
         </div>
 
-        {communities.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Communities</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {communities.map((c) => (
-                <a key={c.id} href={'/' + c.slug} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
-                  <span className="font-medium text-gray-900">{c.name}</span>
-                </a>
+        {/* Enhanced Community Cards */}
+        {enrichedCommunities.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-xl font-semibold mb-4">Communities in {municipality.name}</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {enrichedCommunities.map((c) => (
+                <CommunityCard key={c.id} community={c} />
               ))}
             </div>
           </div>
         )}
+
+        {/* SEO Content */}
+        <GeoSEOContent
+          geoName={municipality.name}
+          geoType="municipality"
+          parentName={area?.name}
+          buildingCount={buildingCount}
+          counts={counts}
+        />
+
+        {/* Interlinking: Other Municipalities */}
+        <GeoInterlinking
+          title={`Other Areas in ${area?.name || 'the region'}`}
+          links={siblingMunicipalities}
+          currentSlug={municipality.slug}
+        />
       </div>
     </div>
   )

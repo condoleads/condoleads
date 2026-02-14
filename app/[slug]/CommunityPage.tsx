@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import GeoPageTabs from './components/GeoPageTabs'
+import GeoSEOContent from './components/GeoSEOContent'
+import GeoInterlinking from './components/GeoInterlinking'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -22,7 +24,7 @@ interface CommunityPageProps { community: CommunityData }
 export async function generateCommunityMetadata(community: CommunityData) {
   return {
     title: `${community.name} Real Estate | Condos & Homes for Sale`,
-    description: `Browse condos and homes for sale in ${community.name}.`,
+    description: `Browse condos and homes for sale in ${community.name}. View listings, condo buildings, market data, and price estimates.`,
   }
 }
 
@@ -31,7 +33,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
   const host = headersList.get('host') || ''
   const geoFilter = { column: 'community_id' as const, value: community.id }
 
-  const [municipalityResult, buildingsResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult] = await Promise.all([
+  const [municipalityResult, buildingsResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult, siblingCommunitiesResult] = await Promise.all([
     supabase.from('municipalities').select('name, slug, area_id').eq('id', community.municipality_id).single(),
     supabase.from('buildings').select('id', { count: 'exact', head: true }).eq('community_id', community.id),
     supabase.from('mls_listings').select(LISTING_SELECT).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale').order('list_price', { ascending: false }).limit(24),
@@ -40,6 +42,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Sale'),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Lease'),
     getAgentFromHost(host),
+    supabase.from('communities').select('id, name, slug').eq('municipality_id', community.municipality_id).order('name'),
   ])
 
   const municipality = municipalityResult.data
@@ -55,6 +58,11 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
     sold: soldCount.count || 0,
     leased: leasedCount.count || 0,
   }
+
+  const siblingCommunities = (siblingCommunitiesResult.data || []).map(c => ({
+    name: c.name,
+    slug: c.slug,
+  }))
 
   let area = null
   if (municipality?.area_id) {
@@ -91,6 +99,22 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
             buildingsTitle={"Buildings in " + community.name}
           />
         </div>
+
+        {/* SEO Content */}
+        <GeoSEOContent
+          geoName={community.name}
+          geoType="community"
+          parentName={municipality?.name}
+          buildingCount={buildingCount}
+          counts={counts}
+        />
+
+        {/* Interlinking: Nearby Communities */}
+        <GeoInterlinking
+          title={`Other Communities in ${municipality?.name || 'this area'}`}
+          links={siblingCommunities}
+          currentSlug={community.slug}
+        />
       </div>
     </div>
   )

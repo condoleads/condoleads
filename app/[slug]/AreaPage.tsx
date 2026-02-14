@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import GeoPageTabs from './components/GeoPageTabs'
+import GeoSEOContent from './components/GeoSEOContent'
+import GeoInterlinking from './components/GeoInterlinking'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -19,7 +21,7 @@ interface AreaPageProps { area: AreaData }
 export async function generateAreaMetadata(area: AreaData) {
   return {
     title: `${area.name} Real Estate | Condos & Homes for Sale`,
-    description: `Browse condos and homes for sale in ${area.name}.`,
+    description: `Browse condos and homes for sale in ${area.name}. Explore municipalities, communities, and condo buildings.`,
   }
 }
 
@@ -28,7 +30,7 @@ export default async function AreaPage({ area }: AreaPageProps) {
   const host = headersList.get('host') || ''
   const geoFilter = { column: 'area_id' as const, value: area.id }
 
-  const [municipalitiesResult, buildingCountResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult] = await Promise.all([
+  const [municipalitiesResult, buildingCountResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult, allAreasResult] = await Promise.all([
     supabase.from('municipalities').select('id, name, slug').eq('area_id', area.id).order('name'),
     supabase.from('municipalities').select('id').eq('area_id', area.id).then(async (res) => {
       const muniIds = (res.data || []).map(m => m.id)
@@ -45,6 +47,7 @@ export default async function AreaPage({ area }: AreaPageProps) {
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Sale'),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Lease'),
     getAgentFromHost(host),
+    supabase.from('treb_areas').select('id, name, slug').order('name'),
   ])
 
   const municipalities = municipalitiesResult.data || []
@@ -63,11 +66,26 @@ export default async function AreaPage({ area }: AreaPageProps) {
   const buildingCount = (buildingCountResult as any)?.count || 0
   const agent = agentResult
 
+  const allAreas = (allAreasResult.data || []).map(a => ({
+    name: a.name,
+    slug: a.slug,
+  }))
+
+  const municipalityLinks = municipalities.map(m => ({
+    name: m.name,
+    slug: m.slug,
+  }))
+
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
+        <nav className="text-sm text-gray-500 mb-4">
+          <span className="text-gray-900">{area.name}</span>
+        </nav>
         <h1 className="text-3xl font-bold text-gray-900">{area.name} Real Estate</h1>
-        <p className="text-gray-600 mt-2">{counts.forSale + counts.forLease} active &middot; {counts.sold} sold &middot; {counts.leased} leased</p>
+        <p className="text-gray-600 mt-2">
+          {municipalities.length} municipalities &middot; {counts.forSale + counts.forLease} active &middot; {counts.sold} sold &middot; {counts.leased} leased
+        </p>
 
         <div className="mt-8">
           <GeoPageTabs
@@ -82,18 +100,26 @@ export default async function AreaPage({ area }: AreaPageProps) {
           />
         </div>
 
-        {municipalities.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Municipalities</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {municipalities.map((m) => (
-                <a key={m.id} href={'/' + m.slug} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
-                  <span className="font-medium text-gray-900">{m.name}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Municipality Links */}
+        <GeoInterlinking
+          title={`Municipalities in ${area.name}`}
+          links={municipalityLinks}
+        />
+
+        {/* SEO Content */}
+        <GeoSEOContent
+          geoName={area.name}
+          geoType="area"
+          buildingCount={buildingCount}
+          counts={counts}
+        />
+
+        {/* Interlinking: All Areas */}
+        <GeoInterlinking
+          title="Explore All Areas"
+          links={allAreas}
+          currentSlug={area.slug}
+        />
       </div>
     </div>
   )
