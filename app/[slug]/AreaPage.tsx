@@ -85,7 +85,6 @@ export default async function AreaPage({ area }: AreaPageProps) {
 
         <div className="mt-8">
           <BuildingsGrid
-            initialBuildings={[]}
             totalBuildings={buildingCount}
             geoType="area"
             geoId={area.id}

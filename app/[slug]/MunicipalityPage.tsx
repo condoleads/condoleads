@@ -95,7 +95,6 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
 
         <div className="mt-8">
           <BuildingsGrid
-            initialBuildings={[]}
             totalBuildings={buildingCount}
             geoType="municipality"
             geoId={municipality.id}
