@@ -69,19 +69,6 @@ export default async function AreaPage({ area }: AreaPageProps) {
         <h1 className="text-3xl font-bold text-gray-900">{area.name} Real Estate</h1>
         <p className="text-gray-600 mt-2">{counts.forSale + counts.forLease} active &middot; {counts.sold} sold &middot; {counts.leased} leased</p>
 
-        {municipalities.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Municipalities</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {municipalities.map((m) => (
-                <a key={m.id} href={'/' + m.slug} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
-                  <span className="font-medium text-gray-900">{m.name}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="mt-8">
           <GeoPageTabs
             geoType="area"
@@ -94,6 +81,19 @@ export default async function AreaPage({ area }: AreaPageProps) {
             buildingsTitle="Buildings"
           />
         </div>
+
+        {municipalities.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold mb-4">Municipalities</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {municipalities.map((m) => (
+                <a key={m.id} href={'/' + m.slug} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
+                  <span className="font-medium text-gray-900">{m.name}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

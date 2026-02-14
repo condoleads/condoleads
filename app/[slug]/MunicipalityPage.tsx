@@ -79,19 +79,6 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
         <h1 className="text-3xl font-bold text-gray-900">{municipality.name} Real Estate</h1>
         <p className="text-gray-600 mt-2">{counts.forSale + counts.forLease} active &middot; {counts.sold} sold &middot; {counts.leased} leased</p>
 
-        {communities.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-4">Communities</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {communities.map((c) => (
-                <a key={c.id} href={'/' + c.slug} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
-                  <span className="font-medium text-gray-900">{c.name}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div className="mt-8">
           <GeoPageTabs
             geoType="municipality"
@@ -104,6 +91,19 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
             buildingsTitle="Buildings"
           />
         </div>
+
+        {communities.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold mb-4">Communities</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {communities.map((c) => (
+                <a key={c.id} href={'/' + c.slug} className="p-3 border rounded-lg hover:border-blue-500 hover:shadow-md transition-all text-sm">
+                  <span className="font-medium text-gray-900">{c.name}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

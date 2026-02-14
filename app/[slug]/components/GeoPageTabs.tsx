@@ -33,29 +33,29 @@ export default function GeoPageTabs({
   showBuildings = true,
   buildingsTitle = 'Buildings',
 }: GeoPageTabsProps) {
-  const [activeTab, setActiveTab] = useState<TopTab>(showBuildings && buildingCount > 0 ? 'buildings' : 'condos')
+  const [activeTab, setActiveTab] = useState<TopTab>('homes')
 
   const topTabs: { key: TopTab; label: string; icon: React.ReactNode; count: number; show: boolean }[] = [
-    {
-      key: 'buildings',
-      label: 'Buildings',
-      icon: <Building2 className="w-4 h-4" />,
-      count: buildingCount,
-      show: showBuildings && buildingCount > 0,
-    },
-    {
-      key: 'condos',
-      label: 'Condos',
-      icon: <LayoutGrid className="w-4 h-4" />,
-      count: 0, // Will show sub-tab counts
-      show: true,
-    },
     {
       key: 'homes',
       label: 'Homes',
       icon: <Home className="w-4 h-4" />,
       count: 0,
       show: true,
+    },
+    {
+      key: 'condos',
+      label: 'Condos',
+      icon: <LayoutGrid className="w-4 h-4" />,
+      count: 0,
+      show: true,
+    },
+    {
+      key: 'buildings',
+      label: 'Buildings',
+      icon: <Building2 className="w-4 h-4" />,
+      count: buildingCount,
+      show: showBuildings && buildingCount > 0,
     },
   ]
 
