@@ -15,7 +15,21 @@ export async function GET(request: NextRequest) {
   const tab = searchParams.get('tab')
   const page = parseInt(searchParams.get('page') || '1')
   const pageSize = parseInt(searchParams.get('pageSize') || '24')
-  const propertyCategory = searchParams.get('propertyCategory') // 'condo' | 'homes' | null (all)
+
+  // Filter params
+  const propertyCategory = searchParams.get('propertyCategory')
+  const minPrice = searchParams.get('minPrice')
+  const maxPrice = searchParams.get('maxPrice')
+  const beds = searchParams.get('beds')
+  const baths = searchParams.get('baths')
+  const sort = searchParams.get('sort') || 'default'
+  const subtypes = searchParams.get('subtypes')
+  const minSqft = searchParams.get('minSqft')
+  const maxSqft = searchParams.get('maxSqft')
+  const garage = searchParams.get('garage')
+  const basement = searchParams.get('basement')
+  const parking = searchParams.get('parking')
+  const locker = searchParams.get('locker')
 
   if (!geoType || !geoId || !tab) {
     return NextResponse.json({ error: 'Missing params' }, { status: 400 })
@@ -37,6 +51,7 @@ export async function GET(request: NextRequest) {
   const transactionType = (tab === 'for-sale' || tab === 'sold') ? 'For Sale' : 'For Lease'
   const status = isActive ? 'Active' : 'Closed'
   const accessField = isActive ? 'available_in_idx' : 'available_in_vow'
+  const priceField = isActive ? 'list_price' : 'close_price'
   const offset = (page - 1) * pageSize
 
   let query = supabase
@@ -47,15 +62,57 @@ export async function GET(request: NextRequest) {
     .eq('standard_status', status)
     .eq(accessField, true)
 
-  // Apply property category filter
+  // Property category
   if (propertyCategory === 'condo') {
     query = query.in('property_subtype', CONDO_TYPES)
   } else if (propertyCategory === 'homes') {
     query = query.in('property_subtype', RESIDENTIAL_TYPES)
   }
 
+  // Specific subtypes override category
+  if (subtypes) {
+    const typeList = subtypes.split(',').map(s => s.trim()).filter(Boolean)
+    if (typeList.length > 0) {
+      query = query.in('property_subtype', typeList)
+    }
+  }
+
+  // Price filters
+  if (minPrice) query = query.gte(priceField, parseInt(minPrice))
+  if (maxPrice) query = query.lte(priceField, parseInt(maxPrice))
+
+  // Bedrooms
+  if (beds && beds !== '0') query = query.gte('bedrooms_total', parseInt(beds))
+
+  // Bathrooms
+  if (baths && baths !== '0') query = query.gte('bathrooms_total_integer', parseInt(baths))
+
+  // Sqft - uses building_area_total (numeric)
+  if (minSqft) query = query.gte('building_area_total', parseInt(minSqft))
+  if (maxSqft) query = query.lte('building_area_total', parseInt(maxSqft))
+
+  // Garage (homes)
+  if (garage === 'yes') query = query.eq('garage_yn', true)
+
+  // Basement (homes)
+  if (basement && basement !== 'any') query = query.ilike('basement', `%${basement}%`)
+
+  // Parking (condos)
+  if (parking && parking !== '0') query = query.gte('parking_total', parseInt(parking))
+
+  // Locker (condos)
+  if (locker === 'yes') query = query.eq('locker', 'Owned')
+
+  // Sorting
+  let orderField = isActive ? 'list_price' : 'close_date'
+  let ascending = false
+  if (sort === 'price_asc') { orderField = priceField; ascending = true }
+  else if (sort === 'price_desc') { orderField = priceField; ascending = false }
+  else if (sort === 'newest') { orderField = 'listing_contract_date'; ascending = false }
+  else if (sort === 'oldest') { orderField = 'listing_contract_date'; ascending = true }
+
   const { data: listings, count } = await query
-    .order(isActive ? 'list_price' : 'close_date', { ascending: false })
+    .order(orderField, { ascending })
     .range(offset, offset + pageSize - 1)
 
   const processed = (listings || []).map(listing => ({

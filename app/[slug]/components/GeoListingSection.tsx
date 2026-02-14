@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { MLSListing } from '@/lib/types/building'
 import ListingCard from './ListingCard'
 import HomeListingCard from './HomeListingCard'
 import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuyerModal'
+import GeoQuickFilters, { FilterState } from './GeoQuickFilters'
+import GeoAdvancedFilters, { AdvancedFilterState } from './GeoAdvancedFilters'
 
 interface GeoListingSectionProps {
   initialListings?: MLSListing[]
@@ -25,6 +27,9 @@ const isHomeProperty = (listing: MLSListing) => {
     (!listing.building_id && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].some(t => listing.property_subtype?.trim() === t))
 }
 
+const DEFAULT_FILTERS: FilterState = { minPrice: '', maxPrice: '', beds: '0', baths: '0', sort: 'default' }
+const DEFAULT_ADVANCED: AdvancedFilterState = { subtypes: [], minSqft: '', maxSqft: '', garage: 'any', basement: 'any', parking: '0', locker: 'any' }
+
 export default function GeoListingSection({
   initialListings,
   initialTotal,
@@ -41,9 +46,12 @@ export default function GeoListingSection({
   const [totalCount, setTotalCount] = useState(initialTotal || 0)
   const [loading, setLoading] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
-
-  // Tab counts — fetched dynamically when propertyCategory is set
   const [counts, setCounts] = useState(initialCounts || { forSale: 0, forLease: 0, sold: 0, leased: 0 })
+
+  // Filter state
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS)
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterState>(DEFAULT_ADVANCED)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   // Estimator modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -54,11 +62,28 @@ export default function GeoListingSection({
 
   const totalPages = Math.ceil(totalCount / pageSize)
 
-  const buildUrl = (tab: TabType, page: number) => {
-    let url = `/api/geo-listings?geoType=${geoType}&geoId=${geoId}&tab=${tab}&page=${page}&pageSize=${pageSize}`
-    if (propertyCategory) url += `&propertyCategory=${propertyCategory}`
-    return url
-  }
+  const buildUrl = useCallback((tab: TabType, page: number) => {
+    const params = new URLSearchParams()
+    params.set('geoType', geoType)
+    params.set('geoId', geoId)
+    params.set('tab', tab)
+    params.set('page', String(page))
+    params.set('pageSize', String(pageSize))
+    if (propertyCategory) params.set('propertyCategory', propertyCategory)
+    if (filters.minPrice) params.set('minPrice', filters.minPrice)
+    if (filters.maxPrice) params.set('maxPrice', filters.maxPrice)
+    if (filters.beds !== '0') params.set('beds', filters.beds)
+    if (filters.baths !== '0') params.set('baths', filters.baths)
+    if (filters.sort !== 'default') params.set('sort', filters.sort)
+    if (advancedFilters.subtypes.length > 0) params.set('subtypes', advancedFilters.subtypes.join(','))
+    if (advancedFilters.minSqft) params.set('minSqft', advancedFilters.minSqft)
+    if (advancedFilters.maxSqft) params.set('maxSqft', advancedFilters.maxSqft)
+    if (advancedFilters.garage && advancedFilters.garage !== 'any') params.set('garage', advancedFilters.garage)
+    if (advancedFilters.basement && advancedFilters.basement !== 'any') params.set('basement', advancedFilters.basement)
+    if (advancedFilters.parking && advancedFilters.parking !== '0') params.set('parking', advancedFilters.parking)
+    if (advancedFilters.locker && advancedFilters.locker !== 'any') params.set('locker', advancedFilters.locker)
+    return `/api/geo-listings?${params.toString()}`
+  }, [geoType, geoId, pageSize, propertyCategory, filters, advancedFilters])
 
   const fetchListings = async (tab: TabType, page: number) => {
     setLoading(true)
@@ -74,39 +99,58 @@ export default function GeoListingSection({
     }
   }
 
-  // Fetch counts for all tabs when propertyCategory changes
   const fetchCounts = async () => {
     try {
       const tabs: TabType[] = ['for-sale', 'for-lease', 'sold', 'leased']
       const results = await Promise.all(
         tabs.map(tab =>
-          fetch(buildUrl(tab, 1) + '&pageSize=1')
+          fetch(buildUrl(tab, 1).replace(`pageSize=${pageSize}`, 'pageSize=1'))
             .then(r => r.json())
             .then(d => d.total || 0)
         )
       )
-      setCounts({
-        forSale: results[0],
-        forLease: results[1],
-        sold: results[2],
-        leased: results[3],
-      })
+      setCounts({ forSale: results[0], forLease: results[1], sold: results[2], leased: results[3] })
     } catch (err) {
       console.error('Failed to fetch counts:', err)
     }
   }
 
-  // On mount or propertyCategory change: fetch fresh data
+  // On category change — fresh fetch immediately
   useEffect(() => {
     if (propertyCategory) {
-      // Category-filtered — always fetch fresh
-      fetchCounts()
-      fetchListings('for-sale', 1)
+      setFilters(DEFAULT_FILTERS)
+      setAdvancedFilters(DEFAULT_ADVANCED)
       setActiveTab('for-sale')
       setCurrentPage(1)
       setInitialLoad(false)
+      // Fetch immediately
+      setLoading(true)
+      const params = new URLSearchParams()
+      params.set('geoType', geoType)
+      params.set('geoId', geoId)
+      params.set('tab', 'for-sale')
+      params.set('page', '1')
+      params.set('pageSize', String(pageSize))
+      params.set('propertyCategory', propertyCategory)
+      const url = `/api/geo-listings?${params.toString()}`
+      fetch(url).then(r => r.json()).then(data => {
+        setListings(data.listings || [])
+        setTotalCount(data.total || 0)
+        setLoading(false)
+      }).catch(() => setLoading(false))
+      // Fetch counts
+      const tabs = ['for-sale', 'for-lease', 'sold', 'leased']
+      Promise.all(
+        tabs.map(tab => {
+          const p = new URLSearchParams(params)
+          p.set('tab', tab)
+          p.set('pageSize', '1')
+          return fetch(`/api/geo-listings?${p.toString()}`).then(r => r.json()).then(d => d.total || 0)
+        })
+      ).then(results => {
+        setCounts({ forSale: results[0], forLease: results[1], sold: results[2], leased: results[3] })
+      })
     } else if (initialListings && initialCounts) {
-      // No category filter, use server-provided data
       setListings(initialListings)
       setTotalCount(initialTotal || 0)
       setCounts(initialCounts)
@@ -114,10 +158,21 @@ export default function GeoListingSection({
     }
   }, [propertyCategory])
 
+  // On filter/advanced change — re-fetch
+  useEffect(() => {
+    if (!initialLoad) {
+      setCurrentPage(1)
+      fetchListings('for-sale', 1)
+      fetchCounts()
+      setActiveTab('for-sale')
+    }
+  }, [filters, advancedFilters])
+
+  
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab)
     setCurrentPage(1)
-    if (!propertyCategory && tab === 'for-sale' && initialLoad && initialListings) {
+    if (!propertyCategory && !hasActiveFilters() && tab === 'for-sale' && initialLoad && initialListings) {
       setListings(initialListings)
       setTotalCount(initialTotal || 0)
     } else {
@@ -128,15 +183,24 @@ export default function GeoListingSection({
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page)
-    if (!propertyCategory && activeTab === 'for-sale' && page === 1 && initialLoad && initialListings) {
-      setListings(initialListings)
-      setTotalCount(initialTotal || 0)
-    } else {
-      fetchListings(activeTab, page)
-      setInitialLoad(false)
-    }
+    fetchListings(activeTab, page)
+    setInitialLoad(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+
+  const hasActiveFilters = () => {
+    return filters.minPrice || filters.maxPrice || filters.beds !== '0' || filters.baths !== '0' || filters.sort !== 'default'
+  }
+
+  const advancedFilterCount = [
+    advancedFilters.subtypes.length > 0,
+    advancedFilters.minSqft,
+    advancedFilters.maxSqft,
+    advancedFilters.garage !== 'any',
+    advancedFilters.basement !== 'any',
+    advancedFilters.parking !== '0',
+    advancedFilters.locker !== 'any',
+  ].filter(Boolean).length
 
   const getType = (): 'sale' | 'lease' => {
     return activeTab === 'for-lease' || activeTab === 'leased' ? 'lease' : 'sale'
@@ -160,6 +224,27 @@ export default function GeoListingSection({
 
   return (
     <div>
+      {/* Quick Filters */}
+      <GeoQuickFilters
+        filters={filters}
+        onChange={(f) => { setFilters(f); setInitialLoad(false) }}
+        onToggleAdvanced={() => setAdvancedOpen(!advancedOpen)}
+        advancedOpen={advancedOpen}
+        activeFilterCount={advancedFilterCount}
+        type={activeTab === 'for-lease' || activeTab === 'leased' ? 'lease' : 'sale'}
+      />
+
+      {/* Advanced Filters */}
+      {advancedOpen && (
+        <GeoAdvancedFilters
+          filters={advancedFilters}
+          onChange={(f) => { setAdvancedFilters(f); setInitialLoad(false) }}
+          onClose={() => setAdvancedOpen(false)}
+          propertyCategory={propertyCategory}
+        />
+      )}
+
+      {/* Status Tabs */}
       <div className="flex gap-2 mb-6 overflow-x-auto">
         {tabs.map((tab) => (
           <button
@@ -176,6 +261,7 @@ export default function GeoListingSection({
         ))}
       </div>
 
+      {/* Loading */}
       {loading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -184,6 +270,7 @@ export default function GeoListingSection({
         </div>
       )}
 
+      {/* Listings Grid */}
       {!loading && listings.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {listings.map((listing) => {
@@ -210,12 +297,22 @@ export default function GeoListingSection({
         </div>
       )}
 
+      {/* Empty State */}
       {!loading && listings.length === 0 && (
         <div className="text-center py-12 text-gray-500">
-          <p>No listings found.</p>
+          <p>No listings found{hasActiveFilters() || advancedFilterCount > 0 ? ' matching your filters.' : '.'}</p>
+          {(hasActiveFilters() || advancedFilterCount > 0) && (
+            <button
+              onClick={() => { setFilters(DEFAULT_FILTERS); setAdvancedFilters(DEFAULT_ADVANCED) }}
+              className="mt-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+            >
+              Clear all filters
+            </button>
+          )}
         </div>
       )}
 
+      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex justify-center items-center gap-2 mt-8">
           <button
