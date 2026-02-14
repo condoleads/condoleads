@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MLSListing } from '@/lib/types/building'
 import ListingCard from './ListingCard'
 import HomeListingCard from './HomeListingCard'
@@ -8,32 +8,42 @@ import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuyerModal'
 
 interface GeoListingSectionProps {
-  initialListings: MLSListing[]
-  initialTotal: number
-  counts: { forSale: number; forLease: number; sold: number; leased: number }
+  initialListings?: MLSListing[]
+  initialTotal?: number
+  counts?: { forSale: number; forLease: number; sold: number; leased: number }
   geoType: 'community' | 'municipality' | 'area'
   geoId: string
   agentId: string
   pageSize?: number
+  propertyCategory?: 'condo' | 'homes'
 }
 
 type TabType = 'for-sale' | 'for-lease' | 'sold' | 'leased'
 
+const isHomeProperty = (listing: MLSListing) => {
+  return listing.property_type === 'Residential Freehold' ||
+    (!listing.building_id && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].some(t => listing.property_subtype?.trim() === t))
+}
+
 export default function GeoListingSection({
-  initialListings = [],
-  initialTotal = 0,
-  counts,
+  initialListings,
+  initialTotal,
+  counts: initialCounts,
   geoType,
   geoId,
   agentId,
   pageSize = 24,
+  propertyCategory,
 }: GeoListingSectionProps) {
   const [activeTab, setActiveTab] = useState<TabType>('for-sale')
   const [currentPage, setCurrentPage] = useState(1)
-  const [listings, setListings] = useState<MLSListing[]>(initialListings)
-  const [totalCount, setTotalCount] = useState(initialTotal)
+  const [listings, setListings] = useState<MLSListing[]>(initialListings || [])
+  const [totalCount, setTotalCount] = useState(initialTotal || 0)
   const [loading, setLoading] = useState(false)
-  const [initialTabLoaded, setInitialTabLoaded] = useState(true)
+  const [initialLoad, setInitialLoad] = useState(true)
+
+  // Tab counts — fetched dynamically when propertyCategory is set
+  const [counts, setCounts] = useState(initialCounts || { forSale: 0, forLease: 0, sold: 0, leased: 0 })
 
   // Estimator modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -44,12 +54,16 @@ export default function GeoListingSection({
 
   const totalPages = Math.ceil(totalCount / pageSize)
 
+  const buildUrl = (tab: TabType, page: number) => {
+    let url = `/api/geo-listings?geoType=${geoType}&geoId=${geoId}&tab=${tab}&page=${page}&pageSize=${pageSize}`
+    if (propertyCategory) url += `&propertyCategory=${propertyCategory}`
+    return url
+  }
+
   const fetchListings = async (tab: TabType, page: number) => {
     setLoading(true)
     try {
-      const res = await fetch(
-        `/api/geo-listings?geoType=${geoType}&geoId=${geoId}&tab=${tab}&page=${page}&pageSize=${pageSize}`
-      )
+      const res = await fetch(buildUrl(tab, page))
       const data = await res.json()
       setListings(data.listings || [])
       setTotalCount(data.total || 0)
@@ -60,26 +74,66 @@ export default function GeoListingSection({
     }
   }
 
+  // Fetch counts for all tabs when propertyCategory changes
+  const fetchCounts = async () => {
+    try {
+      const tabs: TabType[] = ['for-sale', 'for-lease', 'sold', 'leased']
+      const results = await Promise.all(
+        tabs.map(tab =>
+          fetch(buildUrl(tab, 1) + '&pageSize=1')
+            .then(r => r.json())
+            .then(d => d.total || 0)
+        )
+      )
+      setCounts({
+        forSale: results[0],
+        forLease: results[1],
+        sold: results[2],
+        leased: results[3],
+      })
+    } catch (err) {
+      console.error('Failed to fetch counts:', err)
+    }
+  }
+
+  // On mount or propertyCategory change: fetch fresh data
+  useEffect(() => {
+    if (propertyCategory) {
+      // Category-filtered — always fetch fresh
+      fetchCounts()
+      fetchListings('for-sale', 1)
+      setActiveTab('for-sale')
+      setCurrentPage(1)
+      setInitialLoad(false)
+    } else if (initialListings && initialCounts) {
+      // No category filter, use server-provided data
+      setListings(initialListings)
+      setTotalCount(initialTotal || 0)
+      setCounts(initialCounts)
+      setInitialLoad(true)
+    }
+  }, [propertyCategory])
+
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab)
     setCurrentPage(1)
-    if (tab === 'for-sale' && initialTabLoaded) {
+    if (!propertyCategory && tab === 'for-sale' && initialLoad && initialListings) {
       setListings(initialListings)
-      setTotalCount(initialTotal)
+      setTotalCount(initialTotal || 0)
     } else {
       fetchListings(tab, 1)
-      if (tab === 'for-sale') setInitialTabLoaded(false)
+      setInitialLoad(false)
     }
   }
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page)
-    if (activeTab === 'for-sale' && page === 1 && initialTabLoaded) {
+    if (!propertyCategory && activeTab === 'for-sale' && page === 1 && initialLoad && initialListings) {
       setListings(initialListings)
-      setTotalCount(initialTotal)
+      setTotalCount(initialTotal || 0)
     } else {
       fetchListings(activeTab, page)
-      if (activeTab === 'for-sale') setInitialTabLoaded(false)
+      setInitialLoad(false)
     }
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -88,10 +142,8 @@ export default function GeoListingSection({
     return activeTab === 'for-lease' || activeTab === 'leased' ? 'lease' : 'sale'
   }
 
-  // Handle estimate click from both condo and home cards
   const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'lease', exactSqft: number | null) => {
-    const isHome = listing.property_type === 'Residential Freehold' ||
-      (!listing.building_id && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].includes(listing.property_subtype?.trim() || ''))
+    const isHome = isHomeProperty(listing)
     setSelectedListing(listing)
     setModalType(type === 'lease' ? 'rent' : 'sale')
     setModalExactSqft(exactSqft)
@@ -135,8 +187,7 @@ export default function GeoListingSection({
       {!loading && listings.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {listings.map((listing) => {
-            const isHome = listing.property_type === 'Residential Freehold' ||
-              (!listing.building_id && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].some(t => listing.property_subtype?.trim() === t))
+            const isHome = isHomeProperty(listing)
             const currentType = getType()
             return isHome ? (
               <HomeListingCard

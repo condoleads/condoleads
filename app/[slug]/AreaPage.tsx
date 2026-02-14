@@ -1,8 +1,7 @@
 import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
-import GeoListingSection from './components/GeoListingSection'
-import BuildingsGrid from './components/BuildingsGrid'
+import GeoPageTabs from './components/GeoPageTabs'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -84,23 +83,15 @@ export default async function AreaPage({ area }: AreaPageProps) {
         )}
 
         <div className="mt-8">
-          <BuildingsGrid
-            totalBuildings={buildingCount}
-            geoType="area"
-            geoId={area.id}
-            title="Buildings"
-          />
-        </div>
-
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-4">Listings</h2>
-          <GeoListingSection
-            initialListings={initialListings}
-            initialTotal={counts.forSale}
-            counts={counts}
+          <GeoPageTabs
             geoType="area"
             geoId={area.id}
             agentId={agent?.id || ''}
+            buildingCount={buildingCount}
+            initialListings={initialListings}
+            initialTotal={counts.forSale}
+            counts={counts}
+            buildingsTitle="Buildings"
           />
         </div>
       </div>
