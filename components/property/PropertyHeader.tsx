@@ -14,9 +14,10 @@ interface PropertyHeaderProps {
   buildingId?: string
   onEstimateClick?: () => void
   onOfferClick?: () => void
+  isHome?: boolean
 }
 
-export default function PropertyHeader({ listing, status, isSale, shouldBlur = false, buildingId, onEstimateClick, onOfferClick }: PropertyHeaderProps) {
+export default function PropertyHeader({ listing, status, isSale, shouldBlur = false, buildingId, onEstimateClick, onOfferClick, isHome = false }: PropertyHeaderProps) {
   const [showRegister, setShowRegister] = useState(false)
   const isClosed = status === 'Closed'
   
@@ -48,7 +49,7 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-3 mb-3">
               <h1 className={`text-3xl font-bold text-slate-900 ${shouldBlur ? 'blur-sm' : ''}`}>
-                Unit {listing.unit_number || 'N/A'}
+                {isHome ? (listing.unparsed_address?.split(',')[0]?.trim() || 'Property') : `Unit ${listing.unit_number || 'N/A'}`}
               </h1>
               <StatusBadge
                 status={status}
@@ -58,7 +59,7 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
             <p className={`text-lg text-slate-600 mb-2 ${shouldBlur ? 'blur-sm' : ''}`}>
               {listing.unparsed_address || listing.buildings?.address}
             </p>
-            {listing.buildings?.name && (
+            {!isHome && listing.buildings?.name && (
               <p className={`text-base text-slate-700 mb-2 font-semibold ${shouldBlur ? 'blur-sm' : ''}`}>
                 {listing.buildings.name}
               </p>

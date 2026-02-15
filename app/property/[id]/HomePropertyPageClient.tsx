@@ -91,6 +91,7 @@ export default function HomePropertyPageClient({
           isSale={isSale}
           shouldBlur={shouldGate}
           buildingId=""
+          isHome={true}
           onEstimateClick={() => setShowEstimatorModal(true)}
           onOfferClick={() => setShowOfferModal(true)}
         />
