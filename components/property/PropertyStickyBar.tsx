@@ -13,14 +13,17 @@ interface PropertyStickyBarProps {
   isSale: boolean
   onEstimateClick: () => void
   onOfferClick: () => void
+  isHome?: boolean
 }
+
 
 export default function PropertyStickyBar({
   listing,
   buildingName,
   isSale,
   onEstimateClick,
-  onOfferClick
+  onOfferClick,
+  isHome = false
 }: PropertyStickyBarProps) {
   const [isVisible, setIsVisible] = useState(false)
 
@@ -52,7 +55,7 @@ export default function PropertyStickyBar({
         {/* Mobile Layout */}
         <div className="flex md:hidden items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-slate-900 truncate">Unit {listing.unit_number}</p>
+            <p className="font-bold text-slate-900 truncate">{isHome ? buildingName : `Unit ${listing.unit_number}`}</p>
             <p className="text-sm text-slate-600">{formatPrice(listing.list_price, !isSale)}{!isSale && '/mo'}</p>
           </div>
           <button
@@ -72,7 +75,7 @@ export default function PropertyStickyBar({
           <div className="flex items-center gap-4">
             <div>
               <p className="font-bold text-slate-900">
-                Unit {listing.unit_number} • {buildingName}
+                {isHome ? buildingName : `Unit ${listing.unit_number}`} • {isHome ? '' : buildingName}
               </p>
               <p className="text-sm text-slate-600">
                 {formatPrice(listing.list_price, !isSale)}{!isSale && '/mo'} • {isSale ? 'For Sale' : 'For Lease'}

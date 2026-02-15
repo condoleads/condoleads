@@ -21,9 +21,10 @@ interface UnitHistoryProps {
   history: HistoricalSale[]
   unitNumber: string
   buildingSlug?: string
+  isHome?: boolean
 }
 
-export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitHistoryProps) {
+export default function UnitHistory({ history, unitNumber, buildingSlug, isHome = false }: UnitHistoryProps) {
   const { user } = useAuth()
   
   if (!history || history.length === 0) return null
@@ -44,10 +45,10 @@ export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitH
   return (
     <section className="bg-white rounded-xl shadow-sm p-6">
       <h2 className="text-2xl font-bold text-slate-900 mb-4">
-        Unit {unitNumber} History
+        {isHome ? unitNumber : `Unit ${unitNumber}`} History
       </h2>
       <p className="text-slate-600 mb-6">
-        Complete transaction history for this unit
+        Complete transaction history for this {isHome ? 'property' : 'unit'}
       </p>
       
       <div className="space-y-4">
@@ -67,9 +68,11 @@ export default function UnitHistory({ history, unitNumber, buildingSlug }: UnitH
              statusDisplay.label === 'Leased' ? 'Leased' :
              statusDisplay.label === 'Expired' ? 'Expired' : 'Closed')
             : 'Listed'
-          const propertyUrl = buildingSlug && sale.listing_key 
-            ? `/${buildingSlug}-unit-${unitNumber}-${sale.listing_key.toLowerCase()}` 
-            : null
+          const propertyUrl = isHome && sale.listing_key
+            ? `/${unitNumber.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}-${sale.listing_key.toLowerCase()}`
+            : buildingSlug && sale.listing_key 
+              ? `/${buildingSlug}-unit-${unitNumber}-${sale.listing_key.toLowerCase()}`
+              : null
 
           return (
             <div key={sale.id} className="border border-slate-200 rounded-lg p-4">

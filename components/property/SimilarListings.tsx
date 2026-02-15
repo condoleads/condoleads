@@ -1,6 +1,7 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
+import HomeListingCard from '@/app/[slug]/components/HomeListingCard'
 import { MLSListing } from '@/lib/types/building'
 import ListingCard from '@/app/[slug]/components/ListingCard'
 
@@ -9,13 +10,15 @@ interface SimilarListingsProps {
   title?: string
   initialDisplay?: number
   agentId?: string
+  isHome?: boolean
 }
 
 export default function SimilarListings({ 
   listings, 
   title,
   initialDisplay = 4,
-  agentId
+  agentId,
+  isHome = false,
 }: SimilarListingsProps) {
   const [showAll, setShowAll] = useState(false)
   
@@ -28,11 +31,11 @@ export default function SimilarListings({
   const allActive = listings.every(l => l.standard_status === 'Active')
   
   const defaultTitle = allClosed 
-    ? 'Similar Sold Units in This Building'
-    : allActive
-    ? 'Available For Sale in This Building'
-    : 'Similar Units in This Building'
-  
+      ? (isHome ? 'Recently Sold Nearby' : 'Similar Sold Units in This Building')
+      : allActive
+      ? (isHome ? 'Available Nearby' : 'Available For Sale in This Building')
+      : (isHome ? 'Similar Properties Nearby' : 'Similar Units in This Building')
+
   const displayTitle = title || defaultTitle
   
   const maxDisplay = 20
@@ -58,13 +61,20 @@ export default function SimilarListings({
           const isSale = listing.transaction_type === 'For Sale'
           const type = isSale ? 'sale' : 'lease'
 
-          return (
+          return isHome ? (
+            <HomeListingCard
+              key={listing.id}
+              listing={listing}
+              type={type}
+              agentId={agentId}
+            />
+          ) : (
             <ListingCard
               key={listing.id}
               listing={listing}
               type={type}
-                agentId={agentId}
-              />
+              agentId={agentId}
+            />
           )
         })}
       </div>
@@ -75,7 +85,7 @@ export default function SimilarListings({
             onClick={() => setShowAll(true)}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors"
           >
-            Show {listings.length > maxDisplay ? `${maxDisplay - initialDisplay} More` : `All ${listings.length}`} Units
+            Show {listings.length > maxDisplay ? `${maxDisplay - initialDisplay} More` : `All ${listings.length}`} {isHome ? 'Properties' : 'Units'}
           </button>
         </div>
       )}

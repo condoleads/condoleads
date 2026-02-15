@@ -12,9 +12,10 @@ interface AgentContactFormProps {
     id: string
     full_name: string
   }
+   isHome?: boolean
 }
 
-export default function AgentContactForm({ listing, status, isSale, agent }: AgentContactFormProps) {
+export default function AgentContactForm({ listing, status, isSale, agent, isHome = false }: AgentContactFormProps) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -27,11 +28,11 @@ export default function AgentContactForm({ listing, status, isSale, agent }: Age
   const isClosed = status === 'Closed'
   
   const formTitle = isClosed
-    ? (isSale ? 'Own a Similar Unit?' : 'Looking to Lease a Similar Unit?')
-    : (isSale ? 'Interested in This Unit?' : 'Interested in Renting?')
+      ? (isSale ? (isHome ? 'Own a Similar Home?' : 'Own a Similar Unit?') : (isHome ? 'Looking to Lease a Similar Home?' : 'Looking to Lease a Similar Unit?'))
+      : (isSale ? (isHome ? 'Interested in This Home?' : 'Interested in This Unit?') : 'Interested in Renting?')
   
   const submitLabel = isClosed
-    ? (isSale ? 'Get My Unit Valued' : 'Find Similar Rentals')
+    ? (isSale ? (isHome ? 'Get My Home Valued' : 'Get My Unit Valued') : 'Find Similar Rentals')
     : 'Schedule Viewing'
   
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,7 +40,9 @@ export default function AgentContactForm({ listing, status, isSale, agent }: Age
     setIsSubmitting(true)
 
     // Build context-aware message
-    const unitInfo = `${listing.unit_number || 'Unit'} - ${listing.bedrooms_total}BR/${listing.bathrooms_total_integer}BA`
+    const unitInfo = isHome
+        ? `${listing.unparsed_address?.split(',')[0] || 'Property'} - ${listing.bedrooms_total}BR/${listing.bathrooms_total_integer}BA`
+        : `${listing.unit_number || 'Unit'} - ${listing.bedrooms_total}BR/${listing.bathrooms_total_integer}BA`
     const buildingInfo = listing.unparsed_address
     const fullMessage = formData.message 
       ? `${formData.message} (Re: ${unitInfo} at ${buildingInfo})`

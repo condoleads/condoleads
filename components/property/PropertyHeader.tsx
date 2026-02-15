@@ -64,6 +64,12 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
                 {listing.buildings.name}
               </p>
             )}
+            {isHome && (
+              <p className={`text-base text-slate-700 mb-1 ${shouldBlur ? 'blur-sm' : ''}`}>
+                {listing.bedrooms_total || 0} Bed · {listing.bathrooms_total_integer || 0} Bath
+                {listing.property_subtype ? ` · ${listing.property_subtype}` : ''}
+              </p>
+            )}
             <p className={`text-sm text-slate-500 ${shouldBlur ? 'blur-sm' : ''}`}>
               MLS #{listing.listing_key || listing.listing_id}
             </p>

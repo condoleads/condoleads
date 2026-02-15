@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useAuth } from '@/components/auth/AuthContext'
 import PropertyGallery from '@/components/property/PropertyGallery'
 import PropertyHeader from '@/components/property/PropertyHeader'
-import PropertyDetails from '@/components/property/PropertyDetails'
+import HomePropertyDetails from '@/components/property/HomePropertyDetails'
 import PropertyDescription from '@/components/property/PropertyDescription'
 import PriceHistory from '@/components/property/PriceHistory'
 import RoomDimensions from '@/components/property/RoomDimensions'
@@ -102,7 +102,7 @@ export default function HomePropertyPageClient({
             <PropertyDescription description={listing.public_remarks} />
 
             <GatedContent shouldGate={shouldGate} sectionName="Property Details" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
-              <PropertyDetails listing={listing} />
+              <HomePropertyDetails listing={listing} />
             </GatedContent>
 
             {rooms && rooms.length > 0 && (
@@ -114,10 +114,11 @@ export default function HomePropertyPageClient({
             {addressHistory && addressHistory.length > 0 && (
               <GatedContent shouldGate={shouldGateMLSData} sectionName="Transaction History" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
                 <UnitHistory
-                  history={addressHistory}
-                  unitNumber={shortAddress}
-                  buildingSlug=""
-                />
+                    history={addressHistory}
+                    unitNumber={shortAddress}
+                    buildingSlug=""
+                    isHome={true}
+                  />
               </GatedContent>
             )}
 
@@ -134,17 +135,18 @@ export default function HomePropertyPageClient({
             )}
 
             <SimilarListings
-              listings={similarListings}
-              title="Recently Sold Nearby"
-              agentId={agent?.id}
-            />
+               listings={similarListings}
+                title="Recently Sold Nearby"
+                agentId={agent?.id}
+                isHome={true}
+              />
 
             {availableNearby && availableNearby.length > 0 && (
               <div>
                 <h2 className="text-2xl font-bold mb-4">
                   Available {isSale ? 'For Sale' : 'For Lease'} Nearby
                 </h2>
-                <SimilarListings listings={availableNearby} agentId={agent?.id} />
+                <SimilarListings listings={availableNearby} agentId={agent?.id} isHome={true} />
               </div>
             )}
           </div>
@@ -176,11 +178,12 @@ export default function HomePropertyPageClient({
                   <HomePropertyInfo listing={listing} />
 
                   <AgentContactForm
-                    listing={{ ...listing, buildings: null }}
-                    status={status}
-                    isSale={isSale}
-                    agent={agent}
-                  />
+                      listing={{ ...listing, buildings: null }}
+                      status={status}
+                      isSale={isSale}
+                      agent={agent}
+                      isHome={true}
+                    />
                 </>
               )}
             </div>
@@ -192,6 +195,7 @@ export default function HomePropertyPageClient({
       <PropertyStickyBar
         listing={{ ...listing, building_id: listing.building_id || '' }}
         buildingName={shortAddress}
+        isHome={true}
         isSale={isSale}
         onEstimateClick={() => setShowEstimatorModal(true)}
         onOfferClick={() => setShowOfferModal(true)}

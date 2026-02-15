@@ -20,7 +20,7 @@ export default function HomePropertyInfo({ listing }: HomePropertyInfoProps) {
   const lotWidth = listing.lot_width ? parseFloat(listing.lot_width) : null
   const lotDepth = listing.lot_depth ? parseFloat(listing.lot_depth) : null
   const lotSize = lotWidth && lotDepth
-    ? `${lotWidth.toFixed(0)}  ${lotDepth.toFixed(0)} ft`
+    ? `${lotWidth.toFixed(0)} × ${lotDepth.toFixed(0)} ft`
     : listing.lot_size_dimensions || null
 
   const basementText = listing.basement?.length
