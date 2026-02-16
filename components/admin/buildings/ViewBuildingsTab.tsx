@@ -51,6 +51,8 @@ export default function ViewBuildingsTab() {
   const [filterMunicipality, setFilterMunicipality] = useState<string>('')
   const [filterCommunity, setFilterCommunity] = useState<string>('')
   const [filterAgent, setFilterAgent] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const PAGE_SIZE = 50
 
   const [editingBuilding, setEditingBuilding] = useState<Building | null>(null)
   const [editName, setEditName] = useState('')
@@ -260,7 +262,12 @@ export default function ViewBuildingsTab() {
     return matchesSearch && matchesArea && matchesNeighbourhood && matchesMunicipality && matchesCommunity && matchesAgent
   })
 
-  const clearFilters = () => {
+  const totalPages = Math.ceil(filteredBuildings.length / PAGE_SIZE)
+    const paginatedBuildings = filteredBuildings.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+    useEffect(() => { setCurrentPage(1) }, [searchTerm, filterArea, filterNeighbourhood, filterMunicipality, filterCommunity, filterAgent])
+
+    const clearFilters = () => {
     setSearchTerm('')
     setFilterArea('')
     setFilterNeighbourhood('')
@@ -377,7 +384,7 @@ export default function ViewBuildingsTab() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredBuildings.map((building) => (
+            {paginatedBuildings.map((building) => (
               <tr key={building.id} className={`hover:bg-gray-50 ${selectedBuildings.has(building.id) ? 'bg-blue-50' : ''}`}>
                 <td className="px-3 py-3"><input type="checkbox" checked={selectedBuildings.has(building.id)} onChange={() => toggleBuildingSelection(building.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" /></td>
                 <td className="px-3 py-3">
@@ -416,7 +423,29 @@ export default function ViewBuildingsTab() {
         {filteredBuildings.length === 0 && <div className="text-center py-12 text-gray-500">{hasActiveFilters ? 'No buildings match your filters' : 'No buildings found'}</div>}
       </div>
 
-      {editingBuilding && (
+      {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 px-2">
+            <p className="text-sm text-gray-600">Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, filteredBuildings.length)} of {filteredBuildings.length} buildings</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="px-2 py-1 text-xs border rounded disabled:opacity-40 hover:bg-gray-50">&laquo;</button>
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">Prev</button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let page: number;
+                if (totalPages <= 5) { page = i + 1; }
+                else if (currentPage <= 3) { page = i + 1; }
+                else if (currentPage >= totalPages - 2) { page = totalPages - 4 + i; }
+                else { page = currentPage - 2 + i; }
+                return (
+                  <button key={page} onClick={() => setCurrentPage(page)} className={`px-3 py-1 text-sm border rounded ${currentPage === page ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50'}`}>{page}</button>
+                );
+              })}
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">Next</button>
+              <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="px-2 py-1 text-xs border rounded disabled:opacity-40 hover:bg-gray-50">&raquo;</button>
+            </div>
+          </div>
+        )}
+
+        {editingBuilding && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => setEditingBuilding(null)} />
           <div className="relative bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
