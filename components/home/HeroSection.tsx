@@ -157,10 +157,7 @@ export function HeroSection({ agent, isTeamSite = false }: HeroSectionProps) {
                 {isTeamSite && agent.team_name && (
                   <p className="text-blue-300 text-sm mt-0.5">Led by {agent.full_name}</p>
                 )}
-                <div className="flex items-center gap-2 mt-1">
-                  <Sparkles className="w-4 h-4 text-blue-400" />
-                  <p className="text-blue-300 font-medium">Toronto Condo Specialist</p>
-                </div>
+                
               </div>
             </div>
 

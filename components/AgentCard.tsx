@@ -68,8 +68,7 @@ export function AgentCard({
           <div>
             <p className="text-sm text-blue-200 mb-1">Your Agent</p>
             <h3 className="text-2xl font-bold">{agent.full_name}</h3>
-            <p className="text-blue-200">{agent.title || 'Sales Representative'}</p>
-            <p className="text-xs text-blue-100">Condo Specialist</p>
+            <p className="text-blue-200">{agent.title || 'Sales Representative'}</p>            
             {agent.brokerage_name && (
               <p className="text-xs text-blue-100 mt-1">{agent.brokerage_name}</p>
             )}
