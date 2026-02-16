@@ -11,6 +11,8 @@ interface HeroSectionProps {
     office_phone?: string | null
     whatsapp_number?: string | null
     bio?: string
+    title?: string | null
+    brokerage_name?: string | null
     profile_photo_url?: string
     team_name?: string | null
     team_tagline?: string | null
@@ -97,9 +99,11 @@ export function HeroSection({ agent, isTeamSite = false }: HeroSectionProps) {
           )}
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold truncate">{displayName}</h1>
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-              <p className="text-blue-300 text-sm font-medium">AI-Powered Condo Intelligence</p>
+              {agent.title && <p className="text-blue-200 text-xs truncate">{agent.title}</p>}
+              {agent.brokerage_name && <p className="text-blue-300/70 text-xs truncate">{agent.brokerage_name}</p>}
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <p className="text-blue-300 text-sm font-medium">AI-Powered Condo Intelligence</p>
             </div>
           </div>
         </div>
@@ -154,9 +158,11 @@ export function HeroSection({ agent, isTeamSite = false }: HeroSectionProps) {
               )}
               <div>
                 <h1 className="text-4xl font-bold">{displayName}</h1>
-                {isTeamSite && agent.team_name && (
-                  <p className="text-blue-300 text-sm mt-0.5">Led by {agent.full_name}</p>
-                )}
+                  {agent.title && <p className="text-blue-200 text-lg mt-1">{agent.title}</p>}
+                  {agent.brokerage_name && <p className="text-blue-300/70 text-sm">{agent.brokerage_name}</p>}
+                  {isTeamSite && agent.team_name && (
+                    <p className="text-blue-300 text-sm mt-0.5">Led by {agent.full_name}</p>
+                  )}
                 
               </div>
             </div>
