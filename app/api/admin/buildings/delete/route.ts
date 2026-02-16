@@ -69,7 +69,7 @@ export async function DELETE(request: NextRequest) {
     if (agentError) console.error('Agent buildings delete error:', agentError)
 
     const { error: buildingAgentsError } = await supabase
-      .from('building_agents')
+      .from('agent_buildings')
       .delete()
       .eq('building_id', buildingId)
     if (buildingAgentsError) console.error('Building agents delete error:', buildingAgentsError)

@@ -37,7 +37,7 @@ export default async function AgentDetailPage({ params }: { params: { id: string
 
   // Get ALL building assignments (for all agents) to show who has what
   const { data: allAssignments } = await supabase
-    .from('building_agents')
+    .from('agent_buildings')
     .select(`
       building_id,
       agent_id,
@@ -49,7 +49,7 @@ export default async function AgentDetailPage({ params }: { params: { id: string
 
   // Get current agent's assigned buildings
   const { data: currentAgentAssignments } = await supabase
-    .from('building_agents')
+    .from('agent_buildings')
     .select('building_id, buildings(id, building_name, canonical_address, total_units)')
     .eq('agent_id', params.id)
 

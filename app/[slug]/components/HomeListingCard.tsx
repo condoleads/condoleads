@@ -136,8 +136,7 @@ export default function HomeListingCard({ listing, type, onEstimateClick, agentI
   const dom = calculateDaysOnMarket(listing.days_on_market, listing.listing_contract_date, listing.standard_status)
 
   // Property slug for link — opens in new tab
-  const propertySlug = generateHomePropertySlug(listing)
-  const propertyUrl = `/${propertySlug}`
+  const propertyUrl = generateHomePropertySlug(listing)
 
   // Address
   const addressDisplay = listing.unparsed_address || 'Address Not Available'

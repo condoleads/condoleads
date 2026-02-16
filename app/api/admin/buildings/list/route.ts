@@ -1,4 +1,4 @@
-﻿// app/api/admin/buildings/list/route.ts
+// app/api/admin/buildings/list/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     // Get all building-agent assignments with agent details
     const { data: assignments, error: assignmentsError } = await supabase
-      .from('building_agents')
+      .from('agent_buildings')
       .select(`
         building_id,
         agent_id,

@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     if (action === 'assign') {
       // Insert to both tables
       const { error: error1 } = await supabase
-        .from('building_agents')
+        .from('agent_buildings')
         .insert({ agent_id: agentId, building_id: buildingId })
 
       const { error: error2 } = await supabase
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     } else if (action === 'unassign') {
       // Delete from both tables
       await supabase
-        .from('building_agents')
+        .from('agent_buildings')
         .delete()
         .eq('agent_id', agentId)
         .eq('building_id', buildingId)

@@ -26,6 +26,8 @@ function buildPropTxTypeFilter(pt: PropertyTypeFilter): string {
   }
 }
 
+const PT_LABELS: Record<string, string> = { freehold: 'Freehold', condo: 'Condo', both: 'All Residential' };
+
 function filterTwoVariants(allMediaItems: any[]) {
   if (!allMediaItems || allMediaItems.length === 0) return [];
   const sorted = [...allMediaItems].sort((a, b) => (parseInt(a.Order) || 999) - (parseInt(b.Order) || 999));
@@ -140,69 +142,82 @@ export async function POST(request: NextRequest) {
 
         const headers = { 'Authorization': 'Bearer ' + PROPTX_TOKEN, 'Accept': 'application/json' };
 
-        const propTypeFilter = buildPropTxTypeFilter(ptFilter);
-        let baseFilter = propTypeFilter + " and City eq '" + municipalityName + "'";
-        if (communityName) baseFilter += " and CityRegion eq '" + communityName + "'";
-        progress('Filter: ' + (communityName ? municipalityName + ' / ' + communityName : municipalityName) + ' (' + ptFilter + ')');
+        // For 'both', split into sequential passes to avoid timeout on large municipalities
+        const passes: { label: string; filter: string }[] = [];
+        const cityFilter = "City eq '" + municipalityName + "'" + (communityName ? " and CityRegion eq '" + communityName + "'" : '');
 
-        progress('Fetching active listings from PropTx...');
-        const activeListings = await fetchBasicListings(baseFilter, headers, progress);
-        progress('Active/current: ' + activeListings.length);
-
-        progress('Fetching sold transactions...');
-        const soldFilter = baseFilter + " and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')";
-        const soldListings = await fetchBasicListings(soldFilter, headers, progress);
-        progress('Sold: ' + soldListings.length);
-
-        progress('Fetching leased transactions...');
-        const leasedFilter = baseFilter + " and (MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')";
-        const leasedListings = await fetchBasicListings(leasedFilter, headers, progress);
-        progress('Leased: ' + leasedListings.length);
-
-        const allListings = [...activeListings, ...soldListings, ...leasedListings];
-        const seen = new Set<string>();
-        const unique = allListings.filter(l => {
-          const key = l.ListingKey || (l.StreetNumber + '-' + l.StreetName + '-' + l.MlsStatus);
-          if (seen.has(key)) return false;
-          seen.add(key); return true;
-        });
-
-        const excluded = ['Pending', 'Cancelled', 'Withdrawn'];
-        const excludedMls = ['Cancelled', 'Withdrawn', 'Pend'];
-        const filtered = unique.filter(l => !excluded.includes(l.StandardStatus) && !excludedMls.includes(l.MlsStatus));
-        progress('Total unique: ' + unique.length + ' -> After filter: ' + filtered.length);
-
-        if (filtered.length === 0) {
-          send('complete', { summary: { listings: 0, media: 0, rooms: 0, openHouses: 0, skipped: 0 } });
-          controller.close(); return;
+        if (ptFilter === 'both') {
+          passes.push({ label: 'Freehold', filter: "PropertyType eq 'Residential Freehold' and " + cityFilter });
+          passes.push({ label: 'Condo', filter: "PropertyType eq 'Residential Condo & Other' and " + cityFilter });
+        } else {
+          passes.push({ label: PT_LABELS[ptFilter], filter: buildPropTxTypeFilter(ptFilter) + ' and ' + cityFilter });
         }
 
         let totalStats = { listings: 0, media: 0, rooms: 0, openHouses: 0, skipped: 0 };
-        const totalChunks = Math.ceil(filtered.length / CHUNK_SIZE);
 
-        for (let c = 0; c < filtered.length; c += CHUNK_SIZE) {
-          const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
-          const chunk = filtered.slice(c, c + CHUNK_SIZE);
+        for (const pass of passes) {
+          progress('--- Pass: ' + pass.label + ' ---');
+          progress('Filter: ' + (communityName ? municipalityName + ' / ' + communityName : municipalityName) + ' (' + pass.label + ')');
 
-          progress('Chunk ' + chunkNum + '/' + totalChunks + ': Fetching enhanced data for ' + chunk.length + ' listings...');
-          await fetchEnhancedData(chunk, headers);
+          progress('Fetching active listings from PropTx...');
+          const activeListings = await fetchBasicListings(pass.filter, headers, progress);
+          progress('Active/current: ' + activeListings.length);
 
-          progress('Chunk ' + chunkNum + '/' + totalChunks + ': Saving to database...');
-          const result = await saveHomesListings(chunk, municipalityId, areaId);
+          progress('Fetching sold transactions...');
+          const soldFilter = pass.filter + " and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')";
+          const soldListings = await fetchBasicListings(soldFilter, headers, progress);
+          progress('Sold: ' + soldListings.length);
 
-          if (result.success && result.stats) {
-            totalStats.listings += result.stats.listings;
-            totalStats.media += result.stats.media;
-            totalStats.rooms += result.stats.rooms;
-            totalStats.openHouses += result.stats.openHouses;
-            totalStats.skipped += result.stats.skipped;
-            progress('Chunk ' + chunkNum + '/' + totalChunks + ': ' + result.stats.listings + ' listings, ' + result.stats.media + ' media, ' + result.stats.rooms + ' rooms');
-          } else {
-            progress('Chunk ' + chunkNum + '/' + totalChunks + ' error: ' + result.error);
-            totalStats.skipped += chunk.length;
+          progress('Fetching leased transactions...');
+          const leasedFilter = pass.filter + " and (MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')";
+          const leasedListings = await fetchBasicListings(leasedFilter, headers, progress);
+          progress('Leased: ' + leasedListings.length);
+
+          const allListings = [...activeListings, ...soldListings, ...leasedListings];
+          const seen = new Set<string>();
+          const unique = allListings.filter(l => {
+            const key = l.ListingKey || (l.StreetNumber + '-' + l.StreetName + '-' + l.MlsStatus);
+            if (seen.has(key)) return false;
+            seen.add(key); return true;
+          });
+          const excluded = ['Pending', 'Cancelled', 'Withdrawn'];
+          const excludedMls = ['Cancelled', 'Withdrawn', 'Pend'];
+          const filtered = unique.filter(l => !excluded.includes(l.StandardStatus) && !excludedMls.includes(l.MlsStatus));
+          progress(pass.label + ' unique: ' + unique.length + ' -> After filter: ' + filtered.length);
+
+          if (filtered.length === 0) {
+            progress(pass.label + ': No listings to process, skipping.');
+            continue;
           }
+
+          const totalChunks = Math.ceil(filtered.length / CHUNK_SIZE);
+          for (let c = 0; c < filtered.length; c += CHUNK_SIZE) {
+            const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
+            const chunk = filtered.slice(c, c + CHUNK_SIZE);
+            progress('Chunk ' + chunkNum + '/' + totalChunks + ': Fetching enhanced data for ' + chunk.length + ' listings...');
+            await fetchEnhancedData(chunk, headers);
+            progress('Chunk ' + chunkNum + '/' + totalChunks + ': Saving to database...');
+            const result = await saveHomesListings(chunk, municipalityId, areaId);
+            if (result.success && result.stats) {
+              totalStats.listings += result.stats.listings;
+              totalStats.media += result.stats.media;
+              totalStats.rooms += result.stats.rooms;
+              totalStats.openHouses += result.stats.openHouses;
+              totalStats.skipped += result.stats.skipped;
+              progress('Chunk ' + chunkNum + '/' + totalChunks + ': ' + result.stats.listings + ' listings, ' + result.stats.media + ' media, ' + result.stats.rooms + ' rooms');
+            } else {
+              progress('Chunk ' + chunkNum + '/' + totalChunks + ' error: ' + result.error);
+              totalStats.skipped += chunk.length;
+            }
+          }
+          progress(pass.label + ' pass complete: ' + totalStats.listings + ' total listings saved so far');
         }
 
+        if (totalStats.listings === 0 && totalStats.skipped === 0) {
+          send('complete', { summary: { listings: 0, media: 0, rooms: 0, openHouses: 0, skipped: 0 } });
+          controller.close(); return;
+        }
+        
         progress('Updating hierarchy counts...');
         await updateHierarchyCounts(municipalityId, areaId);
         progress('Hierarchy counts updated');

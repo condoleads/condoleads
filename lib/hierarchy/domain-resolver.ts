@@ -192,7 +192,7 @@ export async function getAgentsForBuilding(
 
   // Get the agent assigned to this building
   const { data: assignment } = await supabase
-    .from('building_agents')
+    .from('agent_buildings')
     .select('agent_id, agents(*)')
     .eq('building_id', buildingId)
     .single()

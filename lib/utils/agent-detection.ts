@@ -126,9 +126,9 @@ export async function verifyAgentBuildingAccess(
 ): Promise<boolean> {
   const supabase = createClient()
 
-  // Check direct assignment via building_agents table
+  // Check direct assignment via agent_buildings table
   const { data: directAssignment } = await supabase
-    .from('building_agents')
+    .from('agent_buildings')
     .select('id')
     .eq('agent_id', agentId)
     .eq('building_id', buildingId)

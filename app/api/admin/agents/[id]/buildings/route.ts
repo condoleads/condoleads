@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   // Delete existing assignments from BOTH tables
   await supabase
-    .from('building_agents')
+    .from('agent_buildings')
     .delete()
     .eq('agent_id', agentId)
 
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   // Insert new assignments to BOTH tables
   if (buildingIds.length > 0) {
-    // Insert to building_agents (new table)
+    // Insert to agent_buildings (new table)
     const buildingAgentsData = buildingIds.map(function(buildingId: string) {
       return {
         agent_id: agentId,
@@ -45,11 +45,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     })
 
     const { error: error1 } = await supabase
-      .from('building_agents')
+      .from('agent_buildings')
       .insert(buildingAgentsData)
 
     if (error1) {
-      console.error('Error inserting to building_agents:', error1)
+      console.error('Error inserting to agent_buildings:', error1)
       return NextResponse.json({ error: error1.message }, { status: 500 })
     }
 

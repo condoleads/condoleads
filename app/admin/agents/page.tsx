@@ -39,7 +39,7 @@ export default async function AdminAgentsPage() {
       
       // Get building assignment count
       const { data: buildingAssignments } = await supabase
-        .from('building_agents')
+        .from('agent_buildings')
         .select('id')
         .eq('agent_id', agent.id)
       
