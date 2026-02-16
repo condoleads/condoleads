@@ -132,14 +132,23 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     finally { setLoading(false) }
   }
 
-  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) {
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+      const file = e.target.files?.[0]
+      if (!file) return
+      if (file.size > 5 * 1024 * 1024) { alert('File must be under 5MB'); return }
       const reader = new FileReader()
       reader.onloadend = () => setPhotoPreview(reader.result as string)
       reader.readAsDataURL(file)
+      try {
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const fileName = `agents/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
+        const { error } = await supabase.storage.from('agent-photos').upload(fileName, file, { cacheControl: '3600', upsert: true })
+        if (error) { alert('Upload failed: ' + error.message); return }
+        const { data: urlData } = supabase.storage.from('agent-photos').getPublicUrl(fileName)
+        if (urlData?.publicUrl) { setPhotoPreview(urlData.publicUrl); setFormData(prev => ({...prev, profile_photo_url: urlData.publicUrl})) }
+      } catch (err) { console.error('Upload error:', err) }
     }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
