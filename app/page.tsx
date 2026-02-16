@@ -178,7 +178,7 @@ export default async function RootPage() {
 
   // Group listings by building_id
   const listingsByBuilding = new Map<string, any[]>();
-  (allListings || []).forEach(listing => {
+  (allListings || []).forEach((listing: any) => {
     const existing = listingsByBuilding.get(listing.building_id) || [];
     existing.push(listing);
     listingsByBuilding.set(listing.building_id, existing);
