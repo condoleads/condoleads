@@ -233,7 +233,7 @@ export default async function RootPage() {
         }}
       />
       <HomePage
-        agent={agent}
+          agent={{...agent, profile_photo_url: agent.profile_photo_url?.startsWith('data:') ? undefined : agent.profile_photo_url}}
         buildings={buildingsWithCounts.filter((b: any) => !b.fromDevelopment)}
         isTeamSite={isTeamSite}
         teamAgents={teamAgents}
