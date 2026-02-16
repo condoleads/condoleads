@@ -102,6 +102,11 @@ function ImageCarousel({ photos, alt }: { photos: string[]; alt: string }) {
 }
 
 export function BuildingsGrid({ buildings, developments = [], agentName, isTeamSite = false }: BuildingsGridProps) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 24;
+  const totalPages = Math.ceil(buildings.length / PAGE_SIZE);
+  const paginatedBuildings = buildings.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   return (
     <div id="buildings" className="py-20 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -188,7 +193,7 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
               </Link>
             ))}
             {/* Building Cards */}
-            {buildings.map((building) => (
+            {paginatedBuildings.map((building) => (
               <Link
                 key={building.id}
                 href={`/${building.slug}`}
@@ -284,6 +289,46 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
                 </div>
               </Link>
             ))}
+         </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex flex-col items-center gap-4 mt-12">
+            <p className="text-gray-500 text-sm">
+              Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, buildings.length)} of {buildings.length} buildings
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); document.getElementById('buildings')?.scrollIntoView({ behavior: 'smooth' }); }}
+                disabled={currentPage === 1}
+                className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors"
+              >
+                ← Previous
+              </button>
+              {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
+                let page: number;
+                if (totalPages <= 7) { page = i + 1; }
+                else if (currentPage <= 4) { page = i + 1; }
+                else if (currentPage >= totalPages - 3) { page = totalPages - 6 + i; }
+                else { page = currentPage - 3 + i; }
+                return (
+                  <button
+                    key={page}
+                    onClick={() => { setCurrentPage(page); document.getElementById('buildings')?.scrollIntoView({ behavior: 'smooth' }); }}
+                    className={`w-10 h-10 text-sm font-medium rounded-lg transition-colors ${currentPage === page ? 'bg-blue-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}
+                  >
+                    {page}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); document.getElementById('buildings')?.scrollIntoView({ behavior: 'smooth' }); }}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg disabled:opacity-40 hover:bg-gray-50 transition-colors"
+              >
+                Next →
+              </button>
+            </div>
           </div>
         )}
       </div>

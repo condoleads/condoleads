@@ -52,6 +52,7 @@ export default function ViewBuildingsTab() {
   const [filterCommunity, setFilterCommunity] = useState<string>('')
   const [filterAgent, setFilterAgent] = useState<string>('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [showAll, setShowAll] = useState(false)
   const PAGE_SIZE = 50
 
   const [editingBuilding, setEditingBuilding] = useState<Building | null>(null)
@@ -263,7 +264,7 @@ export default function ViewBuildingsTab() {
   })
 
   const totalPages = Math.ceil(filteredBuildings.length / PAGE_SIZE)
-    const paginatedBuildings = filteredBuildings.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+    const paginatedBuildings = showAll ? filteredBuildings : filteredBuildings.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
     useEffect(() => { setCurrentPage(1) }, [searchTerm, filterArea, filterNeighbourhood, filterMunicipality, filterCommunity, filterAgent])
 
@@ -426,6 +427,7 @@ export default function ViewBuildingsTab() {
       {totalPages > 1 && (
           <div className="flex items-center justify-between mt-4 px-2">
             <p className="text-sm text-gray-600">Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, filteredBuildings.length)} of {filteredBuildings.length} buildings</p>
+            <button onClick={() => setShowAll(true)} className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded">View All</button>
             <div className="flex items-center gap-2">
               <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="px-2 py-1 text-xs border rounded disabled:opacity-40 hover:bg-gray-50">&laquo;</button>
               <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-3 py-1 text-sm border rounded disabled:opacity-40 hover:bg-gray-50">Prev</button>
