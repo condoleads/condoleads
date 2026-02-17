@@ -1,5 +1,6 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useRef } from 'react';
+import CommandCenter from './components/CommandCenter';
 import { ChevronRight, ChevronDown, Home, MapPin, RefreshCw, Search, CheckCircle, Clock, Loader2, Play, AlertTriangle, Database, Cloud, BarChart3, History, XCircle } from 'lucide-react';
 
 type PropertyTypeFilter = 'freehold' | 'condo' | 'both';
@@ -26,7 +27,7 @@ function formatDuration(seconds: number): string {
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return '—';
+  if (!iso) return 'â€”';
   const d = new Date(iso);
   return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' });
 }
@@ -72,6 +73,7 @@ export default function HomesBulkSync() {
   const [syncLogs, setSyncLogs] = useState<string[]>([]);
   const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState<'command' | 'municipality'>('command');
 
   useEffect(() => { loadGeoTree(); }, []);
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [syncLogs]);
@@ -223,7 +225,7 @@ export default function HomesBulkSync() {
           <div className="mt-3 text-[10px] text-gray-500 flex items-center gap-1">
             <Clock className="w-3 h-3" />
             Last sync: {formatDate(typeStatus.last_sync.completed_at)} ({formatDuration(typeStatus.last_sync.duration_seconds)})
-            — {typeStatus.last_sync.listings_created} saved, {typeStatus.last_sync.media_saved} media
+            â€” {typeStatus.last_sync.listings_created} saved, {typeStatus.last_sync.media_saved} media
           </div>
         )}
         {!typeStatus.last_sync && (
@@ -250,14 +252,27 @@ export default function HomesBulkSync() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Bulk Sync — Residential Properties</h1>
-          <p className="text-gray-600">PropTx vs Database — full coverage dashboard</p>
+          <h1 className="text-2xl font-bold text-gray-900">Bulk Sync â€” Residential Properties</h1>
+          <p className="text-gray-600">PropTx vs Database â€” full coverage dashboard</p>
         </div>
         <button onClick={loadGeoTree} className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm">
           <RefreshCw className="w-4 h-4" /> Refresh
         </button>
       </div>
 
+      {/* TAB TOGGLE */}
+      <div className="flex gap-2 mb-4">
+        <button onClick={() => setActiveTab('command')} className={'px-4 py-2 rounded-lg text-sm font-medium ' + (activeTab === 'command' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
+          Command Center
+        </button>
+        <button onClick={() => setActiveTab('municipality')} className={'px-4 py-2 rounded-lg text-sm font-medium ' + (activeTab === 'municipality' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200')}>
+          Municipality Sync
+        </button>
+      </div>
+
+      {activeTab === 'command' ? (
+        <CommandCenter />
+      ) : (
       <div className="grid grid-cols-12 gap-6">
         {/* LEFT: Geo Tree */}
         <div className="col-span-4 bg-white rounded-lg border border-gray-200 p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
@@ -344,7 +359,7 @@ export default function HomesBulkSync() {
               {syncStatus.running_syncs.length > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2 text-sm text-blue-800">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Sync in progress for {syncStatus.running_syncs.map(s => s.property_type).join(', ')} — started {formatDate(syncStatus.running_syncs[0].started_at)}
+                  Sync in progress for {syncStatus.running_syncs.map(s => s.property_type).join(', ')} â€” started {formatDate(syncStatus.running_syncs[0].started_at)}
                 </div>
               )}
 
@@ -415,7 +430,7 @@ export default function HomesBulkSync() {
               {syncStatus.recent_history.length > 0 && (
                 <div className="bg-white rounded-lg border border-gray-200 p-4">
                   <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <History className="w-4 h-4" /> Sync History — {locationLabel}
+                    <History className="w-4 h-4" /> Sync History â€” {locationLabel}
                   </h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
@@ -446,8 +461,8 @@ export default function HomesBulkSync() {
                             <td className="py-2 text-right text-green-700 font-medium">{(h.listings_created || 0).toLocaleString()}</td>
                             <td className="py-2 text-right text-gray-600">{(h.media_saved || 0).toLocaleString()}</td>
                             <td className="py-2 text-right text-gray-400">{(h.listings_skipped || 0).toLocaleString()}</td>
-                            <td className="py-2 text-right text-gray-600">{h.duration_seconds ? formatDuration(h.duration_seconds) : '—'}</td>
-                            <td className="py-2 text-gray-400">{h.triggered_by || '—'}</td>
+                            <td className="py-2 text-right text-gray-600">{h.duration_seconds ? formatDuration(h.duration_seconds) : 'â€”'}</td>
+                            <td className="py-2 text-gray-400">{h.triggered_by || 'â€”'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -469,6 +484,7 @@ export default function HomesBulkSync() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }
