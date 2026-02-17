@@ -13,8 +13,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const CHUNK_SIZE = 50;
-const ENHANCED_BATCH_SIZE = 10;
+const CHUNK_SIZE = 200;
+const ENHANCED_BATCH_SIZE = 25;
 
 type PropertyTypeFilter = 'freehold' | 'condo' | 'both';
 
