@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -128,34 +128,8 @@ export async function POST(request: NextRequest) {
       console.log(`After city filter: ${filteredListings.length} listings`);
     }
     
-    // FILTER 4: EXCLUDE UNWANTED STATUSES
-    console.log('FILTER 4: Excluding unwanted statuses (Pending, Cancelled, Withdrawn, Terminated, Suspended, Expired)');
-    
-    // Only exclude truly invalid statuses - keep historical ones for condo history
-    const excludedStatuses = ['Pending', 'Cancelled', 'Withdrawn'];
-    const excludedMlsStatuses = ['Cancelled', 'Withdrawn', 'Pend'];
-    
-    const beforeExclusion = filteredListings.length;
-    filteredListings = filteredListings.filter(listing => {
-      const status = listing.StandardStatus;
-      const mlsStatus = listing.MlsStatus;
-      
-      // Exclude unwanted standard statuses
-      if (excludedStatuses.includes(status)) {
-        console.log(`EXCLUDED: ${listing.UnitNumber} - StandardStatus: ${status}`);
-        return false;
-      }
-      
-      // Exclude unwanted MLS statuses
-      if (excludedMlsStatuses.includes(mlsStatus)) {
-        console.log(`EXCLUDED: ${listing.UnitNumber} - MlsStatus: ${mlsStatus}`);
-        return false;
-      }
-      
-      return true;
-    });
-    
-    console.log(`After exclusion filter: ${filteredListings.length} listings (removed ${beforeExclusion - filteredListings.length})`);
+    // FILTER 4: INCLUDE ALL STATUSES — Cancelled, Withdrawn, Pending are valuable history
+    console.log('FILTER 4: Keeping ALL statuses — ' + filteredListings.length + ' listings (no exclusions)');
     
     // ENHANCED DATA COLLECTION - Only if fullData requested
     // PARALLEL BATCHES: Process 10 listings at a time for ~5x speedup
@@ -419,7 +393,7 @@ const detailedBreakdown = {
     if (isHistorical) {
       categories.historical++;
       detailedBreakdown.historical.push(listingInfo);
-      console.log(`✅ HISTORICAL: Unit ${unit} - MlsStatus: ${mlsStatus}, StandardStatus: ${status}`);
+      console.log(`âœ… HISTORICAL: Unit ${unit} - MlsStatus: ${mlsStatus}, StandardStatus: ${status}`);
     }
   });
   
@@ -627,3 +601,4 @@ function generateSlug(streetNumber: string, streetName?: string, city?: string, 
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 }
+

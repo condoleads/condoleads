@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { saveHomesListings } from '@/lib/homes-sync/save';
 
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
       };
       const progress = (message: string) => send('progress', { message });
 
-      // Create sync_history record(s) — one per pass
+      // Create sync_history record(s) â€” one per pass
       const syncRecordIds: { label: string; id: string }[] = [];
 
       try {
@@ -289,16 +289,25 @@ export async function POST(request: NextRequest) {
             const leasedListings = await fetchBasicListings(leasedFilter, headers, progress);
             progress('Leased: ' + leasedListings.length);
 
-            const allListings = [...activeListings, ...soldListings, ...leasedListings];
+            progress('Fetching expired listings...');
+            const expiredFilter = pass.filter + " and StandardStatus eq 'Expired'";
+            const expiredListings = await fetchBasicListings(expiredFilter, headers, progress);
+            progress('Expired: ' + expiredListings.length);
+
+            progress('Fetching cancelled/withdrawn/pending...');
+            const otherFilter = pass.filter + " and (StandardStatus eq 'Cancelled' or StandardStatus eq 'Withdrawn' or StandardStatus eq 'Pending' or StandardStatus eq 'Active Under Contract')";
+            const otherListings = await fetchBasicListings(otherFilter, headers, progress);
+            progress('Cancelled/Withdrawn/Pending/AUC: ' + otherListings.length);
+
+            const allListings = [...activeListings, ...soldListings, ...leasedListings, ...expiredListings, ...otherListings];
             const seen = new Set<string>();
             const unique = allListings.filter(l => {
               const key = l.ListingKey || (l.StreetNumber + '-' + l.StreetName + '-' + l.MlsStatus);
               if (seen.has(key)) return false;
               seen.add(key); return true;
             });
-            const excluded = ['Pending', 'Cancelled', 'Withdrawn'];
-            const excludedMls = ['Cancelled', 'Withdrawn', 'Pend'];
-            const filtered = unique.filter(l => !excluded.includes(l.StandardStatus) && !excludedMls.includes(l.MlsStatus));
+            // Include ALL statuses — Cancelled, Withdrawn, Pending are valuable history
+            const filtered = unique;
 
             passStats.listingsFound = filtered.length;
             grandTotalListingsFound += filtered.length;
