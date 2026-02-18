@@ -1,6 +1,6 @@
 ﻿"use client";
 import { useState, useEffect, useRef } from 'react';
-import { Globe, Play, Loader2, CheckCircle, XCircle, ChevronDown, ChevronRight, BarChart3, Zap, Clock, Database, AlertTriangle } from 'lucide-react';
+import { Globe, Play, Loader2, CheckCircle, XCircle, ChevronDown, ChevronRight, BarChart3, Zap, Clock, Database, AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface AreaOverview {
   id: string; name: string; municipality_count: number; municipalities_synced: number;
@@ -71,14 +71,22 @@ export default function CommandCenter() {
     setLoadingDetail(false);
   }
 
-  async function syncArea(areaId: string) {
+  async function syncArea(areaId: string, forceAll = false) {
     if (isSyncing) return;
-    // Load area detail to get municipality list with areaIds
     const resp = await fetch('/api/admin-homes/area-sync-status?areaId=' + areaId);
     const detail = await resp.json();
     if (!detail.municipalities) return;
 
-    const munis = detail.municipalities.map((m: any) => ({ id: m.id, name: m.name, areaId }));
+    // Default: only sync municipalities that have NOT been synced yet
+    const allMunis = detail.municipalities;
+    const munis = forceAll
+      ? allMunis.map((m: any) => ({ id: m.id, name: m.name, areaId }))
+      : allMunis.filter((m: any) => !m.is_synced).map((m: any) => ({ id: m.id, name: m.name, areaId }));
+
+    if (munis.length === 0) {
+      alert('All municipalities in this area are already synced. Use Re-sync All to force.');
+      return;
+    }
     startParallelSync(munis);
   }
 
@@ -154,6 +162,55 @@ export default function CommandCenter() {
     }
   }
 
+  async function runIncrementalSync() {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setSyncLogs([]);
+    setGrandTotal(null);
+    setSyncQueue([{ municipalityId: "all", municipalityName: "All Synced Municipalities", status: "running" }]);
+
+    try {
+      const resp = await fetch("/api/admin-homes/incremental-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ triggeredBy: "manual-incremental" }),
+      });
+
+      const reader = resp.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          try {
+            const event = JSON.parse(line.slice(5));
+            if (event.type === "progress") {
+              setSyncLogs(prev => [...prev, event.message]);
+            } else if (event.type === "complete") {
+              setGrandTotal(event);
+              setSyncLogs(prev => [...prev, "", "=== INCREMENTAL COMPLETE ===", "Checked: " + (event.summary?.checked || 0) + " municipalities", "Updated: " + (event.summary?.listings || 0) + " listings | " + (event.summary?.media || 0) + " media", "Duration: " + formatDuration(event.duration || 0)]);
+              setSyncQueue([{ municipalityId: "all", municipalityName: "All Synced Municipalities", status: "complete", stats: event.summary }]);
+            } else if (event.type === "error") {
+              setSyncLogs(prev => [...prev, "ERROR: " + event.message]);
+              setSyncQueue([{ municipalityId: "all", municipalityName: "All Synced Municipalities", status: "error", message: event.message }]);
+            }
+          } catch {}
+        }
+      }
+    } catch (err: any) {
+      setSyncLogs(prev => [...prev, "CONNECTION ERROR: " + err.message]);
+    }
+    setIsSyncing(false);
+    loadOverview();
+  }
+
   if (loading) return <div className="flex items-center justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
 
   return (
@@ -213,6 +270,9 @@ export default function CommandCenter() {
             <option value={5}>5 Parallel</option>
           </select>
         </div>
+        <button onClick={runIncrementalSync} disabled={isSyncing} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-medium hover:bg-orange-600 disabled:opacity-50 flex items-center gap-1">
+          <RefreshCw className="w-3 h-3" /> Incremental Sync All
+        </button>
         {isSyncing && <span className="text-xs text-blue-600 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Sync in progress...</span>}
       </div>
 
@@ -247,10 +307,19 @@ export default function CommandCenter() {
                   <td className="py-2 px-3 text-right text-blue-700">{formatNum(area.condo_db)}</td>
                   <td className="py-2 px-3 text-right font-medium text-gray-800">{formatNum(area.total_db)}</td>
                   <td className="py-2 px-3 text-center">
-                    <button onClick={(e) => { e.stopPropagation(); syncArea(area.id); }} disabled={isSyncing}
-                      className="px-2 py-1 bg-purple-600 text-white rounded text-[10px] font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1 mx-auto">
-                      <Zap className="w-3 h-3" /> Sync Area
-                    </button>
+                    <div className="flex gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
+                      {area.municipalities_synced < area.municipality_count ? (
+                        <button onClick={() => syncArea(area.id)} disabled={isSyncing}
+                          className="px-2 py-1 bg-purple-600 text-white rounded text-[10px] font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1">
+                          <Zap className="w-3 h-3" /> Sync {area.municipality_count - area.municipalities_synced} New
+                        </button>
+                      ) : (
+                        <button onClick={() => syncArea(area.id, true)} disabled={isSyncing}
+                          className="px-2 py-1 bg-gray-500 text-white rounded text-[10px] font-medium hover:bg-gray-600 disabled:opacity-50 flex items-center gap-1">
+                          <Zap className="w-3 h-3" /> Re-sync All
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
                 {expandedArea === area.id && areaDetail && (
@@ -345,3 +414,6 @@ export default function CommandCenter() {
     </div>
   );
 }
+
+
+
