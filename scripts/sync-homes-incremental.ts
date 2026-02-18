@@ -1,3 +1,6 @@
+﻿import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+
 // scripts/sync-homes-incremental.ts
 // Standalone homes incremental sync for GitHub Actions
 // Source: Extracted from app/api/admin-homes/incremental-sync/route.ts
@@ -69,7 +72,7 @@ export async function runHomesIncremental(triggeredBy = 'github-nightly'): Promi
       .in('id', muniIds);
     const areaMap = new Map((muniData || []).map(m => [m.id, m.area_id]));
 
-    // Build municipality list — one entry per unique municipality
+    // Build municipality list â€” one entry per unique municipality
     // Use earliest lastSync across property types so we don't miss anything
     const muniMap = new Map<string, MuniEntry>();
     for (const entry of latestMap.values()) {
@@ -131,14 +134,14 @@ export async function runHomesIncremental(triggeredBy = 'github-nightly'): Promi
           continue;
         }
 
-        log(TAG, `${muni.name}: ${unique.length} modified listings — fetching enhanced data...`);
+        log(TAG, `${muni.name}: ${unique.length} modified listings â€” fetching enhanced data...`);
         await fetchEnhancedDataForHomes(unique);
 
         log(TAG, `${muni.name}: Saving to database...`);
         const result = await saveHomesListings(unique, muni.id, muni.areaId);
 
         if (result.success && result.stats) {
-          log(TAG, `${muni.name}: ✅ ${result.stats.listings} listings, ${result.stats.media} media, ${result.stats.rooms} rooms`);
+          log(TAG, `${muni.name}: âœ… ${result.stats.listings} listings, ${result.stats.media} media, ${result.stats.rooms} rooms`);
           results.success++;
 
           // Write sync_history record
@@ -157,7 +160,7 @@ export async function runHomesIncremental(triggeredBy = 'github-nightly'): Promi
             status: 'completed',
           });
         } else {
-          warn(TAG, `${muni.name}: Error — ${result.error || 'unknown'}`);
+          warn(TAG, `${muni.name}: Error â€” ${result.error || 'unknown'}`);
           results.failed++;
 
           await writeHomesSyncHistory({
@@ -180,7 +183,7 @@ export async function runHomesIncremental(triggeredBy = 'github-nightly'): Promi
       } catch (err: any) {
         // Auth failures should abort the entire run
         if (err.message?.startsWith('AUTH_FAILURE')) {
-          error(TAG, `Auth failure — aborting entire homes sync: ${err.message}`);
+          error(TAG, `Auth failure â€” aborting entire homes sync: ${err.message}`);
           throw err;
         }
 
@@ -232,3 +235,4 @@ if (require.main === module) {
       process.exit(1);
     });
 }
+

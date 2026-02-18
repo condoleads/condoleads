@@ -1,4 +1,7 @@
-﻿// scripts/lib/supabase-client.ts
+﻿import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+
+// scripts/lib/supabase-client.ts
 // Standalone Supabase client for GitHub Actions scripts
 // Uses service_role key  full admin access
 
@@ -30,3 +33,4 @@ export async function testConnection(): Promise<boolean> {
     return false;
   }
 }
+

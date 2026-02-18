@@ -1,6 +1,9 @@
+﻿import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+
 // scripts/nightly-sync.ts
 // Main orchestrator for GitHub Actions nightly MLS sync
-// Runs: 1) Homes incremental → 2) Buildings incremental
+// Runs: 1) Homes incremental â†’ 2) Buildings incremental
 // Safety: Pre-flight checks, baseline verification, post-run verification
 // Usage: npx tsx scripts/nightly-sync.ts
 
@@ -36,17 +39,17 @@ async function main() {
 
   const supabaseOk = await testConnection();
   if (!supabaseOk) {
-    error(TAG, 'Supabase connection failed — aborting');
+    error(TAG, 'Supabase connection failed â€” aborting');
     process.exit(1);
   }
 
   const proptxOk = await testPropTx();
   if (!proptxOk) {
-    error(TAG, 'PropTx API connection failed — aborting');
+    error(TAG, 'PropTx API connection failed â€” aborting');
     process.exit(1);
   }
 
-  log(TAG, 'Pre-flight: Supabase ✅ | PropTx ✅');
+  log(TAG, 'Pre-flight: Supabase âœ… | PropTx âœ…');
 
   // ===== STEP 2: RECORD BASELINE =====
   const baseline = await getBaselineCounts();
@@ -96,15 +99,15 @@ async function main() {
   const buildingDelta = postRun.buildingCount - baseline.buildingCount;
 
   if (linkedDelta < 0) {
-    error(TAG, `⚠️ BUILDING-LINKED LISTINGS DECREASED by ${Math.abs(linkedDelta)}! Was ${baseline.linkedListings}, now ${postRun.linkedListings}`);
+    error(TAG, `âš ï¸ BUILDING-LINKED LISTINGS DECREASED by ${Math.abs(linkedDelta)}! Was ${baseline.linkedListings}, now ${postRun.linkedListings}`);
   } else {
-    log(TAG, `Building-linked delta: ${linkedDelta >= 0 ? '+' : ''}${linkedDelta} (SAFE ✅)`);
+    log(TAG, `Building-linked delta: ${linkedDelta >= 0 ? '+' : ''}${linkedDelta} (SAFE âœ…)`);
   }
 
   if (buildingDelta < 0) {
-    error(TAG, `⚠️ BUILDING COUNT DECREASED by ${Math.abs(buildingDelta)}! Was ${baseline.buildingCount}, now ${postRun.buildingCount}`);
+    error(TAG, `âš ï¸ BUILDING COUNT DECREASED by ${Math.abs(buildingDelta)}! Was ${baseline.buildingCount}, now ${postRun.buildingCount}`);
   } else {
-    log(TAG, `Building count delta: ${buildingDelta >= 0 ? '+' : ''}${buildingDelta} (SAFE ✅)`);
+    log(TAG, `Building count delta: ${buildingDelta >= 0 ? '+' : ''}${buildingDelta} (SAFE âœ…)`);
   }
 
   // ===== STEP 6: WRITE SUMMARY =====
@@ -127,8 +130,8 @@ async function main() {
   log(TAG, `NIGHTLY SYNC COMPLETE in ${minutes}m ${seconds}s`);
   log(TAG, `Homes:     ${homesResults.success} ok / ${homesResults.failed} fail / ${homesResults.skipped} skip`);
   log(TAG, `Buildings: ${buildingsResults.success} ok / ${buildingsResults.failed} fail`);
-  log(TAG, `Listings:  ${baseline.totalListings} → ${postRun.totalListings} (${postRun.totalListings - baseline.totalListings >= 0 ? '+' : ''}${postRun.totalListings - baseline.totalListings})`);
-  log(TAG, `Linked:    ${baseline.linkedListings} → ${postRun.linkedListings} (${linkedDelta >= 0 ? '+' : ''}${linkedDelta})`);
+  log(TAG, `Listings:  ${baseline.totalListings} â†’ ${postRun.totalListings} (${postRun.totalListings - baseline.totalListings >= 0 ? '+' : ''}${postRun.totalListings - baseline.totalListings})`);
+  log(TAG, `Linked:    ${baseline.linkedListings} â†’ ${postRun.linkedListings} (${linkedDelta >= 0 ? '+' : ''}${linkedDelta})`);
   log(TAG, '========================================');
 
   // Exit code: 0 = success or partial, 1 = total failure
@@ -141,3 +144,4 @@ async function main() {
 }
 
 main();
+
