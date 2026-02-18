@@ -1,0 +1,942 @@
+﻿// lib/homes-sync/save.ts
+// Adapted from lib/building-sync/save.ts
+// Reuses: Complete 470+ DLA field mapping, media (2-variant), rooms, open houses
+// Difference: No building creation, building_id = null, direct geo UUID assignment, upsert-based
+
+import { supabase } from './supabase-client';
+
+export interface HomesSaveResult {
+  success: boolean;
+  stats?: {
+    listings: number;
+    media: number;
+    rooms: number;
+    openHouses: number;
+    skipped: number;
+  };
+  error?: string;
+}
+
+// =====================================================
+// HELPER PARSING FUNCTIONS (identical to building-sync/save.ts)
+// =====================================================
+
+function parseInteger(value: any): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = parseInt(value.toString());
+  return isNaN(parsed) ? null : parsed;
+}
+
+function parseDecimal(value: any): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = parseFloat(value.toString());
+  return isNaN(parsed) ? null : parsed;
+}
+
+function parseBoolean(value: any): boolean | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'boolean') return value;
+  const str = value.toString().toLowerCase();
+  if (str === 'true' || str === 'yes' || str === '1') return true;
+  if (str === 'false' || str === 'no' || str === '0') return false;
+  return null;
+}
+
+function parseDate(value: any): string | null {
+  if (!value) return null;
+  try {
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
+  } catch {
+    return null;
+  }
+}
+
+function parseTimestamp(value: any): string | null {
+  if (!value) return null;
+  try {
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? null : date.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function parseJsonArray(value: any): any[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function truncate(value: any, maxLength: number): string | null {
+  if (!value) return null;
+  const str = String(value);
+  return str.length > maxLength ? str.substring(0, maxLength) : str;
+}
+
+// Access control logic (identical to building-sync/save.ts)
+function determineIDXAccess(listing: any): boolean {
+  return listing.StandardStatus === 'Active' &&
+         listing.InternetEntireListingDisplayYN === true;
+}
+
+function determineVOWAccess(listing: any): boolean {
+  return listing.DDFYN === true;
+}
+
+// =====================================================
+// MAIN EXPORT FUNCTION
+// =====================================================
+
+export async function saveHomesListings(
+  listingsData: any[],
+  municipalityId: string,
+  areaId: string
+): Promise<HomesSaveResult> {
+  console.log(`[HomesSave] Starting: ${listingsData.length} listings`);
+  const startTime = Date.now();
+
+  try {
+    // STEP 1: Load community map for this municipality (batch lookup)
+    const communityMap = await loadCommunityMap(municipalityId);
+    console.log(`[HomesSave] Community map loaded: ${communityMap.size} communities`);
+
+    // STEP 2: Save listings with COMPLETE DLA mapping (building_id = null)
+    const savedListings = await saveListings(listingsData, areaId, municipalityId, communityMap);
+    console.log(`[HomesSave] Listings saved: ${savedListings.length}`);
+
+    // STEP 3: Save media
+    const mediaCount = await saveMedia(savedListings, listingsData);
+    console.log(`[HomesSave] Media saved: ${mediaCount}`);
+
+    // STEP 4: Save rooms
+    const roomCount = await saveRooms(savedListings, listingsData);
+    console.log(`[HomesSave] Rooms saved: ${roomCount}`);
+
+    // STEP 5: Save open houses
+    const openHouseCount = await saveOpenHouses(savedListings, listingsData);
+    console.log(`[HomesSave] Open houses saved: ${openHouseCount}`);
+
+    const duration = (Date.now() - startTime) / 1000;
+    const skipped = listingsData.length - savedListings.length;
+    console.log(`[HomesSave] Complete in ${duration.toFixed(1)}s  ${savedListings.length} saved, ${skipped} skipped`);
+
+    return {
+      success: true,
+      stats: {
+        listings: savedListings.length,
+        media: mediaCount,
+        rooms: roomCount,
+        openHouses: openHouseCount,
+        skipped
+      }
+    };
+
+  } catch (error: any) {
+    console.error('[HomesSave] Error:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// =====================================================
+// COMMUNITY MAP (batch lookup instead of per-listing query)
+// =====================================================
+
+async function loadCommunityMap(municipalityId: string): Promise<Map<string, string>> {
+  const { data: communities } = await supabase
+    .from('communities')
+    .select('id, name')
+    .eq('municipality_id', municipalityId);
+
+  const map = new Map<string, string>();
+  for (const comm of communities || []) {
+    map.set(comm.name.toLowerCase().trim(), comm.id);
+  }
+  return map;
+}
+
+function resolveCommunityId(cityRegion: string | null, communityMap: Map<string, string>): string | null {
+  if (!cityRegion) return null;
+  const key = cityRegion.toLowerCase().trim();
+  return communityMap.get(key) || null;
+}
+
+// =====================================================
+// SAVE LISTINGS WITH COMPLETE DLA MAPPING
+// =====================================================
+
+async function saveListings(
+  listingsData: any[],
+  areaId: string,
+  municipalityId: string,
+  communityMap: Map<string, string>
+) {
+  const savedListings: any[] = [];
+  const batchSize = 400;
+
+  for (let i = 0; i < listingsData.length; i += batchSize) {
+    const batch = listingsData.slice(i, i + batchSize);
+    const records = batch.map(listing => {
+      const communityId = resolveCommunityId(listing.CityRegion, communityMap);
+      return mapCompleteDLAFields(listing, areaId, municipalityId, communityId);
+    });
+
+    const { data, error } = await supabase
+      .from('mls_listings')
+      .upsert(records, { onConflict: 'listing_key', ignoreDuplicates: false })
+      .select();
+
+    if (error) {
+      console.error(`[HomesSave] Listings batch error:`, error.message);
+      continue;
+    }
+
+    data?.forEach((saved, idx) => {
+      savedListings.push({ ...saved, originalData: batch[idx] });
+    });
+
+    console.log(`[HomesSave] Listings batch ${Math.floor(i / batchSize) + 1}: ${data?.length || 0}`);
+  }
+
+  return savedListings;
+}
+
+// =====================================================
+// COMPLETE DLA FIELD MAPPING (ALL 470+ FIELDS)
+// Identical to building-sync/save.ts EXCEPT:
+// - building_id = null (homes have no building)
+// - area_id, municipality_id, community_id set directly
+// =====================================================
+
+function mapCompleteDLAFields(listing: any, areaId: string, municipalityId: string, communityId: string | null) {
+  return {
+    // ===== RELATIONSHIP (HOMES: geo sync never touches building_id) =====
+    area_id: areaId,
+    municipality_id: municipalityId,
+    community_id: communityId,
+
+    // ===== IDENTIFIERS =====
+    listing_key: listing.ListingKey || null,
+    listing_id: listing.ListingId || listing.ListingID || null,
+    originating_system_id: listing.OriginatingSystemID || null,
+    originating_system_key: listing.OriginatingSystemKey || null,
+    originating_system_name: listing.OriginatingSystemName || null,
+
+    // ===== ADDRESS =====
+    street_number: listing.StreetNumber || null,
+    street_name: listing.StreetName || null,
+    street_suffix: truncate(listing.StreetSuffix, 50),
+    street_dir_prefix: listing.StreetDirPrefix || null,
+    street_dir_suffix: listing.StreetDirSuffix || null,
+    unparsed_address: truncate(listing.UnparsedAddress, 500),
+    city: listing.City || null,
+    state_or_province: listing.StateOrProvince || null,
+    postal_code: listing.PostalCode || null,
+    country: listing.Country || null,
+
+    // ===== UNIT =====
+    unit_number: listing.UnitNumber || null,
+    apartment_number: listing.ApartmentNumber || null,
+    legal_apartment_number: listing.LegalApartmentNumber || null,
+    legal_stories: listing.LegalStories || null,
+
+    // ===== PROPERTY TYPE =====
+    property_type: listing.PropertyType || null,
+    property_subtype: listing.PropertySubType || null,
+    property_use: listing.PropertyUse || null,
+    board_property_type: listing.BoardPropertyType || null,
+    transaction_type: listing.TransactionType || null,
+
+    // ===== PRICING =====
+    list_price: parseInteger(listing.ListPrice),
+    list_price_unit: listing.ListPriceUnit || null,
+    original_list_price: parseInteger(listing.OriginalListPrice),
+    original_list_price_unit: listing.OriginalListPriceUnit || null,
+    previous_list_price: parseInteger(listing.PreviousListPrice),
+    close_price: parseInteger(listing.ClosePrice),
+    percent_list_price: listing.PercentListPrice || null,
+    prior_price_code: listing.PriorPriceCode || null,
+
+    // ===== STATUS =====
+    standard_status: listing.StandardStatus || null,
+    mls_status: listing.MlsStatus || null,
+    prior_mls_status: listing.PriorMlsStatus || null,
+    contract_status: listing.ContractStatus || null,
+    status_aur: listing.Status_aur || null,
+    statis_cause_internal: listing.StatisCauseInternal || null,
+
+    // ===== DATES =====
+    listing_contract_date: parseDate(listing.ListingContractDate),
+    original_entry_timestamp: parseTimestamp(listing.OriginalEntryTimestamp),
+    on_market_date: parseDate(listing.OnMarketDate),
+    close_date: parseDate(listing.CloseDate),
+    purchase_contract_date: parseDate(listing.PurchaseContractDate),
+    possession_date: parseDate(listing.PossessionDate),
+    expiration_date: parseDate(listing.ExpirationDate),
+    conditional_expiry_date: parseDate(listing.ConditionalExpiryDate),
+    unavailable_date: parseDate(listing.UnavailableDate),
+    suspended_date: parseDate(listing.SuspendedDate),
+    terminated_date: parseDate(listing.TerminatedDate),
+
+    // ===== TIMESTAMPS =====
+    modification_timestamp: parseTimestamp(listing.ModificationTimestamp),
+    major_change_timestamp: parseTimestamp(listing.MajorChangeTimestamp),
+    price_change_timestamp: parseTimestamp(listing.PriceChangeTimestamp),
+    photos_change_timestamp: parseTimestamp(listing.PhotosChangeTimestamp),
+    media_change_timestamp: parseTimestamp(listing.MediaChangeTimestamp),
+    add_change_timestamp: parseTimestamp(listing.AddChangeTimestamp),
+    back_on_market_entry_timestamp: parseTimestamp(listing.BackOnMarketEntryTimestamp),
+    sold_entry_timestamp: parseTimestamp(listing.SoldEntryTimestamp),
+    sold_conditional_entry_timestamp: parseTimestamp(listing.SoldConditionalEntryTimestamp),
+    leased_entry_timestamp: parseTimestamp(listing.LeasedEntryTimestamp),
+    leased_conditional_entry_timestamp: parseTimestamp(listing.LeasedConditionalEntryTimestamp),
+    deal_fell_through_entry_timestamp: parseTimestamp(listing.DealFellThroughEntryTimestamp),
+    extension_entry_timestamp: parseTimestamp(listing.ExtensionEntryTimestamp),
+    suspended_entry_timestamp: parseTimestamp(listing.SuspendedEntryTimestamp),
+    terminated_entry_timestamp: parseTimestamp(listing.TerminatedEntryTimestamp),
+    import_timestamp: parseTimestamp(listing.ImportTimestamp),
+    system_modification_timestamp: parseTimestamp(listing.SystemModificationTimestamp),
+    timestamp_sql: parseTimestamp(listing.TimestampSQL),
+
+    // ===== ROOM COUNTS =====
+    bedrooms_total: parseInteger(listing.BedroomsTotal),
+    bedrooms_above_grade: parseInteger(listing.BedroomsAboveGrade),
+    bedrooms_below_grade: parseInteger(listing.BedroomsBelowGrade),
+    main_level_bedrooms: parseInteger(listing.MainLevelBedrooms),
+    bathrooms_total_integer: parseDecimal(listing.BathroomsTotalInteger),
+    main_level_bathrooms: parseInteger(listing.MainLevelBathrooms),
+    kitchens_total: parseInteger(listing.KitchensTotal),
+    kitchens_above_grade: parseInteger(listing.KitchensAboveGrade),
+    kitchens_below_grade: parseInteger(listing.KitchensBelowGrade),
+    number_of_kitchens: listing.NumberOfKitchens || null,
+    rooms_total: parseInteger(listing.RoomsTotal),
+    rooms_above_grade: parseInteger(listing.RoomsAboveGrade),
+    rooms_below_grade: parseInteger(listing.RoomsBelowGrade),
+    den_familyroom_yn: parseBoolean(listing.DenFamilyroomYN),
+    recreation_room_yn: parseBoolean(listing.RecreationRoomYN),
+
+    // ===== SIZE =====
+    building_area_total: parseInteger(listing.BuildingAreaTotal),
+    building_area_units: listing.BuildingAreaUnits || null,
+    living_area_range: listing.LivingAreaRange || null,
+    square_foot_source: listing.SquareFootSource || null,
+
+    // ===== LOT (CRITICAL FOR HOMES) =====
+    lot_size_area: parseDecimal(listing.LotSizeArea),
+    lot_size_area_units: listing.LotSizeAreaUnits || null,
+    lot_size_dimensions: listing.LotSizeDimensions || null,
+    lot_size_units: listing.LotSizeUnits || null,
+    lot_size_range_acres: listing.LotSizeRangeAcres || null,
+    lot_size_source: listing.LotSizeSource || null,
+    lot_width: parseDecimal(listing.LotWidth),
+    lot_depth: parseDecimal(listing.LotDepth),
+    frontage_length: listing.FrontageLength || null,
+    lot_shape: listing.LotShape || null,
+    lot_type: listing.LotType || null,
+    lot_features: parseJsonArray(listing.LotFeatures),
+    lot_irregularities: listing.LotIrregularities || null,
+    lot_dimensions_source: listing.LotDimensionsSource || null,
+
+    // ===== FEES & TAXES =====
+    association_fee: parseDecimal(listing.AssociationFee),
+    association_fee_frequency: listing.AssociationFeeFrequency || null,
+    association_fee_includes: parseJsonArray(listing.AssociationFeeIncludes),
+    additional_monthly_fee: parseDecimal(listing.AdditionalMonthlyFee),
+    additional_monthly_fee_frequency: listing.AdditionalMonthlyFeeFrequency || null,
+    commercial_condo_fee: parseDecimal(listing.CommercialCondoFee),
+    commercial_condo_fee_frequency: listing.CommercialCondoFeeFrequency || null,
+    tax_annual_amount: parseDecimal(listing.TaxAnnualAmount),
+    tax_year: parseInteger(listing.TaxYear),
+    tax_assessed_value: parseInteger(listing.TaxAssessedValue),
+    assessment_year: parseInteger(listing.AssessmentYear),
+    tax_type: listing.TaxType || null,
+    tax_legal_description: listing.TaxLegalDescription || null,
+    tax_book_number: listing.TaxBookNumber || null,
+    hst_application: parseJsonArray(listing.HSTApplication),
+
+    // ===== PARKING (CRITICAL FOR HOMES - garage info) =====
+    parking_total: parseInteger(listing.ParkingTotal),
+    parking_spaces: parseInteger(listing.ParkingSpaces),
+    covered_spaces: parseInteger(listing.CoveredSpaces),
+    carport_spaces: parseInteger(listing.CarportSpaces),
+    garage_parking_spaces: listing.GarageParkingSpaces || null,
+    parking_type1: listing.ParkingType1 || null,
+    parking_type2: listing.ParkingType2 || null,
+    parking_spot1: listing.ParkingSpot1 || null,
+    parking_spot2: listing.ParkingSpot2 || null,
+    parking_level_unit1: listing.ParkingLevelUnit1 || null,
+    parking_level_unit2: listing.ParkingLevelUnit2 || null,
+    parking_monthly_cost: parseDecimal(listing.ParkingMonthlyCost),
+    parking_features: parseJsonArray(listing.ParkingFeatures),
+    attached_garage_yn: parseBoolean(listing.AttachedGarageYN),
+    garage_yn: parseBoolean(listing.GarageYN),
+    garage_type: listing.GarageType || null,
+    trailer_parking_spots: parseInteger(listing.TrailerParkingSpots),
+
+    // ===== STORAGE =====
+    locker: listing.Locker || null,
+    locker_number: listing.LockerNumber || null,
+    locker_level: listing.LockerLevel || null,
+    locker_unit: listing.LockerUnit || null,
+    outside_storage_yn: parseBoolean(listing.OutsideStorageYN),
+
+    // ===== UNIT FEATURES =====
+    balcony_type: listing.BalconyType || null,
+    exposure: listing.Exposure || null,
+    direction_faces: listing.DirectionFaces || null,
+    view: parseJsonArray(listing.View),
+    water_view: parseJsonArray(listing.WaterView),
+    ensuite_laundry_yn: parseBoolean(listing.EnsuiteLaundryYN),
+    laundry_features: parseJsonArray(listing.LaundryFeatures),
+    laundry_level: listing.LaundryLevel || null,
+    central_vacuum_yn: parseBoolean(listing.CentralVacuumYN),
+    private_entrance_yn: parseBoolean(listing.PrivateEntranceYN),
+    handicapped_equipped_yn: parseBoolean(listing.HandicappedEquippedYN),
+    accessibility_features: parseJsonArray(listing.AccessibilityFeatures),
+
+    // ===== HEATING & COOLING =====
+    heat_type: listing.HeatType || null,
+    heat_source: listing.HeatSource || null,
+    heating_yn: parseBoolean(listing.HeatingYN),
+    heating_expenses: parseDecimal(listing.HeatingExpenses),
+    cooling: listing.Cooling || null,
+    cooling_yn: parseBoolean(listing.CoolingYN),
+
+    // ===== UTILITIES =====
+    electric_yna: listing.ElectricYNA || null,
+    electric_expense: parseDecimal(listing.ElectricExpense),
+    electric_on_property_yn: parseBoolean(listing.ElectricOnPropertyYN),
+    gas_yna: listing.GasYNA || null,
+    water_yna: listing.WaterYNA || null,
+    water_expense: parseDecimal(listing.WaterExpense),
+    water_meter_yn: parseBoolean(listing.WaterMeterYN),
+    cable_yna: listing.CableYNA || null,
+    telephone_yna: listing.TelephoneYNA || null,
+    sewer_yna: listing.SewerYNA || null,
+    utilities: parseJsonArray(listing.Utilities),
+
+    // ===== RENTAL =====
+    furnished: listing.Furnished || null,
+    lease_amount: parseDecimal(listing.LeaseAmount),
+    lease_term: listing.LeaseTerm || null,
+    minimum_rental_term_months: parseInteger(listing.MinimumRentalTermMonths),
+    maximum_rental_months_term: parseInteger(listing.MaximumRentalMonthsTerm),
+    rent_includes: parseJsonArray(listing.RentIncludes),
+    rental_application_yn: parseBoolean(listing.RentalApplicationYN),
+    references_required_yn: parseBoolean(listing.ReferencesRequiredYN),
+    credit_check_yn: parseBoolean(listing.CreditCheckYN),
+    employment_letter_yn: parseBoolean(listing.EmploymentLetterYN),
+    deposit_required: parseBoolean(listing.DepositRequired),
+    pets_allowed: parseJsonArray(listing.PetsAllowed),
+    lease_agreement_yn: parseBoolean(listing.LeaseAgreementYN),
+    leased_terms: listing.LeasedTerms || null,
+    lease_to_own_equipment: parseJsonArray(listing.LeaseToOwnEquipment),
+    leased_land_fee: parseDecimal(listing.LeasedLandFee),
+    buy_option_yn: parseBoolean(listing.BuyOptionYN),
+    payment_frequency: listing.PaymentFrequency || null,
+    payment_method: listing.PaymentMethod || null,
+    portion_lease_comments: listing.PortionLeaseComments || null,
+    portion_property_lease: parseJsonArray(listing.PortionPropertyLease),
+
+    // ===== DESCRIPTIONS =====
+    public_remarks: truncate(listing.PublicRemarks, 5000),
+    public_remarks_extras: truncate(listing.PublicRemarksExtras, 5000),
+    private_remarks: truncate(listing.PrivateRemarks, 5000),
+    inclusions: truncate(listing.Inclusions, 2000),
+    exclusions: truncate(listing.Exclusions, 2000),
+    chattels_yn: parseBoolean(listing.ChattelsYN),
+    rental_items: listing.RentalItems || null,
+
+    // ===== POSSESSION =====
+    possession_type: listing.PossessionType || null,
+    possession_details: listing.PossessionDetails || null,
+    condition_of_sale: listing.ConditionOfSale || null,
+    escape_clause_yn: parseBoolean(listing.EscapeClauseYN),
+    escape_clause_hours: listing.EscapeClauseHours || null,
+    assignment_yn: parseBoolean(listing.AssignmentYN),
+    vendor_property_info_statement: parseBoolean(listing.VendorPropertyInfoStatement),
+    status_certificate_yn: parseBoolean(listing.StatusCertificateYN),
+
+    // ===== SHOWING =====
+    showing_requirements: parseJsonArray(listing.ShowingRequirements),
+    showing_appointments: listing.ShowingAppointments || null,
+    sign_on_property_yn: parseBoolean(listing.SignOnPropertyYN),
+    access_to_property: listing.AccessToProperty || null,
+    contact_after_expiry_yn: parseBoolean(listing.ContactAfterExpiryYN),
+    permission_to_contact_listing_broker_to_advertise: parseBoolean(listing.PermissionToContactListingBrokerToAdvertise),
+
+    // ===== LOCATION =====
+    directions: truncate(listing.Directions, 500),
+    cross_street: truncate(listing.CrossStreet, 200),
+    city_region: listing.CityRegion || null,
+    county_or_parish: listing.CountyOrParish || null,
+    out_of_area_municipality: listing.OutOfAreaMunicipality || null,
+    map_page: listing.MapPage || null,
+    map_column: parseInteger(listing.MapColumn),
+    map_row: listing.MapRow || null,
+    town: listing.Town || null,
+    mls_area_district_old_zone: listing.MLSAreaDistrictOldZone || null,
+    mls_area_district_toronto: listing.MLSAreaDistrictToronto || null,
+    mls_area_municipality_district: listing.MLSAreaMunicipalityDistrict || null,
+
+    // ===== BUILDING INFO =====
+    building_name: listing.BuildingName || null,
+    business_name: listing.BusinessName || null,
+    association_name: listing.AssociationName || null,
+    association_yn: parseBoolean(listing.AssociationYN),
+    association_amenities: parseJsonArray(listing.AssociationAmenities),
+    condo_corp_number: listing.CondoCorpNumber || null,
+    property_management_company: listing.PropertyManagementCompany || null,
+    number_shares_percent: listing.NumberSharesPercent || null,
+
+    // ===== CONSTRUCTION (CRITICAL FOR HOMES) =====
+    new_construction_yn: parseBoolean(listing.NewConstructionYN),
+    approximate_age: listing.ApproximateAge || null,
+    construction_materials: parseJsonArray(listing.ConstructionMaterials),
+    architectural_style: parseJsonArray(listing.ArchitecturalStyle),
+    structure_type: parseJsonArray(listing.StructureType),
+    foundation_details: parseJsonArray(listing.FoundationDetails),
+    roof: parseJsonArray(listing.Roof),
+    exterior_features: parseJsonArray(listing.ExteriorFeatures),
+
+    // ===== INTERIOR (CRITICAL FOR HOMES) =====
+    interior_features: parseJsonArray(listing.InteriorFeatures),
+    fireplace_yn: parseBoolean(listing.FireplaceYN),
+    fireplaces_total: parseInteger(listing.FireplacesTotal),
+    fireplace_features: parseJsonArray(listing.FireplaceFeatures),
+    basement: listing.Basement || null,
+    basement_yn: parseBoolean(listing.BasementYN),
+    uffi: listing.UFFI || null,
+    elevator_type: listing.ElevatorType || null,
+    elevator_yn: parseBoolean(listing.ElevatorYN),
+    exercise_room_gym: listing.ExerciseRoomGym || null,
+
+    // ===== SPECIAL FEATURES =====
+    pool_features: parseJsonArray(listing.PoolFeatures),
+    spa_yn: parseBoolean(listing.SpaYN),
+    sauna_yn: parseBoolean(listing.SaunaYN),
+    squash_racquet: listing.SquashRacquet || null,
+    waterfront_yn: parseBoolean(listing.WaterfrontYN),
+    waterfront: parseJsonArray(listing.Waterfront),
+    waterfront_features: parseJsonArray(listing.WaterfrontFeatures),
+    waterfront_accessory: parseJsonArray(listing.WaterfrontAccessory),
+    water_body_name: listing.WaterBodyName || null,
+    water_body_type: listing.WaterBodyType || null,
+    water_frontage_ft: listing.WaterFrontageFt || null,
+    island_yn: parseBoolean(listing.IslandYN),
+    shoreline: parseJsonArray(listing.Shoreline),
+    shoreline_allowance: listing.ShorelineAllowance || null,
+    shoreline_exposure: listing.ShorelineExposure || null,
+
+    // ===== COMMERCIAL =====
+    business_type: parseJsonArray(listing.BusinessType),
+    franchise_yn: parseBoolean(listing.FranchiseYN),
+    freestanding_yn: parseBoolean(listing.FreestandingYN),
+    liquor_license_yn: parseBoolean(listing.LiquorLicenseYN),
+    seating_capacity: parseInteger(listing.SeatingCapacity),
+    number_of_full_time_employees: parseInteger(listing.NumberOfFullTimeEmployees),
+    hours_days_of_operation: parseJsonArray(listing.HoursDaysOfOperation),
+    hours_days_of_operation_description: listing.HoursDaysOfOperationDescription || null,
+
+    // ===== INDUSTRIAL =====
+    industrial_area: parseDecimal(listing.IndustrialArea),
+    industrial_area_code: listing.IndustrialAreaCode || null,
+    office_apartment_area: parseDecimal(listing.OfficeApartmentArea),
+    office_apartment_area_unit: listing.OfficeApartmentAreaUnit || null,
+    retail_area: parseDecimal(listing.RetailArea),
+    retail_area_code: listing.RetailAreaCode || null,
+    percent_building: listing.PercentBuilding || null,
+    clear_height_feet: parseInteger(listing.ClearHeightFeet),
+    clear_height_inches: parseInteger(listing.ClearHeightInches),
+    bay_size_length_feet: parseInteger(listing.BaySizeLengthFeet),
+    bay_size_length_inches: parseInteger(listing.BaySizeLengthInches),
+    bay_size_width_feet: parseInteger(listing.BaySizeWidthFeet),
+    bay_size_width_inches: parseInteger(listing.BaySizeWidthInches),
+    crane_yn: parseBoolean(listing.CraneYN),
+    rail: listing.Rail || null,
+    docking_type: parseJsonArray(listing.DockingType),
+
+    // ===== SHIPPING DOORS =====
+    double_man_shipping_doors: parseInteger(listing.DoubleManShippingDoors),
+    double_man_shipping_doors_height_feet: parseInteger(listing.DoubleManShippingDoorsHeightFeet),
+    double_man_shipping_doors_height_inches: parseInteger(listing.DoubleManShippingDoorsHeightInches),
+    double_man_shipping_doors_width_feet: parseInteger(listing.DoubleManShippingDoorsWidthFeet),
+    double_man_shipping_doors_width_inches: parseInteger(listing.DoubleManShippingDoorsWidthInches),
+    drive_in_level_shipping_doors: parseInteger(listing.DriveInLevelShippingDoors),
+    drive_in_level_shipping_doors_height_feet: parseInteger(listing.DriveInLevelShippingDoorsHeightFeet),
+    drive_in_level_shipping_doors_height_inches: parseInteger(listing.DriveInLevelShippingDoorsHeightInches),
+    drive_in_level_shipping_doors_width_feet: parseInteger(listing.DriveInLevelShippingDoorsWidthFeet),
+    drive_in_level_shipping_doors_width_inches: parseInteger(listing.DriveInLevelShippingDoorsWidthInches),
+    grade_level_shipping_doors: parseInteger(listing.GradeLevelShippingDoors),
+    grade_level_shipping_doors_height_feet: parseInteger(listing.GradeLevelShippingDoorsHeightFeet),
+    grade_level_shipping_doors_height_inches: parseInteger(listing.GradeLevelShippingDoorsHeightInches),
+    grade_level_shipping_doors_width_feet: parseInteger(listing.GradeLevelShippingDoorsWidthFeet),
+    grade_level_shipping_doors_width_inches: parseInteger(listing.GradeLevelShippingDoorsWidthInches),
+    truck_level_shipping_doors: parseInteger(listing.TruckLevelShippingDoors),
+    truck_level_shipping_doors_height_feet: parseInteger(listing.TruckLevelShippingDoorsHeightFeet),
+    truck_level_shipping_doors_height_inches: parseInteger(listing.TruckLevelShippingDoorsHeightInches),
+    truck_level_shipping_doors_width_feet: parseInteger(listing.TruckLevelShippingDoorsWidthFeet),
+    truck_level_shipping_doors_width_inches: parseInteger(listing.TruckLevelShippingDoorsWidthInches),
+
+    // ===== ELECTRICAL =====
+    amps: parseInteger(listing.Amps),
+    volts: parseInteger(listing.Volts),
+
+    // ===== FINANCIAL =====
+    gross_revenue: parseDecimal(listing.GrossRevenue),
+    net_operating_income: parseDecimal(listing.NetOperatingIncome),
+    operating_expense: parseDecimal(listing.OperatingExpense),
+    total_expenses: listing.TotalExpenses || null,
+    expenses: listing.Expenses || null,
+    year_expenses: parseDecimal(listing.YearExpenses),
+    insurance_expense: parseDecimal(listing.InsuranceExpense),
+    maintenance_expense: parseDecimal(listing.MaintenanceExpense),
+    professional_management_expense: parseDecimal(listing.ProfessionalManagementExpense),
+    other_expense: parseDecimal(listing.OtherExpense),
+    taxes_expense: parseDecimal(listing.TaxesExpense),
+    vacancy_allowance: parseDecimal(listing.VacancyAllowance),
+    financial_statement_available_yn: parseBoolean(listing.FinancialStatementAvailableYN),
+    estimated_inventory_value_at_cost: parseDecimal(listing.EstimatedInventoryValueAtCost),
+    percent_rent: parseDecimal(listing.PercentRent),
+    common_area_upcharge: parseDecimal(listing.CommonAreaUpcharge),
+    tmi: listing.TMI || null,
+
+    // ===== LAND/RURAL =====
+    farm_type: parseJsonArray(listing.FarmType),
+    farm_features: parseJsonArray(listing.FarmFeatures),
+    soil_type: parseJsonArray(listing.SoilType),
+    soil_test: listing.SoilTest || null,
+    topography: parseJsonArray(listing.Topography),
+    vegetation: parseJsonArray(listing.Vegetation),
+    rural_utilities: parseJsonArray(listing.RuralUtilities),
+    water_source: parseJsonArray(listing.WaterSource),
+    water_delivery_feature: parseJsonArray(listing.WaterDeliveryFeature),
+    well_depth: parseDecimal(listing.WellDepth),
+    well_capacity: parseDecimal(listing.WellCapacity),
+    sewage: parseJsonArray(listing.Sewage),
+    sewer: parseJsonArray(listing.Sewer),
+    water: listing.Water || null,
+    winterized: listing.Winterized || null,
+
+    // ===== ENVIRONMENTAL =====
+    energy_certificate: parseBoolean(listing.EnergyCertificate),
+    green_certification_level: listing.GreenCertificationLevel || null,
+    green_property_information_statement: parseBoolean(listing.GreenPropertyInformationStatement),
+    alternative_power: parseJsonArray(listing.AlternativePower),
+    security_features: parseJsonArray(listing.SecurityFeatures),
+
+    // ===== LEGAL =====
+    parcel_number: listing.ParcelNumber || null,
+    parcel_number2: listing.ParcelNumber2 || null,
+    roll_number: listing.RollNumber || null,
+    zoning: listing.Zoning || null,
+    zoning_designation: listing.ZoningDesignation || null,
+    survey_available_yn: parseBoolean(listing.SurveyAvailableYN),
+    survey_type: listing.SurveyType || null,
+    easements_restrictions: parseJsonArray(listing.EasementsRestrictions),
+    disclosures: parseJsonArray(listing.Disclosures),
+    local_improvements: parseBoolean(listing.LocalImprovements),
+    local_improvements_comments: listing.LocalImprovementsComments || null,
+    development_charges_paid: parseJsonArray(listing.DevelopmentChargesPaid),
+    parcel_of_tied_land: listing.ParcelOfTiedLand || null,
+    road_access_fee: parseDecimal(listing.RoadAccessFee),
+
+    // ===== BROKERAGE =====
+    list_office_key: listing.ListOfficeKey || null,
+    list_office_name: listing.ListOfficeName || null,
+    list_agent_key: listing.ListAgentKey || null,
+    list_agent_full_name: listing.ListAgentFullName || null,
+    list_agent_direct_phone: listing.ListAgentDirectPhone || null,
+    list_agent_office_phone: listing.ListAgentOfficePhone || null,
+    list_aor: listing.ListAOR || null,
+    list_agent_aor: listing.ListAgentAOR || null,
+    list_office_aor: listing.ListOfficeAOR || null,
+    main_office_key: listing.MainOfficeKey || null,
+    co_list_office_key: listing.CoListOfficeKey || null,
+    co_list_office_name: listing.CoListOfficeName || null,
+    co_list_agent_key: listing.CoListAgentKey || null,
+    co_list_agent_full_name: listing.CoListAgentFullName || null,
+    co_list_agent_aor: listing.CoListAgentAOR || null,
+    co_list_office_phone: listing.CoListOfficePhone || null,
+    co_list_agent3_full_name: listing.CoListAgent3FullName || null,
+    co_list_agent3_key: listing.CoListAgent3Key || null,
+    co_list_office_key3: listing.CoListOfficeKey3 || null,
+    co_list_office_name3: listing.CoListOfficeName3 || null,
+    co_list_agent4_full_name: listing.CoListAgent4FullName || null,
+    co_list_agent4_key: listing.CoListAgent4Key || null,
+    co_list_office_key4: listing.CoListOfficeKey4 || null,
+    co_list_office_name4: listing.CoListOfficeName4 || null,
+    broker_fax_number: listing.BrokerFaxNumber || null,
+    transaction_broker_compensation: listing.TransactionBrokerCompensation || null,
+
+    // ===== MEDIA REFERENCES =====
+    virtual_tour_url_unbranded: truncate(listing.VirtualTourURLUnbranded, 500),
+    virtual_tour_url_unbranded2: listing.VirtualTourURLUnbranded2 || null,
+    virtual_tour_url_branded: truncate(listing.VirtualTourURLBranded, 500),
+    virtual_tour_url_branded2: listing.VirtualTourURLBranded2 || null,
+    virtual_tour_flag_yn: parseBoolean(listing.VirtualTourFlagYN),
+    sales_brochure_url: listing.SalesBrochureUrl || null,
+    sound_bite_url: listing.SoundBiteUrl || null,
+    additional_pictures_url: listing.AdditionalPicturesUrl || null,
+    alternate_feature_sheet: listing.AlternateFeatureSheet || null,
+    media_listing_key: listing.MediaListingKey || null,
+    old_photo_instructions: listing.OldPhotoInstructions || null,
+
+    // ===== INTERNET =====
+    internet_entire_listing_display_yn: parseBoolean(listing.InternetEntireListingDisplayYN),
+    internet_address_display_yn: parseBoolean(listing.InternetAddressDisplayYN),
+    ddf_yn: parseBoolean(listing.DDFYN),
+    picture_yn: parseBoolean(listing.PictureYN),
+
+    // ===== SPECIAL =====
+    fractional_ownership_yn: parseBoolean(listing.FractionalOwnershipYN),
+    seasonal_dwelling: parseBoolean(listing.SeasonalDwelling),
+    senior_community_yn: parseBoolean(listing.SeniorCommunityYN),
+    property_attached_yn: parseBoolean(listing.PropertyAttachedYN),
+    under_contract: parseJsonArray(listing.UnderContract),
+    special_designation: parseJsonArray(listing.SpecialDesignation),
+    community_features: parseJsonArray(listing.CommunityFeatures),
+    property_features: parseJsonArray(listing.PropertyFeatures),
+    other_structures: parseJsonArray(listing.OtherStructures),
+    holdover_days: parseInteger(listing.HoldoverDays),
+    occupant_type: listing.OccupantType || null,
+    ownership_type: listing.OwnershipType || null,
+    room_height: parseDecimal(listing.RoomHeight),
+
+    // ===== LINKING =====
+    link_yn: parseBoolean(listing.LinkYN),
+    link_property: listing.LinkProperty || null,
+
+    // ===== YEAR LEASE =====
+    year1_lease_price: listing.Year1LeasePrice || null,
+    year1_lease_price_hold: listing.Year1LeasePriceHold || null,
+    year2_lease_price: listing.Year2LeasePrice || null,
+    year2_lease_price_hold: listing.Year2LeasePriceHold || null,
+    year3_lease_price: listing.Year3LeasePrice || null,
+    year3_lease_price_hold: listing.Year3LeasePriceHold || null,
+    year4_lease_price: listing.Year4LeasePrice || null,
+    year4_lease_price_hold: listing.Year4LeasePriceHold || null,
+    year5_lease_price: listing.Year5LeasePrice || null,
+    year5_lease_price_hold: listing.Year5LeasePriceHold || null,
+
+    // ===== ROOM TYPE =====
+    room_type: parseJsonArray(listing.RoomType),
+
+    // ===== WASHROOMS =====
+    washrooms_type1: parseInteger(listing.WashroomsType1),
+    washrooms_type1_level: listing.WashroomsType1Level || null,
+    washrooms_type1_pcs: parseInteger(listing.WashroomsType1Pcs),
+    washrooms_type2: parseInteger(listing.WashroomsType2),
+    washrooms_type2_level: listing.WashroomsType2Level || null,
+    washrooms_type2_pcs: parseInteger(listing.WashroomsType2Pcs),
+    washrooms_type3: parseInteger(listing.WashroomsType3),
+    washrooms_type3_level: listing.WashroomsType3Level || null,
+    washrooms_type3_pcs: parseInteger(listing.WashroomsType3Pcs),
+    washrooms_type4: parseInteger(listing.WashroomsType4),
+    washrooms_type4_level: listing.WashroomsType4Level || null,
+    washrooms_type4_pcs: parseInteger(listing.WashroomsType4Pcs),
+    washrooms_type5: parseInteger(listing.WashroomsType5),
+    washrooms_type5_level: listing.WashroomsType5Level || null,
+    washrooms_type5_pcs: parseInteger(listing.WashroomsType5Pcs),
+
+    // ===== STAFF =====
+    staff_comments: listing.StaffComments || null,
+    channel_name: listing.ChannelName || null,
+
+    // ===== DAYS ON MARKET =====
+    days_on_market: parseInteger(listing.DaysOnMarket),
+
+    // ===== ACCESS CONTROL FLAGS =====
+    available_in_idx: determineIDXAccess(listing),
+    available_in_vow: determineVOWAccess(listing),
+    available_in_dla: true,
+
+    // ===== SYSTEM =====
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    last_synced_at: new Date().toISOString(),
+    sync_source: 'dla'
+  };
+}
+
+// =====================================================
+// SAVE MEDIA (identical to building-sync/save.ts)
+// =====================================================
+
+async function saveMedia(savedListings: any[], listingsData: any[]) {
+  let totalCount = 0;
+  const mediaRecords: any[] = [];
+
+  for (const savedListing of savedListings) {
+    const originalListing = listingsData.find(l => l.ListingKey === savedListing.listing_key);
+    if (!originalListing?.Media) continue;
+
+    const grouped = groupMediaByBaseImage(originalListing.Media);
+
+    for (const [baseId, variants] of Object.entries(grouped)) {
+      const thumbnail = (variants as any[]).find((v: any) =>
+        v.ImageSizeDescription === 'Thumbnail' || v.MediaURL?.includes('rs:fit:240:240')
+      );
+      const large = (variants as any[]).find((v: any) =>
+        v.ImageSizeDescription === 'Large' || v.MediaURL?.includes('rs:fit:1920:1920')
+      );
+
+      if (thumbnail) {
+        mediaRecords.push(createMediaRecord(savedListing.id, thumbnail, 'thumbnail', baseId.substring(0, 100)));
+      }
+      if (large) {
+        mediaRecords.push(createMediaRecord(savedListing.id, large, 'large', baseId.substring(0, 100)));
+      }
+    }
+  }
+
+  if (mediaRecords.length > 0) {
+    const batchSize = 400;
+    for (let i = 0; i < mediaRecords.length; i += batchSize) {
+      const batch = mediaRecords.slice(i, i + batchSize);
+      const { error } = await supabase.from('media').insert(batch);
+      if (error) console.error('[HomesSave] Media error:', error.message);
+      else totalCount += batch.length;
+    }
+  }
+
+  return totalCount;
+}
+
+function groupMediaByBaseImage(mediaArray: any[]) {
+  const groups: any = {};
+  for (const media of mediaArray) {
+    const baseId = extractBaseImageId(media.MediaURL);
+    if (!groups[baseId]) groups[baseId] = [];
+    groups[baseId].push(media);
+  }
+  return groups;
+}
+
+function extractBaseImageId(url: string | null | undefined): string {
+  if (!url) return 'unknown';
+  const parts = url.split('/');
+  const filename = parts[parts.length - 1];
+  return filename.split('.')[0] || 'unknown';
+}
+
+function createMediaRecord(listingId: string, media: any, variantType: string, baseImageId: string) {
+  return {
+    listing_id: listingId,
+    media_key: media.MediaKey || null,
+    media_type: media.MediaType || null,
+    media_url: media.MediaURL,
+    variant_type: variantType,
+    base_image_id: baseImageId?.substring(0, 100) || null,
+    short_description: media.ShortDescription || null,
+    order_number: parseInteger(media.Order),
+    preferred_photo_yn: parseBoolean(media.PreferredPhotoYN),
+    image_width: parseInteger(media.ImageWidth),
+    image_height: parseInteger(media.ImageHeight),
+    created_at: new Date().toISOString()
+  };
+}
+
+// =====================================================
+// SAVE ROOMS (identical to building-sync/save.ts)
+// =====================================================
+
+async function saveRooms(savedListings: any[], listingsData: any[]) {
+  let totalCount = 0;
+  const roomRecords: any[] = [];
+
+  for (const savedListing of savedListings) {
+    const originalListing = listingsData.find(l => l.ListingKey === savedListing.listing_key);
+    if (!originalListing?.PropertyRooms) continue;
+
+    for (const room of originalListing.PropertyRooms) {
+      roomRecords.push({
+        listing_id: savedListing.id,
+        room_key: room.RoomKey || null,
+        room_type: room.RoomType || null,
+        room_level: room.RoomLevel || null,
+        room_status: room.RoomStatus || null,
+        room_dimensions: room.RoomDimensions || null,
+        room_length: parseDecimal(room.RoomLength),
+        room_width: parseDecimal(room.RoomWidth),
+        room_height: parseDecimal(room.RoomHeight),
+        room_area: parseDecimal(room.RoomArea),
+        room_length_width_units: room.RoomLengthWidthUnits || null,
+        room_length_width_source: room.RoomLengthWidthSource || null,
+        room_area_units: room.RoomAreaUnits || null,
+        room_area_source: room.RoomAreaSource || null,
+        room_description: room.RoomDescription || null,
+        room_features: parseJsonArray(room.RoomFeatures),
+        room_feature1: room.RoomFeature1 || null,
+        room_feature2: room.RoomFeature2 || null,
+        room_feature3: room.RoomFeature3 || null,
+        order_number: parseInteger(room.Order),
+        modification_timestamp: parseTimestamp(room.ModificationTimestamp),
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+
+  if (roomRecords.length > 0) {
+    const batchSize = 400;
+    for (let i = 0; i < roomRecords.length; i += batchSize) {
+      const batch = roomRecords.slice(i, i + batchSize);
+      const { error } = await supabase.from('property_rooms').insert(batch);
+      if (error) console.error('[HomesSave] Rooms error:', error.message);
+      else totalCount += batch.length;
+    }
+  }
+
+  return totalCount;
+}
+
+// =====================================================
+// SAVE OPEN HOUSES (identical to building-sync/save.ts)
+// =====================================================
+
+async function saveOpenHouses(savedListings: any[], listingsData: any[]) {
+  let totalCount = 0;
+  const openHouseRecords: any[] = [];
+
+  for (const savedListing of savedListings) {
+    const originalListing = listingsData.find(l => l.ListingKey === savedListing.listing_key);
+    if (!originalListing?.OpenHouses) continue;
+
+    for (const openHouse of originalListing.OpenHouses) {
+      openHouseRecords.push({
+        listing_id: savedListing.id,
+        open_house_key: openHouse.OpenHouseKey || null,
+        open_house_id: openHouse.OpenHouseID || null,
+        open_house_date: parseDate(openHouse.OpenHouseDate),
+        open_house_start_time: parseTimestamp(openHouse.OpenHouseStartTime),
+        open_house_end_time: parseTimestamp(openHouse.OpenHouseEndTime),
+        open_house_type: openHouse.OpenHouseType || null,
+        open_house_status: openHouse.OpenHouseStatus || null,
+        original_entry_timestamp: parseTimestamp(openHouse.OriginalEntryTimestamp),
+        modification_timestamp: parseTimestamp(openHouse.ModificationTimestamp),
+        created_at: new Date().toISOString()
+      });
+    }
+  }
+
+  if (openHouseRecords.length > 0) {
+    const batchSize = 400;
+    for (let i = 0; i < openHouseRecords.length; i += batchSize) {
+      const batch = openHouseRecords.slice(i, i + batchSize);
+      const { error } = await supabase.from('open_houses').insert(batch);
+      if (error) console.error('[HomesSave] Open houses error:', error.message);
+      else totalCount += batch.length;
+    }
+  }
+
+  return totalCount;
+}
+
