@@ -1,0 +1,36 @@
+﻿name: Nightly MLS Sync
+on:
+  schedule:
+    - cron: '0 7 * * *'   # 2 AM EST = 7 AM UTC
+  workflow_dispatch:
+    inputs:
+      skip_homes:
+        description: 'Skip homes sync'
+        type: boolean
+        default: false
+      skip_buildings:
+        description: 'Skip buildings sync'
+        type: boolean
+        default: false
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+  PROPTX_RESO_API_URL: ${{ secrets.PROPTX_API_URL }}
+  PROPTX_DLA_TOKEN: ${{ secrets.PROPTX_DLA_TOKEN }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run nightly sync
+        run: npx tsx scripts/nightly-sync.ts
+        env:
+          SKIP_HOMES: ${{ inputs.skip_homes }}
+          SKIP_BUILDINGS: ${{ inputs.skip_buildings }}
