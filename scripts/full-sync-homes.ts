@@ -360,4 +360,4 @@ async function main() {
 main().catch(err => {
   error(TAG, `Fatal error: ${err.message}`);
   process.exit(1);
-});Set-Content -LiteralPath "scripts\full-sync-homes.ts" -Value (Get-Clipboard) -Encoding UTF8
+});
