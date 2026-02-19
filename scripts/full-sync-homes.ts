@@ -57,6 +57,36 @@ class Semaphore {
 }
 
 // ============================================
+// SKIP ALREADY-SYNCED MUNICIPALITIES
+// ============================================
+async function getAlreadySyncedMuniIds(propertyType: 'freehold' | 'condo' | 'both'): Promise<Set<string>> {
+  // Find municipalities that have at least one completed full sync for the relevant property types
+  const ptKeys: string[] = [];
+  if (propertyType === 'both' || propertyType === 'freehold') ptKeys.push('Residential Freehold');
+  if (propertyType === 'both' || propertyType === 'condo') ptKeys.push('Residential Condo & Other');
+
+  const { data } = await supabase
+    .from('sync_history')
+    .select('municipality_id, property_type')
+    .eq('sync_status', 'completed')
+    .in('property_type', ptKeys)
+    .gt('listings_found', 0);
+
+  if (!data || data.length === 0) return new Set();
+
+  if (propertyType === 'both') {
+    // Only skip if BOTH freehold and condo are completed for this municipality
+    const freeholdDone = new Set(data.filter(r => r.property_type === 'Residential Freehold').map(r => r.municipality_id));
+    const condoDone = new Set(data.filter(r => r.property_type === 'Residential Condo & Other').map(r => r.municipality_id));
+    const bothDone = new Set<string>();
+    freeholdDone.forEach(id => { if (condoDone.has(id)) bothDone.add(id); });
+    return bothDone;
+  }
+
+  return new Set(data.map(r => r.municipality_id));
+}
+
+// ============================================
 // FETCH MUNICIPALITIES FROM DB
 // ============================================
 async function getMunicipalities(areaFilter: string): Promise<{ id: string; name: string; areaId: string; areaName: string }[]> {
@@ -269,11 +299,24 @@ async function main() {
   log(TAG, 'Config validated ✅');
 
   // Get municipalities
-  const municipalities = await getMunicipalities(area);
-  log(TAG, `Found ${municipalities.length} municipalities to sync`);
+  const allMunicipalities = await getMunicipalities(area);
+  log(TAG, `Found ${allMunicipalities.length} total municipalities`);
+
+  // Skip already-synced (unless --force flag)
+  const force = process.argv.includes('--force');
+  let municipalities = allMunicipalities;
+
+  if (!force) {
+    const synced = await getAlreadySyncedMuniIds(propertyType);
+    municipalities = allMunicipalities.filter(m => !synced.has(m.id));
+    const skipped = allMunicipalities.length - municipalities.length;
+    if (skipped > 0) log(TAG, `Skipping ${skipped} already-synced municipalities (use --force to re-sync)`);
+  }
+
+  log(TAG, `${municipalities.length} municipalities to sync`);
 
   if (municipalities.length === 0) {
-    warn(TAG, 'No municipalities found. Exiting.');
+    log(TAG, 'All municipalities already synced. Nothing to do.');
     process.exit(0);
   }
 
