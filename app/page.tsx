@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getAgentFromHost, isCustomDomain } from '@/lib/utils/agent-detection';
 import { HomePage } from '@/components/HomePage';
+
+
 import LandingHeader from '@/components/landing/LandingHeader'
 import HeroSection from '@/components/landing/HeroSection'
 import EstimatorDemo from '@/components/landing/EstimatorDemo'
@@ -211,6 +213,7 @@ export default async function RootPage() {
       assigned_agent: building.assigned_agent || null
     };
   });
+
 
 
   return (
