@@ -1,16 +1,12 @@
-﻿import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 import type { GeoAssignment, ResolvedAccess } from './types';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
 
 /**
  * Resolves an agent's geographic access for System 2 (Comprehensive Homepage).
  * Returns null if agent has no System 2 assignments (should use System 1 instead).
  */
 export async function resolveAgentAccess(agentId: string): Promise<ResolvedAccess | null> {
+  const supabase = createClient();
   // 1. Fetch all active assignments
   const { data: assignments, error } = await supabase
     .from('agent_property_access')
@@ -18,6 +14,7 @@ export async function resolveAgentAccess(agentId: string): Promise<ResolvedAcces
     .eq('agent_id', agentId)
     .eq('is_active', true);
 
+  console.log('[resolveAgentAccess] Query result:', { count: assignments?.length, error: error?.message });
   if (error || !assignments || assignments.length === 0) {
     return null; // No System 2 access  use System 1
   }
@@ -114,11 +111,14 @@ export async function resolveAgentAccess(agentId: string): Promise<ResolvedAcces
  * Lighter than full resolveAgentAccess  just checks existence.
  */
 export async function hasComprehensiveAccess(agentId: string): Promise<boolean> {
+  const supabase = createClient();
+  console.log('[System2] Checking comprehensive access for agent:', agentId);
   const { count, error } = await supabase
     .from('agent_property_access')
     .select('id', { count: 'exact', head: true })
     .eq('agent_id', agentId)
     .eq('is_active', true);
 
+    console.log('[System2] Access check result:', { count, error: error?.message });
   return !error && (count ?? 0) > 0;
 }

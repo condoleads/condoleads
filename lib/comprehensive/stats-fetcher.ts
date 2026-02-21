@@ -1,16 +1,12 @@
-﻿import { createClient } from '@supabase/supabase-js';
-import type { ResolvedAccess, MarketStats, AreaCard, CONDO_SUBTYPES, HOMES_SUBTYPES } from './types';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { createClient } from '@/lib/supabase/server';
+import type { ResolvedAccess, MarketStats, AreaCard } from './types';
 
 /**
  * Fetch market stats scoped to agent's geographic access.
  * If isAllMLS, no geo filter applied (full database).
  */
 export async function fetchMarketStats(access: ResolvedAccess): Promise<MarketStats> {
+  const supabase = createClient();
   // Build base query conditions
   const geoFilter = access.isAllMLS ? null : access.communityIds;
 
@@ -127,6 +123,7 @@ export async function fetchMarketStats(access: ResolvedAccess): Promise<MarketSt
  * Returns cards for the NeighborhoodExplorer section.
  */
 export async function fetchTopAreas(access: ResolvedAccess, limit: number = 6): Promise<AreaCard[]> {
+  const supabase = createClient();
   // If ALL MLS  show top municipalities by activity
   // If specific geo  show the assigned municipalities/communities
 

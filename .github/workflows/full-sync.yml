@@ -1,4 +1,4 @@
-﻿name: Full MLS Sync
+name: Full MLS Sync
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +17,10 @@ on:
         description: 'Parallel municipalities'
         type: number
         default: 3
+      force:
+        description: 'Force re-sync all (ignore completed status)'
+        type: boolean
+        default: false
 
 env:
   NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -35,4 +39,4 @@ jobs:
           node-version: '20'
       - run: npm ci
       - name: Run full sync
-        run: npx tsx scripts/full-sync-homes.ts --area=${{ inputs.area }} --type=${{ inputs.property_type }} --concurrency=${{ inputs.concurrency }}
+        run: npx tsx scripts/full-sync-homes.ts --area=${{ inputs.area }} --type=${{ inputs.property_type }} --concurrency=${{ inputs.concurrency }} ${{ inputs.force == true && '--force' || '' }}
