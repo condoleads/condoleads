@@ -1,6 +1,6 @@
 ﻿"use client";
 import { useState, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Building2, MapPin, RefreshCw, Search, Save, CheckCircle, XCircle, Clock, Loader2, RotateCcw, Play } from 'lucide-react';
+import { ChevronRight, ChevronDown, Building2, MapPin, RefreshCw, Search, Save, CheckCircle, XCircle, Clock, Loader2, RotateCcw, Play, Database } from 'lucide-react';
 
 interface Area {
   id: string;
@@ -541,11 +541,61 @@ export default function BulkDiscoveryPage() {
       console.error('Sync failed:', error);
     } finally {
       setSyncing(false);
-      setSelectedBuildings(new Set());
-    }
-  };
+        setSelectedBuildings(new Set());
+      }
+    };
 
-  const filteredBuildings = discoveredBuildings.filter(b => {
+    const handleDBAssignSelected = async () => {
+      const buildingsToAssign = discoveredBuildings.filter(b => selectedBuildings.has(b.id));
+      if (buildingsToAssign.length === 0) return;
+
+      setSyncing(true);
+      setSyncProgress({ current: 0, total: buildingsToAssign.length, completed: 0, failed: 0 });
+
+      try {
+        const response = await fetch('/api/admin/bulk-discovery/db-assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ buildingIds: Array.from(selectedBuildings) })
+        });
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const text = decoder.decode(value);
+            const lines = text.split('\n').filter(line => line.startsWith('data:'));
+
+            for (const line of lines) {
+              try {
+                const data = JSON.parse(line.replace('data:', ''));
+                if (data.type === 'progress') {
+                  setSyncProgress(data.progress);
+                  if (data.buildingId && data.status) {
+                    setDiscoveredBuildings(prev =>
+                      prev.map(b => b.id === data.buildingId ? { ...b, status: data.status } : b)
+                    );
+                  }
+                } else if (data.type === 'complete') {
+                  loadGeoTree();
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (error) {
+        console.error('DB Assign failed:', error);
+      } finally {
+        setSyncing(false);
+        setSelectedBuildings(new Set());
+      }
+    };
+
+    const filteredBuildings = discoveredBuildings.filter(b => {
     const matchesFilter = filter === 'all' || b.status === filter;
     const matchesSearch = !searchTerm || 
       (b.building_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -557,6 +607,7 @@ export default function BulkDiscoveryPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'synced': return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'db_linked': return <Database className="w-4 h-4 text-purple-500" />;
       case 'failed': return <XCircle className="w-4 h-4 text-red-500" />;
       case 'pending': return <Clock className="w-4 h-4 text-yellow-500" />;
       case 'syncing': return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
@@ -574,6 +625,7 @@ export default function BulkDiscoveryPage() {
   const failedCount = discoveredBuildings.filter(b => b.status === 'failed').length;
   const pendingCount = discoveredBuildings.filter(b => b.status === 'pending').length;
   const syncedCount = discoveredBuildings.filter(b => b.status === 'synced').length;
+  const dbLinkedCount = discoveredBuildings.filter(b => b.status === 'db_linked').length;
 
   return (
     <div className="p-8">
@@ -830,18 +882,35 @@ export default function BulkDiscoveryPage() {
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {syncing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Syncing {syncProgress.current}/{syncProgress.total}
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      Sync Selected
-                    </>
-                  )}
-                </button>
-              </div>
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Syncing {syncProgress.current}/{syncProgress.total}
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        Sync Selected
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleDBAssignSelected}
+                    disabled={selectedBuildings.size === 0 || syncing}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {syncing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Linking {syncProgress.current}/{syncProgress.total}
+                      </>
+                    ) : (
+                      <>
+                        <Database className="w-4 h-4" />
+                        DB Assign Selected
+                      </>
+                    )}
+                  </button>
+                </div>
 
               {syncing && (
                 <div className="mb-4 p-4 bg-blue-50 rounded-lg">
@@ -868,7 +937,7 @@ export default function BulkDiscoveryPage() {
                       <th className="px-2 py-2 text-left w-10">
                         <input
                           type="checkbox"
-                          checked={selectedBuildings.size === filteredBuildings.filter(b => b.status !== 'synced').length && filteredBuildings.filter(b => b.status !== 'synced').length > 0}
+                          checked={selectedBuildings.size === filteredBuildings.filter(b => b.status !== 'synced' && b.status !== 'db_linked').length && filteredBuildings.filter(b => b.status !== 'synced' && b.status !== 'db_linked').length > 0}
                           onChange={() => {
                             if (selectedBuildings.size > 0) {
                               unselectAll();
@@ -903,7 +972,7 @@ export default function BulkDiscoveryPage() {
                               type="checkbox"
                               checked={selectedBuildings.has(building.id)}
                               onChange={() => toggleBuildingSelection(building.id)}
-                              disabled={building.status === 'syncing' || building.status === 'synced'}
+                              disabled={building.status === 'syncing' || building.status === 'synced' || building.status === 'db_linked'}
                             />
                           </td>
                           
@@ -999,11 +1068,16 @@ export default function BulkDiscoveryPage() {
                                 </div>
                               </div>
                             ) : building.status === 'synced' ? (
-                              <div className="flex items-center gap-1">
-                                <CheckCircle className="w-4 h-4 text-green-500" />
-                                <span className="text-xs text-green-600">Synced</span>
-                              </div>
-                            ) : building.status === 'failed' ? (
+                                <div className="flex items-center gap-1">
+                                  <CheckCircle className="w-4 h-4 text-green-500" />
+                                  <span className="text-xs text-green-600">Synced</span>
+                                </div>
+                              ) : building.status === 'db_linked' ? (
+                                <div className="flex items-center gap-1">
+                                  <Database className="w-4 h-4 text-purple-500" />
+                                  <span className="text-xs text-purple-600">DB Linked</span>
+                                </div>
+                              ) : building.status === 'failed' ? (
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-1">
                                   <XCircle className="w-4 h-4 text-red-500" />
@@ -1028,8 +1102,10 @@ export default function BulkDiscoveryPage() {
                             {building.status === 'syncing' ? (
                               <Loader2 className="w-4 h-4 animate-spin text-blue-500 mx-auto" />
                             ) : building.status === 'synced' ? (
-                              <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
-                            ) : (
+                                <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
+                              ) : building.status === 'db_linked' ? (
+                                <Database className="w-4 h-4 text-purple-500 mx-auto" />
+                              ) : (
                               <button
                                 onClick={() => retrySingleBuilding(building.id)}
                                 disabled={syncing}
