@@ -222,6 +222,35 @@ export default function CommandCenter() {
             <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2"><Globe className="w-4 h-4" /> MLS Sync Command Center</h3>
             <button onClick={loadOverview} className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"><Loader2 className="w-3 h-3" /> Refresh</button>
           </div>
+          {/* PropTx vs DB Coverage Banner */}
+          {totals.proptx_total !== null && (
+            <div className="mb-3 p-3 rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-purple-800">PropTx vs Database Coverage</span>
+                <span className="text-xs font-bold text-purple-700">{totals.coverage_pct}% synced</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+                <div className="bg-gradient-to-r from-purple-500 to-blue-500 h-3 rounded-full transition-all" style={{ width: Math.min(totals.coverage_pct || 0, 100) + '%' }} />
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase">Total</p>
+                  <p className="text-xs"><span className="font-bold text-purple-700">{formatNum(totals.total_listings)}</span> <span className="text-gray-400">/</span> <span className="text-gray-600">{formatNum(totals.proptx_total)}</span></p>
+                  <p className="text-[10px] text-orange-600 font-medium">Gap: {formatNum(totals.gap)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase">Freehold</p>
+                  <p className="text-xs"><span className="font-bold text-green-700">{formatNum(totals.total_freehold)}</span> <span className="text-gray-400">/</span> <span className="text-gray-600">{totals.proptx_freehold !== null ? formatNum(totals.proptx_freehold) : '?'}</span></p>
+                  <p className="text-[10px] text-orange-600 font-medium">{totals.freehold_coverage_pct}%</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase">Condo</p>
+                  <p className="text-xs"><span className="font-bold text-blue-700">{formatNum(totals.total_condo)}</span> <span className="text-gray-400">/</span> <span className="text-gray-600">{totals.proptx_condo !== null ? formatNum(totals.proptx_condo) : '?'}</span></p>
+                  <p className="text-[10px] text-orange-600 font-medium">{totals.condo_coverage_pct}%</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-6 gap-3">
             <div className="text-center bg-gray-50 rounded-lg p-2">
               <p className="text-xs text-gray-500">Areas</p>
@@ -414,6 +443,7 @@ export default function CommandCenter() {
     </div>
   );
 }
+
 
 
 

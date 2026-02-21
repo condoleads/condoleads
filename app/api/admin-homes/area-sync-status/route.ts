@@ -1,6 +1,5 @@
 ﻿// app/api/admin-homes/area-sync-status/route.ts
-// Area-level overview — fast DB counts for all municipalities in an area
-// No PropTx calls (fast) — PropTx comparison happens per-municipality via sync-status
+// Area-level overview — single RPC for DB counts + PropTx grand totals for coverage
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -12,12 +11,29 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const PROPTX_BASE_URL = process.env.PROPTX_RESO_API_URL;
+const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_BEARER_TOKEN;
+
+async function getPropTxCount(filter: string): Promise<number> {
+  if (!PROPTX_BASE_URL || !PROPTX_TOKEN) return -1;
+  try {
+    const params = filter ? '$filter=' + encodeURIComponent(filter) + '&' : '';
+    const url = PROPTX_BASE_URL + 'Property?' + params + '$count=true&$top=0';
+    const resp = await fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + PROPTX_TOKEN, 'Accept': 'application/json' },
+    });
+    if (!resp.ok) return -1;
+    const data = await resp.json();
+    return data['@odata.count'] ?? data['odata.count'] ?? -1;
+  } catch {
+    return -1;
+  }
+}
+
 export async function GET(request: NextRequest) {
   const areaId = request.nextUrl.searchParams.get('areaId');
 
   try {
-    // If areaId provided, get municipalities for that area
-    // If not, get ALL areas with their municipalities (full overview)
     if (areaId) {
       return NextResponse.json(await getAreaDetail(areaId));
     } else {
@@ -30,83 +46,101 @@ export async function GET(request: NextRequest) {
 }
 
 async function getFullOverview() {
-  // Get all areas with municipality counts
-  const { data: areas } = await supabase
-    .from('treb_areas')
-    .select('id, name, homes_count')
-    .order('name');
+  // 5 parallel queries instead of 146+
+  const [
+    { data: areas },
+    { data: listingCounts },
+    { data: allMunis },
+    { data: syncedMunis },
+    proptxFreehold,
+    proptxCondo,
+  ] = await Promise.all([
+    supabase.from('treb_areas').select('id, name, homes_count').order('name'),
+    supabase.rpc('get_area_listing_counts'),
+    supabase.from('municipalities').select('id, area_id'),
+    supabase.from('sync_history')
+      .select('municipality_id')
+      .eq('sync_status', 'completed')
+      .not('municipality_id', 'is', null),
+    getPropTxCount("PropertyType eq 'Residential Freehold'"),
+    getPropTxCount("PropertyType eq 'Residential Condo & Other'"),
+  ]);
 
   if (!areas) return { areas: [], totals: {} };
 
-  // Get DB counts per area per property type
-  const areaStats = await Promise.all(areas.map(async (area) => {
-    const [freeholdResult, condoResult, muniCount, lastSync] = await Promise.all([
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq('area_id', area.id).eq('property_type', 'Residential Freehold'),
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq('area_id', area.id).eq('property_type', 'Residential Condo & Other'),
-      supabase.from('municipalities').select('id', { count: 'exact', head: true })
-        .eq('area_id', area.id),
-      supabase.from('sync_history')
-        .select('completed_at, municipality_name, sync_status')
-        .eq('sync_status', 'completed')
-        .order('completed_at', { ascending: false })
-        .limit(1),
-    ]);
+  // Build lookup maps from the single RPC result
+  const countMap: Record<string, { freehold: number; condo: number }> = {};
+  for (const row of (listingCounts || [])) {
+    if (!countMap[row.area_id]) countMap[row.area_id] = { freehold: 0, condo: 0 };
+    if (row.property_type === 'Residential Freehold') countMap[row.area_id].freehold = Number(row.cnt);
+    else if (row.property_type === 'Residential Condo & Other') countMap[row.area_id].condo = Number(row.cnt);
+  }
 
-    const freehold = freeholdResult.count || 0;
-    const condo = condoResult.count || 0;
+  // Municipality counts per area
+  const munisByArea: Record<string, string[]> = {};
+  for (const m of (allMunis || [])) {
+    if (!munisByArea[m.area_id]) munisByArea[m.area_id] = [];
+    munisByArea[m.area_id].push(m.id);
+  }
 
-    // Count how many municipalities have been synced at least once
-    const { data: syncedMunis } = await supabase
-      .from('sync_history')
-      .select('municipality_id')
-      .eq('sync_status', 'completed')
-      .not('municipality_id', 'is', null);
+  // Synced municipality set
+  const syncedSet = new Set((syncedMunis || []).map(s => s.municipality_id));
 
-    // Get unique municipality_ids that belong to this area
-    const { data: areaMunis } = await supabase
-      .from('municipalities').select('id').eq('area_id', area.id);
-    const areaMuniIds = new Set((areaMunis || []).map(m => m.id));
-    const syncedInArea = new Set(
-      (syncedMunis || []).filter(s => areaMuniIds.has(s.municipality_id)).map(s => s.municipality_id)
-    );
+  // Build area stats — pure map, zero additional queries
+  const areaStats = areas.map(area => {
+    const counts = countMap[area.id] || { freehold: 0, condo: 0 };
+    const areaMuniIds = munisByArea[area.id] || [];
+    const syncedInArea = areaMuniIds.filter(id => syncedSet.has(id)).length;
 
     return {
       id: area.id,
       name: area.name,
-      municipality_count: muniCount.count || 0,
-      municipalities_synced: syncedInArea.size,
-      freehold_db: freehold,
-      condo_db: condo,
-      total_db: freehold + condo,
+      municipality_count: areaMuniIds.length,
+      municipalities_synced: syncedInArea,
+      freehold_db: counts.freehold,
+      condo_db: counts.condo,
+      total_db: counts.freehold + counts.condo,
     };
-  }));
+  });
 
-  // Filter out areas with 0 municipalities
   const activeAreas = areaStats.filter(a => a.municipality_count > 0);
 
-  // Grand totals
+  const dbFreehold = activeAreas.reduce((s, a) => s + a.freehold_db, 0);
+  const dbCondo = activeAreas.reduce((s, a) => s + a.condo_db, 0);
+  const dbTotal = dbFreehold + dbCondo;
+  const proptxTotal = (proptxFreehold >= 0 && proptxCondo >= 0) ? proptxFreehold + proptxCondo : null;
+
   const totals = {
     total_areas: activeAreas.length,
     total_municipalities: activeAreas.reduce((s, a) => s + a.municipality_count, 0),
-    total_freehold: activeAreas.reduce((s, a) => s + a.freehold_db, 0),
-    total_condo: activeAreas.reduce((s, a) => s + a.condo_db, 0),
-    total_listings: activeAreas.reduce((s, a) => s + a.total_db, 0),
     total_synced_munis: activeAreas.reduce((s, a) => s + a.municipalities_synced, 0),
+    // DB counts
+    total_freehold: dbFreehold,
+    total_condo: dbCondo,
+    total_listings: dbTotal,
+    // PropTx counts (live from API)
+    proptx_freehold: proptxFreehold >= 0 ? proptxFreehold : null,
+    proptx_condo: proptxCondo >= 0 ? proptxCondo : null,
+    proptx_total: proptxTotal,
+    // Coverage
+    coverage_pct: proptxTotal && proptxTotal > 0 ? Math.round((dbTotal / proptxTotal) * 1000) / 10 : null,
+    freehold_coverage_pct: proptxFreehold > 0 ? Math.round((dbFreehold / proptxFreehold) * 1000) / 10 : null,
+    condo_coverage_pct: proptxCondo > 0 ? Math.round((dbCondo / proptxCondo) * 1000) / 10 : null,
+    // Gaps
+    gap: proptxTotal !== null ? proptxTotal - dbTotal : null,
+    freehold_gap: proptxFreehold >= 0 ? proptxFreehold - dbFreehold : null,
+    condo_gap: proptxCondo >= 0 ? proptxCondo - dbCondo : null,
   };
 
   return { areas: activeAreas, totals };
 }
 
 async function getAreaDetail(areaId: string) {
-  // Get area info
   const { data: area } = await supabase
     .from('treb_areas').select('id, name').eq('id', areaId).single();
 
   if (!area) return { error: 'Area not found' };
 
-  // Get all municipalities in this area
   const { data: municipalities } = await supabase
     .from('municipalities')
     .select('id, name, homes_count')
@@ -115,7 +149,6 @@ async function getAreaDetail(areaId: string) {
 
   if (!municipalities) return { area, municipalities: [] };
 
-  // For each municipality: DB counts + last sync info
   const muniStats = await Promise.all(municipalities.map(async (muni) => {
     const [freeholdResult, condoResult, lastFreeholdSync, lastCondoSync, runningSync] = await Promise.all([
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
@@ -163,3 +196,4 @@ async function getAreaDetail(areaId: string) {
     },
   };
 }
+
