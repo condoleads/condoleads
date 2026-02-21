@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
     
     //     // STRATEGY 2+3 COMBINED: Optimized search for completed transactions
     
-    console.log('STRATEGY 2+3: Combined search for completed transactions');
-    const completedFilter = `StreetNumber eq '${streetNumber.trim()}'${streetNamePart}${cityPart} and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
+    console.log('STRATEGY 2+3: Combined search for all non-active listings');
+    const completedFilter = `StreetNumber eq '${streetNumber.trim()}'${streetNamePart}${cityPart} and StandardStatus ne 'Active'`;
     const completedUrl = `${baseUrl}Property?$filter=${encodeURIComponent(completedFilter)}&$top=15000`;
     
     const completedResponse = await fetch(completedUrl, {
