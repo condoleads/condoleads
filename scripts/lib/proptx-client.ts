@@ -1,10 +1,10 @@
-// scripts/lib/proptx-client.ts
+﻿// scripts/lib/proptx-client.ts
 // Shared PropTx API helpers for GitHub Actions sync scripts
 // Includes: retry logic, pagination, enhanced data fetching, media filtering
 // Source: Extracted from admin-homes/incremental-sync + buildings/incremental-sync
 
 const PROPTX_BASE_URL = process.env.PROPTX_RESO_API_URL;
-const PROPTX_TOKEN = process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN;
+const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_BEARER_TOKEN;
 
 // =====================================================
 // CONFIGURATION & VALIDATION
@@ -59,31 +59,31 @@ export async function fetchWithRetry(
 
       if (response.ok) return response;
 
-      // Auth failures — abort entire run, do NOT retry
+      // Auth failures â€” abort entire run, do NOT retry
       if (response.status === 401 || response.status === 403) {
         const body = await response.text().catch(() => 'no body');
-        throw new Error(`AUTH_FAILURE: HTTP ${response.status} — ${context} — ${body}`);
+        throw new Error(`AUTH_FAILURE: HTTP ${response.status} â€” ${context} â€” ${body}`);
       }
 
-      // Rate limited — respect Retry-After header
+      // Rate limited â€” respect Retry-After header
       if (response.status === 429) {
         const retryAfter = parseInt(response.headers.get('Retry-After') || '60');
-        console.warn(`[RATE LIMITED] ${context} — waiting ${retryAfter}s (attempt ${attempt}/${maxRetries})`);
+        console.warn(`[RATE LIMITED] ${context} â€” waiting ${retryAfter}s (attempt ${attempt}/${maxRetries})`);
         await delay(retryAfter * 1000);
         continue;
       }
 
-      // Server errors — exponential backoff
+      // Server errors â€” exponential backoff
       if (response.status >= 500) {
         const waitTime = attempt * 30000; // 30s, 60s, 90s
-        console.warn(`[SERVER ERROR] ${context} — ${response.status}, waiting ${waitTime / 1000}s (attempt ${attempt}/${maxRetries})`);
+        console.warn(`[SERVER ERROR] ${context} â€” ${response.status}, waiting ${waitTime / 1000}s (attempt ${attempt}/${maxRetries})`);
         await delay(waitTime);
         continue;
       }
 
-      // 400 Bad Request — do not retry, log and throw
+      // 400 Bad Request â€” do not retry, log and throw
       const body = await response.text().catch(() => 'no body');
-      throw new Error(`HTTP ${response.status}: ${body.substring(0, 200)} — ${context}`);
+      throw new Error(`HTTP ${response.status}: ${body.substring(0, 200)} â€” ${context}`);
 
     } catch (err: any) {
       // Re-throw auth failures immediately
@@ -91,17 +91,17 @@ export async function fetchWithRetry(
 
       // Handle timeout (AbortError)
       if (err.name === 'AbortError') {
-        console.warn(`[TIMEOUT] ${context} — attempt ${attempt}/${maxRetries}`);
+        console.warn(`[TIMEOUT] ${context} â€” attempt ${attempt}/${maxRetries}`);
         if (attempt < maxRetries) {
           await delay(10000);
           continue;
         }
       }
 
-      // Last attempt — throw
+      // Last attempt â€” throw
       if (attempt === maxRetries) throw err;
 
-      // Network error — brief wait and retry
+      // Network error â€” brief wait and retry
       await delay(5000);
     }
   }
@@ -142,7 +142,7 @@ export async function fetchPaginatedListings(filter: string): Promise<any[]> {
 }
 
 // =====================================================
-// SINGLE URL FETCH (for buildings — non-paginated)
+// SINGLE URL FETCH (for buildings â€” non-paginated)
 // Used by: buildings incremental (fetchPropTxListings strategies)
 // =====================================================
 
@@ -160,7 +160,7 @@ export async function fetchSingleUrl(url: string, context: string): Promise<any[
 
 // =====================================================
 // ENHANCED DATA FETCHING (Media, Rooms, Open Houses)
-// Used by: homes incremental — fetches for a batch, applies 2-variant filter
+// Used by: homes incremental â€” fetches for a batch, applies 2-variant filter
 // EXACT same logic as admin-homes/incremental-sync fetchEnhancedData
 // =====================================================
 
@@ -202,7 +202,7 @@ export async function fetchEnhancedDataForHomes(listings: any[]): Promise<void> 
 
 // =====================================================
 // ENHANCED DATA FETCHING (Per-listing, sequential)
-// Used by: buildings incremental — fetches for newly added listings
+// Used by: buildings incremental â€” fetches for newly added listings
 // EXACT same logic as buildings/incremental-sync fetchEnhancedDataFromPropTx
 // =====================================================
 
@@ -254,7 +254,7 @@ export async function fetchEnhancedDataForBuildings(originalListings: any[]): Pr
 // =====================================================
 // 2-VARIANT MEDIA FILTER (thumbnail + large only)
 // EXACT same logic as admin-homes/incremental-sync filterTwoVariants
-// Reduces storage by ~60% — only keep thumbnail (240px) and large (1920px)
+// Reduces storage by ~60% â€” only keep thumbnail (240px) and large (1920px)
 // =====================================================
 
 export function filterTwoVariants(allMediaItems: any[]): any[] {

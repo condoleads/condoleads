@@ -17,6 +17,7 @@ env:
   NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
   PROPTX_RESO_API_URL: ${{ secrets.PROPTX_API_URL }}
+  PROPTX_VOW_TOKEN: ${{ secrets.PROPTX_VOW_TOKEN }}
   PROPTX_DLA_TOKEN: ${{ secrets.PROPTX_DLA_TOKEN }}
 
 jobs:
@@ -34,3 +35,4 @@ jobs:
         env:
           SKIP_HOMES: ${{ inputs.skip_homes }}
           SKIP_BUILDINGS: ${{ inputs.skip_buildings }}
+
