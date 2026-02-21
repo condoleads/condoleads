@@ -1,5 +1,5 @@
-ï»¿// scripts/full-sync-homes.ts
-// Phase 6: Full MLS sync â€” downloads ALL listings for municipalities from PropTx
+// scripts/full-sync-homes.ts
+// Phase 6: Full MLS sync — downloads ALL listings for municipalities from PropTx
 // Source: app/api/admin-homes/parallel-sync/route.ts (extracted, no Next.js/SSE)
 // CLI: npx tsx scripts/full-sync-homes.ts --area=Toronto --type=both --concurrency=3
 // GitHub Actions: triggered via .github/workflows/full-sync.yml
@@ -199,14 +199,14 @@ async function syncOneMunicipality(
       });
 
       passStats.listingsFound = unique.length;
-      log(TAG, `${prefix} ${pass.label}: ${active.length} active, ${sold.length} sold, ${leased.length} leased, ${expired.length} expired, ${other.length} other â†’ ${unique.length} unique`);
+      log(TAG, `${prefix} ${pass.label}: ${active.length} active, ${sold.length} sold, ${leased.length} leased, ${expired.length} expired, ${other.length} other ? ${unique.length} unique`);
 
       if (unique.length === 0) {
         log(TAG, `${prefix} ${pass.label}: No listings, skipping.`);
         await writeHomesSyncHistory({
           municipalityId: muni.id, municipalityName: muni.name,
           propertyType: pass.ptKey, startedAt: new Date(passStart),
-          triggeredBy: 'github-full-sync', status: 'completed',
+          triggeredBy: 'github-full-sync', syncType: 'full', status: 'completed',
           listingsFound: 0, listingsCreated: 0, listingsSkipped: 0,
           mediaSaved: 0, roomsSaved: 0, openHousesSaved: 0,
         });
@@ -219,10 +219,10 @@ async function syncOneMunicipality(
         const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
         const chunk = unique.slice(c, c + CHUNK_SIZE);
 
-        log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} â€” enhanced data (${chunk.length})...`);
+        log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} — enhanced data (${chunk.length})...`);
         await fetchEnhancedDataForHomes(chunk);
 
-        log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} â€” saving...`);
+        log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} — saving...`);
         const result = await saveHomesListings(chunk, muni.id, muni.areaId);
 
         if (result.success && result.stats) {
@@ -231,7 +231,7 @@ async function syncOneMunicipality(
           passStats.rooms += result.stats.rooms;
           passStats.openHouses += result.stats.openHouses;
           passStats.skipped += result.stats.skipped;
-          log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} â€” ${result.stats.listings} saved`);
+          log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} — ${result.stats.listings} saved`);
         } else {
           passStats.skipped += chunk.length;
           warn(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum} error: ${result.error || 'unknown'}`);
@@ -240,12 +240,12 @@ async function syncOneMunicipality(
 
       // Write sync history for this pass
       const passDuration = Math.round((Date.now() - passStart) / 1000);
-      log(TAG, `${prefix} ${pass.label}: Complete â€” ${passStats.listings} listings in ${passDuration}s`);
+      log(TAG, `${prefix} ${pass.label}: Complete — ${passStats.listings} listings in ${passDuration}s`);
 
       await writeHomesSyncHistory({
         municipalityId: muni.id, municipalityName: muni.name,
         propertyType: pass.ptKey, startedAt: new Date(passStart),
-        triggeredBy: 'github-full-sync', status: 'completed',
+        triggeredBy: 'github-full-sync', syncType: 'full', status: 'completed',
         listingsFound: passStats.listingsFound, listingsCreated: passStats.listings,
         listingsSkipped: passStats.skipped, mediaSaved: passStats.media,
         roomsSaved: passStats.rooms, openHousesSaved: passStats.openHouses,
@@ -258,12 +258,12 @@ async function syncOneMunicipality(
       grandStats.skipped += passStats.skipped;
 
     } catch (err: any) {
-      error(TAG, `${prefix} ${pass.label}: FAILED â€” ${err.message}`);
+      error(TAG, `${prefix} ${pass.label}: FAILED — ${err.message}`);
       const passDuration = Math.round((Date.now() - passStart) / 1000);
       await writeHomesSyncHistory({
         municipalityId: muni.id, municipalityName: muni.name,
         propertyType: pass.ptKey, startedAt: new Date(passStart),
-        triggeredBy: 'github-full-sync', status: 'failed',
+        triggeredBy: 'github-full-sync', syncType: 'full', status: 'failed',
         listingsFound: passStats.listingsFound, listingsCreated: passStats.listings,
         listingsSkipped: passStats.skipped, mediaSaved: passStats.media,
         roomsSaved: passStats.rooms, openHousesSaved: passStats.openHouses,
@@ -296,7 +296,7 @@ async function main() {
 
   // Pre-flight
   validateConfig();
-  log(TAG, 'Config validated âœ…');
+  log(TAG, 'Config validated ?');
 
   // Get municipalities
   const allMunicipalities = await getMunicipalities(area);
@@ -347,11 +347,11 @@ async function main() {
       completed++;
       const hasError = 'error' in stats && stats.error;
       results.push({ name: muni.name, success: !hasError, stats, error: hasError ? stats.error : undefined });
-      log(TAG, `[${completed}/${municipalities.length}] ${muni.name}: ${hasError ? 'FAILED' : 'DONE'} â€” ${stats.listings} listings`);
+      log(TAG, `[${completed}/${municipalities.length}] ${muni.name}: ${hasError ? 'FAILED' : 'DONE'} — ${stats.listings} listings`);
     } catch (err: any) {
       completed++;
       results.push({ name: muni.name, success: false, stats: null, error: err.message });
-      error(TAG, `[${completed}/${municipalities.length}] ${muni.name}: CRASHED â€” ${err.message}`);
+      error(TAG, `[${completed}/${municipalities.length}] ${muni.name}: CRASHED — ${err.message}`);
     } finally {
       semaphore.release();
       // Small delay between releases to avoid API hammering
@@ -387,7 +387,7 @@ async function main() {
   log(TAG, `  Listings saved: ${grandTotal.listings}`);
   log(TAG, `  Media: ${grandTotal.media} | Rooms: ${grandTotal.rooms} | Open Houses: ${grandTotal.openHouses}`);
   log(TAG, `  Skipped: ${grandTotal.skipped}`);
-  log(TAG, `  DB count: ${baselineCount || 0} â†’ ${postCount || 0} (+${(postCount || 0) - (baselineCount || 0)})`);
+  log(TAG, `  DB count: ${baselineCount || 0} ? ${postCount || 0} (+${(postCount || 0) - (baselineCount || 0)})`);
   log(TAG, '='.repeat(60));
 
   // Log failed municipalities

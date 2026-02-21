@@ -1,4 +1,4 @@
-﻿// scripts/lib/sync-logger.ts
+// scripts/lib/sync-logger.ts
 // Structured logging for GitHub Actions (no SSE, console + sync_history)
 
 import { supabase } from './supabase-client';
@@ -31,6 +31,7 @@ export async function writeHomesSyncHistory(params: {
   roomsSaved: number;
   openHousesSaved: number;
   triggeredBy: string;
+  syncType?: 'full' | 'incremental';
   status: 'completed' | 'partial' | 'failed';
   errorDetails?: string | null;
 }): Promise<void> {
@@ -39,7 +40,7 @@ export async function writeHomesSyncHistory(params: {
       municipality_id: params.municipalityId,
       municipality_name: params.municipalityName,
       property_type: params.propertyType,
-      sync_type: 'incremental',
+      sync_type: params.syncType || 'incremental',
       sync_status: params.status,
       started_at: params.startedAt.toISOString(),
       completed_at: new Date().toISOString(),
@@ -70,12 +71,13 @@ export async function writeBuildingSyncHistory(params: {
   openHouseCount: number;
   duration: number;
   triggeredBy: string;
+  syncType?: 'full' | 'incremental';
   errorDetails?: string | null;
 }): Promise<void> {
   try {
     await supabase.from('sync_history').insert({
       building_id: params.buildingId,
-      sync_type: 'incremental',
+      sync_type: params.syncType || 'incremental',
       feed_type: 'dla',
       listings_found: params.listingsFound,
       listings_created: params.listingsCreated,
@@ -105,6 +107,7 @@ export async function writeNightlySummary(params: {
   baseline: { totalListings: number; linkedListings: number; buildingCount: number };
   postRun: { totalListings: number; linkedListings: number; buildingCount: number };
   triggeredBy: string;
+  syncType?: 'full' | 'incremental';
 }): Promise<void> {
   const status = (params.homes.failed === 0 && params.buildings.failed === 0)
     ? 'completed'
