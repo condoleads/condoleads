@@ -46,11 +46,8 @@ async function updateHierarchyCounts(municipalityId: string, areaId: string | nu
   }
 }
 
-// Auto-assign building card thumbnails from linked listing media
-// Media schema: listing_id (UUID), media_url, variant_type ('thumbnail'|'large'), order_number
 async function assignBuildingThumbnails(buildingId: string) {
   try {
-    // Get listings belonging to this building
     const { data: listings } = await supabase
       .from('mls_listings')
       .select('id')
@@ -61,7 +58,6 @@ async function assignBuildingThumbnails(buildingId: string) {
 
     const listingIds = listings.map(l => l.id);
 
-    // Get first photo (order_number = 1, thumbnail variant) from different listings
     const { data: photos } = await supabase
       .from('media')
       .select('media_url, listing_id, order_number, variant_type')
@@ -71,7 +67,6 @@ async function assignBuildingThumbnails(buildingId: string) {
       .order('listing_id');
 
     if (!photos || photos.length === 0) {
-      // Fallback: get any thumbnail with lowest order_number
       const { data: fallback } = await supabase
         .from('media')
         .select('media_url, listing_id, order_number')
@@ -102,7 +97,6 @@ async function assignBuildingThumbnails(buildingId: string) {
       return;
     }
 
-    // Get first photo from up to 3 different listings
     const seen = new Set<string>();
     const thumbs: string[] = [];
     for (const p of photos) {
@@ -125,7 +119,6 @@ async function assignBuildingThumbnails(buildingId: string) {
   }
 }
 
-// Backfill geo IDs on listings from building's hierarchy chain
 async function backfillListingGeoIds(buildingId: string) {
   try {
     const { data: building } = await supabase
@@ -232,25 +225,23 @@ export async function POST(request: NextRequest) {
               console.log(`[DBAssign] Created building: ${buildingName} (${buildingId})`);
             }
 
-            // STEP 3: Link existing DB listings by address match
+            // STEP 3: Link existing DB listings by address match using RPC
             const streetWord = (fullStreetName || '').split(' ')[0].toLowerCase();
             const cityWord = (building.city || '').split(' ')[0].toLowerCase();
 
-            const { data: matched, error: matchErr } = await supabase
-              .from('mls_listings')
-              .update({ building_id: buildingId })
-              .eq('street_number', building.street_number)
-              .ilike('street_name', `${streetWord}%`)
-              .ilike('city', `${cityWord}%`)
-              .is('building_id', null)
-              .eq('property_type', 'Residential Condo & Other')
-              .select('id');
+            const { data: linkedCount, error: rpcErr } = await supabase
+              .rpc('link_listings_to_building', {
+                p_building_id: buildingId,
+                p_street_number: building.street_number,
+                p_street_word: streetWord,
+                p_city_word: cityWord
+              });
 
-            if (matchErr) {
-              console.error(`[DBAssign] Link error:`, matchErr);
+            if (rpcErr) {
+              console.error(`[DBAssign] RPC link error:`, rpcErr);
             }
 
-            const actualLinked = matched?.length || 0;
+            const actualLinked = linkedCount || 0;
             console.log(`[DBAssign] Linked ${actualLinked} listings to ${buildingName}`);
 
             // STEP 4: Backfill geo IDs
