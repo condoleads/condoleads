@@ -152,9 +152,9 @@ async function getAreaDetail(areaId: string) {
   const muniStats = await Promise.all(municipalities.map(async (muni) => {
     const [freeholdResult, condoResult, lastFreeholdSync, lastCondoSync, runningSync] = await Promise.all([
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq('municipality_id', muni.id).eq('property_type', 'Residential Freehold'),
+        .eq('municipality_id', muni.id).eq('property_type', 'Residential Freehold').gte('original_entry_timestamp', new Date(Date.now() - 2 * 365.25 * 24 * 60 * 60 * 1000).toISOString()),
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq('municipality_id', muni.id).eq('property_type', 'Residential Condo & Other'),
+        .eq('municipality_id', muni.id).eq('property_type', 'Residential Condo & Other').gte('original_entry_timestamp', new Date(Date.now() - 2 * 365.25 * 24 * 60 * 60 * 1000).toISOString()),
       supabase.from('sync_history')
         .select('completed_at, duration_seconds, listings_created, sync_status')
         .eq('municipality_id', muni.id).eq('property_type', 'Residential Freehold')
@@ -196,4 +196,5 @@ async function getAreaDetail(areaId: string) {
     },
   };
 }
+
 
