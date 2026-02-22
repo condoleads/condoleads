@@ -31,7 +31,7 @@ jobs:
           node-version: '20'
       - run: npm ci
       - name: Run nightly sync
-        run: node --max-old-space-size=6144 ./node_modules/.bin/tsx scripts/nightly-sync.ts
+        run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/nightly-sync.ts
         env:
           SKIP_HOMES: ${{ inputs.skip_homes }}
           SKIP_BUILDINGS: ${{ inputs.skip_buildings }}
