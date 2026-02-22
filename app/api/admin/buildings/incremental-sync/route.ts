@@ -189,9 +189,9 @@ async function fetchPropTxListings(building: any) {
     console.error('❌ Strategy 1 failed:', error);
   }
 
-  // STRATEGY 2+3: Completed transactions (Closed/Sold/Leased)
-  console.log('STRATEGY 2+3: Combined search for completed transactions');
-  const completedFilter = `StreetNumber eq '${streetNumber}'${streetNamePart}${cityPart} and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
+  // STRATEGY 2+3: All non-active listings (Closed/Sold/Leased/Cancelled/Withdrawn/Expired/Pending)
+  console.log('STRATEGY 2+3: All non-active listings');
+  const completedFilter = `StreetNumber eq '${streetNumber}'${streetNamePart}${cityPart} and StandardStatus ne 'Active'`;
   const completedUrl = `${PROPTX_API_URL}Property?$filter=${encodeURIComponent(completedFilter)}&$top=15000`;
 
   try {
@@ -265,24 +265,7 @@ async function fetchPropTxListings(building: any) {
     console.log(`  After city filter: ${filteredListings.length} listings`);
   }
 
-  // FILTER 4: EXCLUDE UNWANTED STATUSES
-  console.log('FILTER 4: Excluding unwanted statuses');
-  const excludedStatuses = ['Pending', 'Cancelled', 'Withdrawn'];
-  const excludedMlsStatuses = ['Cancelled', 'Withdrawn', 'Pend'];
-
-  const beforeExclusion = filteredListings.length;
-  filteredListings = filteredListings.filter(listing => {
-    const status = listing.StandardStatus;
-    const mlsStatus = listing.MlsStatus;
-
-    if (excludedStatuses.includes(status) || excludedMlsStatuses.includes(mlsStatus)) {
-      return false;
-    }
-    return true;
-  });
-
-  console.log(`  After exclusion filter: ${filteredListings.length} listings (removed ${beforeExclusion - filteredListings.length})`);
-
+  // FILTER 4: REMOVED - All statuses now included (Cancelled, Withdrawn, Pending, Expired, etc.)
   return filteredListings;
 }
 
