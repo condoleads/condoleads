@@ -1,4 +1,4 @@
-﻿name: Nightly MLS Sync
+name: Nightly MLS Sync
 on:
   schedule:
     - cron: '0 7 * * *'   # 2 AM EST = 7 AM UTC
@@ -31,7 +31,7 @@ jobs:
           node-version: '20'
       - run: npm ci
       - name: Run nightly sync
-        run: npx tsx scripts/nightly-sync.ts
+        run: node --max-old-space-size=6144 ./node_modules/.bin/tsx scripts/nightly-sync.ts
         env:
           SKIP_HOMES: ${{ inputs.skip_homes }}
           SKIP_BUILDINGS: ${{ inputs.skip_buildings }}

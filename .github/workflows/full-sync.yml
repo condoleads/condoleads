@@ -1,4 +1,4 @@
-﻿name: Full MLS Sync
+name: Full MLS Sync
 on:
   workflow_dispatch:
     inputs:
@@ -40,5 +40,5 @@ jobs:
           node-version: '20'
       - run: npm ci
       - name: Run full sync
-        run: npx tsx scripts/full-sync-homes.ts --area=${{ inputs.area }} --type=${{ inputs.property_type }} --concurrency=${{ inputs.concurrency }} ${{ inputs.force == true && '--force' || '' }}
+        run: node --max-old-space-size=6144 ./node_modules/.bin/tsx scripts/full-sync-homes.ts --area=${{ inputs.area }} --type=${{ inputs.property_type }} --concurrency=${{ inputs.concurrency }} ${{ inputs.force == true && '--force' || '' }}
 
