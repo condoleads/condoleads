@@ -348,7 +348,6 @@ async function main() {
       const stats = await syncOneMunicipality(muni, propertyType, idx + 1, municipalities.length);
       completed++;
       const hasError = 'error' in stats && stats.error;
-      const hasError = 'error' in stats && stats.error;
       results.push({ name: muni.name, success: !hasError, stats: { listings: stats.listings || 0, media: stats.media || 0, rooms: stats.rooms || 0, openHouses: stats.openHouses || 0, skipped: stats.skipped || 0 }, error: hasError ? stats.error : undefined });
     } catch (err: any) {
       completed++;
