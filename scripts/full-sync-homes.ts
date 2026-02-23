@@ -304,11 +304,41 @@ async function main() {
   const allMunicipalities = await getMunicipalities(area);
   log(TAG, `Found ${allMunicipalities.length} total municipalities`);
 
-  // Skip already-synced (unless --force flag)
+  // Skip already-synced
+  // --force: skip municipalities completed within last 24h (safe retrigger)
+  // no flag: skip anything ever completed
   const force = process.argv.includes('--force');
   let municipalities = allMunicipalities;
 
-  if (!force) {
+  if (force) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentlyDone } = await supabase
+      .from('sync_history')
+      .select('municipality_id, property_type')
+      .eq('sync_status', 'completed')
+      .gte('completed_at', since)
+      .gt('listings_found', 0);
+
+    if (recentlyDone && recentlyDone.length > 0) {
+      const ptKeys: string[] = [];
+      if (propertyType === 'both' || propertyType === 'freehold') ptKeys.push('Residential Freehold');
+      if (propertyType === 'both' || propertyType === 'condo') ptKeys.push('Residential Condo & Other');
+      const recentFiltered = recentlyDone.filter(r => ptKeys.includes(r.property_type));
+
+      if (propertyType === 'both') {
+        const fhDone = new Set(recentFiltered.filter(r => r.property_type === 'Residential Freehold').map(r => r.municipality_id));
+        const cdDone = new Set(recentFiltered.filter(r => r.property_type === 'Residential Condo & Other').map(r => r.municipality_id));
+        const bothDone = new Set<string>();
+        fhDone.forEach(id => { if (cdDone.has(id)) bothDone.add(id); });
+        municipalities = allMunicipalities.filter(m => !bothDone.has(m.id));
+      } else {
+        const done = new Set(recentFiltered.map(r => r.municipality_id));
+        municipalities = allMunicipalities.filter(m => !done.has(m.id));
+      }
+      const skipped = allMunicipalities.length - municipalities.length;
+      if (skipped > 0) log(TAG, `Force mode: skipping ${skipped} municipalities completed in last 24h`);
+    }
+  } else {
     const synced = await getAlreadySyncedMuniIds(propertyType);
     municipalities = allMunicipalities.filter(m => !synced.has(m.id));
     const skipped = allMunicipalities.length - municipalities.length;
@@ -414,4 +444,5 @@ main().catch(err => {
   error(TAG, `Fatal error: ${err.message}`);
   process.exit(1);
 });
+
 
