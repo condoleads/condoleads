@@ -175,24 +175,24 @@ async function syncOneMunicipality(
     try {
       // Fetch all statuses
       log(TAG, `${prefix} ${pass.label}: Fetching active...`);
-      const active = await fetchPaginatedListings(pass.ptFilter);
+      let active = await fetchPaginatedListings(pass.ptFilter);
 
       log(TAG, `${prefix} ${pass.label}: Fetching sold...`);
-      const sold = await fetchPaginatedListings(`${pass.ptFilter} and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`);
+      let sold = await fetchPaginatedListings(` and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`);
 
       log(TAG, `${prefix} ${pass.label}: Fetching leased...`);
-      const leased = await fetchPaginatedListings(`${pass.ptFilter} and (MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`);
+      let leased = await fetchPaginatedListings(` and (MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`);
 
       log(TAG, `${prefix} ${pass.label}: Fetching expired...`);
-      const expired = await fetchPaginatedListings(`${pass.ptFilter} and StandardStatus eq 'Expired'`);
+      let expired = await fetchPaginatedListings(` and StandardStatus eq 'Expired'`);
 
       log(TAG, `${prefix} ${pass.label}: Fetching cancelled/withdrawn/pending...`);
-      const other = await fetchPaginatedListings(`${pass.ptFilter} and (StandardStatus eq 'Cancelled' or StandardStatus eq 'Withdrawn' or StandardStatus eq 'Pending' or StandardStatus eq 'Active Under Contract')`);
+      let other = await fetchPaginatedListings(` and (StandardStatus eq 'Cancelled' or StandardStatus eq 'Withdrawn' or StandardStatus eq 'Pending' or StandardStatus eq 'Active Under Contract')`);
 
       // Deduplicate by ListingKey
-      const all = [...active, ...sold, ...leased, ...expired, ...other];
+      let all = [...active, ...sold, ...leased, ...expired, ...other];
       const seen = new Set<string>();
-      const unique = all.filter(l => {
+      let unique = all.filter(l => {
         const key = l.ListingKey || `${l.StreetNumber}-${l.StreetName}-${l.MlsStatus}`;
         if (seen.has(key)) return false;
         seen.add(key); return true;
@@ -237,6 +237,15 @@ async function syncOneMunicipality(
           warn(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum} error: ${result.error || 'unknown'}`);
         }
       }
+
+      // Release large arrays for GC
+      active = null as any;
+      sold = null as any;
+      leased = null as any;
+      expired = null as any;
+      other = null as any;
+      all = null as any;
+      unique = null as any;
 
       // Write sync history for this pass
       const passDuration = Math.round((Date.now() - passStart) / 1000);
@@ -346,8 +355,8 @@ async function main() {
       const stats = await syncOneMunicipality(muni, propertyType, idx + 1, municipalities.length);
       completed++;
       const hasError = 'error' in stats && stats.error;
-      results.push({ name: muni.name, success: !hasError, stats, error: hasError ? stats.error : undefined });
-      log(TAG, `[${completed}/${municipalities.length}] ${muni.name}: ${hasError ? 'FAILED' : 'DONE'} — ${stats.listings} listings`);
+      const hasError = 'error' in stats && stats.error;
+      results.push({ name: muni.name, success: !hasError, stats: { listings: stats.listings || 0, media: stats.media || 0, rooms: stats.rooms || 0, openHouses: stats.openHouses || 0, skipped: stats.skipped || 0 }, error: hasError ? stats.error : undefined });
     } catch (err: any) {
       completed++;
       results.push({ name: muni.name, success: false, stats: null, error: err.message });
@@ -381,6 +390,15 @@ async function main() {
   const { count: postCount } = await supabase.from('mls_listings').select('id', { count: 'exact', head: true });
 
   log(TAG, '='.repeat(60));
+  // Refresh materialized view for Command Center dashboard
+  try {
+    log(TAG, 'Refreshing area_listing_counts_mv...');
+    await supabase.rpc('refresh_area_listing_counts');
+    log(TAG, 'Materialized view refreshed');
+  } catch (e: any) {
+    warn(TAG, 'Failed to refresh materialized view: ' + e.message);
+  }
+
   log(TAG, 'FULL SYNC COMPLETE');
   log(TAG, `  Duration: ${Math.floor(totalDuration / 3600)}h ${Math.floor((totalDuration % 3600) / 60)}m ${totalDuration % 60}s`);
   log(TAG, `  Municipalities: ${succeeded} succeeded, ${failed} failed`);
@@ -404,3 +422,4 @@ main().catch(err => {
   error(TAG, `Fatal error: ${err.message}`);
   process.exit(1);
 });
+
