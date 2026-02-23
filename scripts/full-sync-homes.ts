@@ -173,35 +173,62 @@ async function syncOneMunicipality(
     const passStats = { listings: 0, media: 0, rooms: 0, openHouses: 0, skipped: 0, listingsFound: 0 };
 
     try {
-      // Fetch all statuses
-      log(TAG, `${prefix} ${pass.label}: Fetching active...`);
-      let active = await fetchPaginatedListings(pass.ptFilter);
-
-      log(TAG, `${prefix} ${pass.label}: Fetching sold...`);
-      let sold = await fetchPaginatedListings(` and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`);
-
-      log(TAG, `${prefix} ${pass.label}: Fetching leased...`);
-      let leased = await fetchPaginatedListings(` and (MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`);
-
-      log(TAG, `${prefix} ${pass.label}: Fetching expired...`);
-      let expired = await fetchPaginatedListings(` and StandardStatus eq 'Expired'`);
-
-      log(TAG, `${prefix} ${pass.label}: Fetching cancelled/withdrawn/pending...`);
-      let other = await fetchPaginatedListings(` and (StandardStatus eq 'Cancelled' or StandardStatus eq 'Withdrawn' or StandardStatus eq 'Pending' or StandardStatus eq 'Active Under Contract')`);
-
-      // Deduplicate by ListingKey
-      let all = [...active, ...sold, ...leased, ...expired, ...other];
+      // Process each status SEQUENTIALLY to minimize memory
       const seen = new Set<string>();
-      let unique = all.filter(l => {
-        const key = l.ListingKey || `${l.StreetNumber}-${l.StreetName}-${l.MlsStatus}`;
-        if (seen.has(key)) return false;
-        seen.add(key); return true;
-      });
+      const statusPasses = [
+        { label: "active", filter: pass.ptFilter },
+        { label: "sold", filter: `${pass.ptFilter} and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')` },
+        { label: "leased", filter: `${pass.ptFilter} and (MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')` },
+        { label: "expired", filter: `${pass.ptFilter} and StandardStatus eq 'Expired'` },
+        { label: "other", filter: `${pass.ptFilter} and (StandardStatus eq 'Cancelled' or StandardStatus eq 'Withdrawn' or StandardStatus eq 'Pending' or StandardStatus eq 'Active Under Contract')` },
+      ];
 
-      passStats.listingsFound = unique.length;
-      log(TAG, `${prefix} ${pass.label}: ${active.length} active, ${sold.length} sold, ${leased.length} leased, ${expired.length} expired, ${other.length} other ? ${unique.length} unique`);
+      for (const sp of statusPasses) {
+        log(TAG, `${prefix} ${pass.label}: Fetching ${sp.label}...`);
+        let listings = await fetchPaginatedListings(sp.filter);
 
-      if (unique.length === 0) {
+        // Deduplicate against already-seen keys
+        let fresh = listings.filter(l => {
+          const key = l.ListingKey || `${l.StreetNumber}-${l.StreetName}-${l.MlsStatus}`;
+          if (seen.has(key)) return false;
+          seen.add(key); return true;
+        });
+        listings = null as any; // release raw fetch
+
+        passStats.listingsFound += fresh.length;
+        log(TAG, `${prefix} ${pass.label}: ${sp.label}  ${fresh.length} unique listings`);
+
+        if (fresh.length === 0) { fresh = null as any; continue; }
+
+        // Chunk + save this status batch
+        const totalChunks = Math.ceil(fresh.length / CHUNK_SIZE);
+        for (let c = 0; c < fresh.length; c += CHUNK_SIZE) {
+          const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
+          const chunk = fresh.slice(c, c + CHUNK_SIZE);
+
+          log(TAG, `${prefix} ${pass.label}: ${sp.label} chunk ${chunkNum}/${totalChunks}  enhanced data (${chunk.length})...`);
+          await fetchEnhancedDataForHomes(chunk);
+
+          log(TAG, `${prefix} ${pass.label}: ${sp.label} chunk ${chunkNum}/${totalChunks}  saving...`);
+          const result = await saveHomesListings(chunk, muni.id, muni.areaId);
+
+          if (result.success && result.stats) {
+            passStats.listings += result.stats.listings;
+            passStats.media += result.stats.media;
+            passStats.rooms += result.stats.rooms;
+            passStats.openHouses += result.stats.openHouses;
+            passStats.skipped += result.stats.skipped;
+            log(TAG, `${prefix} ${pass.label}: ${sp.label} chunk ${chunkNum}/${totalChunks}  ${result.stats.listings} saved`);
+          } else {
+            passStats.skipped += chunk.length;
+            warn(TAG, `${prefix} ${pass.label}: ${sp.label} chunk ${chunkNum} error: ${result.error || 'unknown'}`);
+          }
+        }
+        fresh = null as any; // release for GC
+      }
+      seen.clear();
+
+      if (passStats.listingsFound === 0) {
         log(TAG, `${prefix} ${pass.label}: No listings, skipping.`);
         await writeHomesSyncHistory({
           municipalityId: muni.id, municipalityName: muni.name,
@@ -212,40 +239,6 @@ async function syncOneMunicipality(
         });
         continue;
       }
-
-      // Chunk: enhanced data + save
-      const totalChunks = Math.ceil(unique.length / CHUNK_SIZE);
-      for (let c = 0; c < unique.length; c += CHUNK_SIZE) {
-        const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
-        const chunk = unique.slice(c, c + CHUNK_SIZE);
-
-        log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} — enhanced data (${chunk.length})...`);
-        await fetchEnhancedDataForHomes(chunk);
-
-        log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} — saving...`);
-        const result = await saveHomesListings(chunk, muni.id, muni.areaId);
-
-        if (result.success && result.stats) {
-          passStats.listings += result.stats.listings;
-          passStats.media += result.stats.media;
-          passStats.rooms += result.stats.rooms;
-          passStats.openHouses += result.stats.openHouses;
-          passStats.skipped += result.stats.skipped;
-          log(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum}/${totalChunks} — ${result.stats.listings} saved`);
-        } else {
-          passStats.skipped += chunk.length;
-          warn(TAG, `${prefix} ${pass.label}: Chunk ${chunkNum} error: ${result.error || 'unknown'}`);
-        }
-      }
-
-      // Release large arrays for GC
-      active = null as any;
-      sold = null as any;
-      leased = null as any;
-      expired = null as any;
-      other = null as any;
-      all = null as any;
-      unique = null as any;
 
       // Write sync history for this pass
       const passDuration = Math.round((Date.now() - passStart) / 1000);
