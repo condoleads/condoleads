@@ -1,4 +1,4 @@
-﻿import dotenv from 'dotenv';
+import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 // scripts/lib/supabase-client.ts
@@ -22,11 +22,11 @@ export const supabase = createClient(supabaseUrl, supabaseKey);
 // Preflight check  verify connection works
 export async function testConnection(): Promise<boolean> {
   try {
-    const { count, error } = await supabase
-      .from('mls_listings')
-      .select('*', { count: 'exact', head: true });
+    const { data, error } = await supabase
+      .from('municipalities')
+      .select('id').limit(1);
     if (error) throw error;
-    console.log(`[SUPABASE] Connected. Total listings: ${count}`);
+    console.log('[SUPABASE] Connected. Test query OK.');
     return true;
   } catch (err: any) {
     console.error(`[SUPABASE] Connection failed: ${err.message}`);
