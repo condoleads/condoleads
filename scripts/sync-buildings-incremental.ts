@@ -1,4 +1,4 @@
-﻿import dotenv from 'dotenv';
+import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 // scripts/sync-buildings-incremental.ts
@@ -58,7 +58,7 @@ function determineVOWAccess(l: any): boolean {
 }
 
 // =====================================================
-// COMPLETE DLA FIELD MAPPING â€” ALL 470+ FIELDS
+// COMPLETE DLA FIELD MAPPING — ALL 470+ FIELDS
 // EXACT from buildings/incremental-sync mapCompleteDLAFields
 // =====================================================
 
@@ -785,7 +785,7 @@ async function syncOneBuilding(building: any, triggeredBy: string): Promise<{
   const proptxMap = new Map(proptxActive.map(l => [l.ListingKey, l]));
   const dbMap = new Map(dbActive.map(l => [l.listing_key, l]));
 
-  // SAFETY: 0 active from PropTx but DB has active â†’ skip delete
+  // SAFETY: 0 active from PropTx but DB has active → skip delete
   if (proptxActive.length === 0 && dbActive.length > 0) {
     result.unchanged = dbActive.length;
   } else {
@@ -813,8 +813,8 @@ async function syncOneBuilding(building: any, triggeredBy: string): Promise<{
     for (const [key, ptx] of proptxMap) {
       if (!dbMap.has(key)) {
         const mapped = mapCompleteDLAFields(ptx, building.id);
-        const { data, error: err } = await supabase.from('mls_listings').insert(mapped).select().single();
-        if (err) { console.error(`[INSERT] ${key}: ${err.message}`); }
+        const { data, error: err } = await supabase.from('mls_listings').upsert(mapped, { onConflict: 'listing_key' }).select().single();
+        if (err) { console.error(`[UPSERT] ${key}: ${err.message}`); }
         else { result.added++; newActive.push({ savedListing: data, originalListing: ptx }); }
       }
     }
@@ -842,8 +842,8 @@ async function syncOneBuilding(building: any, triggeredBy: string): Promise<{
   for (const ptx of proptxInactive) {
     if (!dbInactiveMap.has(ptx.ListingKey)) {
       const mapped = mapCompleteDLAFields(ptx, building.id);
-      const { data, error: err } = await supabase.from('mls_listings').insert(mapped).select().single();
-      if (err) { console.error(`[INSERT-INACTIVE] ${ptx.ListingKey}: ${err.message}`); }
+      const { data, error: err } = await supabase.from('mls_listings').upsert(mapped, { onConflict: 'listing_key' }).select().single();
+      if (err) { console.error(`[UPSERT-INACTIVE] ${ptx.ListingKey}: ${err.message}`); }
       else { result.added++; newInactive.push({ savedListing: data, originalListing: ptx }); }
     }
   }
@@ -877,7 +877,7 @@ async function syncOneBuilding(building: any, triggeredBy: string): Promise<{
 }
 
 // =====================================================
-// MAIN ENTRY POINT â€” loops all buildings
+// MAIN ENTRY POINT — loops all buildings
 // Replaces cron/sync-all HTTP self-calls with direct logic
 // =====================================================
 
@@ -908,11 +908,11 @@ export async function runBuildingsIncremental(triggeredBy = 'github-nightly'): P
       try {
         log(TAG, `${bldg.building_name} (${idx + 1}/${buildings.length})`);
         const r = await syncOneBuilding(bldg, triggeredBy);
-        log(TAG, `  +${r.added} new, âœï¸${r.updated} updated, ðŸ—‘ï¸${r.removed} removed, âºï¸${r.unchanged} unchanged, ðŸ“¸${r.mediaAdded} media`);
+        log(TAG, `  +${r.added} new, ✏️${r.updated} updated, 🗑️${r.removed} removed, ⏺️${r.unchanged} unchanged, 📸${r.mediaAdded} media`);
         results.success++;
       } catch (err: any) {
         if (err.message?.startsWith('AUTH_FAILURE')) {
-          error(TAG, `Auth failure â€” aborting: ${err.message}`);
+          error(TAG, `Auth failure — aborting: ${err.message}`);
           throw err;
         }
         error(TAG, `${bldg.building_name}: ${err.message}`);
