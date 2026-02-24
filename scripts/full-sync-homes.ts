@@ -1,5 +1,5 @@
 // scripts/full-sync-homes.ts
-// Phase 6: Full MLS sync — downloads ALL listings for municipalities from PropTx
+// Phase 6: Full MLS sync ï¿½ downloads ALL listings for municipalities from PropTx
 // Source: app/api/admin-homes/parallel-sync/route.ts (extracted, no Next.js/SSE)
 // CLI: npx tsx scripts/full-sync-homes.ts --area=Toronto --type=both --concurrency=3
 // GitHub Actions: triggered via .github/workflows/full-sync.yml
@@ -8,6 +8,7 @@ import { supabase } from './lib/supabase-client';
 import {
   validateConfig,
   fetchPaginatedListings,
+  forEachPage,
   fetchEnhancedDataForHomes,
   delay,
 } from './lib/proptx-client';
@@ -184,48 +185,57 @@ async function syncOneMunicipality(
       ];
 
       for (const sp of statusPasses) {
-        log(TAG, `${prefix} ${pass.label}: Fetching ${sp.label}...`);
-        let listings = await fetchPaginatedListings(sp.filter);
+          log(TAG, `${prefix} ${pass.label}: Fetching ${sp.label} (streaming)...`);
+          let pageNum = 0;
+          let statusTotal = 0;
 
-        // Deduplicate against already-seen keys
-        let fresh = listings.filter(l => {
-          const key = l.ListingKey || `${l.StreetNumber}-${l.StreetName}-${l.MlsStatus}`;
-          if (seen.has(key)) return false;
-          seen.add(key); return true;
-        });
-        listings = null as any; // release raw fetch
+          const totalFetched = await forEachPage(sp.filter, async (page) => {
+            pageNum++;
+            // Deduplicate against already-seen keys
+            const fresh = page.filter(l => {
+              const key = l.ListingKey || `${l.StreetNumber}-${l.StreetName}-${l.MlsStatus}`;
+              if (seen.has(key)) return false;
+              seen.add(key); return true;
+            });
 
-        passStats.listingsFound += fresh.length;
-        log(TAG, `${prefix} ${pass.label}: ${sp.label}  ${fresh.length} unique listings`);
+            if (fresh.length === 0) {
+              log(TAG, `${prefix} ${pass.label}: ${sp.label} page ${pageNum} - all duplicates, skipping`);
+              return;
+            }
 
-        if (fresh.length === 0) { fresh = null as any; continue; }
+            statusTotal += fresh.length;
+            log(TAG, `${prefix} ${pass.label}: ${sp.label} page ${pageNum} - ${fresh.length} unique listings`);
 
-        // Chunk + save this status batch
-        const totalChunks = Math.ceil(fresh.length / CHUNK_SIZE);
-        for (let c = 0; c < fresh.length; c += CHUNK_SIZE) {
-          const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
-          const chunk = fresh.slice(c, c + CHUNK_SIZE);
+            // Chunk + save this page
+            const totalChunks = Math.ceil(fresh.length / CHUNK_SIZE);
+            for (let c = 0; c < fresh.length; c += CHUNK_SIZE) {
+              const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
+              const chunk = fresh.slice(c, c + CHUNK_SIZE);
 
-          log(TAG, `${prefix} ${pass.label}: ${sp.label} chunk ${chunkNum}/${totalChunks}  enhanced data (${chunk.length})...`);
-          await fetchEnhancedDataForHomes(chunk);
+              log(TAG, `${prefix} ${pass.label}: ${sp.label} p${pageNum} chunk ${chunkNum}/${totalChunks} - enhanced data (${chunk.length})...`);
+              await fetchEnhancedDataForHomes(chunk);
 
-          log(TAG, `${prefix} ${pass.label}: ${sp.label} chunk ${chunkNum}/${totalChunks}  saving...`);
-          const result = await saveHomesListings(chunk, muni.id, muni.areaId);
+              log(TAG, `${prefix} ${pass.label}: ${sp.label} p${pageNum} chunk ${chunkNum}/${totalChunks} - saving...`);
+              const result = await saveHomesListings(chunk, muni.id, muni.areaId);
 
-          if (result.success && result.stats) {
-            passStats.listings += result.stats.listings;
-            passStats.media += result.stats.media;
-            passStats.rooms += result.stats.rooms;
-            passStats.openHouses += result.stats.openHouses;
-            passStats.skipped += result.stats.skipped;
-            log(TAG, `${prefix} ${pass.label}: ${sp.label} chunk ${chunkNum}/${totalChunks}  ${result.stats.listings} saved`);
-          } else {
-            passStats.skipped += chunk.length;
-            warn(TAG, `${prefix} ${pass.label}: ${sp.label} chunk ${chunkNum} error: ${result.error || 'unknown'}`);
-          }
+              if (result.success && result.stats) {
+                passStats.listings += result.stats.listings;
+                passStats.media += result.stats.media;
+                passStats.rooms += result.stats.rooms;
+                passStats.openHouses += result.stats.openHouses;
+                passStats.skipped += result.stats.skipped;
+                log(TAG, `${prefix} ${pass.label}: ${sp.label} p${pageNum} chunk ${chunkNum}/${totalChunks} - ${result.stats.listings} saved`);
+              } else {
+                passStats.skipped += chunk.length;
+                warn(TAG, `${prefix} ${pass.label}: ${sp.label} p${pageNum} chunk ${chunkNum} error: ${result.error || 'unknown'}`);
+              }
+            }
+          });
+
+          passStats.listingsFound += statusTotal;
+          log(TAG, `${prefix} ${pass.label}: ${sp.label} complete - ${statusTotal} unique of ${totalFetched} fetched`);
         }
-        fresh = null as any; // release for GC
-      }
+
       seen.clear();
 
       if (passStats.listingsFound === 0) {
@@ -242,7 +252,7 @@ async function syncOneMunicipality(
 
       // Write sync history for this pass
       const passDuration = Math.round((Date.now() - passStart) / 1000);
-      log(TAG, `${prefix} ${pass.label}: Complete — ${passStats.listings} listings in ${passDuration}s`);
+      log(TAG, `${prefix} ${pass.label}: Complete ï¿½ ${passStats.listings} listings in ${passDuration}s`);
 
       await writeHomesSyncHistory({
         municipalityId: muni.id, municipalityName: muni.name,
@@ -260,7 +270,7 @@ async function syncOneMunicipality(
       grandStats.skipped += passStats.skipped;
 
     } catch (err: any) {
-      error(TAG, `${prefix} ${pass.label}: FAILED — ${err.message}`);
+      error(TAG, `${prefix} ${pass.label}: FAILED ï¿½ ${err.message}`);
       const passDuration = Math.round((Date.now() - passStart) / 1000);
       await writeHomesSyncHistory({
         municipalityId: muni.id, municipalityName: muni.name,
@@ -382,7 +392,7 @@ async function main() {
     } catch (err: any) {
       completed++;
       results.push({ name: muni.name, success: false, stats: null, error: err.message });
-      error(TAG, `[${completed}/${municipalities.length}] ${muni.name}: CRASHED — ${err.message}`);
+      error(TAG, `[${completed}/${municipalities.length}] ${muni.name}: CRASHED ï¿½ ${err.message}`);
     } finally {
       semaphore.release();
       // Small delay between releases to avoid API hammering
@@ -444,5 +454,6 @@ main().catch(err => {
   error(TAG, `Fatal error: ${err.message}`);
   process.exit(1);
 });
+
 
 

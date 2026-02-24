@@ -304,3 +304,37 @@ export async function testConnection(): Promise<boolean> {
     return false;
   }
 }
+
+// =====================================================
+// STREAMING PAGINATION  processes page-by-page, never accumulates
+// Used by: full-sync-homes.ts to avoid OOM on large municipalities
+// =====================================================
+export async function forEachPage(
+  filter: string,
+  callback: (page: any[]) => Promise<void>,
+  pageSize: number = 5000
+): Promise<number> {
+  const headers = getHeaders();
+  const baseUrl = getBaseUrl();
+  let skip = 0;
+  let total = 0;
+
+  while (true) {
+    const url = `${baseUrl}Property?$filter=${encodeURIComponent(filter)}&$top=${pageSize}&$skip=${skip}`;
+    try {
+      const resp = await fetchWithRetry(url, { headers }, 3, `Property page skip=${skip}`);
+      const data = await resp.json();
+      const results = data.value || [];
+      if (results.length === 0) break;
+      total += results.length;
+      await callback(results);
+      if (results.length < pageSize) break;
+      skip += pageSize;
+    } catch (err: any) {
+      if (err.message?.startsWith('AUTH_FAILURE')) throw err;
+      console.error(`[PAGINATION-STREAM] Failed at skip=${skip}: ${err.message}`);
+      break;
+    }
+  }
+  return total;
+}
