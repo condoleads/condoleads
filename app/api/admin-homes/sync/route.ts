@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { saveHomesListings } from '@/lib/homes-sync/save';
 
@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
       };
       const progress = (message: string) => send('progress', { message });
 
-      // Create sync_history record(s) — one per pass
+      // Create sync_history record(s) â€” one per pass
       const syncRecordIds: { label: string; id: string }[] = [];
 
       try {
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
               if (seen.has(key)) return false;
               seen.add(key); return true;
             });
-            // Include ALL statuses � Cancelled, Withdrawn, Pending are valuable history
+            // Include ALL statuses — Cancelled, Withdrawn, Pending are valuable history
             const filtered = unique;
 
             passStats.listingsFound = filtered.length;

@@ -1,5 +1,5 @@
-// app/api/admin-homes/parallel-sync/route.ts
-// Parallel municipality sync — processes N municipalities simultaneously
+﻿// app/api/admin-homes/parallel-sync/route.ts
+// Parallel municipality sync â€” processes N municipalities simultaneously
 // Uses same saveHomesListings + same field mapping as single sync
 // Guardrails: listing_key UNIQUE, trigger_protect_building_id, upsert pattern
 
@@ -254,10 +254,10 @@ async function syncOneMunicipality(
         const chunkNum = Math.floor(c / CHUNK_SIZE) + 1;
         const chunk = unique.slice(c, c + CHUNK_SIZE);
 
-        mp(pass.label + ': Chunk ' + chunkNum + '/' + totalChunks + ' — enhanced data (' + chunk.length + ')...');
+        mp(pass.label + ': Chunk ' + chunkNum + '/' + totalChunks + ' â€” enhanced data (' + chunk.length + ')...');
         await fetchEnhancedData(chunk, headers);
 
-        mp(pass.label + ': Chunk ' + chunkNum + '/' + totalChunks + ' — saving...');
+        mp(pass.label + ': Chunk ' + chunkNum + '/' + totalChunks + ' â€” saving...');
         const result = await saveHomesListings(chunk, muni.id, muni.areaId);
 
         if (result.success && result.stats) {
@@ -266,7 +266,7 @@ async function syncOneMunicipality(
           passStats.rooms += result.stats.rooms;
           passStats.openHouses += result.stats.openHouses;
           passStats.skipped += result.stats.skipped;
-          mp(pass.label + ': Chunk ' + chunkNum + '/' + totalChunks + ' — ' + result.stats.listings + ' saved');
+          mp(pass.label + ': Chunk ' + chunkNum + '/' + totalChunks + ' â€” ' + result.stats.listings + ' saved');
         } else {
           passStats.skipped += chunk.length;
           mp(pass.label + ': Chunk ' + chunkNum + ' error: ' + (result.error || 'unknown'));
@@ -281,7 +281,7 @@ async function syncOneMunicipality(
         }
       }
 
-      mp(pass.label + ': Complete — ' + passStats.listings + ' listings');
+      mp(pass.label + ': Complete â€” ' + passStats.listings + ' listings');
       if (syncId) await completeSyncRecord(syncId, passStats, passStart);
 
       grandStats.listings += passStats.listings;
@@ -291,7 +291,7 @@ async function syncOneMunicipality(
       grandStats.skipped += passStats.skipped;
 
     } catch (err: any) {
-      mp(pass.label + ': ERROR — ' + err.message);
+      mp(pass.label + ': ERROR â€” ' + err.message);
       if (syncId) await failSyncRecord(syncId, err.message, passStart);
       grandStats.skipped += passStats.listingsFound;
     }
@@ -300,13 +300,13 @@ async function syncOneMunicipality(
   // Update hierarchy counts
   mp('Updating hierarchy counts...');
   await updateHierarchyCounts(muni.id, muni.areaId);
-  mp('Done — ' + grandStats.listings + ' total listings');
+  mp('Done â€” ' + grandStats.listings + ' total listings');
 
   return grandStats;
 }
 
 // ============================================
-// MAIN HANDLER — PARALLEL SYNC
+// MAIN HANDLER â€” PARALLEL SYNC
 // ============================================
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -352,7 +352,7 @@ export async function POST(request: NextRequest) {
       const semaphore = new Semaphore(maxConcurrent);
       const results: { id: string; name: string; success: boolean; stats: any; error?: string }[] = [];
 
-      // Launch all municipalities — semaphore controls concurrency
+      // Launch all municipalities â€” semaphore controls concurrency
       const promises = municipalities.map(async (muni) => {
         await semaphore.acquire();
         send('municipality_start', { municipalityId: muni.id, municipalityName: muni.name });

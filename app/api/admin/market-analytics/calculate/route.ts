@@ -1,4 +1,4 @@
-// app/api/admin/market-analytics/calculate/route.ts
+﻿// app/api/admin/market-analytics/calculate/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 

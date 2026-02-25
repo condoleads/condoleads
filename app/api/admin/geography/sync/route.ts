@@ -1,4 +1,4 @@
-// app/api/admin/geography/sync/route.ts
+﻿// app/api/admin/geography/sync/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 

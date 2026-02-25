@@ -1,4 +1,4 @@
-// app/api/admin-homes/incremental-sync/route.ts
+﻿// app/api/admin-homes/incremental-sync/route.ts
 // Incremental sync  only fetch listings modified since last sync
 // Uses ModificationTimestamp gt '{lastSyncDate}' filter
 // Safe: upsert on listing_key, trigger_protect_building_id active
