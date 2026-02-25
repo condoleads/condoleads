@@ -1,4 +1,4 @@
-﻿// app/api/admin/geography/sync/route.ts
+// app/api/admin/geography/sync/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
@@ -8,7 +8,7 @@ const supabase = createClient(
 )
 
 const PROPTX_URL = process.env.PROPTX_RESO_API_URL || 'https://query.ampre.ca/odata/'
-const PROPTX_TOKEN = process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_BEARER_TOKEN
+const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_BEARER_TOKEN
 
 interface GeoRecord {
   CountyOrParish: string
