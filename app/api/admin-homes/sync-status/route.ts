@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
@@ -56,25 +56,25 @@ export async function GET(request: NextRequest) {
       // PropTx counts (fast, $top=0)
       getPropTxCount("PropertyType eq 'Residential Freehold' and " + cityFilter),
       getPropTxCount("PropertyType eq 'Residential Condo & Other' and " + cityFilter),
-      // DB total counts
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq('municipality_id', municipalityId).eq('property_type', 'Residential Freehold').gte('original_entry_timestamp', new Date(Date.now() - 2 * 365.25 * 24 * 60 * 60 * 1000).toISOString()),
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq('municipality_id', municipalityId).eq('property_type', 'Residential Condo & Other').gte('original_entry_timestamp', new Date(Date.now() - 2 * 365.25 * 24 * 60 * 60 * 1000).toISOString()),
-      // DB breakdown by status — Freehold
+      // DB total counts (via RPC for reliability)
+      supabase.rpc('get_municipality_type_counts', { p_municipality_id: municipalityId }),
+      Promise.resolve(null), // placeholder - counts come from RPC above
+
+
+      // DB breakdown by status â€” Freehold
       supabase.from('mls_listings')
         .select('standard_status')
         .eq('municipality_id', municipalityId).eq('property_type', 'Residential Freehold'),
-      // DB breakdown by status — Condo
+      // DB breakdown by status â€” Condo
       supabase.from('mls_listings')
         .select('standard_status')
         .eq('municipality_id', municipalityId).eq('property_type', 'Residential Condo & Other'),
-      // Last completed sync — Freehold
+      // Last completed sync â€” Freehold
       supabase.from('sync_history')
         .select('id, completed_at, duration_seconds, listings_found, listings_created, listings_skipped, media_saved, rooms_saved, sync_status')
         .eq('municipality_id', municipalityId).eq('property_type', 'Residential Freehold').eq('sync_status', 'completed')
         .order('completed_at', { ascending: false }).limit(1).single(),
-      // Last completed sync — Condo
+      // Last completed sync â€” Condo
       supabase.from('sync_history')
         .select('id, completed_at, duration_seconds, listings_found, listings_created, listings_skipped, media_saved, rooms_saved, sync_status')
         .eq('municipality_id', municipalityId).eq('property_type', 'Residential Condo & Other').eq('sync_status', 'completed')
@@ -103,8 +103,9 @@ export async function GET(request: NextRequest) {
       return b;
     }
 
-    const dbFreehold = dbFreeholdResult.count || 0;
-    const dbCondo = dbCondoResult.count || 0;
+    const typeCounts = dbFreeholdResult.data || [];
+    const dbFreehold = Number(typeCounts.find((r: any) => r.property_type === 'Residential Freehold')?.cnt || 0);
+    const dbCondo = Number(typeCounts.find((r: any) => r.property_type === 'Residential Condo & Other')?.cnt || 0);
 
     const response = {
       municipality: { id: municipalityId, name: municipalityName },
