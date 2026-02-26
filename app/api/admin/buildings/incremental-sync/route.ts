@@ -1,8 +1,9 @@
-// app/api/admin/buildings/incremental-sync/route.ts
+﻿// app/api/admin/buildings/incremental-sync/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import { backfillListingGeoIds } from '@/lib/building-sync/save';
 import { createClient } from '@supabase/supabase-js';
+import { refreshMaterializedViews } from '@/lib/db/refresh-views';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`🔄 Starting incremental sync for building: ${buildingId}`);
+    console.log(`ðŸ”„ Starting incremental sync for building: ${buildingId}`);
 
     // Get building details
     const { data: building, error: buildingError } = await supabase
@@ -38,8 +39,8 @@ export async function POST(request: NextRequest) {
       throw new Error('Building not found');
     }
 
-    console.log(`🏢 Building: ${building.building_name}`);
-    console.log(`📍 Address: ${building.street_number} ${building.street_name}`);
+    console.log(`ðŸ¢ Building: ${building.building_name}`);
+    console.log(`ðŸ“ Address: ${building.street_number} ${building.street_name}`);
 
     // Fetch current listings from PropTx using EXACT batch sync logic
     const proptxListings = await fetchPropTxListings(building);
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       l.StandardStatus !== 'Active' && l.MlsStatus !== 'Active'
     );
 
-    console.log(`📊 PropTx: ${proptxActive.length} active, ${proptxInactive.length} inactive`);
+    console.log(`ðŸ“Š PropTx: ${proptxActive.length} active, ${proptxInactive.length} inactive`);
 
     // Get existing listings from DB
     const { data: dbListings } = await supabase
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
       l.standard_status !== 'Active' && l.mls_status !== 'Active'
     ) || [];
 
-    console.log(`💾 Database: ${dbActive.length} active, ${dbInactive.length} inactive`);
+    console.log(`ðŸ’¾ Database: ${dbActive.length} active, ${dbInactive.length} inactive`);
 
     // OPERATION 1: ACTIVE SYNC
     const activeResults = await syncActiveListings(buildingId, proptxActive, dbActive);
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
 
     // BACKFILL: Link building to geographic hierarchy if not already linked
     if (!building.community_id && proptxListings.length > 0) {
-      console.log('🗺️ Building missing community_id - backfilling geographic hierarchy...');
+      console.log('ðŸ—ºï¸ Building missing community_id - backfilling geographic hierarchy...');
       await linkBuildingToHierarchy(buildingId, proptxListings);
     }
     
@@ -120,6 +121,7 @@ export async function POST(request: NextRequest) {
     );
     
 
+    await refreshMaterializedViews();
     return NextResponse.json({
       success: true,
       building: building.building_name,
@@ -132,7 +134,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('❌ Incremental sync failed:', error);
+    console.error('âŒ Incremental sync failed:', error);
     return NextResponse.json(
       { error: 'Sync failed', details: error.message },
       { status: 500 }
@@ -150,7 +152,7 @@ async function fetchPropTxListings(building: any) {
     throw new Error('Street number is required for search');
   }
 
-  console.log(`🔍 SEARCH STRATEGY - Street Number: ${streetNumber}`);
+  console.log(`ðŸ” SEARCH STRATEGY - Street Number: ${streetNumber}`);
 
   let allListings: any[] = [];
 
@@ -186,7 +188,7 @@ async function fetchPropTxListings(building: any) {
       allListings.push(...(activeData.value || []));
     }
   } catch (error) {
-    console.error('❌ Strategy 1 failed:', error);
+    console.error('âŒ Strategy 1 failed:', error);
   }
 
   // STRATEGY 2+3: All non-active listings (Closed/Sold/Leased/Cancelled/Withdrawn/Expired/Pending)
@@ -208,10 +210,10 @@ async function fetchPropTxListings(building: any) {
       allListings.push(...(completedData.value || []));
     }
   } catch (error) {
-    console.error('❌ Strategy 2+3 failed:', error);
+    console.error('âŒ Strategy 2+3 failed:', error);
   }
 
-  console.log(`📊 Total raw listings collected: ${allListings.length}`);
+  console.log(`ðŸ“Š Total raw listings collected: ${allListings.length}`);
 
   // Remove duplicates by ListingKey
   const uniqueListings: any[] = [];
@@ -288,34 +290,34 @@ async function fetchRelatedData(newlyAddedListings: any[]) {
   // Save open houses (EXACT same as batch sync)
   openHouseCount = await saveOpenHouses(enhancedListings);
 
-  console.log(`📸 Media: ${mediaCount}, 🏠 Rooms: ${roomCount}, 🚪 Open Houses: ${openHouseCount}`);
+  console.log(`ðŸ“¸ Media: ${mediaCount}, ðŸ  Rooms: ${roomCount}, ðŸšª Open Houses: ${openHouseCount}`);
   
   return { mediaCount, roomCount, openHouseCount };
 }
 
 // Fetch enhanced data from PropTx API and add to originalListings (modifies in place)
 async function fetchEnhancedDataFromPropTx(originalListings: any[]): Promise<any[]> {
-  console.log(`🔍 Fetching enhanced data for ${originalListings.length} listings...`);
+  console.log(`ðŸ” Fetching enhanced data for ${originalListings.length} listings...`);
 
   for (const originalListing of originalListings) {
     const listingKey = originalListing.ListingKey;
     
     if (!listingKey) {
-      console.log(`⚠️ Skipping listing without ListingKey`);
+      console.log(`âš ï¸ Skipping listing without ListingKey`);
       originalListing.Media = [];
       originalListing.PropertyRooms = [];
       originalListing.OpenHouses = [];
       continue;
     }
 
-    console.log(`🔍 Fetching data for listing: ${listingKey}`);
+    console.log(`ðŸ” Fetching data for listing: ${listingKey}`);
 
     // Fetch Media
     try {
       const mediaFilter = `ResourceRecordKey eq '${listingKey}'`;
       const mediaUrl = `${PROPTX_API_URL}Media?$filter=${encodeURIComponent(mediaFilter)}&$top=500`;
       
-      console.log(`📸 Fetching media from: ${mediaUrl.substring(0, 100)}...`);
+      console.log(`ðŸ“¸ Fetching media from: ${mediaUrl.substring(0, 100)}...`);
       
       const mediaResponse = await fetch(mediaUrl, {
         headers: {
@@ -327,13 +329,13 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]): Promise<any
       if (mediaResponse.ok) {
         const mediaData = await mediaResponse.json();
         originalListing.Media = mediaData.value || [];
-        console.log(`✅ Found ${originalListing.Media.length} media items for ${listingKey}`);
+        console.log(`âœ… Found ${originalListing.Media.length} media items for ${listingKey}`);
       } else {
-        console.error(`❌ Media fetch failed for ${listingKey}: ${mediaResponse.status}`);
+        console.error(`âŒ Media fetch failed for ${listingKey}: ${mediaResponse.status}`);
         originalListing.Media = [];
       }
     } catch (error) {
-      console.error(`❌ Failed to fetch media for ${listingKey}:`, error);
+      console.error(`âŒ Failed to fetch media for ${listingKey}:`, error);
       originalListing.Media = [];
     }
 
@@ -352,13 +354,13 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]): Promise<any
       if (roomsResponse.ok) {
         const roomsData = await roomsResponse.json();
         originalListing.PropertyRooms = roomsData.value || [];
-        console.log(`✅ Found ${originalListing.PropertyRooms.length} rooms for ${listingKey}`);
+        console.log(`âœ… Found ${originalListing.PropertyRooms.length} rooms for ${listingKey}`);
       } else {
-        console.error(`❌ Rooms fetch failed for ${listingKey}: ${roomsResponse.status}`);
+        console.error(`âŒ Rooms fetch failed for ${listingKey}: ${roomsResponse.status}`);
         originalListing.PropertyRooms = [];
       }
     } catch (error) {
-      console.error(`❌ Failed to fetch rooms for ${listingKey}:`, error);
+      console.error(`âŒ Failed to fetch rooms for ${listingKey}:`, error);
       originalListing.PropertyRooms = [];
     }
 
@@ -378,24 +380,24 @@ async function fetchEnhancedDataFromPropTx(originalListings: any[]): Promise<any
         const openHouseData = await openHouseResponse.json();
         originalListing.OpenHouses = openHouseData.value || [];
         if (originalListing.OpenHouses.length > 0) {
-          console.log(`✅ Found ${originalListing.OpenHouses.length} open houses for ${listingKey}`);
+          console.log(`âœ… Found ${originalListing.OpenHouses.length} open houses for ${listingKey}`);
         }
       } else {
         originalListing.OpenHouses = [];
       }
     } catch (error) {
-      console.error(`❌ Failed to fetch open houses for ${listingKey}:`, error);
+      console.error(`âŒ Failed to fetch open houses for ${listingKey}:`, error);
       originalListing.OpenHouses = [];
     }
   }
   
-  console.log(`✅ Enhanced data fetching complete`);
+  console.log(`âœ… Enhanced data fetching complete`);
   return originalListings;
 }
 
 // EXACT SAME as batch sync save route
 async function saveMediaWithVariantFiltering(enhancedListings: any[]): Promise<number> {
-  console.log('💾 Saving media with 2-variant filtering...');
+  console.log('ðŸ’¾ Saving media with 2-variant filtering...');
   
   let mediaCount = 0;
   const mediaRecords = [];
@@ -432,26 +434,26 @@ async function saveMediaWithVariantFiltering(enhancedListings: any[]): Promise<n
     }
   }
   
-  console.log(`📊 Total media records prepared: ${mediaRecords.length} from ${enhancedListings.length} listings`);
+  console.log(`ðŸ“Š Total media records prepared: ${mediaRecords.length} from ${enhancedListings.length} listings`);
   
   // Batch insert media
   if (mediaRecords.length > 0) {
-    console.log(`💾 Inserting ${mediaRecords.length} media records...`);
+    console.log(`ðŸ’¾ Inserting ${mediaRecords.length} media records...`);
     const batchSize = 100;
     for (let i = 0; i < mediaRecords.length; i += batchSize) {
       const batch = mediaRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('media').insert(batch);
       if (error) {
-        console.error('❌ Media insert error:', error);
+        console.error('âŒ Media insert error:', error);
       } else {
         mediaCount += batch.length;
       }
     }
   } else {
-    console.log(`⚠️ No media records to insert!`);
+    console.log(`âš ï¸ No media records to insert!`);
   }
   
-  console.log(`✅ Media saved: ${mediaCount} records`);
+  console.log(`âœ… Media saved: ${mediaCount} records`);
   return mediaCount;
 }
 
@@ -500,7 +502,7 @@ function createMediaRecord(listingId: string, media: any, variantType: string, b
 
 // EXACT SAME as batch sync save route
 async function savePropertyRooms(enhancedListings: any[]): Promise<number> {
-  console.log('💾 Saving property rooms...');
+  console.log('ðŸ’¾ Saving property rooms...');
   
   let roomCount = 0;
   const roomRecords = [];
@@ -537,26 +539,26 @@ async function savePropertyRooms(enhancedListings: any[]): Promise<number> {
   }
   
   if (roomRecords.length > 0) {
-    console.log(`💾 Inserting ${roomRecords.length} room records...`);
+    console.log(`ðŸ’¾ Inserting ${roomRecords.length} room records...`);
     const batchSize = 100;
     for (let i = 0; i < roomRecords.length; i += batchSize) {
       const batch = roomRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('property_rooms').insert(batch);
       if (error) {
-        console.error('❌ Rooms insert error:', error);
+        console.error('âŒ Rooms insert error:', error);
       } else {
         roomCount += batch.length;
       }
     }
   }
   
-  console.log(`✅ Rooms saved: ${roomCount} records`);
+  console.log(`âœ… Rooms saved: ${roomCount} records`);
   return roomCount;
 }
 
 // EXACT SAME as batch sync save route
 async function saveOpenHouses(enhancedListings: any[]): Promise<number> {
-  console.log('💾 Saving open houses...');
+  console.log('ðŸ’¾ Saving open houses...');
   
   let openHouseCount = 0;
   const openHouseRecords = [];
@@ -582,20 +584,20 @@ async function saveOpenHouses(enhancedListings: any[]): Promise<number> {
   }
   
   if (openHouseRecords.length > 0) {
-    console.log(`💾 Inserting ${openHouseRecords.length} open house records...`);
+    console.log(`ðŸ’¾ Inserting ${openHouseRecords.length} open house records...`);
     const batchSize = 100;
     for (let i = 0; i < openHouseRecords.length; i += batchSize) {
       const batch = openHouseRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('open_houses').insert(batch);
       if (error) {
-        console.error('❌ Open houses insert error:', error);
+        console.error('âŒ Open houses insert error:', error);
       } else {
         openHouseCount += batch.length;
       }
     }
   }
   
-  console.log(`✅ Open houses saved: ${openHouseCount} records`);
+  console.log(`âœ… Open houses saved: ${openHouseCount} records`);
   return openHouseCount;
 }
 
@@ -612,7 +614,7 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
 
   // SAFETY CHECK: If PropTx returned 0 active listings, don't delete anything!
   if (proptxActive.length === 0 && dbActive.length > 0) {
-    console.warn(`⚠️ WARNING: PropTx returned 0 active listings but DB has ${dbActive.length}. Skipping DELETE to prevent data loss!`);
+    console.warn(`âš ï¸ WARNING: PropTx returned 0 active listings but DB has ${dbActive.length}. Skipping DELETE to prevent data loss!`);
     results.unchanged = dbActive.length;
     return results;
   }
@@ -621,7 +623,7 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
   const proptxMap = new Map(proptxActive.map(l => [l.ListingKey, l]));
   const dbMap = new Map(dbActive.map(l => [l.listing_key, l]));
 
-  console.log(`🔄 Active Sync: PropTx has ${proptxMap.size}, DB has ${dbMap.size}`);
+  console.log(`ðŸ”„ Active Sync: PropTx has ${proptxMap.size}, DB has ${dbMap.size}`);
 
   // UPDATE: Listings in both (check for changes)
   for (const [listingKey, proptxListing] of proptxMap) {
@@ -647,7 +649,7 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
           .eq('id', dbListing.id);
 
         results.updated++;
-        console.log(`✏️ Updated: ${listingKey} (price: ${dbPrice} → ${proptxPrice})`);
+        console.log(`âœï¸ Updated: ${listingKey} (price: ${dbPrice} â†’ ${proptxPrice})`);
       } else {
         results.unchanged++;
       }
@@ -668,10 +670,10 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
         .single();
 
       if (error) {
-        console.error(`❌ Failed to add ${listingKey}:`, error);
+        console.error(`âŒ Failed to add ${listingKey}:`, error);
       } else {
         results.added++;
-        console.log(`➕ Added: ${listingKey}`);
+        console.log(`âž• Added: ${listingKey}`);
         // Store for media/rooms/open houses sync
         newlyAddedListings.push({ savedListing: data, originalListing: proptxListing });
       }
@@ -688,16 +690,16 @@ async function syncActiveListings(buildingId: string, proptxActive: any[], dbAct
           .eq('id', dbListing.id);
 
         results.removed++;
-        console.log(`🗑️ Removed: ${listingKey} (no longer active)`);
+        console.log(`ðŸ—‘ï¸ Removed: ${listingKey} (no longer active)`);
       }
     }
   }
 
-  console.log(`✅ Active Results: +${results.added} ✏️${results.updated} 🗑️${results.removed} ⏺️${results.unchanged}`);
+  console.log(`âœ… Active Results: +${results.added} âœï¸${results.updated} ðŸ—‘ï¸${results.removed} âºï¸${results.unchanged}`);
   
   // Fetch and save media/rooms/open houses for newly added listings
   if (newlyAddedListings.length > 0) {
-    console.log(`📸 Fetching media/rooms/open houses for ${newlyAddedListings.length} new listings...`);
+    console.log(`ðŸ“¸ Fetching media/rooms/open houses for ${newlyAddedListings.length} new listings...`);
     
     // Separate into savedListings and originalListings arrays (EXACT same structure as batch sync)
     const savedListingsArray = newlyAddedListings.map(item => item.savedListing);
@@ -727,7 +729,7 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
   const dbMap = new Map(dbInactive.map(l => [l.listing_key, l]));
   const newlyAddedInactiveListings: any[] = [];
 
-  console.log(`📥 Inactive Sync: PropTx has ${proptxInactive.length}, DB has ${dbMap.size}`);
+  console.log(`ðŸ“¥ Inactive Sync: PropTx has ${proptxInactive.length}, DB has ${dbMap.size}`);
 
   // INSERT ONLY: Add new inactive listings, never delete
   for (const proptxListing of proptxInactive) {
@@ -743,10 +745,10 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
         .single();
 
       if (error) {
-        console.error(`❌ Failed to add inactive ${listingKey}:`, error);
+        console.error(`âŒ Failed to add inactive ${listingKey}:`, error);
       } else {
         results.added++;
-        console.log(`📥 Added inactive: ${listingKey}`);
+        console.log(`ðŸ“¥ Added inactive: ${listingKey}`);
         // Store for media/rooms/open houses sync
         newlyAddedInactiveListings.push({ savedListing: data, originalListing: proptxListing });
       }
@@ -757,7 +759,7 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
 
   // Fetch and save media/rooms/open houses for newly added inactive listings
   if (newlyAddedInactiveListings.length > 0) {
-    console.log(`📸 Fetching media/rooms/open houses for ${newlyAddedInactiveListings.length} new inactive listings...`);
+    console.log(`ðŸ“¸ Fetching media/rooms/open houses for ${newlyAddedInactiveListings.length} new inactive listings...`);
     
     const savedListingsArray = newlyAddedInactiveListings.map(item => item.savedListing);
     const originalListingsArray = newlyAddedInactiveListings.map(item => item.originalListing);
@@ -771,7 +773,7 @@ async function syncInactiveListings(buildingId: string, proptxInactive: any[], d
     results.openHousesAdded = await saveOpenHouses(newlyAddedInactiveListings);
   }
 
-  console.log(`✅ Inactive Results: +${results.added} ⏭️${results.skipped}`);
+  console.log(`âœ… Inactive Results: +${results.added} â­ï¸${results.skipped}`);
   return results;
 }
 
@@ -1415,13 +1417,13 @@ async function ensureGeographicHierarchy(
   communityName: string | null
 ): Promise<string | null> {
   if (!communityName || !municipalityName) {
-    console.log('⚠️ Missing geographic data - skipping hierarchy creation');
+    console.log('âš ï¸ Missing geographic data - skipping hierarchy creation');
     return null;
   }
 
   const area = areaName || 'Toronto';
   
-  console.log(`🗺️ Ensuring geographic hierarchy: ${area} → ${municipalityName} → ${communityName}`);
+  console.log(`ðŸ—ºï¸ Ensuring geographic hierarchy: ${area} â†’ ${municipalityName} â†’ ${communityName}`);
 
   try {
     // STEP 1: Ensure Area exists
@@ -1502,11 +1504,11 @@ async function ensureGeographicHierarchy(
       communityId = existingCommunity.id;
     }
 
-    console.log(`✅ Geographic hierarchy ready - community_id: ${communityId}`);
+    console.log(`âœ… Geographic hierarchy ready - community_id: ${communityId}`);
     return communityId;
 
   } catch (error: any) {
-    console.error('❌ Failed to create geographic hierarchy:', error.message);
+    console.error('âŒ Failed to create geographic hierarchy:', error.message);
     return null;
   }
 }
@@ -1517,11 +1519,11 @@ async function linkBuildingToHierarchy(
 ): Promise<void> {
   const firstListing = listingsData[0];
   if (!firstListing) {
-    console.log('⚠️ No listings to extract geographic data from');
+    console.log('âš ï¸ No listings to extract geographic data from');
     return;
   }
 
-  console.log('🔍 Backfilling geographic hierarchy for building...');
+  console.log('ðŸ” Backfilling geographic hierarchy for building...');
   console.log(`  - CountyOrParish: ${firstListing.CountyOrParish}`);
   console.log(`  - City: ${firstListing.City}`);
   console.log(`  - CityRegion: ${firstListing.CityRegion}`);
@@ -1539,9 +1541,9 @@ async function linkBuildingToHierarchy(
       .eq('id', buildingId);
     
     if (error) {
-      console.error('❌ Failed to link building to community:', error.message);
+      console.error('âŒ Failed to link building to community:', error.message);
     } else {
-      console.log(`✅ Building backfilled with community_id: ${communityId}`);
+      console.log(`âœ… Building backfilled with community_id: ${communityId}`);
     }
   }
 }
@@ -1601,3 +1603,5 @@ function parseJsonArray(value: any): any[] {
   }
   return [];
 }
+
+

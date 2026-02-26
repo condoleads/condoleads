@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { refreshMaterializedViews } from '@/lib/db/refresh-views';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -265,11 +266,11 @@ export async function POST(request: NextRequest) {
               progress: { current: completed + failed, total: buildings.length, completed, failed }
             });
 
-            console.log(`[DBAssign] ✅ ${buildingName}: ${actualLinked} listings linked`);
+            console.log(`[DBAssign] âœ… ${buildingName}: ${actualLinked} listings linked`);
 
           } catch (err: any) {
             failed++;
-            console.error(`[DBAssign] ❌ ${buildingName}:`, err.message);
+            console.error(`[DBAssign] âŒ ${buildingName}:`, err.message);
 
             await supabase.from('discovered_buildings').update({
               status: 'failed',
@@ -297,6 +298,7 @@ export async function POST(request: NextRequest) {
           progress: { current: buildings.length, total: buildings.length, completed, failed }
         });
 
+        await refreshMaterializedViews();
         controller.close();
       }
     });
@@ -314,3 +316,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+
