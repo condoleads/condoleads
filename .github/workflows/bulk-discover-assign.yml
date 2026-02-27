@@ -1,0 +1,52 @@
+name: Bulk Discover + DB Assign
+on:
+  workflow_dispatch:
+    inputs:
+      area:
+        description: 'Area name (e.g., Toronto, Durham, York, Peel) or "all"'
+        required: true
+        default: 'all'
+      concurrency:
+        description: 'Parallel municipalities (1-5)'
+        type: number
+        default: 2
+      mode:
+        description: 'Execution mode'
+        type: choice
+        options:
+          - discover-and-assign
+          - discover-only
+          - assign-only
+      force:
+        description: 'Force re-process already discovered municipalities'
+        type: boolean
+        default: false
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+  PROPTX_RESO_API_URL: ${{ secrets.PROPTX_API_URL }}
+  PROPTX_VOW_TOKEN: ${{ secrets.PROPTX_VOW_TOKEN }}
+  PROPTX_DLA_TOKEN: ${{ secrets.PROPTX_DLA_TOKEN }}
+
+jobs:
+  bulk-discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run bulk discover + assign
+        run: |
+          MODE_FLAG=""
+          if [ "${{ inputs.mode }}" = "discover-only" ]; then MODE_FLAG="--discover-only"; fi
+          if [ "${{ inputs.mode }}" = "assign-only" ]; then MODE_FLAG="--assign-only"; fi
+          FORCE_FLAG=""
+          if [ "${{ inputs.force }}" = "true" ]; then FORCE_FLAG="--force"; fi
+          NODE_OPTIONS='--max-old-space-size=4096' npx tsx scripts/bulk-discover-assign.ts \
+            --area=${{ inputs.area }} \
+            --concurrency=${{ inputs.concurrency }} \
+            $MODE_FLAG $FORCE_FLAG
