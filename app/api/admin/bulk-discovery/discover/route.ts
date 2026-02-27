@@ -235,27 +235,10 @@ export async function POST(request: NextRequest) {
 
     console.log('Discovering buildings:', { municipalityName, communityName });
 
-    // STEP 1: Fetch ALL listings (paginated, no limit)
-    const allListings: any[] = [];
-
-    console.log('Fetching Active listings...');
-    const activeListings = await fetchAllListings(baseUrl, baseFilter, select, headers);
-    allListings.push(...activeListings);
-    console.log(`Active: ${activeListings.length}`);
-
-    console.log('Fetching Sold listings...');
-    const soldFilter = `${baseFilter} and (StandardStatus eq 'Closed' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld')`;
-    const soldListings = await fetchAllListings(baseUrl, soldFilter, select, headers);
-    allListings.push(...soldListings);
-    console.log(`Sold: ${soldListings.length}`);
-
-    console.log('Fetching Leased listings...');
-    const leasedFilter = `${baseFilter} and (MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
-    const leasedListings = await fetchAllListings(baseUrl, leasedFilter, select, headers);
-    allListings.push(...leasedListings);
-    console.log(`Leased: ${leasedListings.length}`);
-
-    console.log(`Total listings: ${allListings.length}`);
+    // STEP 1: Fetch ALL listings - all statuses (paginated, no limit)
+    console.log('Fetching ALL listings (all statuses)...');
+    const allListings = await fetchAllListings(baseUrl, baseFilter, select, headers);
+    console.log(`Total listings found: ${allListings.length}`);
 
     // STEP 2: Group by street number + first word
     const buildingMap = new Map<string, any>();
@@ -438,9 +421,6 @@ export async function POST(request: NextRequest) {
         synced: savedBuildings?.filter(b => b.status === 'synced').length || 0,
         failed: savedBuildings?.filter(b => b.status === 'failed').length || 0,
         listingsSearched: {
-          active: activeListings.length,
-          sold: soldListings.length,
-          leased: leasedListings.length,
           total: allListings.length
         },
         namesFoundViaSearch: namesFoundCount
