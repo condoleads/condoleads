@@ -2,37 +2,33 @@
 on:
   workflow_dispatch:
 
-env:
-  DATABASE_URL: postgresql://postgres:${{ secrets.DB_PASSWORD }}@db.htbyftlpbtpnrkbtxawj.supabase.co:5432/postgres
-
 jobs:
   migrate:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
       - run: npm install pg
       - name: Run migration
+        env:
+          DATABASE_URL: postgresql://postgres.htbyftlpbtpnrkbtxawj:${{ secrets.DB_PASSWORD }}@aws-1-ca-central-1.pooler.supabase.com:5432/postgres
         run: |
           node -e "
           const { Client } = require('pg');
+          async function alterCol(col) {
+            const c = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+            await c.connect();
+            await c.query('SET statement_timeout = 0');
+            console.log('Altering ' + col + '...');
+            await c.query('ALTER TABLE mls_listings ALTER COLUMN ' + col + ' TYPE bigint');
+            console.log('  Done');
+            await c.end();
+          }
           async function run() {
-            const client = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-            await client.connect();
-            console.log('Connected');
-            await client.query('SET statement_timeout = 600000');
             const cols = ['close_price','original_list_price','previous_list_price','close_price_hold'];
             for (const col of cols) {
-              console.log('Altering ' + col + '...');
-              try {
-                await client.query('ALTER TABLE mls_listings ALTER COLUMN ' + col + ' TYPE bigint');
-                console.log('  Done');
-              } catch(e) { console.error('  Failed: ' + e.message); }
+              try { await alterCol(col); } 
+              catch(e) { console.error('  Failed: ' + e.message); }
             }
-            await client.end();
             console.log('Complete');
           }
           run();
