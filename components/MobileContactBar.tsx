@@ -20,6 +20,8 @@ interface MobileContactBarProps {
 export default function MobileContactBar({ agent, buildingId, buildingName, buildingAddress }: MobileContactBarProps) {
   const [showModal, setShowModal] = useState(false)
 
+  if (!agent) return null
+
   return (
     <>
       {/* Sticky bottom bar - mobile only */}

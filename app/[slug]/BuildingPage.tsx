@@ -289,12 +289,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   ])
 
   const { siteOwner, displayAgent, isTeamSite } = agentResult
-
-  // If no display agent (not assigned to this building/team), show 404
-  if (!displayAgent) {
-    notFound()
-  }
-  const agent = displayAgent
+  const agent = displayAgent // May be null — page renders without agent features
 
   const activeListings = activeListingsRaw || []
   const closedListings = closedListingsRaw || []
@@ -359,21 +354,23 @@ export default async function BuildingPage({ params }: { params: { slug: string 
 
   return (
     <>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `window.__AGENT_DATA__ = ${JSON.stringify({
-            full_name: agent.full_name,
-            email: agent.email,
-            phone: agent.cell_phone,
-            brokerage_name: agent.brokerage_name,
-            brokerage_address: agent.brokerage_address,
-            title: agent.title,
-            siteName: agent.site_title || agent.full_name,
-            siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
-            ogImageUrl: agent.og_image_url
-          })};`
-        }}
-      />
+      {agent && (
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__AGENT_DATA__ = ${JSON.stringify({
+              full_name: agent.full_name,
+              email: agent.email,
+              phone: agent.cell_phone,
+              brokerage_name: agent.brokerage_name,
+              brokerage_address: agent.brokerage_address,
+              title: agent.title,
+              siteName: agent.site_title || agent.full_name,
+              siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+              ogImageUrl: agent.og_image_url
+            })};`
+          }}
+        />
+      )}
       <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
         <div className="max-w-7xl mx-auto px-4">
           <Breadcrumb items={[
@@ -401,6 +398,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         avgDaysOnMarketLease={avgDaysOnMarketLease}
       />
           {/* Compact Agent CTA - Fixed at top for lead capture */}
+        {agent && (
         <div className="bg-white border-b border-gray-200 py-3 md:py-4 fixed top-16 left-0 right-0 z-40 shadow-md">
           <div className="max-w-7xl mx-auto px-4">
             <div className="flex items-center justify-between gap-3">
@@ -441,7 +439,8 @@ export default async function BuildingPage({ params }: { params: { slug: string 
               </div>
             </div>
           </div>
-        </div>        
+        </div>
+        )}
       {/* Main Content Grid with Agent Sidebar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid lg:grid-cols-4 gap-8">
@@ -588,22 +587,24 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       buildingAddress={building.canonical_address} 
     />
     {/* AI Chat Widget */}
-    <ChatWidgetWrapper
-      agent={{ 
-        id: agent.id, 
-        full_name: agent.full_name,
-        ai_chat_enabled: agent.ai_chat_enabled,
-        has_api_key: !!agent.anthropic_api_key,
-        ai_welcome_message: agent.ai_welcome_message,
-        ai_free_messages: agent.ai_free_messages
-      }}
-      building={{ 
-        id: building.id, 
-        building_name: building.building_name, 
-        canonical_address: building.canonical_address,
-        community_id: building.community_id
-      }}
-    />
+    {agent && (
+      <ChatWidgetWrapper
+        agent={{
+          id: agent.id,
+          full_name: agent.full_name,
+          ai_chat_enabled: agent.ai_chat_enabled,
+          has_api_key: !!agent.anthropic_api_key,
+          ai_welcome_message: agent.ai_welcome_message,
+          ai_free_messages: agent.ai_free_messages
+        }}
+        building={{
+          id: building.id,
+          building_name: building.building_name,
+          canonical_address: building.canonical_address,
+          community_id: building.community_id
+        }}
+      />
+    )}
     </>
   )
 }
