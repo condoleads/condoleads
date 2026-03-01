@@ -189,7 +189,11 @@ export async function POST(request: NextRequest) {
             });
 
             // STEP 1: Generate slug and canonical address
-            const slug = generateSlug(buildingName, building.street_number, fullStreetName, building.street_suffix, building.street_dir_suffix, building.city);
+            const hasRealName = building.building_name && building.building_name.trim();
+const slugParts = hasRealName 
+  ? [building.building_name, building.street_number, fullStreetName, building.city]
+  : [building.street_number, fullStreetName, building.city];
+const slug = slugParts.filter(Boolean).join(' ').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
             const canonicalAddress = `${building.street_number} ${fullStreetName}, ${building.city}`;
 
             console.log(`[DBAssign] Processing: ${buildingName} (${canonicalAddress})`);
