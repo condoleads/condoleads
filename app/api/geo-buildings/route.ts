@@ -17,113 +17,75 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Missing geoType or geoId' }, { status: 400 })
   }
 
-  const columnMap: Record<string, string> = {
-    community: 'community_id',
-    municipality: 'community_id', // buildings link to communities, we need to get community IDs first
-    area: 'community_id',
-  }
-
   const supabase = createClient(supabaseUrl, supabaseKey)
   const offset = (page - 1) * pageSize
 
   try {
-    let buildingFilter = ''
-    let filterValue = geoId
+    // Step 1: Resolve community IDs based on geo type
+    let communityIds: string[] = []
 
     if (geoType === 'community') {
-      buildingFilter = 'community_id'
+      communityIds = [geoId]
     } else if (geoType === 'municipality') {
-      // Get all community IDs for this municipality
       const { data: communities } = await supabase
         .from('communities')
         .select('id')
         .eq('municipality_id', geoId)
-      const communityIds = (communities || []).map(c => c.id)
-      if (communityIds.length === 0) {
-        return NextResponse.json({ buildings: [], total: 0 })
-      }
-      // Use RPC or raw query for IN clause
-      const { data, count } = await supabase
-        .from('buildings')
-        .select('id, building_name, slug, canonical_address, cover_photo_url, gallery_photos, total_units, year_built', { count: 'exact' })
-        .in('community_id', communityIds)
-        .order('building_name')
-        .range(offset, offset + pageSize - 1)
-
-      const buildings = data || []
-      const buildingIds = buildings.map(b => b.id)
-
-      // Fetch listing counts for these buildings
-      const countsMap = await getListingCounts(supabase, buildingIds)
-
-      const enriched = buildings.map(b => ({
-        ...b,
-        gallery_photos: b.gallery_photos || [],
-        forSale: countsMap[b.id]?.forSale || 0,
-        forLease: countsMap[b.id]?.forLease || 0,
-      }))
-
-      return NextResponse.json({ buildings: enriched, total: count || 0 })
+      communityIds = (communities || []).map(c => c.id)
     } else if (geoType === 'area') {
-      // Get all municipality IDs, then community IDs
       const { data: municipalities } = await supabase
         .from('municipalities')
         .select('id')
         .eq('area_id', geoId)
       const muniIds = (municipalities || []).map(m => m.id)
-      if (muniIds.length === 0) {
-        return NextResponse.json({ buildings: [], total: 0 })
+      if (muniIds.length > 0) {
+        const { data: communities } = await supabase
+          .from('communities')
+          .select('id')
+          .in('municipality_id', muniIds)
+        communityIds = (communities || []).map(c => c.id)
       }
-      const { data: communities } = await supabase
-        .from('communities')
-        .select('id')
-        .in('municipality_id', muniIds)
-      const communityIds = (communities || []).map(c => c.id)
-      if (communityIds.length === 0) {
-        return NextResponse.json({ buildings: [], total: 0 })
-      }
-
-      const { data, count } = await supabase
-        .from('buildings')
-        .select('id, building_name, slug, canonical_address, cover_photo_url, gallery_photos, total_units, year_built', { count: 'exact' })
-        .in('community_id', communityIds)
-        .order('building_name')
-        .range(offset, offset + pageSize - 1)
-
-      const buildings = data || []
-      const buildingIds = buildings.map(b => b.id)
-      const countsMap = await getListingCounts(supabase, buildingIds)
-
-      const enriched = buildings.map(b => ({
-        ...b,
-        gallery_photos: b.gallery_photos || [],
-        forSale: countsMap[b.id]?.forSale || 0,
-        forLease: countsMap[b.id]?.forLease || 0,
-      }))
-
-      return NextResponse.json({ buildings: enriched, total: count || 0 })
     }
 
-    // Default: community
-    const { data, count } = await supabase
-      .from('buildings')
-      .select('id, building_name, slug, canonical_address, cover_photo_url, gallery_photos, total_units, year_built', { count: 'exact' })
-      .eq('community_id', geoId)
-      .order('building_name')
-      .range(offset, offset + pageSize - 1)
+    if (communityIds.length === 0) {
+      return NextResponse.json({ buildings: [], total: 0 })
+    }
 
-    const buildings = data || []
-    const buildingIds = buildings.map(b => b.id)
+    // Step 2: Get buildings ordered by active listing count (RPC)
+    const { data: buildings, error: buildingsError } = await supabase
+      .rpc('get_geo_buildings', {
+        p_community_ids: communityIds,
+        p_offset: offset,
+        p_limit: pageSize
+      })
+
+    if (buildingsError) {
+      console.error('get_geo_buildings error:', buildingsError)
+      return NextResponse.json({ error: 'Failed to fetch buildings' }, { status: 500 })
+    }
+
+    // Step 3: Get total count
+    const { data: countData, error: countError } = await supabase
+      .rpc('get_geo_buildings_count', { p_community_ids: communityIds })
+
+    if (countError) {
+      console.error('get_geo_buildings_count error:', countError)
+    }
+
+    const total = countData || 0
+
+    // Step 4: Get sale/lease breakdown for these buildings
+    const buildingIds = (buildings || []).map((b: any) => b.id)
     const countsMap = await getListingCounts(supabase, buildingIds)
 
-    const enriched = buildings.map(b => ({
+    const enriched = (buildings || []).map((b: any) => ({
       ...b,
       gallery_photos: b.gallery_photos || [],
       forSale: countsMap[b.id]?.forSale || 0,
       forLease: countsMap[b.id]?.forLease || 0,
     }))
 
-    return NextResponse.json({ buildings: enriched, total: count || 0 })
+    return NextResponse.json({ buildings: enriched, total })
   } catch (error) {
     console.error('geo-buildings error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

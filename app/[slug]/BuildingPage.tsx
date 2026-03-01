@@ -580,12 +580,12 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         </div>
       </div>
     </div>
-    <MobileContactBar 
+    {agent && <MobileContactBar 
       agent={agent} 
       buildingId={building.id} 
       buildingName={building.building_name} 
       buildingAddress={building.canonical_address} 
-    />
+    />}
     {/* AI Chat Widget */}
     {agent && (
       <ChatWidgetWrapper
