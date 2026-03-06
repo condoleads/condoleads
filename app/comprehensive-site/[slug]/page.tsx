@@ -58,12 +58,12 @@ export default async function ComprehensiveSlugPage({
 }) {
   // Property URL
   if (isPropertySlug(params.slug)) {
-    const { mlsNumber } = parsePropertySlug(params.slug)
+    const { mlsNumber } = parsePropertySlug(params.slug)    
     if (!mlsNumber) notFound()
     const { createClient: createServerClient } = await import('@/lib/supabase/server')
     const serverSupabase = createServerClient()
-    const { data: listing } = await serverSupabase
-      .from('mls_listings').select('id').eq('listing_key', mlsNumber).single()
+    const { data: listing, error } = await serverSupabase
+      .from('mls_listings').select('id').eq('listing_key', mlsNumber).single()    
     if (!listing) notFound()
     return <PropertyPage params={{ id: listing.id }} />
   }

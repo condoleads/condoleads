@@ -15,6 +15,7 @@ interface Agent {
   subdomain: string
   custom_domain?: string | null
   can_create_children?: boolean
+  site_type?: string | null
   site_title?: string | null
   site_tagline?: string | null
   og_image_url?: string | null
@@ -215,11 +216,14 @@ export async function getAgentForBuilding(
     // Get site owner from host
     const siteOwner = await getAgentFromHost(host)
     if (!siteOwner) {
-      return { siteOwner: null, displayAgent: null, isTeamSite: false }
-    }
-    const isTeamSite = siteOwner.can_create_children === true
-
-    // Get building's development_id if it belongs to one
+  return { siteOwner: null, displayAgent: null, isTeamSite: false }
+}
+// Comprehensive sites can view all properties without building assignment
+if (siteOwner.site_type === 'comprehensive') {
+  return { siteOwner, displayAgent: siteOwner, isTeamSite: siteOwner.can_create_children === true }
+}
+const isTeamSite = siteOwner.can_create_children === true
+// Get building's development_id if it belongs to one
     const { data: building } = await supabase
       .from('buildings')
       .select('development_id')

@@ -41,13 +41,15 @@ export function generatePropertySlug(
     return `/property/${listing.listing_key}` // fallback to old format
   }
 
-  const unitNumber = listing.unit_number || 'unit'
+  const unitNumber = listing.unit_number || ''
   const mlsNumber = listing.listing_key.toLowerCase()
 
   // If buildingSlug provided, use it for consistent URLs
   if (buildingSlug) {
-    return `/${buildingSlug}-unit-${unitNumber}-${mlsNumber}`
-  }
+  return unitNumber
+    ? `/${buildingSlug}-unit-${unitNumber}-${mlsNumber}`
+    : `/${buildingSlug}-unit-${mlsNumber}`
+}
 
   // Fallback: Extract street address (before unit number)
   const address = listing.unparsed_address || ''
@@ -57,7 +59,9 @@ export function generatePropertySlug(
     .replace(/\s+/g, '-') // Replace spaces with hyphens
     .replace(/[^a-z0-9-]/g, '') // Remove special chars
 
-  return `/${addressPart}-unit-${unitNumber}-${mlsNumber}`
+  return unitNumber
+  ? `/${addressPart}-unit-${unitNumber}-${mlsNumber}`
+  : `/${addressPart}-unit-${mlsNumber}`
 }
 
 // ===== HOME PROPERTY SLUGS =====

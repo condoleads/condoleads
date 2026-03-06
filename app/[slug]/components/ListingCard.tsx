@@ -55,8 +55,14 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
         .order('order_number', { ascending: true })
       
       if (data && data.length > 0) {
-        setPhotos(data)
-      }
+  const seen = new Set<string>()
+  const unique = data.filter((m: any) => {
+    if (seen.has(m.media_url)) return false
+    seen.add(m.media_url)
+    return true
+  })
+  setPhotos(unique)
+}
       setAllPhotosLoaded(true)
     } catch (error) {
       console.error('Error loading photos:', error)

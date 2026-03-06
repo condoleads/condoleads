@@ -18,10 +18,10 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
   // Check if it's a property slug first
   if (isPropertySlug(params.slug)) {
-    const { mlsNumber } = parsePropertySlug(params.slug)
-    if (!mlsNumber) {
-      return { title: 'Property Not Found' }
-    }
+  const { mlsNumber } = parsePropertySlug(params.slug)  
+  if (!mlsNumber) {
+    notFound()
+  }
     
      
     // Query listing ID only
@@ -105,17 +105,19 @@ export default async function DynamicSlugPage({
     // Property URL: /101-charles-st-e-unit-2503-c7351578
     if (isPropertySlug(params.slug)) {
       const { mlsNumber } = parsePropertySlug(params.slug)
+      console.log('PAGE DEBUG 1:', { slug: params.slug, mlsNumber })
       if (!mlsNumber) {
         notFound()
       }
       // Lookup property ID by MLS number (use server supabase and case-insensitive match)
       const { createClient } = await import('@/lib/supabase/server')
       const serverSupabase = createClient()
-      const { data: listing } = await serverSupabase
+      const { data: listing, error } = await serverSupabase
         .from('mls_listings')
         .select('id')
         .eq('listing_key', mlsNumber)
         .single()
+        console.log('PAGE DEBUG 2:', { listing, error })
 
       if (!listing) {
         notFound()

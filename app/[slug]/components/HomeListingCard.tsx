@@ -46,7 +46,15 @@ export default function HomeListingCard({ listing, type, onEstimateClick, agentI
   const statusStyle = getStatusStyle(listing.transaction_type, listing.standard_status)
 
   // Photos - same lazy-load pattern as condo ListingCard
-  const initialPhotos = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
+  const initialPhotos = (() => {
+  const raw = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
+  const seen = new Set<string>()
+  return raw.filter((m: any) => {
+    if (seen.has(m.media_url)) return false
+    seen.add(m.media_url)
+    return true
+  })
+})()
   const [photos, setPhotos] = useState(initialPhotos)
   const [allPhotosLoaded, setAllPhotosLoaded] = useState(false)
   const [loadingPhotos, setLoadingPhotos] = useState(false)
@@ -73,7 +81,15 @@ export default function HomeListingCard({ listing, type, onEstimateClick, agentI
         .eq('listing_id', listing.id)
         .eq('variant_type', 'thumbnail')
         .order('order_number', { ascending: true })
-      if (data && data.length > 0) setPhotos(data)
+      if (data && data.length > 0) {
+  const seen = new Set<string>()
+  const unique = data.filter((m: any) => {
+    if (seen.has(m.media_url)) return false
+    seen.add(m.media_url)
+    return true
+  })
+  setPhotos(unique)
+}
       setAllPhotosLoaded(true)
     } catch (err) { console.error('Error loading photos:', err) }
     finally { setLoadingPhotos(false) }

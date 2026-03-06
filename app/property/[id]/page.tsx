@@ -152,12 +152,12 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   ] = await Promise.all([
     // 1. Media - large photos only
     supabase
-      .from('media')
-      .select('media_url, order_number')
-      .eq('listing_id', listing.id)
-      .eq('variant_type', 'large')
-      .order('order_number')
-      .limit(4),
+    .from('media')
+    .select('media_url, order_number')
+    .eq('listing_id', listing.id)
+    .eq('variant_type', 'large')
+    .order('order_number')
+    .limit(50),
 
     // 2. Unit history
     supabase
@@ -235,7 +235,15 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       .limit(8)
   ])
 
-  const largePhotos = largePhotosResult.data
+  const largePhotos = (() => {
+  const raw = largePhotosResult.data || []
+  const seen = new Set<string>()
+  return raw.filter(p => {
+    if (seen.has(p.media_url)) return false
+    seen.add(p.media_url)
+    return true
+  }).slice(0, 20)
+})()
   const unitHistory = unitHistoryResult.data
   const rooms = roomsResult.data
   const amenitiesData = amenitiesResult.data

@@ -24,7 +24,14 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const [showRegister, setShowRegister] = useState(false)
-  const [allPhotos, setAllPhotos] = useState<Photo[]>(photos)
+  const [allPhotos, setAllPhotos] = useState<Photo[]>(() => {
+  const seen = new Set<string>()
+  return photos.filter(p => {
+    if (seen.has(p.media_url)) return false
+    seen.add(p.media_url)
+    return true
+  })
+})
   const [allPhotosLoaded, setAllPhotosLoaded] = useState(false)
 
   // Lazy-load remaining photos when user interacts
@@ -37,9 +44,15 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
         .eq('listing_id', listingId)
         .eq('variant_type', 'large')
         .order('order_number')
-      if (data && data.length > allPhotos.length) {
-        setAllPhotos(data)
-      }
+      if (data && data.length > 0) {
+  const seen = new Set<string>()
+  const unique = data.filter((p: any) => {
+    if (seen.has(p.media_url)) return false
+    seen.add(p.media_url)
+    return true
+  })
+  setAllPhotos(unique)
+}
       setAllPhotosLoaded(true)
     } catch (err) {
       console.error('Failed to load all photos:', err)
