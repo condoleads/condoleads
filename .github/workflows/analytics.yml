@@ -1,0 +1,30 @@
+name: Nightly Analytics
+
+on:
+  schedule:
+    - cron: '0 9 * * *'   # 4 AM EST = 9 AM UTC (runs 2h after nightly sync)
+  workflow_dispatch:
+    inputs:
+      cold_start:
+        description: 'Full rebuild — process all geo entities'
+        type: boolean
+        default: false
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+
+jobs:
+  analytics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run analytics
+        run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/analytics-nightly.ts
+        env:
+          COLD_START: ${{ inputs.cold_start || 'false' }}
