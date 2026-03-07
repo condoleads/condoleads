@@ -122,32 +122,19 @@ export default function SiteHeaderClient({
             </nav>
 
             {/* ── Desktop Right Actions ── */}
-            <div className="hidden md:flex items-center gap-2">
-              <button
-                onClick={() => setSearchOpen(o => !o)}
-                className={`p-2 rounded-md transition-colors hover:bg-white/10 ${textClasses}`}
-                aria-label="Search"
-              >
-                <Search className="w-5 h-5" />
-              </button>
+            <div className="hidden md:flex items-center gap-3 flex-1 justify-end">
+              <SearchBar className="max-w-sm" />
               <Link
                 href="/vip"
-                className="px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
+                className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
                 style={{ backgroundColor: primaryColor }}
               >
                 Get VIP Access
               </Link>
             </div>
 
-            {/* ── Mobile: search + hamburger ── */}
-            <div className="flex md:hidden items-center gap-2">
-              <button
-                onClick={() => setSearchOpen(o => !o)}
-                className={`p-2 rounded-md ${textClasses}`}
-                aria-label="Search"
-              >
-                <Search className="w-5 h-5" />
-              </button>
+            {/* ── Mobile: hamburger only ── */}
+            <div className="flex md:hidden items-center">
               <button
                 onClick={() => setMobileOpen(o => !o)}
                 className={`p-2 rounded-md ${textClasses}`}
@@ -158,12 +145,7 @@ export default function SiteHeaderClient({
             </div>
           </div>
 
-          {/* ── Search Bar (slides in below header) ── */}
-          {searchOpen && (
-            <div className="pb-3 pt-1 border-t border-white/20">
-              <SearchBar onClose={() => setSearchOpen(false)} autoFocus />
-            </div>
-          )}
+          {/* ── No slide-in search panel needed — always visible on desktop, in mobile menu on mobile ── */}
         </div>
 
         {/* ── Desktop Mega-Menu ── */}
@@ -231,6 +213,11 @@ export default function SiteHeaderClient({
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-white overflow-y-auto pt-16">
           <div className="px-4 py-6 space-y-1">
+
+            {/* Mobile Search */}
+            <div className="mb-4">
+              <SearchBar placeholder="Search…" autoFocus />
+            </div>
 
             {/* Browse — accordion */}
             <div>
