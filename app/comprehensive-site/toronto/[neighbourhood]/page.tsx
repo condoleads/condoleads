@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import GeoListingSection from '@/app/[slug]/components/GeoListingSection'
 
 interface Props {
   params: { neighbourhood: string }
@@ -18,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!n) return { title: 'Neighbourhood Not Found' }
   return {
     title: `${n.name} Real Estate — Condos & Homes | CondoLeads`,
-    description: `Browse condos and homes in ${n.name}, Toronto. ${n.name} buildings, communities and active listings.`,
+    description: `Browse condos and homes in ${n.name}, Toronto.`,
   }
 }
 
@@ -32,7 +33,6 @@ async function getNeighbourhoodData(slug: string) {
 
   if (!neighbourhood) return null
 
-  // Municipalities in this neighbourhood
   const { data: mappings } = await supabase
     .from('municipality_neighbourhoods')
     .select('municipality_id, municipalities(id, name, slug)')
@@ -45,7 +45,7 @@ async function getNeighbourhoodData(slug: string) {
   const municipalityIds = municipalities.map((m: any) => m.id)
   if (!municipalityIds.length) return { neighbourhood, municipalities: [], stats: null }
 
-  // Active listing counts
+  // Active counts
   const { count: activeCount } = await supabase
     .from('mls_listings')
     .select('id', { count: 'exact', head: true })
@@ -71,12 +71,22 @@ async function getNeighbourhoodData(slug: string) {
     .in('property_subtype', ['Detached', 'Semi-Detached', 'Att/Row/Townhouse',
       'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'])
 
-  const { count: buildingCount } = await supabase
-    .from('buildings')
-    .select('id', { count: 'exact', head: true })
+  // Buildings via communities → municipality
+  const { data: communities } = await supabase
+    .from('communities')
+    .select('id')
     .in('municipality_id', municipalityIds)
 
-  // Per-municipality stats for cards
+  const communityIds = (communities ?? []).map((c: any) => c.id)
+
+  const { count: buildingCount } = communityIds.length
+    ? await supabase
+        .from('buildings')
+        .select('id', { count: 'exact', head: true })
+        .in('community_id', communityIds)
+    : { count: 0 }
+
+  // Per-municipality stats
   const muniWithStats = await Promise.all(
     municipalities.map(async (m: any) => {
       const { count: active } = await supabase
@@ -86,16 +96,23 @@ async function getNeighbourhoodData(slug: string) {
         .eq('available_in_idx', true)
         .eq('standard_status', 'Active')
 
-      const { count: buildings } = await supabase
-        .from('buildings')
-        .select('id', { count: 'exact', head: true })
+      // Buildings via communities
+      const { data: muniComms } = await supabase
+        .from('communities')
+        .select('id')
         .eq('municipality_id', m.id)
+      const muniCommIds = (muniComms ?? []).map((c: any) => c.id)
+      const { count: buildings } = muniCommIds.length
+        ? await supabase
+            .from('buildings')
+            .select('id', { count: 'exact', head: true })
+            .in('community_id', muniCommIds)
+        : { count: 0 }
 
       return { ...m, active: active ?? 0, buildings: buildings ?? 0 }
     })
   )
 
-  // Sort by active listings desc
   muniWithStats.sort((a, b) => b.active - a.active)
 
   return {
@@ -134,57 +151,60 @@ export default async function NeighbourhoodPage({ params }: Props) {
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
           <p className="text-sm text-blue-600 font-medium mb-1">Toronto Neighbourhood</p>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">{neighbourhood.name}</h1>
+          <h1 className="text-4xl font-bold text-gray-900 mb-6">{neighbourhood.name}</h1>
 
           {stats && (
-            <div className="flex flex-wrap gap-6 text-sm mt-4">
+            <div className="flex flex-wrap gap-8">
               <div>
-                <span className="text-2xl font-bold text-gray-900">{stats.active.toLocaleString()}</span>
-                <span className="text-gray-500 ml-1 text-sm">Active Listings</span>
+                <div className="text-2xl font-bold text-gray-900">{stats.active.toLocaleString()}</div>
+                <div className="text-sm text-gray-500">Active Listings</div>
               </div>
               <div>
-                <span className="text-2xl font-bold text-gray-900">{stats.condos.toLocaleString()}</span>
-                <span className="text-gray-500 ml-1 text-sm">Condos</span>
+                <div className="text-2xl font-bold text-gray-900">{stats.condos.toLocaleString()}</div>
+                <div className="text-sm text-gray-500">Condos</div>
               </div>
               <div>
-                <span className="text-2xl font-bold text-gray-900">{stats.homes.toLocaleString()}</span>
-                <span className="text-gray-500 ml-1 text-sm">Homes</span>
+                <div className="text-2xl font-bold text-gray-900">{stats.homes.toLocaleString()}</div>
+                <div className="text-sm text-gray-500">Homes</div>
               </div>
               <div>
-                <span className="text-2xl font-bold text-gray-900">{stats.buildings.toLocaleString()}</span>
-                <span className="text-gray-500 ml-1 text-sm">Buildings</span>
+                <div className="text-2xl font-bold text-gray-900">{stats.buildings.toLocaleString()}</div>
+                <div className="text-sm text-gray-500">Buildings</div>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Municipality cards */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-        <h2 className="text-xl font-semibold text-gray-900 mb-6">
-          Explore {neighbourhood.name}
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {municipalities.map((m: any) => (
-            <Link
-              key={m.id}
-              href={`/${m.slug}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block p-5 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-md transition-all group"
-            >
-              <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors mb-2">
-                {m.name}
-              </h3>
-              <div className="flex items-center gap-4 text-sm text-gray-500">
-                <span>{m.active.toLocaleString()} active</span>
-                <span>·</span>
-                <span>{m.buildings.toLocaleString()} buildings</span>
-              </div>
-            </Link>
-          ))}
+      {/* Listings per municipality */}
+      {municipalities.map((m: any) => (
+        <div key={m.id} className="border-b border-gray-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-semibold text-gray-900">{m.name}</h2>
+              <Link
+                href={`/${m.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                View all →
+              </Link>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              {m.active.toLocaleString()} active · {m.buildings.toLocaleString()} buildings
+            </p>
+          </div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+            <GeoListingSection
+              geoType="municipality"
+              geoId={m.id}
+              agentId=""
+              pageSize={6}
+            />
+          </div>
         </div>
-      </div>
+      ))}
     </div>
   )
 }
