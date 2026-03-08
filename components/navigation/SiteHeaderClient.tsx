@@ -165,6 +165,7 @@ export default function SiteHeaderClient({
                   <div key={n.id}>
                     <Link
                       href={`/toronto/${n.slug}`}
+                      target="_blank" rel="noopener noreferrer"
                       onClick={() => setMegaMenuOpen(false)}
                       className="flex items-center justify-between group mb-2"
                     >
@@ -180,6 +181,7 @@ export default function SiteHeaderClient({
                         <li key={c.slug}>
                           <Link
                             href={`/${c.slug}`}
+                            target="_blank" rel="noopener noreferrer"
                             onClick={() => setMegaMenuOpen(false)}
                             className="flex items-center justify-between text-sm text-gray-600 hover:text-blue-600 hover:pl-1 transition-all py-0.5"
                           >
@@ -192,6 +194,7 @@ export default function SiteHeaderClient({
                         <li>
                           <Link
                             href={`/toronto/${n.slug}`}
+                            target="_blank" rel="noopener noreferrer"
                             onClick={() => setMegaMenuOpen(false)}
                             className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1 mt-1"
                           >
