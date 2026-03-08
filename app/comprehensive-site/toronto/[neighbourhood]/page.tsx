@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import NeighbourhoodListingSection from '@/app/[slug]/components/NeighbourhoodListingSection'
+import NeighbourhoodPageTabs from '@/app/[slug]/components/NeighbourhoodPageTabs'
 
 interface Props {
   params: { neighbourhood: string }
@@ -81,7 +81,7 @@ async function getNeighbourhoodData(slug: string) {
   // Buildings count via communities
   const { data: communities } = await supabase
     .from('communities')
-    .select('id')
+    .select('id, name, slug')
     .in('municipality_id', municipalityIds)
 
   const communityIds = (communities ?? []).map((c: any) => c.id)
@@ -152,6 +152,7 @@ async function getNeighbourhoodData(slug: string) {
     neighbourhood,
     municipalities,
     municipalityIds,
+    communities,
     stats: {
       active: activeCount ?? 0,
       condos: condoCount ?? 0,
@@ -173,7 +174,7 @@ export default async function NeighbourhoodPage({ params }: Props) {
   const data = await getNeighbourhoodData(params.neighbourhood)
   if (!data) notFound()
 
-  const { neighbourhood, municipalities, municipalityIds, stats, initialListings, initialTotal, initialCounts } = data
+  const { neighbourhood, municipalities, municipalityIds, communities, stats, initialListings, initialTotal, initialCounts } = data
 
   return (
     <div className="min-h-screen bg-white">
@@ -237,17 +238,33 @@ export default async function NeighbourhoodPage({ params }: Props) {
         </div>
       )}
 
-      {/* Listings — single unified section across all municipalities */}
+      {/* Listings — tabbed: All / Condos / Homes */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <NeighbourhoodListingSection
+        <NeighbourhoodPageTabs
           municipalityIds={municipalityIds}
           agentId=""
+          buildingCount={stats?.buildings ?? 0}
+          municipalities={municipalities}
           initialListings={initialListings}
           initialTotal={initialTotal}
           counts={initialCounts}
-          pageSize={24}
         />
       </div>
+
+      {/* Communities */}
+      {communities && communities.length > 0 && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 border-t border-gray-100">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Communities</h2>
+          <div className="flex flex-wrap gap-2">
+            {communities.map((c: any) => (
+              <Link key={c.id} href={`/${c.slug}`}
+                className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors">
+                {c.name}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
     </div>
   )
