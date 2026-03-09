@@ -25,7 +25,7 @@ async function getTorontoData() {
       seen.add(m.id)
       return true
     })
-    .sort((a: any, b: any) => a.name.localeCompare(b.name))
+    .map((m: any) => ({ ...m, active: 0, buildings: 0 }))
 
   const municipalityIds = municipalities.map((m: any) => m.id)
   if (!municipalityIds.length) return null

@@ -115,15 +115,25 @@ export default function GeoListingSection({
     }
   }
 
-  // On category change — fresh fetch immediately
+  // On category change — use SSR data if available, otherwise fetch
   useEffect(() => {
     if (propertyCategory) {
       setFilters(DEFAULT_FILTERS)
       setAdvancedFilters(DEFAULT_ADVANCED)
       setActiveTab('for-sale')
       setCurrentPage(1)
+
+      // FIX: if SSR data provided, use it — skip the fetch entirely
+      if (initialListings && initialListings.length > 0 && initialCounts) {
+        setListings(initialListings)
+        setTotalCount(initialTotal || 0)
+        setCounts(initialCounts)
+        setInitialLoad(true)
+        return
+      }
+
+      // No SSR data — fetch listings only (no count queries on mount)
       setInitialLoad(false)
-      // Fetch immediately
       setLoading(true)
       const params = new URLSearchParams()
       params.set('geoType', geoType)
@@ -132,24 +142,15 @@ export default function GeoListingSection({
       params.set('page', '1')
       params.set('pageSize', String(pageSize))
       params.set('propertyCategory', propertyCategory)
-      const url = `/api/geo-listings?${params.toString()}`
-      fetch(url).then(r => r.json()).then(data => {
-        setListings(data.listings || [])
-        setTotalCount(data.total || 0)
-        setLoading(false)
-      }).catch(() => setLoading(false))
-      // Fetch counts
-      const tabs = ['for-sale', 'for-lease', 'sold', 'leased']
-      Promise.all(
-        tabs.map(tab => {
-          const p = new URLSearchParams(params)
-          p.set('tab', tab)
-          p.set('pageSize', '1')
-          return fetch(`/api/geo-listings?${p.toString()}`).then(r => r.json()).then(d => d.total || 0)
+      fetch(`/api/geo-listings?${params.toString()}`)
+        .then(r => r.json())
+        .then(data => {
+          setListings(data.listings || [])
+          setTotalCount(data.total || 0)
+          setCounts(c => ({ ...c, forSale: data.total || 0 }))
+          setLoading(false)
         })
-      ).then(results => {
-        setCounts({ forSale: results[0], forLease: results[1], sold: results[2], leased: results[3] })
-      })
+        .catch(() => setLoading(false))
     } else if (initialListings && initialCounts) {
       setListings(initialListings)
       setTotalCount(initialTotal || 0)
@@ -172,12 +173,23 @@ export default function GeoListingSection({
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab)
     setCurrentPage(1)
-    if (!propertyCategory && !hasActiveFilters() && tab === 'for-sale' && initialLoad && initialListings) {
+    if (!hasActiveFilters() && tab === 'for-sale' && initialLoad && initialListings) {
       setListings(initialListings)
       setTotalCount(initialTotal || 0)
     } else {
       fetchListings(tab, 1)
       setInitialLoad(false)
+      // FIX: lazy-load sold/leased count only when tab first clicked
+      if ((tab === 'sold' && counts.sold === 0) || (tab === 'leased' && counts.leased === 0)) {
+        fetch(buildUrl(tab, 1).replace(`pageSize=${pageSize}`, 'pageSize=1'))
+          .then(r => r.json())
+          .then(d => {
+            setCounts(c => ({
+              ...c,
+              ...(tab === 'sold' ? { sold: d.total || 0 } : { leased: d.total || 0 })
+            }))
+          })
+      }
     }
   }
 
