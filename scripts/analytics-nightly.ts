@@ -13,6 +13,7 @@ import {
   populatePSF,
   computeAndSaveGeoAnalytics,
   generateRankingsForGeo,
+  updateValueMigrationForAll,
   CONDO_SUBTYPES,
   HOMES_SUBTYPES,
   type GeoType,
@@ -269,7 +270,29 @@ export async function runAnalyticsNightly(
   stats.failed += rankingStats.failed
   log(TAG, `Rankings complete: ${rankingStats.success} ok / ${rankingStats.failed} failed`)
 
-  // ── FINAL REPORT ──
+  // ── STAGE 8: VALUE MIGRATION SECOND PASS ──
+  // Must run AFTER all geo levels computed — parent rows now exist
+  log(TAG, '')
+  log(TAG, '=== STAGE 8: VALUE MIGRATION PASS ===')
+
+  // Build flat list of all entities that were processed
+  const migrationTargets: { id: string; geoType: GeoType; track: Track }[] = []
+  const tracks: Track[] = ['condo', 'homes']
+
+  for (const track of tracks) {
+    for (const b of buildings)      migrationTargets.push({ id: b.id, geoType: 'building',      track })
+    for (const c of communities)    migrationTargets.push({ id: c.id, geoType: 'community',     track })
+    for (const m of municipalities) migrationTargets.push({ id: m.id, geoType: 'municipality',  track })
+    for (const a of areas)          migrationTargets.push({ id: a.id, geoType: 'area',          track })
+  }
+  // neighbourhoods have no parent — skip
+
+  log(TAG, `Value migration: ${migrationTargets.length} entities to update`)
+  const migStats = await updateValueMigrationForAll(migrationTargets)
+  stats.success += migStats.success
+  stats.failed += migStats.failed
+  log(TAG, `Value migration complete: ${migStats.success} ok / ${migStats.failed} failed`)
+  // -- FINAL REPORT --
   const duration = Math.round((Date.now() - startedAt) / 1000)
   const minutes = Math.floor(duration / 60)
   const seconds = duration % 60

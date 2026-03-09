@@ -1119,3 +1119,50 @@ export async function generateRankingsForGeo(
     return false
   }
 }
+// =====================================================
+// STAGE 8: VALUE MIGRATION SECOND PASS
+// Runs AFTER all geo levels are computed so parent rows exist
+// Updates insight_value_migration for every geo_analytics row
+// =====================================================
+
+export async function updateValueMigrationForAll(
+  entities: { id: string; geoType: GeoType; track: Track }[]
+): Promise<{ success: number; failed: number }> {
+  const stats = { success: 0, failed: 0 }
+
+  for (const { id, geoType, track } of entities) {
+    try {
+      const { data: thisRow } = await supabase
+        .from('geo_analytics')
+        .select('median_psf')
+        .eq('geo_type', geoType)
+        .eq('geo_id', id)
+        .eq('track', track)
+        .eq('period_type', 'rolling_12mo')
+        .maybeSingle()
+
+      if (!thisRow?.median_psf) { stats.failed++; continue }
+
+      const insight = await computeValueMigrationInsight(
+        geoType, id, thisRow.median_psf, track
+      )
+
+      if (!insight) { stats.failed++; continue }
+
+      const { error: updateErr } = await supabase
+        .from('geo_analytics')
+        .update({ insight_value_migration: insight })
+        .eq('geo_type', geoType)
+        .eq('geo_id', id)
+        .eq('track', track)
+        .eq('period_type', 'rolling_12mo')
+
+      if (updateErr) { stats.failed++; continue }
+      stats.success++
+    } catch {
+      stats.failed++
+    }
+  }
+
+  return stats
+}
