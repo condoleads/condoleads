@@ -100,9 +100,6 @@ export default function GeoPageTabs({
 
       {activeTab === 'condos' && (
         <GeoListingSection
-          initialListings={initialListings}
-          initialTotal={initialTotal}
-          counts={counts}
           geoType={geoType}
           geoId={geoId}
           agentId={agentId}
@@ -112,6 +109,9 @@ export default function GeoPageTabs({
 
       {activeTab === 'homes' && (
         <GeoListingSection
+          initialListings={initialListings}
+          initialTotal={initialTotal}
+          counts={counts}
           geoType={geoType}
           geoId={geoId}
           agentId={agentId}

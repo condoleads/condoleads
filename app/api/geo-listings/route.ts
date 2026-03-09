@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   const isActive = tab === 'for-sale' || tab === 'for-lease'
   const transactionType = (tab === 'for-sale' || tab === 'sold') ? 'For Sale' : 'For Lease'
   const status = isActive ? 'Active' : 'Closed'
-  const accessField = isActive ? 'available_in_idx' : 'available_in_vow'
+  const accessField = isActive ? 'available_in_vow' : 'available_in_vow'
   const priceField = isActive ? 'list_price' : 'close_price'
   const offset = (page - 1) * pageSize
 
