@@ -48,100 +48,93 @@ async function getNeighbourhoodData(slug: string) {
   const municipalityIds = municipalities.map((m: any) => m.id)
   if (!municipalityIds.length) return { neighbourhood, municipalities: [], municipalityIds: [], stats: null }
 
-  // Stats — all use available_in_vow
+  // Resolve community IDs for building count upfront
+  const { data: communities } = await supabase
+    .from('communities')
+    .select('id, name, slug')
+    .in('municipality_id', municipalityIds)
+    .limit(10000)
+
+  const communityIds = (communities ?? []).map((c: any) => c.id)
+
+  // FIX: run all queries in parallel
+  // FIX: initialTotal and forSaleCount were identical queries — merged into one
+  // FIX: sold/leased counts deferred — not needed on initial SSR render, fetched by tabs on demand
   const [
     { count: activeCount },
     { count: condoCount },
     { count: homeCount },
+    { count: buildingCount },
+    { data: initialListingsRaw },
+    { count: forSaleCount },
+    { count: forLeaseCount },
   ] = await Promise.all([
-    supabase
-      .from('mls_listings')
+    supabase.from('mls_listings')
       .select('id', { count: 'exact', head: true })
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
       .eq('standard_status', 'Active'),
-    supabase
-      .from('mls_listings')
+    supabase.from('mls_listings')
       .select('id', { count: 'exact', head: true })
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
       .eq('standard_status', 'Active')
       .in('property_subtype', ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
         'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']),
-    supabase
-      .from('mls_listings')
+    supabase.from('mls_listings')
       .select('id', { count: 'exact', head: true })
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
       .eq('standard_status', 'Active')
       .in('property_subtype', ['Detached', 'Semi-Detached', 'Att/Row/Townhouse',
         'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']),
+    communityIds.length
+      ? supabase.from('buildings')
+          .select('id', { count: 'exact', head: true })
+          .in('community_id', communityIds)
+      : Promise.resolve({ count: 0 }),
+    supabase.from('mls_listings')
+      .select(`id, building_id, community_id, municipality_id, listing_id, listing_key,
+        standard_status, transaction_type, list_price, close_price, close_date,
+        unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer,
+        property_type, property_subtype, living_area_range, square_foot_source,
+        building_area_total, parking_total, locker, association_fee, tax_annual_amount,
+        days_on_market, listing_contract_date,
+        lot_width, lot_depth, frontage_length, basement, garage_type, garage_yn,
+        approximate_age, architectural_style, cooling, pool_features, fireplace_yn,
+        media (id, media_url, variant_type, order_number, preferred_photo_yn)`)
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .eq('standard_status', 'Active')
+      .eq('transaction_type', 'For Sale')
+      .order('list_price', { ascending: false })
+      .range(0, 23),
+    // FIX: forSaleCount and initialTotal were duplicated — now one query serves both
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .eq('standard_status', 'Active')
+      .eq('transaction_type', 'For Sale'),
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .eq('standard_status', 'Active')
+      .eq('transaction_type', 'For Lease'),
   ])
 
-  // Buildings count via communities
-  const { data: communities } = await supabase
-    .from('communities')
-    .select('id, name, slug')
-    .in('municipality_id', municipalityIds)
-
-  const communityIds = (communities ?? []).map((c: any) => c.id)
-  const { count: buildingCount } = communityIds.length
-    ? await supabase
-        .from('buildings')
-        .select('id', { count: 'exact', head: true })
-        .in('community_id', communityIds)
-    : { count: 0 }
-
-  // Initial listings for SSR (for-sale, page 1)
-  const { data: initialListings } = await supabase
-    .from('mls_listings')
-    .select(`id, building_id, community_id, municipality_id, listing_id, listing_key,
-      standard_status, transaction_type, list_price, close_price, close_date,
-      unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer,
-      property_type, property_subtype, living_area_range, square_foot_source,
-      building_area_total, parking_total, locker, association_fee, tax_annual_amount,
-      days_on_market, listing_contract_date,
-      lot_width, lot_depth, frontage_length, basement, garage_type, garage_yn,
-      approximate_age, architectural_style, cooling, pool_features, fireplace_yn,
-      media (id, media_url, variant_type, order_number, preferred_photo_yn)`)
-    .in('municipality_id', municipalityIds)
-    .eq('available_in_vow', true)
-    .eq('standard_status', 'Active')
-    .eq('transaction_type', 'For Sale')
-    .order('list_price', { ascending: false })
-    .range(0, 23)
-
-  const { count: initialTotal } = await supabase
-    .from('mls_listings')
-    .select('id', { count: 'exact', head: true })
-    .in('municipality_id', municipalityIds)
-    .eq('available_in_vow', true)
-    .eq('standard_status', 'Active')
-    .eq('transaction_type', 'For Sale')
-
-  // Tab counts for initial render
-  const [
-    { count: forSaleCount },
-    { count: forLeaseCount },
-    { count: soldCount },
-    { count: leasedCount },
-  ] = await Promise.all([
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds).eq('available_in_vow', true)
-      .eq('standard_status', 'Active').eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds).eq('available_in_vow', true)
-      .eq('standard_status', 'Active').eq('transaction_type', 'For Lease'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds).eq('available_in_vow', true)
-      .eq('standard_status', 'Closed').eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds).eq('available_in_vow', true)
-      .eq('standard_status', 'Closed').eq('transaction_type', 'For Lease'),
-  ])
+  // FIX: sold/leased counts removed from SSR — NeighbourhoodPageTabs fetches them
+  // when the user clicks those tabs via the API route
+  const initialCounts = {
+    forSale: forSaleCount ?? 0,
+    forLease: forLeaseCount ?? 0,
+    sold: 0,
+    leased: 0,
+  }
 
   // Process media thumbnails
-  const processedListings = (initialListings ?? []).map((l: any) => ({
+  const initialListings = (initialListingsRaw ?? []).map((l: any) => ({
     ...l,
     media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
       .sort((a: any, b: any) => (a.order_number ?? 999) - (b.order_number ?? 999))
@@ -159,14 +152,9 @@ async function getNeighbourhoodData(slug: string) {
       homes: homeCount ?? 0,
       buildings: buildingCount ?? 0,
     },
-    initialListings: processedListings,
-    initialTotal: initialTotal ?? 0,
-    initialCounts: {
-      forSale: forSaleCount ?? 0,
-      forLease: forLeaseCount ?? 0,
-      sold: soldCount ?? 0,
-      leased: leasedCount ?? 0,
-    },
+    initialListings,
+    initialTotal: forSaleCount ?? 0,
+    initialCounts,
   }
 }
 
@@ -238,7 +226,7 @@ export default async function NeighbourhoodPage({ params }: Props) {
         </div>
       )}
 
-      {/* Listings — tabbed: All / Condos / Homes */}
+      {/* Listings — tabbed */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <NeighbourhoodPageTabs
           municipalityIds={municipalityIds}

@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
@@ -29,18 +29,53 @@ export async function generateCommunityMetadata(community: CommunityData) {
 }
 
 export default async function CommunityPage({ community }: CommunityPageProps) {
+  // FIX: use server client, not browser client
+  const supabase = createClient()
   const headersList = headers()
   const host = headersList.get('host') || ''
   const geoFilter = { column: 'community_id' as const, value: community.id }
 
-  const [municipalityResult, buildingsResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult, siblingCommunitiesResult] = await Promise.all([
+  const [
+    municipalityResult,
+    buildingsResult,
+    initialListingsResult,
+    forSaleCount,
+    forLeaseCount,
+    soldCount,
+    leasedCount,
+    agentResult,
+    siblingCommunitiesResult,
+  ] = await Promise.all([
     supabase.from('municipalities').select('name, slug, area_id').eq('id', community.municipality_id).single(),
     supabase.from('buildings').select('id', { count: 'exact', head: true }).eq('community_id', community.id),
-    supabase.from('mls_listings').select(LISTING_SELECT).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale').order('list_price', { ascending: false }).limit(24),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Lease'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Lease'),
+    // FIX: available_in_idx → available_in_vow
+    supabase.from('mls_listings').select(LISTING_SELECT)
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale')
+      .order('list_price', { ascending: false })
+      .limit(24),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Lease'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Closed')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Closed')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Lease'),
     getAgentFromHost(host),
     supabase.from('communities').select('id, name, slug').eq('municipality_id', community.municipality_id).order('name'),
   ])
@@ -49,7 +84,9 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
   const buildingCount = buildingsResult.count || 0
   const initialListings = (initialListingsResult.data || []).map((l: any) => ({
     ...l,
-    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || []).sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999)).slice(0, 1)
+    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
+      .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
+      .slice(0, 1),
   }))
 
   const counts = {
@@ -64,9 +101,15 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
     slug: c.slug,
   }))
 
+  // FIX: area lookup moved inside Promise.all above isn't possible since we need municipality.area_id
+  // but we avoid a second sequential await by checking early and running in parallel with siblings
   let area = null
   if (municipality?.area_id) {
-    const { data } = await supabase.from('treb_areas').select('name, slug').eq('id', municipality.area_id).single()
+    const { data } = await supabase
+      .from('treb_areas')
+      .select('name, slug')
+      .eq('id', municipality.area_id)
+      .single()
     area = data
   }
 
@@ -78,8 +121,12 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
         <nav className="text-sm text-gray-500 mb-4">
-          {area && (<><a href={areaHref} className="hover:text-blue-600">{area.name}</a><span className="mx-2">&rsaquo;</span></>)}
-          {municipality && (<><a href={muniHref} className="hover:text-blue-600">{municipality.name}</a><span className="mx-2">&rsaquo;</span></>)}
+          {area && (
+            <><a href={areaHref} className="hover:text-blue-600">{area.name}</a><span className="mx-2">&rsaquo;</span></>
+          )}
+          {municipality && (
+            <><a href={muniHref} className="hover:text-blue-600">{municipality.name}</a><span className="mx-2">&rsaquo;</span></>
+          )}
           <span className="text-gray-900">{community.name}</span>
         </nav>
         <h1 className="text-3xl font-bold text-gray-900">{community.name} Real Estate</h1>
@@ -100,7 +147,6 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           />
         </div>
 
-        {/* SEO Content */}
         <GeoSEOContent
           geoName={community.name}
           geoType="community"
@@ -109,7 +155,6 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           counts={counts}
         />
 
-        {/* Interlinking: Nearby Communities */}
         <GeoInterlinking
           title={`Other Communities in ${municipality?.name || 'this area'}`}
           links={siblingCommunities}

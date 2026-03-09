@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
@@ -26,34 +26,85 @@ export async function generateAreaMetadata(area: AreaData) {
 }
 
 export default async function AreaPage({ area }: AreaPageProps) {
+  // FIX: use server client, not browser client
+  const supabase = createClient()
   const headersList = headers()
   const host = headersList.get('host') || ''
   const geoFilter = { column: 'area_id' as const, value: area.id }
 
-  const [municipalitiesResult, buildingCountResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult, allAreasResult] = await Promise.all([
-    supabase.from('municipalities').select('id, name, slug').eq('area_id', area.id).order('name'),
-    supabase.from('municipalities').select('id').eq('area_id', area.id).then(async (res) => {
-      const muniIds = (res.data || []).map(m => m.id)
-      if (muniIds.length === 0) return { count: 0 }
-      const { data: comms } = await supabase.from('communities').select('id').in('municipality_id', muniIds)
-      const commIds = (comms || []).map(c => c.id)
-      if (commIds.length === 0) return { count: 0 }
-      const { count } = await supabase.from('buildings').select('id', { count: 'exact', head: true }).in('community_id', commIds)
-      return { count: count || 0 }
-    }),
-    supabase.from('mls_listings').select(LISTING_SELECT).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale').order('list_price', { ascending: false }).limit(24),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Lease'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Lease'),
+  // FIX: fetch municipalities first so we can resolve community IDs for building count
+  // This avoids the 3-chained-sequential-query anti-pattern inside Promise.all
+  const { data: municipalitiesData } = await supabase
+    .from('municipalities')
+    .select('id, name, slug')
+    .eq('area_id', area.id)
+    .order('name')
+
+  const municipalities = municipalitiesData || []
+  const muniIds = municipalities.map(m => m.id)
+
+  // Resolve community IDs for building count (needed in parallel block below)
+  let communityIds: string[] = []
+  if (muniIds.length > 0) {
+    const { data: comms } = await supabase
+      .from('communities')
+      .select('id')
+      .in('municipality_id', muniIds)
+      .limit(10000)
+    communityIds = (comms || []).map(c => c.id)
+  }
+
+  // Now run everything in parallel — building count no longer blocks the group
+  const [
+    buildingCountResult,
+    initialListingsResult,
+    forSaleCount,
+    forLeaseCount,
+    soldCount,
+    leasedCount,
+    agentResult,
+    allAreasResult,
+  ] = await Promise.all([
+    communityIds.length > 0
+      ? supabase.from('buildings').select('id', { count: 'exact', head: true }).in('community_id', communityIds)
+      : Promise.resolve({ count: 0 }),
+    // FIX: available_in_idx → available_in_vow
+    supabase.from('mls_listings').select(LISTING_SELECT)
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale')
+      .order('list_price', { ascending: false })
+      .limit(24),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Lease'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Closed')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Closed')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Lease'),
     getAgentFromHost(host),
     supabase.from('treb_areas').select('id, name, slug').order('name'),
   ])
 
-  const municipalities = municipalitiesResult.data || []
   const initialListings = (initialListingsResult.data || []).map((l: any) => ({
     ...l,
-    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || []).sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999)).slice(0, 1)
+    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
+      .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
+      .slice(0, 1),
   }))
 
   const counts = {
@@ -100,13 +151,11 @@ export default async function AreaPage({ area }: AreaPageProps) {
           />
         </div>
 
-        {/* Municipality Links */}
         <GeoInterlinking
           title={`Municipalities in ${area.name}`}
           links={municipalityLinks}
         />
 
-        {/* SEO Content */}
         <GeoSEOContent
           geoName={area.name}
           geoType="area"
@@ -114,7 +163,6 @@ export default async function AreaPage({ area }: AreaPageProps) {
           counts={counts}
         />
 
-        {/* Interlinking: All Areas */}
         <GeoInterlinking
           title="Explore All Areas"
           links={allAreas}

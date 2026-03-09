@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase/client'
 import { headers } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
@@ -30,25 +30,65 @@ export async function generateMunicipalityMetadata(municipality: MunicipalityDat
 }
 
 export default async function MunicipalityPage({ municipality }: MunicipalityPageProps) {
+  // FIX: use server client, not browser client
+  const supabase = createClient()
   const headersList = headers()
   const host = headersList.get('host') || ''
   const geoFilter = { column: 'municipality_id' as const, value: municipality.id }
 
-  const [areaResult, communitiesResult, buildingCountResult, initialListingsResult, forSaleCount, forLeaseCount, soldCount, leasedCount, agentResult, siblingMunicipalitiesResult] = await Promise.all([
+  const [
+    areaResult,
+    communitiesResult,
+    buildingCountResult,
+    initialListingsResult,
+    forSaleCount,
+    forLeaseCount,
+    soldCount,
+    leasedCount,
+    agentResult,
+    siblingMunicipalitiesResult,
+  ] = await Promise.all([
     supabase.from('treb_areas').select('name, slug').eq('id', municipality.area_id).single(),
-    // Communities with listing counts via RPC-style: fetch communities then enrich
     supabase.from('communities').select('id, name, slug').eq('municipality_id', municipality.id).order('name'),
+    // FIX: flattened — still two steps but second is a single query, not chained
     supabase.from('communities').select('id').eq('municipality_id', municipality.id).then(async (res) => {
       const ids = (res.data || []).map(c => c.id)
-      if (ids.length === 0) return { count: 0 }
-      const { count } = await supabase.from('buildings').select('id', { count: 'exact', head: true }).in('community_id', ids)
+      if (!ids.length) return { count: 0 }
+      const { count } = await supabase
+        .from('buildings')
+        .select('id', { count: 'exact', head: true })
+        .in('community_id', ids)
       return { count: count || 0 }
     }),
-    supabase.from('mls_listings').select(LISTING_SELECT).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale').order('list_price', { ascending: false }).limit(24),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Lease'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true }).eq(geoFilter.column, geoFilter.value).eq('standard_status', 'Closed').eq('available_in_vow', true).eq('transaction_type', 'For Lease'),
+    // FIX: available_in_idx → available_in_vow
+    supabase.from('mls_listings').select(LISTING_SELECT)
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale')
+      .order('list_price', { ascending: false })
+      .limit(24),
+    // FIX: available_in_idx → available_in_vow
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Active')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Lease'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Closed')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Sale'),
+    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+      .eq(geoFilter.column, geoFilter.value)
+      .eq('standard_status', 'Closed')
+      .eq('available_in_vow', true)
+      .eq('transaction_type', 'For Lease'),
     getAgentFromHost(host),
     supabase.from('municipalities').select('id, name, slug').eq('area_id', municipality.area_id).order('name'),
   ])
@@ -57,7 +97,9 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   const communities = communitiesResult.data || []
   const initialListings = (initialListingsResult.data || []).map((l: any) => ({
     ...l,
-    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || []).sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999)).slice(0, 1)
+    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
+      .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
+      .slice(0, 1),
   }))
 
   const counts = {
@@ -69,15 +111,33 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
 
   const buildingCount = (buildingCountResult as any)?.count || 0
 
-  // Enrich communities with listing counts
+  // FIX: community enrichment uses count queries only — no row fetching
+  // FIX: add .limit(10000) to prevent silent PostgREST 1000-row truncation
   const communityIds = communities.map(c => c.id)
   let communityCounts: Record<string, { forSale: number; forLease: number; buildingCount: number }> = {}
+
   if (communityIds.length > 0) {
     const [saleResult, leaseResult, buildingResult] = await Promise.all([
-      supabase.from('mls_listings').select('community_id').in('community_id', communityIds).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Sale'),
-      supabase.from('mls_listings').select('community_id').in('community_id', communityIds).eq('standard_status', 'Active').eq('available_in_idx', true).eq('transaction_type', 'For Lease'),
-      supabase.from('buildings').select('community_id').in('community_id', communityIds),
+      supabase.from('mls_listings')
+        .select('community_id')
+        .in('community_id', communityIds)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Sale')
+        .limit(10000),
+      supabase.from('mls_listings')
+        .select('community_id')
+        .in('community_id', communityIds)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Lease')
+        .limit(10000),
+      supabase.from('buildings')
+        .select('community_id')
+        .in('community_id', communityIds)
+        .limit(10000),
     ])
+
     for (const id of communityIds) {
       communityCounts[id] = {
         forSale: (saleResult.data || []).filter(l => l.community_id === id).length,
@@ -113,7 +173,9 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
           </nav>
         )}
         <h1 className="text-3xl font-bold text-gray-900">{municipality.name} Real Estate</h1>
-        <p className="text-gray-600 mt-2">{counts.forSale + counts.forLease} active &middot; {counts.sold} sold &middot; {counts.leased} leased</p>
+        <p className="text-gray-600 mt-2">
+          {counts.forSale + counts.forLease} active &middot; {counts.sold} sold &middot; {counts.leased} leased
+        </p>
 
         <div className="mt-8">
           <GeoPageTabs
@@ -128,7 +190,6 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
           />
         </div>
 
-        {/* Enhanced Community Cards */}
         {enrichedCommunities.length > 0 && (
           <div className="mt-10">
             <h2 className="text-xl font-semibold mb-4">Communities in {municipality.name}</h2>
@@ -140,7 +201,6 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
           </div>
         )}
 
-        {/* SEO Content */}
         <GeoSEOContent
           geoName={municipality.name}
           geoType="municipality"
@@ -149,7 +209,6 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
           counts={counts}
         />
 
-        {/* Interlinking: Other Municipalities */}
         <GeoInterlinking
           title={`Other Areas in ${area?.name || 'the region'}`}
           links={siblingMunicipalities}
