@@ -11,6 +11,17 @@ import HomePropertyPage, { generateHomeMetadata } from '@/app/property/[id]/Home
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
 
+// FIX: area slugs in DB have '-area' suffix (e.g. 'durham-area') but URLs are clean (e.g. '/durham')
+// This helper tries the exact slug first, then falls back to slug + '-area'
+async function findArea(slug: string) {
+  const { data: exact } = await supabase
+    .from('treb_areas').select('id, name, slug').eq('slug', slug).single()
+  if (exact) return exact
+  const { data: withSuffix } = await supabase
+    .from('treb_areas').select('id, name, slug').eq('slug', slug + '-area').single()
+  return withSuffix ?? null
+}
+
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const serverSupabase = createClient()
 
@@ -36,8 +47,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     .from('developments').select('id, name, slug').eq('slug', params.slug).single()
   if (development) return generateDevelopmentMetadata(development)
 
-  const { data: area } = await serverSupabase
-    .from('treb_areas').select('id, name, slug').eq('slug', params.slug).single()
+  // FIX: use fallback helper for area lookup
+  const area = await findArea(params.slug)
   if (area) return generateAreaMetadata(area)
 
   const { data: municipality } = await serverSupabase
@@ -58,12 +69,12 @@ export default async function ComprehensiveSlugPage({
 }) {
   // Property URL
   if (isPropertySlug(params.slug)) {
-    const { mlsNumber } = parsePropertySlug(params.slug)    
+    const { mlsNumber } = parsePropertySlug(params.slug)
     if (!mlsNumber) notFound()
     const { createClient: createServerClient } = await import('@/lib/supabase/server')
     const serverSupabase = createServerClient()
     const { data: listing, error } = await serverSupabase
-      .from('mls_listings').select('id').eq('listing_key', mlsNumber).single()    
+      .from('mls_listings').select('id').eq('listing_key', mlsNumber).single()
     if (!listing) notFound()
     return <PropertyPage params={{ id: listing.id }} />
   }
@@ -85,9 +96,8 @@ export default async function ComprehensiveSlugPage({
     .from('developments').select('id, name, slug').eq('slug', params.slug).single()
   if (development) return <DevelopmentPage params={params} development={development} />
 
-  // Area
-  const { data: area } = await supabase
-    .from('treb_areas').select('id, name, slug').eq('slug', params.slug).single()
+  // FIX: Area — try exact slug first, then slug + '-area'
+  const area = await findArea(params.slug)
   if (area) return <AreaPage area={area} />
 
   // Municipality
