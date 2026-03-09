@@ -1,4 +1,4 @@
-﻿// lib/homes-sync/save.ts
+// lib/homes-sync/save.ts
 // Adapted from lib/building-sync/save.ts
 // Reuses: Complete 470+ DLA field mapping, media (2-variant), rooms, open houses
 // Difference: No building creation, building_id = null, direct geo UUID assignment, upsert-based
@@ -799,6 +799,12 @@ async function saveMedia(savedListings: any[], listingsData: any[]) {
   }
 
   if (mediaRecords.length > 0) {
+    // Delete existing media first to prevent duplicates on re-sync
+    const listingIds = savedListings.map((s: any) => s.id)
+    for (let i = 0; i < listingIds.length; i += 200) {
+      const batch = listingIds.slice(i, i + 200)
+      await supabase.from('media').delete().in('listing_id', batch)
+    }
     const batchSize = 400;
     for (let i = 0; i < mediaRecords.length; i += batchSize) {
       const batch = mediaRecords.slice(i, i + batchSize);
@@ -939,4 +945,5 @@ async function saveOpenHouses(savedListings: any[], listingsData: any[]) {
 
   return totalCount;
 }
+
 
