@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
+import { unstable_cache } from 'next/cache'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
@@ -29,29 +30,25 @@ export async function generateMunicipalityMetadata(municipality: MunicipalityDat
   }
 }
 
-export default async function MunicipalityPage({ municipality }: MunicipalityPageProps) {
-  // FIX: use server client, not browser client
-  const supabase = createClient()
-  const headersList = headers()
-  const host = headersList.get('host') || ''
-  const geoFilter = { column: 'municipality_id' as const, value: municipality.id }
-
-  const [
-    areaResult,
-    communitiesResult,
-    buildingCountResult,
-    initialListingsResult,
-    forSaleCount,
-    forLeaseCount,
-    soldCount,
-    leasedCount,
-    agentResult,
-    siblingMunicipalitiesResult,
-  ] = await Promise.all([
-    supabase.from('treb_areas').select('name, slug').eq('id', municipality.area_id).single(),
-    supabase.from('communities').select('id, name, slug').eq('municipality_id', municipality.id).order('name'),
-    // FIX: flattened — still two steps but second is a single query, not chained
-    supabase.from('communities').select('id').eq('municipality_id', municipality.id).then(async (res) => {
+const getMunicipalityData = unstable_cache(
+  async (municipalityId: string, areaId: string) => {
+    const supabase = createClient()
+    const geoFilter = { column: 'municipality_id' as const, value: municipalityId }
+    const [
+      areaResult,
+      communitiesResult,
+      buildingCountResult,
+      initialListingsResult,
+      forSaleCount,
+      forLeaseCount,
+      soldCount,
+      leasedCount,
+      siblingMunicipalitiesResult,
+    ] = await Promise.all([
+    supabase.from('treb_areas').select('name, slug').eq('id', areaId).single(),
+    supabase.from('communities').select('id, name, slug').eq('municipality_id', municipalityId).order('name'),
+    // FIX: flattened â€" still two steps but second is a single query, not chained
+    supabase.from('communities').select('id').eq('municipality_id', municipalityId).then(async (res) => {
       const ids = (res.data || []).map(c => c.id)
       if (!ids.length) return { count: 0 }
       const { count } = await supabase
@@ -89,10 +86,8 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
       .eq('standard_status', 'Closed')
       .eq('available_in_vow', true)
       .eq('transaction_type', 'For Lease'),
-    getAgentFromHost(host),
-    supabase.from('municipalities').select('id, name, slug').eq('area_id', municipality.area_id).order('name'),
+    supabase.from('municipalities').select('id, name, slug').eq('area_id', areaId).order('name'),
   ])
-
   const area = areaResult.data
   const communities = communitiesResult.data || []
   const initialListings = (initialListingsResult.data || []).map((l: any) => ({
@@ -159,7 +154,20 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
     slug: m.slug,
   }))
 
-  const agent = agentResult
+  return { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities }
+  },
+  ['municipality-data'],
+  { revalidate: 300, tags: ['municipality'] }
+)
+
+export default async function MunicipalityPage({ municipality }: MunicipalityPageProps) {
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const [data, agent] = await Promise.all([
+    getMunicipalityData(municipality.id, municipality.area_id),
+    getAgentFromHost(host),
+  ])
+  const { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities } = data
   const areaHref = area ? '/' + area.slug : '#'
 
   return (

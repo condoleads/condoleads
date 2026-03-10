@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
 import NeighbourhoodPageTabs from '@/app/[slug]/components/NeighbourhoodPageTabs'
 
 interface Props {
@@ -24,7 +25,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-async function getNeighbourhoodData(slug: string) {
+const getNeighbourhoodData = unstable_cache(
+  async function getNeighbourhoodData(slug: string) {
   const supabase = createClient()
 
   const { data: neighbourhood } = await supabase
@@ -156,7 +158,10 @@ async function getNeighbourhoodData(slug: string) {
     initialTotal: forSaleCount ?? 0,
     initialCounts,
   }
-}
+  },
+  ['neighbourhood-data'],
+  { revalidate: 300, tags: ['neighbourhood'] }
+)
 
 export default async function NeighbourhoodPage({ params }: Props) {
   const data = await getNeighbourhoodData(params.neighbourhood)

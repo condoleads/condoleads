@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
+import { unstable_cache } from 'next/cache'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
@@ -28,26 +29,22 @@ export async function generateCommunityMetadata(community: CommunityData) {
   }
 }
 
-export default async function CommunityPage({ community }: CommunityPageProps) {
-  // FIX: use server client, not browser client
-  const supabase = createClient()
-  const headersList = headers()
-  const host = headersList.get('host') || ''
-  const geoFilter = { column: 'community_id' as const, value: community.id }
-
-  const [
-    municipalityResult,
-    buildingsResult,
-    initialListingsResult,
-    forSaleCount,
-    forLeaseCount,
-    soldCount,
-    leasedCount,
-    agentResult,
-    siblingCommunitiesResult,
-  ] = await Promise.all([
-    supabase.from('municipalities').select('name, slug, area_id').eq('id', community.municipality_id).single(),
-    supabase.from('buildings').select('id', { count: 'exact', head: true }).eq('community_id', community.id),
+const getCommunityData = unstable_cache(
+  async (communityId: string, municipalityId: string) => {
+    const supabase = createClient()
+    const geoFilter = { column: 'community_id' as const, value: communityId }
+    const [
+      municipalityResult,
+      buildingsResult,
+      initialListingsResult,
+      forSaleCount,
+      forLeaseCount,
+      soldCount,
+      leasedCount,
+      siblingCommunitiesResult,
+    ] = await Promise.all([
+    supabase.from('municipalities').select('name, slug, area_id').eq('id', municipalityId).single(),
+    supabase.from('buildings').select('id', { count: 'exact', head: true }).eq('community_id', communityId),
     // FIX: available_in_idx → available_in_vow
     supabase.from('mls_listings').select(LISTING_SELECT)
       .eq(geoFilter.column, geoFilter.value)
@@ -76,10 +73,8 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
       .eq('standard_status', 'Closed')
       .eq('available_in_vow', true)
       .eq('transaction_type', 'For Lease'),
-    getAgentFromHost(host),
-    supabase.from('communities').select('id, name, slug').eq('municipality_id', community.municipality_id).order('name'),
+    supabase.from('communities').select('id, name, slug').eq('municipality_id', municipalityId).order('name'),
   ])
-
   const municipality = municipalityResult.data
   const buildingCount = buildingsResult.count || 0
   const initialListings = (initialListingsResult.data || []).map((l: any) => ({
@@ -100,11 +95,26 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
     name: c.name,
     slug: c.slug,
   }))
+  return { municipality, buildingCount, initialListings, counts, siblingCommunities }
+  },
+  ['community-data'],
+  { revalidate: 300, tags: ['community'] }
+)
+
+export default async function CommunityPage({ community }: CommunityPageProps) {
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const [data, agent] = await Promise.all([
+    getCommunityData(community.id, community.municipality_id),
+    getAgentFromHost(host),
+  ])
+  const { municipality, buildingCount, initialListings, counts, siblingCommunities } = data
 
   // FIX: area lookup moved inside Promise.all above isn't possible since we need municipality.area_id
   // but we avoid a second sequential await by checking early and running in parallel with siblings
   let area = null
   if (municipality?.area_id) {
+    const supabase = createClient()
     const { data } = await supabase
       .from('treb_areas')
       .select('name, slug')
@@ -113,7 +123,6 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
     area = data
   }
 
-  const agent = agentResult
   const areaHref = area ? '/' + area.slug : '#'
   const muniHref = municipality ? '/' + municipality.slug : '#'
 

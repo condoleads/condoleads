@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
+import { unstable_cache } from 'next/cache'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
@@ -25,19 +26,17 @@ export async function generateAreaMetadata(area: AreaData) {
   }
 }
 
-export default async function AreaPage({ area }: AreaPageProps) {
-  // FIX: use server client, not browser client
-  const supabase = createClient()
-  const headersList = headers()
-  const host = headersList.get('host') || ''
-  const geoFilter = { column: 'area_id' as const, value: area.id }
+const getAreaData = unstable_cache(
+  async (areaId: string) => {
+    const supabase = createClient()
+    const geoFilter = { column: 'area_id' as const, value: areaId }
 
   // FIX: fetch municipalities first so we can resolve community IDs for building count
   // This avoids the 3-chained-sequential-query anti-pattern inside Promise.all
   const { data: municipalitiesData } = await supabase
     .from('municipalities')
     .select('id, name, slug')
-    .eq('area_id', area.id)
+    .eq('area_id', areaId)
     .order('name')
 
   const municipalities = municipalitiesData || []
@@ -62,7 +61,6 @@ export default async function AreaPage({ area }: AreaPageProps) {
     forLeaseCount,
     soldCount,
     leasedCount,
-    agentResult,
     allAreasResult,
   ] = await Promise.all([
     communityIds.length > 0
@@ -96,10 +94,8 @@ export default async function AreaPage({ area }: AreaPageProps) {
       .eq('standard_status', 'Closed')
       .eq('available_in_vow', true)
       .eq('transaction_type', 'For Lease'),
-    getAgentFromHost(host),
     supabase.from('treb_areas').select('id, name, slug').order('name'),
   ])
-
   const initialListings = (initialListingsResult.data || []).map((l: any) => ({
     ...l,
     media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
@@ -115,8 +111,6 @@ export default async function AreaPage({ area }: AreaPageProps) {
   }
 
   const buildingCount = (buildingCountResult as any)?.count || 0
-  const agent = agentResult
-
   const allAreas = (allAreasResult.data || []).map(a => ({
     name: a.name,
     slug: a.slug,
@@ -126,7 +120,20 @@ export default async function AreaPage({ area }: AreaPageProps) {
     name: m.name,
     slug: m.slug,
   }))
+  return { initialListings, counts, buildingCount, allAreas, municipalityLinks, municipalities }
+  },
+  ['area-data'],
+  { revalidate: 300, tags: ['area'] }
+)
 
+export default async function AreaPage({ area }: AreaPageProps) {
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const [data, agent] = await Promise.all([
+    getAreaData(area.id),
+    getAgentFromHost(host),
+  ])
+  const { initialListings, counts, buildingCount, allAreas, municipalityLinks, municipalities } = data
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
