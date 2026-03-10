@@ -40,11 +40,12 @@ const RANGE_MIDPOINTS: Record<string, number> = {
 }
 
 async function run() {
-  console.log('=== BULK SQFT UPDATE ===')
-  let offset = 0
+  console.log('=== BULK SQFT UPDATE (cursor-based) ===')
+  let lastId = '00000000-0000-0000-0000-000000000000'
   const batchSize = 500
   let totalUpdated = 0
   let totalFailed = 0
+  let batchNum = 0
 
   while (true) {
     const { data, error } = await supabase
@@ -52,28 +53,41 @@ async function run() {
       .select('id, living_area_range')
       .is('calculated_sqft', null)
       .not('living_area_range', 'is', null)
-      .range(offset, offset + batchSize - 1)
+      .gt('id', lastId)
+      .order('id', { ascending: true })
+      .limit(batchSize)
 
     if (error) { console.error('Fetch error:', error.message); break }
     if (!data || data.length === 0) { console.log('Done — no more rows.'); break }
 
-    console.log(`Processing batch at offset ${offset}: ${data.length} rows`)
+    batchNum++
+    lastId = data[data.length - 1].id
 
+    // Group by living_area_range for batch updates
+    const groups: Record<string, string[]> = {}
     for (const row of data) {
       const sqft = RANGE_MIDPOINTS[row.living_area_range]
       if (!sqft) { totalFailed++; continue }
+      if (!groups[row.living_area_range]) groups[row.living_area_range] = []
+      groups[row.living_area_range].push(row.id)
+    }
 
+    // One update per range value — much faster than one update per row
+    for (const [range, ids] of Object.entries(groups)) {
+      const sqft = RANGE_MIDPOINTS[range]
       const { error: updateErr } = await supabase
         .from('mls_listings')
         .update({ calculated_sqft: sqft, sqft_method: 'range_midpoint' })
-        .eq('id', row.id)
-
-      if (updateErr) { totalFailed++; console.error(`Update error ${row.id}:`, updateErr.message) }
-      else totalUpdated++
+        .in('id', ids)
+      if (updateErr) {
+        totalFailed += ids.length
+        console.error(`Update error for range ${range}:`, updateErr.message)
+      } else {
+        totalUpdated += ids.length
+      }
     }
 
-    offset += batchSize
-    console.log(`Progress: ${totalUpdated} updated / ${totalFailed} failed so far`)
+    console.log(`Batch ${batchNum}: ${data.length} rows | cursor: ${lastId} | ${totalUpdated} updated / ${totalFailed} failed`)
   }
 
   console.log(`=== COMPLETE: ${totalUpdated} updated / ${totalFailed} failed ===`)
