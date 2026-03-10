@@ -19,9 +19,9 @@ interface ListingCardProps {
   buildingName?: string
   buildingAddress?: string
   agentId?: string
+  priority?: boolean
 }
-
-export default function ListingCard({ listing, type, onEstimateClick, buildingSlug, buildingName, buildingAddress, agentId }: ListingCardProps) {
+export default function ListingCard({ listing, type, onEstimateClick, buildingSlug, buildingName, buildingAddress, agentId, priority = false }: ListingCardProps) {
   const isSale = type === 'sale'
   const isClosed = listing.standard_status === 'Closed'
   
@@ -164,12 +164,14 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
         <div className={`h-full ${shouldBlur ? 'blur-lg' : ''}`}>
           {photos.length > 0 ? (
             <>
-              <img
+               <img
                 src={photos[currentPhotoIndex].media_url}
                 alt={`Unit ${listing.unit_number} - Photo ${currentPhotoIndex + 1}`}
                 className="w-full h-full object-cover"
-                loading="lazy"
+                loading={priority ? 'eager' : 'lazy'}
+                fetchPriority={priority ? 'high' : 'auto'}
                 decoding="async"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
@@ -300,7 +302,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                 )}
               </div>
               
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 {listing.listing_key || listing.listing_id ? `MLS #${listing.listing_key || listing.listing_id}` : ''}
               </p>
             </div>
@@ -326,7 +328,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                   Unit {listing.unit_number || 'N/A'}
                 </h3>
                 {(listing.listing_key || listing.listing_id) && (
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-500">
                     MLS# {listing.listing_key || listing.listing_id}
                   </span>
                 )}

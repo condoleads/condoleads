@@ -285,7 +285,7 @@ export default function GeoListingSection({
       {/* Listings Grid */}
       {!loading && listings.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {listings.map((listing) => {
+         {listings.map((listing, index) => {
             const isHome = isHomeProperty(listing)
             const currentType = getType()
             return isHome ? (
@@ -295,6 +295,7 @@ export default function GeoListingSection({
                 type={currentType}
                 onEstimateClick={(exactSqft) => handleEstimateClick(listing, currentType, exactSqft)}
                 agentId={agentId}
+                priority={index === 0}
               />
             ) : (
               <ListingCard
@@ -303,6 +304,7 @@ export default function GeoListingSection({
                 type={currentType}
                 onEstimateClick={(exactSqft) => handleEstimateClick(listing, currentType, exactSqft)}
                 agentId={agentId}
+                priority={index === 0}
               />
             )
           })}

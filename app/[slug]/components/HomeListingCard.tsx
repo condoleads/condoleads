@@ -37,11 +37,12 @@ interface HomeListingCardProps {
   listing: MLSListing
   type: 'sale' | 'lease'
   onEstimateClick?: (exactSqft: number | null) => void
-  agentId?: string
+ agentId?: string
+  priority?: boolean
 }
 
-export default function HomeListingCard({ listing, type, onEstimateClick, agentId }: HomeListingCardProps) {
-  const isSale = type === 'sale'
+
+export default function HomeListingCard({ listing, type, onEstimateClick, agentId, priority = false }: HomeListingCardProps) {  const isSale = type === 'sale'
   const isClosed = listing.standard_status === 'Closed'
   const statusStyle = getStatusStyle(listing.transaction_type, listing.standard_status)
 
@@ -171,7 +172,9 @@ export default function HomeListingCard({ listing, type, onEstimateClick, agentI
                 src={photos[currentPhotoIndex]?.media_url}
                 alt={addressDisplay}
                 className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${shouldBlur ? 'blur-sm' : ''}`}
-                loading="lazy"
+                loading={priority ? 'eager' : 'lazy'}
+                fetchPriority={priority ? 'high' : 'auto'}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
               {(photos.length > 1 || !allPhotosLoaded) && !shouldBlur && (
                 <>
@@ -201,7 +204,7 @@ export default function HomeListingCard({ listing, type, onEstimateClick, agentI
             </>
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center">
-              <div className="text-center text-slate-400">
+              <div className="text-center text-slate-500">
                 <svg className="w-12 h-12 mx-auto mb-1 opacity-60" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 2.5L18 11v7h-2v-6h-8v6H6v-7l6-5.5zM10 14h4v4h-4v-4z"/>
                 </svg>
@@ -260,10 +263,10 @@ export default function HomeListingCard({ listing, type, onEstimateClick, agentI
               {/* Row 1: Beds / Baths / Sqft */}
               <div className="flex items-center gap-2 text-sm text-slate-700 mb-1">
                 <span className="font-semibold">{listing.bedrooms_total || 0}</span>
-                <span className="text-slate-400">bed</span>
+                <span className="text-slate-500">bed</span>
                 <span className="text-slate-300">|</span>
                 <span className="font-semibold">{Math.floor(parseFloat(String(listing.bathrooms_total_integer)) || 0)}</span>
-                <span className="text-slate-400">bath</span>
+                <span className="text-slate-500">bath</span>
                 {sqftDisplay && (
                   <>
                     <span className="text-slate-300">|</span>
@@ -276,21 +279,21 @@ export default function HomeListingCard({ listing, type, onEstimateClick, agentI
               <div className="flex items-center gap-2 text-sm text-slate-700 mb-2">
                 {listing.lot_width && parseFloat(String(listing.lot_width)) > 0 && (
                   <>
-                    <span className="text-slate-400">Frontage:</span>
+                    <span className="text-slate-500">Frontage:</span>
                     <span className="font-semibold">{parseFloat(String(listing.lot_width))}ft</span>
                   </>
                 )}
                 {lotDisplay && (
                   <>
                     {listing.lot_width && parseFloat(String(listing.lot_width)) > 0 && <span className="text-slate-300">|</span>}
-                    <span className="text-slate-400">Lot:</span>
+                    <span className="text-slate-500">Lot:</span>
                     <span className="font-semibold">{lotDisplay}</span>
                   </>
                 )}
                 {garageDisplay && (
                   <>
                     {(lotDisplay || (listing.lot_width && parseFloat(String(listing.lot_width)) > 0)) && <span className="text-slate-300">|</span>}
-                    <span className="text-slate-400">Garage:</span>
+                    <span className="text-slate-500">Garage:</span>
                     <span className="font-semibold">{garageDisplay}</span>
                   </>
                 )}
@@ -322,7 +325,7 @@ export default function HomeListingCard({ listing, type, onEstimateClick, agentI
 
               {/* Footer: MLS# + Buttons */}
               <div className="pt-3 border-t border-slate-100 mt-auto">
-                <p className="text-xs text-slate-400 mb-2">
+                <p className="text-xs text-slate-500 mb-2">
                   {listing.listing_key ? `MLS\u00AE #${listing.listing_key}` : ''}
                 </p>
 
