@@ -19,6 +19,8 @@ export default function CommunityCard({ community }: CommunityCardProps) {
   return (
     <Link
       href={`/${community.slug}`}
+      target="_blank"
+      rel="noopener noreferrer"
       className="block p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all bg-white"
     >
       <h3 className="font-semibold text-gray-900 text-sm mb-1 truncate">

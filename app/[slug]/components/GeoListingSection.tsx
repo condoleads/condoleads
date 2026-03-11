@@ -62,7 +62,7 @@ export default function GeoListingSection({
   const [selectedIsHome, setSelectedIsHome] = useState(false)
 
   const totalPages = Math.ceil(totalCount / pageSize)
-
+  
   const buildUrl = useCallback((tab: TabType, page: number) => {
     const params = new URLSearchParams()
     params.set('geoType', geoType)
@@ -87,6 +87,7 @@ export default function GeoListingSection({
   }, [geoType, geoId, pageSize, propertyCategory, filters, advancedFilters])
 
   const fetchListings = async (tab: TabType, page: number) => {
+    
     setLoading(true)
     try {
       const res = await fetch(buildUrl(tab, page))
@@ -99,6 +100,13 @@ export default function GeoListingSection({
       setLoading(false)
     }
   }
+  // If SSR listings empty but count exists, fetch on mount
+  useEffect(() => {
+    if ((!initialListings || initialListings.length === 0) && (initialTotal || 0) > 0) {
+      fetchListings('for-sale', 1)
+      setInitialLoad(false)
+    }
+  }, [])
 
   const fetchCounts = async () => {
     try {

@@ -35,6 +35,8 @@ export default function GeoInterlinking({
           <Link
             key={link.slug}
             href={`/${link.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-block px-3 py-1.5 text-sm text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
           >
             {link.name}

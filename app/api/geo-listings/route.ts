@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 const CONDO_TYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment', 'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']
 const RESIDENTIAL_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']
 
-const LISTING_SELECT = 'id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type, list_price, close_price, close_date, unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer, property_type, property_subtype, living_area_range, square_foot_source, parking_total, locker, association_fee, tax_annual_amount, days_on_market, listing_contract_date, building_area_total, lot_width, lot_depth, lot_size_dimensions, lot_size_area, lot_size_area_units, frontage_length, basement, garage_type, garage_yn, approximate_age, legal_stories, architectural_style, cooling, pool_features, fireplace_yn, media (id, media_url, variant_type, order_number, preferred_photo_yn)'
+const LISTING_SELECT = 'id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type, list_price, close_price, close_date, unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer, property_type, property_subtype, living_area_range, square_foot_source, parking_total, locker, association_fee, tax_annual_amount, days_on_market, listing_contract_date, building_area_total, lot_width, lot_depth, lot_size_dimensions, lot_size_area, lot_size_area_units, frontage_length, basement, garage_type, garage_yn, approximate_age, legal_stories, architectural_style, cooling, pool_features, fireplace_yn'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -111,15 +111,35 @@ export async function GET(request: NextRequest) {
   else if (sort === 'newest') { orderField = 'listing_contract_date'; ascending = false }
   else if (sort === 'oldest') { orderField = 'listing_contract_date'; ascending = true }
 
-  const { data: listings, count } = await query
+  const { data: listings, count, error } = await query
     .order(orderField, { ascending })
     .range(offset, offset + pageSize - 1)
 
-  const processed = (listings || []).map(listing => ({
+  if (error) console.error('geo-listings query error:', error)
+
+  const listingIds = (listings || []).map((l: any) => l.id)
+
+  // Fetch thumbnails separately — avoids statement timeout from inline media join
+  let thumbnailMap: Record<string, string> = {}
+  if (listingIds.length > 0) {
+    const { data: mediaRows } = await supabase
+      .from('media')
+      .select('listing_id, media_url, order_number')
+      .in('listing_id', listingIds)
+      .eq('variant_type', 'thumbnail')
+      .order('order_number', { ascending: true })
+    for (const row of mediaRows || []) {
+      if (!thumbnailMap[row.listing_id]) {
+        thumbnailMap[row.listing_id] = row.media_url
+      }
+    }
+  }
+
+  const processed = (listings || []).map((listing: any) => ({
     ...listing,
-    media: (listing.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
-      .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
-      .slice(0, 1)
+    media: thumbnailMap[listing.id]
+      ? [{ media_url: thumbnailMap[listing.id], variant_type: 'thumbnail', order_number: 0 }]
+      : [],
   }))
 
   return NextResponse.json({ listings: processed, total: count || 0 })
