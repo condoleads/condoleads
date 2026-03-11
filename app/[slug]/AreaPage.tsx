@@ -16,6 +16,12 @@ const LISTING_SELECT = `
   media (id, media_url, variant_type, order_number, preferred_photo_yn)
 `
 
+const CONDO_SUBTYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
+  'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']
+
+const HOME_SUBTYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse',
+  'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']
+
 interface AreaData { id: string; name: string; slug: string }
 interface AreaPageProps { area: AreaData }
 
@@ -23,6 +29,9 @@ export async function generateAreaMetadata(area: AreaData) {
   return {
     title: `${area.name} Real Estate | Condos & Homes for Sale`,
     description: `Browse condos and homes for sale in ${area.name}. Explore municipalities, communities, and condo buildings.`,
+    alternates: {
+      canonical: `https://www.condoleads.ca/${area.slug}`,
+    },
   }
 }
 
@@ -31,96 +40,130 @@ const getAreaData = unstable_cache(
     const supabase = createClient()
     const geoFilter = { column: 'area_id' as const, value: areaId }
 
-  // FIX: fetch municipalities first so we can resolve community IDs for building count
-  // This avoids the 3-chained-sequential-query anti-pattern inside Promise.all
-  const { data: municipalitiesData } = await supabase
-    .from('municipalities')
-    .select('id, name, slug')
-    .eq('area_id', areaId)
-    .order('name')
+    const { data: municipalitiesData } = await supabase
+      .from('municipalities')
+      .select('id, name, slug')
+      .eq('area_id', areaId)
+      .order('name')
 
-  const municipalities = municipalitiesData || []
-  const muniIds = municipalities.map(m => m.id)
+    const municipalities = municipalitiesData || []
+    const muniIds = municipalities.map(m => m.id)
 
-  // Resolve community IDs for building count (needed in parallel block below)
-  let communityIds: string[] = []
-  if (muniIds.length > 0) {
-    const { data: comms } = await supabase
-      .from('communities')
-      .select('id')
-      .in('municipality_id', muniIds)
-      .limit(10000)
-    communityIds = (comms || []).map(c => c.id)
-  }
+    let communityIds: string[] = []
+    if (muniIds.length > 0) {
+      const { data: comms } = await supabase
+        .from('communities')
+        .select('id')
+        .in('municipality_id', muniIds)
+        .limit(10000)
+      communityIds = (comms || []).map(c => c.id)
+    }
 
-  // Now run everything in parallel — building count no longer blocks the group
-  const [
-    buildingCountResult,
-    initialListingsResult,
-    forSaleCount,
-    forLeaseCount,
-    soldCount,
-    leasedCount,
-    allAreasResult,
-  ] = await Promise.all([
-    communityIds.length > 0
-      ? supabase.from('buildings').select('id', { count: 'exact', head: true }).in('community_id', communityIds)
-      : Promise.resolve({ count: 0 }),
-    // FIX: available_in_idx → available_in_vow
-    supabase.from('mls_listings').select(LISTING_SELECT)
-      .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Active')
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Sale')
-      .order('list_price', { ascending: false })
-      .limit(24),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Active')
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Active')
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Lease'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Closed')
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Closed')
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Lease'),
-    supabase.from('treb_areas').select('id, name, slug').order('name'),
-  ])
-  const initialListings = (initialListingsResult.data || []).map((l: any) => ({
-    ...l,
-    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
-      .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
-      .slice(0, 1),
-  }))
+    const [
+      buildingCountResult,
+      initialListingsResult,
+      forSaleCount,
+      forLeaseCount,
+      soldCount,
+      leasedCount,
+      allAreasResult,
+      homeForSaleCount,
+      homeForLeaseCount,
+      condoForSaleCount,
+      condoForLeaseCount,
+    ] = await Promise.all([
+      communityIds.length > 0
+        ? supabase.from('buildings').select('id', { count: 'exact', head: true }).in('community_id', communityIds)
+        : Promise.resolve({ count: 0 }),
+      supabase.from('mls_listings').select(LISTING_SELECT)
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Sale')
+        .order('list_price', { ascending: false })
+        .limit(24),
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Sale'),
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Lease'),
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Closed')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Sale'),
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Closed')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Lease'),
+      supabase.from('treb_areas').select('id, name, slug').order('name'),
+      // homeCounts
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Sale')
+        .in('property_subtype', HOME_SUBTYPES),
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Lease')
+        .in('property_subtype', HOME_SUBTYPES),
+      // condoCounts
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Sale')
+        .in('property_subtype', CONDO_SUBTYPES),
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Active')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Lease')
+        .in('property_subtype', CONDO_SUBTYPES),
+    ])
 
-  const counts = {
-    forSale: forSaleCount.count || 0,
-    forLease: forLeaseCount.count || 0,
-    sold: soldCount.count || 0,
-    leased: leasedCount.count || 0,
-  }
+    const initialListings = (initialListingsResult.data || []).map((l: any) => ({
+      ...l,
+      media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
+        .sort((a: any, b: any) => (a.order_number || 999) - (b.order_number || 999))
+        .slice(0, 1),
+    }))
 
-  const buildingCount = (buildingCountResult as any)?.count || 0
-  const allAreas = (allAreasResult.data || []).map(a => ({
-    name: a.name,
-    slug: a.slug,
-  }))
+    const counts = {
+      forSale: forSaleCount.count || 0,
+      forLease: forLeaseCount.count || 0,
+      sold: soldCount.count || 0,
+      leased: leasedCount.count || 0,
+    }
 
-  const municipalityLinks = municipalities.map(m => ({
-    name: m.name,
-    slug: m.slug,
-  }))
-  return { initialListings, counts, buildingCount, allAreas, municipalityLinks, municipalities }
+    const homeCounts = {
+      forSale: homeForSaleCount.count || 0,
+      forLease: homeForLeaseCount.count || 0,
+      sold: 0,
+      leased: 0,
+    }
+
+    const condoCounts = {
+      forSale: condoForSaleCount.count || 0,
+      forLease: condoForLeaseCount.count || 0,
+      sold: 0,
+      leased: 0,
+    }
+
+    const buildingCount = (buildingCountResult as any)?.count || 0
+    const allAreas = (allAreasResult.data || []).map(a => ({ name: a.name, slug: a.slug }))
+    const municipalityLinks = municipalities.map(m => ({ name: m.name, slug: m.slug }))
+
+    return { initialListings, counts, homeCounts, condoCounts, buildingCount, allAreas, municipalityLinks, municipalities }
   },
   ['area-data'],
   { revalidate: 300, tags: ['area'] }
@@ -133,7 +176,8 @@ export default async function AreaPage({ area }: AreaPageProps) {
     getAreaData(area.id),
     getAgentFromHost(host),
   ])
-  const { initialListings, counts, buildingCount, allAreas, municipalityLinks, municipalities } = data
+  const { initialListings, counts, homeCounts, condoCounts, buildingCount, allAreas, municipalityLinks, municipalities } = data
+
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
@@ -154,6 +198,8 @@ export default async function AreaPage({ area }: AreaPageProps) {
             initialListings={initialListings}
             initialTotal={counts.forSale}
             counts={counts}
+            homeCounts={homeCounts}
+            condoCounts={condoCounts}
             buildingsTitle="Buildings"
           />
         </div>
