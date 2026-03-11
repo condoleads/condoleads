@@ -1,8 +1,8 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { MLSListing } from '@/lib/types/building'
-import ListingCard from './ListingCard'
+import GeoListingCard from './GeoListingCard'
 import HomeListingCard from './HomeListingCard'
 import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuyerModal'
@@ -237,8 +237,7 @@ export default function NeighbourhoodListingSection({
               <HomeListingCard key={listing.id} listing={listing} type={currentType}
                 onEstimateClick={(sqft) => handleEstimateClick(listing, currentType, sqft)} agentId={agentId} />
             ) : (
-              <ListingCard key={listing.id} listing={listing} type={currentType}
-                onEstimateClick={(sqft) => handleEstimateClick(listing, currentType, sqft)} agentId={agentId} />
+              <GeoListingCard key={listing.id} listing={listing} type={currentType} onEstimateClick={(sqft) => handleEstimateClick(listing, currentType, sqft)} agentId={agentId} />
             )
           })}
         </div>
@@ -276,3 +275,4 @@ export default function NeighbourhoodListingSection({
     </div>
   )
 }
+

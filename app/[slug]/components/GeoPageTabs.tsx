@@ -1,71 +1,55 @@
 'use client'
 
 import { useState } from 'react'
-import { Building2, Home, LayoutGrid } from 'lucide-react'
+import { Building2, Home, LayoutGrid, LayoutList } from 'lucide-react'
 import BuildingsGrid from './BuildingsGrid'
 import GeoListingSection from './GeoListingSection'
 import { MLSListing } from '@/lib/types/building'
 
-type TopTab = 'buildings' | 'condos' | 'homes'
+type TopTab = 'all' | 'homes' | 'condos' | 'buildings'
 
 interface GeoPageTabsProps {
   geoType: 'community' | 'municipality' | 'area'
   geoId: string
   agentId: string
   buildingCount: number
-  // Initial data for "all" listings (server-rendered for SEO)
   initialListings?: MLSListing[]
   initialTotal?: number
   counts?: { forSale: number; forLease: number; sold: number; leased: number }
-  // Tab visibility
+  homeCounts?: { forSale: number; forLease: number; sold: number; leased: number }
+  condoCounts?: { forSale: number; forLease: number; sold: number; leased: number }
   showBuildings?: boolean
   buildingsTitle?: string
 }
 
 export default function GeoPageTabs({
-  geoType,
-  geoId,
-  agentId,
-  buildingCount,
-  initialListings,
-  initialTotal,
-  counts,
+  geoType, geoId, agentId, buildingCount,
+  initialListings, initialTotal, counts,
+  homeCounts, condoCounts,
   showBuildings = true,
   buildingsTitle = 'Buildings',
 }: GeoPageTabsProps) {
-  const [activeTab, setActiveTab] = useState<TopTab>('homes')
+  const [activeTab, setActiveTab] = useState<TopTab>('all')
+
+  // Total active listings for tab counts
+  const allTotal  = (counts?.forSale || 0) + (counts?.forLease || 0)
+  const homeTotal = (homeCounts?.forSale || 0) + (homeCounts?.forLease || 0)
+  const condoTotal= (condoCounts?.forSale || 0) + (condoCounts?.forLease || 0)
 
   const topTabs: { key: TopTab; label: string; icon: React.ReactNode; count: number; show: boolean }[] = [
-    {
-      key: 'homes',
-      label: 'Homes',
-      icon: <Home className="w-4 h-4" />,
-      count: 0,
-      show: true,
-    },
-    {
-      key: 'condos',
-      label: 'Condos',
-      icon: <LayoutGrid className="w-4 h-4" />,
-      count: 0,
-      show: true,
-    },
-    {
-      key: 'buildings',
-      label: 'Buildings',
-      icon: <Building2 className="w-4 h-4" />,
-      count: buildingCount,
-      show: showBuildings && buildingCount > 0,
-    },
+    { key: 'all',       label: 'All Listings', icon: <LayoutList className="w-4 h-4" />, count: allTotal,   show: true },
+    { key: 'homes',     label: 'Homes',        icon: <Home className="w-4 h-4" />,       count: homeTotal,  show: true },
+    { key: 'condos',    label: 'Condos',       icon: <LayoutGrid className="w-4 h-4" />, count: condoTotal, show: true },
+    { key: 'buildings', label: 'Buildings',    icon: <Building2 className="w-4 h-4" />,  count: buildingCount, show: showBuildings && buildingCount > 0 },
   ]
 
   const visibleTabs = topTabs.filter(t => t.show)
 
   return (
     <div>
-      {/* Top-level tabs */}
+      {/* Tab bar */}
       <div className="flex gap-1 mb-6 border-b border-gray-200">
-        {visibleTabs.map((tab) => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -77,37 +61,19 @@ export default function GeoPageTabs({
           >
             {tab.icon}
             {tab.label}
-            {tab.key === 'buildings' && tab.count > 0 && (
+            {tab.count > 0 && (
               <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                 activeTab === tab.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
               }`}>
-                {tab.count}
+                {tab.count.toLocaleString()}
               </span>
             )}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
-      {activeTab === 'buildings' && (
-        <BuildingsGrid
-          totalBuildings={buildingCount}
-          geoType={geoType}
-          geoId={geoId}
-          title={buildingsTitle}
-        />
-      )}
-
-      {activeTab === 'condos' && (
-        <GeoListingSection
-          geoType={geoType}
-          geoId={geoId}
-          agentId={agentId}
-          propertyCategory="condo"
-        />
-      )}
-
-      {activeTab === 'homes' && (
+      {/* All Listings — no category filter, uses initial server data */}
+      {activeTab === 'all' && (
         <GeoListingSection
           initialListings={initialListings}
           initialTotal={initialTotal}
@@ -115,7 +81,38 @@ export default function GeoPageTabs({
           geoType={geoType}
           geoId={geoId}
           agentId={agentId}
+        />
+      )}
+
+      {/* Homes */}
+      {activeTab === 'homes' && (
+        <GeoListingSection
+          geoType={geoType}
+          geoId={geoId}
+          agentId={agentId}
           propertyCategory="homes"
+          counts={homeCounts}
+        />
+      )}
+
+      {/* Condos */}
+      {activeTab === 'condos' && (
+        <GeoListingSection
+          geoType={geoType}
+          geoId={geoId}
+          agentId={agentId}
+          propertyCategory="condo"
+          counts={condoCounts}
+        />
+      )}
+
+      {/* Buildings */}
+      {activeTab === 'buildings' && (
+        <BuildingsGrid
+          totalBuildings={buildingCount}
+          geoType={geoType}
+          geoId={geoId}
+          title={buildingsTitle}
         />
       )}
     </div>

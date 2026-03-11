@@ -8,6 +8,7 @@ import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
 import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuyerModal'
 import GeoQuickFilters, { FilterState } from './GeoQuickFilters'
 import GeoAdvancedFilters, { AdvancedFilterState } from './GeoAdvancedFilters'
+import GeoListingCard from './GeoListingCard'
 
 interface GeoListingSectionProps {
   initialListings?: MLSListing[]
@@ -298,7 +299,7 @@ export default function GeoListingSection({
                 priority={index === 0}
               />
             ) : (
-              <ListingCard
+              <GeoListingCard
                 key={listing.id}
                 listing={listing}
                 type={currentType}

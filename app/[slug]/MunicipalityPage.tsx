@@ -6,6 +6,7 @@ import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
 import CommunityCard from './components/CommunityCard'
+import GeoHero from './components/GeoHero'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -172,18 +173,24 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
 
   return (
     <div className="min-h-screen bg-white">
+      <GeoHero
+        title={`${municipality.name} Real Estate`}
+        subtitle={area ? `${area.name} Region` : undefined}
+        breadcrumbs={[
+          { label: 'Home', href: '/' },
+          ...(area ? [{ label: area.name, href: areaHref }] : []),
+          { label: municipality.name, href: '#' },
+        ]}
+        stats={{
+          active: counts.forSale + counts.forLease,
+          sold: counts.sold,
+          leased: counts.leased,
+          buildings: buildingCount,
+          communities: enrichedCommunities.length,
+        }}
+        geoType="municipality"
+      />
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {area && (
-          <nav className="text-sm text-gray-500 mb-4">
-            <a href={areaHref} className="hover:text-blue-600">{area.name}</a>
-            <span className="mx-2">&rsaquo;</span>
-            <span className="text-gray-900">{municipality.name}</span>
-          </nav>
-        )}
-        <h1 className="text-3xl font-bold text-gray-900">{municipality.name} Real Estate</h1>
-        <p className="text-gray-600 mt-2">
-          {counts.forSale + counts.forLease} active &middot; {counts.sold} sold &middot; {counts.leased} leased
-        </p>
 
         <div className="mt-8">
           <GeoPageTabs

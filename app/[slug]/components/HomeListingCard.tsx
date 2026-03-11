@@ -5,391 +5,370 @@ import { MLSListing } from '@/lib/types/building'
 import { formatPrice } from '@/lib/utils/formatters'
 import { calculateDaysOnMarket } from '@/lib/utils/dom'
 import { generateHomePropertySlug } from '@/lib/utils/slugs'
-import { useState, useCallback } from 'react'
-import { Clock } from 'lucide-react'
+import { useState, useCallback, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import HomeAddressHistoryModal from '@/components/property/HomeAddressHistoryModal'
 
-// Sale/Lease color scheme
-function getStatusStyle(transactionType: string, status: string) {
-  const isSale = transactionType === 'For Sale'
-  const isClosed = status === 'Closed'
-  if (isSale && !isClosed) return { bg: 'bg-blue-600', text: 'For Sale', accent: 'border-blue-500', priceColor: 'text-white' }
-  if (isSale && isClosed) return { bg: 'bg-green-600', text: 'Sold', accent: 'border-green-500', priceColor: 'text-white' }
-  if (!isSale && !isClosed) return { bg: 'bg-purple-600', text: 'For Lease', accent: 'border-purple-500', priceColor: 'text-white' }
-  return { bg: 'bg-amber-600', text: 'Leased', accent: 'border-amber-500', priceColor: 'text-white' }
+const STYLES = `
+@keyframes shimmer { 0% { background-position:-400px 0 } 100% { background-position:400px 0 } }
+@keyframes fadeSlideUp { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }
+@keyframes pulseDot { 0%,100% { opacity:1; transform:scale(1) } 50% { opacity:.4; transform:scale(1.6) } }
+@keyframes photoFade { from { opacity:0 } to { opacity:1 } }
+`
+
+function getStatusConfig(type: 'sale' | 'lease', isClosed: boolean) {
+  if (type === 'sale' && !isClosed)  return { label: 'For Sale',  color: '#059669', rgb: '5,150,105'  }
+  if (type === 'sale' && isClosed)   return { label: 'Sold',      color: '#e11d48', rgb: '225,29,72'  }
+  if (type === 'lease' && !isClosed) return { label: 'For Lease', color: '#7c3aed', rgb: '124,58,237' }
+  return                                    { label: 'Leased',    color: '#d97706', rgb: '217,119,6'  }
 }
 
-// Extract exact sqft from square_foot_source
-function extractExactSqft(src: string | null): number | null {
-  if (!src) return null
-  const cleaned = src.replace(/,/g, '').toLowerCase()
-  if (cleaned.match(/^\+\s*\d+/)) return null
-  if (cleaned.match(/^\d+-\d+$/)) return null
-  if (cleaned.match(/3rd\s+party/i)) return null
-  const match = cleaned.match(/\b(\d{3,4})\b/)
-  if (!match) return null
-  const v = parseInt(match[1])
-  return v > 5000 ? null : v
+function getPropertyLabel(subtype: string | null | undefined): string {
+  const s = (subtype || '').trim()
+  const map: Record<string,string> = {
+    'Detached': 'Detached', 'Att/Row/Townhouse': 'Townhouse',
+    'Semi-Detached': 'Semi-Det', 'Semi-Detached ': 'Semi-Det',
+    'Duplex': 'Duplex', 'Triplex': 'Triplex', 'Multiplex': 'Multiplex',
+    'Fourplex': 'Fourplex', 'Link': 'Link', 'Vacant Land': 'Land',
+    'Rural Residential': 'Rural', 'Farm': 'Farm', 'MobileTrailer': 'Mobile',
+    'Modular Home': 'Modular', 'Upper Level': 'Upper', 'Lower Level': 'Lower',
+    'Store W Apt/Office': 'Mixed Use',
+  }
+  return map[s] || (s.length > 12 ? s.slice(0,11)+'…' : s) || 'Home'
 }
 
 interface HomeListingCardProps {
   listing: MLSListing
   type: 'sale' | 'lease'
   onEstimateClick?: (exactSqft: number | null) => void
- agentId?: string
+  agentId?: string
   priority?: boolean
+  index?: number
 }
 
-
-export default function HomeListingCard({ listing, type, onEstimateClick, agentId, priority = false }: HomeListingCardProps) {  const isSale = type === 'sale'
+export default function HomeListingCard({
+  listing, type, onEstimateClick, agentId, priority = false, index = 0
+}: HomeListingCardProps) {
   const isClosed = listing.standard_status === 'Closed'
-  const statusStyle = getStatusStyle(listing.transaction_type, listing.standard_status)
-
-  // Photos - same lazy-load pattern as condo ListingCard
-  const initialPhotos = (() => {
-  const raw = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
-  const seen = new Set<string>()
-  return raw.filter((m: any) => {
-    if (seen.has(m.media_url)) return false
-    seen.add(m.media_url)
-    return true
-  })
-})()
-  const [photos, setPhotos] = useState(initialPhotos)
-  const [allPhotosLoaded, setAllPhotosLoaded] = useState(false)
-  const [loadingPhotos, setLoadingPhotos] = useState(false)
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0)
-  const [showRegister, setShowRegister] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
-  const [historyPending, setHistoryPending] = useState(false)
+  const status   = getStatusConfig(type, isClosed)
   const { user } = useAuth()
-
   const shouldBlur = isClosed && !user
 
-  // Fetch remaining photos on demand
+  const initialPhotos = (() => {
+    const raw  = listing.media?.filter(m => m.variant_type === 'thumbnail') || []
+    const seen = new Set<string>()
+    return raw
+      .sort((a:any,b:any) => (a.order_number||999)-(b.order_number||999))
+      .filter((m:any) => { if (seen.has(m.media_url)) return false; seen.add(m.media_url); return true })
+  })()
+
+  const [photos, setPhotos]             = useState(initialPhotos)
+  const [allPhotosLoaded, setAllLoaded] = useState(false)
+  const [loadingPhotos, setLoading]     = useState(false)
+  const [idx, setIdx]                   = useState(0)
+  const [imgKey, setImgKey]             = useState(0)
+  const [isHovered, setIsHovered]       = useState(false)
+  const [showRegister, setShowRegister] = useState(false)
+  const [showHistory, setShowHistory]   = useState(false)
+  const [historyPending, setHistPending]= useState(false)
+  const [bookVisitPending, setBookPend] = useState(false)
+  const touchStartX = useRef(0)
+
   const loadAllPhotos = useCallback(async () => {
     if (allPhotosLoaded || loadingPhotos) return
-    setLoadingPhotos(true)
+    setLoading(true)
     try {
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      const { data } = await supabase
-        .from('media')
+      const sb = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+      const { data } = await sb.from('media')
         .select('id, media_url, variant_type, order_number, preferred_photo_yn')
-        .eq('listing_id', listing.id)
-        .eq('variant_type', 'thumbnail')
+        .eq('listing_id', listing.id).eq('variant_type', 'thumbnail')
         .order('order_number', { ascending: true })
-      if (data && data.length > 0) {
-  const seen = new Set<string>()
-  const unique = data.filter((m: any) => {
-    if (seen.has(m.media_url)) return false
-    seen.add(m.media_url)
-    return true
-  })
-  setPhotos(unique)
-}
-      setAllPhotosLoaded(true)
-    } catch (err) { console.error('Error loading photos:', err) }
-    finally { setLoadingPhotos(false) }
+      if (data?.length) {
+        const seen = new Set<string>()
+        setPhotos(data.filter((m:any) => { if (seen.has(m.media_url)) return false; seen.add(m.media_url); return true }))
+      }
+      setAllLoaded(true)
+    } catch(e) { console.error(e) } finally { setLoading(false) }
   }, [listing.id, allPhotosLoaded, loadingPhotos])
 
-  const nextPhoto = async (e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation()
+  const go = useCallback(async (dir: 1|-1, e?: React.MouseEvent) => {
+    e?.preventDefault(); e?.stopPropagation()
     if (!allPhotosLoaded) await loadAllPhotos()
-    setCurrentPhotoIndex(prev => (prev + 1) % Math.max(photos.length, 1))
-  }
-  const prevPhoto = async (e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation()
-    if (!allPhotosLoaded) await loadAllPhotos()
-    setCurrentPhotoIndex(prev => (prev - 1 + Math.max(photos.length, 1)) % Math.max(photos.length, 1))
-  }
+    setIdx(i => { const n=(i+dir+Math.max(photos.length,1))%Math.max(photos.length,1); setImgKey(k=>k+1); return n })
+  }, [allPhotosLoaded, loadAllPhotos, photos.length])
 
-  // Display values
+  const onTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX }
+  const onTouchEnd   = (e: React.TouchEvent) => { const d=touchStartX.current-e.changedTouches[0].clientX; if(Math.abs(d)>40) go(d>0?1:-1) }
+
   const displayPrice = isClosed ? (listing.close_price || listing.list_price) : listing.list_price
+  const propertyUrl  = generateHomePropertySlug(listing)
+  const dom          = calculateDaysOnMarket(listing.days_on_market, listing.listing_contract_date, listing.standard_status)
+  const isNew        = dom !== null && dom <= 3
+  const propLabel    = getPropertyLabel(listing.property_subtype)
+  const totalDots    = Math.min(photos.length, 7)
 
-  // Lot size display
+  const shadowHover = `0 16px 40px rgba(${status.rgb},0.18), 0 4px 14px rgba(${status.rgb},0.12), 0 1px 3px rgba(0,0,0,0.06)`
+
+  // Home-specific data
   const lotDisplay = (() => {
     const w = listing.lot_width ? parseFloat(String(listing.lot_width)) : null
     const d = listing.lot_depth ? parseFloat(String(listing.lot_depth)) : null
     if (listing.lot_size_dimensions) return listing.lot_size_dimensions
-    if (w && d) return `${w} \u00D7 ${d} ft`
-    if (listing.lot_size_area) return `${listing.lot_size_area} ${listing.lot_size_area_units || 'sqft'}`
+    if (w && d) return `${w} × ${d} ft`
+    if (listing.lot_size_area) return `${listing.lot_size_area} ${listing.lot_size_area_units||'sqft'}`
     return null
   })()
-
-  // Sqft display
   const sqftDisplay = (() => {
-    if (listing.building_area_total) return `${listing.building_area_total.toLocaleString()} sqft`
-    if (listing.square_foot_source) {
-      const num = parseInt(listing.square_foot_source.replace(/[^\d]/g, ''))
-      if (!isNaN(num) && num > 0 && num <= 5000) return `${num.toLocaleString()} sqft`
-    }
-    if (listing.living_area_range) return `${listing.living_area_range} sqft`
+    if (listing.building_area_total) return listing.building_area_total.toLocaleString()
+    if (listing.square_foot_source) { const n=parseInt(listing.square_foot_source.replace(/[^\d]/g,'')); if(!isNaN(n)&&n>0&&n<=20000) return n.toLocaleString() }
+    if (listing.living_area_range) return listing.living_area_range
     return null
   })()
-
-  // Basement display (JSONB array)
   const basementDisplay = (() => {
     if (!listing.basement) return null
-    if (Array.isArray(listing.basement)) return listing.basement.join(', ')
-    if (typeof listing.basement === 'string') return listing.basement
+    if (Array.isArray(listing.basement)) return listing.basement[0] || null
+    return typeof listing.basement === 'string' ? listing.basement : null
+  })()
+  const garageDisplay = listing.garage_type || (listing.garage_yn ? 'Yes' : null)
+  const styleDisplay  = (() => {
+    if (Array.isArray(listing.architectural_style) && listing.architectural_style[0]) return listing.architectural_style[0]
     return null
   })()
-
-  // Architectural style (JSONB array)
-  const styleDisplay = (() => {
-    if (!listing.architectural_style) return listing.property_subtype || 'Home'
-    if (Array.isArray(listing.architectural_style)) return listing.architectural_style[0] || listing.property_subtype
-    return listing.property_subtype || 'Home'
-  })()
-
-  // Garage display
-  const garageDisplay = listing.garage_type || (listing.garage_yn ? 'Yes' : null)
-
-  // Days on market
-  const dom = calculateDaysOnMarket(listing.days_on_market, listing.listing_contract_date, listing.standard_status)
-
-  // Property slug for link — opens in new tab
-  const propertyUrl = generateHomePropertySlug(listing)
-
-  // Address
-  const addressDisplay = listing.unparsed_address || 'Address Not Available'
 
   return (
     <>
-      <article
-        className={`group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden flex flex-col border-l-4 ${statusStyle.accent} cursor-pointer`}
-        onClick={() => window.open(propertyUrl, '_blank')}
-      >
-        {/* Photo Section */}
-        <div className="relative h-48 bg-slate-200 flex-shrink-0 overflow-hidden">
-          {photos.length > 0 ? (
-            <>
-              <img
-                src={photos[currentPhotoIndex]?.media_url}
-                alt={addressDisplay}
-                className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${shouldBlur ? 'blur-sm' : ''}`}
-                loading={priority ? 'eager' : 'lazy'}
-                fetchPriority={priority ? 'high' : 'auto'}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-              />
-              {(photos.length > 1 || !allPhotosLoaded) && !shouldBlur && (
+      <style dangerouslySetInnerHTML={{ __html: STYLES }} />
+      <div style={{ animation:'fadeSlideUp 0.45s ease both', animationDelay:`${index*55}ms` }}>
+        <article
+          onClick={() => window.open(propertyUrl,'_blank')}
+          onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+          onMouseEnter={() => { setIsHovered(true); if(!allPhotosLoaded) loadAllPhotos() }}
+          onMouseLeave={() => setIsHovered(false)}
+          className="relative bg-white cursor-pointer select-none"
+          style={{
+            borderRadius:16, overflow:'hidden',
+            boxShadow: isHovered ? shadowHover : 'none',
+            transform: isHovered ? 'translateY(-4px)' : 'translateY(0)',
+            transition:'box-shadow 0.3s ease, transform 0.25s ease',
+          }}
+        >
+          {/* IMAGE */}
+          <div style={{ padding:'8px 8px 0 8px' }}>
+            <div style={{ position:'relative', width:'100%', overflow:'hidden', borderRadius:12, aspectRatio:'3/2', background:'#e9eef4' }}>
+
+              {photos.length === 0 && (
+                <div style={{ position:'absolute', inset:0, background:'linear-gradient(90deg,#e9eef4 25%,#f3f6f9 50%,#e9eef4 75%)', backgroundSize:'400px 100%', animation:'shimmer 1.4s ease-in-out infinite' }} />
+              )}
+
+              {photos.length > 0 && (
+                <img key={imgKey} src={photos[idx]?.media_url}
+                  alt={listing.unparsed_address||''}
+                  style={{ width:'100%', height:'100%', objectFit:'cover', transform:isHovered?'scale(1.04)':'scale(1)', transition:'transform 0.6s ease', filter:shouldBlur?'blur(16px)':'none', animation:'photoFade 0.3s ease' }}
+                  loading={priority?'eager':'lazy'} fetchPriority={priority?'high':'auto'}
+                  onError={e => { (e.target as HTMLImageElement).style.display='none' }}
+                />
+              )}
+
+              <div style={{ position:'absolute', inset:0, pointerEvents:'none', background:'linear-gradient(to bottom,rgba(0,0,0,0.08) 0%,transparent 30%,transparent 60%,rgba(0,0,0,0.07) 100%)' }} />
+
+              {/* Property type badge — top left */}
+              <div style={{ position:'absolute', top:10, left:10, zIndex:10, display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ background:'rgba(255,255,255,0.82)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', color:'#0f172a', fontSize:11, fontWeight:700, letterSpacing:'0.02em', padding:'4px 10px', borderRadius:99, boxShadow:'0 1px 4px rgba(0,0,0,0.12)' }}>
+                  {propLabel}
+                </span>
+                {isNew && !isClosed && (
+                  <span style={{ display:'flex', alignItems:'center', gap:4, background:'rgba(15,23,42,0.55)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', padding:'4px 8px', borderRadius:99, border:'1px solid rgba(255,255,255,0.15)' }}>
+                    <span style={{ width:6, height:6, borderRadius:'50%', background:'#4ade80', display:'inline-block', animation:'pulseDot 1.6s ease-in-out infinite' }} />
+                    <span style={{ fontSize:10, fontWeight:700, color:'#4ade80', letterSpacing:'0.05em' }}>NEW</span>
+                  </span>
+                )}
+              </div>
+
+              {/* DOM — top right */}
+              {dom !== null && (
+                <div style={{ position:'absolute', top:10, right:10, zIndex:10 }}>
+                  <span style={{ background:'rgba(15,23,42,0.55)', backdropFilter:'blur(10px)', WebkitBackdropFilter:'blur(10px)', color:'rgba(255,255,255,0.85)', fontSize:10, fontWeight:600, padding:'4px 9px', borderRadius:99, border:'1px solid rgba(255,255,255,0.18)' }}>
+                    {dom}d
+                  </span>
+                </div>
+              )}
+
+              {/* Arrows */}
+              {photos.length > 1 && !shouldBlur && (
                 <>
-                  <button
-                    onClick={prevPhoto}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
-                    aria-label="Previous photo"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
+                  <button onClick={e=>go(-1,e)} aria-label="Previous" style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', zIndex:20, width:30, height:30, borderRadius:'50%', background:'rgba(255,255,255,0.96)', boxShadow:'0 2px 10px rgba(0,0,0,0.2)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity:isHovered?1:0, transition:'opacity 0.2s ease', pointerEvents:isHovered?'auto':'none' }}>
+                    <svg width="11" height="11" fill="none" stroke="#0f172a" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
                   </button>
-                  <button
-                    onClick={nextPhoto}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
-                    aria-label="Next photo"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                  <button onClick={e=>go(1,e)} aria-label="Next" style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', zIndex:20, width:30, height:30, borderRadius:'50%', background:'rgba(255,255,255,0.96)', boxShadow:'0 2px 10px rgba(0,0,0,0.2)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', opacity:isHovered?1:0, transition:'opacity 0.2s ease', pointerEvents:isHovered?'auto':'none' }}>
+                    <svg width="11" height="11" fill="none" stroke="#0f172a" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
                   </button>
-                  <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm">
-                    {currentPhotoIndex + 1} / {allPhotosLoaded ? photos.length : '...'}
-                  </div>
                 </>
               )}
-            </>
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center">
-              <div className="text-center text-slate-500">
-                <svg className="w-12 h-12 mx-auto mb-1 opacity-60" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 2.5L18 11v7h-2v-6h-8v6H6v-7l6-5.5zM10 14h4v4h-4v-4z"/>
-                </svg>
-                <p className="text-sm">No Photos</p>
-              </div>
+
+              {/* Dots */}
+              {totalDots > 1 && !shouldBlur && (
+                <div style={{ position:'absolute', bottom:9, left:0, right:0, display:'flex', justifyContent:'center', gap:5, zIndex:10, pointerEvents:'none' }}>
+                  {Array.from({length:totalDots}).map((_,i) => (
+                    <span key={i} style={{ display:'block', width:i===idx?8:6, height:i===idx?8:6, borderRadius:'50%', background:i===idx?'#fff':'rgba(255,255,255,0.5)', boxShadow:'0 1px 4px rgba(0,0,0,0.5)', transition:'all 0.25s ease', flexShrink:0 }} />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-
-          {/* Status Badge */}
-          <div className="absolute top-3 left-3 z-10">
-            <span className={`px-3 py-1 ${statusStyle.bg} text-white text-xs font-bold rounded-full backdrop-blur-sm`}>
-              {statusStyle.text}
-            </span>
           </div>
 
-          {/* Price Overlay */}
-          <div className="absolute bottom-4 left-4 right-4 z-10">
-            {!shouldBlur ? (
-              <p className="text-3xl font-bold text-white drop-shadow-lg">
-                {formatPrice(displayPrice)}
-                {!isSale && !isClosed && <span className="text-lg font-normal">/mo</span>}
-              </p>
-            ) : (
-              <div className="blur-sm">
-                <p className="text-3xl font-bold text-white">{formatPrice(displayPrice)}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-        </div>
-
-        {/* Content */}
-        <div className="p-4 flex flex-col flex-grow">
-          {shouldBlur ? (
-            <div className="space-y-3">
-              <div className="blur-sm">
-                <h3 className="text-base font-bold text-slate-900 truncate">{addressDisplay}</h3>
-                <p className="text-sm text-slate-600">{styleDisplay}</p>
-              </div>
-              <div className="pt-3 mt-auto">
-                <button
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowRegister(true) }}
-                  className={`w-full ${statusStyle.bg} hover:opacity-90 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition-colors`}
-                >
-                  Register to See {isSale ? 'Sold' : 'Leased'} Details
+          {/* CONTENT */}
+          <div style={{ padding:'13px 14px 14px' }}>
+            {shouldBlur ? (
+              <>
+                <div style={{ filter:'blur(6px)', marginBottom:12 }}>
+                  <p style={{ fontSize:21, fontWeight:800, color:'#0f172a', margin:'0 0 4px', letterSpacing:'-0.03em' }}>{formatPrice(displayPrice)}</p>
+                  <p style={{ fontSize:13, color:'#64748b', margin:0 }}>{listing.unparsed_address}</p>
+                </div>
+                <button onClick={e=>{e.preventDefault();e.stopPropagation();setShowRegister(true)}}
+                  style={{ width:'100%', padding:'10px', borderRadius:10, background:status.color, color:'#fff', fontSize:13, fontWeight:700, border:'none', cursor:'pointer' }}>
+                  Register to View {type==='sale'?'Sold':'Leased'} Details
                 </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Address */}
-              <h3 className="text-base font-bold text-slate-900 truncate mb-1">{addressDisplay}</h3>
-              <span className="inline-block text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded mb-1 w-fit">{listing.property_subtype?.trim() || 'Home'}</span>
+              </>
+            ) : (
+              <>
+                {/* Price + status */}
+                <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:5, marginBottom:4, paddingLeft:9, borderLeft:`3px solid ${status.color}` }}>
+                  <div style={{ display:'flex', alignItems:'baseline', gap:5 }}>
+                    <p style={{ fontSize:21, fontWeight:800, color:'#0f172a', margin:0, letterSpacing:'-0.03em', lineHeight:1.15 }}>{formatPrice(displayPrice)}</p>
+                    {type==='lease' && !isClosed && <span style={{ fontSize:12, color:'#94a3b8', fontWeight:500 }}>/mo</span>}
+                  </div>
+                  <span style={{ fontSize:10, fontWeight:700, color:status.color, background:`rgba(${status.rgb},0.08)`, border:`1px solid rgba(${status.rgb},0.25)`, padding:'2px 8px', borderRadius:99, letterSpacing:'0.03em', whiteSpace:'nowrap', flexShrink:0 }}>
+                    {status.label}
+                  </span>
+                </div>
 
-              {/* Row 1: Beds / Baths / Sqft */}
-              <div className="flex items-center gap-2 text-sm text-slate-700 mb-1">
-                <span className="font-semibold">{listing.bedrooms_total || 0}</span>
-                <span className="text-slate-500">bed</span>
-                <span className="text-slate-300">|</span>
-                <span className="font-semibold">{Math.floor(parseFloat(String(listing.bathrooms_total_integer)) || 0)}</span>
-                <span className="text-slate-500">bath</span>
-                {sqftDisplay && (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <span className="font-semibold">{sqftDisplay}</span>
-                  </>
-                )}
-              </div>
-
-              {/* Row 2: Frontage / Lot / Garage */}
-              <div className="flex items-center gap-2 text-sm text-slate-700 mb-2">
-                {listing.lot_width && parseFloat(String(listing.lot_width)) > 0 && (
-                  <>
-                    <span className="text-slate-500">Frontage:</span>
-                    <span className="font-semibold">{parseFloat(String(listing.lot_width))}ft</span>
-                  </>
-                )}
-                {lotDisplay && (
-                  <>
-                    {listing.lot_width && parseFloat(String(listing.lot_width)) > 0 && <span className="text-slate-300">|</span>}
-                    <span className="text-slate-500">Lot:</span>
-                    <span className="font-semibold">{lotDisplay}</span>
-                  </>
-                )}
-                {garageDisplay && (
-                  <>
-                    {(lotDisplay || (listing.lot_width && parseFloat(String(listing.lot_width)) > 0)) && <span className="text-slate-300">|</span>}
-                    <span className="text-slate-500">Garage:</span>
-                    <span className="font-semibold">{garageDisplay}</span>
-                  </>
-                )}
-              </div>
-
-              {/* Row 3: Style / Basement / Tax / DOM */}
-              <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap mb-3">
-                <span>{styleDisplay}</span>
-                {basementDisplay && (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <span>Bsmt: {basementDisplay}</span>
-                  </>
-                )}
-                {isSale && listing.tax_annual_amount && Number(listing.tax_annual_amount) > 0 && (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <span>${Math.round(Number(listing.tax_annual_amount)).toLocaleString()} tax</span>
-                  </>
-                )}
-                {dom !== null && (
-                  <>
-                    <span className="text-slate-300">|</span>
-                    <Clock className="w-3 h-3 inline" />
-                    <span>{dom} days</span>
-                  </>
-                )}
-              </div>
-
-              {/* Footer: MLS# + Buttons */}
-              <div className="pt-3 border-t border-slate-100 mt-auto">
-                <p className="text-xs text-slate-500 mb-2">
-                  {listing.listing_key ? `MLS\u00AE #${listing.listing_key}` : ''}
+                {/* Address */}
+                <p style={{ fontSize:13, fontWeight:600, color:'#0f172a', margin:'0 0 6px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {listing.unparsed_address || 'Address Not Available'}
                 </p>
 
-                <div className="flex items-center justify-end gap-2">
-                  {!isClosed && (
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault(); e.stopPropagation()
-                        if (!user) {
-                          setShowRegister(true)
-                        } else {
-                          onEstimateClick?.(extractExactSqft(listing.square_foot_source))
-                        }
-                      }}
-                      className={`${isSale ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-600 hover:bg-sky-700'} text-white py-2 px-4 rounded-lg text-sm font-semibold transition-colors`}
-                    >
-                      {isSale ? 'Sale Offer' : 'Lease Offer'}
-                    </button>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault(); e.stopPropagation()
-                      if (!user) {
-                        setHistoryPending(true)
-                        setShowRegister(true)
-                      } else {
-                        setShowHistory(true)
-                      }
-                    }}
-                    className="py-2 px-4 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg text-sm font-semibold transition-colors"
-                  >
-                    History
-                  </button>
+                {/* Stats row 1 — beds/baths/sqft */}
+                <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5, flexWrap:'wrap' }}>
+                  {[
+                    { val:`${listing.bedrooms_total||0}`, label:'bed' },
+                    { val:`${listing.bathrooms_total_integer||0}`, label:'bath' },
+                    ...(sqftDisplay ? [{ val:sqftDisplay, label:'sf' }] : []),
+                  ].map((s,i) => (
+                    <span key={i} style={{ display:'flex', alignItems:'center', gap:5 }}>
+                      {i>0 && <span style={{ color:'#e2e8f0', fontSize:11 }}>·</span>}
+                      <span style={{ fontSize:12, color:'#334155' }}>
+                        <strong style={{ fontWeight:700 }}>{s.val}</strong>
+                        <span style={{ color:'#94a3b8', marginLeft:2 }}>{s.label}</span>
+                      </span>
+                    </span>
+                  ))}
                 </div>
-              </div>
-            </>
-          )}
-        </div>
-      </article>
+
+                {/* Stats row 2 — lot/frontage/garage */}
+                {(listing.lot_width || lotDisplay || garageDisplay) && (
+                  <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5, flexWrap:'wrap' }}>
+                    {listing.lot_width && parseFloat(String(listing.lot_width)) > 0 && (
+                      <span style={{ fontSize:12, color:'#64748b' }}>
+                        <span style={{ color:'#94a3b8' }}>Frontage </span>
+                        <strong style={{ fontWeight:600, color:'#334155' }}>{parseFloat(String(listing.lot_width))}ft</strong>
+                      </span>
+                    )}
+                    {lotDisplay && (
+                      <>
+                        {listing.lot_width && <span style={{ color:'#e2e8f0', fontSize:11 }}>·</span>}
+                        <span style={{ fontSize:12, color:'#64748b' }}>
+                          <span style={{ color:'#94a3b8' }}>Lot </span>
+                          <strong style={{ fontWeight:600, color:'#334155' }}>{lotDisplay}</strong>
+                        </span>
+                      </>
+                    )}
+                    {garageDisplay && (
+                      <>
+                        {(lotDisplay || listing.lot_width) && <span style={{ color:'#e2e8f0', fontSize:11 }}>·</span>}
+                        <span style={{ fontSize:12, color:'#64748b' }}>
+                          <span style={{ color:'#94a3b8' }}>Garage </span>
+                          <strong style={{ fontWeight:600, color:'#334155' }}>{garageDisplay}</strong>
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Stats row 3 — style/basement/tax */}
+                <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:10, flexWrap:'wrap' }}>
+                  {styleDisplay && <span style={{ fontSize:11, color:'#94a3b8' }}>{styleDisplay}</span>}
+                  {basementDisplay && (
+                    <>
+                      {styleDisplay && <span style={{ color:'#e2e8f0', fontSize:11 }}>·</span>}
+                      <span style={{ fontSize:11, color:'#94a3b8' }}>Bsmt: {basementDisplay}</span>
+                    </>
+                  )}
+                  {type==='sale' && listing.tax_annual_amount && Number(listing.tax_annual_amount) > 0 && (
+                    <>
+                      {(styleDisplay||basementDisplay) && <span style={{ color:'#e2e8f0', fontSize:11 }}>·</span>}
+                      <span style={{ fontSize:11, color:'#94a3b8' }}>${Math.round(Number(listing.tax_annual_amount)).toLocaleString()} tax</span>
+                    </>
+                  )}
+                </div>
+
+                {/* Action pills */}
+                <div style={{ display:'flex', gap:7, borderTop:'1px solid #f1f5f9', paddingTop:11 }}>
+                  {!isClosed && (
+                    <ActionPill onClick={e=>{e.preventDefault();e.stopPropagation();if(!user)setShowRegister(true);else onEstimateClick?.(null)}}
+                      color={status.color} rgb={status.rgb} variant="accent"
+                      icon={<svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>}
+                      label={type==='sale'?'Sale Offer':'Lease Offer'}
+                    />
+                  )}
+                  {!isClosed && (
+                    <ActionPill onClick={e=>{e.preventDefault();e.stopPropagation();if(!user){setBookPend(true);setShowRegister(true)}else window.open(propertyUrl,'_blank')}}
+                      variant="ghost"
+                      icon={<svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
+                      label="Book a Visit"
+                    />
+                  )}
+                  <ActionPill onClick={e=>{e.preventDefault();e.stopPropagation();if(!user){setHistPending(true);setShowRegister(true)}else setShowHistory(true)}}
+                    variant="ghost"
+                    icon={<svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
+                    label="History"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </article>
+      </div>
 
       <RegisterModal
         isOpen={showRegister}
-        onClose={() => {
-          setShowRegister(false)
-          setHistoryPending(false)
-        }}
+        onClose={() => { setShowRegister(false); setHistPending(false); setBookPend(false) }}
         onSuccess={() => {
           setShowRegister(false)
-          if (historyPending) {
-            setHistoryPending(false)
-            setShowHistory(true)
-          }
+          if (historyPending) { setHistPending(false); setShowHistory(true) }
+          if (bookVisitPending) { setBookPend(false); window.open(propertyUrl,'_blank') }
         }}
         registrationSource="home_listing_card"
-        agentId={agentId || ''}
+        agentId={agentId||''}
       />
-
       <HomeAddressHistoryModal
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
-        address={listing.unparsed_address || ''}
+        address={listing.unparsed_address||''}
         currentListingId={listing.id}
         agentId={agentId}
       />
     </>
   )
+}
+
+function ActionPill({ onClick, icon, label, variant, color, rgb }: {
+  onClick: (e: React.MouseEvent) => void
+  icon: React.ReactNode; label: string
+  variant: 'accent'|'ghost'; color?: string; rgb?: string
+}) {
+  const [hov, setHov] = useState(false)
+  const s: React.CSSProperties = variant==='accent'
+    ? { flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:5, padding:'7px 8px', borderRadius:9, fontSize:11.5, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', letterSpacing:'0.01em', border:`1.5px solid rgba(${rgb},${hov?0.45:0.28})`, background:hov?`rgba(${rgb},0.1)`:`rgba(${rgb},0.06)`, color, transition:'all 0.15s' }
+    : { flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:5, padding:'7px 8px', borderRadius:9, fontSize:11.5, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', letterSpacing:'0.01em', border:'1.5px solid #e9eef4', background:hov?'#f1f5f9':'#f8fafc', color:hov?'#334155':'#64748b', transition:'all 0.15s' }
+  return <button onClick={onClick} style={s} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}>{icon}{label}</button>
 }
