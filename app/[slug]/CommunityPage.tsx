@@ -5,6 +5,7 @@ import { unstable_cache } from 'next/cache'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
+import GeoHero from './components/GeoHero'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -128,21 +129,24 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
 
   return (
     <div className="min-h-screen bg-white">
+      <GeoHero
+        title={`${community.name} Real Estate`}
+        subtitle={municipality ? `${municipality.name}${area ? `, ${area.name}` : ""}` : undefined}
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          ...(area ? [{ label: area.name, href: areaHref }] : []),
+          ...(municipality ? [{ label: municipality.name, href: muniHref }] : []),
+          { label: community.name, href: "#" },
+        ]}
+        stats={{
+          active: counts.forSale + counts.forLease,
+          sold: counts.sold,
+          leased: counts.leased,
+          buildings: buildingCount,
+        }}
+        geoType="community"
+      />
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <nav className="text-sm text-gray-500 mb-4">
-          {area && (
-            <><a href={areaHref} className="hover:text-blue-600">{area.name}</a><span className="mx-2">&rsaquo;</span></>
-          )}
-          {municipality && (
-            <><a href={muniHref} className="hover:text-blue-600">{municipality.name}</a><span className="mx-2">&rsaquo;</span></>
-          )}
-          <span className="text-gray-900">{community.name}</span>
-        </nav>
-        <h1 className="text-3xl font-bold text-gray-900">{community.name} Real Estate</h1>
-        <p className="text-gray-600 mt-2">
-          {buildingCount} buildings &middot; {counts.forSale + counts.forLease} active listings &middot; {counts.sold} sold &middot; {counts.leased} leased
-        </p>
-
         <div className="mt-8">
           <GeoPageTabs
             geoType="community"

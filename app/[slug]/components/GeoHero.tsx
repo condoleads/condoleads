@@ -20,7 +20,7 @@ interface GeoHeroProps {
   subtitle?: string
   breadcrumbs: Breadcrumb[]
   stats: GeoHeroStats
-  geoType: 'area' | 'municipality' | 'community'
+  geoType: 'area' | 'municipality' | 'community' | 'neighbourhood'
 }
 
 export default function GeoHero({ title, subtitle, breadcrumbs, stats, geoType }: GeoHeroProps) {
@@ -97,7 +97,7 @@ export default function GeoHero({ title, subtitle, breadcrumbs, stats, geoType }
         {/* Geo type label */}
         <div className="inline-flex items-center gap-2 mb-3">
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
-            {geoType === 'area' ? 'Region' : geoType === 'municipality' ? 'Municipality' : 'Community'}
+            {geoType === 'area' ? 'Region' : geoType === 'municipality' ? 'Municipality' : geoType === 'neighbourhood' ? 'Neighbourhood' : 'Community'}
           </span>
           <span className="w-8 h-px bg-blue-400/50" />
         </div>

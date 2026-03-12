@@ -6,6 +6,8 @@ import Image from 'next/image'
 import { Menu, X, ChevronDown, ChevronRight, MapPin, Building2, Home, Search } from 'lucide-react'
 import type { NeighbourhoodMenuItem } from './SiteHeader'
 import SearchBar from './SearchBar'
+import dynamic from 'next/dynamic'
+const AuthStatus = dynamic(() => import('@/components/auth/AuthStatus'), { ssr: false })
 
 interface SiteHeaderClientProps {
   neighbourhoods: NeighbourhoodMenuItem[]
@@ -124,6 +126,7 @@ export default function SiteHeaderClient({
             {/* ── Desktop Right Actions ── */}
             <div className="hidden md:flex items-center gap-3 flex-1 justify-end">
               <SearchBar className="max-w-sm" />
+              <AuthStatus registrationSource="site_header" />
               <Link
                 href="/vip"
                 className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
@@ -300,6 +303,10 @@ export default function SiteHeaderClient({
               Rent
             </Link>
 
+            {/* Auth */}
+            <div className="pt-2 pb-2">
+              <AuthStatus registrationSource="site_header_mobile" />
+            </div>
             {/* VIP CTA */}
             <div className="pt-4">
               <Link

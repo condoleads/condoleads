@@ -1,6 +1,6 @@
 ﻿'use client'
 import { usePathname } from 'next/navigation'
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useEffect, useState } from 'react'
 import UniversalNav from './UniversalNav'
 import Footer from './Footer'
 
@@ -13,6 +13,8 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const isAdminPage = pathname.startsWith('/admin')
   const isDashboardPage = pathname.startsWith('/dashboard')
   const isLoginPage = pathname === '/login'
+  const [isComprehensiveSite, setIsComprehensiveSite] = useState(false)
+  
 
   // Use useLayoutEffect to set siteName BEFORE paint
   useLayoutEffect(() => {
@@ -39,9 +41,13 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
     }
   }, [pathname])
 
+  useEffect(() => {
+    setIsComprehensiveSite(!!document.querySelector('[data-layout="comprehensive"]'))
+  }, [pathname])
+
   const isAgentSite = siteName && siteName !== 'CondoLeads'
   const isLandingPage = pathname === '/' && !isAgentSite
-  const showPublicLayout = mounted && !isAdminPage && !isDashboardPage && !isLoginPage && !isLandingPage
+  const showPublicLayout = mounted && !isAdminPage && !isDashboardPage && !isLoginPage && !isLandingPage && !isComprehensiveSite
 
   return (
     <>

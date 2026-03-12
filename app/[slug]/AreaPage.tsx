@@ -5,6 +5,7 @@ import { unstable_cache } from 'next/cache'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
+import GeoHero from './components/GeoHero'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -180,14 +181,22 @@ export default async function AreaPage({ area }: AreaPageProps) {
 
   return (
     <div className="min-h-screen bg-white">
+      <GeoHero
+        title={`${area.name} Real Estate`}
+        breadcrumbs={[
+          { label: 'Home', href: '/' },
+          { label: area.name, href: '#' },
+        ]}
+        stats={{
+          active: counts.forSale + counts.forLease,
+          sold: counts.sold,
+          leased: counts.leased,
+          buildings: buildingCount,
+          municipalities: municipalities.length,
+        }}
+        geoType="area"
+      />
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <nav className="text-sm text-gray-500 mb-4">
-          <span className="text-gray-900">{area.name}</span>
-        </nav>
-        <h1 className="text-3xl font-bold text-gray-900">{area.name} Real Estate</h1>
-        <p className="text-gray-600 mt-2">
-          {municipalities.length} municipalities &middot; {counts.forSale + counts.forLease} active &middot; {counts.sold} sold &middot; {counts.leased} leased
-        </p>
 
         <div className="mt-8">
           <GeoPageTabs

@@ -46,18 +46,34 @@ export function generatePropertySlug(
 
   // If buildingSlug provided, use it for consistent URLs
   if (buildingSlug) {
-  return unitNumber
-    ? `/${buildingSlug}-unit-${unitNumber}-${mlsNumber}`
-    : `/${buildingSlug}-unit-${mlsNumber}`
-}
+    const slugEndsWithUnit = unitNumber &&
+      buildingSlug.toLowerCase().endsWith(`-${unitNumber.toLowerCase()}`)
+    const effectiveSlug = slugEndsWithUnit
+      ? buildingSlug.slice(0, -(unitNumber.length + 1))
+      : buildingSlug
+    return unitNumber
+      ? `/${effectiveSlug}-unit-${unitNumber}-${mlsNumber}`
+      : `/${effectiveSlug}-unit-${mlsNumber}`
+  }
 
   // Fallback: Extract street address (before unit number)
   const address = listing.unparsed_address || ''
-  const addressPart = address
-    .split(',')[0] // Take only street address before comma
+  // Strip leading "UNIT - " or "507 - " patterns from address
+  const strippedAddress = address.replace(/^\d+\s*[-–]\s*/, '').trim()
+  let addressPart = strippedAddress
+    .split(',')[0]
     .toLowerCase()
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/[^a-z0-9-]/g, '') // Remove special chars
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/, '')
+  // Strip trailing unit number if address ends with it (e.g. "-507" when unitNumber is "507")
+  if (unitNumber) {
+    const unitSuffix = '-' + unitNumber.toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (addressPart.endsWith(unitSuffix)) {
+      addressPart = addressPart.slice(0, -unitSuffix.length)
+    }
+  }
 
   return unitNumber
   ? `/${addressPart}-unit-${unitNumber}-${mlsNumber}`

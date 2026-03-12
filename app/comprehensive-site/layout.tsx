@@ -14,6 +14,7 @@ export default async function ComprehensiveLayout({
 
   return (
     <>
+      <style>{`#universal-nav { display: none !important; }`}</style>
       <SiteHeader
         agentName={branding?.siteName ?? 'CondoLeads'}
         agentLogo={branding?.logoUrl ?? null}

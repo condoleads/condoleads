@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
 import NeighbourhoodPageTabs from '@/app/[slug]/components/NeighbourhoodPageTabs'
+import GeoHero from '@/app/[slug]/components/GeoHero'
 
 interface Props {
   params: { neighbourhood: string }
@@ -171,48 +172,22 @@ export default async function NeighbourhoodPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-white">
-
-      {/* Breadcrumb */}
-      <div className="bg-gray-50 border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
-          <nav className="flex items-center gap-2 text-sm text-gray-500">
-            <Link href="/" className="hover:text-gray-700">Home</Link>
-            <span>/</span>
-            <Link href="/toronto" className="hover:text-gray-700">Toronto</Link>
-            <span>/</span>
-            <span className="text-gray-900 font-medium">{neighbourhood.name}</span>
-          </nav>
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-          <p className="text-sm text-blue-600 font-medium mb-1">Toronto Neighbourhood</p>
-          <h1 className="text-4xl font-bold text-gray-900 mb-6">{neighbourhood.name}</h1>
-
-          {stats && (
-            <div className="flex flex-wrap gap-8">
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{stats.active.toLocaleString()}</div>
-                <div className="text-sm text-gray-500">Active Listings</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{stats.condos.toLocaleString()}</div>
-                <div className="text-sm text-gray-500">Condos</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{stats.homes.toLocaleString()}</div>
-                <div className="text-sm text-gray-500">Homes</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{stats.buildings.toLocaleString()}</div>
-                <div className="text-sm text-gray-500">Buildings</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <GeoHero
+        title={`${neighbourhood.name} Real Estate`}
+        subtitle="Toronto Neighbourhood"
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Toronto", href: "/toronto" },
+          { label: neighbourhood.name, href: "#" },
+        ]}
+        stats={{
+          active: stats?.active ?? 0,
+          sold: 0,
+          leased: 0,
+          buildings: stats?.buildings ?? 0,
+        }}
+        geoType="neighbourhood"
+      />
 
       {/* Municipality pills — quick links */}
       {municipalities.length > 1 && (
