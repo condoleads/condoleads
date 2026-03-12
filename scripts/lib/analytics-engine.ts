@@ -130,6 +130,7 @@ export async function populatePSF(): Promise<{ updated: number }> {
       .from('mls_listings')
       .select('id, square_foot_source, living_area_range, close_price, standard_status, close_date')
       .in('property_subtype', CONDO_SUBTYPES)
+      .eq('available_in_vow', true)
       .is('calculated_sqft', null)
       .limit(500)
 
@@ -139,7 +140,7 @@ export async function populatePSF(): Promise<{ updated: number }> {
     }
     if (!records || records.length === 0) { hasMore = false; break }
 
-    for (const r of records) {
+    await Promise.all(records.map(async (r) => {
       const sqft = calculateSqft(r.square_foot_source, r.living_area_range)
       const method = getSqftMethod(r.square_foot_source, r.living_area_range)
       const isClosed = r.standard_status === 'Closed' && r.close_price > 0 && r.close_date <= todayStr()
@@ -149,7 +150,7 @@ export async function populatePSF(): Promise<{ updated: number }> {
         .from('mls_listings')
         .update({ calculated_sqft: sqft, sqft_method: method, price_per_sqft: psf })
         .eq('id', r.id)
-    }
+    }))
 
     totalUpdated += records.length
     if (records.length < 500) hasMore = false
