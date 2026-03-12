@@ -130,7 +130,6 @@ export async function populatePSF(): Promise<{ updated: number }> {
       .from('mls_listings')
       .select('id, square_foot_source, living_area_range, close_price, standard_status, close_date')
       .in('property_subtype', CONDO_SUBTYPES)
-      .eq('available_in_vow', true)
       .is('calculated_sqft', null)
       .limit(500)
 
@@ -140,7 +139,7 @@ export async function populatePSF(): Promise<{ updated: number }> {
     }
     if (!records || records.length === 0) { hasMore = false; break }
 
-    await Promise.all(records.map(async (r) => {
+    for (const r of records) {
       const sqft = calculateSqft(r.square_foot_source, r.living_area_range)
       const method = getSqftMethod(r.square_foot_source, r.living_area_range)
       const isClosed = r.standard_status === 'Closed' && r.close_price > 0 && r.close_date <= todayStr()
@@ -150,7 +149,7 @@ export async function populatePSF(): Promise<{ updated: number }> {
         .from('mls_listings')
         .update({ calculated_sqft: sqft, sqft_method: method, price_per_sqft: psf })
         .eq('id', r.id)
-    }))
+    }
 
     totalUpdated += records.length
     if (records.length < 500) hasMore = false
@@ -203,28 +202,35 @@ async function resolveParentGeo(
   } else if (geoType === 'municipality') {
     const { data } = await supabase.from('municipalities').select('area_id').eq('id', geoId).single()
     if (data?.area_id) return { parentGeoType: 'area', parentGeoId: data.area_id }
-  } else if (geoType === 'neighbourhood') {
-    const { data: mapping } = await supabase
-      .from('municipality_neighbourhoods')
-      .select('municipality_id')
-      .eq('neighbourhood_id', geoId)
-      .limit(1)
-      .single()
-    if (mapping?.municipality_id) {
-      const { data: muni } = await supabase
-        .from('municipalities')
-        .select('area_id')
-        .eq('id', mapping.municipality_id)
-        .single()
-      if (muni?.area_id) return { parentGeoType: 'area', parentGeoId: muni.area_id }
-    }
   }
-  return null // area has no higher parent
+  return null // area and neighbourhood have no higher parent
 }
 
 // =====================================================
 // BEDROOM BREAKDOWN — includes concession per bedroom
 // =====================================================
+function computeSqftRangeBreakdown(listings: any[]): Record<string, any> {
+  const VALID_RANGES = ['0-499','500-599','600-699','700-799','800-899','900-999','1000-1199','1200-1399','1400-1599','1600-1799','1800-1999','2000-2249','2250-2499']
+  const groups: Record<string, any[]> = {}
+  for (const range of VALID_RANGES) groups[range] = []
+  for (const l of listings) {
+    if (!l.living_area_range || !groups[l.living_area_range]) continue
+    groups[l.living_area_range].push(l)
+  }
+  const result: Record<string, any> = {}
+  for (const [range, items] of Object.entries(groups)) {
+    if (items.length < 5) continue
+    const prices = items.map((l: any) => l.close_price).filter((p: any) => p > 50000) as number[]
+    const psfs = items.map((l: any) => l.price_per_sqft).filter((p: any) => p > 100 && p < 5000) as number[]
+    if (prices.length < 5) continue
+    result[range] = {
+      count: items.length,
+      median_price: roundInt(median(prices)),
+      median_psf: psfs.length >= 5 ? round2(median(psfs)) : null
+    }
+  }
+  return result
+}
 
 function computeBedroomBreakdown(listings: any[]): Record<string, any> {
   const groups: Record<string, any[]> = { studio: [], '1br': [], '2br': [], '3br': [] }
@@ -633,7 +639,77 @@ function computeConcessionMatrix(stlRecords: any[]): any | null {
 
   return Object.keys(result).length > 0 ? result : null
 }
+// =====================================================
+// MONTHLY TREND COMPUTATION
+// Groups 24mo of closed sales + leases into monthly buckets
+// =====================================================
 
+function computeMonthlyTrends(
+  closedAll: any[],
+  leasedRaw: any[]
+): {
+  price_trend_monthly: any[]
+  dom_trend_monthly: any[]
+  volume_trend_monthly: any[]
+  lease_trend_monthly: any[]
+} {
+  const currentMonth = new Date().toISOString().slice(0, 7) // 'YYYY-MM'
+
+  // Group sales by month
+  const saleByMonth = new Map<string, { psfs: number[], doms: number[], count: number }>()
+  for (const l of closedAll) {
+    if (!l.close_date) continue
+    const month = l.close_date.slice(0, 7)
+    if (!saleByMonth.has(month)) saleByMonth.set(month, { psfs: [], doms: [], count: 0 })
+    const bucket = saleByMonth.get(month)!
+    bucket.count++
+    if (l.price_per_sqft > 200 && l.price_per_sqft < 10000) bucket.psfs.push(l.price_per_sqft)
+    if (l.days_on_market != null) bucket.doms.push(l.days_on_market)
+  }
+
+  // Group leases by month
+  const leaseByMonth = new Map<string, { psfs: number[] }>()
+  for (const l of (leasedRaw || [])) {
+    if (!l.close_date || !l.calculated_sqft || l.calculated_sqft <= 0) continue
+    if (l.close_price < 500 || l.close_price > 20000) continue
+    const month = l.close_date.slice(0, 7)
+    if (!leaseByMonth.has(month)) leaseByMonth.set(month, { psfs: [] })
+    leaseByMonth.get(month)!.psfs.push(l.close_price / l.calculated_sqft)
+  }
+
+  const priceTrend: any[] = []
+  const domTrend: any[] = []
+  const volumeTrend: any[] = []
+  const leaseTrend: any[] = []
+
+  for (const [month, data] of Array.from(saleByMonth.entries()).sort()) {
+    if (data.count < 3) continue
+    const partial = month === currentMonth
+    if (data.psfs.length >= 3) {
+      priceTrend.push({ month, value: round2(median(data.psfs)), count: data.psfs.length, ...(partial && { partial: true }) })
+    }
+    if (data.doms.length >= 3) {
+      domTrend.push({ month, value: round2(avg(data.doms)), count: data.doms.length, ...(partial && { partial: true }) })
+    }
+    volumeTrend.push({ month, value: data.count, count: data.count, ...(partial && { partial: true }) })
+  }
+
+  for (const [month, data] of Array.from(leaseByMonth.entries()).sort()) {
+    if (data.psfs.length < 3) continue
+    const partial = month === currentMonth
+    leaseTrend.push({ month, value: round2(median(data.psfs)), count: data.psfs.length, ...(partial && { partial: true }) })
+  }
+
+  return {
+    price_trend_monthly: priceTrend,
+    dom_trend_monthly: domTrend,
+    volume_trend_monthly: volumeTrend,
+    lease_trend_monthly: leaseTrend
+  }
+}
+
+// =====================================================
+// STAGE 2â€"5: COMPUTE AND SAVE GEO ANALYTICS
 // =====================================================
 // STAGE 2–5: COMPUTE AND SAVE GEO ANALYTICS
 // One entity, one track — called by orchestrator
@@ -653,6 +729,7 @@ export async function computeAndSaveGeoAnalytics(
     const d30 = daysAgo(30)
     const d90 = daysAgo(90)
     const d365 = daysAgo(365)
+    const d730 = daysAgo(730)
 
     // ── ACTIVE LISTINGS ──
     // NOTE: bedrooms_total added for demand mismatch insight
@@ -685,12 +762,12 @@ export async function computeAndSaveGeoAnalytics(
     // NOTE: unparsed_address added for re-entry insight
     let closedQuery = supabase
       .from('mls_listings')
-      .select('close_price, list_price, original_list_price, days_on_market, price_per_sqft, bedrooms_total, parking_total, association_fee, tax_annual_amount, close_date, property_subtype, unparsed_address')
+      .select('close_price, list_price, original_list_price, days_on_market, price_per_sqft, bedrooms_total, parking_total, association_fee, tax_annual_amount, close_date, property_subtype, unparsed_address, living_area_range')
       .eq('standard_status', 'Closed')
       .eq('transaction_type', 'For Sale')
       .eq('available_in_vow', true)
       .in('property_subtype', subtypes)
-      .gte('close_date', d365)
+      .gte('close_date', d730)
       .lte('close_date', today_)
     closedQuery = applyGeoFilter(closedQuery, geoFilter)
 
@@ -755,7 +832,7 @@ export async function computeAndSaveGeoAnalytics(
       ? round2(((medianPsf - priorMedianPsf) / priorMedianPsf) * 100) : null
 
     // ── SALE TO LIST + CONCESSIONS ──
-    const stlRecords = closed90.filter((l: any) => l.close_price > 0 && l.list_price > 50000)
+    const stlRecords = closedAll.filter((l: any) => l.close_price > 0 && l.list_price > 50000)
     const stlValues = stlRecords.map((l: any) => (l.close_price / l.list_price) * 100)
     const avgStl = avg(stlValues)
     const pctOver = stlValues.length ? round2(stlValues.filter(v => v > 100).length / stlValues.length * 100) : null
@@ -770,7 +847,7 @@ export async function computeAndSaveGeoAnalytics(
     const avgPremiumPct = avg(premiums.map((l: any) => (l.close_price - l.list_price) / l.list_price * 100))
 
     // ── PRICE REDUCTION ──
-    const validClosed = closed90.filter((l: any) => l.list_price > 50000)
+    const validClosed = closedAll.filter((l: any) => l.list_price > 50000)
     const reduced = validClosed.filter((l: any) =>
       l.original_list_price > 0 && l.original_list_price > l.list_price
     )
@@ -793,22 +870,24 @@ export async function computeAndSaveGeoAnalytics(
     // ── LEASE ──
     let leaseQuery = supabase
       .from('mls_listings')
-      .select('close_price, price_per_sqft')
+      .select('close_price, calculated_sqft, close_date')
       .eq('standard_status', 'Closed')
       .eq('transaction_type', 'For Lease')
       .eq('available_in_vow', true)
       .in('property_subtype', subtypes)
-      .gte('close_date', d90)
+      .gte('close_date', d730)
       .lte('close_date', today_)
     leaseQuery = applyGeoFilter(leaseQuery, geoFilter)
 
     const { data: leasedRaw } = await leaseQuery
-    const leasePrices = (leasedRaw || [])
+    // Snapshot metrics use 90-day window only
+    const leased90 = (leasedRaw || []).filter((l: any) => l.close_date >= d90)
+    const leasePrices = leased90
       .filter((l: any) => l.close_price > 500 && l.close_price < 20000)
       .map((l: any) => l.close_price) as number[]
-    const leasePsfs = (leasedRaw || [])
-      .filter((l: any) => l.price_per_sqft > 1 && l.price_per_sqft < 20)
-      .map((l: any) => l.price_per_sqft) as number[]
+    const leasePsfs = leased90
+      .filter((l: any) => l.calculated_sqft > 0 && l.close_price > 500)
+      .map((l: any) => l.close_price / l.calculated_sqft) as number[]
 
     const medianLeasePrice = median(leasePrices)
     const avgLeasePrice = avg(leasePrices)
@@ -827,14 +906,32 @@ export async function computeAndSaveGeoAnalytics(
       .filter((t: any) => t != null && t > 0 && t < 100000) as number[]
 
     // ── PARKING PREMIUM ──
-    const withParking = closed90.filter((l: any) => l.parking_total > 0 && l.price_per_sqft > 200)
-    const withoutParking = closed90.filter((l: any) => l.parking_total === 0 && l.price_per_sqft > 200)
-    const parkingAvgPsf = avg(withParking.map((l: any) => l.price_per_sqft))
-    const noParkingAvgPsf = avg(withoutParking.map((l: any) => l.price_per_sqft))
-    const parkingPremiumPsf = parkingAvgPsf && noParkingAvgPsf
-      ? round2(parkingAvgPsf - noParkingAvgPsf) : null
-    const parkingPremiumPct = parkingPremiumPsf && noParkingAvgPsf
-      ? round2(parkingPremiumPsf / noParkingAvgPsf * 100) : null
+    // Apple-to-apple: compare with/without parking within same $100K price buckets
+const parkingBase = closedAll.filter((l: any) => l.price_per_sqft > 200 && l.close_price > 0)
+const BUCKET_SIZE = 100000
+const parkingPremiums: number[] = []
+const psfPremiums: number[] = []
+const buckets = new Map<number, { with: number[], without: number[] }>()
+for (const l of parkingBase) {
+  const bucket = Math.floor(l.close_price / BUCKET_SIZE) * BUCKET_SIZE
+  if (!buckets.has(bucket)) buckets.set(bucket, { with: [], without: [] })
+  if (l.parking_total > 0) buckets.get(bucket)!.with.push(l.price_per_sqft)
+  else buckets.get(bucket)!.without.push(l.price_per_sqft)
+}
+for (const [, b] of buckets) {
+  if (b.with.length >= 3 && b.without.length >= 3) {
+    const avgWith = avg(b.with)
+    const avgWithout = avg(b.without)
+    if (avgWithout > 0) {
+      psfPremiums.push(avgWith - avgWithout)
+      parkingPremiums.push((avgWith - avgWithout) / avgWithout * 100)
+    }
+  }
+}
+const withParking = parkingBase.filter((l: any) => l.parking_total > 0)
+const withoutParking = parkingBase.filter((l: any) => l.parking_total === 0)
+    const parkingPremiumPsf = psfPremiums.length >= 2 ? round2(avg(psfPremiums)) : null
+    const parkingPremiumPct = parkingPremiums.length >= 2 ? round2(avg(parkingPremiums)) : null
 
     // ── NEW LISTINGS 7 DAYS ──
     let newListingsQuery = supabase
@@ -846,8 +943,12 @@ export async function computeAndSaveGeoAnalytics(
     const { count: newListings7d } = await newListingsQuery
 
     // ── BREAKDOWNS ──
-    const bedroomBreakdown = track === 'condo' ? computeBedroomBreakdown(closed90) : null
-    const subtypeBreakdown = track === 'homes' ? computeSubtypeBreakdown(closed90) : null
+    const bedroomBreakdown = track === 'condo' ? computeBedroomBreakdown(closedAll) : null
+    const subtypeBreakdown = track === 'homes' ? computeSubtypeBreakdown(closedAll) : null
+    const sqftRangeBreakdown = track === 'condo' ? computeSqftRangeBreakdown(closedAll) : null
+
+    // MONTHLY TRENDS 
+    const monthlyTrends = computeMonthlyTrends(closedAll, leasedRaw || [])
 
     // =====================================================
     // PRELOADED INSIGHTS — all 7 computed here
@@ -938,6 +1039,7 @@ export async function computeAndSaveGeoAnalytics(
         parking_premium_pct: parkingPremiumPct,
 
         bedroom_breakdown: bedroomBreakdown,
+        sqft_range_breakdown: sqftRangeBreakdown,
         subtype_breakdown: subtypeBreakdown,
 
         // ── 7 PRELOADED INSIGHTS ──
@@ -948,6 +1050,11 @@ export async function computeAndSaveGeoAnalytics(
         insight_investor_ratio: insightInvestorRatio,
         insight_reentry: insightReentry,
         insight_concession_matrix: insightConcessionMatrix,
+
+        price_trend_monthly: monthlyTrends.price_trend_monthly,
+        dom_trend_monthly: monthlyTrends.dom_trend_monthly,
+        volume_trend_monthly: monthlyTrends.volume_trend_monthly,
+        lease_trend_monthly: track === 'condo' ? monthlyTrends.lease_trend_monthly : [],
 
         transaction_count: closedAll.length,
         low_volume_flag: closedAll.length < 10,
@@ -1148,6 +1255,7 @@ export async function updateValueMigrationForAll(
 
   for (const { id, geoType, track } of entities) {
     try {
+      // Fetch this entity's current median_psf from geo_analytics
       const { data: thisRow } = await supabase
         .from('geo_analytics')
         .select('median_psf')
@@ -1157,13 +1265,13 @@ export async function updateValueMigrationForAll(
         .eq('period_type', 'rolling_12mo')
         .maybeSingle()
 
-      if (!thisRow?.median_psf) { stats.skipped = (stats.skipped||0)+1; continue }
+      if (!thisRow?.median_psf) { stats.failed++; continue }
 
       const insight = await computeValueMigrationInsight(
         geoType, id, thisRow.median_psf, track
       )
 
-      if (!insight) { stats.skipped = (stats.skipped||0)+1; continue }
+      if (!insight) { stats.failed++; continue }
 
       const { error: updateErr } = await supabase
         .from('geo_analytics')
