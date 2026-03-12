@@ -203,8 +203,23 @@ async function resolveParentGeo(
   } else if (geoType === 'municipality') {
     const { data } = await supabase.from('municipalities').select('area_id').eq('id', geoId).single()
     if (data?.area_id) return { parentGeoType: 'area', parentGeoId: data.area_id }
+  } else if (geoType === 'neighbourhood') {
+    const { data: mapping } = await supabase
+      .from('municipality_neighbourhoods')
+      .select('municipality_id')
+      .eq('neighbourhood_id', geoId)
+      .limit(1)
+      .single()
+    if (mapping?.municipality_id) {
+      const { data: muni } = await supabase
+        .from('municipalities')
+        .select('area_id')
+        .eq('id', mapping.municipality_id)
+        .single()
+      if (muni?.area_id) return { parentGeoType: 'area', parentGeoId: muni.area_id }
+    }
   }
-  return null // area and neighbourhood have no higher parent
+  return null // area has no higher parent
 }
 
 // =====================================================
