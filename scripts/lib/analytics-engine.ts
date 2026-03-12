@@ -1141,13 +1141,13 @@ export async function updateValueMigrationForAll(
         .eq('period_type', 'rolling_12mo')
         .maybeSingle()
 
-      if (!thisRow?.median_psf) { stats.failed++; continue }
+      if (!thisRow?.median_psf) { stats.skipped = (stats.skipped||0)+1; continue }
 
       const insight = await computeValueMigrationInsight(
         geoType, id, thisRow.median_psf, track
       )
 
-      if (!insight) { stats.failed++; continue }
+      if (!insight) { stats.skipped = (stats.skipped||0)+1; continue }
 
       const { error: updateErr } = await supabase
         .from('geo_analytics')

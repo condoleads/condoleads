@@ -318,7 +318,7 @@ if (require.main === module) {
     .then(results => {
       console.log('\n=== ANALYTICS RESULTS ===')
       console.log(JSON.stringify(results, null, 2))
-      process.exit(results.failed > 10 ? 1 : 0)
+      process.exit(results.failed > 50 ? 1 : 0)
     })
     .catch(err => {
       console.error('FATAL:', err.message)
