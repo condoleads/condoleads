@@ -646,7 +646,8 @@ function computeConcessionMatrix(stlRecords: any[]): any | null {
 
 function computeMonthlyTrends(
   closedAll: any[],
-  leasedRaw: any[]
+  leasedRaw: any[],
+  track: string
 ): {
   price_trend_monthly: any[]
   dom_trend_monthly: any[]
@@ -685,7 +686,14 @@ function computeMonthlyTrends(
   for (const [month, data] of Array.from(saleByMonth.entries()).sort()) {
     if (data.count < 3) continue
     const partial = month === currentMonth
-    if (data.psfs.length >= 3) {
+    if (track === 'homes') {
+      // Homes: use median sale price (PSF coverage too low)
+      const prices = saleByMonth.get(month)?.psfs || []
+      const closedMonth = closedAll.filter(l => l.close_date?.slice(0, 7) === month).map(l => l.close_price).filter(p => p > 50000)
+      if (closedMonth.length >= 3) {
+        priceTrend.push({ month, value: roundInt(median(closedMonth)), count: closedMonth.length, ...(partial && { partial: true }) })
+      }
+    } else if (data.psfs.length >= 3) {
       priceTrend.push({ month, value: round2(median(data.psfs)), count: data.psfs.length, ...(partial && { partial: true }) })
     }
     if (data.doms.length >= 3) {
@@ -948,7 +956,7 @@ const withoutParking = parkingBase.filter((l: any) => l.parking_total === 0)
     const sqftRangeBreakdown = track === 'condo' ? computeSqftRangeBreakdown(closedAll) : null
 
     // MONTHLY TRENDS 
-    const monthlyTrends = computeMonthlyTrends(closedAll, leasedRaw || [])
+    const monthlyTrends = computeMonthlyTrends(closedAll, leasedRaw || [], track)
 
     // =====================================================
     // PRELOADED INSIGHTS — all 7 computed here
