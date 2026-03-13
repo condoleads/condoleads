@@ -106,6 +106,14 @@ export default function AnalyticsSection({ geoType, geoId, geoName, parentGeoTyp
   const [loading, setLoading] = useState(true)
   const [bedroomFilter, setBedroomFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -269,7 +277,7 @@ export default function AnalyticsSection({ geoType, geoId, geoName, parentGeoTyp
           </Card>
         ) : <EmptyState label="Trend chart" />}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
           <Card>
             <CardLabel>Buyer Profile</CardLabel>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Investor vs End User</div>
@@ -411,7 +419,7 @@ export default function AnalyticsSection({ geoType, geoId, geoName, parentGeoTyp
               </div>
             )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 4, marginBottom: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(6, 1fr)' : 'repeat(12, 1fr)', gap: 4, marginBottom: 12 }}>
             {seas.monthly_data?.map((m: any, i: number) => {
               const isBest    = seas.best_months?.includes(m.month)
               const isWorst   = seas.worst_months?.includes(m.month)
@@ -445,7 +453,7 @@ export default function AnalyticsSection({ geoType, geoId, geoName, parentGeoTyp
             </span>
           </div>
         </Card>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
           <Card>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>SELLER INSIGHT</div>
             <div style={{ fontSize: 14, lineHeight: 1.7, color: 'rgba(255,255,255,0.75)' }}>
@@ -485,7 +493,7 @@ export default function AnalyticsSection({ geoType, geoId, geoName, parentGeoTyp
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ background: '#080f1a', borderRadius: 20, padding: 24, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', color: '#fff' }}>
+    <div style={{ background: '#080f1a', borderRadius: 20, padding: isMobile ? 16 : 24, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', color: '#fff' }}>
 
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
@@ -655,7 +663,7 @@ export default function AnalyticsSection({ geoType, geoId, geoName, parentGeoTyp
             <Card>
               <CardLabel>Yield Context</CardLabel>
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Investment Return Profile</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
                 <div>
                   <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>Gross Rental Yield</div>
                   <div style={{ fontSize: 28, fontWeight: 800, color: data.gross_rental_yield_pct >= 5 ? '#10b981' : data.gross_rental_yield_pct >= 4 ? '#f59e0b' : '#ef4444' }}>{data.gross_rental_yield_pct}%</div>
