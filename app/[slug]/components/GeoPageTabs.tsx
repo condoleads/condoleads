@@ -48,7 +48,7 @@ export default function GeoPageTabs({
   return (
     <div>
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto pb-px">
+      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto overflow-x-auto pb-px">
         {visibleTabs.map(tab => (
           <button
             key={tab.key}

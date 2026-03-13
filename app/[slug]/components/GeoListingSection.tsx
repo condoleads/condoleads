@@ -266,7 +266,7 @@ export default function GeoListingSection({
       )}
 
       {/* Status Tabs */}
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-4 px-4" style={{ WebkitOverflowScrolling: 'touch' }}>
         {tabs.map((tab) => (
           <button
             key={tab.key}

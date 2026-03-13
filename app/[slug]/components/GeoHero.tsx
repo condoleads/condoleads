@@ -115,7 +115,7 @@ export default function GeoHero({ title, subtitle, breadcrumbs, stats, geoType }
         )}
 
         {/* Stat Pills */}
-        <div className="flex flex-wrap gap-3 mt-8">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '32px', justifyContent: 'center' }}>
           <GeoStatPill value={stats.active} label="Active" />
           <GeoStatPill value={stats.sold} label="Sold" />
           <GeoStatPill value={stats.leased} label="Leased" />
