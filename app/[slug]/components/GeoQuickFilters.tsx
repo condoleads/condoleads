@@ -177,6 +177,8 @@ export default function GeoQuickFilters({
 
         <div className="w-px h-6 bg-gray-300 mx-1 hidden sm:block" />
 
+        {/* Sort + More + Clear — own row on mobile */}
+        <div className="basis-full sm:hidden" />
         {/* Sort */}
         <Dropdown
           label="Sort"
