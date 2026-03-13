@@ -7,6 +7,7 @@ import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
 import CommunityCard from './components/CommunityCard'
 import GeoHero from './components/GeoHero'
+import AnalyticsSection from '@/components/analytics/AnalyticsSection'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -46,7 +47,7 @@ const getMunicipalityData = unstable_cache(
       leasedCount,
       siblingMunicipalitiesResult,
     ] = await Promise.all([
-    supabase.from('treb_areas').select('name, slug').eq('id', areaId).single(),
+    supabase.from('treb_areas').select('id, name, slug').eq('id', areaId).single(),
     supabase.from('communities').select('id, name, slug').eq('municipality_id', municipalityId).order('name'),
     // FIX: flattened â€" still two steps but second is a single query, not chained
     supabase.from('communities').select('id').eq('municipality_id', municipalityId).then(async (res) => {
@@ -216,6 +217,13 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
           </div>
         )}
 
+        <AnalyticsSection
+          geoType="municipality"
+          geoId={municipality.id}
+          geoName={municipality.name}
+          parentGeoType="area"
+          parentGeoId={municipality.area_id}
+        />
         <GeoSEOContent
           geoName={municipality.name}
           geoType="municipality"

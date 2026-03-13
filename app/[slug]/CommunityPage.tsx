@@ -6,6 +6,7 @@ import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
 import GeoHero from './components/GeoHero'
+import AnalyticsSection from '@/components/analytics/AnalyticsSection'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -44,7 +45,7 @@ const getCommunityData = unstable_cache(
       leasedCount,
       siblingCommunitiesResult,
     ] = await Promise.all([
-    supabase.from('municipalities').select('name, slug, area_id').eq('id', municipalityId).single(),
+    supabase.from('municipalities').select('id, name, slug, area_id').eq('id', municipalityId).single(),
     supabase.from('buildings').select('id', { count: 'exact', head: true }).eq('community_id', communityId),
     // FIX: available_in_idx → available_in_vow
     supabase.from('mls_listings').select(LISTING_SELECT)
@@ -160,6 +161,13 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           />
         </div>
 
+        <AnalyticsSection
+          geoType="community"
+          geoId={community.id}
+          geoName={community.name}
+          parentGeoType="municipality"
+          parentGeoId={municipality?.id}
+        />
         <GeoSEOContent
           geoName={community.name}
           geoType="community"

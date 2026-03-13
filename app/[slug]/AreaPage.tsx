@@ -6,6 +6,7 @@ import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
 import GeoHero from './components/GeoHero'
+import AnalyticsSection from '@/components/analytics/AnalyticsSection'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -218,6 +219,11 @@ export default async function AreaPage({ area }: AreaPageProps) {
           links={municipalityLinks}
         />
 
+        <AnalyticsSection
+          geoType="area"
+          geoId={area.id}
+          geoName={area.name}
+        />
         <GeoSEOContent
           geoName={area.name}
           geoType="area"
