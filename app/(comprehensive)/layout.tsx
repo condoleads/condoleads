@@ -1,9 +1,10 @@
-import type { Metadata } from 'next'
+﻿import type { Metadata } from 'next'
+import CharlieWidget from '@/app/charlie/components/CharlieWidget'
 import SiteHeader from '@/components/navigation/SiteHeader'
 
 export const metadata: Metadata = {
   title: 'CondoLeads',
-  description: 'Toronto Real Estate — Condos & Homes',
+  description: 'Toronto Real Estate - Condos & Homes',
 }
 
 export default function ComprehensiveLayout({
@@ -15,6 +16,7 @@ export default function ComprehensiveLayout({
     <>
       <SiteHeader />
       <main>{children}</main>
+      <CharlieWidget />
     </>
   )
 }

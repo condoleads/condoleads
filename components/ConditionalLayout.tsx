@@ -2,6 +2,7 @@
 import { usePathname } from 'next/navigation'
 import { useLayoutEffect, useEffect, useState } from 'react'
 import UniversalNav from './UniversalNav'
+import CharlieWidget from '@/app/charlie/components/CharlieWidget'
 import Footer from './Footer'
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const isAdminPage = pathname.startsWith('/admin')
   const isDashboardPage = pathname.startsWith('/dashboard')
   const isLoginPage = pathname === '/login'
+  const isCharlieVisible = !isAdminPage && !isDashboardPage && !isLoginPage
   const [isComprehensiveSite, setIsComprehensiveSite] = useState(false)
   
 
@@ -54,6 +56,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
       {showPublicLayout && <UniversalNav siteName={siteName} agentData={agentData} />}
       {children}
       {showPublicLayout && <Footer agentData={agentData} />}
+      {isCharlieVisible && <CharlieWidget />}
     </>
   )
 }
