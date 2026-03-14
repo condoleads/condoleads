@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { headers } from 'next/headers'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
+import { generatePropertySlug, generateHomePropertySlug } from '@/lib/utils/slugs'
 import { CHARLIE_TOOLS } from '@/app/charlie/lib/charlie-tools'
 import { buildCharlieSystemPrompt } from '@/app/charlie/lib/charlie-prompts'
 import { createClient } from '@/lib/supabase/server'
@@ -10,7 +11,7 @@ import { createClient } from '@/lib/supabase/server'
 const anthropic = new Anthropic()
 
 export async function POST(req: NextRequest) {
-  const { messages, sessionId } = await req.json()
+  const { messages, sessionId, geoContext } = await req.json()
   const headersList = headers()
   const host = headersList.get('host') || ''
 
@@ -19,7 +20,14 @@ export async function POST(req: NextRequest) {
   const brokerageName = agent?.brokerage_name || null
   const agentId = agent?.id || null
 
-  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName)
+  const geoReminder = geoContext ? `
+
+CURRENT GEO CONTEXT - use these EXACT values in ALL tool calls:
+geoType: ${geoContext.geoType}
+geoId: ${geoContext.geoId}
+geoName: ${geoContext.geoName}
+NEVER truncate the geoId.` : ""
+const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoReminder
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -67,7 +75,7 @@ export async function POST(req: NextRequest) {
           if (toolUses.length > 0) {
             const toolResults = []
             for (const tool of toolUses) {
-              const result = await executeTool(tool.name, tool.input, agentId)
+              const result = await executeTool(tool.name, tool.input, agentId, geoContext)
               send({ type: 'tool_result', tool: tool.name, data: result })
               toolResults.push({
                 type: 'tool_result' as const,
@@ -109,7 +117,7 @@ export async function POST(req: NextRequest) {
   })
 }
 
-async function executeTool(name: string, input: any, agentId: string | null): Promise<any> {
+async function executeTool(name: string, input: any, agentId: string | null, geoContext?: any): Promise<any> {
   const supabase = createClient()
 
   if (name === 'resolve_geo') {
@@ -157,6 +165,7 @@ async function executeTool(name: string, input: any, agentId: string | null): Pr
   }
 
   if (name === 'search_listings') {
+    console.log('[CHARLIE search_listings]', JSON.stringify(input))
     const params = new URLSearchParams()
     params.set('geoType', input.geoType)
     params.set('geoId', input.geoId)
@@ -168,11 +177,21 @@ async function executeTool(name: string, input: any, agentId: string | null): Pr
     if (input.maxPrice) params.set('maxPrice', String(input.maxPrice))
     if (input.beds && input.beds > 0) params.set('beds', String(input.beds))
     if (input.baths && input.baths > 0) params.set('baths', String(input.baths))
+    if (input.sort) params.set('sort', input.sort)
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const res = await fetch(`${baseUrl}/api/geo-listings?${params.toString()}`)
     const data = await res.json()
-    return { listings: data.listings || [], total: data.total || 0 }
+    const cat = input.propertyCategory === "condo" ? "Condos" : input.propertyCategory === "homes" ? "Homes" : "Listings"
+    const sortLabel = input.sort === "price_asc" ? "(Lowest Priced)" : ""
+    const geoName = geoContext ? geoContext.geoName : ""
+    const CONDO_TYPES = ['Condo Apartment','Condo Townhouse','Co-op Apartment','Common Element Condo','Leasehold Condo','Detached Condo','Co-Ownership Apartment']
+    const listingsWithSlugs = (data.listings || []).map((l: any) => {
+      const isHome = l.property_type === 'Residential Freehold' || (!CONDO_TYPES.includes(l.property_subtype) && ['Detached','Semi-Detached','Att/Row/Townhouse','Link','Duplex','Triplex','Fourplex','Multiplex'].includes(l.property_subtype))
+      const slug = isHome ? generateHomePropertySlug(l) : generatePropertySlug(l)
+      return { ...l, _slug: slug, _isHome: isHome }
+    })
+    return { listings: listingsWithSlugs, total: data.total || 0, label: (cat + " in " + geoName + " " + sortLabel).trim() }
   }
 
   if (name === 'get_comparables') {

@@ -13,7 +13,7 @@ interface Props {
 }
 
 export default function CharlieOverlay({ state, onClose, onSend, onPanelChange }: Props) {
-  const hasResults = !!state.analytics || state.listings.length > 0 || state.comparables.length > 0
+  const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0
 
   return (
     <div style={{
@@ -127,7 +127,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange }
             <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               <ResultsPanel
                 analytics={state.analytics}
-                listings={state.listings}
+                listingGroups={state.listingGroups || []}
                 comparables={state.comparables}
                 geoContext={state.geoContext}
               />

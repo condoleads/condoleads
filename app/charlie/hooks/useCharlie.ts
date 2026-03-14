@@ -22,7 +22,7 @@ export interface CharlieState {
   toolResults: ToolResult[]
   analytics: any | null
   geoContext: { geoType: string; geoId: string; geoName: string } | null
-  listings: any[]
+  listingGroups: { label: string; listings: any[] }[]
   comparables: any[]
   isStreaming: boolean
   isOpen: boolean
@@ -34,7 +34,7 @@ const INITIAL_STATE: CharlieState = {
   toolResults: [],
   analytics: null,
   geoContext: null,
-  listings: [],
+  listingGroups: [],
   comparables: [],
   isStreaming: false,
   isOpen: false,
@@ -44,6 +44,7 @@ const INITIAL_STATE: CharlieState = {
 export function useCharlie() {
   const [state, setState] = useState<CharlieState>(INITIAL_STATE)
   const sessionId = useRef(Math.random().toString(36).slice(2))
+  const geoContextRef = useRef<any>(null)
   const messagesRef = useRef<any[]>([])
 
   const open = useCallback(() => {
@@ -105,6 +106,7 @@ export function useCharlie() {
         body: JSON.stringify({
           messages: messagesRef.current,
           sessionId: sessionId.current,
+          geoContext: geoContextRef.current,
         }),
       })
 
@@ -171,16 +173,17 @@ export function useCharlie() {
 
   const handleToolResult = (tool: ToolName, data: any) => {
     if (tool === 'resolve_geo' && data.geoId) {
+      geoContextRef.current = { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName }
       setState(s => ({ ...s, geoContext: { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName } }))
     }
     if (tool === 'get_market_analytics' && data.analytics) {
       setState(s => ({ ...s, analytics: { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }, activePanel: 'results' }))
     }
     if (tool === 'search_listings' && data.listings) {
-      setState(s => ({ ...s, listings: data.listings, activePanel: 'results' }))
+      setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
     }
     if (tool === 'get_comparables' && data.listings) {
-      setState(s => ({ ...s, comparables: data.listings, activePanel: 'results' }))
+      setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l,i,arr) => arr.findIndex(x => x.id === l.id) === i), activePanel: 'results' }))
     }
   }
 

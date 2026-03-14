@@ -40,7 +40,8 @@ export const CHARLIE_TOOLS = [
         baths: { type: 'number' },
         propertyCategory: { type: 'string', enum: ['condo', 'homes', 'all'] },
         status: { type: 'string', enum: ['for-sale', 'for-lease', 'sold'] },
-        limit: { type: 'number', description: 'Default 6' }
+        limit: { type: 'number', description: 'Default 6' },
+        sort: { type: 'string', enum: ['price_asc', 'price_desc', 'newest', 'default'], description: 'Sort order. Use price_asc for lowest priced.' }
       },
       required: ['geoType', 'geoId']
     }

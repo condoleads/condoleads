@@ -6,7 +6,7 @@ const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsS
 
 interface Props {
   analytics: any | null
-  listings: any[]
+  listingGroups: { label: string; listings: any[] }[]
   comparables: any[]
   geoContext: { geoType: string; geoId: string; geoName: string } | null
 }
@@ -22,9 +22,8 @@ function marketConditionLabel(stl: number | null, dom: number | null) {
   return { label: 'Balanced Market', color: '#f59e0b' }
 }
 
-export default function ResultsPanel({ analytics, listings, comparables, geoContext }: Props) {
-  const allListings = listings.length > 0 ? listings : comparables
-  const isComps = comparables.length > 0 && listings.length === 0
+export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext }: Props) {
+  const isComps = comparables.length > 0 && listingGroups.length === 0
 
   return (
     <div style={{
@@ -82,62 +81,43 @@ export default function ResultsPanel({ analytics, listings, comparables, geoCont
       )}
 
       {/* Listings */}
-      {allListings.length > 0 && (
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
-            {isComps ? 'Comparable Sales' : 'Matched Listings'} · {allListings.length} found
+      {listingGroups.map((group, gi) => (
+        <div key={gi}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12, paddingTop: gi > 0 ? 8 : 0, borderTop: gi > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+            {group.label} · {group.listings.length} found
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {allListings.map((listing: any) => (
-              <div key={listing.id} style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                borderRadius: 14,
-                padding: '14px',
-                display: 'flex',
-                gap: 14,
-                alignItems: 'center',
-                cursor: 'pointer',
-              }}
-              onClick={() => window.open(`/${listing.slug || listing.listing_key}`, '_blank')}
-              >
-                {/* Photo */}
-                <div style={{
-                  width: 72, height: 72, borderRadius: 10,
-                  background: 'rgba(255,255,255,0.08)',
-                  flexShrink: 0, overflow: 'hidden',
-                }}>
-                  {listing.media?.[0]?.url && (
-                    <img src={listing.media[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  )}
+            {group.listings.map((listing) => {
+              const url = listing._slug || ('/' + (listing.listing_key || '').toLowerCase())
+              return (
+                <div key={listing.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px', display: 'flex', gap: 14, alignItems: 'center', cursor: 'pointer' }}
+                  onClick={() => window.open(url, '_blank')}>
+                  <div style={{ width: 72, height: 72, borderRadius: 10, background: 'rgba(255,255,255,0.08)', flexShrink: 0, overflow: 'hidden' }}>
+                    {(listing.media?.[0]?.media_url || listing.media?.[0]?.url) && (
+                      <img src={listing.media[0].media_url || listing.media[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 3 }}>
+                      {listing.close_price ? '$' + listing.close_price.toLocaleString() : '$' + (listing.list_price?.toLocaleString() || '—')}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {listing.unparsed_address}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                      {listing.bedrooms_total && <span>{listing.bedrooms_total} bed</span>}
+                      {listing.bathrooms_total_integer && <span>{listing.bathrooms_total_integer} bath</span>}
+                      {listing.property_subtype && <span style={{ color: 'rgba(255,255,255,0.2)' }}>{listing.property_subtype}</span>}
+                    </div>
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, flexShrink: 0 }}>→</div>
                 </div>
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 3 }}>
-                    {listing.close_price
-                      ? `$${listing.close_price.toLocaleString()}`
-                      : `$${listing.list_price?.toLocaleString() || '—'}`}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {listing.unparsed_address || listing.street_address}
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
-                    {listing.bedrooms_total && <span>{listing.bedrooms_total} bed</span>}
-                    {listing.bathrooms_total && <span>{listing.bathrooms_total} bath</span>}
-                    {listing.calculated_sqft && <span>{listing.calculated_sqft.toLocaleString()} sqft</span>}
-                    {listing.closed_avg_dom && <span>{listing.closed_avg_dom}d DOM</span>}
-                  </div>
-                </div>
-                {/* Arrow */}
-                <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, flexShrink: 0 }}>→</div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
-      )}
-
-      {/* Empty state */}
-      {!analytics && allListings.length === 0 && (
+      ))}
+      {!analytics && listingGroups.length === 0 && comparables.length === 0 && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
