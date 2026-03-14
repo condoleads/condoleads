@@ -194,6 +194,21 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
     return { listings: listingsWithSlugs, total: data.total || 0, label: (cat + " in " + geoName + " " + sortLabel).trim() }
   }
 
+  if (name === 'generate_plan') {
+    return {
+      type: input.type,
+      geoName: input.geoName,
+      budgetMin: input.budgetMin || null,
+      budgetMax: input.budgetMax || null,
+      propertyType: input.propertyType || null,
+      bedrooms: input.bedrooms || null,
+      timeline: input.timeline || null,
+      goal: input.goal || null,
+      estimatedValueMin: input.estimatedValueMin || null,
+      estimatedValueMax: input.estimatedValueMax || null,
+      planReady: true,
+    }
+  }
   if (name === 'get_comparables') {
     const params = new URLSearchParams()
     params.set('geoType', input.geoType)

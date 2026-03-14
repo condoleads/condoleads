@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 
 export type MessageRole = 'user' | 'assistant'
-export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables'
+export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables' | 'generate_plan'
 
 export interface ChatMessage {
   id: string
@@ -27,6 +27,13 @@ export interface CharlieState {
   isStreaming: boolean
   isOpen: boolean
   activePanel: 'chat' | 'results'
+  mode: 'search' | 'buyer_funnel' | 'seller_funnel'
+  planReady: boolean
+  plan: any | null
+  leadCaptureActive: boolean
+  leadCaptured: boolean
+  buyerProfile: any
+  sellerProfile: any
 }
 
 const INITIAL_STATE: CharlieState = {
@@ -39,6 +46,13 @@ const INITIAL_STATE: CharlieState = {
   isStreaming: false,
   isOpen: false,
   activePanel: 'chat',
+  mode: 'search',
+  planReady: false,
+  plan: null,
+  leadCaptureActive: false,
+  leadCaptured: false,
+  buyerProfile: {},
+  sellerProfile: {},
 }
 
 export function useCharlie() {
@@ -181,6 +195,9 @@ export function useCharlie() {
     }
     if (tool === 'search_listings' && data.listings) {
       setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
+    }
+    if (tool === 'generate_plan' && data.planReady) {
+      setState(s => ({ ...s, planReady: true, plan: data, activePanel: 'results' }))
     }
     if (tool === 'get_comparables' && data.listings) {
       setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l,i,arr) => arr.findIndex(x => x.id === l.id) === i), activePanel: 'results' }))

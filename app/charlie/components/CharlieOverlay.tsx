@@ -10,9 +10,11 @@ interface Props {
   onClose: () => void
   onSend: (msg: string) => void
   onPanelChange: (panel: 'chat' | 'results') => void
+  agent?: any
+  onSendPlan?: () => void
 }
 
-export default function CharlieOverlay({ state, onClose, onSend, onPanelChange }: Props) {
+export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan }: Props) {
   const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0
 
   return (
@@ -130,6 +132,10 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange }
                 listingGroups={state.listingGroups || []}
                 comparables={state.comparables}
                 geoContext={state.geoContext}
+                plan={state.plan}
+                agent={agent}
+                onSendPlan={onSendPlan}
+                leadCaptured={state.leadCaptured}
               />
             </div>
           )}

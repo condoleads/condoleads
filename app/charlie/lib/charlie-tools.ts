@@ -10,7 +10,28 @@ export const CHARLIE_TOOLS = [
       properties: {
         query: { type: 'string', description: 'Place name e.g. "Whitby", "Mississauga", "King West"' }
       },
-      required: ['query']
+      required: ['query',
+  {
+    name: 'generate_plan',
+    description: 'Generate a buyer plan or seller strategy document. Call this when you have enough information to create a complete plan. For buyers: need area + budget + listings. For sellers: need area + property type + comparables.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['buyer', 'seller'] },
+        geoName: { type: 'string' },
+        budgetMin: { type: 'number' },
+        budgetMax: { type: 'number' },
+        propertyType: { type: 'string' },
+        bedrooms: { type: 'number' },
+        timeline: { type: 'string' },
+        goal: { type: 'string' },
+        estimatedValueMin: { type: 'number' },
+        estimatedValueMax: { type: 'number' },
+      },
+      required: ['type', 'geoName']
+    }
+  }
+]
     }
   },
   {

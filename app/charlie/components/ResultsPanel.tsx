@@ -1,6 +1,7 @@
 ﻿// app/charlie/components/ResultsPanel.tsx
 'use client'
 import dynamic from 'next/dynamic'
+import PlanDocument from './PlanDocument'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -9,6 +10,10 @@ interface Props {
   listingGroups: { label: string; listings: any[] }[]
   comparables: any[]
   geoContext: { geoType: string; geoId: string; geoName: string } | null
+  plan?: any | null
+  agent?: any | null
+  onSendPlan?: () => void
+  leadCaptured?: boolean
 }
 
 const fmt = (n: number | null | undefined, prefix = '', suffix = '') =>
@@ -22,7 +27,7 @@ function marketConditionLabel(stl: number | null, dom: number | null) {
   return { label: 'Balanced Market', color: '#f59e0b' }
 }
 
-export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext }: Props) {
+export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured }: Props) {
   const isComps = comparables.length > 0 && listingGroups.length === 0
 
   return (
@@ -117,6 +122,37 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           </div>
         </div>
       ))}
+      {plan?.planReady && (
+        <PlanDocument
+          {...(plan.type === 'buyer' ? {
+            type: 'buyer',
+            geoName: plan.geoName,
+            budgetMin: plan.budgetMin,
+            budgetMax: plan.budgetMax,
+            propertyType: plan.propertyType,
+            bedrooms: plan.bedrooms,
+            timeline: plan.timeline,
+            analytics,
+            listings: listingGroups.flatMap(g => g.listings),
+            agent: agent ? { name: agent.full_name, email: agent.email, phone: agent.cell_phone, photo: agent.profile_photo_url, brokerage: agent.brokerage_name, title: agent.title } : undefined,
+            onSendPlan: onSendPlan || (() => {}),
+            leadCaptured: leadCaptured || false,
+          } : {
+            type: 'seller',
+            geoName: plan.geoName,
+            propertyType: plan.propertyType,
+            estimatedValueMin: plan.estimatedValueMin,
+            estimatedValueMax: plan.estimatedValueMax,
+            timeline: plan.timeline,
+            goal: plan.goal,
+            analytics,
+            comparables,
+            agent: agent ? { name: agent.full_name, email: agent.email, phone: agent.cell_phone, photo: agent.profile_photo_url, brokerage: agent.brokerage_name, title: agent.title } : undefined,
+            onSendPlan: onSendPlan || (() => {}),
+            leadCaptured: leadCaptured || false,
+          })}
+        />
+      )}
       {!analytics && listingGroups.length === 0 && comparables.length === 0 && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column',

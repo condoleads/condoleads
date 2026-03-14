@@ -119,6 +119,7 @@ export default function CharlieWidget() {
           onClose={close}
           onSend={sendMessage}
           onPanelChange={setActivePanel}
+          onSendPlan={() => sendMessage('Yes, send me this plan')}
         />
       )}
     </>
