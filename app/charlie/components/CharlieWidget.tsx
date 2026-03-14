@@ -3,18 +3,16 @@
 import { useState } from 'react'
 import { useCharlie } from '../hooks/useCharlie'
 import CharlieOverlay from './CharlieOverlay'
-import { useRouter } from 'next/navigation'
 
 export default function CharlieWidget() {
   const { state, open, close, sendMessage, setActivePanel } = useCharlie()
   const [searchInput, setSearchInput] = useState('')
-  const router = useRouter()
 
   const handleSearch = () => {
-    if (!searchInput.trim()) return
-    open()
-    setTimeout(() => sendMessage(searchInput.trim()), 300)
+    if (!searchInput.trim()) { open(); return }
+    const msg = searchInput.trim()
     setSearchInput('')
+    open(msg)
   }
 
   return (
@@ -65,50 +63,22 @@ export default function CharlieWidget() {
           />
 
           {/* Ask button */}
-          <button
-            onClick={handleSearch}
-            style={{
-              background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
-              border: 'none',
-              borderRadius: 100,
-              padding: '8px 18px',
-              color: '#fff',
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: 'pointer',
-              flexShrink: 0,
-              letterSpacing: '0.02em',
-            }}
-          >
-            Ask
-          </button>
+          <button onClick={handleSearch} style={{
+            background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
+            border: 'none', borderRadius: 100,
+            padding: '8px 18px', color: '#fff',
+            fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            flexShrink: 0, letterSpacing: '0.02em',
+          }}>Ask</button>
 
-          {/* Open Charlie button */}
-          <button
-            onClick={open}
-            style={{
-              background: 'rgba(255,255,255,0.07)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 100,
-              padding: '8px 14px',
-              color: 'rgba(255,255,255,0.6)',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              flexShrink: 0,
-              letterSpacing: '0.02em',
-            }}
-          >
-            Browse
-          </button>
-
-          <style>{`
-            @keyframes charlie-pulse {
-              0% { box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
-              70% { box-shadow: 0 0 0 10px rgba(59,130,246,0); }
-              100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
-            }
-          `}</style>
+          {/* Browse button */}
+          <button onClick={() => open()} style={{
+            background: 'rgba(255,255,255,0.07)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 100, padding: '8px 14px',
+            color: 'rgba(255,255,255,0.6)', fontSize: 12,
+            fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+          }}>Browse</button>
         </div>
       )}
 

@@ -59,13 +59,15 @@ export function useCharlie() {
   const [state, setState] = useState<CharlieState>(INITIAL_STATE)
   const sessionId = useRef(Math.random().toString(36).slice(2))
   const geoContextRef = useRef<any>(null)
+  const greetingSentRef = useRef(false)
   const messagesRef = useRef<any[]>([])
+  const sendMessageRef = useRef<any>(null)
 
-  const open = useCallback(() => {
+  const open = useCallback((initialMessage?: string) => {
     setState(s => ({ ...s, isOpen: true }))
-    // Send greeting on first open
-    if (messagesRef.current.length === 0) {
-      sendGreeting()
+    if (initialMessage && messagesRef.current.length === 0 && !greetingSentRef.current) {
+      greetingSentRef.current = true
+      setTimeout(() => sendMessageRef.current?.(initialMessage), 100)
     }
   }, [])
 
@@ -134,6 +136,7 @@ export function useCharlie() {
         if (done) break
 
         const chunk = decoder.decode(value)
+        console.log('[CHARLIE stream chunk]', chunk.substring(0, 200))
         const lines = chunk.split('\n').filter(l => l.startsWith('data: '))
 
         for (const line of lines) {
@@ -185,6 +188,7 @@ export function useCharlie() {
     }
   }, [])
 
+  sendMessageRef.current = sendMessage
   const handleToolResult = (tool: ToolName, data: any) => {
     if (tool === 'resolve_geo' && data.geoId) {
       geoContextRef.current = { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName }

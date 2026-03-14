@@ -12,6 +12,7 @@ const anthropic = new Anthropic()
 
 export async function POST(req: NextRequest) {
   const { messages, sessionId, geoContext } = await req.json()
+  console.log('[CHARLIE] request received')
   const headersList = headers()
   const host = headersList.get('host') || ''
 
@@ -32,6 +33,7 @@ const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoRem
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
+      console.log('[CHARLIE] stream started, messages:', JSON.stringify(messages?.slice(-1)))
       const send = (data: object) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
@@ -42,7 +44,7 @@ const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoRem
 
         while (continueLoop) {
           const response = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-sonnet-4-6',
             max_tokens: 1024,
             system: systemPrompt,
             tools: CHARLIE_TOOLS as any,
