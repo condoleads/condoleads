@@ -7,11 +7,13 @@ interface Props {
   messages: ChatMessage[]
   isStreaming: boolean
   onSend: (msg: string) => void
+  onBuyClick?: () => void
+  onSellClick?: () => void
 }
 
 const QUICK_REPLIES = ['I want to buy', 'I want to sell', 'Just browsing']
 
-export default function ChatPanel({ messages, isStreaming, onSend }: Props) {
+export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, onSellClick }: Props) {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -116,6 +118,21 @@ export default function ChatPanel({ messages, isStreaming, onSend }: Props) {
         <div ref={bottomRef} />
       </div>
 
+      {/* Funnel entry buttons */}
+      {messages.length === 0 && (
+        <div style={{ padding: '0 20px 16px', display: 'flex', gap: 10 }}>
+          <button onClick={onBuyClick} style={{
+            flex: 1, padding: '12px', borderRadius: 12, border: 'none', cursor: 'pointer',
+            background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)', color: '#fff',
+            fontSize: 13, fontWeight: 700,
+          }}>🏠 I Want to Buy</button>
+          <button onClick={onSellClick} style={{
+            flex: 1, padding: '12px', borderRadius: 12, border: 'none', cursor: 'pointer',
+            background: 'linear-gradient(135deg, #059669, #10b981)', color: '#fff',
+            fontSize: 13, fontWeight: 700,
+          }}>💰 I Want to Sell</button>
+        </div>
+      )}
       {/* Input */}
       <div style={{
         padding: '12px 16px',

@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { CharlieState } from '../hooks/useCharlie'
 import ChatPanel from './ChatPanel'
+import BuyerForm from './BuyerForm'
+import SellerForm from './SellerForm'
 import ResultsPanel from './ResultsPanel'
 
 interface Props {
@@ -16,6 +18,7 @@ interface Props {
 
 export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan }: Props) {
   const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0
+  const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>('none')
 
   return (
     <div style={{
@@ -117,11 +120,46 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
             flexDirection: 'column',
             flexShrink: 0,
           }}>
+            {formMode === 'buyer' ? (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>🏠 Find Your Home</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Tell us what you are looking for</div>
+                <BuyerForm
+                  onSubmit={(data) => {
+                    setFormMode('none')
+                    const type = data.propertyType === 'any' ? 'property' : data.propertyType
+                    const budget = data.budgetMax ? ' with budget up to ' + data.budgetMax : ''
+                    const beds = data.bedrooms ? ', ' + data.bedrooms + ' bedrooms' : ''
+                    const msg = 'I want to buy a ' + type + ' in ' + data.area + budget + beds + ', timeline: ' + data.timeline
+                    onSend(msg)
+                  }}
+                  onBack={() => setFormMode('none')}
+                />
+              </div>
+            ) : formMode === 'seller' ? (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>💰 Get Your Home Value</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Tell us about your property</div>
+                <SellerForm
+                  onSubmit={(data) => {
+                    setFormMode('none')
+                    const sqft = data.sqft ? ', ' + data.sqft + ' sqft' : ''
+
+                    const msg = 'I want to ' + (data.intent === 'lease' ? 'lease out' : 'sell') + ' my ' + data.propertySubtype + ' at ' + data.streetNumber + ' ' + data.streetName + ' ' + data.city + ', ' + data.bedrooms + ' bed ' + data.bathrooms + ' bath' + sqft + ', timeline: ' + data.timeline + ', goal: ' + data.goal
+                    onSend(msg)
+                  }}
+                  onBack={() => setFormMode('none')}
+                />
+              </div>
+            ) : (
             <ChatPanel
               messages={state.messages}
               isStreaming={state.isStreaming}
               onSend={onSend}
+              onBuyClick={() => setFormMode('buyer')}
+              onSellClick={() => setFormMode('seller')}
             />
+            )}
           </div>
 
           {/* Results panel */}
