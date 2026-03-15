@@ -5,6 +5,7 @@ import { CharlieState } from '../hooks/useCharlie'
 import ChatPanel from './ChatPanel'
 import BuyerForm from './BuyerForm'
 import SellerForm from './SellerForm'
+import SellerEstimateRunner from './SellerEstimateRunner'
 import ResultsPanel from './ResultsPanel'
 
 interface Props {
@@ -20,6 +21,8 @@ interface Props {
 export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan, onSellerEstimate }: Props) {
   const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>('none')
+  const [resolvedSeller, setResolvedSeller] = useState<any>(null)
+  const [sellerFormData, setSellerFormData] = useState<any>(null)
 
   return (
     <div style={{
@@ -143,7 +146,6 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Tell us about your property</div>
                 <SellerForm
                   onSubmit={async (data) => {
-                    setFormMode('none')
                     try {
                       const res = await fetch('/api/charlie/seller-estimate', {
                         method: 'POST',
@@ -151,18 +153,30 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                         body: JSON.stringify(data),
                       })
                       const result = await res.json()
-                      if (result.success) { onSellerEstimate?.(result)
-                      if (result.analyticsGeoType && result.analyticsGeoId) {
-                        onSend('Get market analytics for ' + result.analyticsGeoType + ' ' + result.analyticsGeoId + ' condo track')
+                      if (result.success) {
+                        setResolvedSeller(result)
+                        setSellerFormData(data)
+                        setFormMode('none')
+                        onSellerEstimate?.(result)
+                      } else {
+                        alert(result.error || 'Could not resolve address')
                       }
-                    }
-                    } catch(e) { console.error('seller estimate error', e) }
-                    const sqft = data.sqft ? ', ' + data.sqft + ' sqft' : ''
-                    const type = data.propertyCategory === 'condo' ? 'condo' : data.propertySubtype
-                    const msg = 'I want to ' + (data.intent === 'lease' ? 'lease out' : 'sell') + ' my ' + type + ' at ' + data.streetNumber + ' ' + data.streetName + ' ' + data.city + ', ' + data.bedrooms + ' bed ' + data.bathrooms + ' bath' + sqft + ', timeline: ' + data.timeline + ', goal: ' + data.goal
-                    onSend(msg)
+                    } catch(e) { console.error(e) }
                   }}
                   onBack={() => setFormMode('none')}
+                />
+              </div>
+            ) : resolvedSeller && sellerFormData && !state.sellerEstimate ? (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+                <SellerEstimateRunner
+                  resolvedData={resolvedSeller}
+                  formData={sellerFormData}
+                  onEstimateReady={(data) => {
+                    onSellerEstimate?.(data)
+                    setResolvedSeller(null)
+                    const msg = 'I want to ' + (sellerFormData.intent === 'lease' ? 'lease out' : 'sell') + ' my ' + (sellerFormData.propertyCategory === 'condo' ? 'condo' : sellerFormData.propertySubtype) + ' at ' + sellerFormData.streetNumber + ' ' + sellerFormData.streetName + ' ' + sellerFormData.city + ', ' + sellerFormData.bedrooms + ' bed ' + sellerFormData.bathrooms + ' bath, timeline: ' + sellerFormData.timeline + ', goal: ' + sellerFormData.goal
+                    onSend(msg)
+                  }}
                 />
               </div>
             ) : (
