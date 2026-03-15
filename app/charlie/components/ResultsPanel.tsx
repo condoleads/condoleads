@@ -2,6 +2,7 @@
 'use client'
 import dynamic from 'next/dynamic'
 import PlanDocument from './PlanDocument'
+import SellerEstimateBlock from './SellerEstimateBlock'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -14,6 +15,7 @@ interface Props {
   agent?: any | null
   onSendPlan?: () => void
   leadCaptured?: boolean
+  sellerEstimate?: any | null
 }
 
 const fmt = (n: number | null | undefined, prefix = '', suffix = '') =>
@@ -27,7 +29,7 @@ function marketConditionLabel(stl: number | null, dom: number | null) {
   return { label: 'Balanced Market', color: '#f59e0b' }
 }
 
-export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured }: Props) {
+export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate }: Props) {
   const isComps = comparables.length > 0 && listingGroups.length === 0
 
   return (
@@ -152,6 +154,22 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             leadCaptured: leadCaptured || false,
           })}
         />
+      )}
+      {sellerEstimate?.success && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
+            Property Estimate
+          </div>
+          <SellerEstimateBlock
+            estimate={sellerEstimate.estimate}
+            comparables={sellerEstimate.comparables || []}
+            buildingName={sellerEstimate.buildingName}
+            geoLevel={sellerEstimate.geoLevel}
+            resolvedAddress={sellerEstimate.resolvedAddress}
+            intent={sellerEstimate.intent || 'sale'}
+            isLease={sellerEstimate.intent === 'lease'}
+          />
+        </div>
       )}
       {!analytics && listingGroups.length === 0 && comparables.length === 0 && (
         <div style={{

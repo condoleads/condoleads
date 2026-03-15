@@ -14,9 +14,10 @@ interface Props {
   onPanelChange: (panel: 'chat' | 'results') => void
   agent?: any
   onSendPlan?: () => void
+  onSellerEstimate?: (data: any) => void
 }
 
-export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan }: Props) {
+export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan, onSellerEstimate }: Props) {
   const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>('none')
 
@@ -173,7 +174,8 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 plan={state.plan}
                 agent={agent}
                 onSendPlan={onSendPlan}
-                leadCaptured={state.leadCaptured}
+                  leadCaptured={state.leadCaptured}
+                  sellerEstimate={state.sellerEstimate}
               />
             </div>
           )}

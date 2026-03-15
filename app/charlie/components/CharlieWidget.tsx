@@ -5,7 +5,7 @@ import { useCharlie } from '../hooks/useCharlie'
 import CharlieOverlay from './CharlieOverlay'
 
 export default function CharlieWidget() {
-  const { state, open, close, sendMessage, setActivePanel } = useCharlie()
+  const { state, open, close, sendMessage, setActivePanel, setSellerEstimate } = useCharlie()
   const [searchInput, setSearchInput] = useState('')
 
   const handleSearch = () => {
@@ -90,6 +90,7 @@ export default function CharlieWidget() {
           onSend={sendMessage}
           onPanelChange={setActivePanel}
           onSendPlan={() => sendMessage('Yes, send me this plan')}
+          onSellerEstimate={setSellerEstimate}
         />
       )}
     </>

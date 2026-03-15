@@ -34,6 +34,7 @@ export interface CharlieState {
   leadCaptured: boolean
   buyerProfile: any
   sellerProfile: any
+  sellerEstimate: any | null
 }
 
 const INITIAL_STATE: CharlieState = {
@@ -53,6 +54,7 @@ const INITIAL_STATE: CharlieState = {
   leadCaptured: false,
   buyerProfile: {},
   sellerProfile: {},
+  sellerEstimate: null,
 }
 
 export function useCharlie() {
@@ -77,6 +79,9 @@ export function useCharlie() {
 
   const setActivePanel = useCallback((panel: 'chat' | 'results') => {
     setState(s => ({ ...s, activePanel: panel }))
+  }, [])
+  const setSellerEstimate = useCallback((data: any) => {
+    setState(s => ({ ...s, sellerEstimate: data, activePanel: 'results' }))
   }, [])
 
   const sendGreeting = async () => {
@@ -208,5 +213,5 @@ export function useCharlie() {
     }
   }
 
-  return { state, open, close, sendMessage, setActivePanel }
+  return { state, open, close, sendMessage, setActivePanel, setSellerEstimate }
 }

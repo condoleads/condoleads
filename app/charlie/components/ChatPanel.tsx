@@ -101,7 +101,11 @@ export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, o
         {showQuickReplies && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
             {QUICK_REPLIES.map(r => (
-              <button key={r} onClick={() => onSend(r)} style={{
+              <button key={r} onClick={() => {
+                if (r === 'I want to buy') { onBuyClick?.(); return }
+                if (r === 'I want to sell') { onSellClick?.(); return }
+                onSend(r)
+              }} style={{
                 padding: '7px 14px',
                 borderRadius: 100,
                 border: '1px solid rgba(59,130,246,0.4)',
