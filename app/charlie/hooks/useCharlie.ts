@@ -81,7 +81,13 @@ export function useCharlie() {
     setState(s => ({ ...s, activePanel: panel }))
   }, [])
   const setSellerEstimate = useCallback((data: any) => {
-    setState(s => ({ ...s, sellerEstimate: data, activePanel: 'results' }))
+    setState(s => ({ 
+      ...s, 
+      sellerEstimate: data, 
+      activePanel: 'results',
+      analytics: data.marketAnalytics || s.analytics,
+      geoContext: data.analyticsGeoType ? { geoType: data.analyticsGeoType, geoId: data.analyticsGeoId, geoName: data.buildingName || '' } : s.geoContext
+    }))
   }, [])
 
   const sendGreeting = async () => {

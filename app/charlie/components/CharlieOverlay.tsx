@@ -142,11 +142,24 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>💰 Get Your Home Value</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Tell us about your property</div>
                 <SellerForm
-                  onSubmit={(data) => {
+                  onSubmit={async (data) => {
                     setFormMode('none')
+                    try {
+                      const res = await fetch('/api/charlie/seller-estimate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data),
+                      })
+                      const result = await res.json()
+                      if (result.success) { onSellerEstimate?.(result)
+                      if (result.analyticsGeoType && result.analyticsGeoId) {
+                        onSend('Get market analytics for ' + result.analyticsGeoType + ' ' + result.analyticsGeoId + ' condo track')
+                      }
+                    }
+                    } catch(e) { console.error('seller estimate error', e) }
                     const sqft = data.sqft ? ', ' + data.sqft + ' sqft' : ''
-
-                    const msg = 'I want to ' + (data.intent === 'lease' ? 'lease out' : 'sell') + ' my ' + data.propertySubtype + ' at ' + data.streetNumber + ' ' + data.streetName + ' ' + data.city + ', ' + data.bedrooms + ' bed ' + data.bathrooms + ' bath' + sqft + ', timeline: ' + data.timeline + ', goal: ' + data.goal
+                    const type = data.propertyCategory === 'condo' ? 'condo' : data.propertySubtype
+                    const msg = 'I want to ' + (data.intent === 'lease' ? 'lease out' : 'sell') + ' my ' + type + ' at ' + data.streetNumber + ' ' + data.streetName + ' ' + data.city + ', ' + data.bedrooms + ' bed ' + data.bathrooms + ' bath' + sqft + ', timeline: ' + data.timeline + ', goal: ' + data.goal
                     onSend(msg)
                   }}
                   onBack={() => setFormMode('none')}
@@ -174,8 +187,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 plan={state.plan}
                 agent={agent}
                 onSendPlan={onSendPlan}
-                  leadCaptured={state.leadCaptured}
-                  sellerEstimate={state.sellerEstimate}
+                leadCaptured={state.leadCaptured}
               />
             </div>
           )}

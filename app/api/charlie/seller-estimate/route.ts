@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
       const { data: buildings } = await supabase
         .from('buildings')
         .select('id, building_name, canonical_address, community_id, cover_photo_url')
-        .ilike('canonical_address', `%${streetNumber}%${streetName}%`)
+        .ilike('canonical_address', `%${streetNumber}%${streetName.split(' ')[0]}%`)
         .limit(3)
       if (buildings?.length) {
         building = buildings[0]
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         const { data: buildings2 } = await supabase
           .from('buildings')
           .select('id, building_name, canonical_address, community_id, cover_photo_url')
-          .ilike('street_name', `%${streetName}%`)
+          .ilike('street_name', `%${streetName.split(' ')[0]}%`)
           .ilike('city_district', `%${city}%`)
           .limit(3)
         if (buildings2?.length) building = buildings2[0]
@@ -115,7 +115,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: result.error || 'Estimate failed' })
       }
 
-      // Fetch media
+      // Fetch correct analytics for this building's community
+      const { data: analyticsData } = await supabase
+        .from('geo_analytics')
+        .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, psf_trend_pct, dom_trend_pct')
+        .eq('geo_type', 'community')
+        .eq('geo_id', building.community_id)
+        .eq('track', 'condo')
+        .eq('period_type', 'rolling_12mo')
+        .maybeSingle()
+            // Fetch media
       const listingKeys = result.data.comparables.map((c: any) => c.listingKey).filter(Boolean)
       const mediaMap = await fetchMediaForComparables(supabase, listingKeys)
       const comparablesWithMedia = result.data.comparables.map((c: any) => ({
@@ -131,6 +140,9 @@ export async function POST(req: NextRequest) {
         buildingId: building.id,
         buildingPhoto: building.cover_photo_url,
         geoLevel: 'building',
+        analyticsGeoType: 'community',
+        analyticsGeoId: building.community_id,
+        marketAnalytics: analyticsData,
         resolvedAddress: {
           buildingId: building.id,
           communityId: building.community_id,
