@@ -1,4 +1,4 @@
-// lib/estimator/home-comparable-matcher-sales.ts
+﻿// lib/estimator/home-comparable-matcher-sales.ts
 import { createClient } from '@/lib/supabase/client'
 import {
   ComparableSale,
@@ -497,7 +497,8 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
     closeDate: sale.close_date,
     taxAnnualAmount: sale.tax_annual_amount || undefined,
     exactSqft: extractExactSqft(sale.square_foot_source) ?? undefined,
-    unitNumber: sale.unit_number || extractStreetNumber(sale.unparsed_address)?.toString(),
+    unitNumber: sale.unit_number || undefined,
+    propertySubtype: sale.property_subtype,
     listingKey: sale.listing_key,
     buildingSlug: undefined, // Homes don't have building slugs
     unparsedAddress: sale.unparsed_address,
@@ -547,7 +548,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
         const scored = funneled.map(s => {
           const saleStreet = extractStreetName(s.unparsed_address)
           const saleNum = extractStreetNumber(s.unparsed_address)
-          const sameStreet = false // We don't have subject address — street matching needs address passed in
+          const sameStreet = false // We don't have subject address â€” street matching needs address passed in
           const sameOddEven = false
           return {
             sale: s,
@@ -645,7 +646,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
  */
 function applyFunnel(sales: any[], specs: HomeSpecs): any[] {
   return sales.filter(s => {
-    // Filter 1: Style — exact match or same family
+    // Filter 1: Style â€” exact match or same family
     const saleStyle = s.architectural_style?.[0] || null
     if (specs.architecturalStyle && saleStyle) {
       if (saleStyle !== specs.architecturalStyle && !isSameStyleFamily(saleStyle, specs.architecturalStyle || null)) {
@@ -653,7 +654,7 @@ function applyFunnel(sales: any[], specs: HomeSpecs): any[] {
       }
     }
 
-    // Filter 2: Age — same bracket (skip if either is null)
+    // Filter 2: Age â€” same bracket (skip if either is null)
     if (specs.approximateAge && s.approximate_age) {
       if (normalizeAge(s.approximate_age) !== normalizeAge(specs.approximateAge)) {
         return false
@@ -663,7 +664,7 @@ function applyFunnel(sales: any[], specs: HomeSpecs): any[] {
     // Filter 3: Bedrooms must match exactly
     if (s.bedrooms_total !== specs.bedrooms) return false
 
-    // Filter 4: Size — same range or ±10% exact sqft
+    // Filter 4: Size â€” same range or Â±10% exact sqft
     if (specs.exactSqft && specs.exactSqft > 0) {
       const compSqft = extractExactSqft(s.square_foot_source)
       if (compSqft) {
@@ -679,7 +680,7 @@ function applyFunnel(sales: any[], specs: HomeSpecs): any[] {
 }
 
 /**
- * Relaxed funnel: style family + adjacent age + size ±20%
+ * Relaxed funnel: style family + adjacent age + size Â±20%
  */
 function applyRelaxedFunnel(sales: any[], specs: HomeSpecs): any[] {
   return sales.filter(s => {
@@ -701,7 +702,7 @@ function applyRelaxedFunnel(sales: any[], specs: HomeSpecs): any[] {
     // Filter 3: Bedrooms must still match
     if (s.bedrooms_total !== specs.bedrooms) return false
 
-    // Filter 4: Size ±20% or adjacent range (relaxed)
+    // Filter 4: Size Â±20% or adjacent range (relaxed)
     if (specs.exactSqft && specs.exactSqft > 0) {
       const compSqft = extractExactSqft(s.square_foot_source)
       if (compSqft) {
@@ -711,7 +712,7 @@ function applyRelaxedFunnel(sales: any[], specs: HomeSpecs): any[] {
     }
     // For range: accept any range when relaxed (don't filter)
 
-    // Filter 5: Bathrooms ±1 (relaxed)
+    // Filter 5: Bathrooms Â±1 (relaxed)
     if (Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) > 1) return false
 
     return true

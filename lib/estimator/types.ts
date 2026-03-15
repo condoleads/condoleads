@@ -1,4 +1,4 @@
-// lib/estimator/types.ts
+﻿// lib/estimator/types.ts
 
 // ============ NEW: Temperature & Tier Types ============
 
@@ -6,10 +6,10 @@ export type Temperature = 'HOT' | 'WARM' | 'COLD' | 'FROZEN'
 export type MatchTier = 'BINGO' | 'BINGO-ADJ' | 'RANGE' | 'RANGE-ADJ' | 'MAINT' | 'MAINT-ADJ' | 'CONTACT'
 
 export const TEMPERATURE_CONFIG = {
-  HOT: { maxMonths: 3, icon: '🔥', label: 'Hot', color: 'text-red-500' },
-  WARM: { maxMonths: 6, icon: '🌡️', label: 'Warm', color: 'text-orange-500' },
-  COLD: { maxMonths: 12, icon: '❄️', label: 'Cold', color: 'text-blue-500' },
-  FROZEN: { maxMonths: 24, icon: '🧊', label: 'Frozen', color: 'text-slate-400' }
+  HOT: { maxMonths: 3, icon: 'ðŸ”¥', label: 'Hot', color: 'text-red-500' },
+  WARM: { maxMonths: 6, icon: 'ðŸŒ¡ï¸', label: 'Warm', color: 'text-orange-500' },
+  COLD: { maxMonths: 12, icon: 'â„ï¸', label: 'Cold', color: 'text-blue-500' },
+  FROZEN: { maxMonths: 24, icon: 'ðŸ§Š', label: 'Frozen', color: 'text-slate-400' }
 } as const
 
 // ============ Unit Specs ============
@@ -67,6 +67,7 @@ export interface ComparableSale {
   userExactSqft?: number
   associationFee?: number
   unitNumber?: string
+  propertySubtype?: string
   listingKey?: string
   buildingSlug?: string
   unparsedAddress?: string

@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
           .from('buildings')
           .select('id, building_name, canonical_address, community_id, cover_photo_url, slug')
           .ilike('street_name', `%${streetFirst}%`)
-          .ilike('city_district', `%${city}%`)
+          .ilike('city_district', `%${city.trim()}%`)
           .limit(5)
         building = buildings2?.[0] || null
       }
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       const { data: munis } = await supabase
         .from('municipalities')
         .select('id, name')
-        .ilike('name', `%${city}%`)
+        .ilike('name', `%${city.trim()}%`)
         .limit(1)
       const municipality = munis?.[0]
 
@@ -130,3 +130,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: err.message })
   }
 }
+

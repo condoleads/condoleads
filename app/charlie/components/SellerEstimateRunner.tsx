@@ -1,6 +1,6 @@
 ﻿// app/charlie/components/SellerEstimateRunner.tsx
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { estimateSale } from '@/app/estimator/actions/estimate-sale'
 import { estimateRent } from '@/app/estimator/actions/estimate-rent'
 import { estimateHomeSale } from '@/app/estimator/actions/estimate-home-sale'
@@ -75,9 +75,12 @@ interface Props {
 
 export default function SellerEstimateRunner({ resolvedData, formData, onEstimateReady }: Props) {
   const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading')
+  const hasRun = useRef(false)
   const [errorMsg, setErrorMsg] = useState('')
 
   useEffect(() => {
+    if (hasRun.current) return
+    hasRun.current = true
     runEstimate()
   }, [])
 
