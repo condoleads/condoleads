@@ -81,7 +81,7 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
     runEstimate()
   }, [])
 
-  const runEstimate = async () => {
+  const runEstimate = async () => { console.log('[Runner] starting estimate, path:', resolvedData.path, 'buildingId:', resolvedData.buildingId)
     try {
       const bedsNum = parseInt(formData.bedrooms) || 2
       const bathsNum = parseInt(formData.bathrooms) || 1

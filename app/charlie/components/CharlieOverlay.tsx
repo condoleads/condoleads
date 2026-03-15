@@ -19,7 +19,7 @@ interface Props {
 }
 
 export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan, onSellerEstimate }: Props) {
-  const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0
+  const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>('none')
   const [resolvedSeller, setResolvedSeller] = useState<any>(null)
   const [sellerFormData, setSellerFormData] = useState<any>(null)
@@ -157,7 +157,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                         setResolvedSeller(result)
                         setSellerFormData(data)
                         setFormMode('none')
-                        onSellerEstimate?.(result)
+
                       } else {
                         alert(result.error || 'Could not resolve address')
                       }
@@ -202,6 +202,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 agent={agent}
                 onSendPlan={onSendPlan}
                 leadCaptured={state.leadCaptured}
+                sellerEstimate={state.sellerEstimate}
               />
             </div>
           )}

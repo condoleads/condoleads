@@ -17,6 +17,8 @@ interface Props {
     listingKey?: string
     mediaUrl?: string
     adjustedPrice?: number
+    unitNumber?: string
+    propertySubtype?: string
   }
   isLease?: boolean
 }
@@ -35,28 +37,48 @@ function timeAgo(dateStr: string): string {
   return `${months} months ago`
 }
 
+const HOME_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex']
+
 export default function ComparableCard({ comparable: c, isLease = false }: Props) {
   const price = c.adjustedPrice || c.closePrice || c.listPrice
   const sqft = c.exactSqft || (c.livingAreaRange ? parseInt(c.livingAreaRange.split('-')[0]) + 50 : null)
 
   const handleClick = () => {
     if (!c.listingKey) return
-    window.open(`/${c.listingKey}`, '_blank')
+    const mls = c.listingKey.toLowerCase()
+    const rawAddr = (c.unparsedAddress || '').split(',')[0].trim()
+    const unitStr = c.unitNumber || ''
+    const withoutUnit = unitStr
+      ? rawAddr.replace(new RegExp('\\s+' + unitStr + '\\s*$'), '').trim()
+      : rawAddr
+    const addr = withoutUnit
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+    const isCondo = !HOME_TYPES.includes(c.propertySubtype || '')
+    const url = isCondo
+      ? (unitStr ? `${addr}-unit-${unitStr}-${mls}` : `${addr}-unit-${mls}`)
+      : `${addr}-${mls}`
+    window.open('/' + url, '_blank')
   }
 
   return (
-    <div onClick={handleClick} style={{
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      borderRadius: 14,
-      overflow: 'hidden',
-      cursor: c.listingKey ? 'pointer' : 'default',
-      transition: 'border-color 0.15s',
-      display: 'flex',
-      gap: 0,
-    }}
-    onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)')}
-    onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')}
+    <div
+      onClick={handleClick}
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 14,
+        overflow: 'hidden',
+        cursor: c.listingKey ? 'pointer' : 'default',
+        transition: 'border-color 0.15s',
+        display: 'flex',
+        gap: 0,
+      }}
+      onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)')}
+      onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')}
     >
       {/* Photo */}
       <div style={{

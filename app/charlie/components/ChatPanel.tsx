@@ -82,7 +82,7 @@ export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, o
               lineHeight: 1.6,
               wordBreak: 'break-word',
             }}>
-              {msg.content}
+              {msg.content.replace(/\*\*(.*?)\*\*/g, '$1').replace(/#{1,3}\s/g, '').replace(/\*([^*]+)\*/g, '$1')}
               {msg.streaming && (
                 <span style={{
                   display: 'inline-block',

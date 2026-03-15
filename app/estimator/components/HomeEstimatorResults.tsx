@@ -660,7 +660,7 @@ export default function HomeEstimatorResults({
               <ul className="space-y-2 ml-4">
                 <li className="flex items-start gap-2">
                   <span className="text-amber-600 mt-1">•</span>
-                  <span>Unit condition, view quality, and upgrades significantly impact value</span>
+                  <span> Home condition, lot features, and upgrades significantly impact value </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-amber-600 mt-1">•</span>

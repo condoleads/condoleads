@@ -30,6 +30,7 @@ const CONFIDENCE_COLORS: Record<string, string> = {
 }
 
 export default function SellerEstimateBlock({ estimate, comparables, buildingName, geoLevel, isLease, intent }: Props) {
+  if (!estimate) return <div style={{ padding: 20, color: 'rgba(255,255,255,0.3)' }}>Computing estimate...</div>
   const confColor = CONFIDENCE_COLORS[estimate.confidence] || '#94a3b8'
   const priceLabel = isLease ? '/mo' : ''
 

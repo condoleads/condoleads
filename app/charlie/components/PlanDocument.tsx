@@ -35,7 +35,6 @@ interface SellerPlanProps {
   timeline?: string
   goal?: string
   analytics: any
-  comparables: any[]
   agent?: AgentInfo
   onSendPlan: () => void
   leadCaptured: boolean
@@ -182,24 +181,6 @@ export default function PlanDocument(props: PlanDocumentProps) {
             <PlanSection title="Best Time to List">
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.7 }}>
                 Data shows <span style={{ color: '#10b981', fontWeight: 700 }}>{MONTHS[bestMonth - 1]}</span> is the strongest month for sellers in {props.geoName}. With a {fmt(analytics?.sale_to_list_ratio, '', '%')} sale-to-list ratio, pricing at market is critical.
-              </div>
-            </PlanSection>
-          )}
-
-          {props.comparables.length > 0 && (
-            <PlanSection title={`Recent Comparable Sales (${props.comparables.length})`}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {props.comparables.slice(0, 5).map((l: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#10b981' }}>${(l.close_price || l.list_price)?.toLocaleString()}</div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>{l.unparsed_address?.split(',')[0]}</div>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', textAlign: 'right' }}>
-                      {l.bedrooms_total} bed · {l.days_on_market || '—'}d DOM
-                    </div>
-                  </div>
-                ))}
               </div>
             </PlanSection>
           )}
