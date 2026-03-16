@@ -1,4 +1,4 @@
-// app/estimator/components/EstimatorSeller.tsx
+﻿// app/estimator/components/EstimatorSeller.tsx
 'use client'
 
 import { useAuth } from '@/components/auth/AuthContext'
@@ -80,18 +80,27 @@ function EstimatorSellerInner({ buildingId, buildingSlug, buildingName, building
 })
 
   const sqftRanges = [
-    '0-499',
-    '500-599',
-    '600-699',
-    '700-799',
-    '800-899',
-    '900-999',
-    '1000-1199',
-    '1200-1399',
-    '1400-1599',
-    '1600-1999',
-    '2000+'
-  ]
+      '0-499',
+      '500-599',
+      '600-699',
+      '700-799',
+      '800-899',
+      '900-999',
+      '1000-1199',
+      '1200-1399',
+      '1400-1599',
+      '1600-1799',
+      '1800-1999',
+      '2000-2249',
+      '2250-2499',
+      '2500-2749',
+      '2750-2999',
+      '3000-3249',
+      '3250-3499',
+      '3500-3749',
+      '3750-3999',
+      '5000 +',
+    ]
 
   const handleEstimate = async () => {
     // Check if user is logged in
@@ -356,6 +365,7 @@ function EstimatorSellerInner({ buildingId, buildingSlug, buildingName, building
     </section>
   )
 }
+
 
 
 
