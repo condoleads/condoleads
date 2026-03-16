@@ -58,9 +58,10 @@ export default function ComparableCard({ comparable: c, isLease = false }: Props
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')
     const isCondo = !HOME_TYPES.includes(c.propertySubtype || '')
+    const city = (c.unparsedAddress || '').split(',')[1]?.trim().split(' ')[0].toLowerCase() || ''
     const url = isCondo
       ? (unitStr ? `${addr}-unit-${unitStr}-${mls}` : `${addr}-unit-${mls}`)
-      : `${addr}-${mls}`
+      : `${addr}-${city ? city + '-' : ''}${mls}`
     window.open('/' + url, '_blank')
   }
 
