@@ -15,6 +15,7 @@ export type SearchResultType =
 
 export interface SearchResult {
   type: SearchResultType
+  id: string
   name: string
   slug: string
   subtitle: string
@@ -52,6 +53,7 @@ function detectIntent(q: string): Intent {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildingResult(b: {
+  id: string
   building_name: string
   slug: string
   street_number: string | null
@@ -63,6 +65,7 @@ function buildingResult(b: {
   const subtitle = [address, count ? `${count} active` : null].filter(Boolean).join(' · ')
   return {
     type: 'building',
+    id: b.id,
     name: b.building_name,
     slug: b.slug,
     subtitle: subtitle || 'Condo Building',
@@ -83,6 +86,7 @@ function listingResult(l: {
   const txn = l.transaction_type === 'Lease' ? 'For Lease' : 'For Sale'
   return {
     type: 'listing',
+    id: l.id,
     name: l.unparsed_address,
     slug: l.id,
     subtitle: [l.property_subtype, beds, txn, price].filter(Boolean).join(' · '),
@@ -92,12 +96,13 @@ function listingResult(l: {
 
 function geoResult(
   type: SearchResultType,
+  id: string,
   name: string,
   slug: string,
   subtitle: string,
   url: string
 ): SearchResult {
-  return { type, name, slug, subtitle, url }
+  return { type, id, name, slug, subtitle, url }
 }
 
 function cleanMuniSubtitle(muniName: string): string {
@@ -143,15 +148,15 @@ async function fetchGeo(
   const geo: SearchResult[] = []
 
   for (const n of neighbourhoodsRes.data ?? []) {
-    geo.push(geoResult('neighbourhood', n.name, n.slug, 'Toronto Neighbourhood', `/toronto/${n.slug}`))
+    geo.push(geoResult('neighbourhood', n.id, n.name, n.slug, 'Toronto Neighbourhood', `/toronto/${n.slug}`))
   }
   for (const m of munisRes.data ?? []) {
     const area = Array.isArray(m.treb_areas) ? m.treb_areas[0] : m.treb_areas
-    geo.push(geoResult('municipality', m.name, m.slug, (area as any)?.name ?? 'Ontario', `/${m.slug}`))
+    geo.push(geoResult('municipality', m.id, m.name, m.slug, (area as any)?.name ?? 'Ontario', `/${m.slug}`))
   }
   for (const c of communitiesRes.data ?? []) {
     const muni = Array.isArray(c.municipalities) ? c.municipalities[0] : c.municipalities
-    geo.push(geoResult('community', c.name, c.slug, cleanMuniSubtitle((muni as any)?.name ?? ''), `/${c.slug}`))
+    geo.push(geoResult('community', c.id, c.name, c.slug, cleanMuniSubtitle((muni as any)?.name ?? ''), `/${c.slug}`))
   }
 
   return geo
