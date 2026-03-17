@@ -6,6 +6,7 @@ import PlanDocument from './PlanDocument'
 import SellerEstimateBlock from './SellerEstimateBlock'
 import ComparableCard from './ComparableCard'
 import ActiveListingCard from './ActiveListingCard'
+import PricingRiskBlock from './PricingRiskBlock'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -148,6 +149,60 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Pricing Risk - Concession + DOM */}
+      {sellerEstimate?.success && analytics && (
+        <div>
+          <SectionHeader title="Pricing Strategy & Risk" />
+          <PricingRiskBlock
+            analytics={analytics}
+            estimatedPrice={sellerEstimate.estimate?.estimatedPrice}
+            intent={sellerEstimate.intent || 'sale'}
+            geoName={geoContext?.geoName}
+          />
+        </div>
+      )}
+
+      {/* Seller Strategy - always show from sellerEstimate, not just AI plan */}
+      {sellerEstimate?.success && !plan?.planReady && (
+        <div style={{
+          background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 16, padding: 24,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #059669, #10b981)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💰</div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>Your Seller Strategy</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{geoContext?.geoName} · {new Date().toLocaleDateString('en-CA')}</div>
+            </div>
+          </div>
+          {analytics && (() => {
+            const cond = marketConditionLabel(analytics.sale_to_list_ratio, analytics.closed_avg_dom_90)
+            return (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: cond.color + '18', border: '1px solid ' + cond.color + '40', borderRadius: 100, padding: '5px 14px', marginBottom: 16 }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: cond.color }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: cond.color }}>{cond.label}</span>
+              </div>
+            )
+          })()}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 16 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 8 }}>Your Property</div>
+            {sellerEstimate.estimate?.estimatedPrice && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Estimated Value</span><span style={{ fontSize: 13, fontWeight: 700, color: '#10b981' }}>${sellerEstimate.estimate.priceRange?.low?.toLocaleString()} — ${sellerEstimate.estimate.priceRange?.high?.toLocaleString()}</span></div>}
+          </div>
+          {analytics && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 8 }}>Market Snapshot</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Avg Days on Market</span><span style={{ fontSize: 13, fontWeight: 700, color: '#6366f1' }}>{fmt(analytics.closed_avg_dom_90, '', 'd')}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Sale-to-List Ratio</span><span style={{ fontSize: 13, fontWeight: 700, color: '#10b981' }}>{fmt(analytics.sale_to_list_ratio, '', '%')}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Active Competition</span><span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{fmt(analytics.active_count, '', ' listings')}</span></div>
+            </div>
+          )}
+          <button onClick={onSendPlan} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)', color: '#fff', fontSize: 14, fontWeight: 700, marginTop: 20 }}>
+            📨 Send This Plan to Me + Connect with Agent
+          </button>
         </div>
       )}
 
