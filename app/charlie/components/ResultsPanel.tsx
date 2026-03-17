@@ -1,6 +1,6 @@
 ﻿// app/charlie/components/ResultsPanel.tsx
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import dynamic from 'next/dynamic'
 import PlanDocument from './PlanDocument'
 import SellerEstimateBlock from './SellerEstimateBlock'
@@ -44,27 +44,8 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate }: Props) {
-  const [competingListings, setCompetingListings] = useState<any[]>([])
-  const [competingLoading, setCompetingLoading] = useState(false)
 
-  useEffect(() => {
-    if (!sellerEstimate?.success) return
-    const { path, communityId, municipalityId, bedrooms, livingAreaRange, propertySubtype } = sellerEstimate
-    if (!path) return
-    if (path === 'condo' && !communityId) return
-    if (path === 'home' && !municipalityId) return
 
-    setCompetingLoading(true)
-    fetch('/api/charlie/competing-listings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, communityId, municipalityId, bedrooms, livingAreaRange, propertySubtype }),
-    })
-      .then(r => r.json())
-      .then(d => { if (d.success) setCompetingListings(d.listings || []) })
-      .catch(e => console.error('[competing-listings]', e))
-      .finally(() => setCompetingLoading(false))
-  }, [sellerEstimate?.success, sellerEstimate?.communityId, sellerEstimate?.municipalityId])
 
   return (
     <div style={{
@@ -152,16 +133,16 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       {/* Competing For Sale */}
       {sellerEstimate?.success && (
         <div>
-          <SectionHeader title={competingLoading ? 'Competing For Sale · Loading...' : `Competing For Sale · ${competingListings.length} found`} />
-          {competingLoading && (
+          <SectionHeader title={`Competing For Sale · ${(sellerEstimate?.competingListings || []).length} found`} />
+          {false && (
             <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, padding: '12px 0' }}>Searching active listings...</div>
           )}
-          {!competingLoading && competingListings.length === 0 && (
+          {(sellerEstimate?.competingListings || []).length === 0 && (
             <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, padding: '12px 0' }}>No active competing listings found.</div>
           )}
-          {!competingLoading && competingListings.length > 0 && (
+          {(sellerEstimate?.competingListings || []).length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {competingListings.map((l, i) => (
+              {(sellerEstimate?.competingListings || []).map((l: any, i: number) => (
                 <ActiveListingCard key={l.id || i} listing={l} />
               ))}
             </div>

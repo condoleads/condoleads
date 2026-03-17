@@ -122,6 +122,25 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
         mediaUrl: c.listingKey ? mediaMap[c.listingKey] : null,
       }))
 
+      // Fetch competing listings
+      let competingListings: any[] = []
+      try {
+        const compRes = await fetch('/api/charlie/competing-listings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: resolvedData.path,
+            communityId: resolvedData.communityId,
+            municipalityId: resolvedData.municipalityId,
+            bedrooms: bedsNum,
+            livingAreaRange: formData.livingAreaRange || undefined,
+            propertySubtype: formData.propertySubtype,
+          }),
+        })
+        const compData = await compRes.json()
+        if (compData.success) competingListings = compData.listings || []
+      } catch (e) { console.error('[competing]', e) }
+
       onEstimateReady({
         success: true,
         estimate: result.data,
@@ -137,6 +156,7 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
         bedrooms: bedsNum,
         livingAreaRange: formData.livingAreaRange || undefined,
         propertySubtype: formData.propertySubtype,
+        competingListings,
       })
       setStatus('done')
     } catch (err: any) {
