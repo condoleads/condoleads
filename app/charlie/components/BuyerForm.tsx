@@ -1,10 +1,13 @@
 ﻿// app/charlie/components/BuyerForm.tsx
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
-interface BuyerFormData {
+export interface BuyerFormData {
   intent: 'buy' | 'lease'
   area: string
+  geoType: string
+  geoId: string
+  geoSlug: string
   budgetMin: string
   budgetMax: string
   propertyType: 'condo' | 'homes' | 'any'
@@ -17,20 +20,141 @@ interface Props {
   onBack: () => void
 }
 
-const BUDGETS = ['$300K','$400K','$500K','$600K','$700K','$800K','$900K','$1M','$1.5M','$2M+']
+const BUDGETS_BUY = ['$300K','$400K','$500K','$600K','$700K','$800K','$900K','$1M','$1.25M','$1.5M','$2M','$2.5M','$3M+']
+const BUDGETS_LEASE = ['$1,500','$2,000','$2,500','$3,000','$3,500','$4,000','$5,000','$6,000','$7,500','$10,000+']
 const TIMELINES = ['ASAP','1-3 months','3-6 months','6-12 months','Just exploring']
+
+const inputStyle = {
+  width: '100%', background: 'rgba(255,255,255,0.07)',
+  border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
+  padding: '11px 14px', color: '#fff', fontSize: 14, outline: 'none',
+  boxSizing: 'border-box' as const,
+}
+
+function AreaSearch({ value, onChange, onSelect }: {
+  value: string
+  onChange: (v: string) => void
+  onSelect: (result: { name: string; type: string; id: string; slug: string }) => void
+}) {
+  const [groups, setGroups] = useState<{ label: string; results: any[] }[]>([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const debounce = useRef<any>(null)
+
+  useEffect(() => {
+    if (!value.trim() || value.length < 2) { setGroups([]); return }
+    clearTimeout(debounce.current)
+    debounce.current = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(value)}`)
+        const d = await res.json()
+        setGroups(d.groups || [])
+      } catch {}
+      setLoading(false)
+    }, 250)
+  }, [value])
+
+  const TYPE_ICONS: Record<string, string> = {
+    municipality: '🏙',
+    community: '🏘',
+    neighbourhood: '📍',
+    building: '🏢',
+    listing: '🏠',
+  }
+
+  return (
+    <div style={{ position: 'relative' as const }}>
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="e.g. Whitby, Waterfront Communities, X2 Condos..."
+        style={inputStyle}
+      />
+      {open && value.trim().length >= 2 && (
+        <div style={{
+          position: 'absolute' as const, top: '100%', left: 0, right: 0,
+          background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 10, zIndex: 999, maxHeight: 280, overflowY: 'auto' as const, marginTop: 4,
+        }}>
+          {loading && <div style={{ padding: '10px 14px', fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Searching...</div>}
+          {!loading && groups.length === 0 && <div style={{ padding: '10px 14px', fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>No results found</div>}
+          {!loading && groups.map((group, gi) => (
+            <div key={gi}>
+              <div style={{ padding: '6px 14px', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', background: 'rgba(255,255,255,0.03)' }}>
+                {group.label}
+              </div>
+              {group.results.map((r, ri) => (
+                <div key={ri} onMouseDown={() => { onSelect({ name: r.name, type: r.type, id: r.id, slug: r.slug }); setOpen(false) }}
+                  style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', gap: 10 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.07)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{TYPE_ICONS[r.type] || '📍'}</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{r.name}</div>
+                    {r.subtitle && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>{r.subtitle}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BudgetSelect({ value, onChange, options, placeholder }: {
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ flex: 1, position: 'relative' as const }}>
+      <div onClick={() => setOpen(o => !o)} style={{
+        ...inputStyle, cursor: 'pointer', display: 'flex',
+        alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' as const,
+      }}>
+        <span style={{ color: value ? '#fff' : 'rgba(255,255,255,0.3)' }}>{value || placeholder}</span>
+        <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>▾</span>
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute' as const, top: '100%', left: 0, right: 0,
+          background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 10, zIndex: 999, maxHeight: 200, overflowY: 'auto' as const, marginTop: 4,
+        }}>
+          <div onClick={() => { onChange(''); setOpen(false) }} style={{ padding: '10px 14px', fontSize: 14, color: 'rgba(255,255,255,0.4)', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>{placeholder}</div>
+          {options.map(o => (
+            <div key={o} onClick={() => { onChange(o); setOpen(false) }} style={{
+              padding: '10px 14px', fontSize: 14, color: value === o ? '#3b82f6' : '#fff',
+              background: value === o ? 'rgba(59,130,246,0.1)' : 'transparent',
+              cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.07)')}
+            onMouseLeave={e => (e.currentTarget.style.background = value === o ? 'rgba(59,130,246,0.1)' : 'transparent')}
+            >{o}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function BuyerForm({ onSubmit, onBack }: Props) {
   const [form, setForm] = useState<BuyerFormData>({
-    intent: 'buy', area: '', budgetMin: '', budgetMax: '', propertyType: 'any', bedrooms: '2', timeline: '3-6 months'
+    intent: 'buy', area: '', geoType: '', geoId: '', geoSlug: '',
+    budgetMin: '', budgetMax: '', propertyType: 'any', bedrooms: '', timeline: '3-6 months'
   })
 
   const set = (k: keyof BuyerFormData, v: string) => setForm(f => ({ ...f, [k]: v }))
 
-  const handleSubmit = () => {
-    if (!form.area.trim()) return
-    onSubmit(form)
-  }
+  const canSubmit = form.area.trim() && form.geoId
 
   const chip = (label: string, active: boolean, onClick: () => void, color = '#3b82f6') => (
     <button onClick={onClick} style={{
@@ -42,80 +166,72 @@ export default function BuyerForm({ onSubmit, onBack }: Props) {
     }}>{label}</button>
   )
 
-  const label = (text: string) => (
-    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', marginBottom: 10 }}>{text}</div>
+  const lbl = (text: string, required = false) => (
+    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' as const, marginBottom: 10 }}>
+      {text}{required && <span style={{ color: '#ef4444', marginLeft: 4 }}>*</span>}
+    </div>
   )
+
+  const budgets = form.intent === 'lease' ? BUDGETS_LEASE : BUDGETS_BUY
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24, padding: '8px 0' }}>
 
       {/* Intent */}
       <div>
-        {label('Are you buying or leasing?')}
+        {lbl('Are you buying or leasing?', true)}
         <div style={{ display: 'flex', gap: 10 }}>
           {chip('Buying', form.intent === 'buy', () => set('intent', 'buy'))}
           {chip('Leasing', form.intent === 'lease', () => set('intent', 'lease'))}
         </div>
       </div>
-      {/* Area */}
+
+      {/* Area search */}
       <div>
-        {label('Where are you looking?')}
-        <input
+        {lbl('Where are you looking?', true)}
+        <AreaSearch
           value={form.area}
-          onChange={e => set('area', e.target.value)}
-          placeholder="e.g. Whitby, Mississauga, King West..."
-          style={{
-            width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 10, padding: '11px 14px', color: '#fff', fontSize: 14, outline: 'none',
-            boxSizing: 'border-box',
-          }}
+          onChange={v => { set('area', v); set('geoId', ''); set('geoType', ''); set('geoSlug', '') }}
+          onSelect={r => { set('area', r.name); set('geoType', r.type); set('geoId', r.id); set('geoSlug', r.slug) }}
         />
+        {form.area && !form.geoId && (
+          <div style={{ fontSize: 11, color: 'rgba(245,158,11,0.8)', marginTop: 6 }}>⚠ Please select a location from the dropdown</div>
+        )}
       </div>
 
       {/* Budget */}
       <div>
-        {label('Budget Range')}
+        {lbl('Budget Range')}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <select value={form.budgetMin} onChange={e => set('budgetMin', e.target.value)} style={{
-            flex: 1, background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
-            padding: '11px 14px', color: form.budgetMin ? '#fff' : 'rgba(255,255,255,0.35)', fontSize: 13, outline: 'none',
-          }}>
-            <option value="">No Min</option>
-            {BUDGETS.slice(0,-1).map(b => <option key={b} value={b}>{b}</option>)}
-          </select>
-          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>to</span>
-          <select value={form.budgetMax} onChange={e => set('budgetMax', e.target.value)} style={{
-            flex: 1, background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
-            padding: '11px 14px', color: form.budgetMax ? '#fff' : 'rgba(255,255,255,0.35)', fontSize: 13, outline: 'none',
-          }}>
-            <option value="">No Max</option>
-            {BUDGETS.map(b => <option key={b} value={b}>{b}</option>)}
-          </select>
+          <BudgetSelect value={form.budgetMin} onChange={v => set('budgetMin', v)} options={budgets.slice(0, -1)} placeholder="No Min" />
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, flexShrink: 0 }}>to</span>
+          <BudgetSelect value={form.budgetMax} onChange={v => set('budgetMax', v)} options={budgets} placeholder="No Max" />
         </div>
       </div>
 
       {/* Property Type */}
       <div>
-        {label('Property Type')}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {lbl('Property Type')}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
           {chip('Any', form.propertyType === 'any', () => set('propertyType', 'any'))}
           {chip('Condo', form.propertyType === 'condo', () => set('propertyType', 'condo'))}
           {chip('House', form.propertyType === 'homes', () => set('propertyType', 'homes'))}
         </div>
       </div>
 
-      {/* Bedrooms */}
+      {/* Bedrooms - optional */}
       <div>
-        {label('Bedrooms')}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {lbl('Bedrooms')}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+          {chip('Any', form.bedrooms === '', () => set('bedrooms', ''))}
           {['Studio','1','2','3','4+'].map(b => chip(b, form.bedrooms === b, () => set('bedrooms', b)))}
         </div>
       </div>
 
       {/* Timeline */}
       <div>
-        {label('Timeline')}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {lbl('Timeline')}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
           {TIMELINES.map(t => chip(t, form.timeline === t, () => set('timeline', t), '#8b5cf6'))}
         </div>
       </div>
@@ -126,10 +242,11 @@ export default function BuyerForm({ onSubmit, onBack }: Props) {
           padding: '12px 20px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)',
           background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
         }}>← Back</button>
-        <button onClick={handleSubmit} disabled={!form.area.trim()} style={{
-          flex: 1, padding: '12px', borderRadius: 12, border: 'none', cursor: form.area.trim() ? 'pointer' : 'default',
-          background: form.area.trim() ? 'linear-gradient(135deg, #1d4ed8, #4f46e5)' : 'rgba(255,255,255,0.1)',
-          color: form.area.trim() ? '#fff' : 'rgba(255,255,255,0.3)', fontSize: 14, fontWeight: 700,
+        <button onClick={() => canSubmit && onSubmit(form)} disabled={!canSubmit} style={{
+          flex: 1, padding: '12px', borderRadius: 12, border: 'none',
+          cursor: canSubmit ? 'pointer' : 'default',
+          background: canSubmit ? 'linear-gradient(135deg, #1d4ed8, #4f46e5)' : 'rgba(255,255,255,0.1)',
+          color: canSubmit ? '#fff' : 'rgba(255,255,255,0.3)', fontSize: 14, fontWeight: 700,
         }}>{form.intent === 'buy' ? 'Find My Home' : 'Find Rentals'} →</button>
       </div>
     </div>
