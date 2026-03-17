@@ -61,6 +61,9 @@ const selectStyle = {
   backgroundRepeat: 'no-repeat',
   backgroundPosition: 'right 12px center',
   paddingRight: 36,
+  WebkitAppearance: 'none' as const,
+  MozAppearance: 'none' as const,
+  colorScheme: 'dark' as const,
 }
 
 function ComboField({
@@ -75,7 +78,7 @@ function ComboField({
   required?: boolean
 }) {
   const [mode, setMode] = useState<'select' | 'type'>('select')
-  const isCustom = value && !options.includes(value)
+  const [open, setOpen] = useState(false)
 
   return (
     <div>
@@ -88,14 +91,56 @@ function ComboField({
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         {mode === 'select' ? (
-          <select
-            value={isCustom ? '' : value}
-            onChange={e => onChange(e.target.value)}
-            style={{ ...selectStyle, flex: 1 }}
-          >
-            <option value="">{placeholder}</option>
-            {options.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
+          <div style={{ flex: 1, position: 'relative' as const }}>
+            {/* Custom dark dropdown trigger */}
+            <div
+              onClick={() => setOpen(o => !o)}
+              style={{
+                ...inputStyle,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                userSelect: 'none' as const,
+              }}
+            >
+              <span style={{ color: value ? '#fff' : 'rgba(255,255,255,0.3)' }}>
+                {value || placeholder}
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>▾</span>
+            </div>
+            {/* Dropdown list */}
+            {open && (
+              <div style={{
+                position: 'absolute' as const,
+                top: '100%', left: 0, right: 0,
+                background: '#1e293b',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 10,
+                zIndex: 999,
+                maxHeight: 200,
+                overflowY: 'auto' as const,
+                marginTop: 4,
+              }}>
+                {options.map(o => (
+                  <div
+                    key={o}
+                    onClick={() => { onChange(o); setOpen(false) }}
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: 14,
+                      color: value === o ? '#10b981' : '#fff',
+                      background: value === o ? 'rgba(16,185,129,0.1)' : 'transparent',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.07)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = value === o ? 'rgba(16,185,129,0.1)' : 'transparent')}
+                  >{o}</div>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           <input
             type="text"
@@ -106,7 +151,7 @@ function ComboField({
           />
         )}
         <button
-          onClick={() => { setMode(m => m === 'select' ? 'type' : 'select'); onChange('') }}
+          onClick={() => { setMode(m => m === 'select' ? 'type' : 'select'); onChange(''); setOpen(false) }}
           style={{
             padding: '0 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)',
             background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)',
@@ -210,7 +255,7 @@ export default function SellerForm({ onSubmit, onBack }: Props) {
           {inp('streetNumber', 'No.')}
           {inp('streetName', 'Street Name')}
         </div>
-        {inp('city', 'City (e.g. Whitby)')}
+        {inp('city', 'City (e.g. Toronto)')}
       </div>
 
       {/* Home subtype */}

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     let listings: any[] = []
 
     if (path === 'condo' && communityId) {
-      const query = supabase
+      let query = supabase
         .from('mls_listings')
         .select('id, listing_key, list_price, unparsed_address, bedrooms_total, bathrooms_total_integer, living_area_range, days_on_market, list_date, approximate_age, year_built, association_fee, property_subtype, unit_number')
         .eq('standard_status', 'Active')
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
         .limit(10)
 
       if (livingAreaRange) {
-        query.eq('living_area_range', livingAreaRange)
+        query = query.eq('living_area_range', livingAreaRange)
       }
 
       const { data, error } = await query
@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (path === 'home' && municipalityId) {
-      const query = supabase
+      // For homes: match on bedrooms + subtype only — livingAreaRange too restrictive
+      let query = supabase
         .from('mls_listings')
         .select('id, listing_key, list_price, unparsed_address, bedrooms_total, bathrooms_total_integer, living_area_range, days_on_market, list_date, approximate_age, year_built, property_subtype, frontage_length, lot_size_area')
         .eq('standard_status', 'Active')
@@ -44,10 +45,7 @@ export async function POST(req: NextRequest) {
         .limit(10)
 
       if (propertySubtype) {
-        query.eq('property_subtype', propertySubtype)
-      }
-      if (livingAreaRange) {
-        query.eq('living_area_range', livingAreaRange)
+        query = query.eq('property_subtype', propertySubtype)
       }
 
       const { data, error } = await query
@@ -60,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch thumbnail media
-    const listingIds = listings.map(l => l.id)
+    const listingIds = listings.map((l: any) => l.id)
     const { data: media } = await supabase
       .from('media')
       .select('listing_id, media_url')
@@ -71,7 +69,7 @@ export async function POST(req: NextRequest) {
     const mediaMap: Record<string, string> = {}
     media?.forEach((m: any) => { mediaMap[m.listing_id] = m.media_url })
 
-    const enriched = listings.map(l => ({
+    const enriched = listings.map((l: any) => ({
       ...l,
       mediaUrl: mediaMap[l.id] || null,
     }))

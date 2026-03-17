@@ -172,7 +172,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                   resolvedData={resolvedSeller}
                   formData={sellerFormData}
                   onEstimateReady={(data) => {
-                    onSellerEstimate?.(data)
+                    onSellerEstimate?.({ ...data, subjectAddress: sellerFormData.streetNumber + " " + sellerFormData.streetName + ", " + sellerFormData.city })
                     setResolvedSeller(null)
                     const msg = 'I want to ' + (sellerFormData.intent === 'lease' ? 'lease out' : 'sell') + ' my ' + (sellerFormData.propertyCategory === 'condo' ? 'condo' : sellerFormData.propertySubtype) + ' at ' + sellerFormData.streetNumber + ' ' + sellerFormData.streetName + ' ' + sellerFormData.city + ', ' + sellerFormData.bedrooms + ' bed ' + sellerFormData.bathrooms + ' bath, timeline: ' + sellerFormData.timeline + ', goal: ' + sellerFormData.goal
                     onSend(msg)
