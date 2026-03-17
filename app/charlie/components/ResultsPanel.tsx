@@ -1,8 +1,11 @@
 ﻿// app/charlie/components/ResultsPanel.tsx
 'use client'
+import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import PlanDocument from './PlanDocument'
 import SellerEstimateBlock from './SellerEstimateBlock'
+import ComparableCard from './ComparableCard'
+import ActiveListingCard from './ActiveListingCard'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -29,8 +32,39 @@ function marketConditionLabel(stl: number | null, dom: number | null) {
   return { label: 'Balanced Market', color: '#f59e0b' }
 }
 
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div style={{
+      fontSize: 10, fontWeight: 700, letterSpacing: '0.2em',
+      color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase',
+      marginBottom: 12, paddingTop: 8,
+      borderTop: '1px solid rgba(255,255,255,0.06)',
+    }}>{title}</div>
+  )
+}
+
 export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate }: Props) {
-  const isComps = comparables.length > 0 && listingGroups.length === 0
+  const [competingListings, setCompetingListings] = useState<any[]>([])
+  const [competingLoading, setCompetingLoading] = useState(false)
+
+  useEffect(() => {
+    if (!sellerEstimate?.success) return
+    const { path, communityId, municipalityId, bedrooms, livingAreaRange, propertySubtype } = sellerEstimate
+    if (!path) return
+    if (path === 'condo' && !communityId) return
+    if (path === 'home' && !municipalityId) return
+
+    setCompetingLoading(true)
+    fetch('/api/charlie/competing-listings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, communityId, municipalityId, bedrooms, livingAreaRange, propertySubtype }),
+    })
+      .then(r => r.json())
+      .then(d => { if (d.success) setCompetingListings(d.listings || []) })
+      .catch(e => console.error('[competing-listings]', e))
+      .finally(() => setCompetingLoading(false))
+  }, [sellerEstimate?.success, sellerEstimate?.communityId, sellerEstimate?.municipalityId])
 
   return (
     <div style={{
@@ -87,7 +121,55 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         </div>
       )}
 
-      {/* Listings */}
+      {/* Seller estimate */}
+      {sellerEstimate?.success && (
+        <div>
+          <SectionHeader title="Property Estimate" />
+          <SellerEstimateBlock
+            estimate={sellerEstimate.estimate}
+            comparables={[]}
+            buildingName={sellerEstimate.buildingName}
+            geoLevel={sellerEstimate.geoLevel}
+            resolvedAddress={sellerEstimate.resolvedAddress}
+            intent={sellerEstimate.intent || 'sale'}
+            isLease={sellerEstimate.intent === 'lease'}
+          />
+        </div>
+      )}
+
+      {/* Comparable Sold */}
+      {comparables.length > 0 && (
+        <div>
+          <SectionHeader title={`Comparable Sold · ${comparables.length} found`} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {comparables.map((c, i) => (
+              <ComparableCard key={c.listingKey || i} comparable={c} isLease={sellerEstimate?.intent === 'lease'} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Competing For Sale */}
+      {sellerEstimate?.success && (
+        <div>
+          <SectionHeader title={competingLoading ? 'Competing For Sale · Loading...' : `Competing For Sale · ${competingListings.length} found`} />
+          {competingLoading && (
+            <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, padding: '12px 0' }}>Searching active listings...</div>
+          )}
+          {!competingLoading && competingListings.length === 0 && (
+            <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, padding: '12px 0' }}>No active competing listings found.</div>
+          )}
+          {!competingLoading && competingListings.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {competingListings.map((l, i) => (
+                <ActiveListingCard key={l.id || i} listing={l} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Buyer listings */}
       {listingGroups.map((group, gi) => (
         <div key={gi}>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12, paddingTop: gi > 0 ? 8 : 0, borderTop: gi > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
@@ -124,6 +206,8 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           </div>
         </div>
       ))}
+
+      {/* Plan */}
       {plan?.planReady && (
         <PlanDocument
           {...(plan.type === 'buyer' ? {
@@ -148,30 +232,15 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             timeline: plan.timeline,
             goal: plan.goal,
             analytics,
-            comparables,
             agent: agent ? { name: agent.full_name, email: agent.email, phone: agent.cell_phone, photo: agent.profile_photo_url, brokerage: agent.brokerage_name, title: agent.title } : undefined,
             onSendPlan: onSendPlan || (() => {}),
             leadCaptured: leadCaptured || false,
           })}
         />
       )}
-      {sellerEstimate?.success && (
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
-            Property Estimate
-          </div>
-          <SellerEstimateBlock
-            estimate={sellerEstimate.estimate}
-            comparables={sellerEstimate.comparables || []}
-            buildingName={sellerEstimate.buildingName}
-            geoLevel={sellerEstimate.geoLevel}
-            resolvedAddress={sellerEstimate.resolvedAddress}
-            intent={sellerEstimate.intent || 'sale'}
-            isLease={sellerEstimate.intent === 'lease'}
-          />
-        </div>
-      )}
-      {!analytics && listingGroups.length === 0 && comparables.length === 0 && (
+
+      {/* Empty state */}
+      {!analytics && listingGroups.length === 0 && comparables.length === 0 && !sellerEstimate && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
