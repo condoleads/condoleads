@@ -129,7 +129,6 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             estimate={sellerEstimate.estimate}
             comparables={sellerEstimate.comparables || []}
             buildingName={sellerEstimate.buildingName}
-            subjectAddress={sellerEstimate.subjectAddress}
             geoLevel={sellerEstimate.geoLevel}
             resolvedAddress={sellerEstimate.resolvedAddress}
             intent={sellerEstimate.intent || 'sale'}
@@ -139,7 +138,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       )}
 
       {/* Comparable Sold */}
-      {comparables.length > 0 && (
+      {!sellerEstimate && comparables.length > 0 && (
         <div>
           <SectionHeader title={`Comparable Sold · ${comparables.length} found`} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
