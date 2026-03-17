@@ -14,6 +14,7 @@ interface Props {
   }
   comparables: any[]
   buildingName?: string
+  subjectAddress?: string
   geoLevel: string
   resolvedAddress?: any
   isLease?: boolean
@@ -29,7 +30,7 @@ const CONFIDENCE_COLORS: Record<string, string> = {
   'None': '#94a3b8',
 }
 
-export default function SellerEstimateBlock({ estimate, comparables, buildingName, geoLevel, isLease, intent }: Props) {
+export default function SellerEstimateBlock({ estimate, comparables, buildingName, subjectAddress, geoLevel, isLease, intent }: Props) {
   const confColor = CONFIDENCE_COLORS[estimate.confidence] || '#94a3b8'
   const priceLabel = isLease ? '/mo' : ''
 
@@ -37,9 +38,14 @@ export default function SellerEstimateBlock({ estimate, comparables, buildingNam
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Resolved context */}
-      {buildingName && (
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.05em' }}>
-          📍 {buildingName} · {geoLevel} level estimate
+      {(subjectAddress || buildingName) && (
+        <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 16 }}>📍</span>
+          <div>
+            {subjectAddress && <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{subjectAddress}</div>}
+            {buildingName && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{buildingName} · {geoLevel} level estimate</div>}
+            {!buildingName && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{geoLevel} level estimate</div>}
+          </div>
         </div>
       )}
 
@@ -117,7 +123,7 @@ export default function SellerEstimateBlock({ estimate, comparables, buildingNam
       {comparables.length > 0 && (
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
-            Comparable Sales · {comparables.length} found
+            Comparable Sold · {comparables.length} found
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {comparables.slice(0, 6).map((c, i) => (

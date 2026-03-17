@@ -132,6 +132,11 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
         analyticsGeoId: resolvedData.analyticsGeoId,
         intent: formData.intent,
         path: resolvedData.path,
+        communityId: resolvedData.communityId,
+        municipalityId: resolvedData.municipalityId,
+        bedrooms: bedsNum,
+        livingAreaRange: formData.livingAreaRange || undefined,
+        propertySubtype: formData.propertySubtype,
       })
       setStatus('done')
     } catch (err: any) {
