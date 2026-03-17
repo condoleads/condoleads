@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const body = await req.json()
-  const { propertyCategory, streetNumber, streetName, city } = body
+  const { propertyCategory, streetNumber, streetName, city, municipalityId: resolvedMunicipalityId } = body
 
   try {
     if (propertyCategory === 'condo') {

@@ -1,6 +1,6 @@
 ﻿// app/charlie/components/SellerForm.tsx
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 export interface SellerFormData {
   intent: 'sale' | 'lease'
@@ -8,6 +8,7 @@ export interface SellerFormData {
   streetNumber: string
   streetName: string
   city: string
+  municipalityId: string
   propertySubtype: string
   bedrooms: string
   bathrooms: string
@@ -45,6 +46,63 @@ const SQFT_RANGES_CONDOS = [
 const AGE_OPTIONS = [
   'New','0-5 years','6-10 years','11-20 years','21-30 years','30+ years',
 ]
+
+function CitySearch({ value, onChange, onSelect }: {
+  value: string
+  onChange: (v: string) => void
+  onSelect: (name: string, id: string) => void
+}) {
+  const [results, setResults] = useState<{ id: string; displayName: string }[]>([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const debounce = useRef<any>(null)
+
+  useEffect(() => {
+    if (!value.trim()) { setResults([]); return }
+    clearTimeout(debounce.current)
+    debounce.current = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(`/api/charlie/municipalities?q=${encodeURIComponent(value)}`)
+        const d = await res.json()
+        if (d.success) setResults(d.municipalities)
+      } catch {}
+      setLoading(false)
+    }, 250)
+  }, [value])
+
+  return (
+    <div style={{ position: 'relative' as const }}>
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="e.g. Toronto, Pickering, Whitby"
+        style={inputStyle}
+      />
+      {open && value.trim() && (
+        <div style={{
+          position: 'absolute' as const, top: '100%', left: 0, right: 0,
+          background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
+          borderRadius: 10, zIndex: 999, maxHeight: 200, overflowY: 'auto' as const, marginTop: 4,
+        }}>
+          {loading && <div style={{ padding: '10px 14px', fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Searching...</div>}
+          {!loading && results.length === 0 && <div style={{ padding: '10px 14px', fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>No results found</div>}
+          {!loading && results.map(r => (
+            <div key={r.id} onMouseDown={() => { onSelect(r.displayName, r.id); setOpen(false) }} style={{
+              padding: '10px 14px', fontSize: 14, color: '#fff', cursor: 'pointer',
+              borderBottom: '1px solid rgba(255,255,255,0.05)',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.07)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >{r.displayName}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const inputStyle = {
   width: '100%', background: 'rgba(255,255,255,0.07)',
@@ -168,7 +226,7 @@ export default function SellerForm({ onSubmit, onBack }: Props) {
   const [form, setForm] = useState<SellerFormData>({
     intent: 'sale',
     propertyCategory: 'home',
-    streetNumber: '', streetName: '', city: '',
+    streetNumber: '', streetName: '', city: '', municipalityId: '',
     propertySubtype: 'Detached',
     bedrooms: '3', bathrooms: '2',
     livingAreaRange: '', approximateAge: '',
@@ -208,9 +266,10 @@ export default function SellerForm({ onSubmit, onBack }: Props) {
     />
   )
 
-  const canProceed = form.streetNumber && form.streetName && form.city
+  const canProceed = form.streetNumber && form.streetName && form.city && form.municipalityId
   const canSubmit = canProceed && form.bedrooms && form.bathrooms &&
-    (form.propertyCategory === 'home' ? !!form.propertySubtype : true)
+    (form.propertyCategory === 'home' ? !!form.propertySubtype : true) &&
+    (form.propertyCategory === 'condo' ? !!form.livingAreaRange : true)
 
   // Step 1 — Intent + Category
   if (step === 1) {
@@ -255,7 +314,11 @@ export default function SellerForm({ onSubmit, onBack }: Props) {
           {inp('streetNumber', 'No.')}
           {inp('streetName', 'Street Name')}
         </div>
-        {inp('city', 'City (e.g. Toronto)')}
+        <CitySearch
+          value={form.city}
+          onChange={v => set('city', v)}
+          onSelect={(name, id) => { set('city', name); set('municipalityId', id) }}
+        />
       </div>
 
       {/* Home subtype */}
@@ -291,6 +354,7 @@ export default function SellerForm({ onSubmit, onBack }: Props) {
         onChange={v => set('livingAreaRange', v)}
         options={form.propertyCategory === 'condo' ? SQFT_RANGES_CONDOS : SQFT_RANGES_HOMES}
         placeholder="Select or type range"
+        required={form.propertyCategory === 'condo'}
       />
 
       {/* Approximate Age — combo */}
