@@ -127,7 +127,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           <SectionHeader title="Property Estimate" />
           <SellerEstimateBlock
             estimate={sellerEstimate.estimate}
-            comparables={[]}
+            comparables={sellerEstimate.comparables || []}
             buildingName={sellerEstimate.buildingName}
             geoLevel={sellerEstimate.geoLevel}
             resolvedAddress={sellerEstimate.resolvedAddress}

@@ -9,20 +9,6 @@ import { UnitSpecs } from '@/lib/estimator/types'
 import { HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
 import { createClient } from '@/lib/supabase/client'
 
-function sqftToRange(sqft: number): string {
-  if (sqft < 500) return '0-499'
-  if (sqft < 600) return '500-599'
-  if (sqft < 700) return '600-699'
-  if (sqft < 800) return '700-799'
-  if (sqft < 900) return '800-899'
-  if (sqft < 1000) return '900-999'
-  if (sqft < 1200) return '1000-1199'
-  if (sqft < 1400) return '1200-1399'
-  if (sqft < 1600) return '1400-1599'
-  if (sqft < 1800) return '1600-1799'
-  if (sqft < 2000) return '1800-1999'
-  return '2000+'
-}
 
 async function fetchMediaForComparables(listingKeys: string[]) {
   if (!listingKeys.length) return {}
@@ -64,7 +50,8 @@ interface Props {
     intent: 'sale' | 'lease'
     bedrooms: string
     bathrooms: string
-    sqft: string
+    livingAreaRange: string
+    approximateAge: string
     parking: string
     locker: string
     frontage: string
@@ -88,8 +75,8 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
     try {
       const bedsNum = parseInt(formData.bedrooms) || 2
       const bathsNum = parseInt(formData.bathrooms) || 1
-      const sqftNum = formData.sqft ? parseInt(formData.sqft) : null
       const parkingNum = parseInt(formData.parking) || 0
+      const livingAreaRange = formData.livingAreaRange || undefined
       let result: any = null
 
       if (resolvedData.path === 'condo' && resolvedData.buildingId) {
@@ -98,10 +85,9 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
           buildingSlug: resolvedData.buildingSlug,
           bedrooms: bedsNum,
           bathrooms: bathsNum,
-          livingAreaRange: sqftNum ? sqftToRange(sqftNum) : '700-799',
+          livingAreaRange: livingAreaRange || '700-799',
           parking: parkingNum,
           hasLocker: formData.locker !== 'none' && !!formData.locker,
-          exactSqft: sqftNum || undefined,
         }
         result = formData.intent === 'lease'
           ? await estimateRent(specs, false)
@@ -115,7 +101,7 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
           propertySubtype: formData.propertySubtype || 'Detached',
           municipalityId: resolvedData.municipalityId,
           communityId: resolvedData.communityId || null,
-          exactSqft: sqftNum,
+          ...(livingAreaRange && { livingAreaRange }),
           lotWidth: formData.frontage ? parseFloat(formData.frontage) : null,
         }
         result = formData.intent === 'lease'
