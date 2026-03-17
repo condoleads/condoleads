@@ -110,6 +110,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             estimate={sellerEstimate.estimate}
             comparables={sellerEstimate.comparables || []}
             buildingName={sellerEstimate.buildingName}
+            subjectAddress={sellerEstimate.subjectAddress}
             geoLevel={sellerEstimate.geoLevel}
             resolvedAddress={sellerEstimate.resolvedAddress}
             intent={sellerEstimate.intent || 'sale'}
