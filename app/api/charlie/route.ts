@@ -157,7 +157,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   if (name === 'get_market_analytics') {
     const { data } = await supabase
       .from('geo_analytics')
-      .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, median_lease_price, gross_rental_yield_pct, psf_trend_pct, dom_trend_pct')
+      .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, median_lease_price, gross_rental_yield_pct, psf_trend_pct, dom_trend_pct, bedroom_breakdown, subtype_breakdown, price_trend_monthly')
       .eq('geo_type', input.geoType)
       .eq('geo_id', input.geoId)
       .eq('track', input.track)
