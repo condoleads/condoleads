@@ -29,6 +29,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
   // Fetch community buildings when condo geo resolved
   const prevGeoId = useRef('')
   useEffect(() => {
+    console.log('[buildings useEffect] geoContext:', state.geoContext)
     const geo = state.geoContext
     if (!geo) return
     if (prevGeoId.current === geo.geoId) return
@@ -150,6 +151,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 <BuyerForm
                   onSubmit={(data) => {
                     setFormMode('none')
+                      if (data.geoId && data.geoType) onSetGeoContext?.(data.geoType, data.geoId, data.area)
                     const type = data.propertyType === 'any' ? 'property' : data.propertyType
                     const budget = data.budgetMax ? ' with budget up to ' + data.budgetMax : ''
                     const beds = data.bedrooms ? ', ' + data.bedrooms + ' bedrooms' : ''
