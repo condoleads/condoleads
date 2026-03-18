@@ -173,13 +173,14 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
     params.set('geoId', input.geoId)
     params.set('tab', input.status === 'for-lease' ? 'for-lease' : 'for-sale')
     params.set('page', '1')
-    params.set('pageSize', String(input.limit || 6))
+    params.set('pageSize', String(input.limit || 10))
     if (input.propertyCategory && input.propertyCategory !== 'all') params.set('propertyCategory', input.propertyCategory)
     if (input.minPrice) params.set('minPrice', String(input.minPrice))
     if (input.maxPrice) params.set('maxPrice', String(input.maxPrice))
     if (input.beds && input.beds > 0) params.set('beds', String(input.beds))
     if (input.baths && input.baths > 0) params.set('baths', String(input.baths))
     if (input.sort) params.set('sort', input.sort)
+      if (input.propertySubtype) params.set('propertySubtype', input.propertySubtype)
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const res = await fetch(`${baseUrl}/api/geo-listings?${params.toString()}`)

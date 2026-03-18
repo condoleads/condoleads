@@ -7,6 +7,7 @@ import SellerEstimateBlock from './SellerEstimateBlock'
 import ComparableCard from './ComparableCard'
 import ActiveListingCard from './ActiveListingCard'
 import PricingRiskBlock from './PricingRiskBlock'
+import BuyerOfferBlock from './BuyerOfferBlock'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -100,6 +101,18 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
               </div>
             )
           })()}
+        </div>
+      )}
+
+      {/* Buyer Offer Intelligence */}
+      {!sellerEstimate && analytics && (
+        <div>
+          <SectionHeader title="Buyer Intelligence" />
+          <BuyerOfferBlock
+            analytics={analytics}
+            propertyType={analytics.track}
+            geoName={geoContext?.geoName}
+          />
         </div>
       )}
 

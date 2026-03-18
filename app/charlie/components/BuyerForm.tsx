@@ -24,7 +24,7 @@ interface Props {
 }
 
 const CONDO_SUBTYPES = ['Condo Apt', 'Condo Townhouse']
-const HOME_SUBTYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link']
+const HOME_SUBTYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Vacant Land']
 
 const SQFT_RANGES_HOMES = [
   '< 700','700-1100','1100-1500','1500-2000',

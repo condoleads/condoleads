@@ -38,7 +38,8 @@ export const CHARLIE_TOOLS = [
         baths: { type: 'number' },
         propertyCategory: { type: 'string', enum: ['condo', 'homes', 'all'] },
         status: { type: 'string', enum: ['for-sale', 'for-lease', 'sold'] },
-        limit: { type: 'number', description: 'Default 6' },
+        propertySubtype: { type: 'string', description: 'e.g. Detached, Semi-Detached, Condo Apt, Condo Townhouse, Att/Row/Townhouse, Vacant Land' },
+        limit: { type: 'number', description: 'Default 10' },
         sort: { type: 'string', enum: ['price_asc', 'price_desc', 'newest', 'default'], description: 'Sort order. Use price_asc for lowest priced.' }
       },
       required: ['geoType', 'geoId']
