@@ -27,16 +27,17 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
   const [sellerFormData, setSellerFormData] = useState<any>(null)
 
   // Fetch community buildings when condo geo resolved
-  const prevGeoId = require('react').useRef('')
-  require('react').useEffect(() => {
+  const prevGeoId = useRef('')
+  useEffect(() => {
     const geo = state.geoContext
-    if (!geo || geo.geoType !== 'community') return
+    if (!geo) return
     if (prevGeoId.current === geo.geoId) return
     prevGeoId.current = geo.geoId
+    console.log('[buildings] fetching for geoId:', geo.geoId, 'geoType:', geo.geoType)
     fetch('/api/charlie/community-buildings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ communityId: geo.geoId }),
+      body: JSON.stringify({ communityId: geo.geoId, geoType: geo.geoType }),
     }).then(r => r.json()).then(d => {
       if (d.success) setCommunityBuildings({ affordable: d.affordable, premium: d.premium })
     }).catch(console.error)

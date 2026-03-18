@@ -4,11 +4,25 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
-  const { communityId } = await req.json()
+  const { communityId, geoType } = await req.json()
 
   if (!communityId) return NextResponse.json({ success: false, affordable: [], premium: [] })
 
   try {
+    let targetCommunityId = communityId
+
+    // If municipality level, find the most active community within it
+    if (geoType === 'municipality') {
+      const { data: comm } = await supabase
+        .from('communities')
+        .select('id')
+        .eq('municipality_id', communityId)
+        .limit(1)
+        .single()
+      if (comm) targetCommunityId = comm.id
+      else return NextResponse.json({ success: true, affordable: [], premium: [] })
+    }
+
     const { data, error } = await supabase
       .from('geo_analytics')
       .select(`
@@ -21,9 +35,8 @@ export async function POST(req: NextRequest) {
       .eq('geo_type', 'building')
       .eq('track', 'condo')
       .eq('period_type', 'rolling_12mo')
-      .eq('buildings.community_id', communityId)
+      .eq('buildings.community_id', targetCommunityId)
       .not('median_psf', 'is', null)
-      .gt('active_count', 0)
       .order('median_psf', { ascending: true })
       .limit(20)
 
