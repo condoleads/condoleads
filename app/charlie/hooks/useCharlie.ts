@@ -80,6 +80,11 @@ export function useCharlie() {
   const setActivePanel = useCallback((panel: 'chat' | 'results') => {
     setState(s => ({ ...s, activePanel: panel }))
   }, [])
+  const setGeoContext = useCallback((geoType: string, geoId: string, geoName: string) => {
+    geoContextRef.current = { geoType, geoId, geoName }
+    setState(s => ({ ...s, geoContext: { geoType, geoId, geoName } }))
+  }, [])
+
   const setSellerEstimate = useCallback((data: any) => {
     setState(s => ({ 
       ...s, 
@@ -219,5 +224,5 @@ export function useCharlie() {
     }
   }
 
-  return { state, open, close, sendMessage, setActivePanel, setSellerEstimate }
+  return { state, open, close, sendMessage, setActivePanel, setSellerEstimate, setGeoContext }
 }

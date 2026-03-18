@@ -16,9 +16,10 @@ interface Props {
   agent?: any
   onSendPlan?: () => void
   onSellerEstimate?: (data: any) => void
+  onSetGeoContext?: (geoType: string, geoId: string, geoName: string) => void
 }
 
-export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan, onSellerEstimate }: Props) {
+export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan, onSellerEstimate, onSetGeoContext }: Props) {
   const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>('none')
   const [resolvedSeller, setResolvedSeller] = useState<any>(null)
