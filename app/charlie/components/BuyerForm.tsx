@@ -11,7 +11,10 @@ export interface BuyerFormData {
   budgetMin: string
   budgetMax: string
   propertyType: 'condo' | 'homes' | 'any'
+  propertySubtype: string
   bedrooms: string
+  livingAreaRange: string
+  approximateAge: string
   timeline: string
 }
 
@@ -20,6 +23,20 @@ interface Props {
   onBack: () => void
 }
 
+const CONDO_SUBTYPES = ['Condo Apt', 'Condo Townhouse']
+const HOME_SUBTYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link']
+
+const SQFT_RANGES_HOMES = [
+  '< 700','700-1100','1100-1500','1500-2000',
+  '2000-2500','2500-3000','3000-3500','3500-5000','5000 +',
+]
+const SQFT_RANGES_CONDOS = [
+  '0-499','500-599','600-699','700-799','800-899','900-999',
+  '1000-1199','1200-1399','1400-1599','1600-1799','1800-1999',
+  '2000-2249','2250-2499','2500-2749','2750-2999',
+  '3000-3249','3250-3499','3500-3749','3750-3999','5000 +',
+]
+const AGE_OPTIONS = ['New','0-5 years','6-10 years','11-20 years','21-30 years','30+ years']
 const BUDGETS_BUY = ['$300K','$400K','$500K','$600K','$700K','$800K','$900K','$1M','$1.25M','$1.5M','$2M','$2.5M','$3M+']
 const BUDGETS_LEASE = ['$1,500','$2,000','$2,500','$3,000','$3,500','$4,000','$5,000','$6,000','$7,500','$10,000+']
 const TIMELINES = ['ASAP','1-3 months','3-6 months','6-12 months','Just exploring']
@@ -29,6 +46,62 @@ const inputStyle = {
   border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10,
   padding: '11px 14px', color: '#fff', fontSize: 14, outline: 'none',
   boxSizing: 'border-box' as const,
+}
+
+function ComboField({ label, value, onChange, options, placeholder }: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  options: string[]
+  placeholder: string
+}) {
+  const [mode, setMode] = useState<'select' | 'type'>('select')
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {mode === 'select' ? (
+          <div style={{ flex: 1, position: 'relative' as const }}>
+            <div onClick={() => setOpen(o => !o)} style={{
+              ...inputStyle, cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' as const,
+            }}>
+              <span style={{ color: value ? '#fff' : 'rgba(255,255,255,0.3)' }}>{value || placeholder}</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>▾</span>
+            </div>
+            {open && (
+              <div style={{
+                position: 'absolute' as const, top: '100%', left: 0, right: 0,
+                background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 10, zIndex: 999, maxHeight: 200, overflowY: 'auto' as const, marginTop: 4,
+              }}>
+                {options.map(o => (
+                  <div key={o} onClick={() => { onChange(o); setOpen(false) }} style={{
+                    padding: '10px 14px', fontSize: 14,
+                    color: value === o ? '#10b981' : '#fff',
+                    background: value === o ? 'rgba(16,185,129,0.1)' : 'transparent',
+                    cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.07)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = value === o ? 'rgba(16,185,129,0.1)' : 'transparent')}
+                  >{o}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <input type="text" value={value} onChange={e => onChange(e.target.value)}
+            placeholder={placeholder} style={{ ...inputStyle, flex: 1 }} />
+        )}
+        <button onClick={() => { setMode(m => m === 'select' ? 'type' : 'select'); onChange(''); setOpen(false) }}
+          style={{
+            padding: '0 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.4)',
+            fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0,
+          }}>{mode === 'select' ? '✎ Type' : '▾ List'}</button>
+      </div>
+    </div>
+  )
 }
 
 function AreaSearch({ value, onChange, onSelect }: {
@@ -149,7 +222,8 @@ function BudgetSelect({ value, onChange, options, placeholder }: {
 export default function BuyerForm({ onSubmit, onBack }: Props) {
   const [form, setForm] = useState<BuyerFormData>({
     intent: 'buy', area: '', geoType: '', geoId: '', geoSlug: '',
-    budgetMin: '', budgetMax: '', propertyType: 'any', bedrooms: '', timeline: '3-6 months'
+    budgetMin: '', budgetMax: '', propertyType: 'any', propertySubtype: '',
+    bedrooms: '', livingAreaRange: '', approximateAge: '', timeline: '3-6 months'
   })
 
   const set = (k: keyof BuyerFormData, v: string) => setForm(f => ({ ...f, [k]: v }))
@@ -213,11 +287,52 @@ export default function BuyerForm({ onSubmit, onBack }: Props) {
       <div>
         {lbl('Property Type')}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
-          {chip('Any', form.propertyType === 'any', () => set('propertyType', 'any'))}
-          {chip('Condo', form.propertyType === 'condo', () => set('propertyType', 'condo'))}
-          {chip('House', form.propertyType === 'homes', () => set('propertyType', 'homes'))}
+          {chip('Any', form.propertyType === 'any', () => { set('propertyType', 'any'); set('propertySubtype', '') })}
+          {chip('Condo', form.propertyType === 'condo', () => { set('propertyType', 'condo'); set('propertySubtype', '') })}
+          {chip('House', form.propertyType === 'homes', () => { set('propertyType', 'homes'); set('propertySubtype', '') })}
         </div>
       </div>
+
+      {/* Property Subtype */}
+      {form.propertyType !== 'any' && (
+        <div>
+          {lbl('Property Subtype')}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+            {chip('Any', form.propertySubtype === '', () => set('propertySubtype', ''))}
+            {(form.propertyType === 'condo' ? CONDO_SUBTYPES : HOME_SUBTYPES).map(t =>
+              chip(t, form.propertySubtype === t, () => set('propertySubtype', t))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Sqft Range - optional */}
+      {form.propertyType !== 'any' && (
+        <div>
+          {lbl('Square Footage')}
+          <ComboField
+            label=""
+            value={form.livingAreaRange}
+            onChange={v => set('livingAreaRange', v)}
+            options={form.propertyType === 'condo' ? SQFT_RANGES_CONDOS : SQFT_RANGES_HOMES}
+            placeholder="Any size"
+          />
+        </div>
+      )}
+
+      {/* Approximate Age - optional */}
+      {form.propertyType !== 'any' && (
+        <div>
+          {lbl('Approximate Age')}
+          <ComboField
+            label=""
+            value={form.approximateAge}
+            onChange={v => set('approximateAge', v)}
+            options={AGE_OPTIONS}
+            placeholder="Any age"
+          />
+        </div>
+      )}
 
       {/* Bedrooms - optional */}
       <div>
