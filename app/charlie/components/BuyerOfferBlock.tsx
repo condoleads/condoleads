@@ -54,6 +54,7 @@ function TrendChart({ data, dataKey, color, formatter }: { data: any[], dataKey:
 
 export default function BuyerOfferBlock({ analytics, propertyType, geoName }: Props) {
   if (!analytics) return null
+  console.log('[BuyerOfferBlock] track:', analytics.track, 'has trend:', !!analytics.price_trend_monthly, 'trend length:', analytics.price_trend_monthly?.length)
 
   const bedroomBreakdown = analytics.bedroom_breakdown
   const subtypeBreakdown = analytics.subtype_breakdown
@@ -71,11 +72,10 @@ export default function BuyerOfferBlock({ analytics, propertyType, geoName }: Pr
 
   // Build trend data
   let trendData: any[] = []
-  if (isCondo && analytics.price_trend_monthly && typeof analytics.price_trend_monthly === 'object' && !Array.isArray(analytics.price_trend_monthly)) {
-    trendData = Object.entries(analytics.price_trend_monthly)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, val]: [string, any]) => ({ month: month.slice(0, 7), psf: val?.median_psf }))
-      .filter(d => d.psf && !String(d.month).includes('partial'))
+  if (isCondo && Array.isArray(analytics.price_trend_monthly)) {
+    trendData = analytics.price_trend_monthly
+      .filter((d: any) => !d.partial && d.value)
+      .map((d: any) => ({ month: d.month, psf: d.value }))
   }
   if (isHomes && Array.isArray(analytics.price_trend_monthly)) {
     trendData = analytics.price_trend_monthly
