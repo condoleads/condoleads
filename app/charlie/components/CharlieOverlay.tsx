@@ -22,7 +22,24 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
   const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>('none')
   const [resolvedSeller, setResolvedSeller] = useState<any>(null)
+  const [communityBuildings, setCommunityBuildings] = useState<{ affordable: any[], premium: any[] }>({ affordable: [], premium: [] })
   const [sellerFormData, setSellerFormData] = useState<any>(null)
+
+  // Fetch community buildings when condo geo resolved
+  const prevGeoId = require('react').useRef('')
+  require('react').useEffect(() => {
+    const geo = state.geoContext
+    if (!geo || geo.geoType !== 'community') return
+    if (prevGeoId.current === geo.geoId) return
+    prevGeoId.current = geo.geoId
+    fetch('/api/charlie/community-buildings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ communityId: geo.geoId }),
+    }).then(r => r.json()).then(d => {
+      if (d.success) setCommunityBuildings({ affordable: d.affordable, premium: d.premium })
+    }).catch(console.error)
+  }, [state.geoContext?.geoId])
 
   return (
     <div style={{
@@ -203,6 +220,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 onSendPlan={onSendPlan}
                 leadCaptured={state.leadCaptured}
                 sellerEstimate={state.sellerEstimate}
+                communityBuildings={communityBuildings}
               />
             </div>
           )}

@@ -8,6 +8,7 @@ import ComparableCard from './ComparableCard'
 import ActiveListingCard from './ActiveListingCard'
 import PricingRiskBlock from './PricingRiskBlock'
 import BuyerOfferBlock from './BuyerOfferBlock'
+import BuildingCard from './BuildingCard'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -21,6 +22,7 @@ interface Props {
   onSendPlan?: () => void
   leadCaptured?: boolean
   sellerEstimate?: any | null
+  communityBuildings?: { affordable: any[], premium: any[] }
 }
 
 const fmt = (n: number | null | undefined, prefix = '', suffix = '') =>
@@ -45,7 +47,7 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate }: Props) {
+export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate, communityBuildings }: Props) {
 
 
 
@@ -113,6 +115,28 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             propertyType={analytics.track}
             geoName={geoContext?.geoName}
           />
+        </div>
+      )}
+
+      {/* Community Buildings - condo buyer */}
+      {!sellerEstimate && communityBuildings && (communityBuildings.affordable.length > 0 || communityBuildings.premium.length > 0) && (
+        <div>
+          {communityBuildings.affordable.length > 0 && (
+            <>
+              <SectionHeader title={`Most Affordable Buildings · ${communityBuildings.affordable.length} found`} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {communityBuildings.affordable.map((b, i) => <BuildingCard key={i} building={b} />)}
+              </div>
+            </>
+          )}
+          {communityBuildings.premium.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <SectionHeader title={`Premium Buildings · ${communityBuildings.premium.length} found`} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {communityBuildings.premium.map((b, i) => <BuildingCard key={i} building={b} />)}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
