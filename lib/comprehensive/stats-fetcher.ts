@@ -1,258 +1,167 @@
 import { createClient } from '@/lib/supabase/server';
 import type { ResolvedAccess, MarketStats, AreaCard } from './types';
 
-/**
- * Fetch market stats scoped to agent's geographic access.
- * If isAllMLS, no geo filter applied (full database).
- */
+const CONDO_SUBTYPES = [
+  'Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
+  'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment'
+];
+const HOMES_SUBTYPES = [
+  'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
+  'Duplex', 'Triplex', 'Fourplex', 'Multiplex'
+];
+// Note: Supabase column is 'property_subtype' not 'property_sub_type'
+
 export async function fetchMarketStats(access: ResolvedAccess): Promise<MarketStats> {
   const supabase = createClient();
-  // Build base query conditions
-  const geoFilter = access.isAllMLS ? null : access.communityIds;
+  const geoIds = access.isAllMLS ? null : (access.municipalityIds.length > 0 ? access.municipalityIds : null);
 
-  // Active condos
-  let condoQuery = supabase
-    .from('mls_listings')
-    .select('id', { count: 'exact', head: true })
-    .eq('standard_status', 'Active')
-    .in('property_sub_type', [
-      'Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
-      'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment'
-    ]);
-  if (geoFilter && geoFilter.length > 0) {
-    condoQuery = condoQuery.in('community_id', geoFilter);
-  }
-  const { count: activeCondos } = await condoQuery;
+  // Use geo_analytics (pre-computed nightly) — instant, no table scans
+  let analyticsQuery = supabase
+    .from('geo_analytics')
+    .select('geo_id, track, active_count, closed_sale_count_90')
+    .eq('geo_type', 'municipality')
+    .eq('period_type', 'rolling_12mo');
 
-  // Active homes
-  let homesQuery = supabase
-    .from('mls_listings')
-    .select('id', { count: 'exact', head: true })
-    .eq('standard_status', 'Active')
-    .in('property_sub_type', [
-      'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
-      'Duplex', 'Triplex', 'Fourplex', 'Multiplex'
-    ]);
-  if (geoFilter && geoFilter.length > 0) {
-    homesQuery = homesQuery.in('community_id', geoFilter);
+  if (geoIds) analyticsQuery = analyticsQuery.in('geo_id', geoIds);
+
+  const [{ data: analyticsRows }, { data: buildingData }] = await Promise.all([
+    analyticsQuery.limit(1000),
+    geoIds
+      ? supabase.from('communities').select('id').in('municipality_id', geoIds).limit(10000)
+          .then(async ({ data: comms }) => {
+            const cIds = comms?.map(c => c.id) ?? [];
+            return cIds.length > 0
+              ? supabase.from('buildings').select('id').in('community_id', cIds).limit(50000)
+              : { data: [] };
+          })
+      : supabase.from('buildings').select('id', { count: 'exact', head: false }).limit(1),
+  ]);
+
+  let activeCondos = 0, activeHomes = 0, soldThisMonth = 0;
+
+  for (const row of analyticsRows ?? []) {
+    if (row.track === 'condo') {
+      activeCondos += row.active_count ?? 0;
+    }
+    if (row.track === 'homes') {
+      activeHomes += row.active_count ?? 0;
+    }
   }
-  const { count: activeHomes } = await homesQuery;
+
+  soldThisMonth = 0; // removed — mls_listings query times out, geo_analytics has no monthly breakdown yet
+
+  // PSF from analytics
+  const condoRows = analyticsRows?.filter(r => r.track === 'condo' && r.active_count > 0) ?? [];
+  // Get median_psf from geo_analytics for a quick average
+  let psfQuery = supabase
+    .from('geo_analytics')
+    .select('median_psf')
+    .eq('geo_type', 'municipality')
+    .eq('track', 'condo')
+    .eq('period_type', 'rolling_12mo')
+    .not('median_psf', 'is', null)
+    .limit(100);
+  if (geoIds) psfQuery = psfQuery.in('geo_id', geoIds);
+  const { data: psfRows } = await psfQuery;
+  const avgPsf = psfRows?.length
+    ? Math.round(psfRows.reduce((s, r) => s + Number(r.median_psf), 0) / psfRows.length)
+    : 0;
 
   // Buildings count
-  let buildingsQuery = supabase
-    .from('buildings')
-    .select('id', { count: 'exact', head: true });
-  if (geoFilter && geoFilter.length > 0) {
-    buildingsQuery = buildingsQuery.in('community_id', geoFilter);
-  }
-  const { count: buildingsCount } = await buildingsQuery;
+  const { count: buildingsCount } = await (geoIds
+    ? supabase.from('buildings').select('*', { count: 'exact', head: true }).in('community_id',
+        (await supabase.from('communities').select('id').in('municipality_id', geoIds).limit(10000)).data?.map(c => c.id) ?? [])
+    : supabase.from('buildings').select('*', { count: 'exact', head: true }));
 
-  // Average PSF (from active listings that have list_price and living_area)
-  let psfQuery = supabase
-    .from('mls_listings')
-    .select('list_price, living_area')
-    .eq('standard_status', 'Active')
-    .not('list_price', 'is', null)
-    .not('living_area', 'is', null)
-    .gt('living_area', 0)
-    .limit(1000);
-  if (geoFilter && geoFilter.length > 0) {
-    psfQuery = psfQuery.in('community_id', geoFilter);
-  }
-  const { data: psfData } = await psfQuery;
-
-  let avgPsf = 0;
-  if (psfData && psfData.length > 0) {
-    const totalPsf = psfData.reduce((sum, l) => {
-      const psf = Number(l.list_price) / Number(l.living_area);
-      return sum + (isFinite(psf) ? psf : 0);
-    }, 0);
-    avgPsf = Math.round(totalPsf / psfData.length);
-  }
-
-  // Sold this month
-  const firstOfMonth = new Date();
-  firstOfMonth.setDate(1);
-  firstOfMonth.setHours(0, 0, 0, 0);
-
-  let soldQuery = supabase
-    .from('mls_listings')
-    .select('id', { count: 'exact', head: true })
-    .eq('standard_status', 'Closed')
-    .eq('transaction_type', 'For Sale')
-    .gte('close_date', firstOfMonth.toISOString());
-  if (geoFilter && geoFilter.length > 0) {
-    soldQuery = soldQuery.in('community_id', geoFilter);
-  }
-  const { count: soldThisMonth } = await soldQuery;
-
-  // Leased this month
-  let leasedQuery = supabase
-    .from('mls_listings')
-    .select('id', { count: 'exact', head: true })
-    .eq('standard_status', 'Closed')
-    .eq('transaction_type', 'For Lease')
-    .gte('close_date', firstOfMonth.toISOString());
-  if (geoFilter && geoFilter.length > 0) {
-    leasedQuery = leasedQuery.in('community_id', geoFilter);
-  }
-  const { count: leasedThisMonth } = await leasedQuery;
-
-  // Total listings
-  let totalQuery = supabase
-    .from('mls_listings')
-    .select('id', { count: 'exact', head: true });
-  if (geoFilter && geoFilter.length > 0) {
-    totalQuery = totalQuery.in('community_id', geoFilter);
-  }
-  const { count: totalListings } = await totalQuery;
-
+  console.log('[fetchMarketStats] results:', { activeCondos, activeHomes, buildingsCount, soldThisMonth, avgPsf });
   return {
-    activeCondos: activeCondos ?? 0,
-    activeHomes: activeHomes ?? 0,
+    activeCondos,
+    activeHomes,
     buildingsCount: buildingsCount ?? 0,
     avgPsf,
-    soldThisMonth: soldThisMonth ?? 0,
-    leasedThisMonth: leasedThisMonth ?? 0,
-    totalListings: totalListings ?? 0,
+    soldThisMonth,
+    leasedThisMonth: 0,
+    totalListings: 0,
   };
 }
 
-/**
- * Fetch top areas/municipalities ranked by listing activity.
- * Returns cards for the NeighborhoodExplorer section.
- */
-export async function fetchTopAreas(access: ResolvedAccess, limit: number = 6): Promise<AreaCard[]> {
+export async function fetchTopAreas(access: ResolvedAccess, limit = 6): Promise<AreaCard[]> {
   const supabase = createClient();
-  // If ALL MLS  show top municipalities by activity
-  // If specific geo  show the assigned municipalities/communities
 
-  if (access.isAllMLS) {
-    // Get municipalities with most active listings
-    const { data } = await supabase
-      .from('municipalities')
-      .select(`
-        id, name, slug,
-        area:treb_areas!inner(id, name, slug)
-      `)
-      .limit(200);
+  // Use pre-computed geo_analytics for fast municipality counts
+  // This avoids scanning mls_listings entirely
+  let analyticsQuery = supabase
+    .from('geo_analytics')
+    .select('geo_id, track, active_count')
+    .eq('geo_type', 'municipality')
+    .eq('period_type', 'rolling_12mo')
+    .not('active_count', 'is', null)
+    .gt('active_count', 0)
+    .limit(1000);
 
-    if (!data) return [];
-
-    // Count active listings per municipality
-    const cards: AreaCard[] = [];
-    for (const muni of data.slice(0, 30)) {
-      const { count: condoCount } = await supabase
-        .from('mls_listings')
-        .select('id', { count: 'exact', head: true })
-        .eq('municipality_id', muni.id)
-        .eq('standard_status', 'Active')
-        .in('property_sub_type', [
-          'Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
-          'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment'
-        ]);
-
-      const { count: homeCount } = await supabase
-        .from('mls_listings')
-        .select('id', { count: 'exact', head: true })
-        .eq('municipality_id', muni.id)
-        .eq('standard_status', 'Active')
-        .in('property_sub_type', [
-          'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
-          'Duplex', 'Triplex', 'Fourplex', 'Multiplex'
-        ]);
-
-      const { count: buildingCount } = await supabase
-        .from('buildings')
-        .select('id', { count: 'exact', head: true })
-        .in('community_id', 
-          (await supabase
-            .from('communities')
-            .select('id')
-            .eq('municipality_id', muni.id)
-          ).data?.map(c => c.id) ?? []
-        );
-
-      const total = (condoCount ?? 0) + (homeCount ?? 0);
-      if (total > 0) {
-        cards.push({
-          id: muni.id,
-          name: muni.name,
-          slug: muni.slug,
-          type: 'municipality',
-          condoCount: condoCount ?? 0,
-          homeCount: homeCount ?? 0,
-          buildingCount: buildingCount ?? 0,
-          avgPsf: 0, // TODO: calculate per municipality
-          trend: '+0.0%', // TODO: calculate from historical data
-        });
-      }
-    }
-
-    // Sort by total listings descending, take top N
-    return cards
-      .sort((a, b) => (b.condoCount + b.homeCount) - (a.condoCount + a.homeCount))
-      .slice(0, limit);
+  if (!access.isAllMLS && access.municipalityIds.length > 0) {
+    analyticsQuery = analyticsQuery.in('geo_id', access.municipalityIds);
   }
 
-  // Specific geography  show assigned municipalities
-  const cards: AreaCard[] = [];
-  for (const muniId of access.municipalityIds) {
-    const { data: muni } = await supabase
-      .from('municipalities')
-      .select('id, name, slug')
-      .eq('id', muniId)
-      .single();
+  const [{ data: analyticsRows }, { data: munis }] = await Promise.all([
+    analyticsQuery,
+    supabase.from('municipalities').select('id, name, slug').limit(500),
+  ]);
 
-    if (!muni) continue;
+  if (!analyticsRows?.length || !munis?.length) return [];
 
-    const { count: condoCount } = await supabase
-      .from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .eq('municipality_id', muniId)
-      .eq('standard_status', 'Active')
-      .in('property_sub_type', [
-        'Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
-        'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment'
-      ]);
+  const muniMap = new Map(munis.map(m => [m.id, m]));
 
-    const { count: homeCount } = await supabase
-      .from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .eq('municipality_id', muniId)
-      .eq('standard_status', 'Active')
-      .in('property_sub_type', [
-        'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
-        'Duplex', 'Triplex', 'Fourplex', 'Multiplex'
-      ]);
+  // Aggregate counts per municipality
+  const condoMap = new Map<string, number>();
+  const homeMap = new Map<string, number>();
 
-    const muniCommunities = access.communityIds.length > 0
-      ? access.communityIds
-      : (await supabase
-          .from('communities')
-          .select('id')
-          .eq('municipality_id', muniId)
-        ).data?.map(c => c.id) ?? [];
-
-    const { count: buildingCount } = await supabase
-      .from('buildings')
-      .select('id', { count: 'exact', head: true })
-      .in('community_id', muniCommunities);
-
-    cards.push({
-      id: muni.id,
-      name: muni.name,
-      slug: muni.slug,
-      type: 'municipality',
-      condoCount: condoCount ?? 0,
-      homeCount: homeCount ?? 0,
-      buildingCount: buildingCount ?? 0,
-      avgPsf: 0,
-      trend: '+0.0%',
-    });
+  for (const row of analyticsRows) {
+    if (row.track === 'condo') condoMap.set(row.geo_id, (condoMap.get(row.geo_id) ?? 0) + (row.active_count ?? 0));
+    if (row.track === 'homes') homeMap.set(row.geo_id, (homeMap.get(row.geo_id) ?? 0) + (row.active_count ?? 0));
   }
 
-  return cards
-    .sort((a, b) => (b.condoCount + b.homeCount) - (a.condoCount + a.homeCount))
-    .slice(0, limit);
+  // Get building counts in one query
+  const muniIds = [...new Set([...condoMap.keys(), ...homeMap.keys()])];
+  const { data: communityRows } = await supabase
+    .from('communities')
+    .select('id, municipality_id')
+    .in('municipality_id', muniIds)
+    .limit(10000);
+
+  const communityIds = communityRows?.map(c => c.id) ?? [];
+  const communityToMuni = new Map(communityRows?.map(c => [c.id, c.municipality_id]) ?? []);
+
+  const { data: bldgRows } = communityIds.length > 0
+    ? await supabase.from('buildings').select('community_id').in('community_id', communityIds).limit(50000)
+    : { data: [] };
+
+  const buildingMap = new Map<string, number>();
+  bldgRows?.forEach((r: any) => {
+    const muniId = communityToMuni.get(r.community_id);
+    if (muniId) buildingMap.set(muniId, (buildingMap.get(muniId) ?? 0) + 1);
+  });
+
+  const cards: AreaCard[] = muniIds
+    .map(id => {
+      const muni = muniMap.get(id);
+      if (!muni) return null;
+      return {
+        id: muni.id,
+        name: muni.name,
+        slug: muni.slug,
+        type: 'municipality' as const,
+        condoCount: condoMap.get(id) ?? 0,
+        homeCount: homeMap.get(id) ?? 0,
+        buildingCount: buildingMap.get(id) ?? 0,
+        avgPsf: 0,
+        trend: '+0.0%',
+      };
+    })
+    .filter(Boolean)
+    .filter((c: any) => c.condoCount + c.homeCount > 0)
+    .sort((a: any, b: any) => (b.condoCount + b.homeCount) - (a.condoCount + a.homeCount))
+    .slice(0, limit) as AreaCard[];
+
+  return cards;
 }

@@ -6,6 +6,7 @@ import { headers } from 'next/headers'
 import PropertyPageClient from './PropertyPageClient'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import { getListingInvestmentData } from '@/lib/market/get-listing-investment-data'
+import WalliamCTA from '@/components/WalliamCTA'
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const headersList = headers()
@@ -372,6 +373,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         />
     </main>
     {/* AI Chat Widget */}
+    <WalliamCTA />
     <ChatWidgetWrapper
       agent={{ 
         id: agent.id, 

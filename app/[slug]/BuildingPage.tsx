@@ -114,6 +114,7 @@ import Breadcrumb from '@/components/Breadcrumb'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import { createClient, createServerClient } from '@/lib/supabase/server'
 import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
+import WalliamCTA from '@/components/WalliamCTA'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const headersList = headers()
@@ -580,6 +581,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         </div>
       </div>
     </div>
+      <WalliamCTA context={building.building_name} />
     {agent && <MobileContactBar 
       agent={agent} 
       buildingId={building.id} 

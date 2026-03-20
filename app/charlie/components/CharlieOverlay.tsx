@@ -21,17 +21,26 @@ interface Props {
 
 export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan, onSellerEstimate, onSetGeoContext }: Props) {
   const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate
-  const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>('none')
+  const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>(
+  state.initialForm === 'buyer' ? 'buyer' : state.initialForm === 'seller' ? 'seller' : 'none'
+)
   const [resolvedSeller, setResolvedSeller] = useState<any>(null)
   const [communityBuildings, setCommunityBuildings] = useState<{ affordable: any[], premium: any[] }>({ affordable: [], premium: [] })
   const [sellerFormData, setSellerFormData] = useState<any>(null)
 
-  // Fetch community buildings when condo geo resolved
+  // Fetch community buildings ONLY for condo track
   const prevGeoId = useRef('')
   useEffect(() => {
     console.log('[buildings useEffect] geoContext:', state.geoContext)
     const geo = state.geoContext
     if (!geo) return
+    // Gate: only fetch buildings for condo, not homes
+    if (state.analytics?.track === 'homes') {
+      console.log('[buildings] skipping — homes track')
+      setCommunityBuildings({ affordable: [], premium: [] })
+      prevGeoId.current = '' // reset so condo queries work if user switches
+      return
+    }
     if (prevGeoId.current === geo.geoId) return
     prevGeoId.current = geo.geoId
     console.log('[buildings] fetching for geoId:', geo.geoId, 'geoType:', geo.geoType)
@@ -42,7 +51,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
     }).then(r => r.json()).then(d => {
       if (d.success) setCommunityBuildings({ affordable: d.affordable, premium: d.premium })
     }).catch(console.error)
-  }, [state.geoContext?.geoId])
+  }, [state.geoContext?.geoId, state.analytics?.track])
 
   return (
     <div style={{

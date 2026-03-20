@@ -30,751 +30,593 @@ interface Props {
   access: AccessInfo;
 }
 
-// ============================================================
-// ANIMATED COUNTER
-// ============================================================
-function AnimatedCounter({ end, prefix = '', suffix = '' }: { end: number; prefix?: string; suffix?: string }) {
-  const [count, setCount] = useState(0);
-  const ref = useRef<HTMLSpanElement>(null);
-  const started = useRef(false);
-
-  useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting && !started.current) {
-        started.current = true;
-        const start = performance.now();
-        const duration = 2000;
-        const animate = (now: number) => {
-          const progress = Math.min((now - start) / duration, 1);
-          const eased = 1 - Math.pow(1 - progress, 3);
-          setCount(Math.floor(eased * end));
-          if (progress < 1) requestAnimationFrame(animate);
-        };
-        requestAnimationFrame(animate);
-      }
-    }, { threshold: 0.3 });
-    if (ref.current) obs.observe(ref.current);
-    return () => obs.disconnect();
-  }, [end]);
-
-  return <span ref={ref}>{prefix}{count.toLocaleString()}{suffix}</span>;
+// ── Open Charlie helper ───────────────────────────────────────
+function openCharlie(form?: 'buyer' | 'seller', message?: string) {
+  window.dispatchEvent(new CustomEvent('charlie:open', { detail: { form, message } }));
 }
 
-// ============================================================
-// TYPING PLACEHOLDER
-// ============================================================
+// ── WALLiam Hero Wordmark ─────────────────────────────────────
+function HeroWordmark() {
+  const [revealed, setRevealed] = useState(false);
+  const [wallGlow, setWallGlow] = useState(false);
+
+  useEffect(() => {
+    // Sequence: reveal → WALL glow → settle
+    const t1 = setTimeout(() => setRevealed(true), 300);
+    const t2 = setTimeout(() => setWallGlow(true), 900);
+    const t3 = setTimeout(() => setWallGlow(false), 1400);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, []);
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      opacity: revealed ? 1 : 0,
+      transform: revealed ? 'translateY(0)' : 'translateY(12px)',
+      transition: 'opacity 0.7s ease, transform 0.7s ease',
+      marginBottom: 20,
+    }}>
+      {/* WALL */}
+      <span style={{
+        fontSize: 'clamp(52px, 10vw, 96px)',
+        fontWeight: 900,
+        letterSpacing: '-0.03em',
+        color: wallGlow ? '#ffffff' : '#ffffff',
+        textShadow: wallGlow
+          ? '0 0 40px rgba(245,158,11,0.8), 0 0 80px rgba(245,158,11,0.4)'
+          : '0 0 0px transparent',
+        transition: 'text-shadow 0.3s ease',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        lineHeight: 1,
+      }}>WALL</span>
+
+      {/* ı with heart as dot */}
+      <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'flex-end' }}>
+        {/* Heart replaces the dot of i — positioned at exact dot height */}
+        <span style={{
+          position: 'absolute',
+          top: '8%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          fontSize: 'clamp(12px, 1.8vw, 18px)',
+          color: '#f59e0b',
+          animation: 'walliam-heartbeat 3s ease-in-out infinite',
+          display: 'block',
+          lineHeight: 1,
+        }}>♥</span>
+        {/* dotless i — ı */}
+        <span style={{
+          fontSize: 'clamp(52px, 10vw, 96px)',
+          fontWeight: 200,
+          letterSpacing: '-0.02em',
+          color: 'rgba(255,255,255,0.75)',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          lineHeight: 1,
+        }}>ı</span>
+      </span>
+
+      {/* am */}
+      <span style={{
+        fontSize: 'clamp(52px, 10vw, 96px)',
+        fontWeight: 200,
+        letterSpacing: '-0.02em',
+        color: 'rgba(255,255,255,0.75)',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        lineHeight: 1,
+      }}>am</span>
+    </div>
+  );
+}
+
+// ── Typing placeholder ────────────────────────────────────────
 const SEARCH_EXAMPLES = [
-  '2-bed condo in Burlington under $700K',
-  'What is my townhouse on Elm St worth?',
-  'Best investment areas for condos',
-  'Show me new listings in Mississauga',
-  'Compare Oakville vs Burlington prices',
+  'I want to buy a 2-bed condo in downtown Toronto',
+  'What is my home on Elm St worth?',
+  'Find me detached homes in Whitby under $900K',
+  'Show me investment condos with high rental yield',
+  'I want to sell my condo in Waterfront Communities',
 ];
 
 function TypingPlaceholder() {
+  const [mounted, setMounted] = useState(false);
   const [idx, setIdx] = useState(0);
   const [text, setText] = useState('');
   const [deleting, setDeleting] = useState(false);
 
+  useEffect(() => { setMounted(true); }, []);
+
   useEffect(() => {
+    if (!mounted) return;
     const example = SEARCH_EXAMPLES[idx];
     let timeout: NodeJS.Timeout;
     if (!deleting) {
       if (text.length < example.length) {
-        timeout = setTimeout(() => setText(example.slice(0, text.length + 1)), 50);
+        timeout = setTimeout(() => setText(example.slice(0, text.length + 1)), 48);
       } else {
-        timeout = setTimeout(() => setDeleting(true), 2500);
+        timeout = setTimeout(() => setDeleting(true), 2800);
       }
     } else {
       if (text.length > 0) {
-        timeout = setTimeout(() => setText(text.slice(0, -1)), 25);
+        timeout = setTimeout(() => setText(text.slice(0, -1)), 22);
       } else {
         setDeleting(false);
-        setIdx((i) => (i + 1) % SEARCH_EXAMPLES.length);
+        setIdx(i => (i + 1) % SEARCH_EXAMPLES.length);
       }
     }
     return () => clearTimeout(timeout);
-  }, [text, deleting, idx]);
+  }, [text, deleting, idx, mounted]);
 
-  return <span className="text-gray-400">{text}<span className="animate-pulse">|</span></span>;
-}
-
-// ============================================================
-// AI RESPONSE (inline after search)
-// ============================================================
-function AIResponse({ query, onClose }: { query: string; onClose: () => void }) {
-  const [typing, setTyping] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setTyping(false), 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
+  if (!mounted) return null;
   return (
-    <div className="mt-4 w-full max-w-[680px] rounded-2xl border border-blue-500/20 bg-white/[0.06] p-6 backdrop-blur-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500/20 text-xs font-bold text-blue-400">AI</span>
-          <span className="text-sm font-semibold text-blue-400">AI Advisor</span>
-        </div>
-        <button onClick={onClose} className="border-none bg-transparent text-white/30 cursor-pointer text-lg">&times;</button>
-      </div>
-
-      {typing ? (
-        <div className="text-sm text-white/50">Analyzing your request...</div>
-      ) : (
-        <div>
-          <p className="mb-4 text-sm leading-relaxed text-white/85">
-            Based on current MLS data, I found <strong className="text-blue-400">matching listings</strong> for
-            your search. Let me help you narrow down the best options.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button className="rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2.5 text-sm font-semibold text-white border-none cursor-pointer">
-              View Listings &rarr;
-            </button>
-            <button className="rounded-lg border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm text-white/70 cursor-pointer">
-              Compare Areas
-            </button>
-            <button className="rounded-lg border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm text-white/70 cursor-pointer">
-              Ask Follow-up &rarr;
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+    <span style={{ color: 'rgba(255,255,255,0.3)' }}>
+      {text}<span style={{ animation: 'blink 1s step-end infinite' }}>|</span>
+    </span>
   );
 }
 
-// ============================================================
-// ICON COMPONENTS (avoid emoji encoding issues)
-// ============================================================
-function IconDollar() {
-  return <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-sm font-bold text-emerald-400">$</span>;
-}
-function IconBuilding() {
-  return <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/20 text-sm font-bold text-blue-400">B</span>;
-}
-function IconHome() {
-  return <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/20 text-sm font-bold text-green-400">H</span>;
-}
-function IconChart() {
-  return <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-sm font-bold text-amber-400">%</span>;
-}
-function IconUser() {
-  return <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/20 text-sm font-bold text-purple-400">A</span>;
-}
-function IconTarget() {
-  return <span className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10 text-xl font-bold text-blue-400 mx-auto">!</span>;
-}
-function IconReport() {
-  return <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-xl font-bold text-emerald-400 mx-auto">R</span>;
-}
+// ── Animated Tagline ──────────────────────────────────────────
+const TAGLINE_WORDS = ['Hi,', 'I', 'am', 'WALLiam', '—', 'I', 'can', 'create', 'your', 'AI', 'real', 'estate', 'plan'];
 
-const QUICK_CHIPS = [
-  { label: "What's My Home Worth?", iconLabel: '$', journey: 'seller', color: 'emerald' },
-  { label: 'Find Condos', iconLabel: 'C', journey: 'buyer', color: 'blue' },
-  { label: 'Find Homes', iconLabel: 'H', journey: 'buyer', color: 'green' },
-  { label: 'Investment Analysis', iconLabel: '%', journey: 'investor', color: 'amber' },
-  { label: 'Talk to Agent', iconLabel: 'A', journey: 'agent', color: 'purple' },
-];
+function AnimatedTagline({ visible }: { visible: boolean }) {
+  const [wordCount, setWordCount] = useState(0);
+  const [fading, setFading] = useState(false);
 
-// ============================================================
-// HERO SECTION
-// ============================================================
-function HeroSection({ agent, onJourneySelect }: { agent: Agent; onJourneySelect: (j: string) => void }) {
-  const [query, setQuery] = useState('');
-  const [focused, setFocused] = useState(false);
-  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  useEffect(() => {
+    if (!visible) return;
+    let timeout: NodeJS.Timeout;
+
+    const runCycle = () => {
+      setFading(false);
+      setWordCount(0);
+      let i = 0;
+      const typeNext = () => {
+        i++;
+        setWordCount(i);
+        if (i < TAGLINE_WORDS.length) {
+          timeout = setTimeout(typeNext, 90);
+        } else {
+          // Hold for 3s then fade out
+          timeout = setTimeout(() => {
+            setFading(true);
+            // After fade, restart
+            timeout = setTimeout(runCycle, 600);
+          }, 3000);
+        }
+      };
+      timeout = setTimeout(typeNext, 90);
+    };
+
+    runCycle();
+    return () => clearTimeout(timeout);
+  }, [visible]);
 
   return (
-    <section className="relative flex min-h-[85vh] flex-col items-center justify-center overflow-hidden px-5 py-10"
-      style={{ background: 'linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 40%, #0d2137 100%)' }}>
-      {/* Ambient glow */}
-      <div className="pointer-events-none absolute left-1/2 top-[20%] h-[600px] w-[600px] -translate-x-1/2 rounded-full"
-        style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%)' }} />
+    <p style={{ margin: 0, fontSize: 'clamp(16px, 2.5vw, 22px)', lineHeight: 1.6, fontWeight: 300, letterSpacing: '0.01em' }}>
+      {TAGLINE_WORDS.map((word, i) => (
+        <span key={i} style={{
+          opacity: fading ? 0 : i < wordCount ? 1 : 0,
+          transform: i < wordCount && !fading ? 'translateX(0)' : 'translateX(-16px)',
+          transition: fading
+            ? 'opacity 0.4s ease, transform 0.4s ease'
+            : 'opacity 0.35s ease, transform 0.35s ease',
+          display: 'inline-block',
+          marginRight: 6,
+          color: word === 'WALLiam' ? '#f59e0b'
+            : word === 'AI' ? '#3b82f6'
+            : word === 'plan' ? 'rgba(255,255,255,0.95)'
+            : 'rgba(255,255,255,0.55)',
+          fontWeight: word === 'WALLiam' ? 700 : word === 'AI' || word === 'plan' ? 500 : 300,
+        }}>{word}</span>
+      ))}
+    </p>
+  );
+}
+function WalliamSearch() {
+  const [query, setQuery] = useState('');
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-      {/* Subtle branding */}
-      <div className="mb-10 text-center">
-        <div className="mb-2 text-xs uppercase tracking-[3px] text-white/40">
-          Powered by AI &bull; Guided by Experience
-        </div>
-        <h1 className="m-0 text-4xl font-bold leading-tight text-white md:text-5xl">
-          Your Real Estate
-          <span className="block bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent">
-            AI Hub
-          </span>
-        </h1>
-        {agent.site_tagline && (
-          <p className="mt-2 text-sm text-white/40">{agent.site_tagline}</p>
-        )}
-      </div>
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.height = Math.min(inputRef.current.scrollHeight, 120) + 'px';
+    }
+  }, [query]);
 
-      {/* AI Search Bar */}
-      <div className="mb-8 w-full max-w-[680px]">
-        <div className={`flex items-center gap-2 rounded-2xl border p-1 pl-5 transition-all duration-300 ${
-          focused
-            ? 'border-blue-500/50 bg-white/[0.12] shadow-[0_0_30px_rgba(59,130,246,0.15)]'
-            : 'border-white/10 bg-white/[0.07]'
-        }`}>
-          <svg className="h-5 w-5 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <div className="relative flex min-h-[52px] flex-1 items-center">
-            <input
-              type="text"
+  const submit = () => {
+    if (!query.trim()) { openCharlie(); return; }
+    openCharlie(undefined, query.trim());
+    setQuery('');
+  };
+
+  return (
+    <div style={{ width: '100%', maxWidth: 680, margin: '0 auto' }}>
+      <div style={{
+        borderRadius: 20,
+        padding: 2,
+        background: focused
+          ? 'linear-gradient(135deg, #f59e0b, #3b82f6, #10b981)'
+          : 'rgba(255,255,255,0.1)',
+        transition: 'background 0.4s ease',
+        boxShadow: focused ? '0 0 50px rgba(245,158,11,0.15)' : 'none',
+      }}>
+        <div style={{
+          borderRadius: 18,
+          background: 'rgba(8, 15, 26, 0.95)',
+          padding: '14px 18px',
+          display: 'flex', alignItems: 'flex-end', gap: 12,
+        }}>
+          {/* WALLiam mini wordmark */}
+          <span style={{
+            flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2,
+            display: 'inline-flex', alignItems: 'baseline',
+            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            fontWeight: 800, fontSize: 13, letterSpacing: '-0.02em',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          }}>WALL<span style={{ fontWeight: 300, fontSize: 12 }}>iam</span></span>
+
+          {/* Input */}
+          <div style={{ flex: 1, position: 'relative', minHeight: 28 }}>
+            <textarea
+              ref={inputRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={e => setQuery(e.target.value)}
               onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              onKeyDown={(e) => e.key === 'Enter' && query && setAiResponse(query)}
-              className="w-full border-none bg-transparent text-base text-white outline-none placeholder:text-transparent"
-              placeholder="Ask anything about GTA real estate..."
+              onBlur={() => setTimeout(() => setFocused(false), 150)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
+              rows={1}
+              style={{
+                width: '100%', background: 'transparent', border: 'none',
+                outline: 'none', color: '#fff', fontSize: 16, lineHeight: 1.6,
+                resize: 'none', fontFamily: 'inherit', overflow: 'hidden',
+              }}
+              placeholder=""
             />
             {!query && !focused && (
-              <div className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-base">
+              <div style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none', fontSize: 16, lineHeight: 1.6 }}>
                 <TypingPlaceholder />
               </div>
             )}
           </div>
-          <button
-            onClick={() => query && setAiResponse(query)}
-            className="whitespace-nowrap rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-3 text-sm font-semibold text-white border-none cursor-pointer"
-          >
-            Ask AI
+
+          {/* Send */}
+          <button onClick={submit} style={{
+            width: 36, height: 36, borderRadius: '50%', border: 'none',
+            background: query.trim()
+              ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+              : 'rgba(255,255,255,0.08)',
+            cursor: query.trim() ? 'pointer' : 'default',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, transition: 'background 0.3s ease',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke={query.trim() ? '#000' : 'rgba(255,255,255,0.4)'}
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
           </button>
         </div>
       </div>
 
-      {/* Quick Chips */}
-      <div className="flex max-w-[680px] flex-wrap justify-center gap-2.5">
-        {QUICK_CHIPS.map((chip) => (
-          <button
-            key={chip.label}
-            onClick={() => {
-              onJourneySelect(chip.journey);
-              if (chip.journey === 'agent') {
-                document.getElementById('agent-section')?.scrollIntoView({ behavior: 'smooth' });
-              } else {
-                document.getElementById('journey-section')?.scrollIntoView({ behavior: 'smooth' });
-              }
-            }}
-            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white/80 transition-all duration-200 cursor-pointer hover:border-blue-500/30 hover:bg-blue-500/[0.15]"
-          >
-            <span className={`flex h-5 w-5 items-center justify-center rounded-full bg-${chip.color}-500/20 text-[10px] font-bold text-${chip.color}-400`}>{chip.iconLabel}</span>
-            {chip.label}
-          </button>
-        ))}
+      {/* Ask WALLiam label */}
+      <div style={{ textAlign: 'center', marginTop: 10, fontSize: 11, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+        Ask WALLiam anything about GTA real estate
       </div>
-
-      {/* AI Response */}
-      {aiResponse && <AIResponse query={aiResponse} onClose={() => setAiResponse(null)} />}
-    </section>
-  );
-}
-
-// ============================================================
-// MARKET PULSE
-// ============================================================
-function MarketPulse({ stats, access }: { stats: MarketStats; access: AccessInfo }) {
-  const items = [
-    ...(access.condo_access ? [{ label: 'Active Condos', value: stats.activeCondos, color: 'text-blue-400' }] : []),
-    ...(access.homes_access ? [{ label: 'Active Homes', value: stats.activeHomes, color: 'text-emerald-400' }] : []),
-    ...(access.buildings_access ? [{ label: 'Buildings', value: stats.buildingsCount, color: 'text-purple-400' }] : []),
-    { label: 'Avg PSF', value: stats.avgPsf, color: 'text-amber-400', prefix: '$' },
-    { label: 'Sold This Month', value: stats.soldThisMonth, color: 'text-rose-400' },
-  ];
-
-  return (
-    <section className="border-y border-blue-500/15 bg-[#0d1117] py-5">
-      <div className="mx-auto flex max-w-[900px] flex-wrap justify-center gap-12 px-5">
-        {items.map((item) => (
-          <div key={item.label} className="text-center">
-            <div className={`text-2xl font-bold ${item.color}`}>
-              <AnimatedCounter end={item.value} prefix={item.prefix || ''} />
-            </div>
-            <div className="mt-0.5 text-[11px] uppercase tracking-[1.5px] text-white/40">
-              {item.label}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ============================================================
-// BUYER JOURNEY
-// ============================================================
-function BuyerJourney({ topAreas, access }: { topAreas: AreaCard[]; access: AccessInfo }) {
-  const [step, setStep] = useState(0);
-  const [selectedArea, setSelectedArea] = useState<AreaCard | null>(null);
-  const [propertyType, setPropertyType] = useState('');
-
-  const typeOptions = [
-    ...(access.condo_access ? [{ id: 'condos', label: 'Condos', iconLabel: 'C', color: 'blue' }] : []),
-    ...(access.homes_access ? [{ id: 'homes', label: 'Homes', iconLabel: 'H', color: 'green' }] : []),
-    ...((access.condo_access && access.homes_access) ? [{ id: 'all', label: 'Both', iconLabel: 'A', color: 'cyan' }] : []),
-  ];
-
-  return (
-    <div className="mx-auto max-w-[600px] rounded-2xl border border-blue-500/15 bg-blue-500/5 p-8 md:p-10">
-      {/* Progress bar */}
-      <div className="mb-8 flex gap-2">
-        {['Where?', 'What?', 'Results'].map((s, i) => (
-          <div key={s} className={`flex-1 border-b-[3px] pb-2 text-center text-sm font-semibold transition-all duration-300 ${
-            i <= step ? 'border-blue-500 text-blue-400' : 'border-white/10 text-white/30'
-          }`}>{s}</div>
-        ))}
-      </div>
-
-      {step === 0 && (
-        <div>
-          <h3 className="mb-4 text-xl font-semibold text-white">Where are you looking?</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {topAreas.map((area) => (
-              <button
-                key={area.id}
-                onClick={() => { setSelectedArea(area); setStep(1); }}
-                className="cursor-pointer rounded-xl border border-white/[0.08] bg-white/[0.04] p-3.5 text-left transition-all duration-200 hover:border-blue-500/30 hover:bg-blue-500/10"
-              >
-                <div className="text-sm font-semibold text-white">{area.name}</div>
-                <div className="mt-1 text-xs text-white/40">
-                  {(area.condoCount + area.homeCount).toLocaleString()} listings
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {step === 1 && selectedArea && (
-        <div>
-          <h3 className="mb-4 text-xl font-semibold text-white">What type of property?</h3>
-          <div className="flex gap-3">
-            {typeOptions.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => { setPropertyType(t.id); setStep(2); }}
-                className="flex-1 cursor-pointer rounded-xl border border-white/[0.08] bg-white/[0.04] py-6 text-center transition-all duration-200 hover:border-blue-500/30"
-              >
-                <div className={`mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-${t.color}-500/20 text-lg font-bold text-${t.color}-400`}>
-                  {t.iconLabel}
-                </div>
-                <div className="font-semibold text-white">{t.label}</div>
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setStep(0)} className="mt-4 border-none bg-transparent text-sm text-blue-400 cursor-pointer">
-            &larr; Change area
-          </button>
-        </div>
-      )}
-
-      {step === 2 && selectedArea && (
-        <div className="text-center">
-          <IconTarget />
-          <h3 className="mt-4 mb-2 text-xl font-semibold text-white">
-            {propertyType === 'condos' ? 'Condos' : propertyType === 'homes' ? 'Homes' : 'Properties'} in {selectedArea.name}
-          </h3>
-          <p className="mb-6 text-sm text-white/50">
-            {(selectedArea.condoCount + selectedArea.homeCount).toLocaleString()} listings available with live MLS data.
-          </p>
-          <a
-            href={`/${selectedArea.slug}${propertyType !== 'all' ? `?type=${propertyType}` : ''}`}
-            className="inline-block rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-10 py-3.5 text-base font-semibold text-white no-underline"
-          >
-            View Listings &rarr;
-          </a>
-          <div className="mt-3">
-            <button onClick={() => setStep(1)} className="border-none bg-transparent text-sm text-blue-400 cursor-pointer">
-              &larr; Change property type
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-// ============================================================
-// SELLER JOURNEY
-// ============================================================
-function SellerJourney() {
-  const [step, setStep] = useState(0);
-  const [address, setAddress] = useState('');
-  const [propertyType, setPropertyType] = useState<'condo' | 'home'>('condo');
+// ── How WALLiam Works — scroll-animated steps ─────────────────
+function HowItWorks() {
+  const [visible, setVisible] = useState([false, false, false]);
+  const refs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)];
+
+  useEffect(() => {
+    const observers = refs.map((ref, i) => {
+      const obs = new IntersectionObserver(([e]) => {
+        if (e.isIntersecting) {
+          setTimeout(() => setVisible(v => { const n = [...v]; n[i] = true; return n; }), i * 180);
+          obs.disconnect();
+        }
+      }, { threshold: 0.3 });
+      if (ref.current) obs.observe(ref.current);
+      return obs;
+    });
+    return () => observers.forEach(o => o.disconnect());
+  }, []);
+
+  const steps = [
+    {
+      number: '01',
+      icon: '💬',
+      title: 'Tell WALLiam',
+      desc: 'Share what you\'re looking for — buying, selling, budget, area. Takes 30 seconds.',
+      color: '#f59e0b',
+    },
+    {
+      number: '02',
+      icon: '✦',
+      title: 'AI Builds Your Plan',
+      desc: 'WALLiam pulls live MLS data, market analytics, and comparable sales to build your personalized real estate plan.',
+      color: '#3b82f6',
+    },
+    {
+      number: '03',
+      icon: '🤝',
+      title: 'Your Agent Executes',
+      desc: 'Your plan is handed to a local expert. No cold calls, no wasted time — they already know exactly what you need.',
+      color: '#10b981',
+    },
+  ];
 
   return (
-    <div className="mx-auto max-w-[600px] rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-8 md:p-10">
-      <div className="mb-8 flex gap-2">
-        {['What is It Worth?', 'Market Position', 'Digital CMA'].map((s, i) => (
-          <div key={s} className={`flex-1 border-b-[3px] pb-2 text-center text-sm font-semibold transition-all duration-300 ${
-            i <= step ? 'border-emerald-500 text-emerald-400' : 'border-white/10 text-white/30'
-          }`}>{s}</div>
-        ))}
-      </div>
-
-      {step === 0 && (
-        <div>
-          <h3 className="mb-2 text-xl font-semibold text-white">What is your property worth?</h3>
-          <p className="mb-5 text-sm text-white/50">Get an AI-powered estimate in seconds.</p>
-          <div className="mb-4 flex gap-3">
-            {(['condo', 'home'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setPropertyType(t)}
-                className={`flex-1 cursor-pointer rounded-lg border p-3 text-center font-medium text-white transition-all ${
-                  propertyType === t ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-white/10 bg-white/[0.04]'
-                }`}
-              >
-                {t === 'condo' ? 'Condo' : 'Home'}
-              </button>
-            ))}
+    <section style={{
+      padding: '100px 24px',
+      background: 'linear-gradient(180deg, #060b18 0%, #0d1117 100%)',
+    }}>
+      <div style={{ maxWidth: 900, margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 64 }}>
+          <div style={{ fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>
+            How it works
           </div>
-          <input
-            type="text"
-            placeholder="Enter your address..."
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            className="mb-3 w-full rounded-lg border border-white/10 bg-white/5 p-3.5 text-base text-white outline-none"
-          />
-          <button
-            onClick={() => address && setStep(1)}
-            className={`w-full rounded-lg border-none py-3.5 text-base font-semibold transition-all ${
-              address
-                ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white cursor-pointer'
-                : 'bg-white/5 text-white/30 cursor-default'
-            }`}
-          >
-            Get AI Estimate &rarr;
-          </button>
+          <h2 style={{ margin: 0, fontSize: 'clamp(28px, 4vw, 40px)', fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>
+            From conversation to plan<br />
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 300 }}>in minutes, not days</span>
+          </h2>
         </div>
-      )}
 
-      {step === 1 && (
-        <div>
-          <h3 className="mb-4 text-xl font-semibold text-white">Your Market Position</h3>
-          <div className="mb-5 rounded-2xl bg-emerald-500/10 p-6 text-center">
-            <div className="mb-1 text-xs text-white/50">AI Estimated Value</div>
-            <div className="text-4xl font-bold text-emerald-400">$847,000</div>
-            <div className="mt-1 text-sm text-white/40">Based on comparable sales in your area</div>
-          </div>
-          <div className="mb-5 grid grid-cols-3 gap-3">
-            {[
-              { label: 'Avg Days on Market', value: '18' },
-              { label: 'Area Trend', value: '+3.2%' },
-              { label: 'Active Competitors', value: '23' },
-            ].map((s) => (
-              <div key={s.label} className="rounded-lg bg-white/[0.04] p-3 text-center">
-                <div className="text-xl font-bold text-white">{s.value}</div>
-                <div className="mt-0.5 text-[10px] text-white/40">{s.label}</div>
+        {/* Steps — horizontal */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0, position: 'relative' }}>
+          {/* Connecting lines between steps */}
+          <div style={{
+            position: 'absolute', top: 28, left: 'calc(33% - 10px)', right: 'calc(33% - 10px)',
+            height: 2, zIndex: 0,
+            background: visible[0] && visible[1]
+              ? `linear-gradient(90deg, ${steps[0].color}, ${steps[1].color}, ${steps[2].color})`
+              : 'rgba(255,255,255,0.06)',
+            transition: 'background 1s ease',
+          }} />
+
+          {steps.map((step, i) => (
+            <div key={step.number} ref={refs[i]} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              textAlign: 'center', padding: '0 24px', position: 'relative', zIndex: 1,
+              opacity: visible[i] ? 1 : 0,
+              transform: visible[i] ? 'translateY(0)' : 'translateY(24px)',
+              transition: 'all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)',
+            }}>
+              {/* Icon circle */}
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%',
+                background: visible[i] ? `${step.color}20` : 'rgba(255,255,255,0.04)',
+                border: `2px solid ${visible[i] ? step.color : 'rgba(255,255,255,0.08)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 22, marginBottom: 20,
+                transform: visible[i] ? 'scale(1)' : 'scale(0.7)',
+                transition: 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                boxShadow: visible[i] ? `0 0 28px ${step.color}35` : 'none',
+              }}>
+                {step.icon}
               </div>
-            ))}
-          </div>
-          <button
-            onClick={() => setStep(2)}
-            className="w-full cursor-pointer rounded-lg border-none bg-gradient-to-r from-emerald-500 to-emerald-600 py-3.5 text-base font-semibold text-white"
-          >
-            Get Full Digital CMA Report &rarr;
-          </button>
-          <button onClick={() => setStep(0)} className="mx-auto mt-3 block border-none bg-transparent text-sm text-emerald-400 cursor-pointer">
-            &larr; Try different address
-          </button>
-        </div>
-      )}
 
-      {step === 2 && (
-        <div className="text-center">
-          <IconReport />
-          <h3 className="mt-4 mb-2 text-xl font-semibold text-white">Your Digital CMA is Ready</h3>
-          <p className="mx-auto mb-6 max-w-[400px] text-sm text-white/50">
-            Be prepared with data before contacting your realtor. Knowledge is your leverage.
-          </p>
-          <div className="mb-6 rounded-xl bg-white/[0.03] p-5 text-left">
-            {[
-              'AI Price Estimate with confidence range',
-              'Comparable sold properties analyzed',
-              'Area market trends and days on market',
-              'Optimal listing price recommendation',
-              'Monthly cost breakdown for buyers',
-            ].map((item) => (
-              <div key={item} className="flex items-center gap-2 py-1.5 text-sm text-white/70">
-                <span className="text-emerald-400">&#10003;</span> {item}
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', color: step.color, marginBottom: 8, textTransform: 'uppercase' }}>
+                Step {step.number}
               </div>
-            ))}
-          </div>
-          <a href="/estimator" className="inline-block rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-10 py-3.5 text-base font-semibold text-white no-underline">
-            Get Your CMA Report &rarr;
-          </a>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================================
-// JOURNEY SECTION (Buyer/Seller toggle)
-// ============================================================
-function JourneySection({ activeJourney, setActiveJourney, topAreas, access }: {
-  activeJourney: string;
-  setActiveJourney: (j: string) => void;
-  topAreas: AreaCard[];
-  access: AccessInfo;
-}) {
-  return (
-    <section className="px-5 py-20" style={{ background: 'linear-gradient(180deg, #0d1117 0%, #111827 100%)' }}>
-      <div className="mx-auto max-w-[1000px]">
-        <div className="mb-12 text-center">
-          <h2 className="m-0 text-3xl font-bold text-white">What brings you here?</h2>
-          <p className="mt-2 text-sm text-white/50">Two paths. Both lead to confident decisions.</p>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 10 }}>{step.title}</div>
+              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}>{step.desc}</div>
+            </div>
+          ))}
         </div>
 
-        <div className="mb-12 flex flex-col sm:flex-row justify-center gap-4">
-          {[
-            { id: 'buyer', label: "I'm Buying or Renting", iconLabel: 'B', color: 'blue' },
-            { id: 'seller', label: "I'm Selling or Leasing", iconLabel: 'S', color: 'emerald' },
-          ].map((j) => (
+        {/* CTA below steps */}
+        <div style={{ textAlign: 'center', marginTop: 64 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 16, flexWrap: 'wrap' }}>
             <button
-              key={j.id}
-              onClick={() => setActiveJourney(j.id)}
-              className={`flex items-center gap-2.5 rounded-2xl border-2 px-8 py-5 text-base font-semibold transition-all duration-300 cursor-pointer ${
-                activeJourney === j.id
-                  ? j.color === 'blue'
-                    ? 'border-blue-500 bg-blue-500/10 text-white'
-                    : 'border-emerald-500 bg-emerald-500/10 text-white'
-                  : 'border-white/[0.08] bg-white/[0.03] text-white/50'
-              }`}
+              onClick={() => openCharlie('buyer')}
+              style={{
+                padding: '14px 32px', borderRadius: 100, border: 'none',
+                background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
+                color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'inherit',
+                boxShadow: '0 8px 32px rgba(59,130,246,0.3)',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'; }}
             >
-              <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-                activeJourney === j.id
-                  ? j.color === 'blue' ? 'bg-blue-500/30 text-blue-300' : 'bg-emerald-500/30 text-emerald-300'
-                  : 'bg-white/10 text-white/40'
-              }`}>{j.iconLabel}</span>
-              {j.label}
+              Get My Buyer Plan
             </button>
-          ))}
-        </div>
-
-        {activeJourney === 'buyer' && <BuyerJourney topAreas={topAreas} access={access} />}
-        {activeJourney === 'seller' && <SellerJourney />}
-      </div>
-    </section>
-  );
-}
-
-// ============================================================
-// AI TOOLS SHOWCASE
-// ============================================================
-function AIToolsShowcase() {
-  const [active, setActive] = useState<string | null>(null);
-
-  const tools = [
-    {
-      id: 'estimator', iconLabel: 'E', name: 'AI Estimator',
-      desc: 'Instant property valuation powered by real MLS data',
-      href: '/estimator', color: 'emerald',
-    },
-    {
-      id: 'chat', iconLabel: 'C', name: 'AI Chat Advisor',
-      desc: 'Ask anything - building history, market trends, investment analysis',
-      href: '#', color: 'blue',
-    },
-    {
-      id: 'market', iconLabel: 'M', name: 'Market Analytics',
-      desc: 'PSF trends, area comparisons, investment insights from live data',
-      href: '#', color: 'amber',
-    },
-  ];
-
-  return (
-    <section className="bg-[#111827] px-5 py-20">
-      <div className="mx-auto max-w-[900px]">
-        <div className="mb-12 text-center">
-          <h2 className="m-0 text-2xl font-bold text-white">AI-Powered Tools</h2>
-          <p className="mt-2 text-sm text-white/40">Make decisions with confidence, not assumptions</p>
-        </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {tools.map((tool) => (
-            <a
-              key={tool.id}
-              href={tool.href}
-              className={`block cursor-pointer rounded-2xl border p-6 no-underline transition-all duration-300 ${
-                active === tool.id ? 'border-blue-500/30 bg-blue-500/[0.08]' : 'border-white/[0.06] bg-white/[0.03]'
-              }`}
-              onMouseEnter={() => setActive(tool.id)}
-              onMouseLeave={() => setActive(null)}
+            <button
+              onClick={() => openCharlie('seller')}
+              style={{
+                padding: '14px 32px', borderRadius: 100, border: 'none',
+                background: 'linear-gradient(135deg, #059669, #10b981)',
+                color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'inherit',
+                boxShadow: '0 8px 32px rgba(16,185,129,0.3)',
+                transition: 'transform 0.2s ease',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'; }}
             >
-              <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-${tool.color}-500/20 text-lg font-bold text-${tool.color}-400`}>
-                {tool.iconLabel}
-              </div>
-              <h3 className="m-0 text-base font-semibold text-white">{tool.name}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-white/40">{tool.desc}</p>
-            </a>
-          ))}
+              Get My Seller Plan
+            </button>
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-// ============================================================
-// NEIGHBORHOOD EXPLORER
-// ============================================================
-function NeighborhoodExplorer({ topAreas, access }: { topAreas: AreaCard[]; access: AccessInfo }) {
-  if (topAreas.length === 0) return null;
-
+// ── Footer ────────────────────────────────────────────────────
+function WalliamFooter() {
   return (
-    <section className="px-5 py-20" style={{ background: 'linear-gradient(180deg, #111827 0%, #0d1117 100%)' }}>
-      <div className="mx-auto max-w-[900px]">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h2 className="m-0 text-2xl font-bold text-white">Top Markets by Activity</h2>
-            <p className="mt-1 text-sm text-white/40">Ranked by listing volume - real data, updated daily</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {topAreas.map((area) => (
-            <a
-              key={area.id}
-              href={`/${area.slug}`}
-              className="block cursor-pointer rounded-xl border border-white/[0.06] bg-white/[0.03] p-5 no-underline transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-500/30"
-            >
-              <div className="mb-3 flex items-start justify-between">
-                <h3 className="m-0 text-base font-semibold text-white">{area.name}</h3>
-                {area.trend && area.trend !== '+0.0%' && (
-                  <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${
-                    area.trend.startsWith('+') ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
-                  }`}>{area.trend}</span>
-                )}
-              </div>
-              <div className="flex gap-4">
-                {access.condo_access && (
-                  <div>
-                    <div className="text-lg font-bold text-blue-400">{area.condoCount.toLocaleString()}</div>
-                    <div className="text-[10px] text-white/30">Condos</div>
-                  </div>
-                )}
-                {access.homes_access && (
-                  <div>
-                    <div className="text-lg font-bold text-emerald-400">{area.homeCount.toLocaleString()}</div>
-                    <div className="text-[10px] text-white/30">Homes</div>
-                  </div>
-                )}
-                {access.buildings_access && (
-                  <div>
-                    <div className="text-lg font-bold text-purple-400">{area.buildingCount.toLocaleString()}</div>
-                    <div className="text-[10px] text-white/30">Buildings</div>
-                  </div>
-                )}
-              </div>
-            </a>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ============================================================
-// AGENT SECTION
-// ============================================================
-function AgentSection({ agent }: { agent: Agent }) {
-  return (
-    <section id="agent-section" className="border-t border-white/5 bg-[#0d1117] px-5 py-20">
-      <div className="mx-auto max-w-[700px] text-center">
-        <div className="mb-4 text-[11px] uppercase tracking-[2px] text-white/30">
-          Your Expert at the End of the Journey
-        </div>
-        <h2 className="m-0 mb-2 text-3xl font-bold text-white">
-          Work with {agent.full_name}
-        </h2>
-        {agent.title && <p className="m-0 text-sm text-white/50">{agent.title}</p>}
-        {agent.brokerage_name && <p className="m-0 mt-1 text-xs text-white/30">{agent.brokerage_name}</p>}
-        {agent.bio && (
-          <p className="mx-auto mt-4 max-w-[500px] text-sm leading-relaxed text-white/50">{agent.bio}</p>
-        )}
-        <div className="mt-8 flex justify-center gap-3">
-          <a href={`mailto:${agent.email}`}
-            className="inline-block rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-8 py-3.5 text-base font-semibold text-white no-underline">
-            Schedule Consultation
-          </a>
-          {agent.phone && (
-            <a href={`tel:${agent.phone}`}
-              className="inline-block rounded-xl border border-white/15 bg-white/5 px-8 py-3.5 text-base font-medium text-white no-underline">
-              Call Now
-            </a>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ============================================================
-// FOOTER
-// ============================================================
-function ComprehensiveFooter({ topAreas, access }: { topAreas: AreaCard[]; access: AccessInfo }) {
-  return (
-    <footer className="border-t border-white/5 bg-[#080b12] px-5 pb-8 pt-12">
-      <div className="mx-auto max-w-[900px]">
-        <div className="mb-8 grid grid-cols-2 gap-8 md:grid-cols-4">
-          <div>
-            <h4 className="mb-3 text-xs uppercase tracking-[1.5px] text-white/60">Buy</h4>
-            {access.condo_access && <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">Condos for Sale</div>}
-            {access.homes_access && <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">Homes for Sale</div>}
-            <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">New Developments</div>
-          </div>
-          <div>
-            <h4 className="mb-3 text-xs uppercase tracking-[1.5px] text-white/60">Sell</h4>
-            <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">What is My Condo Worth?</div>
-            <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">What is My Home Worth?</div>
-            <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">Digital CMA Report</div>
-          </div>
-          <div>
-            <h4 className="mb-3 text-xs uppercase tracking-[1.5px] text-white/60">Explore</h4>
-            {topAreas.slice(0, 5).map((area) => (
-              <a key={area.id} href={`/${area.slug}`} className="block py-1 text-sm text-white/30 no-underline hover:text-white/60">
-                {area.name}
-              </a>
-            ))}
-          </div>
-          <div>
-            <h4 className="mb-3 text-xs uppercase tracking-[1.5px] text-white/60">Tools</h4>
-            <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">AI Estimator</div>
-            <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">AI Chat Advisor</div>
-            <div className="py-1 text-sm text-white/30 cursor-pointer hover:text-white/60">Market Analytics</div>
-          </div>
-        </div>
-        <div className="border-t border-white/5 pt-4 text-center">
-          <span className="text-xs text-white/20">Powered by CondoLeads AI</span>
-        </div>
+    <footer style={{
+      borderTop: '1px solid rgba(255,255,255,0.06)',
+      background: '#060b18',
+      padding: '32px 24px',
+      textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.1em' }}>
+        © 2026 WALLiam · AI Real Estate Plans · GTA
       </div>
     </footer>
   );
 }
 
-// ============================================================
-// MAIN COMPONENT
-// ============================================================
-export default function HomePageComprehensiveClient({ agent, stats, topAreas, access }: Props) {
-  const [activeJourney, setActiveJourney] = useState('buyer');
+// ── Hero ──────────────────────────────────────────────────────
+function WalliamHero() {
+  const [taglineVisible, setTaglineVisible] = useState(false);
+  const [ctaVisible, setCtaVisible] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setTaglineVisible(true), 1200);
+    const t2 = setTimeout(() => setCtaVisible(true), 1700);
+    const t3 = setTimeout(() => setSearchVisible(true), 2100);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0a1a]">
-      <HeroSection agent={agent} onJourneySelect={setActiveJourney} />
-      <MarketPulse stats={stats} access={access} />
-      <div id="journey-section">
-        <JourneySection
-          activeJourney={activeJourney}
-          setActiveJourney={setActiveJourney}
-          topAreas={topAreas}
-          access={access}
-        />
+    <section style={{
+      minHeight: '100vh',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      padding: '80px 24px 60px',
+      background: 'linear-gradient(160deg, #060b18 0%, #0a1628 50%, #060b18 100%)',
+      position: 'relative', overflow: 'hidden',
+      textAlign: 'center',
+    }}>
+      {/* Ambient glow */}
+      <div style={{
+        position: 'absolute', top: '30%', left: '50%', transform: 'translate(-50%, -50%)',
+        width: 800, height: 800, borderRadius: '50%', pointerEvents: 'none',
+        background: 'radial-gradient(circle, rgba(245,158,11,0.04) 0%, transparent 65%)',
+      }} />
+      <div style={{
+        position: 'absolute', top: '60%', left: '30%',
+        width: 400, height: 400, borderRadius: '50%', pointerEvents: 'none',
+        background: 'radial-gradient(circle, rgba(59,130,246,0.04) 0%, transparent 70%)',
+      }} />
+
+      {/* WALLiam name */}
+      <HeroWordmark />
+
+      {/* Tagline */}
+      <div style={{
+        opacity: taglineVisible ? 1 : 0,
+        transform: taglineVisible ? 'translateY(0)' : 'translateY(10px)',
+        transition: 'opacity 0.5s ease, transform 0.5s ease',
+        marginBottom: 48,
+      }}>
+        <AnimatedTagline visible={taglineVisible} />
       </div>
-      <AIToolsShowcase />
-      <NeighborhoodExplorer topAreas={topAreas} access={access} />
-      <AgentSection agent={agent} />
-      <ComprehensiveFooter topAreas={topAreas} access={access} />
+
+      {/* CTAs */}
+      <div style={{
+        display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center',
+        marginBottom: 48,
+        opacity: ctaVisible ? 1 : 0,
+        transform: ctaVisible ? 'translateY(0)' : 'translateY(12px)',
+        transition: 'opacity 0.6s ease, transform 0.6s ease',
+      }}>
+        <button
+          onClick={() => openCharlie('buyer')}
+          style={{
+            padding: '16px 36px', borderRadius: 100, border: 'none',
+            background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
+            color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+            fontFamily: 'inherit', letterSpacing: '0.01em',
+            boxShadow: '0 8px 40px rgba(59,130,246,0.35)',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-3px)';
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 12px 48px rgba(59,130,246,0.5)';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 40px rgba(59,130,246,0.35)';
+          }}
+        >
+          🏠 Get My Buyer Plan
+        </button>
+
+        <button
+          onClick={() => openCharlie('seller')}
+          style={{
+            padding: '16px 36px', borderRadius: 100, border: 'none',
+            background: 'linear-gradient(135deg, #059669, #10b981)',
+            color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+            fontFamily: 'inherit', letterSpacing: '0.01em',
+            boxShadow: '0 8px 40px rgba(16,185,129,0.35)',
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-3px)';
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 12px 48px rgba(16,185,129,0.5)';
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 40px rgba(16,185,129,0.35)';
+          }}
+        >
+          💰 Get My Seller Plan
+        </button>
+      </div>
+
+      {/* Search */}
+      <div style={{
+        width: '100%',
+        opacity: searchVisible ? 1 : 0,
+        transform: searchVisible ? 'translateY(0)' : 'translateY(12px)',
+        transition: 'opacity 0.6s ease, transform 0.6s ease',
+      }}>
+        <WalliamSearch />
+      </div>
+
+      {/* Scroll hint */}
+      <div style={{
+        position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+        opacity: searchVisible ? 0.4 : 0, transition: 'opacity 0.6s ease',
+        animation: searchVisible ? 'bounce 2s ease-in-out infinite' : 'none',
+      }}>
+        <div style={{ fontSize: 11, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>Scroll</div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      <style>{`
+        @keyframes walliam-heartbeat {
+          0%   { transform: translateX(-50%) scale(1); opacity: 0.9; }
+          10%  { transform: translateX(-50%) scale(1.45); opacity: 1; }
+          20%  { transform: translateX(-50%) scale(1); opacity: 0.9; }
+          30%  { transform: translateX(-50%) scale(1.28); opacity: 1; }
+          45%  { transform: translateX(-50%) scale(1); opacity: 0.9; }
+          100% { transform: translateX(-50%) scale(1); opacity: 0.9; }
+        }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+        @keyframes bounce {
+          0%, 100% { transform: translateX(-50%) translateY(0); }
+          50% { transform: translateX(-50%) translateY(6px); }
+        }
+      `}</style>
+    </section>
+  );
+}
+
+// ── Main Export ───────────────────────────────────────────────
+export default function HomePageComprehensiveClient({ agent, stats, topAreas, access }: Props) {
+  return (
+    <div style={{ minHeight: '100vh', background: '#060b18' }}>
+      <WalliamHero />
+      <HowItWorks />
+      <WalliamFooter />
     </div>
   );
 }

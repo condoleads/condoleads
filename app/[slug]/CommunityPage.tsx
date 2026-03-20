@@ -7,6 +7,7 @@ import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
 import GeoHero from './components/GeoHero'
 import AnalyticsSection from '@/components/analytics/AnalyticsSection'
+import WalliamCTA from '@/components/WalliamCTA'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -168,6 +169,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           parentGeoType="municipality"
           parentGeoId={municipality?.id}
         />
+        <WalliamCTA context={community.name} />
         <GeoSEOContent
           geoName={community.name}
           geoType="community"

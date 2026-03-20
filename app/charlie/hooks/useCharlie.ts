@@ -26,6 +26,7 @@ export interface CharlieState {
   comparables: any[]
   isStreaming: boolean
   isOpen: boolean
+  initialForm: 'buyer' | 'seller' | null
   activePanel: 'chat' | 'results'
   mode: 'search' | 'buyer_funnel' | 'seller_funnel'
   planReady: boolean
@@ -46,6 +47,7 @@ const INITIAL_STATE: CharlieState = {
   comparables: [],
   isStreaming: false,
   isOpen: false,
+  initialForm: null,
   activePanel: 'chat',
   mode: 'search',
   planReady: false,
@@ -65,8 +67,8 @@ export function useCharlie() {
   const messagesRef = useRef<any[]>([])
   const sendMessageRef = useRef<any>(null)
 
-  const open = useCallback((initialMessage?: string) => {
-    setState(s => ({ ...s, isOpen: true }))
+  const open = useCallback((initialMessage?: string, initialForm?: 'buyer' | 'seller') => {
+    setState(s => ({ ...s, isOpen: true, initialForm: initialForm || null }))
     if (initialMessage && messagesRef.current.length === 0 && !greetingSentRef.current) {
       greetingSentRef.current = true
       setTimeout(() => sendMessageRef.current?.(initialMessage), 100)
@@ -80,35 +82,27 @@ export function useCharlie() {
   const setActivePanel = useCallback((panel: 'chat' | 'results') => {
     setState(s => ({ ...s, activePanel: panel }))
   }, [])
+
   const setGeoContext = useCallback((geoType: string, geoId: string, geoName: string) => {
     geoContextRef.current = { geoType, geoId, geoName }
     setState(s => ({ ...s, geoContext: { geoType, geoId, geoName } }))
   }, [])
 
   const setSellerEstimate = useCallback((data: any) => {
-    setState(s => ({ 
-      ...s, 
-      sellerEstimate: data, 
+    setState(s => ({
+      ...s,
+      sellerEstimate: data,
       activePanel: 'results',
       analytics: data.marketAnalytics || s.analytics,
       geoContext: data.analyticsGeoType ? { geoType: data.analyticsGeoType, geoId: data.analyticsGeoId, geoName: data.buildingName || '' } : s.geoContext
     }))
   }, [])
 
-  const sendGreeting = async () => {
-    const greetingMsg: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: '__greeting__',
-    }
-    await sendMessage('Hi Charlie', true)
-  }
-
   const sendMessage = useCallback(async (userText: string, isGreeting = false) => {
     if (!userText.trim() && !isGreeting) return
 
     const userMessage = { role: 'user', content: userText }
-    
+
     if (!isGreeting) {
       const uiMsg: ChatMessage = {
         id: Date.now().toString(),
@@ -120,7 +114,6 @@ export function useCharlie() {
 
     messagesRef.current = [...messagesRef.current, userMessage]
 
-    // Add streaming assistant message placeholder
     const assistantId = (Date.now() + 1).toString()
     setState(s => ({
       ...s,
@@ -145,7 +138,7 @@ export function useCharlie() {
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
       let assistantText = ''
-      let addedAssistant = true // placeholder already added
+      let addedAssistant = true
 
       while (true) {
         const { done, value } = await reader.read()
@@ -205,6 +198,7 @@ export function useCharlie() {
   }, [])
 
   sendMessageRef.current = sendMessage
+
   const handleToolResult = (tool: ToolName, data: any) => {
     if (tool === 'resolve_geo' && data.geoId) {
       geoContextRef.current = { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName }

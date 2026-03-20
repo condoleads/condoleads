@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import HomePropertyPageClient from './HomePropertyPageClient'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
+import WalliamCTA from '@/components/WalliamCTA'
 
 const RESIDENTIAL_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']
 
@@ -278,6 +279,7 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
           area={area}
         />
       </main>
+      <WalliamCTA />
       <ChatWidgetWrapper
         agent={{
           id: agent.id,

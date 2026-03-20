@@ -1,12 +1,28 @@
 ﻿// app/charlie/components/CharlieWidget.tsx
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useCharlie } from '../hooks/useCharlie'
 import CharlieOverlay from './CharlieOverlay'
 
 export default function CharlieWidget() {
   const { state, open, close, sendMessage, setActivePanel, setSellerEstimate, setGeoContext } = useCharlie()
   const [searchInput, setSearchInput] = useState('')
+
+  const [isHomepage, setIsHomepage] = useState(false)
+
+  useEffect(() => {
+    setIsHomepage(window.location.pathname === '/')
+  }, [])
+
+  // Listen for homepage chip/search/form events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { message?: string; form?: 'buyer' | 'seller' } | undefined
+      open(detail?.message, detail?.form)
+    }
+    window.addEventListener('charlie:open', handler)
+    return () => window.removeEventListener('charlie:open', handler)
+  }, [open])
 
   const handleSearch = () => {
     if (!searchInput.trim()) { open(); return }
@@ -17,8 +33,8 @@ export default function CharlieWidget() {
 
   return (
     <>
-      {/* Floating bar */}
-      {!state.isOpen && (
+      {/* Floating bar — hidden on homepage, WALLiam CTAs handle it there */}
+      {!state.isOpen && !isHomepage && (
         <div style={{
           position: 'fixed',
           bottom: 24,
@@ -36,7 +52,6 @@ export default function CharlieWidget() {
           backdropFilter: 'blur(12px)',
           width: 'min(560px, calc(100vw - 32px))',
         }}>
-          {/* Charlie icon */}
           <div style={{
             width: 32, height: 32, borderRadius: '50%',
             background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
@@ -44,25 +59,17 @@ export default function CharlieWidget() {
             flexShrink: 0, fontSize: 14,
             boxShadow: '0 0 12px rgba(59,130,246,0.4)',
           }}>✦</div>
-
-          {/* Search input */}
           <input
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSearch()}
             placeholder="Ask Charlie — buy, sell, or explore..."
             style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: '#fff',
-              fontSize: 14,
+              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              color: '#fff', fontSize: 14,
               fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
             }}
           />
-
-          {/* Ask button */}
           <button onClick={handleSearch} style={{
             background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
             border: 'none', borderRadius: 100,
@@ -70,19 +77,16 @@ export default function CharlieWidget() {
             fontSize: 13, fontWeight: 700, cursor: 'pointer',
             flexShrink: 0, letterSpacing: '0.02em',
           }}>Ask</button>
-
-          {/* Browse button */}
           <button onClick={() => open()} style={{
             background: 'rgba(255,255,255,0.07)',
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 100, padding: '8px 14px',
             color: 'rgba(255,255,255,0.6)', fontSize: 12,
-            fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+            fontWeight: 600, cursor: 'pointer',           flexShrink: 0,
           }}>Browse</button>
         </div>
       )}
 
-      {/* Overlay */}
       {state.isOpen && (
         <CharlieOverlay
           state={state}
