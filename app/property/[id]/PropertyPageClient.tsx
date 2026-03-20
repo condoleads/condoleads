@@ -24,6 +24,7 @@ import Breadcrumb from '@/components/Breadcrumb'
 import PropertySEO from '@/components/property/PropertySEO'
 import InvestmentAnalysis from '@/components/property/InvestmentAnalysis'
 import type { InvestmentData } from '@/lib/market/get-listing-investment-data'
+import WalliamCTA from '@/components/WalliamCTA'
 
 interface PropertyPageClientProps {
   listing: any
@@ -172,8 +173,8 @@ export default function PropertyPageClient({
                     buildingName={building?.building_name || ''}
                     buildingAddress={building?.canonical_address || ''}
                     unitNumber={listing.unit_number || ''}
-                    
                   />
+                  <WalliamCTA context={building?.building_name} />
                   
                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
                     <PropertyEstimateCTA

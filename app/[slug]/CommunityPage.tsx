@@ -169,7 +169,6 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           parentGeoType="municipality"
           parentGeoId={municipality?.id}
         />
-        <WalliamCTA context={community.name} />
         <GeoSEOContent
           geoName={community.name}
           geoType="community"

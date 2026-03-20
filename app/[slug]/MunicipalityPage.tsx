@@ -225,7 +225,6 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
           parentGeoType="area"
           parentGeoId={municipality.area_id}
         />
-        <WalliamCTA context={municipality.name} />
         <GeoSEOContent
           geoName={municipality.name}
           geoType="municipality"

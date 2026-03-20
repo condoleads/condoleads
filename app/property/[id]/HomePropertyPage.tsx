@@ -279,7 +279,6 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
           area={area}
         />
       </main>
-      <WalliamCTA />
       <ChatWidgetWrapper
         agent={{
           id: agent.id,

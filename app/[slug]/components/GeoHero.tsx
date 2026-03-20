@@ -1,5 +1,7 @@
-﻿import GeoStatPill from './GeoStatPill'
+'use client'
+import GeoStatPill from './GeoStatPill'
 import Link from 'next/link'
+import GeoHeroCTA from './GeoHeroCTA'
 
 interface Breadcrumb {
   label: string
@@ -114,6 +116,8 @@ export default function GeoHero({ title, subtitle, breadcrumbs, stats, geoType }
           </p>
         )}
 
+        {/* WALLiam CTA */}
+        <GeoHeroCTA />
         {/* Stat Pills */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '32px', justifyContent: 'center' }}>
           <GeoStatPill value={stats.active} label="Active" />

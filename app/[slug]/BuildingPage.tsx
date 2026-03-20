@@ -581,7 +581,6 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         </div>
       </div>
     </div>
-      <WalliamCTA context={building.building_name} />
     {agent && <MobileContactBar 
       agent={agent} 
       buildingId={building.id} 

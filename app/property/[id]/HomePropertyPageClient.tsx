@@ -21,6 +21,7 @@ import ExitIntentPopup from '@/components/property/ExitIntentPopup'
 import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuyerModal'
 import Breadcrumb from '@/components/Breadcrumb'
 import HomePropertySEO from '@/components/property/HomePropertySEO'
+import WalliamCTA from '@/components/WalliamCTA'
 
 interface HomePropertyPageClientProps {
   listing: any
@@ -166,6 +167,7 @@ export default function HomePropertyPageClient({
                     buildingAddress={listing.unparsed_address || ''}
                     unitNumber=""
                   />
+                  <WalliamCTA context={listing.unparsed_address} />
 
                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
                     <HomePropertyEstimateCTA

@@ -373,7 +373,6 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         />
     </main>
     {/* AI Chat Widget */}
-    <WalliamCTA />
     <ChatWidgetWrapper
       agent={{ 
         id: agent.id, 
