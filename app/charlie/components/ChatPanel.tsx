@@ -9,11 +9,13 @@ interface Props {
   onSend: (msg: string) => void
   onBuyClick?: () => void
   onSellClick?: () => void
+  gateReason?: 'register' | 'vip_required' | null
+  onOpenRegister?: () => void
 }
 
 const QUICK_REPLIES = ['I want to buy', 'I want to sell', 'Just browsing']
 
-export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, onSellClick }: Props) {
+export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, onSellClick, gateReason, onOpenRegister }: Props) {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -21,8 +23,9 @@ export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, o
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  const isGated = gateReason === 'register'
   const handleSend = () => {
-    if (!input.trim() || isStreaming) return
+    if (!input.trim() || isStreaming || isGated) return
     onSend(input.trim())
     setInput('')
   }
@@ -182,6 +185,39 @@ export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, o
         </button>
       </div>
 
+      {/* Gate overlay — blocks input when registration required */}
+      {isGated && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'linear-gradient(to top, #080f1a 60%, transparent)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'flex-end',
+          padding: '24px 20px', gap: 12,
+          zIndex: 10,
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>✦</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 6 }}>
+              Create Your Free Account
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6, marginBottom: 16 }}>
+              Register to unlock your VIP Access Credit and receive your personalized real estate plan
+            </div>
+            <button
+              onClick={onOpenRegister}
+              style={{
+                width: '100%', padding: '13px',
+                background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
+                border: 'none', borderRadius: 12,
+                color: '#fff', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', letterSpacing: '0.02em',
+              }}
+            >
+              Register Free — Get My Plan ✦
+            </button>
+          </div>
+        </div>
+      )}
       <style>{`
         @keyframes charlie-blink {
           0%, 100% { opacity: 1; }
