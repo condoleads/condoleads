@@ -26,9 +26,11 @@ export async function POST(request: NextRequest) {
       area_id,
     } = await request.json()
 
+    console.log("[session] route hit, userId:", userId)
     const supabase = createServiceClient()
 
     // Step 1: Resolve agent via priority chain
+    console.log("[session] calling rpc")
     const { data: resolvedAgentId, error: resolveError } = await supabase
       .rpc('resolve_agent_for_context', {
         p_listing_id: listing_id || null,
@@ -43,6 +45,7 @@ export async function POST(request: NextRequest) {
       console.error('[charlie/session] resolve_agent_for_context error:', resolveError)
     }
 
+    console.log("[session] rpc result:", resolvedAgentId, resolveError)
     const agentId = resolvedAgentId || null
 
     // Step 2: Get agent config (limits) — only if agent resolved
@@ -104,6 +107,7 @@ export async function POST(request: NextRequest) {
           agent_id: agentId,
           user_id: userId || null,
           source: 'walliam',
+          session_token: crypto.randomUUID(),
           status: 'active',
           message_count: 0,
           buyer_plans_used: 0,
