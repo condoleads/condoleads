@@ -23,6 +23,9 @@ interface Props {
   leadCaptured?: boolean
   sellerEstimate?: any | null
   communityBuildings?: { affordable: any[], premium: any[] }
+  sessionId?: string | null
+  userId?: string | null
+  onLeadCaptured?: () => void
 }
 
 const fmt = (n: number | null | undefined, prefix = '', suffix = '') =>
@@ -47,7 +50,7 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate, communityBuildings }: Props) {
+export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate, communityBuildings, sessionId, userId, onLeadCaptured }: Props) {
 
 
 
@@ -308,6 +311,9 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             analytics,
             agent: agent ? { name: agent.full_name, email: agent.email, phone: agent.cell_phone, photo: agent.profile_photo_url, brokerage: agent.brokerage_name, title: agent.title } : undefined,
             onSendPlan: onSendPlan || (() => {}),
+            sessionId: sessionId || null,
+            userId: userId || null,
+            onLeadCaptured: onLeadCaptured,
             leadCaptured: leadCaptured || false,
           })}
         />

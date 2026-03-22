@@ -17,13 +17,21 @@ interface Props {
   onSendPlan?: () => void
   onSellerEstimate?: (data: any) => void
   onSetGeoContext?: (geoType: string, geoId: string, geoName: string) => void
+  onLeadCaptured?: () => void
+  onRequestVip?: (planType: 'buyer' | 'seller') => void
+  onDismissGate?: () => void
+  onOpenRegister?: () => void
 }
 
-export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, agent, onSendPlan, onSellerEstimate, onSetGeoContext }: Props) {
+export default function CharlieOverlay({
+  state, onClose, onSend, onPanelChange, agent, onSendPlan,
+  onSellerEstimate, onSetGeoContext,
+  onLeadCaptured, onRequestVip, onDismissGate, onOpenRegister
+}: Props) {
   const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>(
-  state.initialForm === 'buyer' ? 'buyer' : state.initialForm === 'seller' ? 'seller' : 'none'
-)
+    state.initialForm === 'buyer' ? 'buyer' : state.initialForm === 'seller' ? 'seller' : 'none'
+  )
   const [resolvedSeller, setResolvedSeller] = useState<any>(null)
   const [communityBuildings, setCommunityBuildings] = useState<{ affordable: any[], premium: any[] }>({ affordable: [], premium: [] })
   const [sellerFormData, setSellerFormData] = useState<any>(null)
@@ -31,19 +39,15 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
   // Fetch community buildings ONLY for condo track
   const prevGeoId = useRef('')
   useEffect(() => {
-    console.log('[buildings useEffect] geoContext:', state.geoContext)
     const geo = state.geoContext
     if (!geo) return
-    // Gate: only fetch buildings for condo, not homes
     if (state.analytics?.track === 'homes') {
-      console.log('[buildings] skipping — homes track')
       setCommunityBuildings({ affordable: [], premium: [] })
-      prevGeoId.current = '' // reset so condo queries work if user switches
+      prevGeoId.current = ''
       return
     }
     if (prevGeoId.current === geo.geoId) return
     prevGeoId.current = geo.geoId
-    console.log('[buildings] fetching for geoId:', geo.geoId, 'geoType:', geo.geoType)
     fetch('/api/charlie/community-buildings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -71,7 +75,6 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
         flexDirection: 'column',
         background: '#080f1a',
       }}>
-
         {/* Header */}
         <div style={{
           display: 'flex',
@@ -145,7 +148,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
           overflow: 'hidden',
           minHeight: 0,
         }}>
-          {/* Chat panel — always visible on desktop, toggled on mobile */}
+          {/* Chat panel */}
           <div style={{
             width: hasResults ? '42%' : '100%',
             borderRight: hasResults ? '1px solid rgba(255,255,255,0.07)' : 'none',
@@ -160,7 +163,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 <BuyerForm
                   onSubmit={(data) => {
                     setFormMode('none')
-                      if (data.geoId && data.geoType) onSetGeoContext?.(data.geoType, data.geoId, data.area)
+                    if (data.geoId && data.geoType) onSetGeoContext?.(data.geoType, data.geoId, data.area)
                     const type = data.propertyType === 'any' ? 'property' : data.propertyType
                     const budget = data.budgetMax ? ' with budget up to ' + data.budgetMax : ''
                     const beds = data.bedrooms ? ', ' + data.bedrooms + ' bedrooms' : ''
@@ -187,7 +190,6 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                         setResolvedSeller(result)
                         setSellerFormData(data)
                         setFormMode('none')
-
                       } else {
                         alert(result.error || 'Could not resolve address')
                       }
@@ -202,7 +204,7 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                   resolvedData={resolvedSeller}
                   formData={sellerFormData}
                   onEstimateReady={(data) => {
-                    onSellerEstimate?.({ ...data, subjectAddress: sellerFormData.streetNumber + " " + sellerFormData.streetName + ", " + sellerFormData.city })
+                    onSellerEstimate?.({ ...data, subjectAddress: sellerFormData.streetNumber + ' ' + sellerFormData.streetName + ', ' + sellerFormData.city })
                     setResolvedSeller(null)
                     const msg = 'I want to ' + (sellerFormData.intent === 'lease' ? 'lease out' : 'sell') + ' my ' + (sellerFormData.propertyCategory === 'condo' ? 'condo' : sellerFormData.propertySubtype) + ' at ' + sellerFormData.streetNumber + ' ' + sellerFormData.streetName + ' ' + sellerFormData.city + ', ' + sellerFormData.bedrooms + ' bed ' + sellerFormData.bathrooms + ' bath, timeline: ' + sellerFormData.timeline + ', goal: ' + sellerFormData.goal
                     onSend(msg)
@@ -210,13 +212,13 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 />
               </div>
             ) : (
-            <ChatPanel
-              messages={state.messages}
-              isStreaming={state.isStreaming}
-              onSend={onSend}
-              onBuyClick={() => setFormMode('buyer')}
-              onSellClick={() => setFormMode('seller')}
-            />
+              <ChatPanel
+                messages={state.messages}
+                isStreaming={state.isStreaming}
+                onSend={onSend}
+                onBuyClick={() => setFormMode('buyer')}
+                onSellClick={() => setFormMode('seller')}
+              />
             )}
           </div>
 
@@ -234,6 +236,9 @@ export default function CharlieOverlay({ state, onClose, onSend, onPanelChange, 
                 leadCaptured={state.leadCaptured}
                 sellerEstimate={state.sellerEstimate}
                 communityBuildings={communityBuildings}
+                sessionId={state.sessionId}
+                userId={state.userId}
+                onLeadCaptured={onLeadCaptured}
               />
             </div>
           )}

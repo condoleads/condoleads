@@ -1,18 +1,59 @@
 ﻿// app/charlie/components/CharlieWidget.tsx
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useCharlie } from '../hooks/useCharlie'
 import CharlieOverlay from './CharlieOverlay'
+import { createClient } from '@/lib/supabase/client'
+import RegisterModal from '@/components/auth/RegisterModal'
 
-export default function CharlieWidget() {
-  const { state, open, close, sendMessage, setActivePanel, setSellerEstimate, setGeoContext } = useCharlie()
+interface CharlieWidgetProps {
+  // Optional page context for agent resolution + session
+  pageContext?: {
+    listing_id?: string
+    building_id?: string
+    community_id?: string
+    municipality_id?: string
+    area_id?: string
+  }
+}
+
+export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) {
+  const {
+    state,
+    open,
+    close,
+    sendMessage,
+    setActivePanel,
+    setSellerEstimate,
+    setGeoContext,
+    initSession,
+    dismissGate,
+    requestVipAccess,
+    setLeadCaptured,
+  } = useCharlie()
+
   const [searchInput, setSearchInput] = useState('')
-
   const [isHomepage, setIsHomepage] = useState(false)
+  const [showRegisterModal, setShowRegisterModal] = useState(false)
+  const sessionInitialized = useRef(false)
 
   useEffect(() => {
     setIsHomepage(window.location.pathname === '/')
   }, [])
+
+  // Init WALLiam session on mount — read auth + resolve agent
+  useEffect(() => {
+    if (sessionInitialized.current) return
+    sessionInitialized.current = true
+
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => {
+      const userId = data?.user?.id || null
+      initSession(userId, pageContext)
+    }).catch(() => {
+      initSession(null, pageContext)
+    })
+  }, [initSession, pageContext])
 
   // Listen for homepage chip/search/form events
   useEffect(() => {
@@ -24,6 +65,14 @@ export default function CharlieWidget() {
     return () => window.removeEventListener('charlie:open', handler)
   }, [open])
 
+  // Handle gate events — show register modal or VIP prompt
+  useEffect(() => {
+    if (!state.gateActive) return
+    if (state.gateReason === 'register') {
+      setShowRegisterModal(true)
+    }
+  }, [state.gateActive, state.gateReason])
+
   const handleSearch = () => {
     if (!searchInput.trim()) { open(); return }
     const msg = searchInput.trim()
@@ -33,7 +82,7 @@ export default function CharlieWidget() {
 
   return (
     <>
-      {/* Floating bar — hidden on homepage, WALLiam CTAs handle it there */}
+      {/* Floating bar — hidden on homepage */}
       {!state.isOpen && !isHomepage && (
         <div style={{
           position: 'fixed',
@@ -82,7 +131,7 @@ export default function CharlieWidget() {
             border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: 100, padding: '8px 14px',
             color: 'rgba(255,255,255,0.6)', fontSize: 12,
-            fontWeight: 600, cursor: 'pointer',           flexShrink: 0,
+            fontWeight: 600, cursor: 'pointer', flexShrink: 0,
           }}>Browse</button>
         </div>
       )}
@@ -96,7 +145,102 @@ export default function CharlieWidget() {
           onSendPlan={() => sendMessage('Yes, send me this plan')}
           onSellerEstimate={setSellerEstimate}
           onSetGeoContext={setGeoContext}
+          onLeadCaptured={setLeadCaptured}
+          onRequestVip={requestVipAccess}
+          onDismissGate={dismissGate}
+          onOpenRegister={() => setShowRegisterModal(true)}
         />
+      )}
+
+      {/* Gate: Registration wall */}
+      {showRegisterModal && (
+        <RegisterModal
+          isOpen={showRegisterModal}
+          onClose={() => {
+            setShowRegisterModal(false)
+            dismissGate()
+          }}
+          onSuccess={() => {
+            setShowRegisterModal(false)
+            dismissGate()
+            // Re-init session with new user
+            const supabase = createClient()
+            supabase.auth.getUser().then(({ data }) => {
+              if (data?.user?.id) {
+                initSession(data.user.id, pageContext)
+              }
+            })
+          }}
+          registrationSource="walliam_charlie_gate"
+        />
+      )}
+
+      {/* Gate: VIP required overlay */}
+      {state.gateActive && state.gateReason === 'vip_required' && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 20,
+        }}>
+          <div style={{
+            background: '#0f172a',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 20, padding: 36,
+            maxWidth: 420, width: '100%',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>✦</div>
+            <h2 style={{ color: '#fff', fontSize: 20, fontWeight: 800, margin: '0 0 10px' }}>
+              Plan Credits Used
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 1.6, margin: '0 0 24px' }}>
+              You've used your {state.gatePlanType === 'seller' ? 'seller' : 'buyer'} plan credits.
+              Request additional access from your agent — they'll review and approve shortly.
+            </p>
+            <button
+              onClick={() => requestVipAccess(state.gatePlanType || 'buyer')}
+              style={{
+                width: '100%', padding: '14px',
+                background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
+                border: 'none', borderRadius: 12,
+                color: '#fff', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', marginBottom: 10,
+              }}
+            >
+              Request More Plan Access
+            </button>
+            <button
+              onClick={dismissGate}
+              style={{
+                width: '100%', padding: '12px',
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 12,
+                color: 'rgba(255,255,255,0.4)', fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* VIP pending notification */}
+      {state.vipRequestStatus === 'pending' && !state.gateActive && (
+        <div style={{
+          position: 'fixed', bottom: 90, left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          background: '#1e293b',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 12, padding: '12px 20px',
+          color: 'rgba(255,255,255,0.7)', fontSize: 13,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}>
+          ⏳ Plan access request sent — your agent will review shortly
+        </div>
       )}
     </>
   )

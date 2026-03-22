@@ -36,6 +36,19 @@ export interface CharlieState {
   buyerProfile: any
   sellerProfile: any
   sellerEstimate: any | null
+  // WALLiam session
+  sessionId: string | null
+  userId: string | null
+  buyerPlansUsed: number
+  sellerPlansUsed: number
+  totalAllowed: number
+  isRegistered: boolean
+  // Gate state
+  gateActive: boolean
+  gateReason: 'register' | 'vip_required' | null
+  gatePlanType: 'buyer' | 'seller' | null
+  vipRequestId: string | null
+  vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
 }
 
 const INITIAL_STATE: CharlieState = {
@@ -57,6 +70,17 @@ const INITIAL_STATE: CharlieState = {
   buyerProfile: {},
   sellerProfile: {},
   sellerEstimate: null,
+  sessionId: null,
+  userId: null,
+  buyerPlansUsed: 0,
+  sellerPlansUsed: 0,
+  totalAllowed: 1,
+  isRegistered: false,
+  gateActive: false,
+  gateReason: null,
+  gatePlanType: null,
+  vipRequestId: null,
+  vipRequestStatus: 'idle',
 }
 
 export function useCharlie() {
@@ -66,6 +90,82 @@ export function useCharlie() {
   const greetingSentRef = useRef(false)
   const messagesRef = useRef<any[]>([])
   const sendMessageRef = useRef<any>(null)
+  // WALLiam session ref
+  const walliamSessionIdRef = useRef<string | null>(null)
+  const userIdRef = useRef<string | null>(null)
+
+  const initSession = useCallback(async (
+    userId: string | null,
+    pageContext?: {
+      listing_id?: string
+      building_id?: string
+      community_id?: string
+      municipality_id?: string
+      area_id?: string
+    }
+  ) => {
+    try {
+      const res = await fetch('/api/walliam/charlie/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          listing_id: pageContext?.listing_id || null,
+          building_id: pageContext?.building_id || null,
+          community_id: pageContext?.community_id || null,
+          municipality_id: pageContext?.municipality_id || null,
+          area_id: pageContext?.area_id || null,
+        }),
+      })
+      const data = await res.json()
+      if (data.sessionId) {
+        walliamSessionIdRef.current = data.sessionId
+        userIdRef.current = userId
+        setState(s => ({
+          ...s,
+          sessionId: data.sessionId,
+          userId,
+          buyerPlansUsed: data.buyerPlansUsed || 0,
+          sellerPlansUsed: data.sellerPlansUsed || 0,
+          totalAllowed: data.totalAllowed || 1,
+          isRegistered: !!userId,
+        }))
+      }
+    } catch (err) {
+      console.error('[useCharlie] initSession error:', err)
+    }
+  }, [])
+
+  const dismissGate = useCallback(() => {
+    setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
+  }, [])
+
+  const requestVipAccess = useCallback(async (planType: 'buyer' | 'seller') => {
+    const sid = walliamSessionIdRef.current
+    if (!sid) return
+    try {
+      const res = await fetch('/api/walliam/charlie/vip-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sid, planType }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setState(s => ({
+          ...s,
+          vipRequestId: data.requestId,
+          vipRequestStatus: data.status,
+          gateActive: false,
+        }))
+      }
+    } catch (err) {
+      console.error('[useCharlie] requestVipAccess error:', err)
+    }
+  }, [])
+
+  const setLeadCaptured = useCallback(() => {
+    setState(s => ({ ...s, leadCaptured: true }))
+  }, [])
 
   const open = useCallback((initialMessage?: string, initialForm?: 'buyer' | 'seller') => {
     setState(s => ({ ...s, isOpen: true, initialForm: initialForm || null }))
@@ -130,7 +230,8 @@ export function useCharlie() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: messagesRef.current,
-          sessionId: sessionId.current,
+          sessionId: walliamSessionIdRef.current,
+          userId: userIdRef.current,
           geoContext: geoContextRef.current,
         }),
       })
@@ -145,7 +246,6 @@ export function useCharlie() {
         if (done) break
 
         const chunk = decoder.decode(value)
-        console.log('[CHARLIE stream chunk]', chunk.substring(0, 200))
         const lines = chunk.split('\n').filter(l => l.startsWith('data: '))
 
         for (const line of lines) {
@@ -169,6 +269,20 @@ export function useCharlie() {
                   )
                 }))
               }
+            }
+
+            // Gate event — plan gating fired server-side
+            if (event.type === 'gate') {
+              setState(s => ({
+                ...s,
+                isStreaming: false,
+                gateActive: true,
+                gateReason: event.reason,
+                gatePlanType: event.planType || null,
+                messages: s.messages.map(m =>
+                  m.id === assistantId ? { ...m, streaming: false, content: assistantText } : m
+                )
+              }))
             }
 
             if (event.type === 'tool_result') {
@@ -214,9 +328,21 @@ export function useCharlie() {
       setState(s => ({ ...s, planReady: true, plan: data, activePanel: 'results' }))
     }
     if (tool === 'get_comparables' && data.listings) {
-      setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l,i,arr) => arr.findIndex(x => x.id === l.id) === i), activePanel: 'results' }))
+      setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), activePanel: 'results' }))
     }
   }
 
-  return { state, open, close, sendMessage, setActivePanel, setSellerEstimate, setGeoContext }
+  return {
+    state,
+    open,
+    close,
+    sendMessage,
+    setActivePanel,
+    setSellerEstimate,
+    setGeoContext,
+    initSession,
+    dismissGate,
+    requestVipAccess,
+    setLeadCaptured,
+  }
 }

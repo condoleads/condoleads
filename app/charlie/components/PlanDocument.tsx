@@ -24,6 +24,9 @@ interface BuyerPlanProps {
   agent?: AgentInfo
   onSendPlan: () => void
   leadCaptured: boolean
+  sessionId?: string | null
+  userId?: string | null
+  onLeadCaptured?: () => void
 }
 
 interface SellerPlanProps {
@@ -38,6 +41,9 @@ interface SellerPlanProps {
   agent?: AgentInfo
   onSendPlan: () => void
   leadCaptured: boolean
+  sessionId?: string | null
+  userId?: string | null
+  onLeadCaptured?: () => void
 }
 
 type PlanDocumentProps = BuyerPlanProps | SellerPlanProps
@@ -68,7 +74,14 @@ function StatRow({ label, value, color = '#fff' }: { label: string; value: strin
 }
 
 export default function PlanDocument(props: PlanDocumentProps) {
-  const { analytics, agent, onSendPlan, leadCaptured } = props
+  const { analytics, agent, onSendPlan, leadCaptured, sessionId, userId, onLeadCaptured } = props
+
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+
   const seasonal = analytics?.insight_seasonal
   const bestMonth = seasonal?.best_months?.[0]
   const condition = (() => {
@@ -81,6 +94,77 @@ export default function PlanDocument(props: PlanDocumentProps) {
     return { label: 'Balanced Market', color: '#f59e0b' }
   })()
 
+  const handleSubmitPlan = async () => {
+    if (!name.trim() || !email.trim()) {
+      setSubmitError('Name and email are required')
+      return
+    }
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      const body: any = {
+        name: name.trim(),
+        email: email.trim(),
+        phone: phone.trim() || undefined,
+        intent: props.type,
+        analytics,
+        sessionId: sessionId || null,
+        userId: userId || null,
+      }
+
+      if (props.type === 'buyer') {
+        body.buyerProfile = {
+          geoName: props.geoName,
+          budgetMin: props.budgetMin,
+          budgetMax: props.budgetMax,
+          propertyType: props.propertyType,
+          bedrooms: props.bedrooms,
+          timeline: props.timeline,
+        }
+        body.listings = (props as BuyerPlanProps).listings || []
+      } else {
+        body.sellerProfile = {
+          geoName: props.geoName,
+          propertyType: props.propertyType,
+          estimatedValueMin: props.estimatedValueMin,
+          estimatedValueMax: props.estimatedValueMax,
+          timeline: props.timeline,
+          goal: props.goal,
+        }
+      }
+
+      const res = await fetch('/api/charlie/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        onLeadCaptured?.()
+      } else {
+        setSubmitError(data.error || 'Something went wrong. Please try again.')
+      }
+    } catch {
+      setSubmitError('Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '10px 14px',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 10,
+    color: '#fff',
+    fontSize: 13,
+    outline: 'none',
+    boxSizing: 'border-box',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  }
+
   return (
     <div style={{
       background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
@@ -89,7 +173,6 @@ export default function PlanDocument(props: PlanDocumentProps) {
       padding: 24,
       marginTop: 8,
     }}>
-
       {/* Plan header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{
@@ -204,18 +287,56 @@ export default function PlanDocument(props: PlanDocumentProps) {
         </div>
       )}
 
-      {/* CTA */}
+      {/* CTA — contact form or confirmation */}
       {!leadCaptured ? (
-        <button onClick={onSendPlan} style={{
-          width: '100%', padding: '14px', borderRadius: 12, border: 'none', cursor: 'pointer',
-          background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
-          color: '#fff', fontSize: 14, fontWeight: 700, letterSpacing: '0.02em',
-        }}>
-          📨 Send This Plan to Me + Connect with Agent
-        </button>
+        <div style={{ marginTop: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
+            Send This Plan to Me
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input
+              type="text"
+              placeholder="Your name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="email"
+              placeholder="Email address"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="tel"
+              placeholder="Phone number (optional)"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              style={inputStyle}
+            />
+            {submitError && (
+              <div style={{ fontSize: 12, color: '#ef4444', padding: '6px 0' }}>{submitError}</div>
+            )}
+            <button
+              onClick={handleSubmitPlan}
+              disabled={submitting}
+              style={{
+                width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                background: submitting ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
+                color: '#fff', fontSize: 14, fontWeight: 700, letterSpacing: '0.02em',
+                marginTop: 4,
+                opacity: submitting ? 0.7 : 1,
+              }}
+            >
+              {submitting ? 'Sending...' : '📨 Send My Plan + Connect with Agent'}
+            </button>
+          </div>
+        </div>
       ) : (
-        <div style={{ textAlign: 'center', padding: '12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 12, color: '#10b981', fontSize: 13, fontWeight: 700 }}>
-          ✓ Plan sent! Your agent will be in touch shortly.
+        <div style={{ textAlign: 'center', padding: '16px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 12, color: '#10b981', fontSize: 13, fontWeight: 700 }}>
+          ✓ Plan sent to your email! Your agent will be in touch shortly.
         </div>
       )}
     </div>
