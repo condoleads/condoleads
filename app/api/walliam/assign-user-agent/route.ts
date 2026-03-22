@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       .from('user_profiles')
       .select('assigned_agent_id')
       .eq('id', user_id)
+      .select()
       .single()
 
     if (existing?.assigned_agent_id) {
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
     // Assign agent to user permanently
     const { error: updateError } = await supabase
       .from('user_profiles')
-      .update({
+      .upsert({
         assigned_agent_id: resolvedAgentId,
         agent_assigned_at: new Date().toISOString(),
         agent_assignment_source: source,
