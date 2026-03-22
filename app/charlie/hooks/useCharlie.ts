@@ -49,6 +49,9 @@ export interface CharlieState {
   gatePlanType: 'buyer' | 'seller' | null
   vipRequestId: string | null
   vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
+  vipCreditUsed: boolean
+  vipCreditPlansUsed: number
+  vipCreditTotal: number
 }
 
 const INITIAL_STATE: CharlieState = {
@@ -81,6 +84,9 @@ const INITIAL_STATE: CharlieState = {
   gatePlanType: null,
   vipRequestId: null,
   vipRequestStatus: 'idle',
+  vipCreditUsed: false,
+  vipCreditPlansUsed: 0,
+  vipCreditTotal: 1,
 }
 
 export function useCharlie() {
@@ -269,6 +275,15 @@ export function useCharlie() {
                   )
                 }))
               }
+            }
+
+            if (event.type === 'vip_credit_used' && userIdRef.current) {
+              setState(s => ({
+                ...s,
+                vipCreditUsed: true,
+                vipCreditPlansUsed: event.plansUsed,
+                vipCreditTotal: event.totalAllowed,
+              }))
             }
 
             // Gate event — plan gating fired server-side

@@ -166,6 +166,9 @@ NEVER truncate the geoId.` : ''
                       last_activity_at: new Date().toISOString(),
                     })
                     .eq('id', sessionId)
+
+                  // Notify frontend — registered user used a VIP credit
+                  send({ type: 'vip_credit_used', plansUsed: plansUsed + 1, totalAllowed, planType })
                 }
               }
               // ── END PLAN GATING ──────────────────────────────────────────

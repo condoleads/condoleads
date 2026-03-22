@@ -239,6 +239,9 @@ export default function CharlieOverlay({
                 sessionId={state.sessionId}
                 userId={state.userId}
                 onLeadCaptured={onLeadCaptured}
+                vipCreditUsed={state.vipCreditUsed}
+                vipCreditPlansUsed={state.vipCreditPlansUsed}
+                vipCreditTotal={state.vipCreditTotal}
               />
             </div>
           )}
