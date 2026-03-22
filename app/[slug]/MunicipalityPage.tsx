@@ -9,6 +9,7 @@ import CommunityCard from './components/CommunityCard'
 import GeoHero from './components/GeoHero'
 import AnalyticsSection from '@/components/analytics/AnalyticsSection'
 import WalliamCTA from '@/components/WalliamCTA'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
