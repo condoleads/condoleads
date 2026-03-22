@@ -102,6 +102,16 @@ export default function RegisterModal({
           .eq('id', authData.user.id)
 
         if (profileError) console.error('Profile update error:', profileError)
+        // Assign agent to user based on page context (WALLiam System 2)
+        fetch('/api/walliam/assign-user-agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: authData.user.id,
+            listing_id: listingId || null,
+            building_id: buildingId || null,
+          })
+        }).catch(e => console.error('Agent assignment error:', e))
 
         // Auto-create lead from registration
         const leadResult = await createLeadFromRegistration({
