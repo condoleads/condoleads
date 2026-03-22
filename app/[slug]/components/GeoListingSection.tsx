@@ -1,4 +1,8 @@
+  const { user } = useAuth()
+  const [showSoldGate, setShowSoldGate] = useState(false)
 'use client'
+import { useAuth } from '@/components/auth/AuthContext'
+import RegisterModal from '@/components/auth/RegisterModal'
 
 import { useState, useEffect, useCallback } from 'react'
 import { MLSListing } from '@/lib/types/building'
@@ -180,6 +184,10 @@ export default function GeoListingSection({
 
   
   const handleTabChange = (tab: TabType) => {
+    if ((tab === 'sold' || tab === 'leased') && !user) {
+      setShowSoldGate(true)
+      return
+    }
     setActiveTab(tab)
     setCurrentPage(1)
     if (!hasActiveFilters() && tab === 'for-sale' && initialLoad && initialListings) {
@@ -379,6 +387,14 @@ export default function GeoListingSection({
           agentId={agentId}
           type={modalType}
           exactSqft={modalExactSqft}
+        />
+      )}
+      {showSoldGate && (
+        <RegisterModal
+          isOpen={showSoldGate}
+          onClose={() => setShowSoldGate(false)}
+          onSuccess={() => { setShowSoldGate(false); window.location.reload() }}
+          registrationSource="walliam_sold_gate"
         />
       )}
     </div>
