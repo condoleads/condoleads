@@ -1,25 +1,64 @@
 ﻿// app/api/charlie/route.ts
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { headers } from 'next/headers'
-import { getAgentFromHost } from '@/lib/utils/agent-detection'
+import { createClient } from '@supabase/supabase-js'
 import { generatePropertySlug, generateHomePropertySlug } from '@/lib/utils/slugs'
 import { CHARLIE_TOOLS } from '@/app/charlie/lib/charlie-tools'
 import { buildCharlieSystemPrompt } from '@/app/charlie/lib/charlie-prompts'
-import { createClient } from '@/lib/supabase/server'
 
 const anthropic = new Anthropic()
 
-export async function POST(req: NextRequest) {
-  const { messages, sessionId, geoContext } = await req.json()
-  console.log('[CHARLIE] request received')
-  const headersList = headers()
-  const host = headersList.get('host') || ''
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
 
-  const agent = await getAgentFromHost(host)
-  const agentName = agent?.full_name || 'your agent'
-  const brokerageName = agent?.brokerage_name || null
-  const agentId = agent?.id || null
+export async function POST(req: NextRequest) {
+  const { messages, sessionId, userId, geoContext } = await req.json()
+  console.log('[CHARLIE] request received, sessionId:', sessionId, 'userId:', userId)
+
+  const supabase = createServiceClient()
+
+  // Resolve agent + session from WALLiam session (NOT getAgentFromHost)
+  let agentId: string | null = null
+  let agentName = 'your agent'
+  let brokerageName: string | null = null
+  let sessionData: any = null
+
+  if (sessionId) {
+    const { data: session } = await supabase
+      .from('chat_sessions')
+      .select(`
+        id, agent_id, user_id, status, source,
+        buyer_plans_used, seller_plans_used,
+        vip_messages_granted, manual_approvals_count
+      `)
+      .eq('id', sessionId)
+      .eq('source', 'walliam')
+      .single()
+
+    if (session) {
+      sessionData = session
+      agentId = session.agent_id
+
+      if (agentId) {
+        const { data: agent } = await supabase
+          .from('agents')
+          .select('full_name, brokerage_name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap')
+          .eq('id', agentId)
+          .single()
+
+        if (agent) {
+          agentName = agent.full_name || 'your agent'
+          brokerageName = agent.brokerage_name || null
+          sessionData.agentConfig = agent
+        }
+      }
+    }
+  }
 
   const geoReminder = geoContext ? `
 
@@ -27,8 +66,9 @@ CURRENT GEO CONTEXT - use these EXACT values in ALL tool calls:
 geoType: ${geoContext.geoType}
 geoId: ${geoContext.geoId}
 geoName: ${geoContext.geoName}
-NEVER truncate the geoId.` : ""
-const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoReminder
+NEVER truncate the geoId.` : ''
+
+  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoReminder
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -52,7 +92,7 @@ const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoRem
             stream: false,
           })
 
-          // Collect text content
+          // Collect text + tool uses
           let textContent = ''
           const toolUses: any[] = []
 
@@ -76,7 +116,60 @@ const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoRem
           // Handle tool calls
           if (toolUses.length > 0) {
             const toolResults = []
+
             for (const tool of toolUses) {
+              // ── PLAN GATING ──────────────────────────────────────────────
+              if (tool.name === 'generate_plan') {
+                const planType = tool.input?.type as 'buyer' | 'seller' | undefined
+
+                // Anonymous user — must register first
+                if (!userId) {
+                  send({ type: 'gate', reason: 'register' })
+                  send({ type: 'done' })
+                  controller.close()
+                  return
+                }
+
+                // Check plan usage against limits
+                if (sessionData) {
+                  const cfg = sessionData.agentConfig
+                  const freePlans = cfg?.ai_free_messages ?? 1
+                  const isVip = sessionData.status === 'vip'
+                  const manualApprovalsCount = sessionData.manual_approvals_count || 0
+                  let totalAllowed = freePlans
+                  if (isVip) {
+                    totalAllowed += cfg?.ai_auto_approve_limit ?? 2
+                    totalAllowed += (cfg?.ai_manual_approve_limit ?? 3) * manualApprovalsCount
+                  }
+                  totalAllowed = Math.min(totalAllowed, cfg?.ai_hard_cap ?? 10)
+
+                  const plansUsed = planType === 'seller'
+                    ? (sessionData.seller_plans_used || 0)
+                    : (sessionData.buyer_plans_used || 0)
+
+                  if (plansUsed >= totalAllowed) {
+                    send({ type: 'gate', reason: 'vip_required', planType })
+                    send({ type: 'done' })
+                    controller.close()
+                    return
+                  }
+
+                  // Allowed — increment plan counter
+                  const updateField = planType === 'seller'
+                    ? { seller_plans_used: plansUsed + 1 }
+                    : { buyer_plans_used: plansUsed + 1 }
+
+                  await supabase
+                    .from('chat_sessions')
+                    .update({
+                      ...updateField,
+                      last_activity_at: new Date().toISOString(),
+                    })
+                    .eq('id', sessionId)
+                }
+              }
+              // ── END PLAN GATING ──────────────────────────────────────────
+
               const result = await executeTool(tool.name, tool.input, agentId, geoContext)
               send({ type: 'tool_result', tool: tool.name, data: result })
               toolResults.push({
@@ -86,7 +179,6 @@ const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoRem
               })
             }
 
-            // Add assistant message + tool results and continue
             currentMessages = [
               ...currentMessages,
               { role: 'assistant', content: response.content },
@@ -99,6 +191,14 @@ const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoRem
           if (response.stop_reason === 'end_turn' && toolUses.length === 0) {
             continueLoop = false
           }
+        }
+
+        // Update session activity
+        if (sessionId) {
+          await supabase
+            .from('chat_sessions')
+            .update({ last_activity_at: new Date().toISOString() })
+            .eq('id', sessionId)
         }
 
         send({ type: 'done' })
@@ -120,11 +220,9 @@ const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoRem
 }
 
 async function executeTool(name: string, input: any, agentId: string | null, geoContext?: any): Promise<any> {
-  const supabase = createClient()
+  const supabase = createServiceClient()
 
   if (name === 'resolve_geo') {
-    const query = input.query?.toLowerCase()
-    // Try municipality first
     const { data: muni } = await supabase
       .from('municipalities')
       .select('id, name, slug, area_id')
@@ -133,7 +231,6 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
       .single()
     if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug }
 
-    // Try community
     const { data: comm } = await supabase
       .from('communities')
       .select('id, name, slug, municipality_id')
@@ -142,7 +239,6 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
       .single()
     if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug }
 
-    // Try area
     const { data: area } = await supabase
       .from('treb_areas')
       .select('id, name, slug')
@@ -180,21 +276,21 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
     if (input.beds && input.beds > 0) params.set('beds', String(input.beds))
     if (input.baths && input.baths > 0) params.set('baths', String(input.baths))
     if (input.sort) params.set('sort', input.sort)
-      if (input.propertySubtype) params.set('propertySubtype', input.propertySubtype)
+    if (input.propertySubtype) params.set('propertySubtype', input.propertySubtype)
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const res = await fetch(`${baseUrl}/api/geo-listings?${params.toString()}`)
     const data = await res.json()
-    const cat = input.propertyCategory === "condo" ? "Condos" : input.propertyCategory === "homes" ? "Homes" : "Listings"
-    const sortLabel = input.sort === "price_asc" ? "(Lowest Priced)" : ""
-    const geoName = geoContext ? geoContext.geoName : ""
-    const CONDO_TYPES = ['Condo Apartment','Condo Townhouse','Co-op Apartment','Common Element Condo','Leasehold Condo','Detached Condo','Co-Ownership Apartment']
+    const cat = input.propertyCategory === 'condo' ? 'Condos' : input.propertyCategory === 'homes' ? 'Homes' : 'Listings'
+    const sortLabel = input.sort === 'price_asc' ? '(Lowest Priced)' : ''
+    const geoName = geoContext ? geoContext.geoName : ''
+    const CONDO_TYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment', 'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']
     const listingsWithSlugs = (data.listings || []).map((l: any) => {
-      const isHome = l.property_type === 'Residential Freehold' || (!CONDO_TYPES.includes(l.property_subtype) && ['Detached','Semi-Detached','Att/Row/Townhouse','Link','Duplex','Triplex','Fourplex','Multiplex'].includes(l.property_subtype))
+      const isHome = l.property_type === 'Residential Freehold' || (!CONDO_TYPES.includes(l.property_subtype) && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].includes(l.property_subtype))
       const slug = isHome ? generateHomePropertySlug(l) : generatePropertySlug(l)
       return { ...l, _slug: slug, _isHome: isHome }
     })
-    return { listings: listingsWithSlugs, total: data.total || 0, label: (cat + " in " + geoName + " " + sortLabel).trim() }
+    return { listings: listingsWithSlugs, total: data.total || 0, label: (cat + ' in ' + geoName + ' ' + sortLabel).trim() }
   }
 
   if (name === 'generate_plan') {
@@ -212,6 +308,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
       planReady: true,
     }
   }
+
   if (name === 'get_comparables') {
     const params = new URLSearchParams()
     params.set('geoType', input.geoType)
