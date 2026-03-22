@@ -1,5 +1,3 @@
-  const { user } = useAuth()
-  const [showSoldGate, setShowSoldGate] = useState(false)
 'use client'
 import { useAuth } from '@/components/auth/AuthContext'
 import RegisterModal from '@/components/auth/RegisterModal'
@@ -64,6 +62,8 @@ export default function GeoListingSection({
   const [modalType, setModalType] = useState<'sale' | 'rent'>('sale')
   const [modalExactSqft, setModalExactSqft] = useState<number | null>(null)
   const [selectedIsHome, setSelectedIsHome] = useState(false)
+  const { user } = useAuth()
+  const [showSoldGate, setShowSoldGate] = useState(false)
 
   const totalPages = Math.ceil(totalCount / pageSize)
   
