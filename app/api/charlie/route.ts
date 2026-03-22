@@ -123,7 +123,8 @@ NEVER truncate the geoId.` : ''
                 const planType = tool.input?.type as 'buyer' | 'seller' | undefined
 
                 // Anonymous user — must register first
-                if (!userId) {
+                const effectiveUserId = userId || sessionData?.user_id || null
+                if (!effectiveUserId) {
                   send({ type: 'gate', reason: 'register' })
                   send({ type: 'done' })
                   controller.close()

@@ -158,7 +158,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
           isOpen={showRegisterModal}
           onClose={() => {
             setShowRegisterModal(false)
-            dismissGate()
+            // Do NOT dismiss gate — user must register to proceed
           }}
           onSuccess={() => {
             setShowRegisterModal(false)
