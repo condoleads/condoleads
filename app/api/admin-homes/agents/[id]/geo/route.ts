@@ -57,6 +57,10 @@ export async function POST(
     return NextResponse.json({ success: true, count: 0 })
   }
 
+  const { data: agentRec, error: agentRecErr } = await supabase.from('agents').select('tenant_id').eq('id', agentId).single()
+  console.log('[geo] agentRec:', agentRec, 'err:', agentRecErr?.message, 'agentId:', agentId)
+  const tenantId = agentRec?.tenant_id || null
+
   const rows = assignments.map((a: any) => ({
     agent_id: agentId,
     scope: a.scope,
@@ -69,6 +73,7 @@ export async function POST(
     buildings_access: a.buildings_access ?? true,
     buildings_mode: a.buildings_mode || 'all',
     is_active: true,
+    tenant_id: tenantId,
   }))
 
   const { error: insertError } = await supabase

@@ -50,7 +50,7 @@ export default function AgentsManagementClient({ agents }: { agents: Agent[] }) 
 
   async function removeFromTeam(agentId: string, agentName: string) {
     if (!confirm(`Remove ${agentName} from team? They become a solo agent.`)) return
-    const res = await fetch(`/api/admin/agents/${agentId}`, {
+    const res = await fetch(`/api/admin-homes/agents/${agentId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ parent_id: null }),

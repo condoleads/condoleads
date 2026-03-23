@@ -48,7 +48,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     if (isOpen && agentId) {
       loadAgent()
       if (existingAgents.length === 0) {
-        fetch('/api/admin/agents/list').then(r => r.json()).then(d => { if (d.agents) setAgents(d.agents) })
+        fetch('/api/admin-homes/agents/list').then(r => r.json()).then(d => { if (d.agents) setAgents(d.agents) })
       }
     }
   }, [isOpen, agentId])
@@ -56,7 +56,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
   async function loadAgent() {
     setLoading(true)
     try {
-      const res = await fetch(`/api/admin/agents/${agentId}`)
+      const res = await fetch(`/api/admin-homes/agents/${agentId}`)
       const data = await res.json()
       if (data.error) { setError(data.error); return }
       const a = data.agent
@@ -118,7 +118,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     setSaving(true); setError('')
     const finalTitle = formData.useCustomTitle && formData.customTitle.trim() ? formData.customTitle.trim() : formData.title
     try {
-      const res = await fetch(`/api/admin/agents/${agentId}`, {
+      const res = await fetch(`/api/admin-homes/agents/${agentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

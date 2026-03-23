@@ -49,7 +49,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
 
   useEffect(() => {
     if (isOpen && existingAgents.length === 0) {
-      fetch('/api/admin/agents/list').then(r => r.json()).then(d => { if (d.agents) setAgents(d.agents) })
+      fetch('/api/admin-homes/agents/list').then(r => r.json()).then(d => { if (d.agents) setAgents(d.agents) })
     }
   }, [isOpen])
 
@@ -84,7 +84,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
     const finalTitle = formData.useCustomTitle && formData.customTitle.trim() ? formData.customTitle.trim() : formData.title
 
     try {
-      const res = await fetch('/api/admin/agents', {
+      const res = await fetch('/api/admin-homes/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
