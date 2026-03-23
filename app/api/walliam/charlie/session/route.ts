@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
     } = await request.json()
 
     console.log("[session] route hit, userId:", userId)
+    const tenantId = request.headers.get('x-tenant-id') || null
     const supabase = createServiceClient()
 
     // Step 1: Resolve agent via priority chain
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
           user_id: userId || null,
           source: 'walliam',
           session_token: crypto.randomUUID(),
+          tenant_id: tenantId,
           status: 'active',
           message_count: 0,
           buyer_plans_used: 0,

@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
       p_municipality_id: municipality_id || null,
       p_area_id: area_id || null,
       p_user_id: userId || null,
+      p_tenant_id: req.headers.get('x-tenant-id') || null,
     })
 
     const agentId = resolvedAgentId || null
@@ -141,6 +142,7 @@ export async function POST(req: NextRequest) {
         plan_data: planData,
         manager_id: managerId,
         assignment_source: assignmentSource,
+        tenant_id: req.headers.get('x-tenant-id') || null,
         status: 'new',
         quality: 'hot',
       })

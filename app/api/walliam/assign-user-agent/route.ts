@@ -17,6 +17,7 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   try {
+    const tenantId = req.headers.get('x-tenant-id') || null
     const {
       user_id,
       listing_id,
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
       p_municipality_id: municipality_id || null,
       p_area_id: area_id || null,
       p_user_id: null, // don't use user relationship — user has none yet
+      p_tenant_id: tenantId,
     })
 
     if (rpcError) {

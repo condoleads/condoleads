@@ -18,6 +18,7 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   const { messages, sessionId, userId, geoContext } = await req.json()
+  const tenantId = req.headers.get('x-tenant-id') || null
   console.log('[CHARLIE] request received, sessionId:', sessionId, 'userId:', userId)
 
   const supabase = createServiceClient()

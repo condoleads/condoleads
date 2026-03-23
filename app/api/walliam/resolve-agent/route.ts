@@ -16,6 +16,7 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   try {
+    const tenantId = req.headers.get('x-tenant-id') || null
     const {
       listing_id,
       building_id,
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       p_municipality_id: municipality_id || null,
       p_area_id: area_id || null,
       p_user_id: user_id || null,
+      p_tenant_id: tenantId,
     })
 
     if (error) {
