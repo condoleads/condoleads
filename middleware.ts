@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
-  console.log(' Middleware called for:', pathname)
 
   let supabaseResponse = NextResponse.next({ request })
 
@@ -13,12 +12,9 @@ export async function middleware(request: NextRequest) {
     {
       cookies: {
         getAll() {
-          const cookies = request.cookies.getAll()
-          console.log(' Cookies seen by middleware:', cookies.map(c => c.name))
-          return cookies
+          return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          console.log(' Setting cookies:', cookiesToSet.map(c => c.name))
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
@@ -29,13 +25,7 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user }, error } = await supabase.auth.getUser()
-  console.log(' Middleware auth check:', {
-    path: pathname,
-    hasUser: !!user,
-    userId: user?.id,
-    error: error?.message
-  })
+  await supabase.auth.getUser()
 
   // ============================================
   // SYSTEM FORK: Comprehensive vs Condos routing
@@ -49,17 +39,19 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith('/favicon')
   ) {
     const host = request.headers.get('host') || ''
-    console.log(' System fork check:', { host, pathname })
     const agent = await resolveAgentFromHost(supabase, host)
-    console.log(' Agent resolved:', agent)
 
     if (agent?.site_type === 'comprehensive') {
       const url = request.nextUrl.clone()
       url.pathname = `/comprehensive-site${pathname}`
-      console.log(' Comprehensive rewrite:', { agent: agent.full_name, from: pathname, to: url.pathname })
-      
-      // Preserve cookies in rewrite response
+
       const rewriteResponse = NextResponse.rewrite(url, { request })
+
+      // Thread tenant_id into request headers for downstream use
+      if (agent.tenant_id) {
+        rewriteResponse.headers.set('x-tenant-id', agent.tenant_id)
+      }
+
       supabaseResponse.cookies.getAll().forEach(cookie => {
         rewriteResponse.cookies.set(cookie.name, cookie.value)
       })
@@ -67,48 +59,70 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // For API routes on comprehensive domain — resolve tenant and set header
+  if (pathname.startsWith('/api')) {
+    const host = request.headers.get('host') || ''
+    const tenantId = await resolveTenantIdFromHost(supabase, host)
+    if (tenantId) {
+      supabaseResponse.headers.set('x-tenant-id', tenantId)
+    }
+  }
+
   return supabaseResponse
 }
 
-// Lightweight agent lookup for middleware (no heavy imports)
-async function resolveAgentFromHost(supabase: any, host: string): Promise<{ full_name: string; site_type: string } | null> {
+// Resolve agent from host — System 1 pattern preserved
+async function resolveAgentFromHost(supabase: any, host: string): Promise<{ full_name: string; site_type: string; tenant_id: string | null } | null> {
   // Dev environment
   if (host.includes('localhost') || host.includes('vercel.app')) {
     const subdomain = process.env.DEV_SUBDOMAIN || null
-    console.log(' Dev subdomain:', subdomain)
     if (!subdomain) return null
-    const { data, error: agentErr } = await supabase
+    const { data } = await supabase
       .from('agents')
-      .select('full_name, site_type')
+      .select('full_name, site_type, tenant_id')
       .eq('subdomain', subdomain)
       .eq('is_active', true)
       .single()
-    console.log(' Agent lookup result:', { data: data?.full_name, error: agentErr?.message })
     return data
   }
 
   const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'condoleads.ca'
 
-  // Custom domain check
+  // Custom domain — could be tenant domain or agent domain
   if (!host.endsWith(rootDomain)) {
     const cleanDomain = host.replace(/^www\./, '')
-    const { data } = await supabase
+
+    // Check tenant domain first
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('domain', cleanDomain)
+      .eq('is_active', true)
+      .single()
+
+    if (tenant) {
+      // Tenant domain — return comprehensive type with tenant_id
+      return { full_name: cleanDomain, site_type: 'comprehensive', tenant_id: tenant.id }
+    }
+
+    // Fall back to agent custom domain (System 1)
+    const { data: agent } = await supabase
       .from('agents')
-      .select('full_name, site_type')
+      .select('full_name, site_type, tenant_id')
       .eq('custom_domain', cleanDomain)
       .eq('is_active', true)
       .single()
-    return data
+    return agent
   }
 
-  // Subdomain check
+  // Subdomain check (condoleads.ca subdomains — System 1)
   const parts = host.split('.')
   if (parts.length >= 3 && parts[1] === 'condoleads') {
     const subdomain = parts[0]
     if (subdomain === 'www') return null
     const { data } = await supabase
       .from('agents')
-      .select('full_name, site_type')
+      .select('full_name, site_type, tenant_id')
       .eq('subdomain', subdomain)
       .eq('is_active', true)
       .single()
@@ -116,6 +130,31 @@ async function resolveAgentFromHost(supabase: any, host: string): Promise<{ full
   }
 
   return null
+}
+
+// Resolve just tenant_id from host — for API routes
+async function resolveTenantIdFromHost(supabase: any, host: string): Promise<string | null> {
+  // Dev environment
+  if (host.includes('localhost') || host.includes('vercel.app')) {
+    const tenantDomain = process.env.DEV_TENANT_DOMAIN || null
+    if (!tenantDomain) return null
+    const { data } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('domain', tenantDomain)
+      .eq('is_active', true)
+      .single()
+    return data?.id || null
+  }
+
+  const cleanDomain = host.replace(/^www\./, '')
+  const { data } = await supabase
+    .from('tenants')
+    .select('id')
+    .eq('domain', cleanDomain)
+    .eq('is_active', true)
+    .single()
+  return data?.id || null
 }
 
 export const config = {
