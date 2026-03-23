@@ -134,7 +134,12 @@ NEVER truncate the geoId.` : ''
 
                 // Check plan usage against limits
                 if (sessionData) {
-                  const cfg = sessionData.agentConfig
+                  // Load VIP config from tenant
+                  let cfg = { ai_free_messages: 1, ai_auto_approve_limit: 2, ai_manual_approve_limit: 3, ai_hard_cap: 10 }
+                  if (tenantId) {
+                    const { data: tenantCfg } = await supabase.from('tenants').select('ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap').eq('id', tenantId).single()
+                    if (tenantCfg) cfg = tenantCfg
+                  }
                   const freePlans = cfg?.ai_free_messages ?? 1
                   const isVip = sessionData.status === 'vip'
                   const manualApprovalsCount = sessionData.manual_approvals_count || 0
