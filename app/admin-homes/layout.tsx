@@ -8,6 +8,7 @@ const navItems = [
   { href: '/admin-homes', label: 'Dashboard', icon: '' },
   { href: '/admin-homes/bulk-sync', label: 'Bulk Sync', icon: '' },
   { href: '/admin-homes/leads', label: 'Leads', icon: '📋' },
+  { href: '/admin-homes/agents', label: 'Agents', icon: '👥' },
   { href: '/admin-homes/listings', label: 'Listings', icon: '' },
 ]
 

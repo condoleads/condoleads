@@ -1,0 +1,86 @@
+// app/admin-homes/agents/[id]/page.tsx
+import { createClient } from '@/lib/supabase/server'
+import { notFound } from 'next/navigation'
+import GeoAssignmentSection from '@/components/admin-homes/GeoAssignmentSection'
+import BuildingAssignmentSection from '@/components/admin-homes/BuildingAssignmentSection'
+import ListingAssignmentSection from '@/components/admin-homes/ListingAssignmentSection'
+import Link from 'next/link'
+
+export default async function AgentDetailPage({ params }: { params: { id: string } }) {
+  const supabase = createClient()
+
+  const { data: agent } = await supabase
+    .from('agents')
+    .select('*')
+    .eq('id', params.id)
+    .eq('site_type', 'comprehensive')
+    .single()
+
+  if (!agent) notFound()
+
+  // Geo data for assignment UI
+  const [
+    { data: areas },
+    { data: municipalities },
+    { data: communities },
+    { data: neighbourhoods },
+    { data: currentGeo },
+    { data: allBuildings },
+    { data: currentBuildings },
+  ] = await Promise.all([
+    supabase.from('treb_areas').select('id, name, slug').order('name'),
+    supabase.from('municipalities').select('id, name, slug, area_id').order('name'),
+    supabase.from('communities').select('id, name, slug, municipality_id').order('name'),
+    supabase.from('neighbourhoods').select('id, name, slug, area_id').order('name'),
+    supabase.from('agent_property_access').select('*').eq('agent_id', params.id).eq('is_active', true),
+    supabase.from('buildings').select('id, building_name, canonical_address, community_id').order('building_name'),
+    supabase.from('agent_geo_buildings').select('building_id').eq('agent_id', params.id),
+  ])
+
+  return (
+    <div className="max-w-6xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <Link href="/admin-homes/agents" className="text-sm text-green-600 hover:text-green-700 mb-4 inline-block">
+          ← Back to Agents
+        </Link>
+        <div className="flex items-center gap-4">
+          {agent.profile_photo_url ? (
+            <img src={agent.profile_photo_url} alt={agent.full_name} className="w-16 h-16 rounded-full object-cover" />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-green-700 flex items-center justify-center text-white text-2xl font-bold">
+              {agent.full_name?.charAt(0)}
+            </div>
+          )}
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">{agent.full_name}</h1>
+            <p className="text-gray-500">{agent.email} · {agent.title || 'Agent'}</p>
+            <p className="text-sm text-gray-400">{agent.brokerage_name}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Assignment sections */}
+      <div className="space-y-8">
+        <GeoAssignmentSection
+          agentId={params.id}
+          areas={areas || []}
+          municipalities={municipalities || []}
+          communities={communities || []}
+          neighbourhoods={neighbourhoods || []}
+          currentAssignments={currentGeo || []}
+        />
+
+        <BuildingAssignmentSection
+          agentId={params.id}
+          allBuildings={allBuildings || []}
+          assignedBuildingIds={(currentBuildings || []).map(b => b.building_id)}
+        />
+
+        <ListingAssignmentSection
+          agentId={params.id}
+        />
+      </div>
+    </div>
+  )
+}
