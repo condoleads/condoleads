@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Eye, EyeOff } from 'lucide-react'
 
 interface Props {
   isOpen: boolean
@@ -13,9 +13,11 @@ interface Props {
 export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
   const [formData, setFormData] = useState({
     name: '', domain: '', brand_name: '', admin_email: '',
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
+    anthropic_api_key: '',
     ai_free_messages: 1, vip_auto_approve: false,
     ai_auto_approve_limit: 2, ai_manual_approve_limit: 3, ai_hard_cap: 10,
   })
@@ -37,6 +39,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
         logo_url: formData.logo_url || null,
         primary_color: formData.primary_color,
         secondary_color: formData.secondary_color,
+        anthropic_api_key: formData.anthropic_api_key || null,
         ai_free_messages: formData.ai_free_messages,
         vip_auto_approve: formData.vip_auto_approve,
         ai_auto_approve_limit: formData.ai_auto_approve_limit,
@@ -102,9 +105,31 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
             </div>
           </div>
 
+          {/* Charlie AI Config */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-semibold text-blue-900 mb-1">Charlie AI Configuration</h3>
+            <p className="text-xs text-blue-600 mb-3">The Anthropic API key powers Charlie for this tenant. Falls back to platform key if not set.</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Anthropic API Key</label>
+              <div className="flex gap-2">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={formData.anthropic_api_key}
+                  onChange={e => setFormData({ ...formData, anthropic_api_key: e.target.value })}
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm font-mono"
+                  placeholder="sk-ant-..."
+                />
+                <button type="button" onClick={() => setShowApiKey(v => !v)} className="px-3 py-2 border rounded-lg text-gray-500 hover:bg-gray-50">
+                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* VIP Config */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h3 className="font-semibold text-green-900 mb-3">✦ VIP Access Config</h3>
+            <h3 className="font-semibold text-green-900 mb-1">✦ VIP Access Config</h3>
+            <p className="text-xs text-green-700 mb-3">Controls Charlie plan limits for all users on this tenant.</p>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Free Plans Per User</label>

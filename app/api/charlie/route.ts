@@ -6,7 +6,9 @@ import { generatePropertySlug, generateHomePropertySlug } from '@/lib/utils/slug
 import { CHARLIE_TOOLS } from '@/app/charlie/lib/charlie-tools'
 import { buildCharlieSystemPrompt } from '@/app/charlie/lib/charlie-prompts'
 
-const anthropic = new Anthropic()
+function createAnthropicClient(apiKey?: string | null) {
+  return new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
+}
 
 function createServiceClient() {
   return createClient(
@@ -22,6 +24,18 @@ export async function POST(req: NextRequest) {
   console.log('[CHARLIE] request received, sessionId:', sessionId, 'userId:', userId)
 
   const supabase = createServiceClient()
+
+  // Load tenant API key for this request
+  let anthropicApiKey: string | null = null
+  if (tenantId) {
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('anthropic_api_key')
+      .eq('id', tenantId)
+      .single()
+    anthropicApiKey = tenantRow?.anthropic_api_key || null
+  }
+  const anthropic = createAnthropicClient(anthropicApiKey)
 
   // Resolve agent + session from WALLiam session (NOT getAgentFromHost)
   let agentId: string | null = null
