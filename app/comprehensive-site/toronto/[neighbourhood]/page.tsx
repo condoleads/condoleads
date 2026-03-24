@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
 import NeighbourhoodPageTabs from '@/app/[slug]/components/NeighbourhoodPageTabs'
 import GeoHero from '@/app/[slug]/components/GeoHero'
+import { getAgentFromHost } from '@/lib/utils/agent-detection'
+import { headers } from 'next/headers'
 
 interface Props {
   params: { neighbourhood: string }
@@ -168,6 +170,10 @@ export default async function NeighbourhoodPage({ params }: Props) {
   const data = await getNeighbourhoodData(params.neighbourhood)
   if (!data) notFound()
 
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const agent = await getAgentFromHost(host)
+
   const { neighbourhood, municipalities, municipalityIds, communities, stats, initialListings, initialTotal, initialCounts } = data
 
   return (
@@ -210,7 +216,8 @@ export default async function NeighbourhoodPage({ params }: Props) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <NeighbourhoodPageTabs
           municipalityIds={municipalityIds}
-          agentId=""
+          agentId={agent?.id || ''}
+          tenantId={agent?.tenant_id || ''}
           buildingCount={stats?.buildings ?? 0}
           municipalities={municipalities}
           initialListings={initialListings}

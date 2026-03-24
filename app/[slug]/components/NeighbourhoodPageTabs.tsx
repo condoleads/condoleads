@@ -18,6 +18,7 @@ interface Municipality {
 interface NeighbourhoodPageTabsProps {
   municipalityIds: string[]
   agentId: string
+  tenantId?: string
   buildingCount: number
   municipalities: Municipality[]
   // Initial SSR data (for-sale, all types)
@@ -29,6 +30,7 @@ interface NeighbourhoodPageTabsProps {
 export default function NeighbourhoodPageTabs({
   municipalityIds,
   agentId,
+  tenantId,
   buildingCount,
   municipalities,
   initialListings,
@@ -69,6 +71,7 @@ export default function NeighbourhoodPageTabs({
         <NeighbourhoodListingSection
           municipalityIds={municipalityIds}
           agentId={agentId}
+            tenantId={tenantId}
           initialListings={initialListings}
           initialTotal={initialTotal}
           counts={counts}
@@ -81,6 +84,7 @@ export default function NeighbourhoodPageTabs({
         <NeighbourhoodListingSection
           municipalityIds={municipalityIds}
           agentId={agentId}
+            tenantId={tenantId}
           pageSize={24}
           propertyCategory="condo"
         />
@@ -91,6 +95,7 @@ export default function NeighbourhoodPageTabs({
         <NeighbourhoodListingSection
           municipalityIds={municipalityIds}
           agentId={agentId}
+            tenantId={tenantId}
           pageSize={24}
           propertyCategory="homes"
         />

@@ -12,6 +12,7 @@ import GeoAdvancedFilters, { AdvancedFilterState } from './GeoAdvancedFilters'
 interface NeighbourhoodListingSectionProps {
   municipalityIds: string[]
   agentId: string
+  tenantId?: string
   initialListings?: MLSListing[]
   initialTotal?: number
   counts?: { forSale: number; forLease: number; sold: number; leased: number }
@@ -32,6 +33,7 @@ const DEFAULT_ADVANCED: AdvancedFilterState = { subtypes: [], minSqft: '', maxSq
 export default function NeighbourhoodListingSection({
   municipalityIds,
   agentId,
+  tenantId,
   initialListings,
   initialTotal,
   counts: initialCounts,
@@ -270,7 +272,7 @@ export default function NeighbourhoodListingSection({
       )}
       {selectedIsHome && (
         <HomeEstimatorBuyerModal isOpen={modalOpen} onClose={() => setModalOpen(false)}
-          listing={selectedListing} agentId={agentId} type={modalType} exactSqft={modalExactSqft} />
+          listing={selectedListing} agentId={agentId} tenantId={tenantId} type={modalType} exactSqft={modalExactSqft} />
       )}
     </div>
   )
