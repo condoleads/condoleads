@@ -17,16 +17,12 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
   const [error, setError] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [formData, setFormData] = useState({
-    // Brand
     name: '', domain: '', brand_name: '', admin_email: '',
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
     is_active: true,
-    // API Key
     anthropic_api_key: '',
-    // AI Configuration (Charlie chat)
     ai_free_messages: 1, vip_auto_approve: false,
     ai_auto_approve_limit: 2, ai_manual_approve_limit: 3, ai_hard_cap: 10,
-    // Estimator Configuration (non-AI comparables)
     estimator_nonai_enabled: true,
     estimator_free_attempts: 1, estimator_vip_auto_approve: false,
     estimator_auto_approve_attempts: 2, estimator_manual_approve_attempts: 3,
@@ -36,73 +32,68 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
   useEffect(() => {
     if (!isOpen || !tenantId) return
     setLoading(true)
-    import('@supabase/supabase-js').then(({ createClient }) => {
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      supabase.from('tenants').select('*').eq('id', tenantId).single()
-        .then(({ data }) => {
-          if (data) setFormData({
-            name: data.name || '',
-            domain: data.domain || '',
-            brand_name: data.brand_name || '',
-            admin_email: data.admin_email || '',
-            logo_url: data.logo_url || '',
-            primary_color: data.primary_color || '#1d4ed8',
-            secondary_color: data.secondary_color || '#4f46e5',
-            is_active: data.is_active !== false,
-            anthropic_api_key: data.anthropic_api_key || '',
-            ai_free_messages: data.ai_free_messages ?? 1,
-            vip_auto_approve: data.vip_auto_approve ?? false,
-            ai_auto_approve_limit: data.ai_auto_approve_limit ?? 2,
-            ai_manual_approve_limit: data.ai_manual_approve_limit ?? 3,
-            ai_hard_cap: data.ai_hard_cap ?? 10,
-            estimator_nonai_enabled: data.estimator_nonai_enabled ?? true,
-            estimator_free_attempts: data.estimator_free_attempts ?? 1,
-            estimator_vip_auto_approve: data.estimator_vip_auto_approve ?? false,
-            estimator_auto_approve_attempts: data.estimator_auto_approve_attempts ?? 2,
-            estimator_manual_approve_attempts: data.estimator_manual_approve_attempts ?? 3,
-            estimator_hard_cap: data.estimator_hard_cap ?? 10,
-          })
-          setLoading(false)
+    fetch(`/api/admin-homes/tenants?id=${tenantId}`)
+      .then(r => r.json())
+      .then(({ tenant: data }) => {
+        if (data) setFormData({
+          name: data.name || '',
+          domain: data.domain || '',
+          brand_name: data.brand_name || '',
+          admin_email: data.admin_email || '',
+          logo_url: data.logo_url || '',
+          primary_color: data.primary_color || '#1d4ed8',
+          secondary_color: data.secondary_color || '#4f46e5',
+          is_active: data.is_active !== false,
+          anthropic_api_key: data.anthropic_api_key || '',
+          ai_free_messages: data.ai_free_messages ?? 1,
+          vip_auto_approve: data.vip_auto_approve ?? false,
+          ai_auto_approve_limit: data.ai_auto_approve_limit ?? 2,
+          ai_manual_approve_limit: data.ai_manual_approve_limit ?? 3,
+          ai_hard_cap: data.ai_hard_cap ?? 10,
+          estimator_nonai_enabled: data.estimator_nonai_enabled ?? true,
+          estimator_free_attempts: data.estimator_free_attempts ?? 1,
+          estimator_vip_auto_approve: data.estimator_vip_auto_approve ?? false,
+          estimator_auto_approve_attempts: data.estimator_auto_approve_attempts ?? 2,
+          estimator_manual_approve_attempts: data.estimator_manual_approve_attempts ?? 3,
+          estimator_hard_cap: data.estimator_hard_cap ?? 10,
         })
-    })
+        setLoading(false)
+      })
+      .catch(() => { setError('Failed to load tenant'); setLoading(false) })
   }, [isOpen, tenantId])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true); setError('')
     try {
-      const { createClient } = await import('@supabase/supabase-js')
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      const { error: err } = await supabase.from('tenants').update({
-        name: formData.name,
-        domain: formData.domain.toLowerCase(),
-        brand_name: formData.brand_name || formData.name,
-        admin_email: formData.admin_email,
-        logo_url: formData.logo_url || null,
-        primary_color: formData.primary_color,
-        secondary_color: formData.secondary_color,
-        is_active: formData.is_active,
-        anthropic_api_key: formData.anthropic_api_key || null,
-        ai_free_messages: formData.ai_free_messages,
-        vip_auto_approve: formData.vip_auto_approve,
-        ai_auto_approve_limit: formData.ai_auto_approve_limit,
-        ai_manual_approve_limit: formData.ai_manual_approve_limit,
-        ai_hard_cap: formData.ai_hard_cap,
-        estimator_nonai_enabled: formData.estimator_nonai_enabled,
-        estimator_free_attempts: formData.estimator_free_attempts,
-        estimator_vip_auto_approve: formData.estimator_vip_auto_approve,
-        estimator_auto_approve_attempts: formData.estimator_auto_approve_attempts,
-        estimator_manual_approve_attempts: formData.estimator_manual_approve_attempts,
-        estimator_hard_cap: formData.estimator_hard_cap,
-        updated_at: new Date().toISOString(),
-      }).eq('id', tenantId!)
-      if (err) { setError(err.message); return }
+      const res = await fetch(`/api/admin-homes/tenants?id=${tenantId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          domain: formData.domain.toLowerCase(),
+          brand_name: formData.brand_name || formData.name,
+          admin_email: formData.admin_email,
+          logo_url: formData.logo_url || null,
+          primary_color: formData.primary_color,
+          secondary_color: formData.secondary_color,
+          is_active: formData.is_active,
+          anthropic_api_key: formData.anthropic_api_key || null,
+          ai_free_messages: formData.ai_free_messages,
+          vip_auto_approve: formData.vip_auto_approve,
+          ai_auto_approve_limit: formData.ai_auto_approve_limit,
+          ai_manual_approve_limit: formData.ai_manual_approve_limit,
+          ai_hard_cap: formData.ai_hard_cap,
+          estimator_nonai_enabled: formData.estimator_nonai_enabled,
+          estimator_free_attempts: formData.estimator_free_attempts,
+          estimator_vip_auto_approve: formData.estimator_vip_auto_approve,
+          estimator_auto_approve_attempts: formData.estimator_auto_approve_attempts,
+          estimator_manual_approve_attempts: formData.estimator_manual_approve_attempts,
+          estimator_hard_cap: formData.estimator_hard_cap,
+        })
+      })
+      const data = await res.json()
+      if (data.error) { setError(data.error); return }
       onSuccess(); onClose()
     } catch { setError('Failed to update tenant') }
     setSaving(false)
@@ -203,7 +194,7 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
               }
             </div>
 
-            {/* AI Configuration — Charlie chat */}
+            {/* AI Configuration */}
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <h3 className="font-semibold text-green-900 mb-1">✦ AI Configuration</h3>
               <p className="text-xs text-green-700 mb-3">Controls Charlie AI chat access for all users on this tenant.</p>
@@ -237,11 +228,10 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
               </div>
             </div>
 
-            {/* Estimator Configuration — non-AI comparables */}
+            {/* Estimator Configuration */}
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
               <h3 className="font-semibold text-purple-900 mb-1">⊹ Estimator Configuration</h3>
               <p className="text-xs text-purple-700 mb-3">Controls property estimator access (comparable data) for all users on this tenant.</p>
-
               <div className="mb-4">
                 <label className="flex items-center gap-2 cursor-pointer p-3 bg-white rounded-lg border">
                   <input type="checkbox" checked={formData.estimator_nonai_enabled} onChange={e => setFormData({ ...formData, estimator_nonai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" />
@@ -251,7 +241,6 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                   </div>
                 </label>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Free Attempts Per User</label>

@@ -12,6 +12,7 @@ interface GeoPageTabsProps {
   geoType: 'community' | 'municipality' | 'area'
   geoId: string
   agentId: string
+  tenantId?: string
   buildingCount: number
   initialListings?: MLSListing[]
   initialTotal?: number
@@ -23,7 +24,7 @@ interface GeoPageTabsProps {
 }
 
 export default function GeoPageTabs({
-  geoType, geoId, agentId, buildingCount,
+  geoType, geoId, agentId, tenantId, buildingCount,
   initialListings, initialTotal, counts,
   homeCounts, condoCounts,
   showBuildings = true,
@@ -81,6 +82,7 @@ export default function GeoPageTabs({
           geoType={geoType}
           geoId={geoId}
           agentId={agentId}
+          tenantId={tenantId}
         />
       )}
 
@@ -90,6 +92,7 @@ export default function GeoPageTabs({
           geoType={geoType}
           geoId={geoId}
           agentId={agentId}
+          tenantId={tenantId}
           propertyCategory="homes"
           counts={homeCounts}
         />
@@ -101,6 +104,7 @@ export default function GeoPageTabs({
           geoType={geoType}
           geoId={geoId}
           agentId={agentId}
+          tenantId={tenantId}
           propertyCategory="condo"
           counts={condoCounts}
         />

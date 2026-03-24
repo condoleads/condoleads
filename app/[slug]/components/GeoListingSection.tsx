@@ -387,6 +387,7 @@ export default function GeoListingSection({
           onClose={() => setModalOpen(false)}
           listing={selectedListing}
           agentId={agentId}
+            tenantId={tenantId}
           type={modalType}
           exactSqft={modalExactSqft}
         />

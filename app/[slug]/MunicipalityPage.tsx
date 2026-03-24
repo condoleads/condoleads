@@ -200,6 +200,7 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
             geoType="municipality"
             geoId={municipality.id}
             agentId={agent?.id || ''}
+            tenantId={agent?.tenant_id || ''}
             buildingCount={buildingCount}
             initialListings={initialListings}
             initialTotal={counts.forSale}

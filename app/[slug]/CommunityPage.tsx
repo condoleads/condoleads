@@ -155,6 +155,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
             geoType="community"
             geoId={community.id}
             agentId={agent?.id || ''}
+            tenantId={agent?.tenant_id || ''}
             buildingCount={buildingCount}
             initialListings={initialListings}
             initialTotal={counts.forSale}

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 
 interface Agent {
   id: string
+  tenant_id?: string
   full_name: string
   email: string
   cell_phone: string | null
