@@ -21,13 +21,13 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
     name: '', domain: '', brand_name: '', admin_email: '',
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
     is_active: true,
-    // Charlie AI
+    // API Key
     anthropic_api_key: '',
-    // User Access (Charlie plans)
+    // AI Configuration (Charlie chat)
     ai_free_messages: 1, vip_auto_approve: false,
     ai_auto_approve_limit: 2, ai_manual_approve_limit: 3, ai_hard_cap: 10,
-    // Estimator
-    estimator_ai_enabled: false, estimator_nonai_enabled: true,
+    // Estimator Configuration (non-AI comparables)
+    estimator_nonai_enabled: true,
     estimator_free_attempts: 1, estimator_vip_auto_approve: false,
     estimator_auto_approve_attempts: 2, estimator_manual_approve_attempts: 3,
     estimator_hard_cap: 10,
@@ -58,7 +58,6 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
             ai_auto_approve_limit: data.ai_auto_approve_limit ?? 2,
             ai_manual_approve_limit: data.ai_manual_approve_limit ?? 3,
             ai_hard_cap: data.ai_hard_cap ?? 10,
-            estimator_ai_enabled: data.estimator_ai_enabled ?? false,
             estimator_nonai_enabled: data.estimator_nonai_enabled ?? true,
             estimator_free_attempts: data.estimator_free_attempts ?? 1,
             estimator_vip_auto_approve: data.estimator_vip_auto_approve ?? false,
@@ -95,7 +94,6 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
         ai_auto_approve_limit: formData.ai_auto_approve_limit,
         ai_manual_approve_limit: formData.ai_manual_approve_limit,
         ai_hard_cap: formData.ai_hard_cap,
-        estimator_ai_enabled: formData.estimator_ai_enabled,
         estimator_nonai_enabled: formData.estimator_nonai_enabled,
         estimator_free_attempts: formData.estimator_free_attempts,
         estimator_vip_auto_approve: formData.estimator_vip_auto_approve,
@@ -183,35 +181,32 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
               </div>
             </div>
 
-            {/* Charlie AI Configuration */}
+            {/* Anthropic API Key */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-900 mb-1">Charlie AI Configuration</h3>
-              <p className="text-xs text-blue-600 mb-3">Powers Charlie and AI Estimator for this tenant. Falls back to platform key if not set.</p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Anthropic API Key</label>
-                <div className="flex gap-2">
-                  <input
-                    type={showApiKey ? 'text' : 'password'}
-                    value={formData.anthropic_api_key}
-                    onChange={e => setFormData({ ...formData, anthropic_api_key: e.target.value })}
-                    className="flex-1 px-3 py-2 border rounded-lg text-sm font-mono"
-                    placeholder="sk-ant-..."
-                  />
-                  <button type="button" onClick={() => setShowApiKey(v => !v)} className="px-3 py-2 border rounded-lg text-gray-500 hover:bg-gray-50">
-                    {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {formData.anthropic_api_key
-                  ? <p className="text-xs text-green-600 mt-1">✓ API key configured</p>
-                  : <p className="text-xs text-amber-600 mt-1">⚠ Using platform key — add a tenant key for isolation</p>
-                }
+              <h3 className="font-semibold text-blue-900 mb-1">Anthropic API Key</h3>
+              <p className="text-xs text-blue-600 mb-3">Powers Charlie AI for this tenant. Falls back to platform key if not set.</p>
+              <div className="flex gap-2">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={formData.anthropic_api_key}
+                  onChange={e => setFormData({ ...formData, anthropic_api_key: e.target.value })}
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm font-mono"
+                  placeholder="sk-ant-..."
+                />
+                <button type="button" onClick={() => setShowApiKey(v => !v)} className="px-3 py-2 border rounded-lg text-gray-500 hover:bg-gray-50">
+                  {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
+              {formData.anthropic_api_key
+                ? <p className="text-xs text-green-600 mt-1">✓ API key configured</p>
+                : <p className="text-xs text-amber-600 mt-1">⚠ Using platform key — add a tenant key for isolation</p>
+              }
             </div>
 
-            {/* User Access Configuration */}
+            {/* AI Configuration — Charlie chat */}
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <h3 className="font-semibold text-green-900 mb-1">✦ User Access Configuration</h3>
-              <p className="text-xs text-green-700 mb-3">Controls Charlie plan limits for all users on this tenant.</p>
+              <h3 className="font-semibold text-green-900 mb-1">✦ AI Configuration</h3>
+              <p className="text-xs text-green-700 mb-3">Controls Charlie AI chat access for all users on this tenant.</p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Free Plans Per User</label>
@@ -242,24 +237,17 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
               </div>
             </div>
 
-            {/* Estimator Configuration */}
+            {/* Estimator Configuration — non-AI comparables */}
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
               <h3 className="font-semibold text-purple-900 mb-1">⊹ Estimator Configuration</h3>
-              <p className="text-xs text-purple-700 mb-3">Controls property estimator access for all users on this tenant.</p>
+              <p className="text-xs text-purple-700 mb-3">Controls property estimator access (comparable data) for all users on this tenant.</p>
 
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <label className="flex items-center gap-2 cursor-pointer p-3 bg-white rounded-lg border">
-                  <input type="checkbox" checked={formData.estimator_ai_enabled} onChange={e => setFormData({ ...formData, estimator_ai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" />
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">AI Estimator</span>
-                    <p className="text-xs text-gray-400">Claude-powered estimates</p>
-                  </div>
-                </label>
+              <div className="mb-4">
                 <label className="flex items-center gap-2 cursor-pointer p-3 bg-white rounded-lg border">
                   <input type="checkbox" checked={formData.estimator_nonai_enabled} onChange={e => setFormData({ ...formData, estimator_nonai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" />
                   <div>
-                    <span className="text-sm font-medium text-gray-700">Standard Estimator</span>
-                    <p className="text-xs text-gray-400">Comparable data only</p>
+                    <span className="text-sm font-medium text-gray-700">Enable Estimator</span>
+                    <p className="text-xs text-gray-400">Allow users to request property estimates</p>
                   </div>
                 </label>
               </div>
