@@ -26,6 +26,7 @@ interface BuyerPlanProps {
   leadCaptured: boolean
   sessionId?: string | null
   userId?: string | null
+  geoContext?: { geoType: string; geoId: string; geoName: string } | null
   onLeadCaptured?: () => void
 }
 
@@ -43,6 +44,7 @@ interface SellerPlanProps {
   leadCaptured: boolean
   sessionId?: string | null
   userId?: string | null
+  geoContext?: { geoType: string; geoId: string; geoName: string } | null
   onLeadCaptured?: () => void
 }
 
@@ -74,7 +76,7 @@ function StatRow({ label, value, color = '#fff' }: { label: string; value: strin
 }
 
 export default function PlanDocument(props: PlanDocumentProps) {
-  const { analytics, agent, onSendPlan, leadCaptured, sessionId, userId, onLeadCaptured } = props
+  const { analytics, agent, onSendPlan, leadCaptured, sessionId, userId, onLeadCaptured, geoContext: planGeoContext } = props
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -109,6 +111,9 @@ export default function PlanDocument(props: PlanDocumentProps) {
         intent: props.type,
         analytics,
         sessionId: sessionId || null,
+        community_id: planGeoContext?.geoType === 'community' ? planGeoContext.geoId : null,
+        municipality_id: planGeoContext?.geoType === 'municipality' ? planGeoContext.geoId : null,
+        area_id: planGeoContext?.geoType === 'area' ? planGeoContext.geoId : null,
         userId: userId || null,
       }
 

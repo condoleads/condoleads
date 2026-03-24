@@ -326,6 +326,10 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             agent: agent ? { name: agent.full_name, email: agent.email, phone: agent.cell_phone, photo: agent.profile_photo_url, brokerage: agent.brokerage_name, title: agent.title } : undefined,
             onSendPlan: onSendPlan || (() => {}),
             leadCaptured: leadCaptured || false,
+            sessionId: sessionId || null,
+            userId: userId || null,
+            onLeadCaptured: onLeadCaptured,
+            geoContext: geoContext,
           } : {
             type: 'seller',
             geoName: plan.geoName,
@@ -340,6 +344,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             sessionId: sessionId || null,
             userId: userId || null,
             onLeadCaptured: onLeadCaptured,
+            geoContext: geoContext,
             leadCaptured: leadCaptured || false,
           })}
         />
