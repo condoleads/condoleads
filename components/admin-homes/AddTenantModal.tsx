@@ -15,11 +15,19 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
   const [error, setError] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [formData, setFormData] = useState({
+    // Brand
     name: '', domain: '', brand_name: '', admin_email: '',
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
+    // Charlie AI
     anthropic_api_key: '',
+    // User Access (Charlie plans)
     ai_free_messages: 1, vip_auto_approve: false,
     ai_auto_approve_limit: 2, ai_manual_approve_limit: 3, ai_hard_cap: 10,
+    // Estimator
+    estimator_ai_enabled: false, estimator_nonai_enabled: true,
+    estimator_free_attempts: 1, estimator_vip_auto_approve: false,
+    estimator_auto_approve_attempts: 2, estimator_manual_approve_attempts: 3,
+    estimator_hard_cap: 10,
   })
 
   async function handleSubmit(e: React.FormEvent) {
@@ -45,6 +53,13 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
         ai_auto_approve_limit: formData.ai_auto_approve_limit,
         ai_manual_approve_limit: formData.ai_manual_approve_limit,
         ai_hard_cap: formData.ai_hard_cap,
+        estimator_ai_enabled: formData.estimator_ai_enabled,
+        estimator_nonai_enabled: formData.estimator_nonai_enabled,
+        estimator_free_attempts: formData.estimator_free_attempts,
+        estimator_vip_auto_approve: formData.estimator_vip_auto_approve,
+        estimator_auto_approve_attempts: formData.estimator_auto_approve_attempts,
+        estimator_manual_approve_attempts: formData.estimator_manual_approve_attempts,
+        estimator_hard_cap: formData.estimator_hard_cap,
       })
       if (err) { setError(err.message); return }
       onSuccess(); onClose()
@@ -105,10 +120,10 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
             </div>
           </div>
 
-          {/* Charlie AI Config */}
+          {/* Charlie AI Configuration */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="font-semibold text-blue-900 mb-1">Charlie AI Configuration</h3>
-            <p className="text-xs text-blue-600 mb-3">The Anthropic API key powers Charlie for this tenant. Falls back to platform key if not set.</p>
+            <p className="text-xs text-blue-600 mb-3">Powers Charlie and AI Estimator for this tenant. Falls back to platform key if not set.</p>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Anthropic API Key</label>
               <div className="flex gap-2">
@@ -126,15 +141,15 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
             </div>
           </div>
 
-          {/* VIP Config */}
+          {/* User Access Configuration (Charlie plans) */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h3 className="font-semibold text-green-900 mb-1">✦ VIP Access Config</h3>
+            <h3 className="font-semibold text-green-900 mb-1">✦ User Access Configuration</h3>
             <p className="text-xs text-green-700 mb-3">Controls Charlie plan limits for all users on this tenant.</p>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Free Plans Per User</label>
                 <input type="number" min={0} value={formData.ai_free_messages} onChange={e => setFormData({ ...formData, ai_free_messages: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                <p className="text-xs text-gray-400 mt-1">Plans before VIP required</p>
+                <p className="text-xs text-gray-400 mt-1">Plans before approval required</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Hard Cap</label>
@@ -152,8 +167,60 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={formData.vip_auto_approve} onChange={e => setFormData({ ...formData, vip_auto_approve: e.target.checked })} className="w-4 h-4 text-green-600" />
                   <div>
-                    <span className="text-sm font-medium text-gray-700">Auto-Approve VIP Requests</span>
+                    <span className="text-sm font-medium text-gray-700">Auto-Approve Requests</span>
                     <p className="text-xs text-gray-400">Instantly grant plans without manual review</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Estimator Configuration */}
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <h3 className="font-semibold text-purple-900 mb-1">⊹ Estimator Configuration</h3>
+            <p className="text-xs text-purple-700 mb-3">Controls property estimator access for all users on this tenant.</p>
+
+            {/* Toggles */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <label className="flex items-center gap-2 cursor-pointer p-3 bg-white rounded-lg border">
+                <input type="checkbox" checked={formData.estimator_ai_enabled} onChange={e => setFormData({ ...formData, estimator_ai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">AI Estimator</span>
+                  <p className="text-xs text-gray-400">Claude-powered estimates</p>
+                </div>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer p-3 bg-white rounded-lg border">
+                <input type="checkbox" checked={formData.estimator_nonai_enabled} onChange={e => setFormData({ ...formData, estimator_nonai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Standard Estimator</span>
+                  <p className="text-xs text-gray-400">Comparable data only</p>
+                </div>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Free Attempts Per User</label>
+                <input type="number" min={0} value={formData.estimator_free_attempts} onChange={e => setFormData({ ...formData, estimator_free_attempts: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Hard Cap</label>
+                <input type="number" min={1} value={formData.estimator_hard_cap} onChange={e => setFormData({ ...formData, estimator_hard_cap: parseInt(e.target.value) || 10 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Attempts on Auto-Approve</label>
+                <input type="number" min={0} value={formData.estimator_auto_approve_attempts} onChange={e => setFormData({ ...formData, estimator_auto_approve_attempts: parseInt(e.target.value) || 2 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Attempts on Manual Approve</label>
+                <input type="number" min={0} value={formData.estimator_manual_approve_attempts} onChange={e => setFormData({ ...formData, estimator_manual_approve_attempts: parseInt(e.target.value) || 3 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+              </div>
+              <div className="col-span-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={formData.estimator_vip_auto_approve} onChange={e => setFormData({ ...formData, estimator_vip_auto_approve: e.target.checked })} className="w-4 h-4 text-purple-600" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Auto-Approve Estimator Requests</span>
+                    <p className="text-xs text-gray-400">Instantly grant attempts without manual review</p>
                   </div>
                 </label>
               </div>
