@@ -19,6 +19,7 @@ interface GeoListingSectionProps {
   geoType: 'community' | 'municipality' | 'area'
   geoId: string
   agentId: string
+  tenantId?: string
   pageSize?: number
   propertyCategory?: 'condo' | 'homes'
 }
@@ -40,6 +41,7 @@ export default function GeoListingSection({
   geoType,
   geoId,
   agentId,
+  tenantId,
   pageSize = 24,
   propertyCategory,
 }: GeoListingSectionProps) {
