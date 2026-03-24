@@ -22,6 +22,7 @@ interface EstimatorBuyerModalProps {
   buildingId: string
   buildingSlug?: string
   agentId: string
+  tenantId?: string
   type: 'sale' | 'lease'
   exactSqft: number | null
 }
@@ -47,6 +48,7 @@ export default function EstimatorBuyerModal({
   buildingId,
   buildingSlug,
   agentId,
+  tenantId,
   type,
   exactSqft
 }: EstimatorBuyerModalProps) {
@@ -153,10 +155,14 @@ export default function EstimatorBuyerModal({
 
     try {
       // Check session/usage
-      const response = await fetch('/api/estimator/session', {
+      const sessionUrl = tenantId ? '/api/walliam/estimator/session' : '/api/estimator/session'
+      const sessionHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (tenantId) sessionHeaders['x-tenant-id'] = tenantId
+      const sessionBody = tenantId ? { userId: user.id } : { agentId, userId: user.id, buildingId }
+      const response = await fetch(sessionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId, userId: user.id, buildingId })
+          headers: sessionHeaders,
+          body: JSON.stringify(sessionBody)
       })
 
       const data = await response.json()
@@ -182,7 +188,7 @@ export default function EstimatorBuyerModal({
       // Check if allowed
       if (data.allowed && data.remaining > 0) {
         // Increment usage
-        await fetch('/api/estimator/increment', {
+        await fetch(tenantId ? '/api/walliam/estimator/increment' : '/api/estimator/increment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

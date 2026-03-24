@@ -15,6 +15,7 @@ interface ListingSectionProps {
   buildingName: string
   buildingSlug: string
   agentId: string
+  tenantId?: string
 }
 
 type TabType = 'for-sale' | 'for-lease' | 'sold' | 'leased'
@@ -29,6 +30,7 @@ export default function ListingSection({
   buildingName,
   buildingSlug,
   agentId,
+  tenantId,
 }: ListingSectionProps) {
   const [activeTab, setActiveTab] = useState<TabType>('for-sale')
   const [currentPage, setCurrentPage] = useState(1)
@@ -218,6 +220,7 @@ export default function ListingSection({
         buildingId={buildingId}
         buildingSlug={buildingSlug}
         agentId={agentId}
+          tenantId={tenantId}
         type={modalType}
         exactSqft={exactSqft}
       />

@@ -459,6 +459,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingAddress={building.canonical_address}
                   buildingSlug={building.slug}
                   agentId={agent?.id || ""}
+                  tenantId={agent?.tenant_id || ''}
                 />
             </div>
             
