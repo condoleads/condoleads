@@ -1,11 +1,11 @@
 // app/admin-homes/tenants/page.tsx
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import TenantsClient from '@/components/admin-homes/TenantsClient'
 
 export const metadata = { title: 'Tenants — Admin' }
 
 export default async function TenantsPage() {
-  const supabase = createClient()
+  const supabase = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
 
   const { data: tenants } = await supabase
     .from('tenants')
