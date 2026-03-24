@@ -22,6 +22,11 @@ interface Tenant {
   ai_auto_approve_limit: number
   ai_manual_approve_limit: number
   ai_hard_cap: number
+  anthropic_api_key: string | null
+  estimator_nonai_enabled: boolean
+  estimator_free_attempts: number
+  estimator_hard_cap: number
+  estimator_vip_auto_approve: boolean
   created_at: string
   agent_count: number
   lead_count: number
@@ -108,10 +113,23 @@ export default function TenantsClient({ tenants }: { tenants: Tenant[] }) {
                 </div>
               </div>
 
-              {/* VIP config */}
-              <div className="bg-green-50 rounded-lg p-3 mb-4 text-xs text-gray-600">
-                <span className="font-semibold text-green-700">VIP: </span>
-                {tenant.ai_free_messages} free · {tenant.vip_auto_approve ? 'Auto' : 'Manual'} approve · Cap {tenant.ai_hard_cap}
+              {/* Config summary */}
+              <div className="bg-gray-50 rounded-lg p-3 mb-4 text-xs text-gray-600 space-y-1">
+                <div className="flex items-center gap-1">
+                  <span className="font-semibold text-blue-700">API:</span>
+                  <span>{tenant.anthropic_api_key ? '✓ Tenant key' : '⚠ Platform key'}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-semibold text-green-700">Charlie AI:</span>
+                  <span>{tenant.ai_free_messages} free · {tenant.vip_auto_approve ? 'Auto' : 'Manual'} · Cap {tenant.ai_hard_cap}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-semibold text-purple-700">Estimator:</span>
+                  {tenant.estimator_nonai_enabled
+                    ? <span>{tenant.estimator_free_attempts} free · {tenant.estimator_vip_auto_approve ? 'Auto' : 'Manual'} · Cap {tenant.estimator_hard_cap}</span>
+                    : <span className="text-gray-400">Disabled</span>
+                  }
+                </div>
               </div>
 
               {/* Actions */}
