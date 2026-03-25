@@ -1,6 +1,7 @@
 ﻿// app/charlie/components/PlanDocument.tsx
 'use client'
 import { useState } from 'react'
+import AppointmentForm from './AppointmentForm'
 
 interface AgentInfo {
   name: string
@@ -294,54 +295,18 @@ export default function PlanDocument(props: PlanDocumentProps) {
 
       {/* CTA — contact form or confirmation */}
       {!leadCaptured ? (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
-            Send This Plan to Me
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <input
-              type="text"
-              placeholder="Your name"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              style={inputStyle}
-            />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              style={inputStyle}
-            />
-            <input
-              type="tel"
-              placeholder="Phone number (optional)"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              style={inputStyle}
-            />
-            {submitError && (
-              <div style={{ fontSize: 12, color: '#ef4444', padding: '6px 0' }}>{submitError}</div>
-            )}
-            <button
-              onClick={handleSubmitPlan}
-              disabled={submitting}
-              style={{
-                width: '100%', padding: '14px', borderRadius: 12, border: 'none',
-                cursor: submitting ? 'not-allowed' : 'pointer',
-                background: submitting ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
-                color: '#fff', fontSize: 14, fontWeight: 700, letterSpacing: '0.02em',
-                marginTop: 4,
-                opacity: submitting ? 0.7 : 1,
-              }}
-            >
-              {submitting ? 'Sending...' : '📨 Send My Plan + Connect with Agent'}
-            </button>
-          </div>
-        </div>
+        <AppointmentForm
+          type={props.type}
+          listings={props.type === 'buyer' ? (props as any).listings || [] : []}
+          userId={userId}
+          sessionId={sessionId}
+          geoContext={planGeoContext}
+          agent={agent ? { name: agent.name, email: agent.email, phone: agent.phone, photo: agent.photo, brokerage: agent.brokerage } : null}
+          onBooked={() => { onLeadCaptured?.() }}
+        />
       ) : (
         <div style={{ textAlign: 'center', padding: '16px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 12, color: '#10b981', fontSize: 13, fontWeight: 700 }}>
-          ✓ Plan sent to your email! Your agent will be in touch shortly.
+          ✓ Appointment requested! Your agent will confirm shortly.
         </div>
       )}
     </div>
