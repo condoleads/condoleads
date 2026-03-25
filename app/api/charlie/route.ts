@@ -190,6 +190,25 @@ NEVER truncate the geoId.` : ''
 
                   // Notify frontend — registered user used a VIP credit
                   send({ type: 'vip_credit_used', plansUsed: plansUsed + 1, totalAllowed, planType })
+                  // Send plan email notification to user
+                  const effectiveEmail = await (async () => {
+                    try {
+                      const { data: u } = await supabase.auth.admin.getUserById(effectiveUserId)
+                      return u?.user?.email || null
+                    } catch { return null }
+                  })()
+                  if (effectiveEmail) {
+                    fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/charlie/plan-email`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        email: effectiveEmail,
+                        planType,
+                        agentId,
+                        geoContext,
+                      }),
+                    }).catch(err => console.error("[charlie] plan email error:", err))
+                  }
                 }
               }
               // ── END PLAN GATING ──────────────────────────────────────────

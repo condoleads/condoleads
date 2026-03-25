@@ -95,6 +95,7 @@ export function useCharlie() {
   const geoContextRef = useRef<any>(null)
   const greetingSentRef = useRef(false)
   const messagesRef = useRef<any[]>([])
+  const lastUserMessageRef = useRef<string | null>(null)
   const sendMessageRef = useRef<any>(null)
   // WALLiam session ref
   const walliamSessionIdRef = useRef<string | null>(null)
@@ -208,6 +209,7 @@ export function useCharlie() {
     if (!userText.trim() && !isGreeting) return
 
     const userMessage = { role: 'user', content: userText }
+    if (!isGreeting) lastUserMessageRef.current = userText
 
     if (!isGreeting) {
       const uiMsg: ChatMessage = {
@@ -347,6 +349,13 @@ export function useCharlie() {
     }
   }
 
+  const resumeAfterGate = useCallback(() => {
+    const lastMsg = lastUserMessageRef.current
+    if (!lastMsg) return
+    setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
+    setTimeout(() => sendMessageRef.current?.(lastMsg), 300)
+  }, [])
+
   return {
     state,
     open,
@@ -359,5 +368,6 @@ export function useCharlie() {
     dismissGate,
     requestVipAccess,
     setLeadCaptured,
+    resumeAfterGate,
   }
 }

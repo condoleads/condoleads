@@ -1,5 +1,8 @@
 // app/admin-homes/leads/page.tsx
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
+function createServiceClient() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+}
 import AdminHomesLeadsClient from '@/components/admin-homes/AdminHomesLeadsClient'
 
 export const metadata = {
@@ -7,7 +10,7 @@ export const metadata = {
 }
 
 export default async function AdminHomesLeadsPage() {
-  const supabase = createClient()
+  const supabase = createServiceClient()
 
   // WALLiam leads only — source starts with 'walliam_'
   const { data: leads } = await supabase

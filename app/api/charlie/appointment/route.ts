@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
     // Step 4: Confirmation email → user
     try {
       await resend.emails.send({
-        from: 'WALLiam <appointments@walliam.ca>',
+        from: 'WALLiam <notifications@condoleads.ca>',
         to: email,
         subject: `Your ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${formattedDate} at ${appointment_time}`,
         html: buildUserConfirmationEmail({
@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
 
     try {
       await resend.emails.send({
-        from: 'WALLiam <notifications@walliam.ca>',
+        from: 'WALLiam <notifications@condoleads.ca>',
         to: notifyTo,
         cc: managerEmail ? [managerEmail] : undefined,
         bcc: agentNotifyEmail ? [ADMIN_EMAIL] : undefined,

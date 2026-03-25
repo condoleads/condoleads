@@ -30,6 +30,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
     dismissGate,
     requestVipAccess,
     setLeadCaptured,
+    resumeAfterGate,
   } = useCharlie()
 
   const [searchInput, setSearchInput] = useState('')
@@ -162,12 +163,12 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
           }}
           onSuccess={() => {
             setShowRegisterModal(false)
-            dismissGate()
-            // Re-init session with new user
             const supabase = createClient()
             supabase.auth.getUser().then(({ data }) => {
               if (data?.user?.id) {
-                initSession(data.user.id, pageContext)
+                initSession(data.user.id, pageContext).then(() => {
+                  resumeAfterGate()
+                })
               }
             })
           }}

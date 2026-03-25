@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
     // Step 5: Send rich plan email → USER
     try {
       await resend.emails.send({
-        from: 'WALLiam <plans@walliam.ca>',
+        from: 'WALLiam <notifications@condoleads.ca>',
         to: email,
         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
         html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent }),
@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
 
       try {
         await resend.emails.send({
-          from: 'WALLiam <notifications@walliam.ca>',
+          from: 'WALLiam <notifications@condoleads.ca>',
           to: toList,
           cc: managerEmail ? [managerEmail] : undefined,
           bcc: [ADMIN_EMAIL],
@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
       // No agent — send directly to admin only
       try {
         await resend.emails.send({
-          from: 'WALLiam <notifications@walliam.ca>',
+          from: 'WALLiam <notifications@condoleads.ca>',
           to: ADMIN_EMAIL,
           subject: `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead (Unassigned) — ${name}`,
           html: buildAgentLeadEmail({ name, email, phone, intent, buyerProfile, sellerProfile, listings, analytics }),
