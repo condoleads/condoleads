@@ -349,7 +349,13 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const res = await fetch(`${baseUrl}/api/geo-listings?${params.toString()}`)
     const data = await res.json()
-    return { listings: data.listings || [], total: data.total || 0 }
+    const CONDO_TYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment', 'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']
+    const listingsWithSlugs = (data.listings || []).map((l: any) => {
+      const isHome = l.property_type === 'Residential Freehold' || (!CONDO_TYPES.includes(l.property_subtype) && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].includes(l.property_subtype))
+      const slug = isHome ? generateHomePropertySlug(l) : generatePropertySlug(l)
+      return { ...l, _slug: slug, _isHome: isHome }
+    })
+    return { listings: listingsWithSlugs, total: data.total || 0 }
   }
 
   return { error: 'Unknown tool' }
