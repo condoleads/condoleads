@@ -75,7 +75,8 @@ export const CHARLIE_TOOLS = [
         timeline: { type: 'string' },
         goal: { type: 'string' },
         estimatedValueMin: { type: 'number' },
-        estimatedValueMax: { type: 'number' }
+        estimatedValueMax: { type: 'number' },
+        summary: { type: 'string' }
       },
       required: ['type', 'geoName']
     }

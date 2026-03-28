@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       p_municipality_id: municipality_id || null,
       p_area_id: area_id || null,
       p_user_id: userId || null,
-      p_tenant_id: tenantId,
+        p_tenant_id: tenantId || null,
     })
 
     const agentId = resolvedAgentId || null

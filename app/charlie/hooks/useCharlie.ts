@@ -90,7 +90,16 @@ const INITIAL_STATE: CharlieState = {
 }
 
 export function useCharlie() {
-  const [state, setState] = useState<CharlieState>(INITIAL_STATE)
+  const [state, setStateRaw] = useState<CharlieState>(INITIAL_STATE)
+  const setState = (updater: CharlieState | ((s: CharlieState) => CharlieState)) => {
+    setStateRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      stateRef.current = next
+      return next
+    })
+  }
+  const stateRef = useRef<CharlieState>(INITIAL_STATE)
+  const analyticsRef = useRef<any>(null)
   const sessionId = useRef(Math.random().toString(36).slice(2))
   const geoContextRef = useRef<any>(null)
   const greetingSentRef = useRef(false)
@@ -114,7 +123,7 @@ export function useCharlie() {
     try {
       const res = await fetch('/api/walliam/charlie/session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9' },
         body: JSON.stringify({
           userId,
           listing_id: pageContext?.listing_id || null,
@@ -235,7 +244,7 @@ export function useCharlie() {
     try {
       const res = await fetch('/api/charlie', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9' },
         body: JSON.stringify({
           messages: messagesRef.current,
           sessionId: walliamSessionIdRef.current,
@@ -337,12 +346,31 @@ export function useCharlie() {
     }
     if (tool === 'get_market_analytics' && data.analytics) {
       setState(s => ({ ...s, analytics: { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }, activePanel: 'results' }))
+        analyticsRef.current = data.analytics
     }
     if (tool === 'search_listings' && data.listings) {
       setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
     }
     if (tool === 'generate_plan' && data.planReady) {
       setState(s => ({ ...s, planReady: true, plan: data, activePanel: 'results' }))
+        fetch('/api/charlie/plan-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: stateRef.current.sessionId,
+            userId: stateRef.current.userId,
+            planType: data.type,
+            plan: data,
+            analytics: analyticsRef.current,
+            listings: stateRef.current.listingGroups.flatMap(g => g.listings).slice(0, 10),
+            geoContext: stateRef.current.geoContext,
+            vipCreditUsed: stateRef.current.vipCreditUsed,
+            vipCreditPlansUsed: stateRef.current.vipCreditPlansUsed,
+            vipCreditTotal: stateRef.current.vipCreditTotal,
+            comparables: stateRef.current.comparables.slice(0, 6),
+            sellerEstimate: stateRef.current.sellerEstimate,
+          }),
+        }).catch(err => console.error('[useCharlie] plan email error:', err))
     }
     if (tool === 'get_comparables' && data.listings) {
       setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), activePanel: 'results' }))

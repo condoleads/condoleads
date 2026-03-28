@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
         p_municipality_id: municipality_id || null,
         p_area_id: area_id || null,
         p_user_id: userId || null,
+        p_tenant_id: tenantId || null,
       })
 
     if (resolveError) {
@@ -49,14 +50,48 @@ export async function POST(request: NextRequest) {
     console.log("[session] rpc result:", resolvedAgentId, resolveError)
     const agentId = resolvedAgentId || null
 
-    // Step 2: Get agent config (limits) — only if agent resolved
+    // Step 2: Get config from tenant (primary) or agent (fallback)
     let agentConfig = {
-      ai_free_messages: 1,          // default: 1 free plan per type
-      ai_auto_approve_limit: 2,     // default: 2 more on auto-approve
-      ai_manual_approve_limit: 3,   // default: 3 more on manual approve
+      ai_free_messages: 1,
+      ai_auto_approve_limit: 2,
+      ai_manual_approve_limit: 3,
       ai_hard_cap: 10,
       vip_auto_approve: false,
       full_name: 'WALLiam',
+    }
+
+    if (tenantId) {
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve`)
+        .eq('id', tenantId)
+        .single()
+      if (tenant) {
+        agentConfig = {
+          ai_free_messages: tenant.ai_free_messages ?? 1,
+          ai_auto_approve_limit: tenant.ai_auto_approve_limit ?? 2,
+          ai_manual_approve_limit: tenant.ai_manual_approve_limit ?? 3,
+          ai_hard_cap: tenant.ai_hard_cap ?? 10,
+          vip_auto_approve: tenant.vip_auto_approve ?? false,
+          full_name: tenant.name,
+        }
+      }
+    } else if (agentId) {
+      const { data: agent } = await supabase
+        .from('agents')
+        .select(`full_name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve`)
+        .eq('id', agentId)
+        .single()
+      if (agent) {
+        agentConfig = {
+          ai_free_messages: agent.ai_free_messages ?? 1,
+          ai_auto_approve_limit: agent.ai_auto_approve_limit ?? 2,
+          ai_manual_approve_limit: agent.ai_manual_approve_limit ?? 3,
+          ai_hard_cap: agent.ai_hard_cap ?? 10,
+          vip_auto_approve: agent.vip_auto_approve ?? false,
+          full_name: agent.full_name,
+        }
+      }
     }
 
     if (agentId) {

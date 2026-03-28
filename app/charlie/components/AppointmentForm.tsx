@@ -120,7 +120,7 @@ export default function AppointmentForm({ type, listings = [], userId, sessionId
     try {
       const res = await fetch('/api/charlie/appointment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9' },
         body: JSON.stringify({
           name: name.trim(),
           email: email.trim(),

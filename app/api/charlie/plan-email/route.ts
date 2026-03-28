@@ -1,13 +1,15 @@
-// app/api/charlie/plan-email/route.ts
-// Sends automatic plan notification email to user when plan is generated
-// Called internally from /api/charlie/route.ts — not a user-facing endpoint
+﻿// app/api/charlie/plan-email/route.ts
+// Sends rich plan email to user + agent + manager + admin BCC
+// Called client-side from useCharlie after generate_plan tool completes
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
+const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+const FROM = 'WALLiam <notifications@condoleads.ca>'
 
 function createServiceClient() {
   return createClient(
@@ -19,34 +21,99 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, planType, agentId, geoContext } = await req.json()
+    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal } = await req.json()
 
-    if (!email || !planType) {
-      return NextResponse.json({ error: 'email and planType required' }, { status: 400 })
+    if (!userId || !planType) {
+      return NextResponse.json({ error: 'userId and planType required' }, { status: 400 })
     }
 
     const supabase = createServiceClient()
 
-    // Get agent info for email
+    const { data: authData } = await supabase.auth.admin.getUserById(userId)
+    const userEmail = authData?.user?.email
+    if (!userEmail) return NextResponse.json({ error: 'User email not found' }, { status: 404 })
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('full_name')
+      .eq('id', userId)
+      .single()
+    const userName = profile?.full_name || 'there'
+
     let agent: any = null
-    if (agentId) {
-      const { data } = await supabase
-        .from('agents')
-        .select('full_name, email, cell_phone, profile_photo_url, brokerage_name, title')
-        .eq('id', agentId)
+    let managerId: string | null = null
+    let managerEmail: string | null = null
+    let tenantId: string | null = null
+
+    if (sessionId) {
+      const { data: session } = await supabase
+        .from('chat_sessions')
+        .select('agent_id, tenant_id')
+        .eq('id', sessionId)
         .single()
-      agent = data
+
+      tenantId = session?.tenant_id || null
+
+      if (session?.agent_id) {
+        const { data: agentData } = await supabase
+          .from('agents')
+          .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id')
+          .eq('id', session.agent_id)
+          .single()
+
+        if (agentData) {
+          agent = agentData
+          if (agentData.parent_id) {
+            managerId = agentData.parent_id
+            const { data: manager } = await supabase
+              .from('agents')
+              .select('full_name, email, notification_email')
+              .eq('id', agentData.parent_id)
+              .single()
+            if (manager) {
+              managerEmail = manager.notification_email || manager.email
+            }
+          }
+        }
+      }
     }
 
-    const geoName = geoContext?.geoName || 'the GTA'
-    const isBuyer = planType === 'buyer'
-
-    await resend.emails.send({
-      from: 'WALLiam <notifications@condoleads.ca>',
-      to: email,
-      subject: `Your WALLiam ${isBuyer ? 'Buyer' : 'Seller'} Plan — ${geoName}`,
-      html: buildPlanNotificationEmail({ planType, geoName, agent }),
+    const geoName = geoContext?.geoName || plan?.geoName || null
+    await supabase.from('leads').insert({
+      agent_id: agent?.id || null,
+      user_id: userId,
+      contact_name: userName,
+      contact_email: userEmail,
+      source: 'walliam_charlie',
+      intent: planType,
+      geo_name: geoName,
+      budget_max: plan?.budgetMax || null,
+      plan_data: { planType, plan, analytics, topListings: (listings || []).slice(0, 5) },
+      manager_id: managerId,
+      assignment_source: agent ? 'geo' : 'admin',
+      status: 'new',
+      quality: 'hot',
+      tenant_id: tenantId,
     })
+
+    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1 })
+    const subject = `\u2756 WALLiam ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
+
+    await resend.emails.send({ from: FROM, to: userEmail, subject, html }).then(r => console.log("[plan-email] user send result:", JSON.stringify(r))).catch(e => console.error("[plan-email] user send error:", e))
+
+    if (agent?.email) {
+      const agentNotifyEmail = agent.notification_email || agent.email
+      await resend.emails.send({
+        from: FROM,
+        to: agentNotifyEmail,
+        cc: managerEmail ? [managerEmail] : undefined,
+        bcc: [ADMIN_EMAIL],
+        subject,
+        html,
+      })
+    } else {
+      await resend.emails.send({ from: FROM, to: ADMIN_EMAIL, subject, html })
+    }
 
     return NextResponse.json({ success: true })
 
@@ -56,23 +123,324 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function buildPlanNotificationEmail(data: {
+const MONTHS_ARR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function buildRichPlanEmail(data: {
+  userName: string
+  userEmail: string
   planType: string
-  geoName: string
-  agent?: any
+  plan: any
+  analytics: any
+  listings: any[]
+  agent: any
+  geoName: string | null
+  comparables: any[]
+  sellerEstimate: any | null
+  vipCreditUsed: boolean
+  vipCreditPlansUsed: number
+  vipCreditTotal: number
 }): string {
-  const { planType, geoName, agent } = data
+  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal } = data
   const isBuyer = planType === 'buyer'
+  const topListings = (listings || []).slice(0, 10)
+
+  // Market condition
+  const stl = analytics?.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio) : null
+  const dom = analytics?.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90) : null
+  const conditionLabel = !stl || !dom ? 'Insufficient Data'
+    : stl >= 99 && dom <= 20 ? "Strong Seller's Market"
+    : stl >= 97 && dom <= 40 ? "Seller's Market"
+    : stl < 95 || dom > 70 ? "Buyer's Market"
+    : 'Balanced Market'
+  const conditionColor = !stl || !dom ? '#94a3b8'
+    : stl >= 97 ? '#10b981'
+    : stl < 95 || (dom && dom > 70) ? '#ef4444'
+    : '#f59e0b'
+
+  const conditionHtml = `
+    <div style="margin: 0 0 16px;">
+      <span style="display: inline-flex; align-items: center; gap: 8px; background: ${conditionColor}18; border: 1px solid ${conditionColor}40; border-radius: 100px; padding: 5px 14px;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: ${conditionColor}; display: inline-block;"></span>
+        <span style="font-size: 12px; font-weight: 700; color: ${conditionColor};">${conditionLabel}</span>
+      </span>
+    </div>
+  `
+
+  const marketHtml = analytics ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Market Intelligence &middot; ${geoName || ''}</div>
+      <table width="100%" cellpadding="0" cellspacing="8" border="0" style="margin-bottom: 8px;">
+        <tr>
+          ${[
+            { label: 'Avg Days on Market', value: analytics.closed_avg_dom_90 ? `${analytics.closed_avg_dom_90}d` : '&mdash;' },
+            { label: 'Sale / List Ratio', value: analytics.sale_to_list_ratio ? `${analytics.sale_to_list_ratio}%` : '&mdash;' },
+            { label: 'Active Listings', value: analytics.active_count ? `${Number(analytics.active_count).toLocaleString()}` : '&mdash;' },
+          ].map(m => `
+            <td width="33%" style="padding: 0 4px;">
+              <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">${m.label}</div>
+                <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${m.value}</div>
+              </div>
+            </td>
+          `).join('')}
+        </tr>
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="8" border="0">
+        <tr>
+          ${[
+            { label: 'Sold (90d)', value: analytics.closed_sale_count_90 ? `${Number(analytics.closed_sale_count_90).toLocaleString()}` : '&mdash;' },
+            { label: 'Absorption Rate', value: analytics.absorption_rate_pct ? `${analytics.absorption_rate_pct}%` : '&mdash;' },
+            { label: 'Median PSF', value: analytics.median_psf ? `$${Number(analytics.median_psf).toLocaleString('en-CA', { maximumFractionDigits: 0 })}` : '&mdash;' },
+          ].map(m => `
+            <td width="33%" style="padding: 0 4px;">
+              <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">${m.label}</div>
+                <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${m.value}</div>
+              </div>
+            </td>
+          `).join('')}
+        </tr>
+      </table>
+    </div>
+    ${analytics.subtype_breakdown && Object.keys(analytics.subtype_breakdown).length > 0 ? `
+    <div style="margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Price by Home Type</div>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
+        <tr style="background: #f8fafc;">
+          <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Type</td>
+          <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: center;">DOM</td>
+          <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: center;">STL</td>
+          <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: right;">Median</td>
+        </tr>
+        ${Object.entries(analytics.subtype_breakdown).map(([subtype, d]: [string, any]) => `
+        <tr style="border-top: 1px solid #f1f5f9;">
+          <td style="padding: 9px 10px; font-size: 13px; font-weight: 600; color: #0f172a;">${subtype}</td>
+          <td style="padding: 9px 10px; font-size: 12px; color: #64748b; text-align: center;">${d.avg_dom ? `${Math.round(d.avg_dom)}d` : '&mdash;'}</td>
+          <td style="padding: 9px 10px; font-size: 12px; color: #64748b; text-align: center;">${d.sale_to_list ? `${d.sale_to_list}%` : '&mdash;'}</td>
+          <td style="padding: 9px 10px; font-size: 14px; font-weight: 800; color: #1d4ed8; text-align: right;">${d.median_price ? `$${Number(d.median_price).toLocaleString('en-CA')}` : '&mdash;'}</td>
+        </tr>
+        `).join('')}
+      </table>
+    </div>
+    ` : ''}
+  ` : ''
+
+  const offerIntelHtml = analytics ? `
+    <div style="margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Offer Intelligence</div>
+      <table width="100%" cellpadding="0" cellspacing="4" border="0"><tr>
+        <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+          <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Offer At</div>
+          <div style="font-size: 18px; font-weight: 800; color: #1d4ed8;">${analytics.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio).toFixed(1) + '%' : '&mdash;'}</div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">of asking</div>
+        </div></td>
+        <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+          <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Avg Concession</div>
+          <div style="font-size: 18px; font-weight: 800; color: #10b981;">${analytics.avg_concession_pct ? Number(analytics.avg_concession_pct).toFixed(1) + '%' : '&mdash;'}</div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">below asking</div>
+        </div></td>
+        <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+          <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Decide In</div>
+          <div style="font-size: 18px; font-weight: 800; color: #f59e0b;">${analytics.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90).toFixed(0) + 'd' : '&mdash;'}</div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">avg DOM</div>
+        </div></td>
+      </tr></table>
+    </div>
+  ` : ''
+
+  const seasonal = analytics?.insight_seasonal
+  const bestMonths = (seasonal?.best_months || []) as number[]
+  const worstMonths = (seasonal?.worst_months || []) as number[]
+  const currentMonth = seasonal?.current_month as number | undefined
+  const bestTimeHtml = seasonal ? `
+    <div style="margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Best Time to Buy</div>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;">
+        <div style="font-size: 13px; color: #1e293b; line-height: 1.7;">
+          Best months: <strong style="color: #10b981;">${bestMonths.map((m: number) => MONTHS_ARR[m-1]).join(', ')}</strong> &nbsp;&middot;&nbsp;
+          Avoid: <strong style="color: #ef4444;">${worstMonths.map((m: number) => MONTHS_ARR[m-1]).join(', ')}</strong>
+          ${currentMonth ? `<br>Currently <strong>${MONTHS_ARR[currentMonth-1]}</strong> &mdash; ranked #${seasonal.current_month_rank} of 12 for buyer power.` : ''}
+        </div>
+      </div>
+    </div>
+  ` : ''
+
+  const summaryHtml = plan?.summary ? `
+    <div style="background: linear-gradient(135deg, #eff6ff, #f0fdf4); border: 1px solid #bfdbfe; border-radius: 10px; padding: 18px; margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">&#10022; Your ${isBuyer ? 'Buyer' : 'Seller'} Strategy</div>
+      <p style="margin: 0; font-size: 14px; line-height: 1.7; color: #1e293b;">${plan.summary}</p>
+    </div>
+  ` : ''
+
+  const profileHtml = isBuyer ? `
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Buyer Profile</div>
+      <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px;">
+        ${plan?.budgetMax ? `<tr><td style="color: #64748b; width: 130px;">Budget</td><td style="font-weight: 700; color: #0f172a;">$${Number(plan.budgetMin || 0).toLocaleString('en-CA')} &mdash; $${Number(plan.budgetMax).toLocaleString('en-CA')}</td></tr>` : ''}
+        ${plan?.propertyType ? `<tr><td style="color: #64748b;">Property Type</td><td style="font-weight: 600; color: #0f172a;">${plan.propertyType}</td></tr>` : ''}
+        ${plan?.bedrooms ? `<tr><td style="color: #64748b;">Bedrooms</td><td style="font-weight: 600; color: #0f172a;">${plan.bedrooms}+</td></tr>` : ''}
+        ${plan?.timeline ? `<tr><td style="color: #64748b;">Timeline</td><td style="font-weight: 600; color: #0f172a;">${plan.timeline}</td></tr>` : ''}
+      </table>
+    </div>
+  ` : `
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Seller Profile</div>
+      <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px;">
+        ${plan?.propertyType ? `<tr><td style="color: #64748b; width: 130px;">Property Type</td><td style="font-weight: 600; color: #0f172a;">${plan.propertyType}</td></tr>` : ''}
+        ${plan?.estimatedValueMin ? `<tr><td style="color: #64748b;">Est. Value</td><td style="font-weight: 700; color: #059669;">$${Number(plan.estimatedValueMin).toLocaleString('en-CA')} &mdash; $${Number(plan.estimatedValueMax).toLocaleString('en-CA')}</td></tr>` : ''}
+        ${plan?.timeline ? `<tr><td style="color: #64748b;">Timeline</td><td style="font-weight: 600; color: #0f172a;">${plan.timeline}</td></tr>` : ''}
+        ${plan?.goal ? `<tr><td style="color: #64748b;">Goal</td><td style="font-weight: 600; color: #0f172a;">${plan.goal}</td></tr>` : ''}
+      </table>
+    </div>
+  `
+
+  const planCardHtml = `
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; margin: 20px 0;">
+      <div style="margin-bottom: 12px;">
+        <div style="font-size: 16px; font-weight: 800; color: #fff;">${isBuyer ? '&#127968; Your Buyer Plan' : '&#128176; Your Seller Strategy'}</div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px;">${geoName || 'GTA'} &middot; ${new Date().toLocaleDateString('en-CA')}</div>
+      </div>
+      <div style="margin-bottom: 14px;">
+        <span style="display: inline-flex; align-items: center; gap: 6px; background: ${conditionColor}18; border: 1px solid ${conditionColor}40; border-radius: 100px; padding: 4px 12px;">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: ${conditionColor}; display: inline-block;"></span>
+          <span style="font-size: 11px; font-weight: 700; color: ${conditionColor};">${conditionLabel}</span>
+        </span>
+      </div>
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Your Profile</div>
+      ${isBuyer && plan?.budgetMax ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Budget</span><span style="font-size:13px;font-weight:700;color:#3b82f6;">$${Number(plan.budgetMin||0).toLocaleString('en-CA')} &mdash; $${Number(plan.budgetMax).toLocaleString('en-CA')}</span></div>` : ''}
+      ${plan?.propertyType ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Property Type</span><span style="font-size:13px;font-weight:700;color:#fff;">${plan.propertyType}</span></div>` : ''}
+      ${plan?.timeline ? `<div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Timeline</span><span style="font-size:13px;font-weight:700;color:#fff;">${plan.timeline}</span></div>` : ''}
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 12px 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Market Snapshot</div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Avg Days on Market</span><span style="font-size:13px;font-weight:700;color:#6366f1;">${analytics?.closed_avg_dom_90 ? analytics.closed_avg_dom_90 + 'd' : '&mdash;'}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Sale-to-List Ratio</span><span style="font-size:13px;font-weight:700;color:#10b981;">${analytics?.sale_to_list_ratio ? analytics.sale_to_list_ratio + '%' : '&mdash;'}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Active Listings</span><span style="font-size:13px;font-weight:700;color:#fff;">${analytics?.active_count || '&mdash;'}</span></div>
+      ${topListings.length > 0 ? `
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 12px 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Top Matches (${topListings.length})</div>
+      ${topListings.map((l) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><div><div style="font-size:12px;font-weight:700;color:#fff;">$${Number(l.list_price||0).toLocaleString('en-CA')}</div><div style="font-size:11px;color:rgba(255,255,255,0.35);">${(l.unparsed_address||'').split(',')[0]}</div></div><div style="font-size:11px;color:rgba(255,255,255,0.3);">${l.bedrooms_total||''} bed &middot; ${l.bathrooms_total_integer||''} bath</div></div>`).join('')}
+      ` : ''}
+    </div>
+  `
+
+  const listingsHtml = topListings.length > 0 ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">
+        ${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (${topListings.length})
+      </div>
+      ${topListings.map((l: any) => {
+        const url = `${BASE_URL}${l._slug || '/' + (l.listing_key || '')}`
+        const price = l.list_price || l.close_price || 0
+        const address = l.unparsed_address || '&mdash;'
+        const beds = l.bedrooms_total
+        const baths = l.bathrooms_total_integer
+        const subtype = l.property_subtype || ''
+        const photo = (l.media && l.media[0]?.media_url) || ''
+        return `
+          <a href="${url}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" alt="" width="80" height="72" style="display: block; width: 80px; height: 72px;"></td>` : ''}
+                <td style="padding: 10px 14px; vertical-align: middle;">
+                  <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${address}</div>
+                  <div style="font-size: 12px; color: #64748b; margin-top: 3px;">
+                    ${[beds ? `${beds} bed` : '', baths ? `${baths} bath` : '', subtype].filter(Boolean).join(' &middot; ')}
+                  </div>
+                </td>
+                <td style="padding: 10px 14px; text-align: right; white-space: nowrap; vertical-align: middle;">
+                  <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(price).toLocaleString('en-CA')}</div>
+                  <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">View &rarr;</div>
+                </td>
+              </tr>
+            </table>
+          </a>
+        `
+      }).join('')}
+    </div>
+  ` : ''
+
+  const sellerComps = sellerEstimate?.comparables || comparables || []
+  const comparableSoldHtml = sellerComps.length > 0 ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Comparable Sold (${sellerComps.length})</div>
+      ${sellerComps.map((c: any) => {
+        const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
+        const addr = (c.unparsedAddress || c.unparsed_address || '').split(',')[0]
+        const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+        const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+        return `
+          <a href="${BASE_URL}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+              ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"><div style="background:${c.temperature === 'HOT' ? '#ef4444' : c.temperature === 'WARM' ? '#f59e0b' : '#3b82f6'};color:#fff;font-size:9px;font-weight:700;padding:2px 5px;margin-top:2px;text-align:center;">${c.temperature || 'SOLD'}</div></td>` : ''}
+              <td style="padding: 10px 14px; vertical-align: middle;">
+                <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${(c.unparsedAddress || c.unparsed_address || '').split(',')[0]}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : '', c.sqft ? c.sqft + ' sqft' : '', c.daysOnMarket ? c.daysOnMarket + 'd DOM' : ''].filter(Boolean).join(' &middot; ')}</div>
+                ${c.matchQuality ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${c.matchQuality}</div>` : ''}
+              </td>
+              <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+                <div style="font-size: 16px; font-weight: 800; color: #059669;">$${Number(price).toLocaleString('en-CA')}</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Sold &rarr;</div>
+              </td>
+            </tr></table>
+          </a>
+        `
+      }).join('')}
+    </div>
+  ` : ''
+
+  const competingHtml = sellerEstimate?.competingListings && sellerEstimate.competingListings.length > 0 ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Competing For Sale (${sellerEstimate.competingListings.length})</div>
+      ${sellerEstimate.competingListings.slice(0, 10).map((c: any) => {
+        const price = c.list_price || 0
+        const addr = (c.unparsed_address || '').split(',')[0]
+        const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+        const slug = c._slug || (c.listing_key ? '/' + c.listing_key : '')
+        return `
+          <a href="${BASE_URL}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+              ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"></td>` : ''}
+              <td style="padding: 10px 14px; vertical-align: middle;">
+                <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${addr}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : ''].filter(Boolean).join(' &middot; ')}</div>
+              </td>
+              <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+                <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(price).toLocaleString('en-CA')}</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">For Sale &rarr;</div>
+              </td>
+            </tr></table>
+          </a>
+        `
+      }).join('')}
+    </div>
+  ` : ''
+
+  const vipHtml = vipCreditUsed ? `
+    <div style="background: linear-gradient(135deg, #1e1b4b, #312e81); border: 1px solid rgba(99,102,241,0.3); border-radius: 10px; padding: 14px 18px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <div style="font-size: 12px; font-weight: 700; color: #a5b4fc;">&#10022; VIP Access Credit Used</div>
+        <div style="font-size: 11px; color: rgba(165,180,252,0.6); margin-top: 3px;">${vipCreditPlansUsed} of ${vipCreditTotal} plans used</div>
+      </div>
+      <div style="font-size: 11px; color: rgba(165,180,252,0.5);">Request more from your agent</div>
+    </div>
+  ` : ''
+
+  const disclaimerHtml = `
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0; font-size: 11px; color: #92400e; line-height: 1.6;">
+        <strong style="color: #d97706;">&#9888; AI Disclaimer:</strong> This plan is generated by artificial intelligence using market data and algorithms. It is intended for informational purposes only and does not constitute professional real estate, legal, or financial advice. All information should be independently verified with a licensed real estate agent before making any decisions.
+      </p>
+    </div>
+  `
 
   const agentHtml = agent ? `
     <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
       <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">Your Agent</div>
-      ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; margin-bottom: 8px;">` : ''}
+      ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.15); margin-bottom: 8px;">` : ''}
       <div style="font-size: 15px; font-weight: 700; color: #fff;">${agent.full_name}</div>
-      ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
-      <div style="margin-top: 12px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
-        ${agent.email ? `<a href="mailto:${agent.email}" style="padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
-        ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
+      ${agent.title ? `<div style="font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.title}</div>` : ''}
+      ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
+      <div style="margin-top: 12px;">
+        ${agent.email ? `<a href="mailto:${agent.email}" style="display: inline-block; margin: 4px; padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
+        ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="display: inline-block; margin: 4px; padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
       </div>
     </div>
   ` : ''
@@ -83,33 +451,35 @@ function buildPlanNotificationEmail(data: {
         <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 16px;">
           <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
         </div>
-        <h1 style="color: #fff; font-size: 20px; font-weight: 800; margin: 0 0 6px;">
-          ${isBuyer ? '🏠 Your Buyer Plan is Ready' : '💰 Your Seller Strategy is Ready'}
+        <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 8px;">
+          ${isBuyer ? '&#127968; Buyer Plan' : '&#128176; Seller Strategy'} &mdash; ${geoName || 'GTA'}
         </h1>
         <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 14px;">
-          Your personalized plan for ${geoName} has been generated.
+          Prepared for ${userName} &middot; ${new Date().toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
       </div>
-
       <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
-        <div style="background: #f8fafc; border-radius: 10px; padding: 16px; margin-bottom: 20px; font-size: 14px; color: #374151; line-height: 1.6;">
-          ${isBuyer
-            ? 'Your buyer plan includes matched listings, market intelligence, and the best time to buy in your area. Open WALLiam to book a viewing with your agent.'
-            : 'Your seller strategy includes your estimated value range, market conditions, and the best time to list. Open WALLiam to book a consultation with your agent.'
-          }
-        </div>
-
+        ${conditionHtml}
+        ${marketHtml}
+        ${offerIntelHtml}
+        ${bestTimeHtml}
+        ${summaryHtml}
+        ${planCardHtml}
+        ${profileHtml}
+        ${listingsHtml}
+        ${comparableSoldHtml}
+        ${competingHtml}
+        ${vipHtml}
+        ${disclaimerHtml}
         ${agentHtml}
-
-        <div style="text-align: center; margin: 20px 0 8px;">
+        <div style="text-align: center; margin: 24px 0 8px;">
           <a href="${BASE_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
-            ✦ Open WALLiam to Book
+            &#10022; Open WALLiam
           </a>
         </div>
       </div>
-
       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
-        <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+        <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam &middot; walliam.ca</p>
       </div>
     </div>
   `

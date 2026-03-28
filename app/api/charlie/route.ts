@@ -151,7 +151,7 @@ NEVER truncate the geoId.` : ''
                   // Load VIP config from tenant
                   let cfg = { ai_free_messages: 1, ai_auto_approve_limit: 2, ai_manual_approve_limit: 3, ai_hard_cap: 10 }
                   if (tenantId) {
-                    const { data: tenantCfg } = await supabase.from('tenants').select('ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap').eq('id', tenantId).single()
+                    const { data: tenantCfg } = await supabase.from('tenants').select('ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve').eq('id', tenantId).single()
                     if (tenantCfg) cfg = tenantCfg
                   }
                   const freePlans = cfg?.ai_free_messages ?? 1
@@ -168,7 +168,7 @@ NEVER truncate the geoId.` : ''
                     ? (sessionData.seller_plans_used || 0)
                     : (sessionData.buyer_plans_used || 0)
 
-                  if (plansUsed >= totalAllowed) {
+                  if (plansUsed >= totalAllowed && !(cfg as any).vip_auto_approve) {
                     send({ type: 'gate', reason: 'vip_required', planType })
                     send({ type: 'done' })
                     controller.close()
@@ -191,24 +191,6 @@ NEVER truncate the geoId.` : ''
                   // Notify frontend — registered user used a VIP credit
                   send({ type: 'vip_credit_used', plansUsed: plansUsed + 1, totalAllowed, planType })
                   // Send plan email notification to user
-                  const effectiveEmail = await (async () => {
-                    try {
-                      const { data: u } = await supabase.auth.admin.getUserById(effectiveUserId)
-                      return u?.user?.email || null
-                    } catch { return null }
-                  })()
-                  if (effectiveEmail) {
-                    fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/charlie/plan-email`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        email: effectiveEmail,
-                        planType,
-                        agentId,
-                        geoContext,
-                      }),
-                    }).catch(err => console.error("[charlie] plan email error:", err))
-                  }
                 }
               }
               // ── END PLAN GATING ──────────────────────────────────────────
@@ -296,7 +278,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   if (name === 'get_market_analytics') {
     const { data } = await supabase
       .from('geo_analytics')
-      .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, median_lease_price, gross_rental_yield_pct, psf_trend_pct, dom_trend_pct, bedroom_breakdown, subtype_breakdown, price_trend_monthly')
+      .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, median_lease_price, gross_rental_yield_pct, psf_trend_pct, dom_trend_pct, bedroom_breakdown, subtype_breakdown, price_trend_monthly, insight_seasonal, avg_concession_pct')
       .eq('geo_type', input.geoType)
       .eq('geo_id', input.geoId)
       .eq('track', input.track)
@@ -348,6 +330,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
       goal: input.goal || null,
       estimatedValueMin: input.estimatedValueMin || null,
       estimatedValueMax: input.estimatedValueMax || null,
+        summary: input.summary || null,
       planReady: true,
     }
   }
