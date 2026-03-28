@@ -33,7 +33,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
     title: 'Realtor', customTitle: '', useCustomTitle: false,
     brokerage_name: '', brokerage_address: '', license_number: '',
     subdomain: '', custom_domain: '', bio: '', profile_photo_url: '',
-    parent_id: '', can_create_children: false,
+    parent_id: '', can_create_children: false, tenant_id: 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9',
     primary_color: '#16a34a', secondary_color: '#15803d',
     // WALLiam VIP config
     ai_free_messages: 1,
@@ -93,6 +93,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
           site_type: 'comprehensive',
           profile_photo_url: photoPreview || formData.profile_photo_url,
           parent_id: formData.parent_id || null,
+            tenant_id: formData.tenant_id || null,
           custom_domain: formData.custom_domain || null,
           branding: { primary_color: formData.primary_color, secondary_color: formData.secondary_color },
           // VIP config

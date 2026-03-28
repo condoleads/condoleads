@@ -37,6 +37,19 @@ export default async function AgentDetailPage({ params }: { params: { id: string
     supabase.from('agent_geo_buildings').select('building_id').eq('agent_id', params.id),
   ])
 
+  // Fetch manager data if this agent is managed by someone
+  let managerName: string | null = null
+  let inheritedAssignments: any[] = []
+
+  if (agent.parent_id) {
+    const [{ data: manager }, { data: managerGeo }] = await Promise.all([
+      supabase.from('agents').select('full_name').eq('id', agent.parent_id).single(),
+      supabase.from('agent_property_access').select('*').eq('agent_id', agent.parent_id).eq('is_active', true),
+    ])
+    managerName = manager?.full_name || null
+    inheritedAssignments = managerGeo || []
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
@@ -56,6 +69,9 @@ export default async function AgentDetailPage({ params }: { params: { id: string
             <h1 className="text-3xl font-bold text-gray-900">{agent.full_name}</h1>
             <p className="text-gray-500">{agent.email} · {agent.title || 'Agent'}</p>
             <p className="text-sm text-gray-400">{agent.brokerage_name}</p>
+            {managerName && (
+              <p className="text-sm text-blue-600 mt-1">↑ Managed by {managerName}</p>
+            )}
           </div>
         </div>
       </div>
@@ -69,14 +85,14 @@ export default async function AgentDetailPage({ params }: { params: { id: string
           communities={communities || []}
           neighbourhoods={neighbourhoods || []}
           currentAssignments={currentGeo || []}
+          inheritedAssignments={inheritedAssignments}
+          inheritedFrom={managerName}
         />
-
         <BuildingAssignmentSection
           agentId={params.id}
           allBuildings={allBuildings || []}
           assignedBuildingIds={(currentBuildings || []).map(b => b.building_id)}
         />
-
         <ListingAssignmentSection
           agentId={params.id}
         />

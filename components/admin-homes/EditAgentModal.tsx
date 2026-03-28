@@ -33,7 +33,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     subdomain: '', custom_domain: '', bio: '', profile_photo_url: '',
     notification_email: '', is_active: true,
     parent_id: '', can_create_children: false,
-    primary_color: '#16a34a', secondary_color: '#15803d',
+    primary_color: '#16a34a', secondary_color: '#15803d', tenant_id: '',
   })
 
   useEffect(() => {
@@ -74,6 +74,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
         notification_email: a.notification_email || a.email || '',
         is_active: a.is_active !== false,
         parent_id: a.parent_id || '',
+        tenant_id: a.tenant_id || '',
         can_create_children: a.can_create_children || false,
         primary_color: branding.primary_color || '#16a34a',
         secondary_color: branding.secondary_color || '#15803d',
@@ -125,6 +126,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
           notification_email: formData.notification_email || formData.email,
           is_active: formData.is_active,
           parent_id: formData.parent_id || null,
+            tenant_id: formData.tenant_id || null,
           can_create_children: formData.can_create_children,
           branding: { primary_color: formData.primary_color, secondary_color: formData.secondary_color },
         })
@@ -174,6 +176,13 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
               <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2"><Users className="w-4 h-4" /> Team Hierarchy</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
+                  <select value={formData.tenant_id} onChange={e => setFormData({ ...formData, tenant_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="">No Tenant</option>
+                    <option value="b16e1039-38ed-43d7-bbc5-dd02bb651bc9">WALLiam</option>
+                  </select>
+                </div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Reports To</label>
                   <select value={formData.parent_id} onChange={e => setFormData({ ...formData, parent_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">None (Solo / Top-level)</option>

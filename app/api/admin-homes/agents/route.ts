@@ -18,7 +18,7 @@ export async function GET() {
   const supabase = createServiceClient()
   const { data, error } = await supabase
     .from('agents')
-    .select('id, full_name, email, subdomain, can_create_children, is_active, profile_photo_url')
+    .select('id, full_name, email, cell_phone, subdomain, can_create_children, is_active, profile_photo_url, tenant_id, parent_id, notification_email, brokerage_name, title, total_leads')
     .eq('site_type', 'comprehensive')
     .order('full_name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
       profile_photo_url: profile_photo_url || null,
       notification_email: notification_email || email,
       parent_id: parent_id || null,
+        tenant_id: body.tenant_id || null,
       can_create_children: can_create_children || false,
       branding: branding || {},
       site_type: 'comprehensive',
