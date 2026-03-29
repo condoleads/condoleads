@@ -108,10 +108,13 @@ const getCommunityData = unstable_cache(
 export default async function CommunityPage({ community }: CommunityPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const [data, agent] = await Promise.all([
+  const { getWalliamTenantId } = await import('@/lib/utils/is-walliam')
+  const [data, agent, tenantId] = await Promise.all([
     getCommunityData(community.id, community.municipality_id),
     getAgentFromHost(host),
+    getWalliamTenantId(),
   ])
+  const isWalliam = !!tenantId
   const { municipality, buildingCount, initialListings, counts, siblingCommunities } = data
 
   // FIX: area lookup moved inside Promise.all above isn't possible since we need municipality.area_id
@@ -163,6 +166,17 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
             buildingsTitle={"Buildings in " + community.name}
           />
         </div>
+
+        {isWalliam && (
+          <div className="mt-8 grid md:grid-cols-2 gap-6">
+            <WalliamAgentCard
+              community_id={community.id}
+              municipality_id={community.municipality_id}
+              tenant_id={tenantId!}
+            />
+            <WalliamCTA context={community.name} />
+          </div>
+        )}
 
         <AnalyticsSection
           geoType="community"

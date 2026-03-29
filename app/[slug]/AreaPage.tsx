@@ -7,6 +7,8 @@ import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
 import GeoHero from './components/GeoHero'
 import AnalyticsSection from '@/components/analytics/AnalyticsSection'
+import WalliamCTA from '@/components/WalliamCTA'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -174,10 +176,13 @@ const getAreaData = unstable_cache(
 export default async function AreaPage({ area }: AreaPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const [data, agent] = await Promise.all([
+  const { getWalliamTenantId } = await import('@/lib/utils/is-walliam')
+  const [data, agent, tenantId] = await Promise.all([
     getAreaData(area.id),
     getAgentFromHost(host),
+    getWalliamTenantId(),
   ])
+  const isWalliam = !!tenantId
   const { initialListings, counts, homeCounts, condoCounts, buildingCount, allAreas, municipalityLinks, municipalities } = data
 
   return (
@@ -214,6 +219,16 @@ export default async function AreaPage({ area }: AreaPageProps) {
             buildingsTitle="Buildings"
           />
         </div>
+
+        {isWalliam && (
+          <div className="mt-8 grid md:grid-cols-2 gap-6">
+            <WalliamAgentCard
+              area_id={area.id}
+              tenant_id={tenantId!}
+            />
+            <WalliamCTA context={area.name} />
+          </div>
+        )}
 
         <GeoInterlinking
           title={`Municipalities in ${area.name}`}

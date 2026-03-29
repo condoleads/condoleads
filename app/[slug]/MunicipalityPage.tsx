@@ -167,10 +167,13 @@ const getMunicipalityData = unstable_cache(
 export default async function MunicipalityPage({ municipality }: MunicipalityPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const [data, agent] = await Promise.all([
+  const { getWalliamTenantId } = await import('@/lib/utils/is-walliam')
+  const [data, agent, tenantId] = await Promise.all([
     getMunicipalityData(municipality.id, municipality.area_id),
     getAgentFromHost(host),
+    getWalliamTenantId(),
   ])
+  const isWalliam = !!tenantId
   const { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities } = data
   const areaHref = area ? '/' + area.slug : '#'
 
@@ -208,6 +211,17 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
             buildingsTitle="Buildings"
           />
         </div>
+
+        {isWalliam && (
+          <div className="mt-8 grid md:grid-cols-2 gap-6">
+            <WalliamAgentCard
+              municipality_id={municipality.id}
+              area_id={municipality.area_id}
+              tenant_id={tenantId!}
+            />
+            <WalliamCTA context={municipality.name} />
+          </div>
+        )}
 
         {enrichedCommunities.length > 0 && (
           <div className="mt-10">
