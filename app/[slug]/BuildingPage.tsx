@@ -416,7 +416,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         avgDaysOnMarketLease={avgDaysOnMarketLease}
       />
           {/* Compact Agent CTA - Fixed at top for lead capture */}
-        {agent && (
+        {agent && !isWalliam && (
         <div className="bg-white border-b border-gray-200 py-3 md:py-4 fixed top-16 left-0 right-0 z-40 shadow-md">
           <div className="max-w-7xl mx-auto px-4">
             <div className="flex items-center justify-between gap-3">

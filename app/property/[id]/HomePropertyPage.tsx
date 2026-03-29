@@ -7,6 +7,7 @@ import { headers } from 'next/headers'
 import HomePropertyPageClient from './HomePropertyPageClient'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import WalliamCTA from '@/components/WalliamCTA'
+import { getWalliamTenantId } from '@/lib/utils/is-walliam'
 
 const RESIDENTIAL_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']
 
@@ -235,6 +236,8 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
   }))
 
   const isSale = listing.transaction_type === 'For Sale'
+  const tenantId = await getWalliamTenantId()
+  const isWalliam = !!tenantId
   const isClosed = listing.standard_status === 'Closed'
   const status = isClosed ? 'Closed' : 'Active'
 
@@ -273,13 +276,15 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
           isSale={isSale}
           status={status}
           isClosed={isClosed}
-          agent={agent}
+          agent={isWalliam ? null : agent}
           community={community}
           municipality={municipality}
           area={area}
+          isWalliam={isWalliam}
+          walliamTenantId={tenantId}
         />
       </main>
-      <ChatWidgetWrapper
+      {!isWalliam && <ChatWidgetWrapper
         agent={{
           id: agent.id,
           full_name: agent.full_name,
@@ -290,7 +295,7 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
         }}
         building={null}
         listing={{ id: listing.id, unit_number: undefined, list_price: listing.list_price, bedrooms_total: listing.bedrooms_total, bathrooms_total: listing.bathrooms_total_integer }}
-      />
+      />}
     </>
   )
 }

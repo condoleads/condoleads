@@ -22,6 +22,9 @@ import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuy
 import Breadcrumb from '@/components/Breadcrumb'
 import HomePropertySEO from '@/components/property/HomePropertySEO'
 import WalliamCTA from '@/components/WalliamCTA'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
+import WalliamContactForm from '@/components/WalliamContactForm'
+import AppointmentForm from '@/app/charlie/components/AppointmentForm'
 
 interface HomePropertyPageClientProps {
   listing: any
@@ -37,6 +40,8 @@ interface HomePropertyPageClientProps {
   community?: { id: string; name: string; slug: string } | null
   municipality?: { id: string; name: string; slug: string } | null
   area?: { id: string; name: string; slug: string } | null
+  isWalliam?: boolean
+  walliamTenantId?: string | null
 }
 
 export default function HomePropertyPageClient({
@@ -53,6 +58,8 @@ export default function HomePropertyPageClient({
   community,
   municipality,
   area,
+  isWalliam = false,
+  walliamTenantId = null,
 }: HomePropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
@@ -60,6 +67,7 @@ export default function HomePropertyPageClient({
 
   const [showEstimatorModal, setShowEstimatorModal] = useState(false)
   const [showOfferModal, setShowOfferModal] = useState(false)
+  const [showBooking, setShowBooking] = useState(false)
 
   // Extract short address for display (e.g., "22 Hopecrest Crescent")
   const shortAddress = listing.unparsed_address
@@ -155,7 +163,45 @@ export default function HomePropertyPageClient({
           {/* RIGHT COLUMN - Sticky Sidebar */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
-              {agent && (
+              {isWalliam && walliamTenantId ? (
+                <>
+                  <WalliamAgentCard
+                    listing_id={listing.id}
+                    community_id={community?.id || null}
+                    municipality_id={municipality?.id || null}
+                    area_id={area?.id || null}
+                    tenant_id={walliamTenantId}
+                  />
+                  <WalliamCTA context={listing.unparsed_address} />
+                  <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
+                    <button onClick={() => setShowBooking(b => !b)} style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>📅 Book a Visit</span>
+                      <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', transform: showBooking ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
+                    </button>
+                    {showBooking && (
+                      <div style={{ padding: '0 20px 20px' }}>
+                        <AppointmentForm
+                          type="buyer"
+                          listings={[listing]}
+                          userId={user?.id || null}
+                          sessionId={null}
+                          geoContext={null}
+                          agent={null}
+                          onBooked={() => setShowBooking(false)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
+                    <HomePropertyEstimateCTA
+                      listing={listing}
+                      isSale={isSale}
+                      agentId={walliamTenantId}
+                    />
+                  </GatedContent>
+                  <HomePropertyInfo listing={listing} />
+                </>
+              ) : agent ? (
                 <>
                   <AgentCard
                     agent={agent}
@@ -168,7 +214,6 @@ export default function HomePropertyPageClient({
                     unitNumber=""
                   />
                   <WalliamCTA context={listing.unparsed_address} />
-
                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
                     <HomePropertyEstimateCTA
                       listing={listing}
@@ -176,18 +221,16 @@ export default function HomePropertyPageClient({
                       agentId={agent.id}
                     />
                   </GatedContent>
-
                   <HomePropertyInfo listing={listing} />
-
                   <AgentContactForm
-                      listing={{ ...listing, buildings: null }}
-                      status={status}
-                      isSale={isSale}
-                      agent={agent}
-                      isHome={true}
-                    />
+                    listing={{ ...listing, buildings: null }}
+                    status={status}
+                    isSale={isSale}
+                    agent={agent}
+                    isHome={true}
+                  />
                 </>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

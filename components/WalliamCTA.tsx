@@ -68,7 +68,7 @@ export default function WalliamCTA({ context }: Props) {
         background: 'rgba(255,255,255,0.07)',
         border: '1px solid rgba(255,255,255,0.12)',
         borderRadius: 100, padding: '7px 7px 7px 16px',
-        width: '100%', maxWidth: 400,
+        width: '100%',
       }}>
         <input
           type="text"
@@ -77,7 +77,7 @@ export default function WalliamCTA({ context }: Props) {
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder="Ask WALLiam..."
           style={{
-            flex: 1, background: 'transparent', border: 'none',
+            flex: 1, minWidth: 0, background: 'transparent', border: 'none',
             outline: 'none', color: '#fff', fontSize: 13,
             fontFamily: 'inherit',
           }}
@@ -89,6 +89,7 @@ export default function WalliamCTA({ context }: Props) {
             background: 'linear-gradient(135deg,#1d4ed8,#4f46e5)',
             color: '#fff', fontSize: 12, fontWeight: 700,
             cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+            flexShrink: 0,
           }}
         >Ask AI</button>
       </div>
