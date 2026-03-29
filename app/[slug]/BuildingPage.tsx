@@ -115,6 +115,9 @@ import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import { createClient, createServerClient } from '@/lib/supabase/server'
 import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
 import WalliamCTA from '@/components/WalliamCTA'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
+import WalliamContactForm from '@/components/WalliamContactForm'
+import { getWalliamTenantId, resolveWalliamAgent } from '@/lib/utils/is-walliam'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const headersList = headers()
@@ -270,6 +273,20 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   // Get host for agent lookup
   const headersList = headers()
   const host = headersList.get('host') || ''
+
+  // WALLiam tenant detection
+  const tenantId = await getWalliamTenantId()
+  const isWalliam = !!tenantId
+  let walliamAgentId: string | null = null
+  if (isWalliam && tenantId) {
+    walliamAgentId = await resolveWalliamAgent({
+      building_id: building.id,
+      community_id: building.community_id || null,
+      municipality_id: building.municipality_id || null,
+      area_id: building.area_id || null,
+      tenant_id: tenantId,
+    })
+  }
 
   // Run all dependent queries in PARALLEL with caching for performance
   const [development, agentResult, activeListingsRaw, closedListingsRaw, marketData] = await Promise.all([
@@ -527,11 +544,15 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingAddress={building.canonical_address}
                   agentId={agent.id}
                 />
-              ) : (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
-                  <p className="text-amber-800">Estimator will be available once an agent is assigned to this building.</p>
-                </div>
-              )}
+              ) : isWalliam && walliamAgentId ? (
+                <EstimatorSeller
+                  buildingId={building.id}
+                  buildingSlug={building.slug}
+                  buildingName={building.building_name}
+                  buildingAddress={building.canonical_address}
+                  agentId={walliamAgentId}
+                />
+              ) : null}
             </div>
 
             <ListYourUnit buildingName={building.building_name} buildingId={building.id} agentId={agent?.id || ""} />
@@ -546,50 +567,80 @@ export default async function BuildingPage({ params }: { params: { slug: string 
           {/* Agent Sidebar - 1 column, sticky */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
-              {agent && (
-                <AgentCard
-                  agent={agent}
-                  source="building_page"
-                  buildingId={building.id}
-                  buildingName={building.building_name}
-                  buildingAddress={building.canonical_address}
-                />
-              )}
-              
-              {/* Own a Unit CTA */}
-              {agent && (
-                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-6 border border-emerald-200 shadow-sm">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                      </svg>
+              {isWalliam ? (
+                <>
+                  <WalliamAgentCard
+                   building_id={building.id}
+                   community_id={building.community_id || null}
+                   municipality_id={building.municipality_id || null}
+                   tenant_id={tenantId!}
+                  />
+                  <WalliamCTA context={building.building_name} />
+                  <WalliamContactForm
+                    tenantId={tenantId!}
+                    building_id={building.id}
+                    geo_name={building.building_name}
+                    source="walliam_building_inquiry"
+                    contextLabel={building.building_name}
+                  />
+                  {/* Own a Unit CTA */}
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-6 border border-emerald-200 shadow-sm">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                      </div>
+                      <h3 className="font-bold text-slate-900">Own a Unit Here?</h3>
                     </div>
-                    <h3 className="font-bold text-slate-900">Own a Unit Here?</h3>
+                    <p className="text-sm text-slate-600 mb-4">Get a FREE instant estimate of your unit's market value</p>
+                    <a href="#list-your-unit" className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white text-center py-3 rounded-lg font-semibold transition-colors">
+                      What's Your Unit Worth?
+                    </a>
                   </div>
-                  <p className="text-sm text-slate-600 mb-4">Get a FREE instant estimate of your unit's market value</p>
-                  <a
-                    href="#list-your-unit"
-                    className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white text-center py-3 rounded-lg font-semibold transition-colors"
-                  >
-                    What's Your Unit Worth?
-                  </a>
-                </div>
+                </>
+              ) : (
+                <>
+                  {agent && (
+                    <AgentCard
+                      agent={agent}
+                      source="building_page"
+                      buildingId={building.id}
+                      buildingName={building.building_name}
+                      buildingAddress={building.canonical_address}
+                    />
+                  )}
+                  {agent && (
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-6 border border-emerald-200 shadow-sm">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                          </svg>
+                        </div>
+                        <h3 className="font-bold text-slate-900">Own a Unit Here?</h3>
+                      </div>
+                      <p className="text-sm text-slate-600 mb-4">Get a FREE instant estimate of your unit's market value</p>
+                      <a href="#list-your-unit" className="block w-full bg-emerald-600 hover:bg-emerald-700 text-white text-center py-3 rounded-lg font-semibold transition-colors">
+                        What's Your Unit Worth?
+                      </a>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
-          
+
         </div>
       </div>
     </div>
-    {agent && <MobileContactBar 
-      agent={agent} 
-      buildingId={building.id} 
-      buildingName={building.building_name} 
-      buildingAddress={building.canonical_address} 
+    {!isWalliam && agent && <MobileContactBar
+      agent={agent}
+      buildingId={building.id}
+      buildingName={building.building_name}
+      buildingAddress={building.canonical_address}
     />}
-    {/* AI Chat Widget */}
-    {agent && (
+    {!isWalliam && agent && (
       <ChatWidgetWrapper
         agent={{
           id: agent.id,

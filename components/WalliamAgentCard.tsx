@@ -14,6 +14,7 @@ interface WalliamAgentCardProps {
   community_id?: string | null
   municipality_id?: string | null
   area_id?: string | null
+  tenant_id?: string | null
 }
 
 interface Agent {
@@ -32,6 +33,7 @@ export default function WalliamAgentCard({
   community_id,
   municipality_id,
   area_id,
+  tenant_id,
 }: WalliamAgentCardProps) {
   const [agent, setAgent] = useState<Agent | null>(null)
   const [loading, setLoading] = useState(true)
@@ -44,7 +46,10 @@ export default function WalliamAgentCard({
         const userId = data?.user?.id || null
         fetch('/api/walliam/resolve-agent', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(tenant_id ? { 'x-tenant-id': tenant_id } : {}),
+          },
           body: JSON.stringify({
             listing_id: listing_id || null,
             building_id: building_id || null,

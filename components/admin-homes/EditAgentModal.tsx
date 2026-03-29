@@ -222,6 +222,22 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
                   <input type="tel" value={formData.cell_phone} onChange={e => setFormData({ ...formData, cell_phone: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
+                  <select value={formData.useCustomTitle ? 'custom' : formData.title} onChange={e => {
+                    if (e.target.value === 'custom') setFormData({ ...formData, useCustomTitle: true, title: '' })
+                    else setFormData({ ...formData, useCustomTitle: false, title: e.target.value, customTitle: '' })
+                  }} className="w-full px-3 py-2 border rounded-lg text-sm">
+                    <option value="Realtor">Realtor</option>
+                    <option value="Broker">Broker</option>
+                    <option value="Broker of Record">Broker of Record</option>
+                    <option value="Sales Representative">Sales Representative</option>
+                    <option value="custom">Custom...</option>
+                  </select>
+                  {formData.useCustomTitle && (
+                    <input type="text" value={formData.customTitle} onChange={e => setFormData({ ...formData, customTitle: e.target.value })} placeholder="Enter custom title" className="w-full px-3 py-2 border rounded-lg text-sm mt-2" />
+                  )}
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Brokerage</label>
                   <input type="text" value={formData.brokerage_name} onChange={e => setFormData({ ...formData, brokerage_name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" />
                 </div>
