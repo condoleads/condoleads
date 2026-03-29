@@ -35,6 +35,9 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith('/api') &&
     !pathname.startsWith('/comprehensive-site') &&
     !pathname.startsWith('/admin') &&
+    !pathname.startsWith('/login') &&
+    !pathname.startsWith('/reset-password') &&
+    !pathname.startsWith('/test-') &&
     !pathname.startsWith('/_next') &&
     !pathname.startsWith('/favicon')
   ) {

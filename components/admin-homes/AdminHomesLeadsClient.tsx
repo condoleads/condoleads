@@ -22,6 +22,7 @@ interface Lead {
   assignment_source: string | null
   created_at: string
   agents?: { id: string; full_name: string; email: string }
+  manager?: { id: string; full_name: string; email: string }
 }
 
 interface Agent {
@@ -33,9 +34,11 @@ interface Agent {
 interface Props {
   initialLeads: Lead[]
   agents: Agent[]
+  currentRole: 'admin' | 'manager' | 'agent'
+  currentAgentId: string | null
 }
 
-export default function AdminHomesLeadsClient({ initialLeads, agents }: Props) {
+export default function AdminHomesLeadsClient({ initialLeads, agents, currentRole, currentAgentId }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterAgent, setFilterAgent] = useState('all')
