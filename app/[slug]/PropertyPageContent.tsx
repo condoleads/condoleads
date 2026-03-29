@@ -7,6 +7,9 @@ import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
 import AgentContactForm from '@/components/property/AgentContactForm'
 import BuildingInfo from '@/components/property/BuildingInfo'
 import { AgentCard } from '@/components/AgentCard'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
+import WalliamContactForm from '@/components/WalliamContactForm'
+import { getWalliamTenantId } from '@/lib/utils/is-walliam'
 
 export async function PropertyPageContent({ slug }: { slug: string }) {
   // Parse slug to get MLS number
@@ -18,6 +21,10 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
 
   // Use service role client for data fetching
   const supabaseServer = createClient()
+
+  // WALLiam tenant detection
+  const tenantId = await getWalliamTenantId()
+  const isWalliam = !!tenantId
 
   // Fetch listing by MLS number
   const { data: listing, error } = await supabase
@@ -154,6 +161,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
         isSale={isSale}
         status={status}
         isClosed={isClosed}
+        isWalliam={isWalliam}
       />
 
       {/* Server-rendered sidebar */}
@@ -162,48 +170,83 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
           <div className="lg:col-span-2"></div>
           <div className="lg:col-span-1 space-y-6">
             <div className="sticky top-24 space-y-6">
-              {agent && (
-                <AgentCard
-                  agent={agent}
-                  source="property_inquiry"
-                  listingId={listing.id}
-                  listingAddress={listing.unparsed_address || ''}
-                  buildingId={listing.building_id}
-                  buildingName={building?.building_name || ''}
-                  buildingAddress={building?.canonical_address || ''}
-                  unitNumber={listing.unit_number || ''}
-                  
-                />
+              {isWalliam ? (
+                <>
+                  <WalliamAgentCard
+                    listing_id={listing.id}
+                    building_id={listing.building_id}
+                    community_id={listing.community_id || null}
+                    municipality_id={listing.municipality_id || null}
+                    tenant_id={tenantId!}
+                  />
+                  <PropertyEstimateCTA
+                    listing={listingWithBuilding}
+                    status={status}
+                    isSale={isSale}
+                    buildingName={building?.building_name || ''}
+                    buildingAddress={building?.canonical_address || ''}
+                    buildingSlug={building?.slug || ''}
+                    agentId={agent?.id || ''}
+                  />
+                  <BuildingInfo
+                    buildingName={building?.building_name || 'N/A'}
+                    address={building?.canonical_address || listing.unparsed_address || 'N/A'}
+                    yearBuilt={listing.year_built}
+                    totalUnits={null}
+                    parkingType={listing.parking_features}
+                    petPolicy={listing.pet_allowed}
+                  />
+                  <WalliamContactForm
+                    tenantId={tenantId!}
+                    listing_id={listing.id}
+                    building_id={listing.building_id}
+                    geo_name={building?.building_name || listing.unparsed_address || null}
+                    source="walliam_property_inquiry"
+                    contextLabel={listing.unparsed_address || building?.building_name || ''}
+                  />
+                </>
+              ) : (
+                <>
+                  {agent && (
+                    <AgentCard
+                      agent={agent}
+                      source="property_inquiry"
+                      listingId={listing.id}
+                      listingAddress={listing.unparsed_address || ''}
+                      buildingId={listing.building_id}
+                      buildingName={building?.building_name || ''}
+                      buildingAddress={building?.canonical_address || ''}
+                      unitNumber={listing.unit_number || ''}
+                    />
+                  )}
+                  <PropertyEstimateCTA
+                    listing={listingWithBuilding}
+                    status={status}
+                    isSale={isSale}
+                    buildingName={building?.building_name || ''}
+                    buildingAddress={building?.canonical_address || ''}
+                    buildingSlug={building?.slug || ''}
+                    agentId={agent?.id || ''}
+                  />
+                  <BuildingInfo
+                    buildingName={building?.building_name || 'N/A'}
+                    address={building?.canonical_address || listing.unparsed_address || 'N/A'}
+                    yearBuilt={listing.year_built}
+                    totalUnits={null}
+                    parkingType={listing.parking_features}
+                    petPolicy={listing.pet_allowed}
+                  />
+                  {agent && (
+                    <AgentContactForm
+                      listing={listingWithBuilding}
+                      status={status}
+                      isSale={isSale}
+                      agent={agent}
+                    />
+                  )}
+                </>
               )}
-
-              <PropertyEstimateCTA
-                listing={listingWithBuilding}
-                status={status}
-                isSale={isSale}
-                buildingName={building?.building_name || ''}
-                buildingAddress={building?.canonical_address || ''}
-                buildingSlug={building?.slug || ''}
-                agentId={agent?.id || ''}
-              />
             </div>
-
-            <BuildingInfo
-              buildingName={building?.building_name || 'N/A'}
-              address={building?.canonical_address || listing.unparsed_address || 'N/A'}
-              yearBuilt={listing.year_built}
-              totalUnits={null}
-              parkingType={listing.parking_features}
-              petPolicy={listing.pet_allowed}
-            />
-
-            {agent && (
-              <AgentContactForm
-                listing={listingWithBuilding}
-                status={status}
-                isSale={isSale}
-                agent={agent}
-              />
-            )}
           </div>
         </div>
       </div>

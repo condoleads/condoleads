@@ -5,6 +5,7 @@
 // System 1 AgentCard is never touched
 
 'use client'
+import React from 'react'
 import { useState, useEffect } from 'react'
 
 interface WalliamAgentCardProps {
@@ -15,6 +16,7 @@ interface WalliamAgentCardProps {
   municipality_id?: string | null
   area_id?: string | null
   tenant_id?: string | null
+  hideCTA?: boolean 
 }
 
 interface Agent {
@@ -27,6 +29,66 @@ interface Agent {
   profile_photo_url?: string | null
 }
 
+function ContactForm({ agentEmail, tenantId, listingId, buildingId }: {
+  agentEmail: string
+  tenantId: string
+  listingId?: string | null
+  buildingId?: string | null
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [name, setName] = React.useState('')
+  const [email, setEmail] = React.useState('')
+  const [phone, setPhone] = React.useState('')
+  const [message, setMessage] = React.useState('')
+  const [sending, setSending] = React.useState(false)
+  const [sent, setSent] = React.useState(false)
+
+  const submit = async () => {
+    if (!name || !email) return
+    setSending(true)
+    await fetch('/api/walliam/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, phone, message, tenant_id: tenantId, listing_id: listingId, building_id: buildingId, source: 'walliam_agent_card' }),
+    })
+    setSent(true)
+    setSending(false)
+  }
+
+  if (sent) return (
+    <div style={{ marginTop: 8, padding: '10px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 10, textAlign: 'center', fontSize: 12, color: '#10b981' }}>
+      ✓ Message sent!
+    </div>
+  )
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {!open ? (
+        <button onClick={() => setOpen(true)} style={{ width: '100%', padding: '9px', borderRadius: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+          ✉ Contact Agent
+        </button>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            { placeholder: 'Your name *', value: name, setter: setName, type: 'text' },
+            { placeholder: 'Email *', value: email, setter: setEmail, type: 'email' },
+            { placeholder: 'Phone', value: phone, setter: setPhone, type: 'tel' },
+            { placeholder: 'Message', value: message, setter: setMessage, type: 'text' },
+          ].map(f => (
+            <input key={f.placeholder} type={f.type} placeholder={f.placeholder} value={f.value}
+              onChange={e => f.setter(e.target.value)}
+              style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#fff', fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+            />
+          ))}
+          <button onClick={submit} disabled={sending} style={{ padding: '9px', borderRadius: 10, background: 'linear-gradient(135deg,#1d4ed8,#4f46e5)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            {sending ? 'Sending...' : 'Send Message'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function WalliamAgentCard({
   listing_id,
   building_id,
@@ -34,6 +96,7 @@ export default function WalliamAgentCard({
   municipality_id,
   area_id,
   tenant_id,
+  hideCTA = false,
 }: WalliamAgentCardProps) {
   const [agent, setAgent] = useState<Agent | null>(null)
   const [loading, setLoading] = useState(true)
@@ -228,21 +291,31 @@ export default function WalliamAgentCard({
           </a>
         </div>
 
+        {/* Contact Agent inline form */}
+        <ContactForm
+          agentEmail={agent.email}
+          tenantId={tenant_id || ''}
+          listingId={listing_id || null}
+          buildingId={building_id || null}
+        />
+
         {/* Charlie CTA */}
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent('charlie:open', { detail: {} }))}
-          style={{
-            width: '100%', marginTop: 8,
-            padding: '9px', borderRadius: 10,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            color: 'rgba(255,255,255,0.5)',
-            fontSize: 12, fontWeight: 600,
-            cursor: 'pointer', letterSpacing: '0.01em',
-          }}
-        >
-          ✦ Get My AI Real Estate Plan
-        </button>
+        {!hideCTA && (
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('charlie:open', { detail: {} }))}
+            style={{
+              width: '100%', marginTop: 8,
+              padding: '9px', borderRadius: 10,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              color: 'rgba(255,255,255,0.5)',
+              fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', letterSpacing: '0.01em',
+            }}
+          >
+            ✦ Get My AI Real Estate Plan
+          </button>
+        )}
       </div>
     </div>
   )

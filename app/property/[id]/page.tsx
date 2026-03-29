@@ -7,6 +7,9 @@ import PropertyPageClient from './PropertyPageClient'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import { getListingInvestmentData } from '@/lib/market/get-listing-investment-data'
 import WalliamCTA from '@/components/WalliamCTA'
+import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
+import WalliamContactForm from '@/components/WalliamContactForm'
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const headersList = headers()
@@ -329,6 +332,10 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const isClosed = listing.standard_status === 'Closed'
   const status = isClosed ? 'Closed' : 'Active'
 
+  // WALLiam detection
+  const tenantId = await getWalliamTenantId()
+  const isWalliam = !!tenantId
+
   return (
     <>
       <script
@@ -366,30 +373,33 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         isSale={isSale}
         status={status}
         isClosed={isClosed}
-        agent={agent}
+        agent={isWalliam ? null : agent}
         building={building}
         development={development}
         investmentData={investmentData}
+        isWalliam={isWalliam}
+        walliamTenantId={tenantId}
         />
     </main>
-    {/* AI Chat Widget */}
+    {!isWalliam && (
     <ChatWidgetWrapper
-      agent={{ 
-        id: agent.id, 
+      agent={{
+        id: agent.id,
         full_name: agent.full_name,
         ai_chat_enabled: agent.ai_chat_enabled,
         has_api_key: !!agent.anthropic_api_key,
         ai_welcome_message: agent.ai_welcome_message,
         ai_free_messages: agent.ai_free_messages
       }}
-      building={building ? { 
-        id: building.id, 
-        building_name: building.building_name, 
+      building={building ? {
+        id: building.id,
+        building_name: building.building_name,
         canonical_address: building.canonical_address,
         community_id: building.community_id
       } : null}
       listing={{ id: listing.id, unit_number: listing.unit_number, list_price: listing.list_price, bedrooms_total: listing.bedrooms_total, bathrooms_total: listing.bathrooms_total }}
     />
+    )}
     </>
   )
 }

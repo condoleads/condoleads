@@ -25,6 +25,9 @@ import PropertySEO from '@/components/property/PropertySEO'
 import InvestmentAnalysis from '@/components/property/InvestmentAnalysis'
 import type { InvestmentData } from '@/lib/market/get-listing-investment-data'
 import WalliamCTA from '@/components/WalliamCTA'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
+import WalliamContactForm from '@/components/WalliamContactForm'
+import AppointmentForm from '@/app/charlie/components/AppointmentForm'
 
 interface PropertyPageClientProps {
   listing: any
@@ -42,7 +45,8 @@ interface PropertyPageClientProps {
   building?: any
   development?: { id: string; name: string; slug: string } | null
   investmentData?: InvestmentData
-
+  isWalliam?: boolean
+  walliamTenantId?: string | null
 }
 
 export default function PropertyPageClient({
@@ -60,7 +64,9 @@ export default function PropertyPageClient({
   agent,
   building,
   development,
-  investmentData
+  investmentData,
+  isWalliam = false,
+  walliamTenantId = null,
 }: PropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
@@ -69,6 +75,7 @@ export default function PropertyPageClient({
   // Modal state for sticky bar CTAs
   const [showEstimatorModal, setShowEstimatorModal] = useState(false)
   const [showOfferModal, setShowOfferModal] = useState(false)
+  const [showBooking, setShowBooking] = useState(false)
 
   return (
     <>
@@ -162,7 +169,60 @@ export default function PropertyPageClient({
           {/* RIGHT COLUMN - Sticky Sidebar */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
-              {agent && (
+              {isWalliam && walliamTenantId ? (
+                <>
+                  <WalliamAgentCard
+                    listing_id={listing.id}
+                    building_id={listing.building_id}
+                    community_id={listing.community_id || null}
+                    municipality_id={listing.municipality_id || null}
+                    tenant_id={walliamTenantId}
+                    hideCTA={true}
+                  />
+                  <WalliamCTA context={building?.building_name} />
+                  <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
+                    <button
+                      onClick={() => setShowBooking(b => !b)}
+                      style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>📅 Book a Visit</span>
+                      <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', transform: showBooking ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
+                    </button>
+                    {showBooking && (
+                      <div style={{ padding: '0 20px 20px' }}>
+                        <AppointmentForm
+                          type="buyer"
+                          listings={[listing]}
+                          userId={user?.id || null}
+                          sessionId={null}
+                          geoContext={null}
+                          agent={null}
+                          onBooked={() => setShowBooking(false)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+                    <PropertyEstimateCTA
+                      listing={{ ...listing, buildings: building }}
+                      status={status}
+                      isSale={isSale}
+                      buildingName={building?.building_name || ''}
+                      buildingAddress={building?.canonical_address || ''}
+                      buildingSlug={building?.slug || ''}
+                      agentId={walliamTenantId}
+                    />
+                  </GatedContent>
+                  <BuildingInfo
+                    buildingName={building?.building_name || 'N/A'}
+                    address={building?.canonical_address || listing.unparsed_address || 'N/A'}
+                    yearBuilt={listing.year_built}
+                    totalUnits={null}
+                    parkingType={listing.parking_features}
+                    petPolicy={listing.pet_allowed}
+                  />
+                </>
+              ) : agent ? (
                 <>
                   <AgentCard
                     agent={agent}
@@ -175,7 +235,6 @@ export default function PropertyPageClient({
                     unitNumber={listing.unit_number || ''}
                   />
                   <WalliamCTA context={building?.building_name} />
-                  
                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
                     <PropertyEstimateCTA
                       listing={{ ...listing, buildings: building }}
@@ -187,7 +246,6 @@ export default function PropertyPageClient({
                       agentId={agent.id}
                     />
                   </GatedContent>
-
                   <BuildingInfo
                     buildingName={building?.building_name || 'N/A'}
                     address={building?.canonical_address || listing.unparsed_address || 'N/A'}
@@ -196,7 +254,6 @@ export default function PropertyPageClient({
                     parkingType={listing.parking_features}
                     petPolicy={listing.pet_allowed}
                   />
-
                   <AgentContactForm
                     listing={{ ...listing, buildings: building }}
                     status={status}
@@ -204,7 +261,7 @@ export default function PropertyPageClient({
                     agent={agent}
                   />
                 </>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
