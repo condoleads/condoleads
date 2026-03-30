@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
     .from('agents')
     .insert({
       id: authUserId,
+      user_id: authUserId,
       full_name,
       email,
       cell_phone: cell_phone || null,

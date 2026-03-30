@@ -81,3 +81,29 @@ export async function PUT(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }
+
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createServiceClient()
+
+  // Delete auth user if exists
+  const { data: agent } = await supabase
+    .from('agents')
+    .select('user_id')
+    .eq('id', params.id)
+    .single()
+
+  if (agent?.user_id) {
+    // Clean up user_profiles first to avoid FK constraint
+    await supabase.from('user_profiles').delete().eq('id', agent.user_id)
+    await supabase.auth.admin.deleteUser(agent.user_id)
+  }
+
+  // Delete agent record
+  const { error } = await supabase
+    .from('agents')
+    .delete()
+    .eq('id', params.id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
+}

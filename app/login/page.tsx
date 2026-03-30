@@ -62,8 +62,14 @@ export default function LoginPage() {
         // Wait a bit for cookies to be set
         await new Promise(resolve => setTimeout(resolve, 500))
         
-        // Force a full page reload to ensure cookies are recognized
-        window.location.href = '/dashboard'
+        // Check for redirect param first, then role-based routing
+        const params = new URLSearchParams(window.location.search)
+        const redirect = params.get('redirect')
+        if (redirect) {
+          window.location.href = redirect
+        } else {
+          window.location.href = '/admin-homes'
+        }
       }
     } catch (error: any) {
       console.error(' Catch block error:', error)

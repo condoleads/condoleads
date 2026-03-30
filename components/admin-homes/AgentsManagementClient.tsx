@@ -68,6 +68,14 @@ export default function AgentsManagementClient({ agents, tenants }: { agents: Ag
     else alert('Error: ' + data.error)
   }
 
+  async function deleteAgent(agentId: string, agentName: string) {
+    if (!confirm(`Permanently delete ${agentName}? This cannot be undone.`)) return
+    const res = await fetch(`/api/admin-homes/agents/${agentId}`, { method: 'DELETE' })
+    const data = await res.json()
+    if (data.success) window.location.reload()
+    else alert('Error: ' + data.error)
+  }
+
   const filteredAgents = agents.filter(a => {
     const matchSearch = a.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -189,6 +197,9 @@ export default function AgentsManagementClient({ agents, tenants }: { agents: Ag
                   <X className="w-3 h-3" /> Remove
                 </button>
               )}
+              <button onClick={() => deleteAgent(agent.id, agent.full_name)} className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded">
+                🗑 Delete
+              </button>
             </div>
           </td>
         </tr>
