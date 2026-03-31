@@ -11,6 +11,20 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
+
+async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  try {
+    await supabase.from('user_activities').insert({
+      contact_email: contactEmail,
+      agent_id: agentId || null,
+      activity_type: activityType,
+      activity_data: activityData || {},
+      page_url: pageUrl || '',
+    })
+  } catch (err) {
+    console.error('[trackUserActivity] error:', err)
+  }
+}
 function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -163,6 +177,15 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error('[charlie/appointment] agent email error:', err)
     }
+
+    // Track activity
+    await trackUserActivity(supabase, email, agentId, 'building_visit_request', {
+      source: 'walliam_appointment',
+      intent,
+      geoName: geo_name || null,
+      appointmentDate: appointment_date,
+      appointmentTime: appointment_time,
+    })
 
     return NextResponse.json({ success: true, leadId: lead.id })
 

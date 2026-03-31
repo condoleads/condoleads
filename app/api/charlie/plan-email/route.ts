@@ -11,6 +11,20 @@ const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 const FROM = 'WALLiam <notifications@condoleads.ca>'
 
+
+async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  try {
+    await supabase.from('user_activities').insert({
+      contact_email: contactEmail,
+      agent_id: agentId || null,
+      activity_type: activityType,
+      activity_data: activityData || {},
+      page_url: pageUrl || '',
+    })
+  } catch (err) {
+    console.error('[trackUserActivity] error:', err)
+  }
+}
 function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -94,6 +108,14 @@ export async function POST(req: NextRequest) {
       status: 'new',
       quality: 'hot',
       tenant_id: tenantId,
+    })
+
+    // Track activity
+    await trackUserActivity(supabase, userEmail, agent?.id || null, 'contact_form', {
+      source: 'walliam_charlie',
+      planType,
+      geoName: geoName || null,
+      budgetMax: plan?.budgetMax || null,
     })
 
     const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1 })
