@@ -536,7 +536,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
             </div>
             
             <div id="list-your-unit">
-              {agent ? (
+              {agent && !isWalliam ? (
                 <EstimatorSeller
                   buildingId={building.id}
                   buildingSlug={building.slug}

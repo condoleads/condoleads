@@ -47,9 +47,7 @@ export async function POST(request: NextRequest) {
       .select(`
         *,
         agents (
-          id, full_name, email, notification_email, parent_id,
-          vip_auto_approve, ai_estimator_enabled,
-          ai_auto_approve_limit, estimator_auto_approve_attempts
+          id, full_name, email, notification_email, parent_id
         )
       `)
       .eq('id', sessionId)
@@ -60,6 +58,17 @@ export async function POST(request: NextRequest) {
     }
 
     const agent = session.agents
+
+    // Load tenant estimator config (auto-approve lives on tenant, not agent)
+    const { data: tenant, error: tenantError } = await supabase
+      .from('tenants')
+      .select('estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
+      .eq('id', session.tenant_id)
+      .single()
+
+    if (tenantError || !tenant) {
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+    }
 
     // Check for existing pending request
     const { data: existingRequest } = await supabase
@@ -115,12 +124,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Auto-approve logic
-    const isAutoApprove = agent.vip_auto_approve === true
+    // Auto-approve logic — reads from TENANT config, not agent
+    const isAutoApprove = tenant.estimator_vip_auto_approve === true
     const autoApproveMessages = isAutoApprove
-      ? (agent.ai_estimator_enabled
-          ? (agent.ai_auto_approve_limit ?? 10)
-          : (agent.estimator_auto_approve_attempts ?? 10))
+      ? (tenant.estimator_auto_approve_attempts ?? 2)
       : 0
 
     // Create VIP request
@@ -278,7 +285,7 @@ export async function GET(request: NextRequest) {
 
     const { data: vipRequest, error } = await supabase
       .from('vip_requests')
-      .select('status, responded_at, messages_granted')
+      .select('status, responded_at, messages_granted, buyer_type')
       .eq('id', requestId)
       .single()
 
@@ -286,10 +293,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Request not found' }, { status: 404 })
     }
 
+    // questionnaireCompleted = buyer_type filled (same logic as System 1)
+    const questionnaireCompleted = !!vipRequest.buyer_type
+
     return NextResponse.json({
       status: vipRequest.status,
       respondedAt: vipRequest.responded_at,
-      questionnaireCompleted: true, // WALLiam: always true, no questionnaire
+      questionnaireCompleted,
       messagesGranted: vipRequest.messages_granted || 0,
     })
 

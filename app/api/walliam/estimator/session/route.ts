@@ -52,6 +52,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Estimator is not enabled for this tenant' }, { status: 403 })
     }
 
+    // Step 1b: Fetch user contact data for pre-filling VIP form
+    let userName = ''
+    let userPhone = ''
+    let userEmail = ''
+    const { data: userProfile } = await supabase
+      .from('user_profiles')
+      .select('full_name, phone')
+      .eq('id', userId)
+      .single()
+    if (userProfile) {
+      userName = userProfile.full_name || ''
+      userPhone = (userProfile.phone && userProfile.phone !== '00000000000') ? userProfile.phone : ''
+    }
+    const { data: authUserData } = await supabase.auth.admin.getUserById(userId)
+    if (authUserData?.user?.email) userEmail = authUserData.user.email
+
     // Step 2: Resolve agent via priority chain (for lead routing only)
     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
       p_listing_id: listingId || null,
@@ -173,6 +189,9 @@ export async function POST(request: NextRequest) {
       vipRequestId,
       vipAutoApprove: tenant.estimator_vip_auto_approve ?? false,
       estimatorEnabled: tenant.estimator_nonai_enabled,
+      userPhone,
+      userName,
+      userEmail,
     })
 
   } catch (error) {

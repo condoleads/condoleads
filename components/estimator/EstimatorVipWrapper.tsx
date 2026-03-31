@@ -4,6 +4,7 @@
 import { useState, useEffect, createContext, useContext, useCallback } from 'react'
 import VipPrompt from '@/components/chat/VipPrompt'
 import VipRequestForm, { VipRequestData } from '@/components/chat/VipRequestForm'
+import WalliamVipForm from '@/components/estimator/WalliamVipForm'
 
 interface EstimatorVipWrapperProps {
   agentId: string
@@ -71,10 +72,12 @@ export default function EstimatorVipWrapper({
   const [agentNameState, setAgentNameState] = useState<string>(agentName || '')
   const [showVipPrompt, setShowVipPrompt] = useState(false)
   const [showVipForm, setShowVipForm] = useState(false)
+  const [showWalliamForm, setShowWalliamForm] = useState(false)
   const [showWaiting, setShowWaiting] = useState(false)
   const [showDenied, setShowDenied] = useState(false)
   const [showBlocked, setShowBlocked] = useState(false)
   const [vipLoading, setVipLoading] = useState(false)
+  const [prefillPhone, setPrefillPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   // Initialize session on mount
@@ -232,18 +235,23 @@ export default function EstimatorVipWrapper({
         if (data.questionnaireCompleted) {
           setShowWaiting(true)
         } else {
-          setShowVipForm(true)
+          tenantId ? setShowWalliamForm(true) : setShowVipForm(true)
         }
         return false
       }
 
       if (data.vipRequestStatus === 'approved' && !data.questionnaireCompleted) {
-        setShowVipForm(true)
+        tenantId ? setShowWalliamForm(true) : setShowVipForm(true)
         return false
       }
 
-      // Need to start VIP flow - show phone prompt
-      setShowVipPrompt(true)
+      // Need to start VIP flow
+      if (tenantId) {
+        if (data.userPhone) setPrefillPhone(data.userPhone)
+        setShowWalliamForm(true)
+      } else {
+        setShowVipPrompt(true)
+      }
       return false
 
     } catch (err) {
@@ -252,6 +260,37 @@ export default function EstimatorVipWrapper({
       return false
     }
   }, [agentId, userId])
+
+  async function handleWalliamVipSubmit(formData: any) {
+    setVipLoading(true)
+    try {
+      const vipRes = await fetch('/api/walliam/estimator/vip-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.sessionId, phone: formData.phone, pageUrl: pageUrl || window.location.href, buildingName })
+      })
+      const vipResult = await vipRes.json()
+      if (!vipResult.success) { setError(vipResult.error || 'Failed to submit'); return }
+      const requestId = vipResult.requestId
+      const newStatus = vipResult.status === 'approved' ? 'approved' : 'pending'
+      setSession(prev => ({ ...prev, vipRequestId: requestId, vipRequestStatus: newStatus }))
+      const qRes = await fetch('/api/walliam/estimator/vip-questionnaire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, budgetRange: formData.budgetRange, timeline: formData.timeline, buyerType: formData.buyerType, requirements: formData.requirements })
+      })
+      const qResult = await qRes.json()
+      if (!qResult.success) { setError(qResult.error || 'Failed to submit questionnaire'); return }
+      setShowWalliamForm(false)
+      setSession(prev => ({ ...prev, questionnaireCompleted: true }))
+      if (newStatus === 'approved') { await initializeSession() } else { setShowWaiting(true) }
+    } catch (err) {
+      console.error('WALLiam VIP submit error:', err)
+      setError('Failed to submit request')
+    } finally {
+      setVipLoading(false)
+    }
+  }
 
   async function handleVipAccept(phone: string) {
     setVipLoading(true)
@@ -346,6 +385,7 @@ export default function EstimatorVipWrapper({
   function closeOverlay() {
     setShowVipPrompt(false)
     setShowVipForm(false)
+    setShowWalliamForm(false)
     setShowWaiting(false)
     setShowDenied(false)
     setShowBlocked(false)
@@ -394,7 +434,21 @@ export default function EstimatorVipWrapper({
           </div>
         )}
 
-        {/* Questionnaire Form Overlay */}
+        {/* WALLiam single-step VIP form */}
+        {showWalliamForm && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/90 rounded-lg z-10">
+            <WalliamVipForm
+              agentName={agentNameState}
+              buildingName={buildingName}
+              initialPhone={prefillPhone}
+              onSubmit={handleWalliamVipSubmit}
+              onCancel={() => setShowWalliamForm(false)}
+              isLoading={vipLoading}
+            />
+          </div>
+        )}
+
+        {/* Questionnaire Form Overlay (System 1 only) */}
         {showVipForm && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/90 rounded-lg z-10">
             <VipRequestForm
