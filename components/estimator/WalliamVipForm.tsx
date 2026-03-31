@@ -44,8 +44,8 @@ export default function WalliamVipForm({
 
   const validate = (): boolean => {
     const newErrors: Partial<WalliamVipFormData> = {}
-    if (formData.phone.trim() && formData.phone.trim().length < 10) {
-      newErrors.phone = 'Please enter a valid phone number'
+    if (!formData.phone.trim() || formData.phone.trim().length < 10) {
+      newErrors.phone = 'Valid phone number required'
     }
     if (!formData.buyerType) {
       newErrors.buyerType = 'Please select your interest'
