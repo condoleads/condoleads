@@ -35,8 +35,8 @@ export async function POST(request: NextRequest) {
       buildingName,
     } = await request.json()
 
-    if (!sessionId || !phone) {
-      return NextResponse.json({ error: 'Session ID and phone are required' }, { status: 400 })
+    if (!sessionId) {
+      return NextResponse.json({ error: 'Session ID is required' }, { status: 400 })
     }
 
     const supabase = createServiceClient()
