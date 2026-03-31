@@ -11,6 +11,7 @@ import { useAuth } from '@/components/auth/AuthContext'
 import VipPrompt from '@/components/chat/VipPrompt'
 import VipRequestForm, { VipRequestData } from '@/components/chat/VipRequestForm'
 import RegisterModal from '@/components/auth/RegisterModal'
+import WalliamVipForm from '@/components/estimator/WalliamVipForm'
 import { extractExactSqft } from '@/lib/estimator/types'
 
 interface HomeEstimatorBuyerModalProps {
@@ -65,10 +66,11 @@ export default function HomeEstimatorBuyerModal({
   })
   const [showVipPrompt, setShowVipPrompt] = useState(false)
   const [showVipForm, setShowVipForm] = useState(false)
+  const [showWalliamForm, setShowWalliamForm] = useState(false)
   const [showWaiting, setShowWaiting] = useState(false)
   const [showBlocked, setShowBlocked] = useState(false)
   const [vipLoading, setVipLoading] = useState(false)
-
+  const [prefillPhone, setPrefillPhone] = useState('')
   const isSale = type === 'sale'
 
   // Reset state when modal closes
@@ -79,6 +81,7 @@ export default function HomeEstimatorBuyerModal({
       setGeoLevel(null)
       setShowVipPrompt(false)
       setShowVipForm(false)
+      setShowWalliamForm(false)
       setShowWaiting(false)
       setShowBlocked(false)
     }
@@ -97,7 +100,10 @@ export default function HomeEstimatorBuyerModal({
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/chat/vip-request?requestId=${session.vipRequestId}`)
+        const pollUrl = tenantId
+          ? `/api/walliam/estimator/vip-request?requestId=${session.vipRequestId}`
+          : `/api/chat/vip-request?requestId=${session.vipRequestId}`
+        const response = await fetch(pollUrl)
         const data = await response.json()
 
         if (data.status === 'approved') {
@@ -204,17 +210,22 @@ export default function HomeEstimatorBuyerModal({
         if (data.questionnaireCompleted) {
           setShowWaiting(true)
         } else {
-          setShowVipForm(true)
+          tenantId ? setShowWalliamForm(true) : setShowVipForm(true)
         }
         return
       }
 
       if (data.vipRequestStatus === 'approved' && !data.questionnaireCompleted) {
-        setShowVipForm(true)
+        tenantId ? setShowWalliamForm(true) : setShowVipForm(true)
         return
       }
 
-      setShowVipPrompt(true)
+      if (tenantId) {
+        if (data.userPhone) setPrefillPhone(data.userPhone)
+        setShowWalliamForm(true)
+      } else {
+        setShowVipPrompt(true)
+      }
 
     } catch (err) {
       console.error('Error checking session:', err)
@@ -285,22 +296,14 @@ export default function HomeEstimatorBuyerModal({
       const displayAddress = listing?.unparsed_address ||
         `${(listing as any)?.street_number || ''} ${(listing as any)?.street_name || ''}`.trim() || 'Home'
 
-      const response = await fetch('/api/chat/vip-request', {
+      const vipUrl = tenantId ? '/api/walliam/estimator/vip-request' : '/api/chat/vip-request'
+      const vipBody = tenantId
+        ? { sessionId: session.sessionId, phone, pageUrl: window.location.href, buildingName: displayAddress }
+        : { sessionId: session.sessionId, phone, fullName: '', email: '', budgetRange: '', timeline: '', buyerType: '', requirements: '', pageUrl: window.location.href, buildingName: displayAddress, requestSource: 'estimator' }
+      const response = await fetch(vipUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.sessionId,
-          phone,
-          fullName: '',
-          email: '',
-          budgetRange: '',
-          timeline: '',
-          buyerType: '',
-          requirements: '',
-          pageUrl: window.location.href,
-          buildingName: displayAddress,
-          requestSource: 'estimator'
-        })
+        body: JSON.stringify(vipBody)
       })
 
       const result = await response.json()
@@ -327,7 +330,8 @@ export default function HomeEstimatorBuyerModal({
   const handleQuestionnaireSubmit = async (data: VipRequestData) => {
     setVipLoading(true)
     try {
-      const response = await fetch('/api/chat/vip-questionnaire', {
+      const questionnaireUrl = tenantId ? '/api/walliam/estimator/vip-questionnaire' : '/api/chat/vip-questionnaire'
+      const response = await fetch(questionnaireUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,6 +362,38 @@ export default function HomeEstimatorBuyerModal({
     } catch (err) {
       console.error('Questionnaire error:', err)
       setError('Failed to submit questionnaire')
+    } finally {
+      setVipLoading(false)
+    }
+  }
+
+  const handleWalliamVipSubmit = async (formData: any) => {
+    setVipLoading(true)
+    try {
+      const displayAddress = listing?.unparsed_address || 'Home'
+      const vipRes = await fetch('/api/walliam/estimator/vip-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.sessionId, phone: formData.phone, pageUrl: window.location.href, buildingName: displayAddress })
+      })
+      const vipResult = await vipRes.json()
+      if (!vipResult.success) { setError(vipResult.error || 'Failed to submit'); return }
+      const requestId = vipResult.requestId
+      const newStatus = vipResult.status === 'approved' ? 'approved' : 'pending'
+      setSession(prev => ({ ...prev, vipRequestId: requestId, vipRequestStatus: newStatus }))
+      const qRes = await fetch('/api/walliam/estimator/vip-questionnaire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, budgetRange: formData.budgetRange, timeline: formData.timeline, buyerType: formData.buyerType, requirements: formData.requirements })
+      })
+      const qResult = await qRes.json()
+      if (!qResult.success) { setError(qResult.error || 'Failed to submit questionnaire'); return }
+      setShowWalliamForm(false)
+      setSession(prev => ({ ...prev, questionnaireCompleted: true }))
+      if (newStatus === 'approved') { checkAndEstimate() } else { setShowWaiting(true) }
+    } catch (err) {
+      console.error('WALLiam VIP submit error:', err)
+      setError('Failed to submit request')
     } finally {
       setVipLoading(false)
     }
@@ -469,7 +505,20 @@ export default function HomeEstimatorBuyerModal({
             </div>
           )}
 
-          {/* VIP Form */}
+          {/* WALLiam single-step VIP form */}
+          {showWalliamForm && (
+            <div className="mb-6">
+              <WalliamVipForm
+                agentName={session.agentName}
+                buildingName={displayAddress}
+                initialPhone={prefillPhone}
+                onSubmit={handleWalliamVipSubmit}
+                onCancel={() => { setShowWalliamForm(false); onClose() }}
+                isLoading={vipLoading}
+              />
+            </div>
+          )}
+          {/* VIP Form (System 1 only) */}
           {showVipForm && (
             <div className="mb-6">
               <VipRequestForm
