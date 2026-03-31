@@ -12,6 +12,21 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const FROM = 'WALLiam <notifications@condoleads.ca>'
 
+
+// Track user activity in user_activities table
+async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  try {
+    await supabase.from('user_activities').insert({
+      contact_email: contactEmail,
+      agent_id: agentId || null,
+      activity_type: activityType,
+      activity_data: activityData || {},
+      page_url: pageUrl || '',
+    })
+  } catch (err) {
+    console.error('[trackUserActivity] error:', err)
+  }
+}
 function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -113,6 +128,15 @@ export async function POST(req: NextRequest) {
     } else {
       await resend.emails.send({ from: FROM, to: ADMIN_EMAIL, subject, html })
     }
+
+    // Track activity
+    await trackUserActivity(supabase, email, agent?.id || null, 'contact_form', {
+      source: source || 'walliam_contact',
+      geoName: geo_name || null,
+      buildingId: building_id || null,
+      listingId: listing_id || null,
+      message: message || null,
+    }, req.headers.get('referer') || '')
 
     return NextResponse.json({ success: true, leadId: lead?.id })
   } catch (error) {

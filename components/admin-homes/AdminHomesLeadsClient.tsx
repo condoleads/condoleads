@@ -50,6 +50,22 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [activities, setActivities] = useState<Record<string, any[]>>({})
+  const [loadingActivities, setLoadingActivities] = useState<string | null>(null)
+
+  const fetchActivities = async (leadId: string, email: string) => {
+    if (activities[leadId]) return // already loaded
+    setLoadingActivities(leadId)
+    try {
+      const res = await fetch(`/api/admin-homes/activities?email=${encodeURIComponent(email)}`)
+      const data = await res.json()
+      setActivities(prev => ({ ...prev, [leadId]: data.activities || [] }))
+    } catch (err) {
+      console.error('Failed to fetch activities:', err)
+    } finally {
+      setLoadingActivities(null)
+    }
+  }
 
   const filteredLeads = useMemo(() => {
     let f = [...leads]
@@ -263,7 +279,7 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                     className="h-4 w-4 rounded border-gray-300"
                   />
                 </th>
-                {['Date', 'Contact', 'Intent', 'Area', 'Budget', 'Agent', 'Status', 'Quality', 'Actions'].map(h => (
+                {['Date', 'Contact', 'Source', 'Intent', 'Area', 'Budget', 'Agent', 'Status', 'Quality', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -292,6 +308,11 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                       <div className="font-medium text-gray-900">{lead.contact_name}</div>
                       <a href={`mailto:${lead.contact_email}`} className="text-blue-600 text-xs">{lead.contact_email}</a>
                       {lead.contact_phone && <div className="text-gray-400 text-xs">{lead.contact_phone}</div>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="px-2 py-1 rounded-full text-xs font-mono bg-slate-100 text-slate-600 whitespace-nowrap">
+                        {lead.source?.replace('walliam_', '') || '—'}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       {lead.intent && (
@@ -326,7 +347,17 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                           </button>
                         )}
                         <button
-                          onClick={() => deleteLead(lead.id)}
+                          onClick={() => {
+                           const isOpen = expandedLead === lead.id + '-activity'
+                          setExpandedLead(isOpen ? null : lead.id + '-activity')
+                         if (!isOpen) fetchActivities(lead.id, lead.contact_email)
+                     }}
+                           className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100"
+                          >
+                          {expandedLead === lead.id + '-activity' ? 'Hide Activity' : 'Activity'}
+                          </button>
+                        <button
+                          onClick={() => deleteLead(lead.id)}                          
                           className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100"
                         >
                           Delete
@@ -334,10 +365,52 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                       </div>
                     </td>
                   </tr>
+                  {expandedLead === lead.id + '-activity' && (
+  <tr key={`${lead.id}-activity`}>
+    <td colSpan={11} className="px-6 py-4 bg-slate-50 border-b">
+      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+        Activity Timeline — {lead.contact_email}
+      </div>
+      {loadingActivities === lead.id ? (
+        <div className="text-sm text-gray-400">Loading...</div>
+      ) : (activities[lead.id] || []).length === 0 ? (
+        <div className="text-sm text-gray-400">No activity recorded yet.</div>
+      ) : (
+        <div className="relative pl-4">
+          <div className="absolute left-1.5 top-0 bottom-0 w-px bg-gray-200" />
+          {(activities[lead.id] || []).map((a: any) => (
+            <div key={a.id} className="relative mb-3 pl-5">
+              <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-amber-400 -translate-x-[3px]" />
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <span className="text-xs font-semibold text-gray-700 px-2 py-0.5 bg-white border rounded-full">
+                    {a.activity_type.replace(/_/g, ' ')}
+                  </span>
+                  {a.activity_data && Object.keys(a.activity_data).length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {Object.entries(a.activity_data).filter(([_, v]) => v).map(([k, v]: any) => (
+                        <span key={k} className="text-xs text-gray-500">
+                          <span className="text-gray-400">{k}:</span> {String(v)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-400 whitespace-nowrap">
+                  {new Date(a.created_at).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </td>
+  </tr>
+)}
                   {/* Expandable plan_data panel */}
                   {expandedLead === lead.id && lead.plan_data && (
                     <tr key={`${lead.id}-plan`}>
-                      <td colSpan={10} className="px-6 py-4 bg-gray-50 border-b">
+                      <td colSpan={11} className="px-6 py-4 bg-gray-50 border-b">
                         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Plan Data</div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                           {lead.plan_data.geoName && (

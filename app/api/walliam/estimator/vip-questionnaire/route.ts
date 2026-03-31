@@ -14,6 +14,21 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM = 'WALLiam <notifications@condoleads.ca>'
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 
+
+// Track user activity in user_activities table
+async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  try {
+    await supabase.from('user_activities').insert({
+      contact_email: contactEmail,
+      agent_id: agentId || null,
+      activity_type: activityType,
+      activity_data: activityData || {},
+      page_url: pageUrl || '',
+    })
+  } catch (err) {
+    console.error('[trackUserActivity] error:', err)
+  }
+}
 function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -171,6 +186,17 @@ export async function POST(request: NextRequest) {
           manager_id: managerId,
         })
       if (leadError) console.error('[walliam/estimator/vip-questionnaire] lead error:', leadError)
+    }
+
+    // Track activity
+    if (userEmail) {
+      await trackUserActivity(supabase, userEmail, agent?.id || null, 'estimator_contact_submitted', {
+        source: 'walliam_estimator_questionnaire',
+        buyerType: buyerType || null,
+        budgetRange: budgetRange || null,
+        timeline: timeline || null,
+        buildingName: vipRequest.building_name || null,
+      }, vipRequest.page_url || '')
     }
 
     return NextResponse.json({ success: true, message: 'Questionnaire submitted successfully' })
