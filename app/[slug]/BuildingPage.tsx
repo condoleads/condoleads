@@ -551,6 +551,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
                   agentId={walliamAgentId}
+                  tenantId={tenantId}
                 />
               ) : null}
             </div>

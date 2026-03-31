@@ -12,6 +12,7 @@ interface EstimatorVipWrapperProps {
   buildingName?: string
   buildingId?: string
   pageUrl?: string
+  tenantId?: string | null
   children: React.ReactNode
 }
 
@@ -49,6 +50,7 @@ export default function EstimatorVipWrapper({
   buildingName,
   buildingId,
   pageUrl,
+  tenantId,
   children
 }: EstimatorVipWrapperProps) {
   const [loading, setLoading] = useState(true)
@@ -86,7 +88,10 @@ export default function EstimatorVipWrapper({
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/chat/vip-request?requestId=${session.vipRequestId}`)
+        const pollUrl = tenantId
+          ? `/api/walliam/estimator/vip-request?requestId=${session.vipRequestId}`
+          : `/api/chat/vip-request?requestId=${session.vipRequestId}`
+        const response = await fetch(pollUrl)
         const data = await response.json()
 
         if (data.status === 'approved') {
@@ -119,9 +124,12 @@ export default function EstimatorVipWrapper({
   async function initializeSession() {
     setLoading(true)
     try {
-      const response = await fetch('/api/estimator/session', {
+      const sessionUrl = tenantId ? '/api/walliam/estimator/session' : '/api/estimator/session'
+      const sessionHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (tenantId) sessionHeaders['x-tenant-id'] = tenantId
+      const response = await fetch(sessionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sessionHeaders,
         body: JSON.stringify({ agentId, userId, buildingId })
       })
 
@@ -163,9 +171,12 @@ export default function EstimatorVipWrapper({
   const requestEstimate = useCallback(async (): Promise<boolean> => {
     // Re-fetch current session state to get latest usage
     try {
-      const response = await fetch('/api/estimator/session', {
+      const sessionUrl = tenantId ? '/api/walliam/estimator/session' : '/api/estimator/session'
+      const sessionHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (tenantId) sessionHeaders['x-tenant-id'] = tenantId
+      const response = await fetch(sessionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: sessionHeaders,
         body: JSON.stringify({ agentId, userId })
       })
 
@@ -195,7 +206,7 @@ export default function EstimatorVipWrapper({
       // Check if allowed
       if (data.allowed && data.remaining > 0) {
         // Increment usage FIRST
-        await fetch('/api/estimator/increment', {
+        await fetch(tenantId ? '/api/walliam/estimator/increment' : '/api/estimator/increment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -245,22 +256,14 @@ export default function EstimatorVipWrapper({
   async function handleVipAccept(phone: string) {
     setVipLoading(true)
     try {
-      const response = await fetch('/api/chat/vip-request', {
+      const vipUrl = tenantId ? '/api/walliam/estimator/vip-request' : '/api/chat/vip-request'
+      const vipBody = tenantId
+        ? { sessionId: session.sessionId, phone, pageUrl: pageUrl || window.location.href, buildingName }
+        : { sessionId: session.sessionId, phone, fullName: '', email: '', budgetRange: '', timeline: '', buyerType: '', requirements: '', pageUrl: pageUrl || window.location.href, buildingName, requestSource: 'estimator' }
+      const response = await fetch(vipUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.sessionId,
-          phone,
-          fullName: '',
-          email: '',
-          budgetRange: '',
-          timeline: '',
-          buyerType: '',
-          requirements: '',
-          pageUrl: pageUrl || window.location.href,
-          buildingName,
-          requestSource: 'estimator'
-        })
+        body: JSON.stringify(vipBody)
       })
 
       const result = await response.json()

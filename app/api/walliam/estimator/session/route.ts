@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .single()
 
-    const questionnaireCompleted = !!(vipRequest?.buyer_type)
+    const questionnaireCompleted = true // WALLiam has no questionnaire — users are registered
     const vipRequestStatus = vipRequest?.status || 'idle'
     const vipRequestId = vipRequest?.id || null
 

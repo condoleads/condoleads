@@ -103,7 +103,10 @@ export default function EstimatorBuyerModal({
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/chat/vip-request?requestId=${session.vipRequestId}`)
+        const pollUrl = tenantId
+          ? `/api/walliam/estimator/vip-request?requestId=${session.vipRequestId}`
+          : `/api/chat/vip-request?requestId=${session.vipRequestId}`
+        const response = await fetch(pollUrl)
         const data = await response.json()
 
         if (data.status === 'approved') {
@@ -281,34 +284,50 @@ export default function EstimatorBuyerModal({
   const handleVipAccept = async (phone: string) => {
     setVipLoading(true)
     try {
-      const response = await fetch('/api/chat/vip-request', {
+      const vipUrl = tenantId
+        ? '/api/walliam/estimator/vip-request'
+        : '/api/chat/vip-request'
+      const vipBody = tenantId
+        ? { sessionId: session.sessionId, phone, pageUrl: window.location.href, buildingName }
+        : {
+            sessionId: session.sessionId,
+            phone,
+            fullName: '',
+            email: '',
+            budgetRange: '',
+            timeline: '',
+            buyerType: '',
+            requirements: '',
+            pageUrl: window.location.href,
+            buildingName,
+            requestSource: 'estimator'
+          }
+      const response = await fetch(vipUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.sessionId,
-          phone,
-          fullName: '',
-          email: '',
-          budgetRange: '',
-          timeline: '',
-          buyerType: '',
-          requirements: '',
-          pageUrl: window.location.href,
-          buildingName,
-          requestSource: 'estimator'
-        })
+        body: JSON.stringify(vipBody)
       })
 
       const result = await response.json()
 
       if (result.success) {
+        const newStatus = result.status === 'approved' ? 'approved' : 'pending'
         setSession(prev => ({
           ...prev,
           vipRequestId: result.requestId,
-          vipRequestStatus: result.status === 'approved' ? 'approved' : 'pending'
+          vipRequestStatus: newStatus
         }))
         setShowVipPrompt(false)
-        setShowVipForm(true)
+        if (tenantId) {
+          // WALLiam: no questionnaire — go straight to estimate or waiting
+          if (newStatus === 'approved') {
+            checkAndEstimate()
+          } else {
+            setShowWaiting(true)
+          }
+        } else {
+          setShowVipForm(true)
+        }
       } else {
         setError(result.error || 'Failed to submit request')
       }
@@ -321,6 +340,11 @@ export default function EstimatorBuyerModal({
   }
 
   const handleQuestionnaireSubmit = async (data: VipRequestData) => {
+    // WALLiam: questionnaireCompleted is always true — this should never be called
+    if (tenantId) {
+      checkAndEstimate()
+      return
+    }
     setVipLoading(true)
     try {
       const response = await fetch('/api/chat/vip-questionnaire', {

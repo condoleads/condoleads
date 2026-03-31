@@ -86,6 +86,17 @@ export async function POST(request: NextRequest) {
       if (authUser?.user?.email) userEmail = authUser.user.email
     }
 
+    // Get manager email for CC
+    let managerEmail: string | null = null
+    if (agent?.parent_id) {
+      const { data: manager } = await supabase
+        .from('agents')
+        .select('email, notification_email')
+        .eq('id', agent.parent_id)
+        .single()
+      if (manager) managerEmail = manager.notification_email || manager.email
+    }
+
     const isAutoApprove = agent?.vip_auto_approve === true
     const autoApproveMessages = agent?.ai_auto_approve_limit ?? 2
 
@@ -132,26 +143,16 @@ export async function POST(request: NextRequest) {
     if (agentEmail) {
       try {
         await resend.emails.send({
-          from: 'WALLiam <notifications@walliam.ca>',
+          from: 'WALLiam <notifications@condoleads.ca>',
           to: agentEmail,
+          cc: managerEmail ? [managerEmail] : undefined,
+          bcc: [ADMIN_EMAIL],
           subject: `🔔 VIP Plan Request — ${userName} (${planType === 'seller' ? 'Seller' : 'Buyer'} Plan)`,
           html: emailHtml,
         })
       } catch (err) {
         console.error('[walliam/vip-request] agent email error:', err)
       }
-    }
-
-    // Email admin
-    try {
-      await resend.emails.send({
-        from: 'WALLiam <notifications@walliam.ca>',
-        to: ADMIN_EMAIL,
-        subject: `🔔 VIP Plan Request [${agent?.full_name || 'Unassigned'}] — ${userName}`,
-        html: emailHtml,
-      })
-    } catch (err) {
-      console.error('[walliam/vip-request] admin email error:', err)
     }
 
     // Save lead
@@ -187,7 +188,7 @@ export async function POST(request: NextRequest) {
       if (userEmail) {
         try {
           await resend.emails.send({
-            from: 'WALLiam <notifications@walliam.ca>',
+            from: 'WALLiam <notifications@condoleads.ca>',
             to: userEmail,
             subject: '✨ Your WALLiam Plan Access is Approved',
             html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),

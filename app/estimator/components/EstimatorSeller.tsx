@@ -17,9 +17,10 @@ interface EstimatorSellerProps {
   buildingName: string
   buildingAddress?: string
   agentId: string
+  tenantId?: string | null
 }
 
-export default function EstimatorSeller({ buildingId, buildingSlug, buildingName, buildingAddress, agentId }: EstimatorSellerProps) {
+export default function EstimatorSeller({ buildingId, buildingSlug, buildingName, buildingAddress, agentId, tenantId }: EstimatorSellerProps) {
   const { user } = useAuth()
 
   // If no user, show register-gated version
@@ -41,6 +42,7 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
       userId={user.id}
       buildingName={buildingName}
       buildingId={buildingId}
+      tenantId={tenantId}
     >
       <EstimatorSellerInner 
         buildingId={buildingId} 
