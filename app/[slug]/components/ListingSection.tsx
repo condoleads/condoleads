@@ -38,7 +38,6 @@ export default function ListingSection({
 }: ListingSectionProps) {
   const { user } = useAuth()
   const [showRegister, setShowRegister] = useState(false)
-  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
   const [activeTab, setActiveTab] = useState<TabType>('for-sale')
   const [currentPage, setCurrentPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
@@ -90,11 +89,6 @@ export default function ListingSection({
   const isLoading = (activeTab === 'sold' && loadingSold) || (activeTab === 'leased' && loadingLeased)
 
   const handleTabChange = (tabId: TabType) => {
-    if (isWalliam && !user && (tabId === 'sold' || tabId === 'leased')) {
-      setPendingAction(() => () => handleTabChange(tabId))
-      setShowRegister(true)
-      return
-    }
     setActiveTab(tabId)
     setCurrentPage(1)
     if (tabId === 'sold') fetchClosedListings('sold')
@@ -103,7 +97,6 @@ export default function ListingSection({
 
   const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'lease', exactSqft: number | null) => {
     if (isWalliam && !user) {
-      setPendingAction(() => () => handleEstimateClick(listing, type, exactSqft))
       setShowRegister(true)
       return
     }
@@ -162,18 +155,40 @@ export default function ListingSection({
           </div>
         ) : paginatedData.length > 0 ? (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              {paginatedData.map((listing) => (
-                <ListingCard
-                  key={listing.id}
-                  listing={listing}
-                  type={isSaleTab ? 'sale' : 'lease'}
-                  onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'lease', exactSqft)}
-                  buildingSlug={buildingSlug}
-                  buildingName={buildingName}
-                  agentId={agentId}
-                />
-              ))}
+            <div className="relative">
+              <div className={(isWalliam && !user && (activeTab === 'sold' || activeTab === 'leased')) ? 'grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 blur-sm pointer-events-none select-none' : 'grid grid-cols-1 md:grid-cols-3 gap-6 mb-8'}>
+                {paginatedData.map((listing) => (
+                  <ListingCard
+                    key={listing.id}
+                    listing={listing}
+                    type={isSaleTab ? 'sale' : 'lease'}
+                    onEstimateClick={(exactSqft) => handleEstimateClick(listing, isSaleTab ? 'sale' : 'lease', exactSqft)}
+                    buildingSlug={buildingSlug}
+                    buildingName={buildingName}
+                    agentId={agentId}
+                  />
+                ))}
+              </div>
+              {isWalliam && !user && (activeTab === 'sold' || activeTab === 'leased') && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 text-center border border-gray-100">
+                    <div className="text-3xl mb-3">🔒</div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">
+                      Register to See {activeTab === 'sold' ? 'Sold' : 'Leased'} Prices
+                    </h3>
+                    <p className="text-gray-500 text-sm mb-6">
+                      Create a free account to access sold prices, days on market, and full transaction history.
+                    </p>
+                    <button
+                      onClick={() => setShowRegister(true)}
+                      className="w-full py-3 px-6 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors"
+                    >
+                      Create Free Account
+                    </button>
+                    <p className="text-xs text-gray-400 mt-3">No credit card required</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {totalPages > 1 && (
@@ -231,11 +246,8 @@ export default function ListingSection({
       {showRegister && (
         <RegisterModal
           isOpen={showRegister}
-          onClose={() => { setShowRegister(false); setPendingAction(null) }}
-          onSuccess={() => {
-            setShowRegister(false)
-            if (pendingAction) { pendingAction(); setPendingAction(null) }
-          }}
+          onClose={() => setShowRegister(false)}
+          onSuccess={() => setShowRegister(false)}
           registrationSource="walliam_listing_gate"
           agentId={agentId}
           buildingId={buildingId}
