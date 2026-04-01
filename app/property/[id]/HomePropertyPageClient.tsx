@@ -253,6 +253,7 @@ export default function HomePropertyPageClient({
           onClose={() => setShowEstimatorModal(false)}
           listing={listing}
           agentId={agent?.id || ''}
+          tenantId={walliamTenantId || undefined}
           type={isSale ? 'sale' : 'rent'}
           exactSqft={listing.building_area_total || null}
         />

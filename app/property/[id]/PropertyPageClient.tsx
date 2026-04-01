@@ -287,6 +287,7 @@ export default function PropertyPageClient({
           buildingName={building?.building_name || ''}
           buildingAddress={building?.canonical_address || ''}
           agentId={agent?.id || ''}
+          tenantId={walliamTenantId || undefined}
           type={isSale ? 'sale' : 'lease'}
           exactSqft={listing.building_area_total || null}
         />
