@@ -4,7 +4,7 @@
 // Source: Extracted from admin-homes/incremental-sync + buildings/incremental-sync
 
 const PROPTX_BASE_URL = process.env.PROPTX_RESO_API_URL;
-const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_DLA_TOKEN || process.env.PROPTX_BEARER_TOKEN;
+const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN;
 
 // =====================================================
 // CONFIGURATION & VALIDATION
@@ -12,7 +12,7 @@ const PROPTX_TOKEN = process.env.PROPTX_VOW_TOKEN || process.env.PROPTX_DLA_TOKE
 
 export function validateConfig(): void {
   if (!PROPTX_BASE_URL) throw new Error('PROPTX_RESO_API_URL not set');
-  if (!PROPTX_TOKEN) throw new Error('No PropTx token found (checked PROPTX_DLA_TOKEN, PROPTX_VOW_TOKEN, PROPTX_BEARER_TOKEN)');
+  if (!PROPTX_TOKEN) throw new Error('PROPTX_VOW_TOKEN not set');
 }
 
 export function getBaseUrl(): string {
