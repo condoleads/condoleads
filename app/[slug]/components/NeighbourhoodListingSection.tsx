@@ -1,6 +1,8 @@
 ﻿'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '@/components/auth/AuthContext'
+import RegisterModal from '@/components/auth/RegisterModal'
 import { MLSListing } from '@/lib/types/building'
 import GeoListingCard from './GeoListingCard'
 import HomeListingCard from './HomeListingCard'
@@ -55,6 +57,8 @@ export default function NeighbourhoodListingSection({
   const [modalType, setModalType] = useState<'sale' | 'rent'>('sale')
   const [modalExactSqft, setModalExactSqft] = useState<number | null>(null)
   const [selectedIsHome, setSelectedIsHome] = useState(false)
+  const [showSoldGate, setShowSoldGate] = useState(false)
+  const { user } = useAuth()
 
   const totalPages = Math.ceil(totalCount / pageSize)
   const idsParam = municipalityIds.join(',')
@@ -231,7 +235,8 @@ export default function NeighbourhoodListingSection({
         </div>
       )}
       {!loading && listings.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="relative">
+          <div className={(!user && (activeTab === 'sold' || activeTab === 'leased')) ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 blur-sm pointer-events-none select-none' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'}>
           {listings.map(listing => {
             const isHome = isHomeProperty(listing)
             const currentType = getType()
@@ -242,6 +247,24 @@ export default function NeighbourhoodListingSection({
               <GeoListingCard key={listing.id} listing={listing} type={currentType} onEstimateClick={(sqft) => handleEstimateClick(listing, currentType, sqft)} agentId={agentId} />
             )
           })}
+          </div>
+          {(!user && (activeTab === 'sold' || activeTab === 'leased')) && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 text-center border border-gray-100">
+                <div className="text-3xl mb-3">🔒</div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Register to See {activeTab === 'sold' ? 'Sold' : 'Leased'} Prices
+                </h3>
+                <p className="text-gray-500 text-sm mb-6">
+                  Create a free account to access sold prices, days on market, and full transaction history.
+                </p>
+                <button onClick={() => setShowSoldGate(true)} className="w-full py-3 px-6 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">
+                  Create Free Account
+                </button>
+                <p className="text-xs text-gray-400 mt-3">No credit card required</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {!loading && listings.length === 0 && (
@@ -273,6 +296,15 @@ export default function NeighbourhoodListingSection({
       {selectedIsHome && (
         <HomeEstimatorBuyerModal isOpen={modalOpen} onClose={() => setModalOpen(false)}
           listing={selectedListing} agentId={agentId} tenantId={tenantId} type={modalType} exactSqft={modalExactSqft} />
+      )}
+      {showSoldGate && (
+        <RegisterModal
+          isOpen={showSoldGate}
+          onClose={() => setShowSoldGate(false)}
+          onSuccess={() => setShowSoldGate(false)}
+          registrationSource="walliam_sold_gate"
+          agentId={agentId}
+        />
       )}
     </div>
   )

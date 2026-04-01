@@ -186,10 +186,6 @@ export default function GeoListingSection({
 
   
   const handleTabChange = (tab: TabType) => {
-    if ((tab === 'sold' || tab === 'leased') && !user) {
-      setShowSoldGate(true)
-      return
-    }
     setActiveTab(tab)
     setCurrentPage(1)
     if (!hasActiveFilters() && tab === 'for-sale' && initialLoad && initialListings) {
@@ -303,7 +299,8 @@ export default function GeoListingSection({
 
       {/* Listings Grid */}
       {!loading && listings.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="relative">
+          <div className={(!user && (activeTab === 'sold' || activeTab === 'leased')) ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 blur-sm pointer-events-none select-none' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'}>
          {listings.map((listing, index) => {
             const isHome = isHomeProperty(listing)
             const currentType = getType()
@@ -327,6 +324,27 @@ export default function GeoListingSection({
               />
             )
           })}
+          </div>
+          {(!user && (activeTab === 'sold' || activeTab === 'leased')) && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 text-center border border-gray-100">
+                <div className="text-3xl mb-3">🔒</div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">
+                  Register to See {activeTab === 'sold' ? 'Sold' : 'Leased'} Prices
+                </h3>
+                <p className="text-gray-500 text-sm mb-6">
+                  Create a free account to access sold prices, days on market, and full transaction history.
+                </p>
+                <button
+                  onClick={() => setShowSoldGate(true)}
+                  className="w-full py-3 px-6 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors"
+                >
+                  Create Free Account
+                </button>
+                <p className="text-xs text-gray-400 mt-3">No credit card required</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -396,7 +414,7 @@ export default function GeoListingSection({
         <RegisterModal
           isOpen={showSoldGate}
           onClose={() => setShowSoldGate(false)}
-          onSuccess={() => { setShowSoldGate(false); window.location.reload() }}
+          onSuccess={() => setShowSoldGate(false)}
           registrationSource="walliam_sold_gate"
         />
       )}
