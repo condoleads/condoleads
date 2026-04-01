@@ -78,19 +78,19 @@ const getNeighbourhoodData = unstable_cache(
       .select('id', { count: 'exact', head: true })
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
-      .eq('standard_status', 'Active'),
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending']),
     supabase.from('mls_listings')
       .select('id', { count: 'exact', head: true })
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .in('property_subtype', ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
         'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']),
     supabase.from('mls_listings')
       .select('id', { count: 'exact', head: true })
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .in('property_subtype', ['Detached', 'Semi-Detached', 'Att/Row/Townhouse',
         'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']),
     communityIds.length
@@ -110,7 +110,7 @@ const getNeighbourhoodData = unstable_cache(
         media (id, media_url, variant_type, order_number, preferred_photo_yn)`)
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('transaction_type', 'For Sale')
       .order('list_price', { ascending: false })
       .range(0, 23),
@@ -119,13 +119,13 @@ const getNeighbourhoodData = unstable_cache(
       .select('id', { count: 'exact', head: true })
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('transaction_type', 'For Sale'),
     supabase.from('mls_listings')
       .select('id', { count: 'exact', head: true })
       .in('municipality_id', municipalityIds)
       .eq('available_in_vow', true)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('transaction_type', 'For Lease'),
   ])
 

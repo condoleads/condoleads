@@ -163,7 +163,7 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
           .eq('community_id', listing.community_id)
           .eq('property_subtype', listing.property_subtype)
           .eq('transaction_type', listing.transaction_type)
-          .eq('standard_status', 'Active')
+          .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
           .eq('available_in_idx', true)
           .neq('id', listing.id)
           .order('list_price', { ascending: true })

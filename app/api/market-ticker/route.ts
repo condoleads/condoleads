@@ -41,7 +41,7 @@ export async function GET(request: Request) {
         buildings!inner(building_name, slug)
       `)
       .in('building_id', buildingIds)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('available_in_idx', true)
       .gt('list_price', 0)
       .order('modification_timestamp', { ascending: false })

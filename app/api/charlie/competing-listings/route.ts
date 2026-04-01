@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       let query = supabase
         .from('mls_listings')
         .select('id, listing_key, list_price, unparsed_address, bedrooms_total, bathrooms_total_integer, living_area_range, days_on_market, approximate_age, association_fee, property_subtype, unit_number')
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Sale')
         .eq('community_id', communityId)
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       let query = supabase
         .from('mls_listings')
         .select('id, listing_key, list_price, unparsed_address, bedrooms_total, bathrooms_total_integer, living_area_range, days_on_market, approximate_age, property_subtype, frontage_length, lot_size_area')
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Sale')
         .eq('municipality_id', municipalityId)

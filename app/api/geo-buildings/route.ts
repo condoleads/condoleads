@@ -99,7 +99,7 @@ async function getListingCounts(supabase: any, buildingIds: string[]) {
     .from('mls_listings')
     .select('building_id, transaction_type')
     .in('building_id', buildingIds)
-    .eq('standard_status', 'Active')
+    .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
     .eq('available_in_idx', true)
 
   const counts: Record<string, { forSale: number; forLease: number }> = {}

@@ -81,19 +81,19 @@ const getAreaData = unstable_cache(
         : Promise.resolve({ count: 0 }),
       supabase.from('mls_listings').select(LISTING_SELECT)
         .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Sale')
         .order('list_price', { ascending: false })
         .limit(24),
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
         .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Sale'),
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
         .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Lease'),
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
@@ -110,26 +110,26 @@ const getAreaData = unstable_cache(
       // homeCounts
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
         .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Sale')
         .in('property_subtype', HOME_SUBTYPES),
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
         .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Lease')
         .in('property_subtype', HOME_SUBTYPES),
       // condoCounts
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
         .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Sale')
         .in('property_subtype', CONDO_SUBTYPES),
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
         .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Lease')
         .in('property_subtype', CONDO_SUBTYPES),

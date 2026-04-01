@@ -201,7 +201,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
       `)
       .eq('building_id', listing.building_id)
       .eq('transaction_type', listing.transaction_type)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .neq('id', listing.id)
       .order('list_price', { ascending: true })
       .limit(8),

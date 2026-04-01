@@ -64,7 +64,7 @@ const getMunicipalityData = unstable_cache(
     // FIX: available_in_idx → available_in_vow
     supabase.from('mls_listings').select(LISTING_SELECT)
       .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('available_in_vow', true)
       .eq('transaction_type', 'For Sale')
       .order('list_price', { ascending: false })
@@ -72,12 +72,12 @@ const getMunicipalityData = unstable_cache(
     // FIX: available_in_idx → available_in_vow
     supabase.from('mls_listings').select('id', { count: 'exact', head: true })
       .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('available_in_vow', true)
       .eq('transaction_type', 'For Sale'),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true })
       .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('available_in_vow', true)
       .eq('transaction_type', 'For Lease'),
     supabase.from('mls_listings').select('id', { count: 'exact', head: true })
@@ -120,14 +120,14 @@ const getMunicipalityData = unstable_cache(
       supabase.from('mls_listings')
         .select('community_id')
         .in('community_id', communityIds)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Sale')
         .limit(10000),
       supabase.from('mls_listings')
         .select('community_id')
         .in('community_id', communityIds)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Lease')
         .limit(10000),

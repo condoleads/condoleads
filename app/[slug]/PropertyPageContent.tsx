@@ -138,7 +138,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
     `)
     .eq('building_id', listing.building_id)
     .eq('transaction_type', targetTransactionType)
-    .eq('standard_status', 'Active')
+    .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
     .neq('id', listing.id)
     .order('list_price', { ascending: false })
     .limit(8)

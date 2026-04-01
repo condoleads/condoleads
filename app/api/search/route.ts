@@ -196,7 +196,7 @@ export async function GET(req: NextRequest) {
         .select('id, unparsed_address, property_subtype, list_price, transaction_type, bedrooms_total')
         .ilike('unparsed_address', `${intent.number} %`)
         .eq('available_in_idx', true)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .order('list_price', { ascending: false })
         .limit(4),
     ])
@@ -250,7 +250,7 @@ export async function GET(req: NextRequest) {
         .select('id, unparsed_address, property_subtype, list_price, transaction_type, bedrooms_total')
         .ilike('unparsed_address', `%${intent.number} ${intent.street}%`)
         .eq('available_in_idx', true)
-        .eq('standard_status', 'Active')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .order('list_price', { ascending: false })
         .limit(5),
     ])
@@ -308,7 +308,7 @@ export async function GET(req: NextRequest) {
           .select('id, unparsed_address, property_subtype, list_price, transaction_type, bedrooms_total')
           .ilike('unparsed_address', `%${intent.text}%`)
           .eq('available_in_idx', true)
-          .eq('standard_status', 'Active')
+          .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
           .order('list_price', { ascending: false })
           .limit(4)
       : Promise.resolve({ data: [] as any[] }),
