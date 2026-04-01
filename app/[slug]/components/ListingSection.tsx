@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
 import ListingCard from './ListingCard'
 import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
+import { useAuth } from '@/components/auth/AuthContext'
+import RegisterModal from '@/components/auth/RegisterModal'
 
 interface ListingSectionProps {
   activeSales: MLSListing[]
@@ -16,6 +18,7 @@ interface ListingSectionProps {
   buildingSlug: string
   agentId: string
   tenantId?: string
+  isWalliam?: boolean
 }
 
 type TabType = 'for-sale' | 'for-lease' | 'sold' | 'leased'
@@ -31,7 +34,11 @@ export default function ListingSection({
   buildingSlug,
   agentId,
   tenantId,
+  isWalliam = false,
 }: ListingSectionProps) {
+  const { user } = useAuth()
+  const [showRegister, setShowRegister] = useState(false)
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
   const [activeTab, setActiveTab] = useState<TabType>('for-sale')
   const [currentPage, setCurrentPage] = useState(1)
   const [modalOpen, setModalOpen] = useState(false)
@@ -83,6 +90,11 @@ export default function ListingSection({
   const isLoading = (activeTab === 'sold' && loadingSold) || (activeTab === 'leased' && loadingLeased)
 
   const handleTabChange = (tabId: TabType) => {
+    if (isWalliam && !user && (tabId === 'sold' || tabId === 'leased')) {
+      setPendingAction(() => () => handleTabChange(tabId))
+      setShowRegister(true)
+      return
+    }
     setActiveTab(tabId)
     setCurrentPage(1)
     if (tabId === 'sold') fetchClosedListings('sold')
@@ -90,6 +102,11 @@ export default function ListingSection({
   }
 
   const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'lease', exactSqft: number | null) => {
+    if (isWalliam && !user) {
+      setPendingAction(() => () => handleEstimateClick(listing, type, exactSqft))
+      setShowRegister(true)
+      return
+    }
     setSelectedListing(listing)
     setModalType(type)
     setModalOpen(true)
@@ -211,6 +228,20 @@ export default function ListingSection({
       </section>
 
       {/* Estimator Modal */}
+      {showRegister && (
+        <RegisterModal
+          isOpen={showRegister}
+          onClose={() => { setShowRegister(false); setPendingAction(null) }}
+          onSuccess={() => {
+            setShowRegister(false)
+            if (pendingAction) { pendingAction(); setPendingAction(null) }
+          }}
+          registrationSource="walliam_listing_gate"
+          agentId={agentId}
+          buildingId={buildingId}
+          buildingName={buildingName}
+        />
+      )}
       <EstimatorBuyerModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}

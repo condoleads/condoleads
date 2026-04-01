@@ -477,6 +477,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingSlug={building.slug}
                   agentId={agent?.id || ""}
                   tenantId={agent?.tenant_id || ''}
+                  isWalliam={isWalliam}
                 />
             </div>
             
