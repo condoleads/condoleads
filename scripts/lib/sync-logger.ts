@@ -78,7 +78,6 @@ export async function writeBuildingSyncHistory(params: {
     await supabase.from('sync_history').insert({
       building_id: params.buildingId,
       sync_type: params.syncType || 'incremental',
-      feed_type: 'dla',
       listings_found: params.listingsFound,
       listings_created: params.listingsCreated,
       listings_updated: params.listingsUpdated,
@@ -117,7 +116,6 @@ export async function writeNightlySummary(params: {
     await supabase.from('sync_history').insert({
       building_id: null,
       sync_type: 'nightly-summary',
-      feed_type: 'dla',
       sync_status: status,
       started_at: params.startedAt.toISOString(),
       completed_at: new Date().toISOString(),
