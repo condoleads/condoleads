@@ -47,7 +47,7 @@ const getCachedActiveListings = unstable_cache(
         )
       `)
       .eq('building_id', buildingId)
-      .eq('standard_status', 'Active')
+      .in('standard_status', ['Active', 'Active Under Contract'])
       .order('list_price', { ascending: false })
     return data
   },
