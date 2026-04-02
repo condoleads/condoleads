@@ -83,7 +83,77 @@ geoId: ${geoContext.geoId}
 geoName: ${geoContext.geoName}
 NEVER truncate the geoId.` : ''
 
-  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoReminder
+  // Pre-load building intelligence if on a building page
+  let buildingContext = ''
+  if (geoContext?.building_id) {
+    try {
+      const buildingIntel = await executeTool('get_building_intelligence', { building_id: geoContext.building_id }, agentId, geoContext)
+      if (buildingIntel && !buildingIntel.error) {
+        const b = buildingIntel.building
+        const s = buildingIntel.stats
+        buildingContext = `
+
+CURRENT BUILDING CONTEXT (pre-loaded — use this data directly):
+Building: ${b?.building_name} at ${b?.canonical_address}
+Total Units: ${b?.total_units || 'N/A'} | Year Built: ${b?.year_built || 'N/A'}
+Active For Sale: ${s?.active_for_sale} | Sold Last 90 Days: ${s?.sold_last_90}
+Median Sale Price: ${s?.median_sale_price?.toLocaleString() || 'N/A'} | Avg DOM: ${s?.avg_dom || 'N/A'} days
+Avg Concession: ${s?.avg_concession_pct || 0}% below asking
+Recent Sales: ${(buildingIntel.recent_sales || []).map((s: any) => `Unit ${s.unit_number}: ${s.bedrooms_total}BR sold ${s.close_price?.toLocaleString()} (${s.days_on_market} DOM)`).join(', ')}
+Active Listings: ${(buildingIntel.active_listings || []).map((l: any) => `Unit ${l.unit_number}: ${l.bedrooms_total}BR at ${l.list_price?.toLocaleString()}`).join(', ') || 'None'}
+Use this data to answer building-specific questions immediately without calling get_building_intelligence again.`
+      }
+    } catch (e) {
+      console.error('[CHARLIE] building pre-load error:', e)
+    }
+  }
+
+
+  // Pre-load geo analytics if on a geo page (municipality/community/area)
+  let geoAnalyticsContext = ''
+  const geoPreloadId = geoContext?.municipality_id || geoContext?.community_id || geoContext?.area_id
+  const geoPreloadType = geoContext?.municipality_id ? 'municipality' : geoContext?.community_id ? 'community' : geoContext?.area_id ? 'area' : null
+  if (geoPreloadId && geoPreloadType && !geoContext?.building_id) {
+    try {
+      const { createClient: _sc } = await import('@supabase/supabase-js')
+      const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+      const { data: geoA } = await _db
+        .from('geo_analytics')
+        .select('median_sale_price, avg_psf, closed_avg_dom_90, absorption_rate_pct, months_of_inventory, pct_sold_over_ask, avg_concession_pct, bedroom_breakdown, sale_to_list_ratio, active_count, closed_sale_count_90')
+        .eq('geo_type', geoPreloadType)
+        .eq('geo_id', geoPreloadId)
+        .eq('period_type', 'rolling_12mo')
+        .maybeSingle()
+      if (geoA) {
+        const absorption = geoA.absorption_rate_pct || 0
+        const marketCondition = absorption > 60 ? "Seller's Market" : absorption < 40 ? "Buyer's Market" : "Balanced Market"
+        const moi = geoA.months_of_inventory || 0
+        const urgency = moi < 2 ? 'High' : moi < 4 ? 'Medium' : 'Low'
+        const overAsk = geoA.pct_sold_over_ask || 0
+        const underAsk = (100 - overAsk - (geoA.sale_to_list_ratio || 0))
+        const negotiation = overAsk > 50 ? 'Over Ask' : moi > 4 ? 'Under Ask' : 'At Ask'
+        let bedroomText = ''
+        if (geoA.bedroom_breakdown) {
+          try {
+            const bd = typeof geoA.bedroom_breakdown === 'string' ? JSON.parse(geoA.bedroom_breakdown) : geoA.bedroom_breakdown
+            bedroomText = Object.entries(bd).map(([k,v]: any) => `${k}BR: $${v?.median_price?.toLocaleString() || 'N/A'}`).join(', ')
+          } catch {}
+        }
+        geoAnalyticsContext = `
+
+CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do not call get_market_analytics again):
+Market Condition: ${marketCondition} | Urgency: ${urgency} | Negotiation: ${negotiation}
+Median Sale Price: $${geoA.median_sale_price?.toLocaleString() || "N/A"} | Avg PSF: $${geoA.avg_psf?.toLocaleString() || "N/A"}
+Avg DOM: ${geoA.closed_avg_dom_90 || "N/A"} days | Months of Inventory: ${moi}
+Avg Concession: ${geoA.avg_concession_pct || 0}% below asking | Active Listings: ${geoA.active_count || 0}
+${bedroomText ? `Price by Bedrooms: ${bedroomText}` : ""}
+Use these exact numbers when answering market questions.`
+      }
+    } catch (e) {
+      console.error('[CHARLIE] geo pre-load error:', e)
+    }
+  }
+  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoReminder + buildingContext + geoAnalyticsContext
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -278,13 +348,37 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   if (name === 'get_market_analytics') {
     const { data } = await supabase
       .from('geo_analytics')
-      .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, median_lease_price, gross_rental_yield_pct, psf_trend_pct, dom_trend_pct, bedroom_breakdown, subtype_breakdown, price_trend_monthly, insight_seasonal, avg_concession_pct')
+      .select('median_psf, avg_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, months_of_inventory, active_count, closed_sale_count_90, median_lease_price, gross_rental_yield_pct, psf_trend_pct, dom_trend_pct, bedroom_breakdown, subtype_breakdown, price_trend_monthly, insight_seasonal, avg_concession_pct, pct_sold_over_ask, pct_sold_under_ask, pct_sold_at_ask, median_sale_price, avg_sale_price, p25_sale_price, p75_sale_price, stale_listing_pct, new_listings_7d')
       .eq('geo_type', input.geoType)
       .eq('geo_id', input.geoId)
       .eq('track', input.track)
       .eq('period_type', 'rolling_12mo')
       .maybeSingle()
-    return { analytics: data, geoType: input.geoType, geoId: input.geoId, track: input.track }
+    // Compute derived insights from raw analytics
+    let computed: any = {}
+    if (data) {
+      // Market condition
+      const absorption = data.absorption_rate_pct || 0
+      computed.market_condition = absorption > 60 ? "Seller's Market" : absorption < 40 ? "Buyer's Market" : "Balanced Market"
+
+      // Negotiation signal
+      const overAsk = data.pct_sold_over_ask || 0
+      const underAsk = data.pct_sold_under_ask || 0
+      computed.negotiation_signal = overAsk > underAsk ? 'Over Ask' : underAsk > overAsk ? 'Under Ask' : 'At Ask'
+
+      // Urgency
+      const moi = data.months_of_inventory || 99
+      computed.urgency = moi < 2 ? 'High' : moi < 4 ? 'Medium' : 'Low'
+
+      // Bedroom pricing from bedroom_breakdown JSONB
+      if (data.bedroom_breakdown) {
+        try {
+          const bd = typeof data.bedroom_breakdown === 'string' ? JSON.parse(data.bedroom_breakdown) : data.bedroom_breakdown
+          computed.bedroom_pricing = bd
+        } catch {}
+      }
+    }
+    return { analytics: data, computed, geoType: input.geoType, geoId: input.geoId, track: input.track }
   }
 
   if (name === 'search_listings') {
@@ -316,6 +410,66 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
       return { ...l, _slug: slug, _isHome: isHome }
     })
     return { listings: listingsWithSlugs, total: data.total || 0, label: (cat + ' in ' + geoName + ' ' + sortLabel).trim() }
+  }
+
+  if (name === 'get_building_intelligence') {
+    // Resolve building_id from slug if needed
+    let buildingId = input.building_id
+    if (!buildingId && input.building_slug) {
+      const { data: b } = await supabase.from('buildings').select('id').eq('slug', input.building_slug).single()
+      buildingId = b?.id
+    }
+    if (!buildingId) return { error: 'Building not found' }
+
+    // Get building details
+    const { data: building } = await supabase
+      .from('buildings')
+      .select('id, building_name, canonical_address, total_units, year_built, slug')
+      .eq('id', buildingId)
+      .single()
+
+    // Get recent sold listings (last 90 days)
+    const { data: recentSales } = await supabase
+      .from('mls_listings')
+      .select('unit_number, close_price, close_date, bedrooms_total, living_area_range, days_on_market, list_price')
+      .eq('building_id', buildingId)
+      .eq('standard_status', 'Closed')
+      .eq('transaction_type', 'For Sale')
+      .gte('close_date', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+      .order('close_date', { ascending: false })
+      .limit(5)
+
+    // Get active listings
+    const { data: activeListings } = await supabase
+      .from('mls_listings')
+      .select('unit_number, list_price, bedrooms_total, living_area_range, days_on_market')
+      .eq('building_id', buildingId)
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .eq('transaction_type', 'For Sale')
+      .order('list_price', { ascending: true })
+      .limit(5)
+
+    // Compute building stats from recent sales
+    const sales = recentSales || []
+    const prices = sales.map((s: any) => s.close_price).filter(Boolean)
+    const concessions = sales.map((s: any) => s.close_price && s.list_price ? ((s.list_price - s.close_price) / s.list_price * 100) : null).filter((v: any): v is number => v !== null)
+    const doms = sales.map((s: any) => s.days_on_market).filter(Boolean)
+
+    const stats = {
+      sold_last_90: sales.length,
+      median_sale_price: prices.length ? Math.round(prices.sort((a: number, b: number) => a - b)[Math.floor(prices.length / 2)]) : null,
+      avg_sale_price: prices.length ? Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length) : null,
+      avg_dom: doms.length ? Math.round(doms.reduce((a: number, b: number) => a + b, 0) / doms.length) : null,
+      avg_concession_pct: concessions.length ? Math.round(concessions.reduce((a: number, b: number) => a + b, 0) / concessions.length * 10) / 10 : null,
+      active_for_sale: (activeListings || []).length,
+    }
+
+    return {
+      building,
+      stats,
+      recent_sales: sales,
+      active_listings: activeListings || [],
+    }
   }
 
   if (name === 'generate_plan') {

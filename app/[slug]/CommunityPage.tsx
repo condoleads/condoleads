@@ -8,6 +8,7 @@ import GeoInterlinking from './components/GeoInterlinking'
 import GeoHero from './components/GeoHero'
 import AnalyticsSection from '@/components/analytics/AnalyticsSection'
 import WalliamCTA from '@/components/WalliamCTA'
+import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 
 const LISTING_SELECT = `
@@ -175,6 +176,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
               tenant_id={tenantId!}
             />
             <WalliamCTA context={community.name} />
+            <CharliePageContext community_id={community.id} municipality_id={community.municipality_id} />
           </div>
         )}
 

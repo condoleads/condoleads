@@ -61,6 +61,17 @@ export const CHARLIE_TOOLS = [
     }
   },
   {
+    name: 'get_building_intelligence',
+    description: 'Get building-specific intelligence: recent sold prices, active listings, and performance stats for a specific condo building. Call this whenever user asks about a specific building or when building_id is in context.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        building_id: { type: 'string', description: 'Building UUID from database' },
+        building_slug: { type: 'string', description: 'Building slug e.g. x2-condos-101-charles-st-e-toronto — use if no building_id' }
+      }
+    }
+  },
+  {
     name: 'generate_plan',
     description: 'Generate a buyer plan or seller strategy document. Call this when you have enough information. For buyers: need area + budget + listings. For sellers: need area + property type + comparables.',
     input_schema: {

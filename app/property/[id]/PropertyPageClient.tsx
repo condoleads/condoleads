@@ -25,6 +25,7 @@ import PropertySEO from '@/components/property/PropertySEO'
 import InvestmentAnalysis from '@/components/property/InvestmentAnalysis'
 import type { InvestmentData } from '@/lib/market/get-listing-investment-data'
 import WalliamCTA from '@/components/WalliamCTA'
+import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 import WalliamContactForm from '@/components/WalliamContactForm'
 import AppointmentForm from '@/app/charlie/components/AppointmentForm'
@@ -180,6 +181,7 @@ export default function PropertyPageClient({
                     hideCTA={true}
                   />
                   <WalliamCTA context={building?.building_name} />
+                  <CharliePageContext listing_id={listing.id} building_id={listing.building_id} community_id={listing.community_id || null} municipality_id={listing.municipality_id || null} />
                   <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
                     <button
                       onClick={() => setShowBooking(b => !b)}

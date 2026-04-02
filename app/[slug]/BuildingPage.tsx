@@ -115,6 +115,7 @@ import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import { createClient, createServerClient } from '@/lib/supabase/server'
 import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
 import WalliamCTA from '@/components/WalliamCTA'
+import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 import WalliamContactForm from '@/components/WalliamContactForm'
 import { getWalliamTenantId, resolveWalliamAgent } from '@/lib/utils/is-walliam'
@@ -578,6 +579,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                    tenant_id={tenantId!}
                   />
                   <WalliamCTA context={building.building_name} />
+                  <CharliePageContext building_id={building.id} community_id={building.community_id || null} municipality_id={building.municipality_id || null} />
                   <WalliamContactForm
                     tenantId={tenantId!}
                     building_id={building.id}

@@ -26,15 +26,18 @@ Unit Details:
 - Estimated Price: $${estimatedPrice.toLocaleString()}
 
 Recent Comparable Sales (${comparables.length} found):
-${comparables.slice(0, 5).map(c => 
-  `- ${c.bedrooms}bed, ${c.bathrooms}bath, ${c.livingAreaRange}sqft sold for $${c.closePrice.toLocaleString()} (${c.daysOnMarket} days on market)`
-).join('\n')}
+${comparables.slice(0, 5).map(c => {
+  const pct = c.listPrice && c.closePrice ? ((c.listPrice - c.closePrice) / c.listPrice * 100).toFixed(1) : null
+  const conc = pct !== null ? (parseFloat(pct) > 0 ? ` (-${pct}% below ask)` : parseFloat(pct) < 0 ? ` (+${Math.abs(parseFloat(pct))}% over ask)` : ' (at ask)') : ''
+  return `- Unit ${c.unitNumber || 'N/A'}: ${c.bedrooms}BR ${c.livingAreaRange}sqft sold $${c.closePrice.toLocaleString()}${conc}, ${c.daysOnMarket} DOM, closed ${c.closeDate ? c.closeDate.slice(0,7) : 'N/A'}`
+}).join('\n')}
+Avg concession: ${(() => { const v = comparables.slice(0,5).map(c => c.listPrice && c.closePrice ? (c.listPrice-c.closePrice)/c.listPrice*100 : null).filter(x=>x!==null); return v.length ? (v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)+'% below asking' : 'N/A' })()}
 
 Respond ONLY with valid JSON in this exact format, no other text:
 {
-  "summary": "2-3 sentence market overview for this unit",
+  "summary": "2-3 sentences citing specific comparable units and sold prices e.g. Unit 402 sold $X, Unit 815 sold $Y",
   "keyFactors": ["factor1", "factor2", "factor3", "factor4"],
-  "marketTrend": "1 sentence about current market conditions"
+  "marketTrend": "1 sentence on negotiation position based on concession data above"
 }`
 
   try {

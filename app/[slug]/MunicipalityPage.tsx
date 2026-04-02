@@ -9,6 +9,7 @@ import CommunityCard from './components/CommunityCard'
 import GeoHero from './components/GeoHero'
 import AnalyticsSection from '@/components/analytics/AnalyticsSection'
 import WalliamCTA from '@/components/WalliamCTA'
+import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 
 const LISTING_SELECT = `
@@ -220,6 +221,7 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
               tenant_id={tenantId!}
             />
             <WalliamCTA context={municipality.name} />
+            <CharliePageContext municipality_id={municipality.id} area_id={municipality.area_id} />
           </div>
         )}
 

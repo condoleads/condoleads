@@ -22,6 +22,7 @@ import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuy
 import Breadcrumb from '@/components/Breadcrumb'
 import HomePropertySEO from '@/components/property/HomePropertySEO'
 import WalliamCTA from '@/components/WalliamCTA'
+import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 import WalliamContactForm from '@/components/WalliamContactForm'
 import AppointmentForm from '@/app/charlie/components/AppointmentForm'
@@ -173,6 +174,7 @@ export default function HomePropertyPageClient({
                     tenant_id={walliamTenantId}
                   />
                   <WalliamCTA context={listing.unparsed_address} />
+                  <CharliePageContext listing_id={listing.id} community_id={community?.id || null} municipality_id={municipality?.id || null} area_id={area?.id || null} />
                   <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
                     <button onClick={() => setShowBooking(b => !b)} style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>📅 Book a Visit</span>

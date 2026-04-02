@@ -109,6 +109,7 @@ export function useCharlie() {
   // WALLiam session ref
   const walliamSessionIdRef = useRef<string | null>(null)
   const userIdRef = useRef<string | null>(null)
+  const pageContextRef = useRef<any>(null)
 
   const initSession = useCallback(async (
     userId: string | null,
@@ -136,6 +137,7 @@ export function useCharlie() {
       const data = await res.json()
       if (data.sessionId) {
         walliamSessionIdRef.current = data.sessionId
+        pageContextRef.current = pageContext || null
         userIdRef.current = userId
         setState(s => ({
           ...s,
@@ -249,7 +251,7 @@ export function useCharlie() {
           messages: messagesRef.current,
           sessionId: walliamSessionIdRef.current,
           userId: userIdRef.current,
-          geoContext: geoContextRef.current,
+          geoContext: geoContextRef.current ? { ...geoContextRef.current, building_id: pageContextRef.current?.building_id || null } : (pageContextRef.current?.building_id ? { building_id: pageContextRef.current.building_id } : null),
         }),
       })
 
