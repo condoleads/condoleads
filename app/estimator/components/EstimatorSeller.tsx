@@ -125,8 +125,8 @@ function EstimatorSellerInner({ buildingId, buildingSlug, buildingName, building
     setResult(null)
 
     const response = estimateType === 'sale'
-      ? await estimateSale({ ...specs, buildingId, buildingSlug, agentId }, true)
-      : await estimateRent({ ...specs, buildingId, buildingSlug, agentId }, true)
+      ? await estimateSale({ ...specs, buildingId, buildingSlug, agentId }, estimatorContext?.session?.aiEstimatorEnabled ?? false)
+      : await estimateRent({ ...specs, buildingId, buildingSlug, agentId }, estimatorContext?.session?.aiEstimatorEnabled ?? false)
 
     if (response.success && response.data) {
       setResult(response.data)

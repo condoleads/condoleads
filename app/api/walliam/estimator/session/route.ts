@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
         estimator_manual_approve_attempts,
         estimator_hard_cap,
         estimator_vip_auto_approve,
+        estimator_ai_enabled,
         anthropic_api_key
       `)
       .eq('id', tenantId)
@@ -189,6 +190,7 @@ export async function POST(request: NextRequest) {
       vipRequestId,
       vipAutoApprove: tenant.estimator_vip_auto_approve ?? false,
       estimatorEnabled: tenant.estimator_nonai_enabled,
+      aiEstimatorEnabled: tenant.estimator_ai_enabled ?? false,
       userPhone,
       userName,
       userEmail,

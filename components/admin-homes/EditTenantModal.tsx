@@ -21,10 +21,11 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
     is_active: true,
     anthropic_api_key: '',
-    ai_free_messages: 1, vip_auto_approve: false,
-    ai_auto_approve_limit: 2, ai_manual_approve_limit: 3, ai_hard_cap: 10,
+    ai_free_messages: 1,
+    ai_auto_approve_limit: 1, ai_manual_approve_limit: 3, ai_hard_cap: 10,
+    estimator_ai_enabled: false,
     estimator_nonai_enabled: true,
-    estimator_free_attempts: 1, estimator_vip_auto_approve: false,
+    estimator_free_attempts: 1,
     estimator_auto_approve_attempts: 2, estimator_manual_approve_attempts: 3,
     estimator_hard_cap: 10,
   })
@@ -46,13 +47,12 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           is_active: data.is_active !== false,
           anthropic_api_key: data.anthropic_api_key || '',
           ai_free_messages: data.ai_free_messages ?? 1,
-          vip_auto_approve: data.vip_auto_approve ?? false,
-          ai_auto_approve_limit: data.ai_auto_approve_limit ?? 2,
+          ai_auto_approve_limit: data.ai_auto_approve_limit ?? 1,
           ai_manual_approve_limit: data.ai_manual_approve_limit ?? 3,
           ai_hard_cap: data.ai_hard_cap ?? 10,
+          estimator_ai_enabled: data.estimator_ai_enabled ?? false,
           estimator_nonai_enabled: data.estimator_nonai_enabled ?? true,
           estimator_free_attempts: data.estimator_free_attempts ?? 1,
-          estimator_vip_auto_approve: data.estimator_vip_auto_approve ?? false,
           estimator_auto_approve_attempts: data.estimator_auto_approve_attempts ?? 2,
           estimator_manual_approve_attempts: data.estimator_manual_approve_attempts ?? 3,
           estimator_hard_cap: data.estimator_hard_cap ?? 10,
@@ -80,13 +80,12 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           is_active: formData.is_active,
           anthropic_api_key: formData.anthropic_api_key || null,
           ai_free_messages: formData.ai_free_messages,
-          vip_auto_approve: formData.vip_auto_approve,
           ai_auto_approve_limit: formData.ai_auto_approve_limit,
           ai_manual_approve_limit: formData.ai_manual_approve_limit,
           ai_hard_cap: formData.ai_hard_cap,
+          estimator_ai_enabled: formData.estimator_ai_enabled,
           estimator_nonai_enabled: formData.estimator_nonai_enabled,
           estimator_free_attempts: formData.estimator_free_attempts,
-          estimator_vip_auto_approve: formData.estimator_vip_auto_approve,
           estimator_auto_approve_attempts: formData.estimator_auto_approve_attempts,
           estimator_manual_approve_attempts: formData.estimator_manual_approve_attempts,
           estimator_hard_cap: formData.estimator_hard_cap,
@@ -189,83 +188,145 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                 </button>
               </div>
               {formData.anthropic_api_key
-                ? <p className="text-xs text-green-600 mt-1">✓ API key configured</p>
-                : <p className="text-xs text-amber-600 mt-1">⚠ Using platform key — add a tenant key for isolation</p>
+                ? <p className="text-xs text-green-600 mt-1">API key configured</p>
+                : <p className="text-xs text-amber-600 mt-1">Using platform key - add a tenant key for isolation</p>
               }
             </div>
 
             {/* AI Configuration */}
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <h3 className="font-semibold text-green-900 mb-1">✦ AI Configuration</h3>
-              <p className="text-xs text-green-700 mb-3">Controls Charlie AI chat access for all users on this tenant.</p>
+              <h3 className="font-semibold text-green-900 mb-1">AI Configuration</h3>
+              <p className="text-xs text-green-700 mb-3">Controls Charlie AI plan access for all users on this tenant.</p>
+              <div className="flex items-center gap-1 mb-4 p-3 bg-white rounded-lg border border-green-100 text-xs overflow-x-auto">
+                <div className="text-center min-w-fit">
+                  <div className="font-bold text-green-700">{formData.ai_free_messages} Free</div>
+                  <div className="text-gray-400">no gate</div>
+                </div>
+                <div className="text-gray-300 mx-1">&#8594;</div>
+                {formData.ai_auto_approve_limit > 0 ? (
+                  <>
+                    <div className="text-center min-w-fit">
+                      <div className="font-bold text-blue-600">{formData.ai_auto_approve_limit} Auto</div>
+                      <div className="text-gray-400">instant</div>
+                    </div>
+                    <div className="text-gray-300 mx-1">&#8594;</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-center min-w-fit opacity-30">
+                      <div className="font-bold text-blue-600">0 Auto</div>
+                      <div className="text-gray-400">skipped</div>
+                    </div>
+                    <div className="text-gray-300 mx-1">&#8594;</div>
+                  </>
+                )}
+                <div className="text-center min-w-fit">
+                  <div className="font-bold text-amber-600">{formData.ai_manual_approve_limit} Manual</div>
+                  <div className="text-gray-400">agent review</div>
+                </div>
+                <div className="text-gray-300 mx-1">&#8594;</div>
+                <div className="text-center min-w-fit">
+                  <div className="font-bold text-red-500">{formData.ai_hard_cap} Cap</div>
+                  <div className="text-gray-400">hard limit</div>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Free Plans Per User</label>
-                  <input type="number" min={0} value={formData.ai_free_messages} onChange={e => setFormData({ ...formData, ai_free_messages: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                  <p className="text-xs text-gray-400 mt-1">Plans before approval required</p>
+                  <input type="number" min={0} value={formData.ai_free_messages} onChange={e => setFormData({ ...formData, ai_free_messages: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">Granted without any approval</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Hard Cap</label>
                   <input type="number" min={1} value={formData.ai_hard_cap} onChange={e => setFormData({ ...formData, ai_hard_cap: parseInt(e.target.value) || 10 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">Absolute maximum per user</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Plans on Auto-Approve</label>
-                  <input type="number" min={0} value={formData.ai_auto_approve_limit} onChange={e => setFormData({ ...formData, ai_auto_approve_limit: parseInt(e.target.value) || 2 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" min={0} value={formData.ai_auto_approve_limit} onChange={e => setFormData({ ...formData, ai_auto_approve_limit: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">0 = skip auto, go straight to manual</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Plans on Manual Approve</label>
-                  <input type="number" min={0} value={formData.ai_manual_approve_limit} onChange={e => setFormData({ ...formData, ai_manual_approve_limit: parseInt(e.target.value) || 3 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div className="col-span-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={formData.vip_auto_approve} onChange={e => setFormData({ ...formData, vip_auto_approve: e.target.checked })} className="w-4 h-4 text-green-600" />
-                    <div>
-                      <span className="text-sm font-medium text-gray-700">Auto-Approve Requests</span>
-                      <p className="text-xs text-gray-400">Instantly grant plans without manual review</p>
-                    </div>
-                  </label>
+                  <input type="number" min={0} value={formData.ai_manual_approve_limit} onChange={e => setFormData({ ...formData, ai_manual_approve_limit: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">Requires agent to approve request</p>
                 </div>
               </div>
             </div>
 
             {/* Estimator Configuration */}
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-              <h3 className="font-semibold text-purple-900 mb-1">⊹ Estimator Configuration</h3>
-              <p className="text-xs text-purple-700 mb-3">Controls property estimator access (comparable data) for all users on this tenant.</p>
-              <div className="mb-4">
+              <h3 className="font-semibold text-purple-900 mb-1">Estimator Configuration</h3>
+              <p className="text-xs text-purple-700 mb-3">Controls property estimator access for all users on this tenant.</p>
+              <div className="space-y-2 mb-4">
                 <label className="flex items-center gap-2 cursor-pointer p-3 bg-white rounded-lg border">
                   <input type="checkbox" checked={formData.estimator_nonai_enabled} onChange={e => setFormData({ ...formData, estimator_nonai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" />
                   <div>
                     <span className="text-sm font-medium text-gray-700">Enable Estimator</span>
-                    <p className="text-xs text-gray-400">Allow users to request property estimates</p>
+                    <p className="text-xs text-gray-400">Show comparable sales data and price estimate</p>
                   </div>
                 </label>
+                <label className={"flex items-center gap-2 cursor-pointer p-3 bg-white rounded-lg border" + (!formData.estimator_nonai_enabled ? " opacity-40 pointer-events-none" : "")}>
+                  <input type="checkbox" checked={formData.estimator_ai_enabled} onChange={e => setFormData({ ...formData, estimator_ai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" disabled={!formData.estimator_nonai_enabled} />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Enable AI Insights</span>
+                    <p className="text-xs text-gray-400">Add AI analysis citing specific comparable units, concession %, and negotiation position</p>
+                  </div>
+                </label>
+              </div>
+              <div className="flex items-center gap-1 mb-4 p-3 bg-white rounded-lg border border-purple-100 text-xs overflow-x-auto">
+                <div className="text-center min-w-fit">
+                  <div className="font-bold text-green-700">{formData.estimator_free_attempts} Free</div>
+                  <div className="text-gray-400">no gate</div>
+                </div>
+                <div className="text-gray-300 mx-1">&#8594;</div>
+                {formData.estimator_auto_approve_attempts > 0 ? (
+                  <>
+                    <div className="text-center min-w-fit">
+                      <div className="font-bold text-blue-600">{formData.estimator_auto_approve_attempts} Auto</div>
+                      <div className="text-gray-400">instant</div>
+                    </div>
+                    <div className="text-gray-300 mx-1">&#8594;</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-center min-w-fit opacity-30">
+                      <div className="font-bold text-blue-600">0 Auto</div>
+                      <div className="text-gray-400">skipped</div>
+                    </div>
+                    <div className="text-gray-300 mx-1">&#8594;</div>
+                  </>
+                )}
+                <div className="text-center min-w-fit">
+                  <div className="font-bold text-amber-600">{formData.estimator_manual_approve_attempts} Manual</div>
+                  <div className="text-gray-400">agent review</div>
+                </div>
+                <div className="text-gray-300 mx-1">&#8594;</div>
+                <div className="text-center min-w-fit">
+                  <div className="font-bold text-red-500">{formData.estimator_hard_cap} Cap</div>
+                  <div className="text-gray-400">hard limit</div>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Free Attempts Per User</label>
-                  <input type="number" min={0} value={formData.estimator_free_attempts} onChange={e => setFormData({ ...formData, estimator_free_attempts: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" min={0} value={formData.estimator_free_attempts} onChange={e => setFormData({ ...formData, estimator_free_attempts: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">Granted without any approval</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Hard Cap</label>
                   <input type="number" min={1} value={formData.estimator_hard_cap} onChange={e => setFormData({ ...formData, estimator_hard_cap: parseInt(e.target.value) || 10 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">Absolute maximum per user</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Attempts on Auto-Approve</label>
-                  <input type="number" min={0} value={formData.estimator_auto_approve_attempts} onChange={e => setFormData({ ...formData, estimator_auto_approve_attempts: parseInt(e.target.value) || 2 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <input type="number" min={0} value={formData.estimator_auto_approve_attempts} onChange={e => setFormData({ ...formData, estimator_auto_approve_attempts: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">0 = skip auto, go straight to manual</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Attempts on Manual Approve</label>
-                  <input type="number" min={0} value={formData.estimator_manual_approve_attempts} onChange={e => setFormData({ ...formData, estimator_manual_approve_attempts: parseInt(e.target.value) || 3 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                </div>
-                <div className="col-span-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={formData.estimator_vip_auto_approve} onChange={e => setFormData({ ...formData, estimator_vip_auto_approve: e.target.checked })} className="w-4 h-4 text-purple-600" />
-                    <div>
-                      <span className="text-sm font-medium text-gray-700">Auto-Approve Estimator Requests</span>
-                      <p className="text-xs text-gray-400">Instantly grant attempts without manual review</p>
-                    </div>
-                  </label>
+                  <input type="number" min={0} value={formData.estimator_manual_approve_attempts} onChange={e => setFormData({ ...formData, estimator_manual_approve_attempts: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
+                  <p className="text-xs text-gray-400 mt-1">Requires agent to approve request</p>
                 </div>
               </div>
             </div>
