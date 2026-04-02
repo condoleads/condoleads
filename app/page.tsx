@@ -15,6 +15,9 @@ import FeatureCards from '@/components/landing/FeatureCards'
 import DemoEmbed from '@/components/landing/DemoEmbed'
 import CommunityApplication from '@/components/landing/CommunityApplication'
 
+import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+import { redirect } from 'next/navigation'
+
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -31,7 +34,13 @@ export default async function RootPage() {
   
   const subdomain = extractSubdomain(host);
   
-  // If no subdomain AND no custom domain agent, show new landing page
+  // WALLiam tenant check — redirect to /whitby or show WALLiam homepage
+  const walliamTenantId = await getWalliamTenantId()
+  if (walliamTenantId) {
+    redirect('/whitby')
+  }
+
+    // If no subdomain AND no custom domain agent, show new landing page
   if (!subdomain && !agent) {
     return (
       <>
