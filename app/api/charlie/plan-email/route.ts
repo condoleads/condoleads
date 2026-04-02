@@ -1,3 +1,5 @@
+export const maxDuration = 60
+
 ﻿// app/api/charlie/plan-email/route.ts
 // Sends rich plan email to user + agent + manager + admin BCC
 // Called client-side from useCharlie after generate_plan tool completes

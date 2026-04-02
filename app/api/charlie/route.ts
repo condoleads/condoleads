@@ -6,6 +6,8 @@ import { generatePropertySlug, generateHomePropertySlug } from '@/lib/utils/slug
 import { CHARLIE_TOOLS } from '@/app/charlie/lib/charlie-tools'
 import { buildCharlieSystemPrompt } from '@/app/charlie/lib/charlie-prompts'
 
+export const maxDuration = 60 // seconds
+
 function createAnthropicClient(apiKey?: string | null) {
   return new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
 }

@@ -1,3 +1,5 @@
+export const maxDuration = 60
+
 // app/api/walliam/charlie/session/route.ts
 // Initializes or retrieves a WALLiam Charlie session for a user
 // Resolves agent via resolve_agent_for_context() — NOT getAgentFromHost
