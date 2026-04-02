@@ -154,6 +154,10 @@ export function useCharlie() {
     }
   }, [])
 
+  const setPageContext = useCallback((context: any) => {
+    pageContextRef.current = context
+  }, [])
+
   const dismissGate = useCallback(() => {
     setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
   }, [])
@@ -396,6 +400,7 @@ export function useCharlie() {
     setGeoContext,
     initSession,
     dismissGate,
+    setPageContext,
     requestVipAccess,
     setLeadCaptured,
     resumeAfterGate,

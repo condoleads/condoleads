@@ -28,6 +28,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
     setGeoContext,
     initSession,
     dismissGate,
+    setPageContext,
     requestVipAccess,
     setLeadCaptured,
     resumeAfterGate,
@@ -65,22 +66,16 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
     window.addEventListener('charlie:open', handler)
     return () => window.removeEventListener('charlie:open', handler)
   }, [open])
-  // Listen for page context events from server-rendered pages
+  // Listen for page context events — update context ref only, never reset session
   useEffect(() => {
     const ctxHandler = (e: Event) => {
       const detail = (e as CustomEvent).detail
       if (!detail) return
-      const supabase = createClient()
-      supabase.auth.getUser().then(({ data }) => {
-        const userId = data?.user?.id || null
-        initSession(userId, detail)
-      }).catch(() => {
-        initSession(null, detail)
-      })
+      setPageContext(detail)
     }
     window.addEventListener('charlie:pagecontext', ctxHandler)
     return () => window.removeEventListener('charlie:pagecontext', ctxHandler)
-  }, [initSession])
+  }, [setPageContext])
 
   // Handle gate events — show register modal or VIP prompt
   useEffect(() => {
