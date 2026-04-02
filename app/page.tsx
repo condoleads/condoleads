@@ -16,7 +16,7 @@ import DemoEmbed from '@/components/landing/DemoEmbed'
 import CommunityApplication from '@/components/landing/CommunityApplication'
 
 import { getWalliamTenantId } from '@/lib/utils/is-walliam'
-import { redirect } from 'next/navigation'
+import { HomePageComprehensive } from '@/components/HomePageComprehensive'
 
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
@@ -34,10 +34,13 @@ export default async function RootPage() {
   
   const subdomain = extractSubdomain(host);
   
-  // WALLiam tenant check — redirect to /whitby or show WALLiam homepage
+  // WALLiam tenant check — show WALLiam homepage
   const walliamTenantId = await getWalliamTenantId()
   if (walliamTenantId) {
-    redirect('/whitby')
+    const { createClient: _sc } = await import('@supabase/supabase-js')
+    const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+    const { data: walliamAgent } = await _db.from('agents').select('*').eq('id', 'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe').single()
+    if (walliamAgent) return <HomePageComprehensive agent={{ ...walliamAgent, is_active: true }} />
   }
 
     // If no subdomain AND no custom domain agent, show new landing page
