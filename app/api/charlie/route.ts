@@ -8,6 +8,8 @@ import { buildCharlieSystemPrompt } from '@/app/charlie/lib/charlie-prompts'
 
 export const maxDuration = 60 // seconds
 
+export const maxDuration = 60
+
 function createAnthropicClient(apiKey?: string | null) {
   return new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
 }
