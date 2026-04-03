@@ -137,6 +137,7 @@ export default async function DynamicSlugPage({
     const homeSupabase = createServerClient()
     const { data: homeListing } = await homeSupabase
       .from('mls_listings').select('id').ilike('listing_key', homeMls).single()
+    console.log('[slug] homeListing:', { homeMls, found: !!homeListing })
     if (!homeListing) notFound()
     return <HomePropertyPage params={{ id: homeListing.id }} />
   }
