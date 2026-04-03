@@ -1,9 +1,10 @@
-﻿'use client'
+'use client'
 import { usePathname } from 'next/navigation'
 import { useLayoutEffect, useEffect, useState } from 'react'
 import UniversalNav from './UniversalNav'
 import CharlieWidget from '@/app/charlie/components/CharlieWidget'
 import Footer from './Footer'
+import SiteHeader from './navigation/SiteHeader'
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -44,7 +45,9 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   }, [pathname])
 
   useEffect(() => {
-    setIsComprehensiveSite(!!document.querySelector('[data-layout="comprehensive"]'))
+    const host = window.location.hostname
+    const isTenantDomain = !host.includes('condoleads.ca') && !host.includes('localhost') && !host.includes('vercel.app')
+    setIsComprehensiveSite(isTenantDomain || !!document.querySelector('[data-layout="comprehensive"]'))
   }, [pathname])
 
   const isAgentSite = siteName && siteName !== 'CondoLeads'
@@ -54,6 +57,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   return (
     <>
       {showPublicLayout && <UniversalNav siteName={siteName} agentData={agentData} />}
+      {isComprehensiveSite && !isAdminPage && !isDashboardPage && !isLoginPage && <SiteHeader />}
       {children}
       {showPublicLayout && <Footer agentData={agentData} />}
       {isCharlieVisible && <CharlieWidget />}
