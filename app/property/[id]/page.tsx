@@ -138,7 +138,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const headersList = headers()
   const host = headersList.get('host') || ''
   const { displayAgent } = await getDisplayAgentForBuilding(host, listing.building_id)
-  // WALLiam fallback — resolve agent from tenant if no display agent
+  // WALLiam fallback â€” resolve agent from tenant if no display agent
   let agent: any = displayAgent
   if (!agent) {
     const walliamTenantId = await getWalliamTenantId()
@@ -350,7 +350,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         dangerouslySetInnerHTML={{
           __html: `window.__AGENT_DATA__ = ${JSON.stringify({
             ...
-            siteName: isWalliam ? 'WALLiam' : (agent.site_title || agent.full_name),
+            siteName: agent.site_title || agent.full_name,
             ...
           })};`
         }}
@@ -370,7 +370,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
             listingId: listing.id,
             listingAddress: listing.unparsed_address || '',
             unitNumber: listing.unit_number || '',
-            siteName: isWalliam ? 'WALLiam' : (agent.site_title || agent.full_name),            
+            siteName: agent.site_title || agent.full_name,            
             siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
             ogImageUrl: agent.og_image_url
           })};`
