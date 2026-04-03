@@ -71,6 +71,7 @@ export default function CharlieOverlay({
       <div style={{
         width: '100%',
         maxWidth: 1200,
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         background: '#080f1a',
