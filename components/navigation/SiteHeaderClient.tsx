@@ -23,8 +23,8 @@ function WalliamWordmark({ size = 'md' }: { size?: 'sm' | 'md' }) {
     <span style={{ display: 'inline-flex', alignItems: 'baseline', lineHeight: 1 }}>
       <span style={{ fontSize: wallSize, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>WALL</span>
       <span style={{ position: 'relative', display: 'inline-block' }}>
-        <span style={{ position: 'absolute', top: '-30%', left: '50%', transform: 'translateX(-50%)', fontSize: heartSize, color: '#f59e0b', animation: 'walliam-heartbeat 3s ease-in-out infinite', display: 'block', lineHeight: 1 }}>Ã¢â„¢Â¥</span>
-        <span style={{ fontSize: iamSize, fontWeight: 300, color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>Ã„Â±</span>
+        <span style={{ position: 'absolute', top: '-30%', left: '50%', transform: 'translateX(-50%)', fontSize: heartSize, color: '#f59e0b', animation: 'walliam-heartbeat 3s ease-in-out infinite', display: 'block', lineHeight: 1 }}>♥</span>
+        <span style={{ fontSize: iamSize, fontWeight: 300, color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>ı</span>
       </span>
       <span style={{ fontSize: iamSize, fontWeight: 300, color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>am</span>
       <style>{`@keyframes walliam-heartbeat{0%,45%,100%{transform:translateX(-50%) scale(1)}10%{transform:translateX(-50%) scale(1.4)}30%{transform:translateX(-50%) scale(1.25)}}`}</style>
@@ -32,7 +32,7 @@ function WalliamWordmark({ size = 'md' }: { size?: 'sm' | 'md' }) {
   )
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Open Charlie helper Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ── Open Charlie helper ───────────────────────────────────────
 function openCharlie(form?: 'buyer' | 'seller') {
   window.dispatchEvent(new CustomEvent('charlie:open', { detail: { form } }))
 }
@@ -43,7 +43,7 @@ export default function SiteHeaderClient({
   agentLogo,
   primaryColor,
 }: SiteHeaderClientProps) {
-  const [scrolled, setScrolled] = useState(true)
+  const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [megaMenuOpen, setMegaMenuOpen] = useState(false)
@@ -202,7 +202,7 @@ export default function SiteHeaderClient({
         <div className="fixed inset-0 z-40 bg-[#060b18] overflow-y-auto pt-16">
           <div className="px-4 py-6 space-y-1">
             <div className="mb-4">
-              <SearchBar placeholder="SearchÃ¢â‚¬Â¦" autoFocus />
+              <SearchBar placeholder="Search…" autoFocus />
             </div>
 
             <div>
@@ -243,7 +243,7 @@ export default function SiteHeaderClient({
                           {n.total_communities > 5 && (
                             <Link href={`/toronto/${n.slug}`} onClick={() => setMobileOpen(false)}
                               className="flex items-center gap-1 px-3 py-2 text-xs text-blue-500">
-                              View all {n.total_communities} Ã¢â€ â€™
+                              View all {n.total_communities} →
                             </Link>
                           )}
                         </div>
