@@ -11,6 +11,8 @@ import { getWalliamTenantId } from '@/lib/utils/is-walliam'
 
 const RESIDENTIAL_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']
 
+export const dynamic = 'force-dynamic'
+
 export async function generateHomeMetadata({ params }: { params: { id: string } }) {
   const headersList = headers()
   const host = headersList.get('host') || ''

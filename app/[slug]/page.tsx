@@ -11,6 +11,8 @@ import HomePropertyPage, { generateHomeMetadata } from '../property/[id]/HomePro
 import { supabase } from '@/lib/supabase/client'
 import { createClient } from '@/lib/supabase/server'
 
+export const dynamic = 'force-dynamic'
+
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const headersList = headers()
   const host = headersList.get('host') || ''
