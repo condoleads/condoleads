@@ -118,7 +118,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
     return (
       <>
         <div className="relative w-full">
-          <div className={`relative h-[500px] bg-slate-200 ${shouldBlur ? 'blur-lg' : ''}`}>
+          <div className={`relative h-[260px] sm:h-[400px] md:h-[500px] bg-slate-200 ${shouldBlur ? 'blur-lg' : ''}`}>
             <Image
               src={displayPhotos[0].media_url}
               alt="Property photo"
@@ -192,7 +192,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
     <>
       <div className="relative w-full">
         {/* Main gallery - 2 photos side by side */}
-        <div className={`grid grid-cols-2 gap-1 h-[500px] ${shouldBlur ? 'blur-lg' : ''}`}>
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-1 h-[260px] sm:h-[400px] md:h-[500px] ${shouldBlur ? 'blur-lg' : ''}`}>
           {/* Left photo */}
           <div className="relative bg-slate-200 group">
             <Image
