@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
 import { useAuth } from '@/components/auth/AuthContext'
@@ -77,6 +77,7 @@ export default function HomePropertyPageClient({
 
   return (
     <>
+      {isWalliam && <div className="h-16" />}
       <PropertyGallery
         photos={largePhotos}
         listingId={listing.id}

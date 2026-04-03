@@ -308,7 +308,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   ])
 
   const { siteOwner, displayAgent, isTeamSite } = agentResult
-  const agent = displayAgent // May be null — page renders without agent features
+  const agent = displayAgent // May be null â€” page renders without agent features
 
   const activeListings = activeListingsRaw || []
   const closedListings = closedListingsRaw || []
@@ -405,6 +405,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       />
       <StickyNav agentId={agent?.id} />
       
+      {isWalliam && <div className="h-16" />}
       <BuildingHero 
         building={building}
         slug={params.slug}
