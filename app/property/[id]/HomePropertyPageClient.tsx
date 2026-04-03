@@ -77,7 +77,7 @@ export default function HomePropertyPageClient({
 
   return (
     <>
-      {isWalliam && <div className="h-16" />}
+      {isWalliam && <div className="h-16 bg-[#060b18]" />}
       <PropertyGallery
         photos={largePhotos}
         listingId={listing.id}

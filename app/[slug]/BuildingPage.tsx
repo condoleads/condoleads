@@ -405,7 +405,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       />
       <StickyNav agentId={agent?.id} />
       
-      {isWalliam && <div className="h-16" />}
+      {isWalliam && <div className="h-16 bg-[#060b18]" />}
       <BuildingHero 
         building={building}
         slug={params.slug}
