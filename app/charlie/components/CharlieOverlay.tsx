@@ -35,6 +35,13 @@ export default function CharlieOverlay({
   const [resolvedSeller, setResolvedSeller] = useState<any>(null)
   const [communityBuildings, setCommunityBuildings] = useState<{ affordable: any[], premium: any[] }>({ affordable: [], premium: [] })
   const [sellerFormData, setSellerFormData] = useState<any>(null)
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 769)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // Fetch community buildings ONLY for condo track
   // Auto-switch to results panel on mobile when results arrive
@@ -163,7 +170,7 @@ export default function CharlieOverlay({
             display: 'flex',
             flexDirection: 'column',
             flexShrink: 0,
-          }} className={'charlie-chat-panel ' + (hasResults && state.activePanel === 'results' ? 'charlie-hide-mobile' : '')}>
+          }} style={{ display: isMobile && hasResults && state.activePanel === 'results' ? 'none' : 'flex', flexDirection: 'column', width: hasResults && !isMobile ? '42%' : '100%', borderRight: hasResults && !isMobile ? '1px solid rgba(255,255,255,0.07)' : 'none', flexShrink: 0 }}>
             {formMode === 'buyer' ? (
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>🏠 Find Your Home</div>
@@ -232,7 +239,7 @@ export default function CharlieOverlay({
 
           {/* Results panel */}
           {hasResults && (
-            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className={state.activePanel === 'chat' ? 'charlie-hide-mobile' : ''}>
+            <div style={{ display: isMobile && state.activePanel === 'chat' ? 'none' : 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <ResultsPanel
                 analytics={state.analytics}
                 listingGroups={state.listingGroups || []}
@@ -257,12 +264,7 @@ export default function CharlieOverlay({
       </div>
 
       <style>{`
-        .charlie-mobile-toggle { display: flex !important; }
-        @media (max-width: 768px) { .charlie-hide-mobile { display: none !important; } }
-        @media (max-width: 768px) { .charlie-chat-panel { width: 100% !important; } }
-        @media (min-width: 769px) {
-          .charlie-mobile-toggle { display: none !important; }
-        }
+        @media (min-width: 769px) { .charlie-mobile-toggle { display: none !important; } }
 
       `}</style>
     </div>
