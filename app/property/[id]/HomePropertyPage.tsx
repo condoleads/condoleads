@@ -78,6 +78,7 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
     .eq('id', params.id)
     .single()
 
+  console.log('[HomePropertyPage] listing check:', { id: params.id, found: !!listing, error: error?.message })
   if (error || !listing) notFound()
 
   // Verify this is a residential property
@@ -98,6 +99,7 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
       if (walliamAgent) agent = walliamAgent
     }
   }
+  console.log('[HomePropertyPage] agent check:', { agent: !!agent, host })
   if (!agent) notFound()
 
   // Run all independent queries in parallel
