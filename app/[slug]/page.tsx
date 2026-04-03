@@ -46,7 +46,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     const { mlsNumber: homeMls } = parseHomePropertySlug(params.slug)
     if (!homeMls) return { title: 'Property Not Found' }
     const { data: homeListing } = await serverSupabase
-      .from('mls_listings').select('id').ilike('listing_key', homeMls).maybeSingle()
+      .from('mls_listings').select('id').eq('listing_key', homeMls).maybeSingle()
     if (!homeListing) return { title: 'Property Not Found' }
     return generateHomeMetadata({ params: { id: homeListing.id } })
   }
