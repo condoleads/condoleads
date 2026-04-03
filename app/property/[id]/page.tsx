@@ -345,8 +345,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const isWalliam = !!tenantId
 
   return (
-    <>
-      {isWalliam ? <SiteHeader /> : null}
+    <>    
       <script
         dangerouslySetInnerHTML={{
           __html: `window.__AGENT_DATA__ = ${JSON.stringify({
