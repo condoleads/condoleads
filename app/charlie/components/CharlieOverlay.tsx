@@ -263,10 +263,7 @@ export default function CharlieOverlay({
         @media (min-width: 769px) {
           .charlie-mobile-toggle { display: none !important; }
         }
-        @media (max-width: 768px) {
-          .charlie-chat-panel { display: var(--chat-display, flex) !important; }
-          .charlie-results-panel { display: var(--results-display, flex) !important; }
-        }
+
       `}</style>
     </div>
   )
