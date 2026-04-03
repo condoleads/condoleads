@@ -37,7 +37,14 @@ export default function CharlieOverlay({
   const [sellerFormData, setSellerFormData] = useState<any>(null)
 
   // Fetch community buildings ONLY for condo track
-  const prevGeoId = useRef('')
+  // Auto-switch to results panel on mobile when results arrive
+  useEffect(() => {
+    if (hasResults && window.innerWidth < 769) {
+      onPanelChange('results')
+    }
+  }, [hasResults])
+
+    const prevGeoId = useRef('')
   useEffect(() => {
     const geo = state.geoContext
     if (!geo) return
