@@ -152,7 +152,7 @@ export default function CharlieOverlay({
           <div style={{
             width: hasResults ? '42%' : '100%',
             borderRight: hasResults ? '1px solid rgba(255,255,255,0.07)' : 'none',
-            display: 'flex',
+            display: hasResults && state.activePanel === 'results' ? 'none' : 'flex',
             flexDirection: 'column',
             flexShrink: 0,
           }}>
@@ -224,7 +224,7 @@ export default function CharlieOverlay({
 
           {/* Results panel */}
           {hasResults && (
-            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, overflow: 'hidden', display: state.activePanel === 'chat' ? 'none' : 'flex', flexDirection: 'column' }}>
               <ResultsPanel
                 analytics={state.analytics}
                 listingGroups={state.listingGroups || []}
@@ -249,8 +249,9 @@ export default function CharlieOverlay({
       </div>
 
       <style>{`
-        @media (max-width: 768px) {
-          .charlie-mobile-toggle { display: flex !important; }
+        .charlie-mobile-toggle { display: flex !important; }
+        @media (min-width: 769px) {
+          .charlie-mobile-toggle { display: none !important; }
         }
       `}</style>
     </div>
