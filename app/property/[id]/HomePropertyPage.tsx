@@ -85,8 +85,18 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
   const headersList = headers()
   const host = headersList.get('host') || ''
   const { displayAgent } = await getDisplayAgentForHome(host)
-  if (!displayAgent) notFound()
-  const agent = displayAgent
+  // WALLiam fallback — resolve agent from tenant if no display agent
+  let agent: any = displayAgent
+  if (!agent) {
+    const walliamTenantId = await getWalliamTenantId()
+    if (walliamTenantId) {
+      const { createClient: _sc } = await import('@supabase/supabase-js')
+      const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+      const { data: walliamAgent } = await _db.from('agents').select('*').eq('tenant_id', walliamTenantId).eq('can_create_children', true).single()
+      if (walliamAgent) agent = walliamAgent
+    }
+  }
+  if (!agent) notFound()
 
   // Run all independent queries in parallel
   const [
