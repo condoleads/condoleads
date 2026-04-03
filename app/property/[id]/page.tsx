@@ -137,11 +137,18 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const headersList = headers()
   const host = headersList.get('host') || ''
   const { displayAgent } = await getDisplayAgentForBuilding(host, listing.building_id)
-  // If no agent (not assigned to this building), show 404
-  if (!displayAgent) {
-    notFound()
+  // WALLiam fallback — resolve agent from tenant if no display agent
+  let agent: any = displayAgent
+  if (!agent) {
+    const walliamTenantId = await getWalliamTenantId()
+    if (walliamTenantId) {
+      const { createClient: _sc } = await import('@supabase/supabase-js')
+      const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+      const { data: walliamAgent } = await _db.from('agents').select('*').eq('tenant_id', walliamTenantId).eq('can_create_children', true).single()
+      if (walliamAgent) agent = walliamAgent
+    }
   }
-  const agent = displayAgent
+  if (!agent) notFound()
 
 
 // Run ALL independent queries in PARALLEL
