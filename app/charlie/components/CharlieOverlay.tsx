@@ -152,10 +152,10 @@ export default function CharlieOverlay({
           <div style={{
             width: hasResults ? '42%' : '100%',
             borderRight: hasResults ? '1px solid rgba(255,255,255,0.07)' : 'none',
-            display: hasResults && state.activePanel === 'results' ? 'none' : 'flex',
+            display: 'flex',
             flexDirection: 'column',
             flexShrink: 0,
-          }}>
+          }} className={hasResults && state.activePanel === 'results' ? 'charlie-hide-mobile' : ''}>
             {formMode === 'buyer' ? (
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>🏠 Find Your Home</div>
@@ -224,7 +224,7 @@ export default function CharlieOverlay({
 
           {/* Results panel */}
           {hasResults && (
-            <div style={{ flex: 1, overflow: 'hidden', display: state.activePanel === 'chat' ? 'none' : 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className={state.activePanel === 'chat' ? 'charlie-hide-mobile' : ''}>
               <ResultsPanel
                 analytics={state.analytics}
                 listingGroups={state.listingGroups || []}
@@ -250,8 +250,13 @@ export default function CharlieOverlay({
 
       <style>{`
         .charlie-mobile-toggle { display: flex !important; }
+        @media (max-width: 768px) { .charlie-hide-mobile { display: none !important; } }
         @media (min-width: 769px) {
           .charlie-mobile-toggle { display: none !important; }
+        }
+        @media (max-width: 768px) {
+          .charlie-chat-panel { display: var(--chat-display, flex) !important; }
+          .charlie-results-panel { display: var(--results-display, flex) !important; }
         }
       `}</style>
     </div>
