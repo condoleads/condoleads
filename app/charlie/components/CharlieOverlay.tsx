@@ -35,23 +35,9 @@ export default function CharlieOverlay({
   const [resolvedSeller, setResolvedSeller] = useState<any>(null)
   const [communityBuildings, setCommunityBuildings] = useState<{ affordable: any[], premium: any[] }>({ affordable: [], premium: [] })
   const [sellerFormData, setSellerFormData] = useState<any>(null)
-  const [isMobile, setIsMobile] = useState(false)
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 769)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
 
   // Fetch community buildings ONLY for condo track
-  // Auto-switch to results panel on mobile when results arrive
-  useEffect(() => {
-    if (hasResults && window.innerWidth < 769) {
-      onPanelChange('results')
-    }
-  }, [hasResults])
-
-    const prevGeoId = useRef('')
+  const prevGeoId = useRef('')
   useEffect(() => {
     const geo = state.geoContext
     if (!geo) return
@@ -85,7 +71,6 @@ export default function CharlieOverlay({
       <div style={{
         width: '100%',
         maxWidth: 1200,
-        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         background: '#080f1a',
@@ -115,6 +100,32 @@ export default function CharlieOverlay({
             </div>
           </div>
 
+          {/* Mobile panel toggle */}
+          {hasResults && (
+            <div style={{
+              display: 'flex',
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: 100,
+              padding: 3,
+              gap: 2,
+            }} className="charlie-mobile-toggle">
+              {(['chat', 'results'] as const).map(p => (
+                <button key={p} onClick={() => onPanelChange(p)} style={{
+                  padding: '5px 14px',
+                  borderRadius: 100,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: state.activePanel === p ? '#3b82f6' : 'transparent',
+                  color: state.activePanel === p ? '#fff' : 'rgba(255,255,255,0.4)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  textTransform: 'capitalize',
+                }}>
+                  {p === 'results' ? 'Results' : 'Chat'}
+                </button>
+              ))}
+            </div>
+          )}
 
           <button onClick={onClose} style={{
             background: 'rgba(255,255,255,0.07)',
@@ -134,20 +145,17 @@ export default function CharlieOverlay({
         <div style={{
           flex: 1,
           display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          overflowY: isMobile ? 'auto' : 'hidden',
-          overflowX: 'hidden',
+          overflow: 'hidden',
           minHeight: 0,
         }}>
           {/* Chat panel */}
           <div style={{
-            width: isMobile ? '100%' : (hasResults ? '42%' : '100%'),
-            borderRight: !isMobile && hasResults ? '1px solid rgba(255,255,255,0.07)' : 'none',
-            borderBottom: isMobile && hasResults ? '1px solid rgba(255,255,255,0.07)' : 'none',
+            width: hasResults ? '42%' : '100%',
+            borderRight: hasResults ? '1px solid rgba(255,255,255,0.07)' : 'none',
             display: 'flex',
             flexDirection: 'column',
             flexShrink: 0,
-          }}>
+          }} className={hasResults && state.activePanel === 'results' ? 'charlie-hide-mobile' : ''}>
             {formMode === 'buyer' ? (
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>🏠 Find Your Home</div>
@@ -216,7 +224,7 @@ export default function CharlieOverlay({
 
           {/* Results panel */}
           {hasResults && (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: isMobile ? 'none' : 1, overflow: isMobile ? 'visible' : 'hidden' }}>
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} className={state.activePanel === 'chat' ? 'charlie-hide-mobile' : ''}>
               <ResultsPanel
                 analytics={state.analytics}
                 listingGroups={state.listingGroups || []}
@@ -241,8 +249,15 @@ export default function CharlieOverlay({
       </div>
 
       <style>{`
-        @media (min-width: 769px) { .charlie-mobile-toggle { display: none !important; } }
-
+        .charlie-mobile-toggle { display: flex !important; }
+        @media (max-width: 768px) { .charlie-hide-mobile { display: none !important; } }
+        @media (min-width: 769px) {
+          .charlie-mobile-toggle { display: none !important; }
+        }
+        @media (max-width: 768px) {
+          .charlie-chat-panel { display: var(--chat-display, flex) !important; }
+          .charlie-results-panel { display: var(--results-display, flex) !important; }
+        }
       `}</style>
     </div>
   )
