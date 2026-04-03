@@ -1,4 +1,4 @@
-﻿import { notFound } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { isPropertySlug, parsePropertySlug, isHomePropertySlug, parseHomePropertySlug } from '@/lib/utils/slugs'
 import DevelopmentPage, { generateDevelopmentMetadata } from './DevelopmentPage'
@@ -136,9 +136,8 @@ export default async function DynamicSlugPage({
     const { createClient: _sc } = await import('@supabase/supabase-js')
     const homeSupabase = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
     const { data: homeListing } = await homeSupabase
-      .from('mls_listings').select('id').ilike('listing_key', homeMls).maybeSingle()
-    console.log('[slug] homeListing:', { homeMls, found: !!homeListing })
-    if (!homeListing) notFound()
+      .from('mls_listings').select('id').eq('listing_key', homeMls).maybeSingle()
+        if (!homeListing) notFound()
     return <HomePropertyPage params={{ id: homeListing.id }} />
   }
 
