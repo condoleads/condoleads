@@ -163,7 +163,7 @@ export default function CharlieOverlay({
             display: 'flex',
             flexDirection: 'column',
             flexShrink: 0,
-          }} className={hasResults && state.activePanel === 'results' ? 'charlie-hide-mobile' : ''}>
+          }} className={'charlie-chat-panel ' + (hasResults && state.activePanel === 'results' ? 'charlie-hide-mobile' : '')}>
             {formMode === 'buyer' ? (
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>🏠 Find Your Home</div>
@@ -259,6 +259,7 @@ export default function CharlieOverlay({
       <style>{`
         .charlie-mobile-toggle { display: flex !important; }
         @media (max-width: 768px) { .charlie-hide-mobile { display: none !important; } }
+        @media (max-width: 768px) { .charlie-chat-panel { width: 100% !important; } }
         @media (min-width: 769px) {
           .charlie-mobile-toggle { display: none !important; }
         }
