@@ -10,6 +10,7 @@ import WalliamCTA from '@/components/WalliamCTA'
 import { getWalliamTenantId } from '@/lib/utils/is-walliam'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 import WalliamContactForm from '@/components/WalliamContactForm'
+import SiteHeader from '@/components/navigation/SiteHeader'
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const headersList = headers()
@@ -345,8 +346,17 @@ export default async function PropertyPage({ params }: { params: { id: string } 
 
   return (
     <>
+      {isWalliam && <SiteHeader />}
       <script
         dangerouslySetInnerHTML={{
+          __html: `window.__AGENT_DATA__ = ${JSON.stringify({
+            ...
+            siteName: isWalliam ? 'WALLiam' : (agent.site_title || agent.full_name),
+            ...
+          })};`
+        }}
+      />
+    <main className="min-h-screen bg-gray-50">
           __html: `window.__AGENT_DATA__ = ${JSON.stringify({
             full_name: agent.full_name,
             email: agent.email,
@@ -361,7 +371,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
             listingId: listing.id,
             listingAddress: listing.unparsed_address || '',
             unitNumber: listing.unit_number || '',
-            siteName: agent.site_title || agent.full_name,
+            siteName: isWalliam ? 'WALLiam' : (agent.site_title || agent.full_name),            
             siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
             ogImageUrl: agent.og_image_url
           })};`
