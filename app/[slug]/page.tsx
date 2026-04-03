@@ -133,10 +133,10 @@ export default async function DynamicSlugPage({
   if (isHomePropertySlug(params.slug)) {
     const { mlsNumber: homeMls } = parseHomePropertySlug(params.slug)
     if (!homeMls) notFound()
-    const { createClient: createServerClient } = await import('@/lib/supabase/server')
-    const homeSupabase = createServerClient()
+    const { createClient: _sc } = await import('@supabase/supabase-js')
+    const homeSupabase = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
     const { data: homeListing } = await homeSupabase
-      .from('mls_listings').select('id').ilike('listing_key', homeMls).single()
+      .from('mls_listings').select('id').ilike('listing_key', homeMls).maybeSingle()
     console.log('[slug] homeListing:', { homeMls, found: !!homeListing })
     if (!homeListing) notFound()
     return <HomePropertyPage params={{ id: homeListing.id }} />
