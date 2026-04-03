@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 import { usePathname } from 'next/navigation'
 import { useLayoutEffect, useEffect, useState } from 'react'
 import UniversalNav from './UniversalNav'
@@ -47,9 +47,10 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
     setIsComprehensiveSite(!!document.querySelector('[data-layout="comprehensive"]'))
   }, [pathname])
 
+  const isTenantDomain = typeof window !== 'undefined' && !window.location.hostname.includes('condoleads.ca') && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('vercel.app')
   const isAgentSite = siteName && siteName !== 'CondoLeads'
   const isLandingPage = pathname === '/' && !isAgentSite
-  const showPublicLayout = mounted && !isAdminPage && !isDashboardPage && !isLoginPage && !isLandingPage && !isComprehensiveSite
+  const showPublicLayout = mounted && !isAdminPage && !isDashboardPage && !isLoginPage && !isLandingPage && !isComprehensiveSite && !isTenantDomain
 
   return (
     <>
