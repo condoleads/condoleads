@@ -213,8 +213,8 @@ export default async function AreaPage({ area }: AreaPageProps) {
           <GeoPageTabs
             geoType="area"
             geoId={area.id}
-            agentId={agent?.id || ''}
-            tenantId={agent?.tenant_id || ''}
+            agentId={isWalliam ? (walliamAgentId || '') : (agent?.id || '')}
+            tenantId={isWalliam ? (tenantId || '') : (agent?.tenant_id || '')}
             buildingCount={buildingCount}
             initialListings={initialListings}
             initialTotal={counts.forSale}
