@@ -1,5 +1,7 @@
 export default function PrivacyPolicy() {
   return (
+    <div style={{ background: '#020812', minHeight: '100vh' }}>
+    <div style={{ background: '#020812', minHeight: '100vh' }}>
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '120px 24px', color: '#fff' }}>
       <h1 style={{ fontSize: 36, fontWeight: 900, marginBottom: 8, color: '#fff' }}>Privacy Policy</h1>
       <p style={{ color: 'rgba(255,255,255,0.4)', marginBottom: 48 }}>Last updated: April 2026</p>
@@ -29,6 +31,8 @@ export default function PrivacyPolicy() {
         For privacy inquiries: <a href="mailto:contact@01leads.com" style={{ color: '#3b82f6' }}>contact@01leads.com</a><br />
         Kote Marjanishvili St. 30, Tbilisi, Georgia
       </p>
+    </div>
+    </div>
     </div>
   )
 }
