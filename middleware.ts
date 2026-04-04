@@ -36,7 +36,7 @@ export async function middleware(request: NextRequest) {
   const cleanReqHost = reqHost.replace(/^www\./, '')
   if (cleanReqHost === '01leads.com') {
     const url = request.nextUrl.clone()
-    url.pathname = `/(zerooneleads)${pathname === '/' ? '' : pathname}`
+    url.pathname = `/(leads01)${pathname === '/' ? '' : pathname}`
     return NextResponse.rewrite(url, { request })
   }
 
