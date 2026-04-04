@@ -164,7 +164,7 @@ export default function CharlieOverlay({
             display: 'flex',
             flexDirection: 'column',
             flexShrink: 0,
-          }>
+          }}>
             {formMode === 'buyer' ? (
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>🏠 Find Your Home</div>
