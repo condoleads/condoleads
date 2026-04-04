@@ -8,8 +8,16 @@ import { AuthProvider } from "@/components/auth/AuthContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "CondoLeads - Toronto Real Estate",
-  description: "Find your perfect condo in Toronto",
+  title: "WALLiam — AI Real Estate Assistant",
+  description: "Browse GTA properties, get a personalized AI buyer or seller plan, and connect with a local expert.",
+  openGraph: {
+    title: "WALLiam — AI Real Estate Assistant",
+    description: "Browse → Get an AI plan → Lead Captured. Powered by WALLiam AI.",
+    url: "https://walliam.ca",
+    siteName: "WALLiam",
+    type: "website",
+    images: [{ url: "https://walliam.ca/og-walliam.png", width: 1200, height: 630 }],
+  },
 };
 
 export const viewport = {
