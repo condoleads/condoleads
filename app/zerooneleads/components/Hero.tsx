@@ -133,7 +133,7 @@ export default function Hero() {
           <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6', letterSpacing: '0.1em', textTransform: 'uppercase' }}>AI-Powered Real Estate Platform</span>
         </div>
         <h1 style={{ ...t(0.1), fontSize: 'clamp(32px, 5.5vw, 72px)', fontWeight: 900, lineHeight: 1.04, letterSpacing: '-0.03em', marginBottom: 24, maxWidth: 950, color: '#fff' }}>
-          Browse. Get an AI plan. Meet your realtor.<br />
+          Browse → Get an AI plan → Lead Captured<br />
           <span style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #06b6d4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
             That’s WALLiam.
           </span></h1>
