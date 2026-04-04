@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     url: "https://walliam.ca",
     siteName: "WALLiam",
     type: "website",
-    images: [{ url: "https://walliam.ca/og", width: 1200, height: 630 }],
+    images: [{ url: "https://walliam.ca/og-walliam.png", width: 1200, height: 630 }],
   },
 };
 
