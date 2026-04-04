@@ -17,7 +17,7 @@ import CommunityApplication from '@/components/landing/CommunityApplication'
 
 import { getWalliamTenantId } from '@/lib/utils/is-walliam'
 import { HomePageComprehensive } from '@/components/HomePageComprehensive'
-import ZeroOneLeadsPage from './(leads01)/page'
+import ZeroOneLeadsPage from './zerooneleads/page'
 
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
