@@ -52,7 +52,11 @@ export default function Hero() {
       <div style={{ position: 'absolute', top: '15%', left: '5%', width: 700, height: 700, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,0.1) 0%, transparent 70%)', filter: 'blur(40px)', pointerEvents: 'none' }} />
       <div style={{ position: 'absolute', bottom: '5%', right: '0%', width: 500, height: 500, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 70%)', filter: 'blur(40px)', pointerEvents: 'none' }} />
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 1200, margin: '0 auto', padding: '120px 24px 80px', width: '100%' }}>
-        <div style={{ ...t(0), display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderRadius: 100, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', marginBottom: 32 }}>
+        {/* Animated binary */}
+        <div style={{ ...t(0), fontFamily: 'monospace', fontSize: 12, color: 'rgba(59,130,246,0.5)', letterSpacing: '0.2em', marginBottom: 24, overflow: 'hidden', maxWidth: 500, whiteSpace: 'nowrap' }}>
+          <span className="bin-scroll">01001100 01000101 01000001 01000100 10011011 01001111 01001100 01001100 01001001 10101000 01001101 &nbsp;&nbsp; 01001100 01000101 01000001 01000100 10011011 01001111 01001100 01001100</span>
+        </div>
+                <div style={{ ...t(0), display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderRadius: 100, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', marginBottom: 32 }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', display: 'inline-block', animation: 'hpulse 2s infinite' }} />
           <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6', letterSpacing: '0.1em', textTransform: 'uppercase' }}>AI-Powered Real Estate Platform</span>
         </div>
@@ -92,6 +96,8 @@ export default function Hero() {
       </div>
       <style>{`
         @keyframes hpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        @keyframes binscroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+        .bin-scroll { display:inline-block; animation: binscroll 10s linear infinite; }
         @keyframes bscroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
         .binary-strip { animation: bscroll 12s linear infinite; white-space: nowrap; }
         @media(max-width:640px){ .hero-stats{ grid-template-columns: repeat(2,auto) !important; gap: 24px !important; } }

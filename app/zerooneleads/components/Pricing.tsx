@@ -25,7 +25,8 @@ export default function Pricing() {
           <h2 style={{ fontSize: 'clamp(28px,5vw,54px)', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: 16, color: '#fff'  }}>Simple, transparent pricing.</h2>
           <p style={{ fontSize: 17, color: 'rgba(255,255,255,0.38)', maxWidth: 480, margin: '0 auto' }}>One-time setup. Then monthly. No long-term contracts. First month free.</p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 24, alignItems: 'start' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', margin: '0 -24px', padding: '0 24px 16px' }}>
+        <div className="price-grid">
           {PLANS.map((p, i) => (
             <div key={i} style={{ padding: '40px 36px', borderRadius: 24, position: 'relative', background: p.popular ? 'linear-gradient(135deg,rgba(139,92,246,0.12),rgba(59,130,246,0.07))' : 'rgba(255,255,255,0.02)', border: p.popular ? '1px solid rgba(139,92,246,0.4)' : '1px solid rgba(255,255,255,0.06)', transform: p.popular ? 'scale(1.03)' : 'scale(1)', opacity: v ? 1 : 0, transition: `all 0.6s ease ${i*0.12}s` }}>
               {p.popular && <div style={{ position: 'absolute', top: -14, left: '50%', transform: 'translateX(-50%)', padding: '4px 20px', borderRadius: 100, background: 'linear-gradient(135deg,#8b5cf6,#3b82f6)', fontSize: 11, fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Most Popular</div>}
@@ -51,9 +52,15 @@ export default function Pricing() {
               >{p.cta}</a>
             </div>
           ))}
+          </div>
         </div>
         <p style={{ textAlign: 'center', marginTop: 40, fontSize: 13, color: 'rgba(255,255,255,0.22)' }}>First month free on all plans. Setup fee is one-time. No long-term contracts.</p>
       </div>
+    <style>{`
+      .price-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; align-items: start; }
+      @media(max-width:768px){ .price-grid { grid-template-columns: repeat(3,300px); width: max-content; } }
+      .price-grid::-webkit-scrollbar { display: none; }
+    `}</style>
     </section>
   )
 }

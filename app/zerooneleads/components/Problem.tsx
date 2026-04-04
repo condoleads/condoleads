@@ -28,7 +28,8 @@ export default function Problem() {
             You’re losing leads<br /><span style={{ color: 'rgba(255,255,255,0.28)' }}>you don’t even know exist.</span>
           </h2>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 20 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', margin: '0 -24px', padding: '0 24px 16px' }}>
+        <div className="prob-grid">
           {PROBLEMS.map((p, i) => (
             <div key={i} style={{ padding: '32px', borderRadius: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', opacity: v ? 1 : 0, transform: v ? 'translateY(0)' : 'translateY(30px)', transition: `all 0.6s ease ${0.1 + i * 0.1}s` }}>
               <div style={{ fontSize: 36, marginBottom: 16 }}>{p.icon}</div>
@@ -36,6 +37,7 @@ export default function Problem() {
               <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.42)', lineHeight: 1.75, margin: 0 }}>{p.body}</p>
             </div>
           ))}
+          </div>
         </div>
         <div style={{ marginTop: 72, padding: '56px 40px', borderRadius: 24, background: 'linear-gradient(135deg, rgba(239,68,68,0.07), rgba(239,68,68,0.02))', border: '1px solid rgba(239,68,68,0.15)', textAlign: 'center', opacity: v ? 1 : 0, transition: 'opacity 0.6s ease 0.5s' }}>
           <div style={{ fontSize: 'clamp(56px,12vw,112px)', fontWeight: 900, fontFamily: 'monospace', color: '#ef4444', lineHeight: 1 }}>97%</div>
@@ -43,6 +45,11 @@ export default function Problem() {
           <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.22)', marginTop: 8 }}>That’s not a traffic problem. That’s a conversion problem. And AI solves it.</div>
         </div>
       </div>
+    <style>{`
+      .prob-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 20px; }
+      @media(max-width:768px){ .prob-grid { grid-template-columns: repeat(4,280px); width: max-content; } }
+      .prob-grid::-webkit-scrollbar { display: none; }
+    `}</style>
     </section>
   )
 }
