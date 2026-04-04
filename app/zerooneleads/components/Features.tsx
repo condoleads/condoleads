@@ -26,7 +26,7 @@ export default function Features() {
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 72 }}>
           <div style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 100, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', fontSize: 11, fontWeight: 700, color: '#8b5cf6', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 20 }}>Features</div>
-          <h2 style={{ fontSize: 'clamp(28px,5vw,54px)', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+          <h2 style={{ fontSize: 'clamp(28px,5vw,54px)', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#fff'  }}>
             Everything your agents need.<br /><span style={{ color: 'rgba(255,255,255,0.28)' }}>Nothing they have to do.</span>
           </h2>
         </div>
@@ -43,6 +43,7 @@ export default function Features() {
           ))}
         </div>
       </div>
+      <style>{`@media(max-width:768px){.features-grid{grid-template-columns:repeat(6,280px)!important;overflow-x:auto;}}`}</style>
     </section>
   )
 }

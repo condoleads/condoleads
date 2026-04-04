@@ -29,7 +29,7 @@ export default function Solution() {
       <div style={{ maxWidth: 1200, margin: '0 auto', position: 'relative' }}>
         <div style={{ textAlign: 'center', marginBottom: 72 }}>
           <div style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 100, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', fontSize: 11, fontWeight: 700, color: '#3b82f6', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 20, opacity: v ? 1 : 0, transition: 'opacity 0.6s' }}>The Solution</div>
-          <h2 style={{ fontSize: 'clamp(28px,5vw,58px)', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: 20, opacity: v ? 1 : 0, transform: v ? 'translateY(0)' : 'translateY(20px)', transition: 'all 0.6s ease 0.1s' }}>
+          <h2 style={{ fontSize: 'clamp(28px,5vw,58px)', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1, marginBottom: 20, color: '#fff', opacity: v ? 1 : 0, transform: v ? 'translateY(0)' : 'translateY(20px)', transition: 'all 0.6s ease 0.1s' }}>
             Meet WALLiam —<br />
             <span style={{ background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>your team’s AI real estate brain.</span>
           </h2>

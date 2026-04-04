@@ -1,6 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
 
+const BINARY = ['0','1','0','1','0','0','1','1']
+let binIdx = 0
+
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false)
   useEffect(() => {
@@ -18,7 +21,7 @@ export default function Nav() {
     }}>
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 24px', height: 68, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 800, color: '#fff' }}>01</div>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 800, color: '#fff' }}><span className="bin-logo">01</span></div>
           <span style={{ fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>leads</span>
         </div>
         <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
@@ -34,7 +37,16 @@ export default function Nav() {
           <a href="#pricing" style={{ padding: '8px 20px', borderRadius: 100, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none', boxShadow: '0 4px 20px rgba(59,130,246,0.4)' }}>Get Started</a>
         </div>
       </div>
-      <style>{`@media (max-width: 768px) { .nav-desktop { display: none !important; } }`}</style>
+      <style>{`
+    @media (max-width: 768px) { .nav-desktop { display: none !important; } }
+    @keyframes binflip {
+      0%,100% { content: '01'; }
+      25% { content: '10'; }
+      50% { content: '11'; }
+      75% { content: '00'; }
+    }
+    .bin-logo { animation: binflip 3s steps(1) infinite; font-family: monospace; }
+  `}</style>
     </nav>
   )
 }

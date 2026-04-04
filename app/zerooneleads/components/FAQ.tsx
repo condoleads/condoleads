@@ -28,7 +28,7 @@ export default function FAQ() {
       <div style={{ maxWidth: 780, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 72 }}>
           <div style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 100, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', fontSize: 11, fontWeight: 700, color: '#f59e0b', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 20 }}>FAQ</div>
-          <h2 style={{ fontSize: 'clamp(28px,5vw,48px)', fontWeight: 900, letterSpacing: '-0.02em' }}>Questions? We have answers.</h2>
+          <h2 style={{ fontSize: 'clamp(28px,5vw,48px)', fontWeight: 900, letterSpacing: '-0.02em', color: '#fff'  }}>Questions? We have answers.</h2>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {FAQS.map((f, i) => (

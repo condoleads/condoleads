@@ -17,7 +17,7 @@ export default function FooterCTA() {
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at center, rgba(59,130,246,0.1) 0%, transparent 65%)', pointerEvents: 'none' }} />
       <div style={{ position: 'absolute', top: '30%', left: '50%', transform: 'translateX(-50%)', width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle,rgba(139,92,246,0.07) 0%,transparent 70%)', pointerEvents: 'none' }} />
       <div style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center', position: 'relative' }}>
-        <h2 style={{ fontSize: 'clamp(32px,6.5vw,68px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.08, marginBottom: 24, opacity: v ? 1 : 0, transform: v ? 'translateY(0)' : 'translateY(30px)', transition: 'all 0.7s ease' }}>
+        <h2 style={{ fontSize: 'clamp(32px,6.5vw,68px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.08, marginBottom: 24, color: '#fff', opacity: v ? 1 : 0, transform: v ? 'translateY(0)' : 'translateY(30px)', transition: 'all 0.7s ease'  }}>
           Ready to stop leaving<br />
           <span style={{ background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>leads on the table?</span>
         </h2>
