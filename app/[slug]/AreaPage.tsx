@@ -177,13 +177,17 @@ const getAreaData = unstable_cache(
 export default async function AreaPage({ area }: AreaPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const { getWalliamTenantId } = await import('@/lib/utils/is-walliam')
+  const { getWalliamTenantId, resolveWalliamAgent } = await import('@/lib/utils/is-walliam')
   const [data, agent, tenantId] = await Promise.all([
     getAreaData(area.id),
     getAgentFromHost(host),
     getWalliamTenantId(),
   ])
   const isWalliam = !!tenantId
+  let walliamAgentId: string | null = null
+  if (isWalliam && tenantId) {
+    walliamAgentId = await resolveWalliamAgent({ area_id: area.id, tenant_id: tenantId })
+  }
   const { initialListings, counts, homeCounts, condoCounts, buildingCount, allAreas, municipalityLinks, municipalities } = data
 
   return (

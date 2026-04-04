@@ -168,13 +168,17 @@ const getMunicipalityData = unstable_cache(
 export default async function MunicipalityPage({ municipality }: MunicipalityPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const { getWalliamTenantId } = await import('@/lib/utils/is-walliam')
+  const { getWalliamTenantId, resolveWalliamAgent } = await import('@/lib/utils/is-walliam')
   const [data, agent, tenantId] = await Promise.all([
     getMunicipalityData(municipality.id, municipality.area_id),
     getAgentFromHost(host),
     getWalliamTenantId(),
   ])
   const isWalliam = !!tenantId
+  let walliamAgentId: string | null = null
+  if (isWalliam && tenantId) {
+    walliamAgentId = await resolveWalliamAgent({ municipality_id: municipality.id, tenant_id: tenantId })
+  }
   const { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities } = data
   const areaHref = area ? '/' + area.slug : '#'
 
