@@ -104,7 +104,7 @@ function BinaryDecode() {
           <div style={{
             fontFamily: 'monospace', fontSize: decoded[i] ? 28 : 10,
             fontWeight: decoded[i] ? 900 : 400,
-            color: decoded[i] ? '#fff' : 'rgba(59,130,246,0.5)',
+            color: decoded[i] ? '#3b82f6' : '#ffffff',
             letterSpacing: decoded[i] ? '-0.02em' : '0.1em',
             transition: 'all 0.3s ease',
             minWidth: decoded[i] ? 20 : 64,
@@ -134,7 +134,7 @@ export default function Hero() {
           <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6', letterSpacing: '0.1em', textTransform: 'uppercase' }}>AI-Powered Real Estate Platform</span>
         </div>
         <h1 style={{ ...t(0.1), fontSize: 'clamp(32px, 5.5vw, 72px)', fontWeight: 900, lineHeight: 1.04, letterSpacing: '-0.03em', marginBottom: 24, maxWidth: 950, color: '#fff' }}>
-          Your agents work 9–5.{' '}
+          Your agents work 9–5.<br />
           <span style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #06b6d4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
             Your AI works 24/7.
           </span>
