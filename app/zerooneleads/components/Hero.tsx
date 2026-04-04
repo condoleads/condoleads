@@ -65,6 +65,10 @@ export default function Hero() {
         <p style={{ ...t(0.2), fontSize: 'clamp(16px, 2.2vw, 21px)', color: 'rgba(255,255,255,0.5)', lineHeight: 1.75, maxWidth: 580, marginBottom: 48 }}>
           WALLiam AI captures every lead, qualifies every buyer, estimates every home value — and delivers a personalized plan before your agent even picks up the phone.
         </p>
+        {/* Binary strip */}
+        <div style={{ ...t(0.25), fontFamily: 'monospace', fontSize: 11, color: 'rgba(59,130,246,0.4)', letterSpacing: '0.15em', marginBottom: 8, overflow: 'hidden', maxWidth: 580 }} className="binary-strip">
+          01001100 01000101 01000001 01000100 10011011 01001111 01001100 01001100 01001001 10101000 01001101
+        </div>
         <div style={{ ...t(0.3), display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <a href="#pricing" style={{ padding: '15px 36px', borderRadius: 100, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', color: '#fff', fontSize: 16, fontWeight: 800, textDecoration: 'none', boxShadow: '0 8px 40px rgba(59,130,246,0.45)', transition: 'all 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 14px 50px rgba(59,130,246,0.6)' }}
@@ -88,6 +92,8 @@ export default function Hero() {
       </div>
       <style>{`
         @keyframes hpulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        @keyframes bscroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+        .binary-strip { animation: bscroll 12s linear infinite; white-space: nowrap; }
         @media(max-width:640px){ .hero-stats{ grid-template-columns: repeat(2,auto) !important; gap: 24px !important; } }
       `}</style>
     </section>

@@ -30,9 +30,10 @@ export default function Features() {
             Everything your agents need.<br /><span style={{ color: 'rgba(255,255,255,0.28)' }}>Nothing they have to do.</span>
           </h2>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: 20 }}>
+        <div className="feat-scroll">
+          <div className="feat-grid">
           {F.map((f, i) => (
-            <div key={i} style={{ padding: '36px', borderRadius: 24, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', transition: 'all 0.3s ease', cursor: 'default', opacity: v ? 1 : 0, transform: v ? 'translateY(0)' : 'translateY(30px)', transitionDelay: `${i*0.08}s` }}
+            <div key={i} className="feat-card" style={{ padding: '28px', borderRadius: 24, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', transition: 'all 0.3s ease', cursor: 'default', opacity: v ? 1 : 0, transform: v ? 'translateY(0)' : 'translateY(30px)', transitionDelay: `${i*0.08}s` }}
               onMouseEnter={e => { e.currentTarget.style.background = `rgba(${colorRgb[f.color]},0.07)`; e.currentTarget.style.borderColor = f.color+'40'; e.currentTarget.style.transform = 'translateY(-4px)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.transform = 'translateY(0)' }}
             >
@@ -41,9 +42,19 @@ export default function Features() {
               <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.42)', lineHeight: 1.75, margin: 0 }}>{f.body}</p>
             </div>
           ))}
+          </div>
         </div>
       </div>
-      <style>{`@media(max-width:768px){.features-grid{grid-template-columns:repeat(6,280px)!important;overflow-x:auto;}}`}</style>
+      <style>{`
+    .feat-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -24px; padding: 0 24px 16px; }
+    .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .feat-card { min-width: 0; }
+    .feat-scroll::-webkit-scrollbar { display: none; }
+    @media(max-width: 768px) {
+      .feat-grid { grid-template-columns: repeat(6, 280px); width: max-content; }
+      .feat-card { width: 280px; }
+    }
+  `}</style>
     </section>
   )
 }
