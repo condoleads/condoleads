@@ -14,7 +14,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const isAdminPage = pathname.startsWith('/admin')
   const isDashboardPage = pathname.startsWith('/dashboard')
   const isLoginPage = pathname === '/login'
-  const is01Leads = typeof window !== 'undefined' && window.location.hostname.replace(/^www\./, '') === '01leads.com'
+  const is01Leads = mounted && window.location.hostname.replace(/^www\./, '') === '01leads.com'
   const isCharlieVisible = !isAdminPage && !isDashboardPage && !isLoginPage && !is01Leads
   const [isComprehensiveSite, setIsComprehensiveSite] = useState(false)
   
