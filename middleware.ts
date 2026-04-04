@@ -27,7 +27,16 @@ export async function middleware(request: NextRequest) {
 
   await supabase.auth.getUser()
 
-  // ============================================
+  // 01leads.com — serve marketing site
+  const reqHost = request.headers.get('host') || ''
+  const cleanReqHost = reqHost.replace(/^www\./, '')
+  if (cleanReqHost === '01leads.com') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/zerooneleads' + (pathname === '/' ? '' : pathname)
+    return NextResponse.rewrite(url, { request })
+  }
+
+    // ============================================
   // SYSTEM FORK: Comprehensive vs Condos routing
   // Skip for API, admin, _next, static routes
   // ============================================
