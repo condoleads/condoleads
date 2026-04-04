@@ -48,6 +48,8 @@ function BinaryDecode() {
   const bins = ['01001100','01000101','01000001','01000100','01010011']
   const [chars, setChars] = useState(['01001100','01000101','01000001','01000100','01010011'])
   const [decoded, setDecoded] = useState([false,false,false,false,false])
+  const [visible, setVisible] = useState(false)
+  useEffect(() => { setTimeout(() => setVisible(true), 300) }, [])
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = []
@@ -131,7 +133,7 @@ export default function Hero() {
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6', display: 'inline-block', animation: 'hpulse 2s infinite' }} />
           <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6', letterSpacing: '0.1em', textTransform: 'uppercase' }}>AI-Powered Real Estate Platform</span>
         </div>
-        <h1 style={{ ...t(0.1), fontSize: 'clamp(42px, 7.5vw, 92px)', fontWeight: 900, lineHeight: 1.04, letterSpacing: '-0.03em', marginBottom: 24, maxWidth: 950, color: '#fff' }}>
+        <h1 style={{ ...t(0.1), fontSize: 'clamp(32px, 5.5vw, 72px)', fontWeight: 900, lineHeight: 1.04, letterSpacing: '-0.03em', marginBottom: 24, maxWidth: 950, color: '#fff' }}>
           Your agents work 9–5.{' '}
           <span style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #06b6d4 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
             Your AI works 24/7.
