@@ -54,7 +54,7 @@ export default function Pricing() {
           ))}
           </div>
         </div>
-        <p style={{ textAlign: 'center', marginTop: 40, fontSize: 13, color: 'rgba(255,255,255,0.22)' }}>First month free on all plans. Setup fee is one-time. No long-term contracts.</p>
+        <p style={{ textAlign: 'center', marginTop: 40, fontSize: 13, color: 'rgba(255,255,255,0.22)' }}>All prices in USD. First month free on all plans. Setup fee is one-time. No long-term contracts.</p>
       </div>
     <style>{`
       .price-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; align-items: start; }

@@ -24,6 +24,7 @@ export default function Footer() {
                 { label: 'See Live Demo', href: 'https://walliam.ca' },
                 { label: 'Contact Us', href: 'mailto:contact@01leads.com' },
                 { label: 'Privacy Policy', href: '/privacy-policy' },
+                { label: 'Refund Policy', href: '/refund-policy' },
                 { label: 'Terms of Service', href: '/terms-of-service' },
               ].map(l => <div key={l.label} style={{ marginBottom: 10 }}><a href={l.href} style={{ fontSize: 14, color: 'rgba(255,255,255,0.42)', textDecoration: 'none' }}>{l.label}</a></div>)}
             </div>
@@ -31,7 +32,10 @@ export default function Footer() {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
           <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.18)' }}>© 2026 01leads. All rights reserved.</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
           <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.18)', fontFamily: 'monospace' }}>contact@01leads.com</span>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.15)' }}>Kote Marjanishvili St. 30, Tbilisi, Georgia</span>
+        </div>
         </div>
       </div>
     </footer>
