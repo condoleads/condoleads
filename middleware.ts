@@ -31,14 +31,7 @@ export async function middleware(request: NextRequest) {
   // SYSTEM FORK: Comprehensive vs Condos routing
   // Skip for API, admin, _next, static routes
   // ============================================
-  // 01leads.com — serve marketing site
-  const reqHost = request.headers.get('host') || ''
-  const cleanReqHost = reqHost.replace(/^www\./, '')
-  if (cleanReqHost === '01leads.com') {
-    const url = request.nextUrl.clone()
-    url.pathname = `/(leads01)${pathname === '/' ? '' : pathname}`
-    return NextResponse.rewrite(url, { request })
-  }
+
 
   if (
     !pathname.startsWith('/api') &&

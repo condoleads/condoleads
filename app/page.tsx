@@ -17,6 +17,7 @@ import CommunityApplication from '@/components/landing/CommunityApplication'
 
 import { getWalliamTenantId } from '@/lib/utils/is-walliam'
 import { HomePageComprehensive } from '@/components/HomePageComprehensive'
+import ZeroOneLeadsPage from './(leads01)/page'
 
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,12 @@ export const revalidate = 0;
 export default async function RootPage() {
   const headersList = headers();
   const host = headersList.get('host') || '';
+
+  // 01leads.com — serve marketing site
+  const cleanHost = host.replace(/^www\./, '')
+  if (cleanHost === '01leads.com') {
+    return <ZeroOneLeadsPage />
+  }
   
   // Check custom domain first
   let agent = null;
