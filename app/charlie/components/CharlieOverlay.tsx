@@ -233,7 +233,7 @@ export default function CharlieOverlay({
 
           {/* Results panel */}
           {hasResults && (
-            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }>
+            <div style={{ flex: isMobile ? 'none' : 1, overflow: isMobile ? 'visible' : 'hidden', display: 'flex', flexDirection: 'column' }}>
               <ResultsPanel
                 analytics={state.analytics}
                 listingGroups={state.listingGroups || []}
