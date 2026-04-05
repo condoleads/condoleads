@@ -1,5 +1,6 @@
 ﻿// app/charlie/components/ChatPanel.tsx
 'use client'
+import React from 'react'
 import { useState, useRef, useEffect } from 'react'
 import { ChatMessage } from '../hooks/useCharlie'
 
@@ -11,6 +12,35 @@ interface Props {
   onSellClick?: () => void
   gateReason?: 'register' | 'vip_required' | null
   onOpenRegister?: () => void
+}
+
+function renderContent(text: string): React.ReactNode[] {
+  const cleaned = text
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/#{1,3}\s/g, '')
+    .replace(/\*([^*]+)\*/g, '$1')
+  
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g
+  const parts: React.ReactNode[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  let i = 0
+  
+  while ((m = linkRegex.exec(cleaned)) !== null) {
+    if (m.index > last) parts.push(cleaned.slice(last, m.index))
+    parts.push(
+      React.createElement('a', {
+        key: i++,
+        href: m[2],
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        style: { color: '#60a5fa', textDecoration: 'underline', textUnderlineOffset: '2px', fontWeight: 600 }
+      }, m[1])
+    )
+    last = m.index + m[0].length
+  }
+  if (last < cleaned.length) parts.push(cleaned.slice(last))
+  return parts.length ? parts : [cleaned]
 }
 
 const QUICK_REPLIES = ['I want to buy', 'I want to sell', 'Just browsing']
@@ -85,7 +115,7 @@ export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, o
               lineHeight: 1.6,
               wordBreak: 'break-word',
             }}>
-              {msg.content.replace(/\*\*(.*?)\*\*/g, '$1').replace(/#{1,3}\s/g, '').replace(/\*([^*]+)\*/g, '$1')}
+              {renderContent(msg.content)}
               {msg.streaming && (
                 <span style={{
                   display: 'inline-block',
