@@ -232,7 +232,7 @@ export default async function AreaPage({ area }: AreaPageProps) {
               tenant_id={tenantId!}
             />
             <WalliamCTA context={area.name} />
-            <CharliePageContext area_id={area.id} />
+            <CharliePageContext area_id={area.id} area_slug={area.slug} />
           </div>
         )}
 

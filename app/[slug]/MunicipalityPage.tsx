@@ -225,7 +225,7 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
               tenant_id={tenantId!}
             />
             <WalliamCTA context={municipality.name} />
-            <CharliePageContext municipality_id={municipality.id} area_id={municipality.area_id} />
+            <CharliePageContext municipality_id={municipality.id} municipality_slug={municipality.slug} area_id={municipality.area_id} />
           </div>
         )}
 

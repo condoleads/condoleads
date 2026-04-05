@@ -180,7 +180,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
               tenant_id={tenantId!}
             />
             <WalliamCTA context={community.name} />
-            <CharliePageContext community_id={community.id} municipality_id={community.municipality_id} />
+            <CharliePageContext community_id={community.id} community_slug={community.slug} municipality_id={community.municipality_id} />
           </div>
         )}
 
