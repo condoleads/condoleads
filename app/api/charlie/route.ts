@@ -103,6 +103,8 @@ Median Sale Price: ${s?.median_sale_price?.toLocaleString() || 'N/A'} | Avg DOM:
 Avg Concession: ${s?.avg_concession_pct || 0}% below asking
 Recent Sales: ${(buildingIntel.recent_sales || []).map((s: any) => `Unit ${s.unit_number}: ${s.bedrooms_total}BR sold ${s.close_price?.toLocaleString()} (${s.days_on_market} DOM)`).join(', ')}
 Active Listings: ${(buildingIntel.active_listings || []).map((l: any) => `Unit ${l.unit_number}: ${l.bedrooms_total}BR at ${l.list_price?.toLocaleString()}`).join(', ') || 'None'}
+
+  Building URL: https://walliam.ca/${b?.slug}
 Use this data to answer building-specific questions immediately without calling get_building_intelligence again.`
       }
     } catch (e) {
