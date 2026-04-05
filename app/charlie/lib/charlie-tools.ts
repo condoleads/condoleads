@@ -71,6 +71,77 @@ export const CHARLIE_TOOLS = [
       }
     }
   },
+
+  {
+    name: 'search_buildings',
+    description: 'Search condo buildings by location and filters. Use when user asks about buildings, maintenance fees, building prices, or wants to compare buildings.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        geoType: { type: 'string', enum: ['municipality', 'community', 'area'] },
+        geoId: { type: 'string' },
+        maxAvgPrice: { type: 'number', description: 'Max average sale price filter' },
+        minAvgPrice: { type: 'number', description: 'Min average sale price filter' },
+        maxMaintenanceFee: { type: 'number', description: 'Max median maintenance fee' },
+        sort: { type: 'string', enum: ['price_asc', 'price_desc', 'active_count', 'newest'], description: 'Sort order. Use price_asc for most affordable buildings.' },
+        limit: { type: 'number', description: 'Default 5, max 10' }
+      },
+      required: ['geoType', 'geoId']
+    }
+  },
+  {
+    name: 'get_price_trends',
+    description: 'Get price trend data over time for an area. Use when user asks if prices are rising or falling, best time to buy/sell, or year-over-year changes.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        geoType: { type: 'string', enum: ['municipality', 'community', 'area'] },
+        geoId: { type: 'string' },
+        track: { type: 'string', enum: ['condo', 'homes'] },
+        months: { type: 'number', description: '6, 12, or 24 months of data. Default 12.' }
+      },
+      required: ['geoType', 'geoId', 'track']
+    }
+  },
+  {
+    name: 'compare_geo',
+    description: 'Compare market data between 2-4 geographic areas side by side. Use when user mentions multiple areas or asks which area is better.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        geos: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              geoType: { type: 'string' },
+              geoId: { type: 'string' },
+              geoName: { type: 'string' }
+            }
+          },
+          description: 'Array of 2-4 geo areas to compare'
+        },
+        track: { type: 'string', enum: ['condo', 'homes'] }
+      },
+      required: ['geos', 'track']
+    }
+  },
+  {
+    name: 'get_investment_rankings',
+    description: 'Get top ranked areas for investment based on price, PSF, volume or DOM. Use when user asks about investment, ROI, best areas to invest.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        parentGeoType: { type: 'string', enum: ['municipality', 'area'] },
+        parentGeoId: { type: 'string' },
+        track: { type: 'string', enum: ['condo', 'homes'] },
+        rankBy: { type: 'string', enum: ['median_sale_price', 'avg_psf', 'closed_sale_count_90', 'closed_avg_dom_90'], description: 'What to rank by' },
+        limit: { type: 'number', description: 'Default 5' }
+      },
+      required: ['parentGeoType', 'parentGeoId', 'track']
+    }
+  },
+
   {
     name: 'generate_plan',
     description: 'Generate a buyer plan or seller strategy document. Call this when you have enough information. For buyers: need area + budget + listings. For sellers: need area + property type + comparables.',

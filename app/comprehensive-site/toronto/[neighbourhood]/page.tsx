@@ -6,6 +6,10 @@ import { unstable_cache } from 'next/cache'
 import NeighbourhoodPageTabs from '@/app/[slug]/components/NeighbourhoodPageTabs'
 import GeoHero from '@/app/[slug]/components/GeoHero'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
+import { getWalliamTenantId, resolveWalliamAgent } from '@/lib/utils/is-walliam'
+import CharliePageContext from '@/components/CharliePageContext'
+import WalliamCTA from '@/components/WalliamCTA'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
 import { headers } from 'next/headers'
 
 interface Props {
@@ -173,6 +177,12 @@ export default async function NeighbourhoodPage({ params }: Props) {
   const headersList = headers()
   const host = headersList.get('host') || ''
   const agent = await getAgentFromHost(host)
+  const tenantId = await getWalliamTenantId()
+  const isWalliam = !!tenantId
+  let walliamAgentId: string | null = null
+  if (isWalliam && tenantId) {
+    walliamAgentId = await resolveWalliamAgent({ tenant_id: tenantId })
+  }
 
   const { neighbourhood, municipalities, municipalityIds, communities, stats, initialListings, initialTotal, initialCounts } = data
 
@@ -216,8 +226,8 @@ export default async function NeighbourhoodPage({ params }: Props) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <NeighbourhoodPageTabs
           municipalityIds={municipalityIds}
-          agentId={agent?.id || ''}
-          tenantId={agent?.tenant_id || ''}
+          agentId={isWalliam ? (walliamAgentId || '') : (agent?.id || '')}
+          tenantId={isWalliam ? (tenantId || '') : (agent?.tenant_id || '')}
           buildingCount={stats?.buildings ?? 0}
           municipalities={municipalities}
           initialListings={initialListings}
@@ -241,6 +251,16 @@ export default async function NeighbourhoodPage({ params }: Props) {
         </div>
       )}
 
+      {isWalliam && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <WalliamCTA context={neighbourhood.name} />
+          <WalliamAgentCard tenant_id={tenantId!} />
+          <CharliePageContext
+            municipality_id={municipalityIds[0] || null}
+            municipality_slug={municipalities[0]?.slug || null}
+          />
+        </div>
+      )}
     </div>
   )
 }
