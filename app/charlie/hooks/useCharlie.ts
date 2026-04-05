@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 
 export type MessageRole = 'user' | 'assistant'
-export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables' | 'generate_plan'
+export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables' | 'generate_plan' | 'search_buildings' | 'compare_geo' | 'get_price_trends' | 'get_investment_rankings' | 'get_inventory_rankings' | 'get_seasonal_trends' | 'get_building_directory'
 
 export interface ChatMessage {
   id: string
@@ -36,6 +36,10 @@ export interface CharlieState {
   buyerProfile: any
   sellerProfile: any
   sellerEstimate: any | null
+  searchedBuildings: any[]
+  rankings: any | null
+  priceTrends: any | null
+  seasonalData: any | null
   // WALLiam session
   sessionId: string | null
   userId: string | null
@@ -58,6 +62,10 @@ const INITIAL_STATE: CharlieState = {
   messages: [],
   toolResults: [],
   analytics: null,
+  searchedBuildings: [],
+  rankings: null,
+  priceTrends: null,
+  seasonalData: null,
   geoContext: null,
   listingGroups: [],
   comparables: [],
@@ -377,6 +385,48 @@ export function useCharlie() {
             sellerEstimate: stateRef.current.sellerEstimate,
           }),
         }).catch(err => console.error('[useCharlie] plan email error:', err))
+    }
+    if (tool === 'search_buildings' && data.buildings) {
+      const mapped = (data.buildings || []).map((b: any) => ({
+        buildingName: b.building_name,
+        slug: b.slug,
+        photo: b.cover_photo_url || null,
+        medianPsf: b.avg_psf || 0,
+        activeCount: b.active_count || 0,
+        avgDom: b.closed_avg_dom_90 || null,
+        saleToList: b.sale_to_list_ratio || null,
+        medianPrice: b.median_sale_price || null,
+        medianMaintFee: b.median_maint_fee || null,
+        yearBuilt: b.year_built || null,
+        url: b.url || null,
+      }))
+      setState(s => ({ ...s, searchedBuildings: mapped, activePanel: 'results' }))
+    }
+    if (tool === 'get_building_directory' && data.buildings) {
+      const mapped = (data.buildings || []).map((b: any) => ({
+        buildingName: b.building_name,
+        slug: b.slug,
+        photo: b.cover_photo_url || null,
+        medianPsf: 0,
+        activeCount: 0,
+        url: b.url || null,
+      }))
+      setState(s => ({ ...s, searchedBuildings: mapped, activePanel: 'results' }))
+    }
+    if (tool === 'compare_geo' && data.comparisons) {
+      setState(s => ({ ...s, rankings: { type: 'compare_geo', data }, activePanel: 'results' }))
+    }
+    if (tool === 'get_price_trends' && data.price_trend_monthly) {
+      setState(s => ({ ...s, priceTrends: data, activePanel: 'results' }))
+    }
+    if (tool === 'get_investment_rankings' && data.rankings) {
+      setState(s => ({ ...s, rankings: { type: 'investment', data }, activePanel: 'results' }))
+    }
+    if (tool === 'get_inventory_rankings' && data.rankings) {
+      setState(s => ({ ...s, rankings: { type: 'inventory', data }, activePanel: 'results' }))
+    }
+    if (tool === 'get_seasonal_trends' && data.insight_seasonal) {
+      setState(s => ({ ...s, rankings: { type: 'seasonal', data }, activePanel: 'results' }))
     }
     if (tool === 'get_comparables' && data.listings) {
       setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), activePanel: 'results' }))

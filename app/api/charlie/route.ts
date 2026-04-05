@@ -516,5 +516,168 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
     return { listings: listingsWithSlugs, total: data.total || 0 }
   }
 
+
+  if (name === 'search_buildings') {
+    const { geoType, geoId, sort = 'active_count', limit = 5 } = input
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    let communityIds: string[] = []
+    if (geoType === 'municipality') {
+      const { data: comms } = await supabase.from('communities').select('id').eq('municipality_id', geoId)
+      communityIds = (comms || []).map((c: any) => c.id)
+    } else if (geoType === 'community') {
+      communityIds = [geoId]
+    }
+    if (communityIds.length === 0) return { buildings: [] }
+    const { data: buildings } = await supabase
+      .from('buildings')
+      .select('id, building_name, slug, canonical_address, year_built, total_units')
+      .in('community_id', communityIds)
+      .limit(500)
+    const bIds = (buildings || []).map((b: any) => b.id)
+    if (bIds.length === 0) return { buildings: [] }
+    const { data: analytics } = await supabase
+      .from('geo_analytics')
+      .select('geo_id, active_count, median_sale_price, avg_psf, median_maint_fee, gross_rental_yield_pct, closed_sale_count_90')
+      .eq('geo_type', 'building')
+      .eq('period_type', 'rolling_12mo')
+      .eq('track', 'condo')
+      .in('geo_id', bIds)
+      .limit(1000)
+    const aMap: any = {}
+    for (const a of (analytics || [])) aMap[a.geo_id] = a
+    let results = (buildings || []).map((b: any) => ({ ...b, url: baseUrl + '/' + b.slug, ...(aMap[b.id] || {}) }))
+    if (sort === 'price_asc') results.sort((a: any, b: any) => (a.median_sale_price || Infinity) - (b.median_sale_price || Infinity))
+    else if (sort === 'price_desc') results.sort((a: any, b: any) => (b.median_sale_price || 0) - (a.median_sale_price || 0))
+    else if (sort === 'maintenance_asc') results.sort((a: any, b: any) => (a.median_maint_fee || Infinity) - (b.median_maint_fee || Infinity))
+    else results.sort((a: any, b: any) => (b.active_count || 0) - (a.active_count || 0))
+    return { buildings: results.slice(0, limit) }
+  }
+
+  if (name === 'compare_geo') {
+    const { geoIds, geoType, track = 'condo' } = input
+    if (!geoIds || !Array.isArray(geoIds)) return { error: 'geoIds array required' }
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const comparisons = await Promise.all(geoIds.map(async (id: string) => {
+      const { data: analytics } = await supabase
+        .from('geo_analytics')
+        .select('median_sale_price, avg_psf, psf_trend_pct, active_count, months_of_inventory, sale_to_list_ratio, pct_sold_over_ask, avg_concession_pct, closed_avg_dom_90, gross_rental_yield_pct, median_maint_fee, absorption_rate_pct, bedroom_breakdown')
+        .eq('geo_type', geoType)
+        .eq('geo_id', id)
+        .eq('period_type', 'rolling_12mo')
+        .eq('track', track)
+        .single()
+      let geoName = '', geoSlug = ''
+      if (geoType === 'municipality') {
+        const { data: m } = await supabase.from('municipalities').select('name, slug').eq('id', id).single()
+        geoName = m?.name || ''; geoSlug = m?.slug || ''
+      } else if (geoType === 'community') {
+        const { data: cm } = await supabase.from('communities').select('name, slug').eq('id', id).single()
+        geoName = cm?.name || ''; geoSlug = cm?.slug || ''
+      }
+      return { geoId: id, name: geoName, slug: geoSlug, url: baseUrl + '/' + geoSlug, analytics: analytics || null }
+    }))
+    return { comparisons, track }
+  }
+
+  if (name === 'get_price_trends') {
+    const { geoType, geoId, track = 'condo' } = input
+    const { data: analytics } = await supabase
+      .from('geo_analytics')
+      .select('price_trend_monthly, dom_trend_monthly, volume_trend_monthly, lease_trend_monthly, median_sale_price, avg_psf, psf_trend_pct, insight_seasonal, median_lease_price')
+      .eq('geo_type', geoType)
+      .eq('geo_id', geoId)
+      .eq('period_type', 'rolling_12mo')
+      .eq('track', track)
+      .single()
+    if (!analytics) return { error: 'No price trend data available for this area' }
+    return {
+      price_trend_monthly: analytics.price_trend_monthly,
+      dom_trend_monthly: analytics.dom_trend_monthly,
+      volume_trend_monthly: analytics.volume_trend_monthly,
+      lease_trend_monthly: analytics.lease_trend_monthly,
+      current_median_sale: analytics.median_sale_price,
+      current_avg_psf: analytics.avg_psf,
+      psf_trend_pct: analytics.psf_trend_pct,
+      current_median_lease: analytics.median_lease_price,
+      insight_seasonal: analytics.insight_seasonal,
+    }
+  }
+
+  if (name === 'get_investment_rankings') {
+    const { parentGeoType, parentGeoId, track = 'condo', rankingType = 'best_yield' } = input
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const { data } = await supabase
+      .from('geo_rankings')
+      .select('ranking_type, ranked_entity, results')
+      .eq('parent_geo_type', parentGeoType)
+      .eq('parent_geo_id', parentGeoId)
+      .eq('track', track)
+      .eq('ranking_type', rankingType)
+      .limit(5)
+    if (!data || data.length === 0) return { rankings: [], ranking_type: rankingType }
+    const results = (data[0]?.results || []).map((r: any) => ({ ...r, url: baseUrl + '/' + r.entity_slug }))
+    return { ranking_type: rankingType, track, ranked_entity: data[0]?.ranked_entity, rankings: results }
+  }
+
+  if (name === 'get_inventory_rankings') {
+    const { parentGeoType, parentGeoId, track = 'condo' } = input
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const { data } = await supabase
+      .from('geo_rankings')
+      .select('ranking_type, ranked_entity, results')
+      .eq('parent_geo_type', parentGeoType)
+      .eq('parent_geo_id', parentGeoId)
+      .eq('track', track)
+      .in('ranking_type', ['fastest_selling', 'slowest_moving', 'highest_price_reduction', 'best_concession_opportunity'])
+      .limit(20)
+    if (!data || data.length === 0) return { rankings: {} }
+    const grouped: any = {}
+    for (const row of data) {
+      grouped[row.ranking_type] = (row.results || []).map((r: any) => ({ ...r, url: baseUrl + '/' + r.entity_slug }))
+    }
+    return { rankings: grouped, track }
+  }
+
+  if (name === 'get_seasonal_trends') {
+    const { geoType, geoId, track = 'condo' } = input
+    const { data: analytics } = await supabase
+      .from('geo_analytics')
+      .select('insight_seasonal, insight_value_migration, insight_demand_mismatch, insight_reentry, insight_concession_matrix, median_sale_price, active_count, months_of_inventory, new_listings_7d')
+      .eq('geo_type', geoType)
+      .eq('geo_id', geoId)
+      .eq('period_type', 'rolling_12mo')
+      .eq('track', track)
+      .single()
+    if (!analytics) return { error: 'No seasonal data available for this area' }
+    return {
+      insight_seasonal: analytics.insight_seasonal,
+      insight_value_migration: analytics.insight_value_migration,
+      insight_demand_mismatch: analytics.insight_demand_mismatch,
+      insight_reentry: analytics.insight_reentry,
+      insight_concession_matrix: analytics.insight_concession_matrix,
+      context: { median_sale_price: analytics.median_sale_price, active_count: analytics.active_count, months_of_inventory: analytics.months_of_inventory, new_listings_7d: analytics.new_listings_7d }
+    }
+  }
+
+  if (name === 'get_building_directory') {
+    const { geoType, geoId, limit = 20 } = input
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    let communityIds: string[] = []
+    if (geoType === 'municipality') {
+      const { data: comms } = await supabase.from('communities').select('id').eq('municipality_id', geoId)
+      communityIds = (comms || []).map((c: any) => c.id)
+    } else if (geoType === 'community') {
+      communityIds = [geoId]
+    }
+    if (communityIds.length === 0) return { buildings: [] }
+    const { data: buildings } = await supabase
+      .from('buildings')
+      .select('id, building_name, slug, canonical_address, year_built, total_units')
+      .in('community_id', communityIds)
+      .order('building_name')
+      .limit(limit)
+    return { buildings: (buildings || []).map((b: any) => ({ ...b, url: baseUrl + '/' + b.slug })) }
+  }
+
   return { error: 'Unknown tool' }
 }

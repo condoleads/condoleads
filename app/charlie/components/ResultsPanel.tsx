@@ -29,6 +29,10 @@ interface Props {
   vipCreditUsed?: boolean
   vipCreditPlansUsed?: number
   vipCreditTotal?: number
+  searchedBuildings?: any[]
+  rankings?: any | null
+  priceTrends?: any | null
+  seasonalData?: any | null
 }
 
 const fmt = (n: number | null | undefined, prefix = '', suffix = '') =>
@@ -53,7 +57,7 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate, communityBuildings, sessionId, userId, onLeadCaptured, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal }: Props) {
+export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate, communityBuildings, sessionId, userId, onLeadCaptured, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, searchedBuildings, rankings, priceTrends, seasonalData }: Props) {
 
 
 
@@ -121,6 +125,92 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             propertyType={analytics.track}
             geoName={geoContext?.geoName}
           />
+        </div>
+      )}
+
+      {/* Searched Buildings from Charlie tool */}
+      {!sellerEstimate && searchedBuildings && searchedBuildings.length > 0 && (
+        <div>
+          <SectionHeader title={`Buildings Found · ${searchedBuildings.length}`} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {searchedBuildings.map((b, i) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ flex: 1 }}>
+                    <a href={b.url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>{b.buildingName}</a>
+                    {b.yearBuilt && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginLeft: 8 }}>Built {b.yearBuilt}</span>}
+                  </div>
+                  {b.activeCount > 0 && <span style={{ background: "#10b981", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{b.activeCount} active</span>}
+                </div>
+                <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
+                  {b.medianPrice && <span style={{ color: "#60a5fa", fontSize: 13, fontWeight: 600 }}>{fmt(b.medianPrice, "$")}</span>}
+                  {b.medianPsf && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>{fmt(b.medianPsf, "$")}/sqft</span>}
+                  {b.maintenanceFee && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>Maint {fmt(b.maintenanceFee, "$")}/mo</span>}
+                  {b.rentalYield && <span style={{ color: "#f59e0b", fontSize: 12 }}>{b.rentalYield.toFixed(1)}% yield</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Investment Rankings */}
+      {!sellerEstimate && rankings && rankings.type === "investment" && rankings.data?.rankings?.length > 0 && (
+        <div>
+          <SectionHeader title={`${(rankings.data.ranking_type || "").split("_").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} · ${rankings.data.track === "condo" ? "Condos" : "Homes"}`} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {rankings.data.rankings.slice(0, 8).map((r: any, i: number) => (
+              <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 14px", border: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginRight: 8 }}>#{r.rank}</span>
+                  <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontWeight: 600, fontSize: 13, textDecoration: "none" }}>{r.entity_name}</a>
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {r.median_price && <span style={{ color: "#60a5fa", fontSize: 12, fontWeight: 600 }}>{fmt(r.median_price, "$")}</span>}
+                  {r.gross_yield && <span style={{ color: "#f59e0b", fontSize: 12 }}>{r.gross_yield.toFixed(1)}% yield</span>}
+                  {r.avg_dom && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 12 }}>{Math.round(r.avg_dom)}d DOM</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Rankings */}
+      {!sellerEstimate && rankings && rankings.type === "inventory" && (
+        <div>
+          {Object.entries(rankings.data.rankings || {}).map(([rankType, items]: [string, any]) => items.length > 0 && (
+            <div key={rankType} style={{ marginBottom: 16 }}>
+              <SectionHeader title={rankType.split("_").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {items.slice(0, 5).map((r: any, i: number) => (
+                  <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "8px 12px", border: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontSize: 13, textDecoration: "none" }}>{r.entity_name}</a>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      {r.median_price && <span style={{ color: "#60a5fa", fontSize: 12 }}>{fmt(r.median_price, "$")}</span>}
+                      {r.price_reduction_rate && <span style={{ color: "#ef4444", fontSize: 12 }}>{r.price_reduction_rate.toFixed(0)}% reduced</span>}
+                      {r.avg_dom && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 12 }}>{Math.round(r.avg_dom)}d DOM</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Price Trends */}
+      {!sellerEstimate && priceTrends && priceTrends.current_median_sale && (
+        <div>
+          <SectionHeader title="Price Trends" />
+          <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "14px", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+              <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Median Price</div><div style={{ color: "#60a5fa", fontWeight: 700, fontSize: 16 }}>{fmt(priceTrends.current_median_sale, "$")}</div></div>
+              {priceTrends.current_avg_psf && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Avg PSF</div><div style={{ color: "#fff", fontWeight: 600, fontSize: 15 }}>{fmt(priceTrends.current_avg_psf, "$")}/sqft</div></div>}
+              {priceTrends.psf_trend_pct != null && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>PSF Trend</div><div style={{ color: priceTrends.psf_trend_pct >= 0 ? "#10b981" : "#ef4444", fontWeight: 600, fontSize: 15 }}>{priceTrends.psf_trend_pct > 0 ? "+" : ""}{priceTrends.psf_trend_pct?.toFixed(1)}%</div></div>}
+              {priceTrends.current_median_lease && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Median Rent</div><div style={{ color: "#f59e0b", fontWeight: 600, fontSize: 15 }}>{fmt(priceTrends.current_median_lease, "$")}/mo</div></div>}
+            </div>
+          </div>
         </div>
       )}
 
