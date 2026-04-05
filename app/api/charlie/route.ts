@@ -1,4 +1,4 @@
-﻿// app/api/charlie/route.ts
+// app/api/charlie/route.ts
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
@@ -145,7 +145,7 @@ Use this data to answer building-specific questions immediately without calling 
         }
         geoAnalyticsContext = `
 
-CURRENT GEO ANALYTICS (pre-loaded for context — still call search_buildings, search_listings or other tools as needed):
+CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do not call get_market_analytics again):
 Market Condition: ${marketCondition} | Urgency: ${urgency} | Negotiation: ${negotiation}
 Median Sale Price: $${geoA.median_sale_price?.toLocaleString() || "N/A"} | Avg PSF: $${geoA.avg_psf?.toLocaleString() || "N/A"}
 Avg DOM: ${geoA.closed_avg_dom_90 || "N/A"} days | Months of Inventory: ${moi}
@@ -324,19 +324,19 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   if (name === 'resolve_geo') {
     const { data: muni } = await supabase
       .from('municipalities')
-      .select('id, name, slug, area_id, cover_photo_url')
+      .select('id, name, slug, area_id')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-      if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug, photo: muni.cover_photo_url || null }
+    if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug }
 
     const { data: comm } = await supabase
       .from('communities')
-      .select('id, name, slug, municipality_id, cover_photo_url')
+      .select('id, name, slug, municipality_id')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-      if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug, photo: comm.cover_photo_url || null }
+    if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug }
 
     const { data: area } = await supabase
       .from('treb_areas')
@@ -399,14 +399,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
     if (input.beds && input.beds > 0) params.set('beds', String(input.beds))
     if (input.baths && input.baths > 0) params.set('baths', String(input.baths))
     if (input.sort) params.set('sort', input.sort)
-      if (input.propertySubtype) params.set('propertySubtype', input.propertySubtype)
-      if (input.minSqft) params.set('minSqft', String(input.minSqft))
-      if (input.maxSqft) params.set('maxSqft', String(input.maxSqft))
-      if (input.hasParking) params.set('parking', '1')
-      if (input.hasLocker) params.set('locker', 'yes')
-      if (input.garage) params.set('garage', 'yes')
-      if (input.listedAfter) params.set('listedAfter', input.listedAfter)
-      if (input.soldOverAsking) params.set('soldOverAsking', 'yes')
+    if (input.propertySubtype) params.set('propertySubtype', input.propertySubtype)
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const res = await fetch(`${baseUrl}/api/geo-listings?${params.toString()}`)

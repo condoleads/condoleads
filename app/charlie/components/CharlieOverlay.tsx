@@ -1,4 +1,4 @@
-﻿// app/charlie/components/CharlieOverlay.tsx
+// app/charlie/components/CharlieOverlay.tsx
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { CharlieState } from '../hooks/useCharlie'

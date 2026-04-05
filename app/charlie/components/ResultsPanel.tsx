@@ -1,4 +1,4 @@
-﻿// app/charlie/components/ResultsPanel.tsx
+// app/charlie/components/ResultsPanel.tsx
 'use client'
 import { useState } from 'react'
 import dynamic from 'next/dynamic'
@@ -16,7 +16,7 @@ interface Props {
   analytics: any | null
   listingGroups: { label: string; listings: any[] }[]
   comparables: any[]
-  geoContext: { geoType: string; geoId: string; geoName: string; slug?: string | null; photo?: string | null } | null
+  geoContext: { geoType: string; geoId: string; geoName: string } | null
   plan?: any | null
   agent?: any | null
   onSendPlan?: () => void
@@ -128,17 +128,6 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         </div>
       )}
 
-      {/* Geo Area Header */}
-      {geoContext && geoContext.photo && (
-        <div style={{ borderRadius: 10, overflow: "hidden", marginBottom: 4, position: "relative", height: 120 }}>
-          <img src={geoContext.photo} alt={geoContext.geoName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 60%)" }} />
-          <div style={{ position: "absolute", bottom: 10, left: 14 }}>
-            <span style={{ color: "#fff", fontWeight: 800, fontSize: 18 }}>{geoContext.geoName}</span>
-          </div>
-        </div>
-      )}
-
       {/* Searched Buildings from Charlie tool */}
       {!sellerEstimate && searchedBuildings && searchedBuildings.length > 0 && (
         <div>
@@ -210,41 +199,6 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           ))}
         </div>
       )}
-      {/* Compare Geo */}
-      {!sellerEstimate && rankings && rankings.type === "compare_geo" && rankings.data && rankings.data.comparisons && rankings.data.comparisons.length > 0 && (
-        <div>
-          <SectionHeader title={"Comparing " + rankings.data.comparisons.length + " Areas"} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {rankings.data.comparisons.filter((c: any) => c.analytics).map((comp: any, i: number) => (
-              <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
-                <div style={{ padding: "10px 14px" }}>
-                  <a href={comp.url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>{comp.name}</a>
-                  <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
-                    {comp.analytics.median_sale_price > 0 && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>Median</div><div style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>{fmt(comp.analytics.median_sale_price, "$")}</div></div>}
-                    {comp.analytics.avg_psf > 0 && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>PSF</div><div style={{ color: "#fff", fontSize: 13 }}>{fmt(comp.analytics.avg_psf, "$")}/sqft</div></div>}
-                    {comp.analytics.closed_avg_dom_90 > 0 && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>DOM</div><div style={{ color: "#f59e0b", fontSize: 13 }}>{Math.round(comp.analytics.closed_avg_dom_90)}d</div></div>}
-                    {comp.analytics.months_of_inventory > 0 && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>Inventory</div><div style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>{comp.analytics.months_of_inventory.toFixed(1)} mo</div></div>}
-                    {comp.analytics.gross_rental_yield_pct > 0 && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>Yield</div><div style={{ color: "#10b981", fontSize: 13 }}>{comp.analytics.gross_rental_yield_pct.toFixed(1)}%</div></div>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Seasonal Intelligence */}
-      {!sellerEstimate && seasonalData && seasonalData.insight_seasonal && (
-        <div>
-          <SectionHeader title="Seasonal Intelligence" />
-          <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "14px", border: "1px solid rgba(255,255,255,0.08)" }}>
-            {seasonalData.insight_seasonal.best_months_to_buy && <div style={{ marginBottom: 10 }}><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Best to Buy</div><div style={{ color: "#10b981", fontSize: 13 }}>{Array.isArray(seasonalData.insight_seasonal.best_months_to_buy) ? seasonalData.insight_seasonal.best_months_to_buy.join(", ") : String(seasonalData.insight_seasonal.best_months_to_buy)}</div></div>}
-            {seasonalData.insight_seasonal.best_months_to_list && <div style={{ marginBottom: 10 }}><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Best to List</div><div style={{ color: "#f59e0b", fontSize: 13 }}>{Array.isArray(seasonalData.insight_seasonal.best_months_to_list) ? seasonalData.insight_seasonal.best_months_to_list.join(", ") : String(seasonalData.insight_seasonal.best_months_to_list)}</div></div>}
-            {seasonalData.insight_seasonal.summary && <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 12, lineHeight: 1.6 }}>{seasonalData.insight_seasonal.summary}</div>}
-          </div>
-        </div>
-      )}
-
 
       {/* Price Trends */}
       {!sellerEstimate && priceTrends && priceTrends.current_median_sale && (
