@@ -40,7 +40,13 @@ export const CHARLIE_TOOLS = [
         status: { type: 'string', enum: ['for-sale', 'for-lease', 'sold'] },
         propertySubtype: { type: 'string', description: 'e.g. Detached, Semi-Detached, Condo Apt, Condo Townhouse, Att/Row/Townhouse, Vacant Land' },
         limit: { type: 'number', description: 'Default 10' },
-        sort: { type: 'string', enum: ['price_asc', 'price_desc', 'newest', 'default'], description: 'Sort order. Use price_asc for lowest priced.' }
+        sort: { type: 'string', enum: ['price_asc', 'price_desc', 'newest', 'default'], description: 'Sort order. Use price_asc for lowest priced.' },
+        listedAfterDays: { type: 'number', description: 'Only show listings listed within this many days. Use 7 for new listings this week.' },
+        minSqft: { type: 'number', description: 'Minimum square footage' },
+        maxSqft: { type: 'number', description: 'Maximum square footage' },
+        hasParking: { type: 'boolean', description: 'Filter for listings with parking' },
+        hasLocker: { type: 'boolean', description: 'Filter for listings with locker' },
+        soldOverAsking: { type: 'boolean', description: 'Filter for listings that sold over asking price' }
       },
       required: ['geoType', 'geoId']
     }
@@ -72,6 +78,49 @@ export const CHARLIE_TOOLS = [
     }
   },
 
+
+  {
+    name: 'get_inventory_rankings',
+    description: 'Get areas ranked by inventory levels. Use when user asks which areas have most/least listings, where supply is highest/lowest, or fastest moving markets.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        parentGeoType: { type: 'string', enum: ['municipality', 'area'] },
+        parentGeoId: { type: 'string' },
+        track: { type: 'string', enum: ['condo', 'homes'] },
+        sort: { type: 'string', enum: ['most_inventory', 'least_inventory', 'fastest_moving'], description: 'Default most_inventory' },
+        limit: { type: 'number', description: 'Default 5' }
+      },
+      required: ['parentGeoType', 'parentGeoId', 'track']
+    }
+  },
+  {
+    name: 'get_seasonal_trends',
+    description: 'Get best months to buy or sell based on historical data. Use when user asks about timing, best season, spring vs fall market.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        geoType: { type: 'string', enum: ['municipality', 'community', 'area'] },
+        geoId: { type: 'string' },
+        track: { type: 'string', enum: ['condo', 'homes'] }
+      },
+      required: ['geoType', 'geoId', 'track']
+    }
+  },
+  {
+    name: 'get_building_directory',
+    description: 'List all condo buildings in an area. Use when user asks to see all buildings, browse buildings, or get a building directory.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        geoType: { type: 'string', enum: ['municipality', 'community'] },
+        geoId: { type: 'string' },
+        sort: { type: 'string', enum: ['price_asc', 'price_desc', 'newest', 'largest', 'active_count'], description: 'Default active_count' },
+        limit: { type: 'number', description: 'Default 10' }
+      },
+      required: ['geoType', 'geoId']
+    }
+  },
   {
     name: 'search_buildings',
     description: 'Search condo buildings by location and filters. Use when user asks about buildings, maintenance fees, building prices, or wants to compare buildings.',
