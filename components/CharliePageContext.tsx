@@ -9,12 +9,14 @@ interface Props {
   municipality_slug?: string | null
   area_id?: string | null
   area_slug?: string | null
+  neighbourhood_id?: string | null
+  neighbourhood_slug?: string | null
   listing_id?: string | null
 }
-export default function CharliePageContext({ building_id, building_slug, community_id, community_slug, municipality_id, municipality_slug, area_id, area_slug, listing_id }: Props) {
+export default function CharliePageContext({ building_id, building_slug, community_id, community_slug, municipality_id, municipality_slug, area_id, area_slug, neighbourhood_id, neighbourhood_slug, listing_id }: Props) {
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('charlie:pagecontext', {
-      detail: { building_id, building_slug, community_id, community_slug, municipality_id, municipality_slug, area_id, area_slug, listing_id }
+      detail: { building_id, building_slug, community_id, community_slug, municipality_id, municipality_slug, area_id, area_slug, neighbourhood_id, neighbourhood_slug, listing_id }
     }))
   }, [])
   return null

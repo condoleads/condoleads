@@ -258,6 +258,8 @@ export default async function NeighbourhoodPage({ params }: Props) {
           <CharliePageContext
             municipality_id={municipalityIds[0] || null}
             municipality_slug={municipalities[0]?.slug || null}
+            neighbourhood_id={neighbourhood.id}
+            neighbourhood_slug={neighbourhood.slug}
           />
         </div>
       )}
