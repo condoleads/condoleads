@@ -21,7 +21,7 @@ export interface CharlieState {
   messages: ChatMessage[]
   toolResults: ToolResult[]
   analytics: any | null
-  geoContext: { geoType: string; geoId: string; geoName: string } | null
+  geoContext: { geoType: string; geoId: string; geoName: string; slug?: string | null; photo?: string | null } | null
   listingGroups: { label: string; listings: any[] }[]
   comparables: any[]
   isStreaming: boolean
@@ -355,8 +355,8 @@ export function useCharlie() {
 
   const handleToolResult = (tool: ToolName, data: any) => {
     if (tool === 'resolve_geo' && data.geoId) {
-      geoContextRef.current = { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName }
-      setState(s => ({ ...s, geoContext: { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName } }))
+        geoContextRef.current = { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName, slug: data.slug || null, photo: data.photo || null }
+        setState(s => ({ ...s, geoContext: { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName, slug: data.slug || null, photo: data.photo || null } }))
     }
     if (tool === 'get_market_analytics' && data.analytics) {
       setState(s => ({ ...s, analytics: { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }, activePanel: 'results' }))

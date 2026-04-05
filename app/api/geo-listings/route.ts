@@ -30,6 +30,8 @@ export async function GET(request: NextRequest) {
   const basement = searchParams.get('basement')
   const parking = searchParams.get('parking')
   const locker = searchParams.get('locker')
+  const listedAfter = searchParams.get('listedAfter')
+  const soldOverAsking = searchParams.get('soldOverAsking')
 
   if (!geoType || !geoId || !tab) {
     return NextResponse.json({ error: 'Missing params' }, { status: 400 })
@@ -102,6 +104,8 @@ export async function GET(request: NextRequest) {
 
   // Locker (condos)
   if (locker === 'yes') query = query.eq('locker', 'Owned')
+  if (listedAfter) query = query.gte('listing_contract_date', listedAfter)
+  if (soldOverAsking === 'yes') query = query.filter('close_price', 'gt', 'list_price')
 
   // Sorting
   let orderField = isActive ? 'list_price' : 'close_date'
