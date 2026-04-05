@@ -105,7 +105,7 @@ NEIGHBOURHOOD RULES:
 SEARCH_BUILDINGS RULES:
 - ALWAYS call search_buildings tool when user asks about buildings, affordable buildings, or maintenance fees. NEVER answer from pre-loaded context alone.
 - The pre-loaded geo analytics does NOT contain building-level data. You MUST call search_buildings to get building names, prices and maintenance fees.
-- When on a geo page (geoType + geoId available in context), pass those directly to search_buildings without calling resolve_geo first.
+    "- If geoType and geoId are available in CURRENT GEO CONTEXT, pass them directly to search_buildings. If NOT available, call resolve_geo first to get the geoId, then call search_buildings."
 - When user asks about buildings, call get_market_analytics first (for area context), then search_buildings.
 - search_buildings is for building discovery queries only — NOT for buyer funnel queries which use search_listings.
 - When user asks about buildings, cheapest building, best building, maintenance fees — call search_buildings immediately.
