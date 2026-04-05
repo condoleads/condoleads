@@ -134,10 +134,10 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           <SectionHeader title={`Buildings Found · ${searchedBuildings.length}`} />
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {searchedBuildings.map((b, i) => (
-              <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "12px 14px", border: "1px solid rgba(255,255,255,0.08)" }}>
+              <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "row", alignItems: "flex-start", border: "1px solid rgba(255,255,255,0.08)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div style={{ flex: 1 }}>
-                    {b.photo && <img src={b.photo} alt={b.buildingName} style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 6, marginBottom: 8 }} />}
+                    {b.photo && <img src={b.photo} alt={b.buildingName} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, flexShrink: 0, marginRight: 12 }} />}
                     <a href={b.url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>{b.buildingName}</a>
                     {b.yearBuilt && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginLeft: 8 }}>Built {b.yearBuilt}</span>}
                   </div>
