@@ -251,6 +251,10 @@ export default function CharlieOverlay({
                 vipCreditUsed={state.vipCreditUsed}
                 vipCreditPlansUsed={state.vipCreditPlansUsed}
                 vipCreditTotal={state.vipCreditTotal}
+                  searchedBuildings={state.searchedBuildings || []}
+                  rankings={state.rankings || null}
+                  priceTrends={state.priceTrends || null}
+                  seasonalData={state.seasonalData || null}
               />
             </div>
           )}
