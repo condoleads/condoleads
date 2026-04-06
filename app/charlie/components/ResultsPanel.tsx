@@ -16,7 +16,7 @@ interface Props {
   analytics: any | null
   listingGroups: { label: string; listings: any[] }[]
   comparables: any[]
-  geoContext: { geoType: string; geoId: string; geoName: string } | null
+  geoContext: { geoType: string; geoId: string; geoName: string; slug?: string | null; photo?: string | null } | null
   plan?: any | null
   agent?: any | null
   onSendPlan?: () => void
@@ -71,6 +71,18 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       gap: 20,
       background: '#080f1a',
     }}>
+
+      {/* Geo Area Header */}
+      {geoContext && geoContext.photo && (
+        <div style={{ borderRadius: 10, overflow: "hidden", marginBottom: 8, position: "relative", height: 110, flexShrink: 0 }}>
+          <img src={geoContext.photo} alt={geoContext.geoName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 60%)" }} />
+          <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+            <span style={{ color: "#fff", fontWeight: 800, fontSize: 17, textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}>{geoContext.geoName}</span>
+            {geoContext.slug && <a href={"https://walliam.ca/" + geoContext.slug} target="_blank" rel="noopener noreferrer" style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, textDecoration: "none" }}>View all →</a>}
+          </div>
+        </div>
+      )}
 
       {/* Market snapshot */}
       {analytics && (
