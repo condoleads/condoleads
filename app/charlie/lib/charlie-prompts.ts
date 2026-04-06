@@ -103,8 +103,6 @@ NEIGHBOURHOOD RULES:
 - Call get_market_analytics with the municipality_id of the neighbourhood for market data
 
 SEARCH_BUILDINGS RULES:
-- When user asks about buildings, call get_market_analytics first (for area context), then search_buildings.
-- search_buildings is for building discovery queries only — NOT for buyer funnel queries which use search_listings.
 - When user asks about buildings, cheapest building, best building, maintenance fees — call search_buildings immediately.
 - Always include building URL in response: [Building Name](url)
 - Format each result: "[Building Name](url) — avg $XXX,XXX | $XXX psf | X active listings | built YYYY"

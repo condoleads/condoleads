@@ -530,7 +530,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
     if (communityIds.length === 0) return { buildings: [] }
     const { data: buildings } = await supabase
       .from('buildings')
-      .select('id, building_name, slug, canonical_address, year_built, total_units, cover_photo_url')
+      .select('id, building_name, slug, canonical_address, year_built, total_units')
       .in('community_id', communityIds)
       .limit(500)
     const bIds = (buildings || []).map((b: any) => b.id)
