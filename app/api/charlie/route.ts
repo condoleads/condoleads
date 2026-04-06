@@ -346,6 +346,15 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
       .single()
     if (area) return { geoType: 'area', geoId: area.id, geoName: area.name, slug: area.slug }
 
+      const { data: neighbourhood } = await supabase
+        .from('neighbourhoods')
+        .select('id, name, slug')
+        .ilike('name', '%' + input.query + '%')
+        .eq('is_active', true)
+        .limit(1)
+        .single()
+      if (neighbourhood) return { geoType: 'neighbourhood', geoId: neighbourhood.id, geoName: neighbourhood.name, slug: neighbourhood.slug, photo: null }
+
     return { error: 'Location not found', query: input.query }
   }
 
