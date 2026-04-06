@@ -445,6 +445,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         </div>
       )}
 
+
       {/* Empty state */}
       {!analytics && listingGroups.length === 0 && comparables.length === 0 && !sellerEstimate && (
         <div style={{
