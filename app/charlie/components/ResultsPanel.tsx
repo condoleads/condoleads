@@ -134,20 +134,22 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           <SectionHeader title={`Buildings Found · ${searchedBuildings.length}`} />
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {searchedBuildings.map((b, i) => (
-              <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "12px 14px", display: "flex", flexDirection: "row", alignItems: "flex-start", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ flex: 1 }}>
-                    {b.photo && <img src={b.photo} alt={b.buildingName} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, flexShrink: 0, marginRight: 12 }} />}
-                    <a href={b.url} target="_blank" rel="noopener noreferrer" style={{ color: "#fff", fontWeight: 700, fontSize: 14, textDecoration: "none" }}>{b.buildingName}</a>
-                    {b.yearBuilt && <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginLeft: 8 }}>Built {b.yearBuilt}</span>}
+             <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
+                {b.photo && <img src={b.photo} alt={b.buildingName} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                    <div>
+                      <a href={b.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none' }}>{b.buildingName}</a>
+                      {b.yearBuilt && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginLeft: 8 }}>Built {b.yearBuilt}</span>}
+                    </div>
+                    {b.activeCount > 0 && <span style={{ background: '#10b981', color: '#fff', borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 700, flexShrink: 0, marginLeft: 8 }}>{b.activeCount} active</span>}
                   </div>
-                  {b.activeCount > 0 && <span style={{ background: "#10b981", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{b.activeCount} active</span>}
-                </div>
-                <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
-                  {b.medianPrice > 0 && <span style={{ color: "#60a5fa", fontSize: 13, fontWeight: 600 }}>{fmt(b.medianPrice, "$")}</span>}
-                  {b.medianPsf > 0 && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>{fmt(b.medianPsf, "$")}/sqft</span>}
-                  {b.maintenanceFee > 0 && <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}>Maint {fmt(b.maintenanceFee, "$")}/mo</span>}
-                  {b.rentalYield > 0 && <span style={{ color: "#f59e0b", fontSize: 12 }}>{b.rentalYield.toFixed(1)}% yield</span>}
+                  <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
+                    {b.medianPrice > 0 && <span style={{ color: '#60a5fa', fontSize: 13, fontWeight: 600 }}>{fmt(b.medianPrice, '$')}</span>}
+                    {b.medianPsf > 0 && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>{fmt(b.medianPsf, '$')}/sqft</span>}
+                    {b.maintenanceFee > 0 && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Maint {fmt(b.maintenanceFee, '$')}/mo</span>}
+                    {b.rentalYield > 0 && <span style={{ color: '#f59e0b', fontSize: 12 }}>{b.rentalYield.toFixed(1)}% yield</span>}
+                  </div>
                 </div>
               </div>
             ))}
