@@ -337,44 +337,6 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         </div>
       )}
 
-      {/* Buyer listings */}
-      {listingGroups.map((group, gi) => (
-        <div key={gi}>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12, paddingTop: gi > 0 ? 8 : 0, borderTop: gi > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-            {group.label} · {group.listings.length} found
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {group.listings.map((listing) => {
-              const url = listing._slug || ('/' + (listing.listing_key || '').toLowerCase())
-              return (
-                <div key={listing.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px', display: 'flex', gap: 14, alignItems: 'center', cursor: 'pointer' }}
-                  onClick={() => window.open(url, '_blank')}>
-                  <div style={{ width: 72, height: 72, borderRadius: 10, background: 'rgba(255,255,255,0.08)', flexShrink: 0, overflow: 'hidden' }}>
-                    {(listing.media?.[0]?.media_url || listing.media?.[0]?.url) && (
-                      <img src={listing.media[0].media_url || listing.media[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    )}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 3 }}>
-                      {listing.close_price ? '$' + listing.close_price.toLocaleString() : '$' + (listing.list_price?.toLocaleString() || '—')}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {listing.unparsed_address}
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
-                      {listing.bedrooms_total && <span>{listing.bedrooms_total} bed</span>}
-                      {listing.bathrooms_total_integer && <span>{listing.bathrooms_total_integer} bath</span>}
-                      {listing.property_subtype && <span style={{ color: 'rgba(255,255,255,0.2)' }}>{listing.property_subtype}</span>}
-                    </div>
-                  </div>
-                  <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, flexShrink: 0 }}>→</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      ))}
-
       {/* VIP Credit Announcement — registered users only */}
       {vipCreditUsed && plan?.planReady && (
         <div style={{
@@ -444,6 +406,44 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           </p>
         </div>
       )}
+
+      {/* Buyer listings */}
+      {listingGroups.map((group, gi) => (
+        <div key={gi}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12, paddingTop: gi > 0 ? 8 : 0, borderTop: gi > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+            {group.label} · {group.listings.length} found
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {group.listings.map((listing) => {
+              const url = listing._slug || ('/' + (listing.listing_key || '').toLowerCase())
+              return (
+                <div key={listing.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px', display: 'flex', gap: 14, alignItems: 'center', cursor: 'pointer' }}
+                  onClick={() => window.open(url, '_blank')}>
+                  <div style={{ width: 72, height: 72, borderRadius: 10, background: 'rgba(255,255,255,0.08)', flexShrink: 0, overflow: 'hidden' }}>
+                    {(listing.media?.[0]?.media_url || listing.media?.[0]?.url) && (
+                      <img src={listing.media[0].media_url || listing.media[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 3 }}>
+                      {listing.close_price ? '$' + listing.close_price.toLocaleString() : '$' + (listing.list_price?.toLocaleString() || '—')}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {listing.unparsed_address}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+                      {listing.bedrooms_total && <span>{listing.bedrooms_total} bed</span>}
+                      {listing.bathrooms_total_integer && <span>{listing.bathrooms_total_integer} bath</span>}
+                      {listing.property_subtype && <span style={{ color: 'rgba(255,255,255,0.2)' }}>{listing.property_subtype}</span>}
+                    </div>
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, flexShrink: 0 }}>→</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
 
       {/* Empty state */}
       {!analytics && listingGroups.length === 0 && comparables.length === 0 && !sellerEstimate && (
