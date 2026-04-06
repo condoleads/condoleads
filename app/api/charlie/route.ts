@@ -145,7 +145,7 @@ Use this data to answer building-specific questions immediately without calling 
         }
         geoAnalyticsContext = `
 
-CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do not call get_market_analytics again):
+CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do NOT call get_market_analytics again — but DO still call search_buildings, search_listings and all other tools as needed):
 Market Condition: ${marketCondition} | Urgency: ${urgency} | Negotiation: ${negotiation}
 Median Sale Price: $${geoA.median_sale_price?.toLocaleString() || "N/A"} | Avg PSF: $${geoA.avg_psf?.toLocaleString() || "N/A"}
 Avg DOM: ${geoA.closed_avg_dom_90 || "N/A"} days | Months of Inventory: ${moi}
@@ -324,27 +324,27 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   if (name === 'resolve_geo') {
     const { data: muni } = await supabase
       .from('municipalities')
-      .select('id, name, slug, area_id')
+      .select('id, name, slug, area_id, cover_photo_url')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-    if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug }
+      if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug, photo: muni.cover_photo_url || null }
 
     const { data: comm } = await supabase
       .from('communities')
-      .select('id, name, slug, municipality_id')
+      .select('id, name, slug, municipality_id, cover_photo_url')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-    if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug }
+      if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug, photo: comm.cover_photo_url || null }
 
     const { data: area } = await supabase
       .from('treb_areas')
-      .select('id, name, slug')
+      .select('id, name, slug, cover_photo_url')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-    if (area) return { geoType: 'area', geoId: area.id, geoName: area.name, slug: area.slug }
+      if (area) return { geoType: 'area', geoId: area.id, geoName: area.name, slug: area.slug, photo: area.cover_photo_url || null }
 
     return { error: 'Location not found', query: input.query }
   }
