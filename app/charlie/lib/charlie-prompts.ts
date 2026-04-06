@@ -106,6 +106,7 @@ SEARCH_BUILDINGS RULES:
 - When user asks about buildings, call resolve_geo to get geoId if not already known, then call search_buildings immediately. Do not wait for get_market_analytics.
 - When user mentions a neighbourhood + city (e.g. "Downtown Toronto", "Scarborough Toronto"), call resolve_geo with ONLY the neighbourhood name (e.g. "Downtown", "Scarborough") — not the full phrase.
 - GTA neighbourhood names: Downtown, Midtown, North York, East End, East York, Scarborough, West End, Etobicoke, York Crosstown.
+- When resolve_geo returns a geoName, always use that exact name in your response. Never reference internal municipality codes like "Toronto E02", "Toronto C01" etc.
 - search_buildings is for building discovery queries only — NOT for buyer funnel queries which use search_listings.
 - When user asks about buildings, cheapest building, best building, maintenance fees — call search_buildings immediately.
 - Always include building URL in response: [Building Name](url)
