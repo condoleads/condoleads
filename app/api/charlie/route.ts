@@ -145,7 +145,7 @@ Use this data to answer building-specific questions immediately without calling 
         }
         geoAnalyticsContext = `
 
-CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do NOT call get_market_analytics again but DO still call search_listings, search_buildings and other tools as needed):
+CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do not call get_market_analytics again):
 Market Condition: ${marketCondition} | Urgency: ${urgency} | Negotiation: ${negotiation}
 Median Sale Price: $${geoA.median_sale_price?.toLocaleString() || "N/A"} | Avg PSF: $${geoA.avg_psf?.toLocaleString() || "N/A"}
 Avg DOM: ${geoA.closed_avg_dom_90 || "N/A"} days | Months of Inventory: ${moi}

@@ -337,30 +337,6 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         </div>
       )}
 
-      {/* VIP Credit Announcement — registered users only */}
-      {vipCreditUsed && plan?.planReady && (
-        <div style={{
-          background: 'linear-gradient(135deg, rgba(29,78,216,0.15), rgba(79,70,229,0.15))',
-          border: '1px solid rgba(99,102,241,0.4)',
-          borderRadius: 12,
-          padding: '12px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-        }}>
-          <span style={{ fontSize: 18 }}>✦</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc' }}>
-              VIP Access Credit Used
-            </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
-              {vipCreditPlansUsed} of {vipCreditTotal} plan{(vipCreditTotal || 1) > 1 ? 's' : ''} used · Request more from your agent
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Plan */}
       {/* Buyer listings */}
       {listingGroups.map((group, gi) => (
         <div key={gi}>
@@ -399,6 +375,30 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         </div>
       ))}
 
+      {/* VIP Credit Announcement — registered users only */}
+      {vipCreditUsed && plan?.planReady && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(29,78,216,0.15), rgba(79,70,229,0.15))',
+          border: '1px solid rgba(99,102,241,0.4)',
+          borderRadius: 12,
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+        }}>
+          <span style={{ fontSize: 18 }}>✦</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc' }}>
+              VIP Access Credit Used
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+              {vipCreditPlansUsed} of {vipCreditTotal} plan{(vipCreditTotal || 1) > 1 ? 's' : ''} used · Request more from your agent
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Plan */}
       {plan?.planReady && (
         <PlanDocument
           {...(plan.type === 'buyer' ? {
