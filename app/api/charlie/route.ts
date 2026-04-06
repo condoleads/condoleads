@@ -338,6 +338,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
       .limit(1)
       .single()
       if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug, photo: muni.cover_photo_url || null }
+    console.log('[resolve_geo] no muni match for:', input.query)
 
     const { data: comm } = await supabase
       .from('communities')
@@ -527,6 +528,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
 
   if (name === 'search_buildings') {
+    console.log('[search_buildings] input:', JSON.stringify(input))
     const { geoType, geoId, sort = 'active_count', limit = 5 } = input
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
     let communityIds: string[] = []
