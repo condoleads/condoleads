@@ -519,7 +519,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
   if (name === 'search_buildings') {
     const { geoType, geoId, sort = 'active_count', limit = 5 } = input
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const baseUrl = 'https://walliam.ca'
     let communityIds: string[] = []
     if (geoType === 'municipality') {
       const { data: comms } = await supabase.from('communities').select('id').eq('municipality_id', geoId)
@@ -556,7 +556,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   if (name === 'compare_geo') {
     const { geoIds, geoType, track = 'condo' } = input
     if (!geoIds || !Array.isArray(geoIds)) return { error: 'geoIds array required' }
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const baseUrl = 'https://walliam.ca'
     const comparisons = await Promise.all(geoIds.map(async (id: string) => {
       const { data: analytics } = await supabase
         .from('geo_analytics')
@@ -605,7 +605,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
   if (name === 'get_investment_rankings') {
     const { parentGeoType, parentGeoId, track = 'condo', rankingType = 'best_yield' } = input
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const baseUrl = 'https://walliam.ca'
     const { data } = await supabase
       .from('geo_rankings')
       .select('ranking_type, ranked_entity, results')
@@ -621,7 +621,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
   if (name === 'get_inventory_rankings') {
     const { parentGeoType, parentGeoId, track = 'condo' } = input
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const baseUrl = 'https://walliam.ca'
     const { data } = await supabase
       .from('geo_rankings')
       .select('ranking_type, ranked_entity, results')
@@ -661,7 +661,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
   if (name === 'get_building_directory') {
     const { geoType, geoId, limit = 20 } = input
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const baseUrl = 'https://walliam.ca'
     let communityIds: string[] = []
     if (geoType === 'municipality') {
       const { data: comms } = await supabase.from('communities').select('id').eq('municipality_id', geoId)
