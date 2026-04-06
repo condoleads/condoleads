@@ -324,19 +324,19 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   if (name === 'resolve_geo') {
     const { data: muni } = await supabase
       .from('municipalities')
-      .select('id, name, slug, area_id, cover_photo_url')
+      .select('id, name, slug, area_id')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-      if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug, photo: muni.cover_photo_url || null }
+    if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug }
 
     const { data: comm } = await supabase
       .from('communities')
-      .select('id, name, slug, municipality_id, cover_photo_url')
+      .select('id, name, slug, municipality_id')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-      if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug, photo: comm.cover_photo_url || null }
+    if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug }
 
     const { data: area } = await supabase
       .from('treb_areas')
