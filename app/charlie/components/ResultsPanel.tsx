@@ -410,7 +410,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             bedrooms: plan.bedrooms,
             timeline: plan.timeline,
             analytics,
-            listings: [], // shown separately as cards below
+            listings: listingGroups.flatMap(g => g.listings),
             agent: agent ? { name: agent.full_name, email: agent.email, phone: agent.cell_phone, photo: agent.profile_photo_url, brokerage: agent.brokerage_name, title: agent.title } : undefined,
             onSendPlan: onSendPlan || (() => {}),
             leadCaptured: leadCaptured || false,
@@ -444,7 +444,6 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           </p>
         </div>
       )}
-
 
       {/* Empty state */}
       {!analytics && listingGroups.length === 0 && comparables.length === 0 && !sellerEstimate && (
