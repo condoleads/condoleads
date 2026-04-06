@@ -103,6 +103,8 @@ NEIGHBOURHOOD RULES:
 - Call get_market_analytics with the municipality_id of the neighbourhood for market data
 
 SEARCH_BUILDINGS RULES:
+- CRITICAL: geoId must ALWAYS be a UUID from resolve_geo tool result. NEVER use city names, slugs or guessed values as geoId.
+- If you do not have a UUID geoId, call resolve_geo first before any other tool.
 - When user asks about buildings, call get_market_analytics first (for area context), then search_buildings.
 - When user mentions a neighbourhood + city (e.g. "Downtown Toronto", "Scarborough Toronto"), call resolve_geo with ONLY the neighbourhood name (e.g. "Downtown", "Scarborough") — not the full phrase.
 - GTA neighbourhood names: Downtown, Midtown, North York, East End, East York, Scarborough, West End, Etobicoke, York Crosstown.
