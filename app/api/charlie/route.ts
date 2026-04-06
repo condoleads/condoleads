@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   const geoReminder = geoContext ? `
 
-CURRENT PAGE GEO CONTEXT (use these values ONLY if user is asking about , otherwise call resolve_geo for the requested area):
+CURRENT GEO CONTEXT - use these EXACT values in ALL tool calls:
 geoType: ${geoContext.geoType}
 geoId: ${geoContext.geoId}
 geoName: ${geoContext.geoName}
@@ -322,38 +322,29 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   const supabase = createServiceClient()
 
   if (name === 'resolve_geo') {
-    const { data: neighbourhood } = await supabase
-      .from('neighbourhoods')
-      .select('id, name, slug')
-      .ilike('name', '%' + input.query + '%')
-      .eq('is_active', true)
-      .limit(1)
-      .maybeSingle()
-    if (neighbourhood) return { geoType: 'neighbourhood', geoId: neighbourhood.id, geoName: neighbourhood.name, slug: neighbourhood.slug, photo: null }
-
     const { data: muni } = await supabase
       .from('municipalities')
-      .select('id, name, slug, area_id, cover_photo_url')
+      .select('id, name, slug, area_id')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-      if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug, photo: muni.cover_photo_url || null }
+    if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug }
 
     const { data: comm } = await supabase
       .from('communities')
-      .select('id, name, slug, municipality_id, cover_photo_url')
+      .select('id, name, slug, municipality_id')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-      if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug, photo: comm.cover_photo_url || null }
+    if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug }
 
     const { data: area } = await supabase
       .from('treb_areas')
-      .select('id, name, slug, cover_photo_url')
+      .select('id, name, slug')
       .ilike('name', `%${input.query}%`)
       .limit(1)
       .single()
-      if (area) return { geoType: 'area', geoId: area.id, geoName: area.name, slug: area.slug, photo: area.cover_photo_url || null }
+    if (area) return { geoType: 'area', geoId: area.id, geoName: area.name, slug: area.slug }
 
     return { error: 'Location not found', query: input.query }
   }
