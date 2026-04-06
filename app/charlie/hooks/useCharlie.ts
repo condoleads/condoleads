@@ -363,7 +363,7 @@ export function useCharlie() {
         analyticsRef.current = data.analytics
     }
     if (tool === 'search_listings' && data.listings) {
-      setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
+      setState(s => ({ ...s, searchedBuildings: [], rankings: null, comparables: [], listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
     }
     if (tool === 'generate_plan' && data.planReady) {
       setState(s => ({ ...s, planReady: true, plan: data, activePanel: 'results' }))
@@ -400,7 +400,7 @@ export function useCharlie() {
         yearBuilt: b.year_built || null,
         url: b.url || null,
       }))
-      setState(s => ({ ...s, searchedBuildings: mapped, activePanel: 'results' }))
+      setState(s => ({ ...s, listingGroups: [], comparables: [], rankings: null, searchedBuildings: mapped, activePanel: 'results' }))
     }
     if (tool === 'get_building_directory' && data.buildings) {
       const mapped = (data.buildings || []).map((b: any) => ({
