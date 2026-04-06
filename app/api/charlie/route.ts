@@ -328,7 +328,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
       .ilike('name', '%' + input.query + '%')
       .eq('is_active', true)
       .limit(1)
-      .single()
+      .maybeSingle()
     if (neighbourhood) return { geoType: 'neighbourhood', geoId: neighbourhood.id, geoName: neighbourhood.name, slug: neighbourhood.slug, photo: null }
 
     const { data: muni } = await supabase
