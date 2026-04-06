@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   const geoReminder = geoContext ? `
 
-CURRENT GEO CONTEXT - use these EXACT values in ALL tool calls:
+CURRENT PAGE GEO CONTEXT (use these values ONLY if user is asking about , otherwise call resolve_geo for the requested area):
 geoType: ${geoContext.geoType}
 geoId: ${geoContext.geoId}
 geoName: ${geoContext.geoName}
