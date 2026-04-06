@@ -215,7 +215,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       )}
 
       {/* Community Buildings - condo buyer */}
-      {!sellerEstimate && communityBuildings && (communityBuildings.affordable.length > 0 || communityBuildings.premium.length > 0) && (
+      {!sellerEstimate && !(searchedBuildings && searchedBuildings.length > 0) && communityBuildings && (communityBuildings.affordable.length > 0 || communityBuildings.premium.length > 0) && (
         <div>
           {communityBuildings.affordable.length > 0 && (
             <>
