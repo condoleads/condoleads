@@ -103,7 +103,7 @@ NEIGHBOURHOOD RULES:
 - Call get_market_analytics with the municipality_id of the neighbourhood for market data
 
 SEARCH_BUILDINGS RULES:
-- When user asks about buildings, call get_market_analytics first (for area context), then search_buildings.
+- When user asks about buildings, call resolve_geo to get geoId if not already known, then call search_buildings immediately. Do not wait for get_market_analytics.
 - search_buildings is for building discovery queries only — NOT for buyer funnel queries which use search_listings.
 - When user asks about buildings, cheapest building, best building, maintenance fees — call search_buildings immediately.
 - Always include building URL in response: [Building Name](url)
