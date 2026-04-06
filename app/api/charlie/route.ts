@@ -145,7 +145,7 @@ Use this data to answer building-specific questions immediately without calling 
         }
         geoAnalyticsContext = `
 
-CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do NOT call get_market_analytics again — but ALWAYS still call search_listings for buyer queries and search_buildings for building queries):
+CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do not call get_market_analytics again):
 Market Condition: ${marketCondition} | Urgency: ${urgency} | Negotiation: ${negotiation}
 Median Sale Price: $${geoA.median_sale_price?.toLocaleString() || "N/A"} | Avg PSF: $${geoA.avg_psf?.toLocaleString() || "N/A"}
 Avg DOM: ${geoA.closed_avg_dom_90 || "N/A"} days | Months of Inventory: ${moi}
@@ -322,15 +322,6 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   const supabase = createServiceClient()
 
   if (name === 'resolve_geo') {
-    const { data: neighbourhood } = await supabase
-      .from('neighbourhoods')
-      .select('id, name, slug')
-      .ilike('name', '%' + input.query + '%')
-      .eq('is_active', true)
-      .limit(1)
-      .single()
-    if (neighbourhood) return { geoType: 'neighbourhood', geoId: neighbourhood.id, geoName: neighbourhood.name, slug: neighbourhood.slug, photo: null }
-
     const { data: muni } = await supabase
       .from('municipalities')
       .select('id, name, slug, area_id')
