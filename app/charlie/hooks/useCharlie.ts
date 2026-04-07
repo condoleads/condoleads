@@ -223,7 +223,7 @@ export function useCharlie() {
       ...s,
       sellerEstimate: data,
       activePanel: 'results',
-      analytics: data.marketAnalytics || s.analytics,
+      analytics: data.marketAnalytics ? [...s.analytics, { ...data.marketAnalytics }] : s.analytics,
       geoContext: data.analyticsGeoType ? { geoType: data.analyticsGeoType, geoId: data.analyticsGeoId, geoName: data.buildingName || '' } : s.geoContext
     }))
   }, [])
