@@ -71,7 +71,6 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       background: '#080f1a',
     }}>
 
-      {/* DEBUG - remove after fix */}<div style={{fontSize:10,color:"#666",padding:"4px 8px"}}>{(blocks||[]).map((b,i)=>`${i}:${b.type}`).join(" | ")}</div>
       {/* Conversation blocks - rendered in conversation order, never overwritten */}
       {(blocks || []).map((block: any, _bi: number) => {
 
