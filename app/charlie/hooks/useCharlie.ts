@@ -11,6 +11,7 @@ export type ConversationBlock =
   | { type: 'priceTrends'; data: any }
   | { type: 'sellerEstimate'; data: any; analyticsSnapshot: any | null; geoName: string }
   | { type: 'comparables'; listings: any[]; intent: string }
+  | { type: 'plan'; data: any; analyticsSnapshot: any; listingsSnapshot: any[]; geoContext: any }
 
 export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables' | 'generate_plan' | 'search_buildings' | 'compare_geo' | 'get_price_trends' | 'get_investment_rankings' | 'get_inventory_rankings' | 'get_seasonal_trends' | 'get_building_directory'
 
@@ -378,7 +379,7 @@ export function useCharlie() {
       setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], blocks: [...s.blocks, { type: 'listings', label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
     }
     if (tool === 'generate_plan' && data.planReady) {
-      setState(s => ({ ...s, planReady: true, plan: data, activePanel: 'results' }))
+      setState(s => ({ ...s, planReady: true, plan: data, blocks: [...s.blocks, { type: 'plan', data, analyticsSnapshot: analyticsRef.current, listingsSnapshot: stateRef.current.listingGroups.flatMap(g => g.listings), geoContext: stateRef.current.geoContext }], activePanel: 'results' }))
         fetch('/api/charlie/plan-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
