@@ -28,7 +28,7 @@ export default function CharlieOverlay({
   onSellerEstimate, onSetGeoContext,
   onLeadCaptured, onRequestVip, onDismissGate, onOpenRegister
 }: Props) {
-  const hasResults = state.analytics.length > 0 || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate || (state.searchedBuildings?.length > 0) || state.rankings.length > 0 || state.priceTrends.length > 0 || !!state.seasonalData
+  const hasResults = (state.blocks || []).length > 0 || state.analytics.length > 0 || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate || (state.searchedBuildings?.length > 0) || state.rankings.length > 0 || state.priceTrends.length > 0 || !!state.seasonalData
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>(
     state.initialForm === 'buyer' ? 'buyer' : state.initialForm === 'seller' ? 'seller' : 'none'
   )
@@ -255,6 +255,7 @@ export default function CharlieOverlay({
                   rankings={state.rankings || []}
                   priceTrends={state.priceTrends || []}
                   seasonalData={state.seasonalData || []}
+                  blocks={state.blocks || []}
               />
             </div>
           )}
