@@ -104,10 +104,10 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                   ))}
                 </div>
               </div>
-              <div>
+              {!(blocks||[]).some((b) => b.type === 'sellerEstimate') && (<div>
                 <SectionHeader title="Buyer Intelligence" />
                 <BuyerOfferBlock analytics={a} propertyType={a.track} geoName={block.geoName} />
-              </div>
+              </div>)}
             </div>
           )
         }
@@ -323,22 +323,22 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                   )}
                 </div>
               )}
-              {se?.comparables && se.comparables.length > 0 && (
-                <div>
-                  <SectionHeader title={`Comparable Sold · ${se.comparables.length} found`} />
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {se.comparables.map((c: any, i: number) => (
-                      <ComparableCard key={c.listingKey || i} comparable={c} isLease={se.intent === 'lease'} />
-                    ))}
-                  </div>
-                </div>
-              )}
+
+
+
+
+
+
+
+
+
+
             </div>
           )
         }
 
         /* ── COMPARABLES (standalone, non-seller) ── */
-        if (block.type === 'comparables') return (
+        if (block.type === 'comparables') { if ((blocks||[]).some((b) => b.type === 'sellerEstimate')) return null; return (
           <div key={_bi}>
             <SectionHeader title={`Comparable Sold · ${block.listings.length} found`} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -347,7 +347,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
               ))}
             </div>
           </div>
-        )
+          ) }
 
         return null
       })}
