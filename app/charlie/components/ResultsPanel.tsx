@@ -353,7 +353,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         if (block.type === 'plan') {
           const p = block.data
           const aSnap = block.analyticsSnapshot
-          const lSnap = block.listingsSnapshot || []
+          const lSnap = listingGroups.flatMap((g) => g.listings)
           const gc = block.geoContext
           return (
             <div key={_bi}>
