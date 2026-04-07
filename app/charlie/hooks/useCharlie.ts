@@ -20,7 +20,7 @@ export interface ToolResult {
 export interface CharlieState {
   messages: ChatMessage[]
   toolResults: ToolResult[]
-  analytics: any | null
+  analytics: any[]
   geoContext: { geoType: string; geoId: string; geoName: string } | null
   listingGroups: { label: string; listings: any[] }[]
   comparables: any[]
@@ -37,8 +37,8 @@ export interface CharlieState {
   sellerProfile: any
   sellerEstimate: any | null
   searchedBuildings: any[]
-  rankings: any | null
-  priceTrends: any | null
+  rankings: any[]
+  priceTrends: any[]
   seasonalData: any | null
   // WALLiam session
   sessionId: string | null
@@ -61,10 +61,10 @@ export interface CharlieState {
 const INITIAL_STATE: CharlieState = {
   messages: [],
   toolResults: [],
-  analytics: null,
+  analytics: [],
   searchedBuildings: [],
-  rankings: null,
-  priceTrends: null,
+  rankings: [],
+  priceTrends: [],
   seasonalData: null,
   geoContext: null,
   listingGroups: [],
@@ -359,7 +359,7 @@ export function useCharlie() {
       setState(s => ({ ...s, geoContext: { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName } }))
     }
     if (tool === 'get_market_analytics' && data.analytics) {
-      setState(s => ({ ...s, analytics: { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }, activePanel: 'results' }))
+        setState(s => ({ ...s, analytics: [...s.analytics, { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }], activePanel: 'results' }))
         analyticsRef.current = data.analytics
     }
     if (tool === 'search_listings' && data.listings) {
@@ -400,7 +400,7 @@ export function useCharlie() {
         yearBuilt: b.year_built || null,
         url: b.url || null,
       }))
-      setState(s => ({ ...s, searchedBuildings: mapped, activePanel: 'results' }))
+        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, ...mapped], activePanel: 'results' }))
     }
     if (tool === 'get_building_directory' && data.buildings) {
       const mapped = (data.buildings || []).map((b: any) => ({
@@ -411,22 +411,22 @@ export function useCharlie() {
         activeCount: 0,
         url: b.url || null,
       }))
-      setState(s => ({ ...s, searchedBuildings: mapped, activePanel: 'results' }))
+        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, ...mapped], activePanel: 'results' }))
     }
     if (tool === 'compare_geo' && data.comparisons) {
-      setState(s => ({ ...s, rankings: { type: 'compare_geo', data }, activePanel: 'results' }))
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'compare_geo', data }], activePanel: 'results' }))
     }
     if (tool === 'get_price_trends' && data.price_trend_monthly) {
-      setState(s => ({ ...s, priceTrends: data, activePanel: 'results' }))
+        setState(s => ({ ...s, priceTrends: [...s.priceTrends, data], activePanel: 'results' }))
     }
     if (tool === 'get_investment_rankings' && data.rankings) {
-      setState(s => ({ ...s, rankings: { type: 'investment', data }, activePanel: 'results' }))
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'investment', data }], activePanel: 'results' }))
     }
     if (tool === 'get_inventory_rankings' && data.rankings) {
-      setState(s => ({ ...s, rankings: { type: 'inventory', data }, activePanel: 'results' }))
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'inventory', data }], activePanel: 'results' }))
     }
     if (tool === 'get_seasonal_trends' && data.insight_seasonal) {
-      setState(s => ({ ...s, rankings: { type: 'seasonal', data }, activePanel: 'results' }))
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'seasonal', data }], activePanel: 'results' }))
     }
     if (tool === 'get_comparables' && data.listings) {
       setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), activePanel: 'results' }))

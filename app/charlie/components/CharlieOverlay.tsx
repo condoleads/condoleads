@@ -28,7 +28,7 @@ export default function CharlieOverlay({
   onSellerEstimate, onSetGeoContext,
   onLeadCaptured, onRequestVip, onDismissGate, onOpenRegister
 }: Props) {
-  const hasResults = !!state.analytics || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate || (state.searchedBuildings?.length > 0) || !!state.rankings || !!state.priceTrends || !!state.seasonalData
+  const hasResults = state.analytics.length > 0 || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate || (state.searchedBuildings?.length > 0) || state.rankings.length > 0 || state.priceTrends.length > 0 || !!state.seasonalData
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>(
     state.initialForm === 'buyer' ? 'buyer' : state.initialForm === 'seller' ? 'seller' : 'none'
   )
@@ -48,7 +48,7 @@ export default function CharlieOverlay({
   useEffect(() => {
     const geo = state.geoContext
     if (!geo) return
-    if (state.analytics?.track === 'homes') {
+    if (state.analytics[state.analytics.length-1]?.track === 'homes') {
       setCommunityBuildings({ affordable: [], premium: [] })
       prevGeoId.current = ''
       return
@@ -62,7 +62,7 @@ export default function CharlieOverlay({
     }).then(r => r.json()).then(d => {
       if (d.success) setCommunityBuildings({ affordable: d.affordable, premium: d.premium })
     }).catch(console.error)
-  }, [state.geoContext?.geoId, state.analytics?.track])
+  }, [state.geoContext?.geoId, state.analytics[state.analytics.length-1]?.track])
 
   return (
     <div style={{
@@ -252,9 +252,9 @@ export default function CharlieOverlay({
                 vipCreditPlansUsed={state.vipCreditPlansUsed}
                 vipCreditTotal={state.vipCreditTotal}
                   searchedBuildings={state.searchedBuildings || []}
-                  rankings={state.rankings || null}
-                  priceTrends={state.priceTrends || null}
-                  seasonalData={state.seasonalData || null}
+                  rankings={state.rankings || []}
+                  priceTrends={state.priceTrends || []}
+                  seasonalData={state.seasonalData || []}
               />
             </div>
           )}

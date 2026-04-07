@@ -13,7 +13,7 @@ import BuildingCard from './BuildingCard'
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
 interface Props {
-  analytics: any | null
+  analytics: any[]
   listingGroups: { label: string; listings: any[] }[]
   comparables: any[]
   geoContext: { geoType: string; geoId: string; geoName: string } | null
@@ -30,8 +30,8 @@ interface Props {
   vipCreditPlansUsed?: number
   vipCreditTotal?: number
   searchedBuildings?: any[]
-  rankings?: any | null
-  priceTrends?: any | null
+  rankings: any[]
+  priceTrends: any[]
   seasonalData?: any | null
 }
 
@@ -73,13 +73,13 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
     }}>
 
       {/* Market snapshot */}
-      {analytics && (
-        <div>
+      {analytics.map((a, _ai) => (
+        <div key={_ai}>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
             Market Intelligence · {geoContext?.geoName}
           </div>
           {(() => {
-            const cond = marketConditionLabel(analytics.sale_to_list_ratio, analytics.closed_avg_dom_90)
+            const cond = marketConditionLabel(a.sale_to_list_ratio, a.closed_avg_dom_90)
             return (
               <div style={{ marginBottom: 16 }}>
                 <div style={{
@@ -93,12 +93,12 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                   {[
-                    { label: 'Median PSF', value: fmt(analytics.median_psf, '$'), color: '#3b82f6' },
-                    { label: 'Avg DOM', value: fmt(analytics.closed_avg_dom_90, '', 'd'), color: '#6366f1' },
-                    { label: 'Sale/List', value: fmt(analytics.sale_to_list_ratio, '', '%'), color: '#10b981' },
-                    { label: 'Active', value: fmt(analytics.active_count), color: '#8b5cf6' },
-                    { label: 'Sold 90d', value: fmt(analytics.closed_sale_count_90), color: '#ec4899' },
-                    { label: 'Absorption', value: fmt(analytics.absorption_rate_pct, '', '%'), color: '#f59e0b' },
+                    { label: 'Median PSF', value: fmt(a.median_psf, '$'), color: '#3b82f6' },
+                    { label: 'Avg DOM', value: fmt(a.closed_avg_dom_90, '', 'd'), color: '#6366f1' },
+                    { label: 'Sale/List', value: fmt(a.sale_to_list_ratio, '', '%'), color: '#10b981' },
+                    { label: 'Active', value: fmt(a.active_count), color: '#8b5cf6' },
+                    { label: 'Sold 90d', value: fmt(a.closed_sale_count_90), color: '#ec4899' },
+                    { label: 'Absorption', value: fmt(a.absorption_rate_pct, '', '%'), color: '#f59e0b' },
                   ].map(m => (
                     <div key={m.label} style={{
                       background: 'rgba(255,255,255,0.04)',
@@ -114,15 +114,15 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             )
           })()}
         </div>
-      )}
+      ))}
 
       {/* Buyer Offer Intelligence */}
-      {!sellerEstimate && analytics && (
+      {!sellerEstimate && analytics.length > 0 && (
         <div>
           <SectionHeader title="Buyer Intelligence" />
           <BuyerOfferBlock
-            analytics={analytics}
-            propertyType={analytics.track}
+            analytics={analytics[analytics.length-1]}
+            propertyType={analytics[analytics.length-1].track}
             geoName={geoContext?.geoName}
           />
         </div>
@@ -158,11 +158,11 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       )}
 
       {/* Investment Rankings */}
-      {!sellerEstimate && rankings && rankings.type === "investment" && rankings.data?.rankings?.length > 0 && (
-        <div>
-          <SectionHeader title={`${(rankings.data.ranking_type || "").split("_").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} · ${rankings.data.track === "condo" ? "Condos" : "Homes"}`} />
+      {!sellerEstimate && rankings.filter((rg: any) => rg.type === "investment").map((rg: any, _ri: number) => rg.data?.rankings?.length > 0 && (
+        <div key={_ri}>
+          <SectionHeader title={`${(rg.data.ranking_type || "").split("_").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} · ${rg.data.track === "condo" ? "Condos" : "Homes"}`} />
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {rankings.data.rankings.slice(0, 8).map((r: any, i: number) => (
+            {rg.data.rankings.slice(0, 8).map((r: any, i: number) => (
               <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "10px 14px", border: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, marginRight: 8 }}>#{r.rank}</span>
@@ -177,12 +177,12 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             ))}
           </div>
         </div>
-      )}
+      ))}
 
       {/* Inventory Rankings */}
-      {!sellerEstimate && rankings && rankings.type === "inventory" && (
-        <div>
-          {Object.entries(rankings.data.rankings || {}).map(([rankType, items]: [string, any]) => items.length > 0 && (
+      {!sellerEstimate && rankings.filter((rg: any) => rg.type === "inventory").map((rg: any, _ri: number) => (
+        <div key={_ri}>
+          {Object.entries(rg.data.rankings || {}).map(([rankType, items]: [string, any]) => items.length > 0 && (
             <div key={rankType} style={{ marginBottom: 16 }}>
               <SectionHeader title={rankType.split("_").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} />
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -200,22 +200,22 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {/* Price Trends */}
-      {!sellerEstimate && priceTrends && priceTrends.current_median_sale && (
-        <div>
+      {!sellerEstimate && priceTrends.map((pt: any, _pti: number) => pt.current_median_sale && (
+        <div key={_pti}>
           <SectionHeader title="Price Trends" />
           <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: "14px", border: "1px solid rgba(255,255,255,0.08)" }}>
             <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Median Price</div><div style={{ color: "#60a5fa", fontWeight: 700, fontSize: 16 }}>{fmt(priceTrends.current_median_sale, "$")}</div></div>
-              {priceTrends.current_avg_psf && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Avg PSF</div><div style={{ color: "#fff", fontWeight: 600, fontSize: 15 }}>{fmt(priceTrends.current_avg_psf, "$")}/sqft</div></div>}
-              {priceTrends.psf_trend_pct != null && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>PSF Trend</div><div style={{ color: priceTrends.psf_trend_pct >= 0 ? "#10b981" : "#ef4444", fontWeight: 600, fontSize: 15 }}>{priceTrends.psf_trend_pct > 0 ? "+" : ""}{priceTrends.psf_trend_pct?.toFixed(1)}%</div></div>}
-              {priceTrends.current_median_lease && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Median Rent</div><div style={{ color: "#f59e0b", fontWeight: 600, fontSize: 15 }}>{fmt(priceTrends.current_median_lease, "$")}/mo</div></div>}
+              <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Median Price</div><div style={{ color: "#60a5fa", fontWeight: 700, fontSize: 16 }}>{fmt(pt.current_median_sale, "$")}</div></div>
+              {pt.current_avg_psf && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Avg PSF</div><div style={{ color: "#fff", fontWeight: 600, fontSize: 15 }}>{fmt(pt.current_avg_psf, "$")}/sqft</div></div>}
+              {pt.psf_trend_pct != null && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>PSF Trend</div><div style={{ color: pt.psf_trend_pct >= 0 ? "#10b981" : "#ef4444", fontWeight: 600, fontSize: 15 }}>{pt.psf_trend_pct > 0 ? "+" : ""}{pt.psf_trend_pct?.toFixed(1)}%</div></div>}
+              {pt.current_median_lease && <div><div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>Median Rent</div><div style={{ color: "#f59e0b", fontWeight: 600, fontSize: 15 }}>{fmt(pt.current_median_lease, "$")}/mo</div></div>}
             </div>
           </div>
         </div>
-      )}
+      ))}
 
       {/* Community Buildings - condo buyer */}
       {!sellerEstimate && !(searchedBuildings && searchedBuildings.length > 0) && communityBuildings && (communityBuildings.affordable.length > 0 || communityBuildings.premium.length > 0) && (
@@ -289,11 +289,11 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       )}
 
       {/* Pricing Risk - Concession + DOM */}
-      {sellerEstimate?.success && analytics && (
+      {sellerEstimate?.success && analytics.length > 0 && (
         <div>
           <SectionHeader title="Pricing Strategy & Risk" />
           <PricingRiskBlock
-            analytics={analytics}
+            analytics={analytics[analytics.length-1]}
             estimatedPrice={sellerEstimate.estimate?.estimatedPrice}
             intent={sellerEstimate.intent || 'sale'}
             geoName={geoContext?.geoName}
@@ -315,8 +315,8 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{geoContext?.geoName} · {new Date().toLocaleDateString('en-CA')}</div>
             </div>
           </div>
-          {analytics && (() => {
-            const cond = marketConditionLabel(analytics.sale_to_list_ratio, analytics.closed_avg_dom_90)
+          {analytics.length > 0 && (() => {
+            const cond = marketConditionLabel(analytics[analytics.length-1].sale_to_list_ratio, analytics[analytics.length-1].closed_avg_dom_90)
             return (
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: cond.color + '18', border: '1px solid ' + cond.color + '40', borderRadius: 100, padding: '5px 14px', marginBottom: 16 }}>
                 <div style={{ width: 7, height: 7, borderRadius: '50%', background: cond.color }} />
@@ -328,12 +328,12 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 8 }}>Your Property</div>
             {sellerEstimate.estimate?.estimatedPrice && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Estimated Value</span><span style={{ fontSize: 13, fontWeight: 700, color: '#10b981' }}>${sellerEstimate.estimate.priceRange?.low?.toLocaleString()} — ${sellerEstimate.estimate.priceRange?.high?.toLocaleString()}</span></div>}
           </div>
-          {analytics && (
+          {analytics.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 8 }}>Market Snapshot</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Avg Days on Market</span><span style={{ fontSize: 13, fontWeight: 700, color: '#6366f1' }}>{fmt(analytics.closed_avg_dom_90, '', 'd')}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Sale-to-List Ratio</span><span style={{ fontSize: 13, fontWeight: 700, color: '#10b981' }}>{fmt(analytics.sale_to_list_ratio, '', '%')}</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Active Competition</span><span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{fmt(analytics.active_count, '', ' listings')}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Avg Days on Market</span><span style={{ fontSize: 13, fontWeight: 700, color: '#6366f1' }}>{fmt(analytics[analytics.length-1].closed_avg_dom_90, '', 'd')}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Sale-to-List Ratio</span><span style={{ fontSize: 13, fontWeight: 700, color: '#10b981' }}>{fmt(analytics[analytics.length-1].sale_to_list_ratio, '', '%')}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Active Competition</span><span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{fmt(analytics[analytics.length-1].active_count, '', ' listings')}</span></div>
             </div>
           )}
         </div>
@@ -448,7 +448,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       )}
 
       {/* Empty state */}
-      {!analytics && listingGroups.length === 0 && comparables.length === 0 && !sellerEstimate && (
+      {analytics.length === 0 && listingGroups.length === 0 && comparables.length === 0 && !sellerEstimate && (
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
