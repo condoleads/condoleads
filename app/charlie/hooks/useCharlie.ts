@@ -36,7 +36,7 @@ export interface CharlieState {
   buyerProfile: any
   sellerProfile: any
   sellerEstimate: any | null
-  searchedBuildings: any[]
+  searchedBuildings: { label: string; buildings: any[] }[]
   rankings: any[]
   priceTrends: any[]
   seasonalData: any | null
@@ -400,7 +400,7 @@ export function useCharlie() {
         yearBuilt: b.year_built || null,
         url: b.url || null,
       }))
-        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, ...mapped], activePanel: 'results' }))
+        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, { label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], activePanel: 'results' }))
     }
     if (tool === 'get_building_directory' && data.buildings) {
       const mapped = (data.buildings || []).map((b: any) => ({
@@ -411,7 +411,7 @@ export function useCharlie() {
         activeCount: 0,
         url: b.url || null,
       }))
-        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, ...mapped], activePanel: 'results' }))
+        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, { label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], activePanel: 'results' }))
     }
     if (tool === 'compare_geo' && data.comparisons) {
         setState(s => ({ ...s, rankings: [...s.rankings, { type: 'compare_geo', data }], activePanel: 'results' }))

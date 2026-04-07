@@ -29,7 +29,7 @@ interface Props {
   vipCreditUsed?: boolean
   vipCreditPlansUsed?: number
   vipCreditTotal?: number
-  searchedBuildings?: any[]
+  searchedBuildings?: { label: string; buildings: any[] }[]
   rankings: any[]
   priceTrends: any[]
   seasonalData?: any | null
@@ -129,11 +129,11 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       )}
 
       {/* Searched Buildings from Charlie tool */}
-      {!sellerEstimate && searchedBuildings && searchedBuildings.length > 0 && (
-        <div>
-          <SectionHeader title={`Buildings Found · ${searchedBuildings.length}`} />
+      {!sellerEstimate && searchedBuildings && searchedBuildings.length > 0 && searchedBuildings.map((group, _gi) => (
+        <div key={_gi}>
+          <SectionHeader title={`Buildings Found · ${group.label} · ${group.buildings.length}`} />
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {searchedBuildings.map((b, i) => (
+            {group.buildings.map((b, i) => (
              <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
                 {b.photo && <img src={b.photo} alt={b.buildingName} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -155,7 +155,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             ))}
           </div>
         </div>
-      )}
+      ))}
 
       {/* Investment Rankings */}
       {!sellerEstimate && rankings.filter((rg: any) => rg.type === "investment").map((rg: any, _ri: number) => rg.data?.rankings?.length > 0 && (
