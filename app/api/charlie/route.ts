@@ -263,6 +263,21 @@ Use these exact numbers when answering market questions.`
                     .eq('id', sessionId)
 
                   // Notify frontend — registered user used a VIP credit
+
+                  // Low credit warning email — fire when 1 plan remaining
+                  const plansRemaining = totalAllowed - (plansUsed + 1)
+                  if (plansRemaining === 1 && sessionData?.user_id) {
+                    fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        userId: sessionData.user_id,
+                        creditType: 'plan',
+                        remaining: 1,
+                        sessionId,
+                      }),
+                    }).catch(err => console.error('[charlie] low credit email error:', err))
+                  }
                   send({ type: 'vip_credit_used', plansUsed: plansUsed + 1, totalAllowed, planType })
                   // Send plan email notification to user
                 }
