@@ -1,4 +1,4 @@
-// components/admin-homes/EditTenantModal.tsx
+﻿// components/admin-homes/EditTenantModal.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -22,8 +22,11 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
     is_active: true,
     anthropic_api_key: '',
     ai_free_messages: 1,
-    ai_auto_approve_limit: 1, ai_manual_approve_limit: 3, ai_hard_cap: 10,
-    estimator_ai_enabled: false,
+
+    ai_auto_approve_limit: 0, ai_manual_approve_limit: 10, ai_hard_cap: 25,
+    plan_mode: 'shared', plan_free_attempts: 1, plan_auto_approve_limit: 0,
+    plan_manual_approve_limit: 3, plan_hard_cap: 10, plan_vip_auto_approve: false,
+    seller_plan_free_attempts: 1, seller_plan_hard_cap: 10,
     estimator_nonai_enabled: true,
     estimator_free_attempts: 1,
     estimator_auto_approve_attempts: 2, estimator_manual_approve_attempts: 3,
@@ -50,8 +53,16 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           ai_auto_approve_limit: data.ai_auto_approve_limit ?? 1,
           ai_manual_approve_limit: data.ai_manual_approve_limit ?? 3,
           ai_hard_cap: data.ai_hard_cap ?? 10,
-          estimator_ai_enabled: data.estimator_ai_enabled ?? false,
-          estimator_nonai_enabled: data.estimator_nonai_enabled ?? true,
+          plan_mode: data.plan_mode || 'shared',
+          plan_free_attempts: data.plan_free_attempts ?? 1,
+          plan_auto_approve_limit: data.plan_auto_approve_limit ?? 0,
+          plan_manual_approve_limit: data.plan_manual_approve_limit ?? 3,
+          plan_hard_cap: data.plan_hard_cap ?? 10,
+          plan_vip_auto_approve: data.plan_vip_auto_approve ?? false,
+          seller_plan_free_attempts: data.seller_plan_free_attempts ?? 1,
+          seller_plan_hard_cap: data.seller_plan_hard_cap ?? 10,
+          estimator_nonai_enabled: data.estimator_nonai_enabled ?? false,
+
           estimator_free_attempts: data.estimator_free_attempts ?? 1,
           estimator_auto_approve_attempts: data.estimator_auto_approve_attempts ?? 2,
           estimator_manual_approve_attempts: data.estimator_manual_approve_attempts ?? 3,
@@ -83,8 +94,16 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           ai_auto_approve_limit: formData.ai_auto_approve_limit,
           ai_manual_approve_limit: formData.ai_manual_approve_limit,
           ai_hard_cap: formData.ai_hard_cap,
-          estimator_ai_enabled: formData.estimator_ai_enabled,
+          plan_mode: formData.plan_mode,
+          plan_free_attempts: formData.plan_free_attempts,
+          plan_auto_approve_limit: formData.plan_auto_approve_limit,
+          plan_manual_approve_limit: formData.plan_manual_approve_limit,
+          plan_hard_cap: formData.plan_hard_cap,
+          plan_vip_auto_approve: formData.plan_vip_auto_approve,
+          seller_plan_free_attempts: formData.seller_plan_free_attempts,
+          seller_plan_hard_cap: formData.seller_plan_hard_cap,
           estimator_nonai_enabled: formData.estimator_nonai_enabled,
+
           estimator_free_attempts: formData.estimator_free_attempts,
           estimator_auto_approve_attempts: formData.estimator_auto_approve_attempts,
           estimator_manual_approve_attempts: formData.estimator_manual_approve_attempts,
@@ -254,6 +273,48 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
               </div>
             </div>
 
+            {/* Plan Configuration */}
+            <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+              <h3 className="font-semibold text-indigo-900 mb-1">📋 Plan Configuration</h3>
+              <p className="text-xs text-indigo-700 mb-3">Controls AI Buyer/Seller plan access.</p>
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Plan Mode</label>
+                <div className="flex gap-2">
+                  {[{v:'shared',l:'🔗 Shared'},{v:'independent',l:'⚡ Independent'}].map(m => (
+                    <button key={m.v} type="button" onClick={() => setFormData({...formData, plan_mode: m.v})}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${formData.plan_mode === m.v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+                      {m.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {formData.plan_mode === 'shared' ? <>
+                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Free Plans</label>
+                    <input type="number" min={0} value={formData.plan_free_attempts} onChange={e => setFormData({...formData, plan_free_attempts: parseInt(e.target.value)||1})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Hard Cap</label>
+                    <input type="number" min={1} value={formData.plan_hard_cap} onChange={e => setFormData({...formData, plan_hard_cap: parseInt(e.target.value)||10})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                </> : <>
+                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Free Buyer Plans</label>
+                    <input type="number" min={0} value={formData.plan_free_attempts} onChange={e => setFormData({...formData, plan_free_attempts: parseInt(e.target.value)||1})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Buyer Hard Cap</label>
+                    <input type="number" min={1} value={formData.plan_hard_cap} onChange={e => setFormData({...formData, plan_hard_cap: parseInt(e.target.value)||10})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Free Seller Plans</label>
+                    <input type="number" min={0} value={formData.seller_plan_free_attempts} onChange={e => setFormData({...formData, seller_plan_free_attempts: parseInt(e.target.value)||1})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Seller Hard Cap</label>
+                    <input type="number" min={1} value={formData.seller_plan_hard_cap} onChange={e => setFormData({...formData, seller_plan_hard_cap: parseInt(e.target.value)||10})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                </>}
+                <div><label className="block text-xs font-medium text-gray-700 mb-1">Auto-Approve Limit</label>
+                  <input type="number" min={0} value={formData.plan_auto_approve_limit} onChange={e => setFormData({...formData, plan_auto_approve_limit: parseInt(e.target.value)||0})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                <div><label className="block text-xs font-medium text-gray-700 mb-1">Manual Approve Limit</label>
+                  <input type="number" min={0} value={formData.plan_manual_approve_limit} onChange={e => setFormData({...formData, plan_manual_approve_limit: parseInt(e.target.value)||3})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                <div className="col-span-2"><label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={formData.plan_vip_auto_approve} onChange={e => setFormData({...formData, plan_vip_auto_approve: e.target.checked})} className="w-4 h-4 text-indigo-600" />
+                  <span className="text-sm font-medium text-gray-700">Auto-Approve Plan Requests</span>
+                </label></div>
+              </div>
+            </div>
+
             {/* Estimator Configuration */}
             <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
               <h3 className="font-semibold text-purple-900 mb-1">Estimator Configuration</h3>
@@ -267,7 +328,7 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                   </div>
                 </label>
                 <label className={"flex items-center gap-2 cursor-pointer p-3 bg-white rounded-lg border" + (!formData.estimator_nonai_enabled ? " opacity-40 pointer-events-none" : "")}>
-                  <input type="checkbox" checked={formData.estimator_ai_enabled} onChange={e => setFormData({ ...formData, estimator_ai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" disabled={!formData.estimator_nonai_enabled} />
+                  <input type="checkbox" checked={formData.estimator_nonai_enabled} onChange={e => setFormData({ ...formData, estimator_nonai_enabled: e.target.checked })} className="w-4 h-4 text-purple-600" disabled={!formData.estimator_nonai_enabled} />
                   <div>
                     <span className="text-sm font-medium text-gray-700">Enable AI Insights</span>
                     <p className="text-xs text-gray-400">Add AI analysis citing specific comparable units, concession %, and negotiation position</p>
