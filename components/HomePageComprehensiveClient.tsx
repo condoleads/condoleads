@@ -1,5 +1,7 @@
 ﻿'use client';
+import dynamic from 'next/dynamic'
 
+const VIPAIAccess = dynamic(() => import('@/components/auth/VIPAIAccess'), { ssr: false })
 import { useState, useEffect, useRef } from 'react';
 import type { MarketStats, AreaCard } from '@/lib/comprehensive/types';
 
@@ -513,6 +515,12 @@ function WalliamHero() {
         marginBottom: 48,
       }}>
         <AnimatedTagline visible={taglineVisible} />
+      </div>
+
+
+      {/* VIP AI Access Block */}
+      <div style={{ width: '100%', maxWidth: 600, margin: '0 auto 32px' }}>
+        <VIPAIAccess variant="full" registrationSource="homepage_hero" />
       </div>
 
       {/* CTAs */}

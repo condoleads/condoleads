@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -6,7 +6,7 @@ import { Menu, X, ChevronDown, ChevronRight, MapPin, Building2, Home } from 'luc
 import type { NeighbourhoodMenuItem } from './SiteHeader'
 import SearchBar from './SearchBar'
 import dynamic from 'next/dynamic'
-const AuthStatus = dynamic(() => import('@/components/auth/AuthStatus'), { ssr: false })
+const VIPAIAccess = dynamic(() => import('@/components/auth/VIPAIAccess'), { ssr: false })
 
 interface SiteHeaderClientProps {
   neighbourhoods: NeighbourhoodMenuItem[]
@@ -23,8 +23,8 @@ function WalliamWordmark({ size = 'md' }: { size?: 'sm' | 'md' }) {
     <span style={{ display: 'inline-flex', alignItems: 'baseline', lineHeight: 1 }}>
       <span style={{ fontSize: wallSize, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>WALL</span>
       <span style={{ position: 'relative', display: 'inline-block' }}>
-        <span style={{ position: 'absolute', top: '-30%', left: '50%', transform: 'translateX(-50%)', fontSize: heartSize, color: '#f59e0b', animation: 'walliam-heartbeat 3s ease-in-out infinite', display: 'block', lineHeight: 1 }}>♥</span>
-        <span style={{ fontSize: iamSize, fontWeight: 300, color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>ı</span>
+        <span style={{ position: 'absolute', top: '-30%', left: '50%', transform: 'translateX(-50%)', fontSize: heartSize, color: '#f59e0b', animation: 'walliam-heartbeat 3s ease-in-out infinite', display: 'block', lineHeight: 1 }}>â™¥</span>
+        <span style={{ fontSize: iamSize, fontWeight: 300, color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>Ä±</span>
       </span>
       <span style={{ fontSize: iamSize, fontWeight: 300, color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>am</span>
       <style>{`@keyframes walliam-heartbeat{0%,45%,100%{transform:translateX(-50%) scale(1)}10%{transform:translateX(-50%) scale(1.4)}30%{transform:translateX(-50%) scale(1.25)}}`}</style>
@@ -32,7 +32,7 @@ function WalliamWordmark({ size = 'md' }: { size?: 'sm' | 'md' }) {
   )
 }
 
-// ── Open Charlie helper ───────────────────────────────────────
+// â”€â”€ Open Charlie helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function openCharlie(form?: 'buyer' | 'seller') {
   window.dispatchEvent(new CustomEvent('charlie:open', { detail: { form } }))
 }
@@ -126,14 +126,14 @@ export default function SiteHeaderClient({
             {/* Desktop Right */}
             <div className="hidden md:flex items-center gap-3 flex-1 justify-end">
               <SearchBar className="max-w-sm" />
-              <AuthStatus registrationSource="site_header" />
-              <Link
-                href="/vip"
-                className="flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
-                style={{ backgroundColor: primaryColor }}
-              >
-                Get VIP Access
-              </Link>
+              <VIPAIAccess registrationSource='site_header' primaryColor={primaryColor} />
+
+
+
+
+
+
+
             </div>
 
             {/* Mobile hamburger */}
@@ -202,7 +202,7 @@ export default function SiteHeaderClient({
         <div className="fixed inset-0 z-40 bg-[#060b18] overflow-y-auto pt-16">
           <div className="px-4 py-6 space-y-1">
             <div className="mb-4">
-              <SearchBar placeholder="Search…" autoFocus />
+              <SearchBar placeholder="Searchâ€¦" autoFocus />
             </div>
 
             <div>
@@ -243,7 +243,7 @@ export default function SiteHeaderClient({
                           {n.total_communities > 5 && (
                             <Link href={`/toronto/${n.slug}`} onClick={() => setMobileOpen(false)}
                               className="flex items-center gap-1 px-3 py-2 text-xs text-blue-500">
-                              View all {n.total_communities} →
+                              View all {n.total_communities} â†’
                             </Link>
                           )}
                         </div>
@@ -267,14 +267,14 @@ export default function SiteHeaderClient({
             </button>
 
             <div className="pt-2 pb-2">
-              <AuthStatus registrationSource="site_header_mobile" />
+              <VIPAIAccess registrationSource='site_header_mobile' primaryColor={primaryColor} />
             </div>
             <div className="pt-4">
-              <Link href="/vip" onClick={() => setMobileOpen(false)}
-                className="flex items-center justify-center w-full py-3 rounded-xl font-semibold text-white text-base"
-                style={{ backgroundColor: primaryColor }}>
-                Get VIP Access
-              </Link>
+
+
+
+
+
             </div>
           </div>
         </div>
