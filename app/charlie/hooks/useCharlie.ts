@@ -56,6 +56,17 @@ export interface CharlieState {
   buyerPlansUsed: number
   sellerPlansUsed: number
   totalAllowed: number
+  // Chat credits
+  messageCount: number
+  chatFreeMessages: number
+  chatHardCap: number
+  // Estimator credits
+  estimatorCount: number
+  estimatorFreeAttempts: number
+  estimatorHardCap: number
+  // Plan mode
+  planMode: 'shared' | 'independent'
+  sellerPlanFreeAttempts: number
   isRegistered: boolean
   // Gate state
   gateActive: boolean
@@ -97,6 +108,14 @@ const INITIAL_STATE: CharlieState = {
   buyerPlansUsed: 0,
   sellerPlansUsed: 0,
   totalAllowed: 1,
+  messageCount: 0,
+  chatFreeMessages: 5,
+  chatHardCap: 25,
+  estimatorCount: 0,
+  estimatorFreeAttempts: 2,
+  estimatorHardCap: 10,
+  planMode: 'shared',
+  sellerPlanFreeAttempts: 1,
   isRegistered: false,
   gateActive: false,
   gateReason: null,
@@ -166,6 +185,14 @@ export function useCharlie() {
           buyerPlansUsed: data.buyerPlansUsed || 0,
           sellerPlansUsed: data.sellerPlansUsed || 0,
           totalAllowed: data.totalAllowed || 1,
+          messageCount: data.messageCount || 0,
+          chatFreeMessages: data.chatFreeMessages || 5,
+          chatHardCap: data.chatHardCap || 25,
+          estimatorCount: data.estimatorCount || 0,
+          estimatorFreeAttempts: data.estimatorFreeAttempts || 2,
+          estimatorHardCap: data.estimatorHardCap || 10,
+          planMode: data.planMode || 'shared',
+          sellerPlanFreeAttempts: data.sellerPlanFreeAttempts || 1,
           isRegistered: !!userId,
         }))
       }

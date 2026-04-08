@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     if (tenantId) {
       const { data: tenant } = await supabase
         .from('tenants')
-        .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve`)
+        .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve, plan_free_attempts, plan_hard_cap, plan_mode, seller_plan_free_attempts, seller_plan_hard_cap, estimator_free_attempts, estimator_hard_cap`)
         .eq('id', tenantId)
         .single()
       if (tenant) {
@@ -219,6 +219,17 @@ export async function POST(request: NextRequest) {
       vipAutoApprove: agentConfig.vip_auto_approve,
       // Registration status
       isRegistered: !!userId,
+      // Chat credits
+      messageCount: session.message_count || 0,
+      chatFreeMessages: agentConfig.ai_free_messages,
+      chatHardCap: agentConfig.ai_hard_cap,
+      // Estimator credits
+      estimatorCount: session.estimator_count || 0,
+      estimatorFreeAttempts: (agentConfig as any).estimator_free_attempts ?? 2,
+      estimatorHardCap: (agentConfig as any).estimator_hard_cap ?? 10,
+      // Plan mode
+      planMode: (agentConfig as any).plan_mode || 'shared',
+      sellerPlanFreeAttempts: (agentConfig as any).seller_plan_free_attempts ?? 1,
     })
 
   } catch (error) {

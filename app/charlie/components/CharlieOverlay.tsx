@@ -1,4 +1,4 @@
-// app/charlie/components/CharlieOverlay.tsx
+﻿// app/charlie/components/CharlieOverlay.tsx
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { CharlieState } from '../hooks/useCharlie'
@@ -97,22 +97,16 @@ export default function CharlieOverlay({
               background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <span style={{ fontSize: 16 }}>✦</span>
+              <span style={{ fontSize: 16 }}>âœ¦</span>
             </div>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Charlie</div>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em' }}>
-              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span>AI Real Estate Assistant</span>
-                {state.totalAllowed > 0 && (
-                  <>
-                    <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
-                    <span title="AI Plans remaining" style={{ color: Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed) <= 1 ? '#f59e0b' : 'rgba(255,255,255,0.35)', fontSize: 11 }}>
-                      📋 {Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed)} plans
-                    </span>
-                  </>
-                )}
-              </div>
+                <span style={{ color: 'rgba(255,255,255,0.15)', margin: '0 4px' }}>|</span>
+                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', borderRadius: 100, padding: '2px 6px' }}>{'chat ' + Math.max(0, state.chatFreeMessages - state.messageCount)}</span>
+                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', borderRadius: 100, padding: '2px 6px', margin: '0 2px' }}>{'est ' + Math.max(0, state.estimatorFreeAttempts - state.estimatorCount)}</span>
+                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', borderRadius: 100, padding: '2px 6px' }}>{'plan ' + Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed)}</span>
               </div>
             </div>
           </div>
@@ -154,11 +148,11 @@ export default function CharlieOverlay({
             fontSize: 13,
             fontWeight: 600,
           }}>
-            ✕ Close
+            âœ• Close
           </button>
         </div>
 
-        {/* Body — split panels */}
+        {/* Body â€” split panels */}
         <div style={{
           flex: 1,
           display: 'flex',
@@ -177,7 +171,7 @@ export default function CharlieOverlay({
           }}>
             {formMode === 'buyer' ? (
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>🏠 Find Your Home</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>ðŸ  Find Your Home</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Tell us what you are looking for</div>
                 <BuyerForm
                   onSubmit={(data) => {
@@ -194,7 +188,7 @@ export default function CharlieOverlay({
               </div>
             ) : formMode === 'seller' ? (
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>💰 Get Your Home Value</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>ðŸ’° Get Your Home Value</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Tell us about your property</div>
                 <SellerForm
                   onSubmit={async (data) => {
