@@ -37,7 +37,7 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal } = await req.json()
+    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
 
     if (!userId || !planType) {
       return NextResponse.json({ error: 'userId and planType required' }, { status: 400 })
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       budgetMax: plan?.budgetMax || null,
     })
 
-    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1 })
+    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [] })
     const subject = `\u2756 WALLiam ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
     await resend.emails.send({ from: FROM, to: userEmail, subject, html }).then(r => console.log("[plan-email] user send result:", JSON.stringify(r))).catch(e => console.error("[plan-email] user send error:", e))
@@ -163,8 +163,9 @@ function buildRichPlanEmail(data: {
   vipCreditUsed: boolean
   vipCreditPlansUsed: number
   vipCreditTotal: number
+  blocks: any[]
 }): string {
-  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal } = data
+  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = data
   const isBuyer = planType === 'buyer'
   const topListings = (listings || []).slice(0, 10)
 
@@ -180,6 +181,66 @@ function buildRichPlanEmail(data: {
     : stl >= 97 ? '#10b981'
     : stl < 95 || (dom && dom > 70) ? '#ef4444'
     : '#f59e0b'
+
+
+  // RAG conversation blocks
+  const blocksHtml = (blocks || []).length > 0 ? (() => {
+    const parts: string[] = []
+    for (const block of (blocks || [])) {
+      if (block.type === 'analytics') {
+        parts.push(`<div style="margin:16px 0;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Market Intelligence &middot; ${block.geoName}</div>
+          <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+            <tr><td style="color:#64748b;width:160px;">Avg DOM</td><td style="font-weight:700;color:#0f172a;">${block.data?.closed_avg_dom_90 ? block.data.closed_avg_dom_90 + 'd' : '&mdash;'}</td></tr>
+            <tr><td style="color:#64748b;">Sale/List</td><td style="font-weight:700;color:#0f172a;">${block.data?.sale_to_list_ratio ? block.data.sale_to_list_ratio + '%' : '&mdash;'}</td></tr>
+            <tr><td style="color:#64748b;">Active</td><td style="font-weight:700;color:#0f172a;">${block.data?.active_count || '&mdash;'}</td></tr>
+          </table>
+        </div>`)
+      }
+      if (block.type === 'buildings') {
+        parts.push(`<div style="margin:16px 0;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Buildings Found &middot; ${block.label} &middot; ${block.buildings.length}</div>
+          ${(block.buildings || []).slice(0, 8).map((b: any) => `
+            <a href="${b.url || BASE_URL}" style="display:block;text-decoration:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                ${b.photo ? `<td width="48"><img src="${b.photo}" width="48" height="48" style="border-radius:6px;object-fit:cover;"></td>` : ''}
+                <td style="padding-left:10px;vertical-align:middle;">
+                  <div style="font-size:13px;font-weight:700;color:#0f172a;">${b.buildingName}</div>
+                  <div style="font-size:12px;color:#64748b;">${b.medianPrice ? '$' + Number(b.medianPrice).toLocaleString('en-CA') : ''}${b.medianPsf ? ' &middot; $' + b.medianPsf + '/sqft' : ''}</div>
+                </td>
+                <td style="text-align:right;vertical-align:middle;">
+                  ${b.activeCount > 0 ? `<span style="background:#10b981;color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;">${b.activeCount} active</span>` : ''}
+                </td>
+              </tr></table>
+            </a>
+          `).join('')}
+        </div>`)
+      }
+      if (block.type === 'rankings' && block.data?.rankings?.length > 0) {
+        const title = (block.data.ranking_type || block.rankType || '').split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+        parts.push(`<div style="margin:16px 0;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">${title}</div>
+          ${(block.data.rankings || []).slice(0, 5).map((r: any) => `
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
+              <a href="${r.url || BASE_URL}" style="font-size:13px;font-weight:600;color:#1d4ed8;text-decoration:none;">#${r.rank} ${r.entity_name}</a>
+              <span style="font-size:12px;color:#64748b;">${r.median_price ? '$' + Number(r.median_price).toLocaleString('en-CA') : ''}${r.gross_yield ? ' &middot; ' + r.gross_yield.toFixed(1) + '% yield' : ''}</span>
+            </div>
+          `).join('')}
+        </div>`)
+      }
+      if (block.type === 'priceTrends' && block.data?.current_median_sale) {
+        parts.push(`<div style="margin:16px 0;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Price Trends</div>
+          <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+            <tr><td style="color:#64748b;width:160px;">Median Price</td><td style="font-weight:700;color:#1d4ed8;">$${Number(block.data.current_median_sale).toLocaleString('en-CA')}</td></tr>
+            ${block.data.current_avg_psf ? `<tr><td style="color:#64748b;">Avg PSF</td><td style="font-weight:700;color:#0f172a;">$${Number(block.data.current_avg_psf).toLocaleString('en-CA')}/sqft</td></tr>` : ''}
+            ${block.data.psf_trend_pct != null ? `<tr><td style="color:#64748b;">PSF Trend</td><td style="font-weight:700;color:${block.data.psf_trend_pct >= 0 ? '#10b981' : '#ef4444'};">${block.data.psf_trend_pct > 0 ? '+' : ''}${block.data.psf_trend_pct.toFixed(1)}%</td></tr>` : ''}
+          </table>
+        </div>`)
+      }
+    }
+    return parts.length > 0 ? `<div style="margin:20px 0;"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;">Your Research</div>${parts.join('')}</div>` : ''
+  })() : ''
 
   const conditionHtml = `
     <div style="margin: 0 0 16px;">
@@ -488,6 +549,7 @@ function buildRichPlanEmail(data: {
         ${offerIntelHtml}
         ${bestTimeHtml}
         ${summaryHtml}
+        ${blocksHtml}
         ${planCardHtml}
         ${profileHtml}
         ${listingsHtml}

@@ -396,6 +396,7 @@ export function useCharlie() {
             vipCreditTotal: stateRef.current.vipCreditTotal,
             comparables: stateRef.current.comparables.slice(0, 6),
             sellerEstimate: stateRef.current.sellerEstimate,
+            blocks: stateRef.current.blocks.filter(b => b.type !== 'plan').slice(0, 20),
           }),
         }).catch(err => console.error('[useCharlie] plan email error:', err))
     }
