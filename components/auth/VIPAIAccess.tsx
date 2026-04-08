@@ -128,11 +128,11 @@ export default function VIPAIAccess({
             animation: 'vip-pulse 3s ease-in-out infinite',
           }}
         >
-          <span style={{ fontSize: 14 }}>âœ¦</span>
+          <span style={{ fontSize: 14 }}>✦</span>
           <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', letterSpacing: '0.05em' }}>VIP AI Access</span>
           <span style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.2)' }} />
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {[{ e: 'ðŸ’¬', v: '5' }, { e: 'ðŸ“Š', v: '2' }, { e: 'ðŸ“‹', v: '1' }].map(c => (
+            {[{ e: '💬', v: '5' }, { e: '📊', v: '2' }, { e: '📋', v: '1' }].map(c => (
               <span key={c.e} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <span style={{ fontSize: 10 }}>{c.e}</span>
                 <span style={{ fontSize: 10, fontWeight: 700, color: '#a5f3fc' }}>{c.v}</span>
@@ -160,7 +160,7 @@ export default function VIPAIAccess({
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 20, flexWrap: 'wrap' }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 20 }}>âœ¦</span>
+                <span style={{ fontSize: 20 }}>✦</span>
                 <span style={{ fontSize: 20, fontWeight: 900, color: '#fff', letterSpacing: '-0.02em' }}>VIP AI Access</span>
                 <span style={{ fontSize: 10, fontWeight: 700, color: '#fde68a', background: 'rgba(253,230,138,0.15)', borderRadius: 100, padding: '3px 10px', border: '1px solid rgba(253,230,138,0.3)' }}>FREE TO JOIN</span>
               </div>
@@ -169,9 +169,9 @@ export default function VIPAIAccess({
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 {[
-                  { e: 'ðŸ’¬', label: 'AI Chats', v: '5 free', color: '#3b82f6' },
-                  { e: 'ðŸ“Š', label: 'AI Estimates', v: '2 free', color: '#10b981' },
-                  { e: 'ðŸ“‹', label: 'AI Plans', v: '1 free', color: '#7c3aed' },
+                  { e: '💬', label: 'AI Chats', v: '5 free', color: '#3b82f6' },
+                  { e: '📊', label: 'AI Estimates', v: '2 free', color: '#10b981' },
+                  { e: '📋', label: 'AI Plans', v: '1 free', color: '#7c3aed' },
                 ].map(c => (
                   <div key={c.e} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.color}30`, borderRadius: 10, padding: '8px 12px' }}>
                     <span style={{ fontSize: 16 }}>{c.e}</span>
@@ -218,15 +218,15 @@ export default function VIPAIAccess({
           boxShadow: `0 0 16px ${anyEmpty ? 'rgba(239,68,68,0.2)' : anyLow ? 'rgba(245,158,11,0.2)' : 'rgba(124,58,237,0.2)'}`,
         }}
       >
-        <span style={{ fontSize: 12 }}>âœ¦</span>
+        <span style={{ fontSize: 12 }}>✦</span>
         <span style={{ fontSize: 11, fontWeight: 800, color: '#a5b4fc', letterSpacing: '0.05em' }}>VIP Member</span>
         <span style={{ width: 1, height: 12, background: 'rgba(255,255,255,0.15)' }} />
         {credits ? (
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             {[
-              { e: 'ðŸ’¬', r: chatRemaining },
-              { e: 'ðŸ“Š', r: estRemaining },
-              { e: 'ðŸ“‹', r: planRemaining },
+              { e: '💬', r: chatRemaining },
+              { e: '📊', r: estRemaining },
+              { e: '📋', r: planRemaining },
             ].map(c => (
               <span key={c.e} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <span style={{ fontSize: 10 }}>{c.e}</span>
@@ -252,13 +252,13 @@ export default function VIPAIAccess({
           boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
         }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-            âœ¦ VIP Member Â· {user.email}
+            ✦ VIP Member Â· {user.email}
           </div>
 
           {[
-            { e: 'ðŸ’¬', label: 'AI Chats', used: credits?.messageCount ?? 0, total: credits?.chatFreeMessages ?? 5, color: '#3b82f6' },
-            { e: 'ðŸ“Š', label: 'AI Estimates', used: credits?.estimatorCount ?? 0, total: credits?.estimatorFreeAttempts ?? 2, color: '#10b981' },
-            { e: 'ðŸ“‹', label: 'AI Plans', used: (credits?.buyerPlansUsed ?? 0) + (credits?.sellerPlansUsed ?? 0), total: credits?.totalAllowed ?? 1, color: '#7c3aed' },
+            { e: '💬', label: 'AI Chats', used: credits?.messageCount ?? 0, total: credits?.chatFreeMessages ?? 5, color: '#3b82f6' },
+            { e: '📊', label: 'AI Estimates', used: credits?.estimatorCount ?? 0, total: credits?.estimatorFreeAttempts ?? 2, color: '#10b981' },
+            { e: '📋', label: 'AI Plans', used: (credits?.buyerPlansUsed ?? 0) + (credits?.sellerPlansUsed ?? 0), total: credits?.totalAllowed ?? 1, color: '#7c3aed' },
           ].map(c => {
             const rem = Math.max(0, c.total - c.used)
             const pct = c.total > 0 ? (c.used / c.total) * 100 : 0
@@ -297,7 +297,7 @@ export default function VIPAIAccess({
                 opacity: requesting ? 0.6 : 1, marginBottom: 8,
               }}
             >
-              {requesting ? 'Sending...' : 'âœ¦ Request More AI Access'}
+              {requesting ? 'Sending...' : '✦ Request More AI Access'}
             </button>
           )}
 
@@ -330,7 +330,7 @@ export default function VIPAIAccess({
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg, #1d4ed8, #7c3aed, #ec4899)' }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 18 }}>âœ¦</span>
+          <span style={{ fontSize: 18 }}>✦</span>
           <span style={{ fontSize: 18, fontWeight: 900, color: '#fff' }}>VIP Member</span>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#a5b4fc', background: 'rgba(165,180,252,0.1)', borderRadius: 100, padding: '3px 10px', border: '1px solid rgba(165,180,252,0.2)' }}>AI ACCESS</span>
         </div>
@@ -339,9 +339,9 @@ export default function VIPAIAccess({
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         {[
-          { e: 'ðŸ’¬', label: 'AI Chats', used: credits?.messageCount ?? 0, total: credits?.chatFreeMessages ?? 5, color: '#3b82f6' },
-          { e: 'ðŸ“Š', label: 'AI Estimates', used: credits?.estimatorCount ?? 0, total: credits?.estimatorFreeAttempts ?? 2, color: '#10b981' },
-          { e: 'ðŸ“‹', label: 'AI Plans', used: (credits?.buyerPlansUsed ?? 0) + (credits?.sellerPlansUsed ?? 0), total: credits?.totalAllowed ?? 1, color: '#7c3aed' },
+          { e: '💬', label: 'AI Chats', used: credits?.messageCount ?? 0, total: credits?.chatFreeMessages ?? 5, color: '#3b82f6' },
+          { e: '📊', label: 'AI Estimates', used: credits?.estimatorCount ?? 0, total: credits?.estimatorFreeAttempts ?? 2, color: '#10b981' },
+          { e: '📋', label: 'AI Plans', used: (credits?.buyerPlansUsed ?? 0) + (credits?.sellerPlansUsed ?? 0), total: credits?.totalAllowed ?? 1, color: '#7c3aed' },
         ].map(c => {
           const rem = Math.max(0, c.total - c.used)
           const pct = c.total > 0 ? (c.used / c.total) * 100 : 0
@@ -379,7 +379,7 @@ export default function VIPAIAccess({
             letterSpacing: '0.02em',
           }}
         >
-          {requesting ? 'Sending request...' : anyEmpty ? 'ðŸ”´ Credits Empty â€” Request More AI Access' : 'âœ¦ Request More AI Access'}
+          {requesting ? 'Sending request...' : anyEmpty ? '”´ Credits Empty â€” Request More AI Access' : '✦ Request More AI Access'}
         </button>
       )}
     </div>
