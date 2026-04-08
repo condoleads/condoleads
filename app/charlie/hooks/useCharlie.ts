@@ -1,4 +1,4 @@
-// app/charlie/hooks/useCharlie.ts
+﻿// app/charlie/hooks/useCharlie.ts
 'use client'
 import { useState, useCallback, useRef } from 'react'
 
@@ -70,7 +70,7 @@ export interface CharlieState {
   isRegistered: boolean
   // Gate state
   gateActive: boolean
-  gateReason: 'register' | 'vip_required' | null
+  gateReason: 'register' | 'vip_required' | 'chat_limit' | null
   gatePlanType: 'buyer' | 'seller' | null
   vipRequestId: string | null
   vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
@@ -351,7 +351,7 @@ export function useCharlie() {
               }))
             }
 
-            // Gate event — plan gating fired server-side
+            // Gate event â€” plan gating fired server-side
             if (event.type === 'gate') {
               setState(s => ({
                 ...s,

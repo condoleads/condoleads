@@ -1,4 +1,4 @@
-// app/api/charlie/route.ts
+﻿// app/api/charlie/route.ts
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
@@ -95,7 +95,7 @@ NEVER truncate the geoId.` : ''
         const s = buildingIntel.stats
         buildingContext = `
 
-CURRENT BUILDING CONTEXT (pre-loaded — use this data directly):
+CURRENT BUILDING CONTEXT (pre-loaded â€” use this data directly):
 Building: ${b?.building_name} at ${b?.canonical_address}
 Total Units: ${b?.total_units || 'N/A'} | Year Built: ${b?.year_built || 'N/A'}
 Active For Sale: ${s?.active_for_sale} | Sold Last 90 Days: ${s?.sold_last_90}
@@ -145,7 +145,7 @@ Use this data to answer building-specific questions immediately without calling 
         }
         geoAnalyticsContext = `
 
-CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do not call get_market_analytics again):
+CURRENT GEO ANALYTICS (pre-loaded â€” use this data directly, do not call get_market_analytics again):
 Market Condition: ${marketCondition} | Urgency: ${urgency} | Negotiation: ${negotiation}
 Median Sale Price: $${geoA.median_sale_price?.toLocaleString() || "N/A"} | Avg PSF: $${geoA.avg_psf?.toLocaleString() || "N/A"}
 Avg DOM: ${geoA.closed_avg_dom_90 || "N/A"} days | Months of Inventory: ${moi}
@@ -166,6 +166,39 @@ Use these exact numbers when answering market questions.`
       const send = (data: object) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
+
+
+      // ── CHAT GATING ────────────────────────────────────────────────
+      if (sessionData && tenantId) {
+        const { data: tenantCfg } = await supabase.from('tenants').select('ai_free_messages, ai_hard_cap, vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit').eq('id', tenantId).single()
+        if (tenantCfg) {
+          const msgUsed = sessionData.message_count || 0
+          const isVip = sessionData.status === 'vip'
+          let chatAllowed = tenantCfg.ai_free_messages ?? 5
+          if (isVip) {
+            chatAllowed += (tenantCfg.ai_auto_approve_limit ?? 0)
+            chatAllowed += (tenantCfg.ai_manual_approve_limit ?? 0) * (sessionData.manual_approvals_count || 0)
+          }
+          chatAllowed = Math.min(chatAllowed, tenantCfg.ai_hard_cap ?? 25)
+          if (msgUsed >= chatAllowed) {
+            send({ type: 'gate', reason: 'chat_limit' })
+            send({ type: 'done' })
+            controller.close()
+            return
+          }
+          // Increment message count
+          await supabase.from('chat_sessions').update({ message_count: msgUsed + 1, last_activity_at: new Date().toISOString() }).eq('id', sessionId)
+          // Low credit warning email at 1 remaining
+          const remaining = chatAllowed - (msgUsed + 1)
+          if (remaining === 1 && sessionData.user_id) {
+            fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: sessionData.user_id, creditType: 'chat', remaining: 1, sessionId }),
+            }).catch(() => {})
+          }
+        }
+      }
+      // ── END CHAT GATING ─────────────────────────────────────────────
 
       try {
         let currentMessages = [...messages]
@@ -207,11 +240,11 @@ Use these exact numbers when answering market questions.`
             const toolResults = []
 
             for (const tool of toolUses) {
-              // ── PLAN GATING ──────────────────────────────────────────────
+              // â”€â”€ PLAN GATING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
               if (tool.name === 'generate_plan') {
                 const planType = tool.input?.type as 'buyer' | 'seller' | undefined
 
-                // Anonymous user — must register first
+                // Anonymous user â€” must register first
                 const effectiveUserId = userId || sessionData?.user_id || null
                 if (!effectiveUserId) {
                   send({ type: 'gate', reason: 'register' })
@@ -249,7 +282,7 @@ Use these exact numbers when answering market questions.`
                     return
                   }
 
-                  // Allowed — increment plan counter
+                  // Allowed â€” increment plan counter
                   const updateField = planType === 'seller'
                     ? { seller_plans_used: plansUsed + 1 }
                     : { buyer_plans_used: plansUsed + 1 }
@@ -262,9 +295,9 @@ Use these exact numbers when answering market questions.`
                     })
                     .eq('id', sessionId)
 
-                  // Notify frontend — registered user used a VIP credit
+                  // Notify frontend â€” registered user used a VIP credit
 
-                  // Low credit warning email — fire when 1 plan remaining
+                  // Low credit warning email â€” fire when 1 plan remaining
                   const plansRemaining = totalAllowed - (plansUsed + 1)
                   if (plansRemaining === 1 && sessionData?.user_id) {
                     fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
@@ -282,7 +315,7 @@ Use these exact numbers when answering market questions.`
                   // Send plan email notification to user
                 }
               }
-              // ── END PLAN GATING ──────────────────────────────────────────
+              // â”€â”€ END PLAN GATING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
               const result = await executeTool(tool.name, tool.input, agentId, geoContext)
               send({ type: 'tool_result', tool: tool.name, data: result })
