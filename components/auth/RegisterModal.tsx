@@ -201,11 +201,11 @@ export default function RegisterModal({
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-gray-200">        
             <div>
-              <h3 className="text-2xl font-bold text-gray-900">
-                {showLogin ? 'Welcome Back' : 'Create Your Account'}
+              <h3 className="text-2xl font-bold text-gray-900" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>✦</span> {showLogin ? 'Welcome Back' : 'VIP AI Access'}
               </h3>
               <p className="text-gray-600 mt-1">
-                {showLogin ? 'Sign in to continue' : 'Register to unlock full access'}
+                {showLogin ? 'Sign in to your VIP account' : 'Register free — browse unlimited, AI features included'}
               </p>
             </div>
             <button
