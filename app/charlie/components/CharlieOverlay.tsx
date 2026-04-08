@@ -102,7 +102,17 @@ export default function CharlieOverlay({
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Charlie</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em' }}>
-                AI Real Estate Assistant
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>AI Real Estate Assistant</span>
+                {state.totalAllowed > 0 && (
+                  <>
+                    <span style={{ color: 'rgba(255,255,255,0.15)' }}>|</span>
+                    <span title="AI Plans remaining" style={{ color: Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed) <= 1 ? '#f59e0b' : 'rgba(255,255,255,0.35)', fontSize: 11 }}>
+                      📋 {Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed)} plans
+                    </span>
+                  </>
+                )}
+              </div>
               </div>
             </div>
           </div>
