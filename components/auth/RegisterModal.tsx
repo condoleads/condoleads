@@ -140,6 +140,12 @@ export default function RegisterModal({
         }
 
         // Success!
+        // Send welcome email
+        fetch('/api/email/welcome', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authData.user.id, email: formData.email, fullName: formData.fullName }),
+        }).catch(err => console.error('[RegisterModal] welcome email error:', err))
         if (onSuccess) onSuccess()
         onClose()
       }
