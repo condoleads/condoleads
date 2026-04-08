@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/auth/AuthContext'
 import RegisterModal from '@/components/auth/RegisterModal'
@@ -50,21 +50,21 @@ export default function WalliamOnboardingBanner() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 14 }}>🔍</span>
+            <span style={{ fontSize: 14 }}>ðŸ”</span>
             <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
-              Browse freely — search, explore, compare listings
+              Browse freely â€” search, explore, compare listings
             </span>
           </div>
           <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 14 }}>✦</span>
+            <span style={{ fontSize: 14 }}>âœ¦</span>
             <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
-              Register free to unlock:
-              <span style={{ color: '#60a5fa', fontWeight: 600 }}> AI Plans</span>
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}> • </span>
-              <span style={{ color: '#34d399', fontWeight: 600 }}>AI Estimates</span>
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}> • </span>
-              <span style={{ color: '#a78bfa', fontWeight: 600 }}>AI Market Chat</span>
+              Browse unlimited · AI features free to try:
+              <span style={{ color: '#60a5fa', fontWeight: 600 }}> 📋 1 Plan</span>
+              <span style={{ color: 'rgba(255,255,255,0.3)' }}> · </span>
+              <span style={{ color: '#34d399', fontWeight: 600 }}>📊 2 Estimates</span>
+              <span style={{ color: 'rgba(255,255,255,0.3)' }}> · </span>
+              <span style={{ color: '#a78bfa', fontWeight: 600 }}>💬 5 Chats</span>
             </span>
           </div>
         </div>
@@ -83,7 +83,7 @@ export default function WalliamOnboardingBanner() {
               letterSpacing: '0.02em',
             }}
           >
-            Register Free →
+            Register Free â†’
           </button>
           <button
             onClick={dismiss}
@@ -98,7 +98,7 @@ export default function WalliamOnboardingBanner() {
             }}
             title="Dismiss"
           >
-            ✕
+            âœ•
           </button>
         </div>
       </div>
