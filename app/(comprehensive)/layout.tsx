@@ -1,6 +1,7 @@
 ﻿import type { Metadata } from 'next'
 import CharlieWidget from '@/app/charlie/components/CharlieWidget'
 import SiteHeader from '@/components/navigation/SiteHeader'
+import WalliamOnboardingBanner from '@/components/WalliamOnboardingBanner'
 
 export const metadata: Metadata = {
   title: 'CondoLeads',
@@ -15,6 +16,7 @@ export default function ComprehensiveLayout({
   return (
     <>
       <SiteHeader />
+      <WalliamOnboardingBanner />
       <main>{children}</main>
       <CharlieWidget />
     </>
