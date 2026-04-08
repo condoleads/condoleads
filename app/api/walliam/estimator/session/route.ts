@@ -1,6 +1,6 @@
-// app/api/walliam/estimator/session/route.ts
+﻿// app/api/walliam/estimator/session/route.ts
 // Initializes or retrieves a WALLiam estimator session
-// Config comes from TENANT not agent — agent is for lead routing only
+// Config comes from TENANT not agent â€” agent is for lead routing only
 // System 1 (app/api/estimator/session/route.ts) is NEVER touched
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .single()
 
-    const questionnaireCompleted = true // WALLiam has no questionnaire — users are registered
+    const questionnaireCompleted = true // WALLiam has no questionnaire â€” users are registered
     const vipRequestStatus = vipRequest?.status || 'idle'
     const vipRequestId = vipRequest?.id || null
 
@@ -173,6 +173,15 @@ export async function POST(request: NextRequest) {
       } else {
         action = 'request_approval'
       }
+    }
+
+
+    // Low credit warning email at 1 estimate remaining
+    if (remaining === 1 && userId) {
+      fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, creditType: 'estimate', remaining: 1, sessionId: session.id }),
+      }).catch(() => {})
     }
 
     return NextResponse.json({
