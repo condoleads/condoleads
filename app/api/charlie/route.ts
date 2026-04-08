@@ -255,25 +255,34 @@ Use these exact numbers when answering market questions.`
 
                 // Check plan usage against limits
                 if (sessionData) {
-                  // Load VIP config from tenant
-                  let cfg = { ai_free_messages: 1, ai_auto_approve_limit: 2, ai_manual_approve_limit: 3, ai_hard_cap: 10 }
+
+                  // Load plan config from tenant
+                  let cfg: any = { plan_free_attempts: 1, plan_auto_approve_limit: 0, plan_manual_approve_limit: 3, plan_hard_cap: 10, plan_vip_auto_approve: false, plan_mode: 'shared', seller_plan_free_attempts: 1 }
                   if (tenantId) {
-                    const { data: tenantCfg } = await supabase.from('tenants').select('ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve').eq('id', tenantId).single()
+                    const { data: tenantCfg } = await supabase.from('tenants').select('plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, plan_vip_auto_approve, plan_mode, seller_plan_free_attempts').eq('id', tenantId).single()
                     if (tenantCfg) cfg = tenantCfg
                   }
-                  const freePlans = cfg?.ai_free_messages ?? 1
+                  const planMode = cfg?.plan_mode || 'shared'
                   const isVip = sessionData.status === 'vip'
                   const manualApprovalsCount = sessionData.manual_approvals_count || 0
+
+                  // Determine limit based on plan_mode
+                  let freePlans: number
+                  let plansUsed: number
+                  if (planMode === 'independent') {
+                    freePlans = planType === 'seller' ? (cfg?.seller_plan_free_attempts ?? 1) : (cfg?.plan_free_attempts ?? 1)
+                    plansUsed = planType === 'seller' ? (sessionData.seller_plans_used || 0) : (sessionData.buyer_plans_used || 0)
+                  } else {
+                    // Shared pool
+                    freePlans = cfg?.plan_free_attempts ?? 1
+                    plansUsed = (sessionData.buyer_plans_used || 0) + (sessionData.seller_plans_used || 0)
+                  }
                   let totalAllowed = freePlans
                   if (isVip) {
-                    totalAllowed += cfg?.ai_auto_approve_limit ?? 2
-                    totalAllowed += (cfg?.ai_manual_approve_limit ?? 3) * manualApprovalsCount
+                    totalAllowed += cfg?.plan_auto_approve_limit ?? 0
+                    totalAllowed += (cfg?.plan_manual_approve_limit ?? 3) * manualApprovalsCount
                   }
-                  totalAllowed = Math.min(totalAllowed, cfg?.ai_hard_cap ?? 10)
-
-                  const plansUsed = planType === 'seller'
-                    ? (sessionData.seller_plans_used || 0)
-                    : (sessionData.buyer_plans_used || 0)
+                  totalAllowed = Math.min(totalAllowed, cfg?.plan_hard_cap ?? 10)
 
                   if (plansUsed >= totalAllowed && !(cfg as any).vip_auto_approve) {
                     send({ type: 'gate', reason: 'vip_required', planType })
@@ -283,10 +292,10 @@ Use these exact numbers when answering market questions.`
                   }
 
                   // Allowed â€” increment plan counter
+                  const specificPlansUsed = planType === 'seller' ? (sessionData.seller_plans_used || 0) : (sessionData.buyer_plans_used || 0)
                   const updateField = planType === 'seller'
-                    ? { seller_plans_used: plansUsed + 1 }
-                    : { buyer_plans_used: plansUsed + 1 }
-
+                    ? { seller_plans_used: specificPlansUsed + 1 }
+                    : { buyer_plans_used: specificPlansUsed + 1 }
                   await supabase
                     .from('chat_sessions')
                     .update({
