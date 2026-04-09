@@ -1,10 +1,10 @@
-﻿// app/admin-homes/users/UsersClient.tsx
-'use client'
+﻿'use client'
 import { useState } from 'react'
 
+interface Usage { chat: number; buyer: number; seller: number; estimator: number }
 interface Props {
   users: any[]
-  usageMap: Record<string, { chat: number; buyer: number; seller: number; estimator: number }>
+  usageMap: Record<string, Usage>
   overrideMap: Record<string, any>
   tenant: any
   agentMap: Record<string, string>
@@ -12,7 +12,7 @@ interface Props {
   tenantId: string
 }
 
-function getTenantDefaults(tenant: any) {
+function getTenantDefaults(tenant: any): Usage {
   return {
     chat:      (tenant?.ai_free_messages ?? 1) + (tenant?.ai_auto_approve_limit ?? 2) + (tenant?.ai_manual_approve_limit ?? 3),
     buyer:     (tenant?.plan_free_attempts ?? 1) + (tenant?.plan_auto_approve_limit ?? 0) + (tenant?.plan_manual_approve_limit ?? 3),
@@ -21,29 +21,41 @@ function getTenantDefaults(tenant: any) {
   }
 }
 
-function getResolvedLimits(tenant: any, override: any) {
-  const defaults = getTenantDefaults(tenant)
+function getResolvedLimits(tenant: any, override: any): Usage {
+  const d = getTenantDefaults(tenant)
   return {
-    chat:      override?.ai_chat_limit      != null ? Math.min(override.ai_chat_limit,      tenant?.ai_hard_cap ?? 10)        : defaults.chat,
-    buyer:     override?.buyer_plan_limit   != null ? Math.min(override.buyer_plan_limit,   tenant?.plan_hard_cap ?? 10)      : defaults.buyer,
-    seller:    override?.seller_plan_limit  != null ? Math.min(override.seller_plan_limit,  tenant?.seller_plan_hard_cap ?? 10) : defaults.seller,
-    estimator: override?.estimator_limit    != null ? Math.min(override.estimator_limit,    tenant?.estimator_hard_cap ?? 10) : defaults.estimator,
+    chat:      override?.ai_chat_limit      != null ? Math.min(override.ai_chat_limit,      tenant?.ai_hard_cap ?? 10)          : d.chat,
+    buyer:     override?.buyer_plan_limit   != null ? Math.min(override.buyer_plan_limit,   tenant?.plan_hard_cap ?? 10)        : d.buyer,
+    seller:    override?.seller_plan_limit  != null ? Math.min(override.seller_plan_limit,  tenant?.seller_plan_hard_cap ?? 10) : d.seller,
+    estimator: override?.estimator_limit    != null ? Math.min(override.estimator_limit,    tenant?.estimator_hard_cap ?? 10)   : d.estimator,
   }
 }
 
-export default function UsersClient({ users, usageMap, overrideMap, tenant, agentMap, adminUser, tenantId }: Props) {
-  const [search, setSearch] = useState('')
-  const [modalUser, setModalUser] = useState<any>(null)
-  const [overrides, setOverrides] = useState<Record<string, any>>(overrideMap)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+const POOLS: { key: keyof Usage; label: string; overrideKey: string }[] = [
+  { key: 'chat',      label: 'AI Chat',     overrideKey: 'ai_chat_limit' },
+  { key: 'buyer',     label: 'Buyer Plan',  overrideKey: 'buyer_plan_limit' },
+  { key: 'seller',    label: 'Seller Plan', overrideKey: 'seller_plan_limit' },
+  { key: 'estimator', label: 'Estimator',   overrideKey: 'estimator_limit' },
+]
 
-  // Modal form state
-  const [chatLimit, setChatLimit]           = useState<string>('')
-  const [buyerLimit, setBuyerLimit]         = useState<string>('')
-  const [sellerLimit, setSellerLimit]       = useState<string>('')
-  const [estimatorLimit, setEstimatorLimit] = useState<string>('')
-  const [note, setNote]                     = useState<string>('')
+export default function UsersClient({ users, usageMap, overrideMap, tenant, agentMap, adminUser, tenantId }: Props) {
+  const [search, setSearch]               = useState('')
+  const [modalUser, setModalUser]         = useState<any>(null)
+  const [overrides, setOverrides]         = useState<Record<string, any>>(overrideMap)
+  const [saving, setSaving]               = useState(false)
+  const [saveError, setSaveError]         = useState<string | null>(null)
+  const [chatLimit, setChatLimit]         = useState('')
+  const [buyerLimit, setBuyerLimit]       = useState('')
+  const [sellerLimit, setSellerLimit]     = useState('')
+  const [estimatorLimit, setEstimatorLimit] = useState('')
+  const [note, setNote]                   = useState('')
+
+  const hardCaps = {
+    chat:      tenant?.ai_hard_cap ?? 10,
+    buyer:     tenant?.plan_hard_cap ?? 10,
+    seller:    tenant?.seller_plan_hard_cap ?? 10,
+    estimator: tenant?.estimator_hard_cap ?? 10,
+  }
 
   const filtered = users.filter(u => {
     const q = search.toLowerCase()
@@ -51,25 +63,21 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
   })
 
   function openModal(user: any) {
-    const existing = overrides[user.id]
-    setChatLimit(existing?.ai_chat_limit      != null ? String(existing.ai_chat_limit)      : '')
-    setBuyerLimit(existing?.buyer_plan_limit  != null ? String(existing.buyer_plan_limit)   : '')
-    setSellerLimit(existing?.seller_plan_limit != null ? String(existing.seller_plan_limit) : '')
-    setEstimatorLimit(existing?.estimator_limit != null ? String(existing.estimator_limit)  : '')
-    setNote(existing?.note || '')
+    const ex = overrides[user.id]
+    setChatLimit(ex?.ai_chat_limit      != null ? String(ex.ai_chat_limit)      : '')
+    setBuyerLimit(ex?.buyer_plan_limit  != null ? String(ex.buyer_plan_limit)   : '')
+    setSellerLimit(ex?.seller_plan_limit != null ? String(ex.seller_plan_limit) : '')
+    setEstimatorLimit(ex?.estimator_limit != null ? String(ex.estimator_limit)  : '')
+    setNote(ex?.note || '')
     setSaveError(null)
     setModalUser(user)
   }
 
-  function closeModal() {
-    setModalUser(null)
-    setSaveError(null)
-  }
+  function closeModal() { setModalUser(null); setSaveError(null) }
 
   async function handleSave() {
     if (!modalUser) return
-    setSaving(true)
-    setSaveError(null)
+    setSaving(true); setSaveError(null)
     try {
       const res = await fetch('/api/admin-homes/users/override', {
         method: 'POST',
@@ -86,43 +94,23 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
           estimatorLimit:  estimatorLimit !== '' ? parseInt(estimatorLimit) : null,
         }),
       })
-      if (!res.ok) {
-        const err = await res.json()
-        setSaveError(err.error || 'Failed to save')
-        return
-      }
+      if (!res.ok) { const e = await res.json(); setSaveError(e.error || 'Failed'); return }
       const { override } = await res.json()
       setOverrides(prev => ({ ...prev, [modalUser.id]: override }))
       closeModal()
-    } catch (e) {
-      setSaveError('Network error — try again')
-    } finally {
-      setSaving(false)
-    }
+    } catch { setSaveError('Network error — try again') }
+    finally { setSaving(false) }
   }
 
-  async function handleClearOverride(userId: string) {
+  async function handleClear(userId: string) {
     try {
       await fetch('/api/admin-homes/users/override', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, tenantId }),
       })
-      setOverrides(prev => {
-        const next = { ...prev }
-        delete next[userId]
-        return next
-      })
-    } catch (e) {
-      console.error('Clear override failed', e)
-    }
-  }
-
-  const hardCaps = {
-    chat:      tenant?.ai_hard_cap ?? 10,
-    buyer:     tenant?.plan_hard_cap ?? 10,
-    seller:    tenant?.seller_plan_hard_cap ?? 10,
-    estimator: tenant?.estimator_hard_cap ?? 10,
+      setOverrides(prev => { const n = { ...prev }; delete n[userId]; return n })
+    } catch (e) { console.error('Clear failed', e) }
   }
 
   return (
@@ -146,7 +134,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
           <thead>
             <tr className="text-left text-gray-500 border-b bg-gray-50">
               <th className="px-4 py-3 font-medium">User</th>
-              <th className="px-4 py-3 font-medium">Assigned Agent</th>
+              <th className="px-4 py-3 font-medium">Agent</th>
               <th className="px-4 py-3 font-medium text-center">AI Chat</th>
               <th className="px-4 py-3 font-medium text-center">Buyer Plan</th>
               <th className="px-4 py-3 font-medium text-center">Seller Plan</th>
@@ -157,16 +145,13 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">No users found</td>
-              </tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No users found</td></tr>
             )}
             {filtered.map(user => {
-              const usage    = usageMap[user.id]    || { chat: 0, buyer: 0, seller: 0, estimator: 0 }
-              const override = overrides[user.id]   || null
+              const usage    = usageMap[user.id]  || { chat: 0, buyer: 0, seller: 0, estimator: 0 }
+              const override = overrides[user.id] || null
               const limits   = getResolvedLimits(tenant, override)
               const hasOverride = !!override
-
               return (
                 <tr key={user.id} className="border-b last:border-0 hover:bg-gray-50">
                   <td className="px-4 py-3">
@@ -174,43 +159,34 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
                     <div className="text-xs text-gray-400">{user.phone || '—'}</div>
                     <div className="text-xs text-gray-400">{new Date(user.created_at).toLocaleDateString()}</div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {user.assigned_agent_id ? agentMap[user.assigned_agent_id] || '—' : '—'}
+                  <td className="px-4 py-3 text-gray-600 text-sm">
+                    {user.assigned_agent_id ? (agentMap[user.assigned_agent_id] || '—') : '—'}
                   </td>
-                  {([ ['chat', 'ai_chat_limit'], ['buyer', 'buyer_plan_limit'], ['seller', 'seller_plan_limit'], ['estimator', 'estimator_limit'] ] as const).map(([pool, overrideKey]) => {
-                    const used = usage[pool] as number
-                    const limit = limits[pool] as number
+                  {POOLS.map(({ key, overrideKey }) => {
+                    const used = usage[key]
+                    const limit = limits[key]
                     const isOverridden = override?.[overrideKey] != null
-                    const isAtLimit = used >= limit
                     return (
-                      <td key={pool} className="px-4 py-3 text-center">
-                        <span className={isAtLimit ? 'font-semibold text-red-600' : 'font-semibold text-gray-800'}>
-                          {used}
-                        </span>
+                      <td key={key} className="px-4 py-3 text-center">
+                        <span className={used >= limit ? 'font-semibold text-red-600' : 'font-semibold text-gray-800'}>{used}</span>
                         <span className="text-gray-400"> / </span>
-                        <span className={isOverridden ? 'text-blue-600 font-semibold' : 'text-gray-500'}>
-                          {limit}
-                        </span>
+                        <span className={isOverridden ? 'text-blue-600 font-semibold' : 'text-gray-500'}>{limit}</span>
                       </td>
                     )
                   })}
+                  <td className="px-4 py-3 text-center">
+                    {hasOverride
                       ? <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Custom</span>
-                      : <span className="text-xs text-gray-400">Tenant Default</span>
+                      : <span className="text-xs text-gray-400">Default</span>
                     }
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2 justify-end">
-                      <button
-                        onClick={() => openModal(user)}
-                        className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors"
-                      >
+                      <button onClick={() => openModal(user)} className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors">
                         Set Limits
                       </button>
                       {hasOverride && (
-                        <button
-                          onClick={() => handleClearOverride(user.id)}
-                          className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200 transition-colors"
-                        >
+                        <button onClick={() => handleClear(user.id)} className="px-3 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200 transition-colors">
                           Clear
                         </button>
                       )}
@@ -223,67 +199,42 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
         </table>
       </div>
 
-      {/* Override Modal */}
       {modalUser && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-1">Set Credit Limits</h2>
-            <p className="text-sm text-gray-500 mb-5">
-              {modalUser.full_name || 'User'} — leave blank to use tenant default
-            </p>
-
-            {saveError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">{saveError}</div>
-            )}
-
+            <p className="text-sm text-gray-500 mb-5">{modalUser.full_name || 'User'} — leave blank to use tenant default</p>
+            {saveError && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">{saveError}</div>}
             <div className="space-y-4">
               {[
-                { label: 'AI Chat', value: chatLimit, set: setChatLimit, cap: hardCaps.chat },
-                { label: 'Buyer Plan', value: buyerLimit, set: setBuyerLimit, cap: hardCaps.buyer },
-                { label: 'Seller Plan', value: sellerLimit, set: setSellerLimit, cap: hardCaps.seller },
-                { label: 'Estimator', value: estimatorLimit, set: setEstimatorLimit, cap: hardCaps.estimator },
+                { label: 'AI Chat',     value: chatLimit,       set: setChatLimit,       cap: hardCaps.chat },
+                { label: 'Buyer Plan',  value: buyerLimit,      set: setBuyerLimit,      cap: hardCaps.buyer },
+                { label: 'Seller Plan', value: sellerLimit,     set: setSellerLimit,     cap: hardCaps.seller },
+                { label: 'Estimator',   value: estimatorLimit,  set: setEstimatorLimit,  cap: hardCaps.estimator },
               ].map(({ label, value, set, cap }) => (
-                <div key={label} className="flex items-center justify-between gap-4">
+                <div key={label} className="flex items-center gap-4">
                   <label className="text-sm font-medium text-gray-700 w-28">{label}</label>
-                  <div className="flex items-center gap-2 flex-1">
-                    <input
-                      type="number"
-                      min={0}
-                      max={cap}
-                      value={value}
-                      onChange={e => set(e.target.value)}
-                      placeholder="Tenant default"
-                      className="border rounded px-3 py-1.5 text-sm w-full"
-                    />
-                    <span className="text-xs text-gray-400 whitespace-nowrap">max {cap}</span>
-                  </div>
+                  <input
+                    type="number" min={0} max={cap} value={value}
+                    onChange={e => set(e.target.value)}
+                    placeholder="Tenant default"
+                    className="border rounded px-3 py-1.5 text-sm flex-1"
+                  />
+                  <span className="text-xs text-gray-400 whitespace-nowrap">max {cap}</span>
                 </div>
               ))}
-
               <div>
                 <label className="text-sm font-medium text-gray-700 block mb-1">Note (internal)</label>
                 <input
-                  type="text"
-                  value={note}
-                  onChange={e => setNote(e.target.value)}
+                  type="text" value={note} onChange={e => setNote(e.target.value)}
                   placeholder="e.g. Serious buyer, approved extended access"
                   className="border rounded px-3 py-1.5 text-sm w-full"
                 />
               </div>
             </div>
-
             <div className="flex gap-3 mt-6 justify-end">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
-              >
+              <button onClick={closeModal} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">Cancel</button>
+              <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors">
                 {saving ? 'Saving...' : 'Save Limits'}
               </button>
             </div>
