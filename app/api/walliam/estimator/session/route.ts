@@ -152,13 +152,21 @@ export async function POST(request: NextRequest) {
     const isVip = session.status === 'vip'
     const manualApprovalsCount = session.manual_approvals_count || 0
     const estimatorCount = session.estimator_count || 0
-
-    let totalAllowed = freePlans
-    if (isVip) {
-      totalAllowed += tenant.estimator_auto_approve_attempts ?? 2
-      totalAllowed += (tenant.estimator_manual_approve_attempts ?? 3) * manualApprovalsCount
+    // Check user-level credit override for estimator
+    const { data: userEstimatorOverride } = userId
+      ? await supabase.from('user_credit_overrides').select('estimator_limit').eq('user_id', userId).eq('tenant_id', tenantId).maybeSingle()
+      : { data: null }
+    let totalAllowed: number
+    if (userEstimatorOverride?.estimator_limit != null) {
+      totalAllowed = Math.min(userEstimatorOverride.estimator_limit, tenant.estimator_hard_cap ?? 10)
+    } else {
+      totalAllowed = freePlans
+      if (isVip) {
+        totalAllowed += tenant.estimator_auto_approve_attempts ?? 2
+        totalAllowed += (tenant.estimator_manual_approve_attempts ?? 3) * manualApprovalsCount
+      }
+      totalAllowed = Math.min(totalAllowed, tenant.estimator_hard_cap ?? 10)
     }
-    totalAllowed = Math.min(totalAllowed, tenant.estimator_hard_cap ?? 10)
 
     const remaining = Math.max(0, totalAllowed - estimatorCount)
     const allowed = remaining > 0
