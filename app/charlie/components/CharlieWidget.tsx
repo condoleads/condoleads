@@ -239,6 +239,58 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
         </div>
       )}
 
+      {/* Gate: Chat limit overlay */}
+      {state.gateActive && state.gateReason === 'chat_limit' && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 10000,
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 20,
+        }}>
+          <div style={{
+            background: '#0f172a',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 20, padding: 36,
+            maxWidth: 420, width: '100%',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>💬</div>
+            <h2 style={{ color: '#fff', fontSize: 20, fontWeight: 800, margin: '0 0 10px' }}>
+              Chat Credits Used
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 1.6, margin: '0 0 24px' }}>
+              You've used your AI chat credits.
+              Request additional access from your agent — they'll review and approve shortly.
+            </p>
+            <button
+              onClick={() => requestVipAccess('buyer')}
+              style={{
+                width: '100%', padding: '14px',
+                background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
+                border: 'none', borderRadius: 12,
+                color: '#fff', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', marginBottom: 10,
+              }}
+            >
+              Request More Chat Access
+            </button>
+            <button
+              onClick={dismissGate}
+              style={{
+                width: '100%', padding: '12px',
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 12,
+                color: 'rgba(255,255,255,0.4)', fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* VIP pending notification */}
       {state.vipRequestStatus === 'pending' && !state.gateActive && (
         <div style={{
