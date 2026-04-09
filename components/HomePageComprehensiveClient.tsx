@@ -518,11 +518,6 @@ function WalliamHero() {
       </div>
 
 
-      {/* VIP AI Access Block */}
-      <div style={{ width: '100%', maxWidth: 600, margin: '0 auto 32px' }}>
-        <VIPAIAccess variant="full" registrationSource="homepage_hero" />
-      </div>
-
       {/* CTAs */}
       <div style={{
         display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center',
@@ -584,6 +579,11 @@ function WalliamHero() {
         transition: 'opacity 0.6s ease, transform 0.6s ease',
       }}>
         <WalliamSearch />
+      </div>
+
+      {/* VIP AI Access Block */}
+      <div style={{ width: '100%', maxWidth: 600, margin: '0 auto 32px' }}>
+        <VIPAIAccess variant="full" registrationSource="homepage_hero" />
       </div>
 
       {/* Scroll hint */}

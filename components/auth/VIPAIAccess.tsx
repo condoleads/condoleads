@@ -139,7 +139,7 @@ export default function VIPAIAccess({
               </span>
             ))}
           </span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#fde68a', background: 'rgba(253,230,138,0.15)', borderRadius: 100, padding: '2px 8px' }}>Register Free â†’</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#fde68a', background: 'rgba(253,230,138,0.15)', borderRadius: 100, padding: '2px 8px' }}>Register Free →</span>
         </button>
         <style>{`@keyframes vip-pulse{0%,100%{box-shadow:0 0 20px rgba(124,58,237,0.4)}50%{box-shadow:0 0 30px rgba(124,58,237,0.7)}}`}</style>
         <RegisterModal isOpen={showRegister} onClose={() => setShowRegister(false)} registrationSource={registrationSource} onSuccess={() => setShowRegister(false)} />
@@ -195,7 +195,7 @@ export default function VIPAIAccess({
                 letterSpacing: '0.02em',
               }}
             >
-              Join VIP Free â†’
+              Join VIP Free →
             </button>
           </div>
         </div>
