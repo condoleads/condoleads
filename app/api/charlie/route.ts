@@ -174,12 +174,21 @@ Use these exact numbers when answering market questions.`
         if (tenantCfg) {
           const msgUsed = sessionData.message_count || 0
           const isVip = sessionData.status === 'vip'
-          let chatAllowed = tenantCfg.ai_free_messages ?? 5
-          if (isVip) {
-            chatAllowed += (tenantCfg.ai_auto_approve_limit ?? 0)
-            chatAllowed += (tenantCfg.ai_manual_approve_limit ?? 0) * (sessionData.manual_approvals_count || 0)
-          }
-          chatAllowed = Math.min(chatAllowed, tenantCfg.ai_hard_cap ?? 25)
+            // Check user-level credit override for chat
+            const { data: userChatOverride } = sessionData.user_id
+              ? await supabase.from('user_credit_overrides').select('ai_chat_limit').eq('user_id', sessionData.user_id).eq('tenant_id', tenantId).maybeSingle()
+              : { data: null }
+            let chatAllowed: number
+            if (userChatOverride?.ai_chat_limit != null) {
+              chatAllowed = Math.min(userChatOverride.ai_chat_limit, tenantCfg.ai_hard_cap ?? 25)
+            } else {
+              chatAllowed = tenantCfg.ai_free_messages ?? 5
+              if (isVip) {
+                chatAllowed += (tenantCfg.ai_auto_approve_limit ?? 0)
+                chatAllowed += (tenantCfg.ai_manual_approve_limit ?? 0) * (sessionData.manual_approvals_count || 0)
+              }
+              chatAllowed = Math.min(chatAllowed, tenantCfg.ai_hard_cap ?? 25)
+            }
           if (msgUsed >= chatAllowed) {
             send({ type: 'gate', reason: 'chat_limit' })
             send({ type: 'done' })
@@ -257,9 +266,9 @@ Use these exact numbers when answering market questions.`
                 if (sessionData) {
 
                   // Load plan config from tenant
-                  let cfg: any = { plan_free_attempts: 1, plan_auto_approve_limit: 0, plan_manual_approve_limit: 3, plan_hard_cap: 10, plan_vip_auto_approve: false, plan_mode: 'shared', seller_plan_free_attempts: 1 }
+                    let cfg: any = { plan_free_attempts: 1, plan_auto_approve_limit: 0, plan_manual_approve_limit: 3, plan_hard_cap: 10, plan_vip_auto_approve: false, plan_mode: 'shared', seller_plan_free_attempts: 1, seller_plan_hard_cap: 10 }
                   if (tenantId) {
-                    const { data: tenantCfg } = await supabase.from('tenants').select('plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, plan_vip_auto_approve, plan_mode, seller_plan_free_attempts').eq('id', tenantId).single()
+                      const { data: tenantCfg } = await supabase.from('tenants').select('plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, plan_vip_auto_approve, plan_mode, seller_plan_free_attempts, seller_plan_hard_cap').eq('id', tenantId).single()
                     if (tenantCfg) cfg = tenantCfg
                   }
                   const planMode = cfg?.plan_mode || 'shared'
@@ -277,12 +286,23 @@ Use these exact numbers when answering market questions.`
                     freePlans = cfg?.plan_free_attempts ?? 1
                     plansUsed = (sessionData.buyer_plans_used || 0) + (sessionData.seller_plans_used || 0)
                   }
-                  let totalAllowed = freePlans
-                  if (isVip) {
-                    totalAllowed += cfg?.plan_auto_approve_limit ?? 0
-                    totalAllowed += (cfg?.plan_manual_approve_limit ?? 3) * manualApprovalsCount
-                  }
-                  totalAllowed = Math.min(totalAllowed, cfg?.plan_hard_cap ?? 10)
+                    // Check user-level credit override for plans
+                    const { data: userPlanOverride } = sessionData.user_id
+                      ? await supabase.from('user_credit_overrides').select('buyer_plan_limit, seller_plan_limit').eq('user_id', sessionData.user_id).eq('tenant_id', tenantId).maybeSingle()
+                      : { data: null }
+                    const planHardCap = planType === 'seller' ? (cfg?.seller_plan_hard_cap ?? 10) : (cfg?.plan_hard_cap ?? 10)
+                    const planOverrideValue = planType === 'seller' ? userPlanOverride?.seller_plan_limit : userPlanOverride?.buyer_plan_limit
+                    let totalAllowed: number
+                    if (planOverrideValue != null) {
+                      totalAllowed = Math.min(planOverrideValue, planHardCap)
+                    } else {
+                      totalAllowed = freePlans
+                      if (isVip) {
+                        totalAllowed += cfg?.plan_auto_approve_limit ?? 0
+                        totalAllowed += (cfg?.plan_manual_approve_limit ?? 3) * manualApprovalsCount
+                      }
+                      totalAllowed = Math.min(totalAllowed, planHardCap)
+                    }
 
                   if (plansUsed >= totalAllowed && !(cfg as any).vip_auto_approve) {
                     send({ type: 'gate', reason: 'vip_required', planType })
