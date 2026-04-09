@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         granted_at:          new Date().toISOString(),
       }, { onConflict: 'user_id,tenant_id' })
       .select()
-      .single()
+      .maybeSingle()
 
     if (upsertError) {
       return NextResponse.json({ error: 'Upsert failed', detail: upsertError.message, code: upsertError.code }, { status: 500 })
