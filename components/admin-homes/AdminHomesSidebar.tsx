@@ -9,6 +9,7 @@ import type { AdminHomesUser } from '@/lib/admin-homes/auth'
 const ALL_NAV = [
   { href: '/admin-homes', label: 'Dashboard', icon: '🏠', roles: ['admin', 'manager', 'agent'] },
   { href: '/admin-homes/leads', label: 'Leads', icon: '📋', roles: ['admin', 'manager', 'agent'] },
+  { href: '/admin-homes/users', label: 'Users', icon: '👤', roles: ['admin', 'manager', 'agent'] },
   { href: '/admin-homes/agents', label: 'Agents', icon: '👥', roles: ['admin', 'manager'] },
   { href: '/admin-homes/bulk-sync', label: 'Bulk Sync', icon: '🔄', roles: ['admin'] },
   { href: '/admin-homes/tenants', label: 'Tenants', icon: '🏢', roles: ['admin'] },
