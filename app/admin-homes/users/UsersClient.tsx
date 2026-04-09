@@ -177,19 +177,23 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
                   <td className="px-4 py-3 text-gray-600">
                     {user.assigned_agent_id ? agentMap[user.assigned_agent_id] || '—' : '—'}
                   </td>
-                  {(['chat', 'buyer', 'seller', 'estimator'] as const).map(pool => (
-                    <td key={pool} className="px-4 py-3 text-center">
-                      <span className={ont-semibold }>
-                        {usage[pool]}
-                      </span>
-                      <span className="text-gray-400"> / </span>
-                      <span className={hasOverride && overrides[user.id]?.[pool === 'chat' ? 'ai_chat_limit' : pool === 'buyer' ? 'buyer_plan_limit' : pool === 'seller' ? 'seller_plan_limit' : 'estimator_limit'] != null ? 'text-blue-600 font-semibold' : 'text-gray-500'}>
-                        {limits[pool]}
-                      </span>
-                    </td>
-                  ))}
-                  <td className="px-4 py-3 text-center">
-                    {hasOverride
+                  {([ ['chat', 'ai_chat_limit'], ['buyer', 'buyer_plan_limit'], ['seller', 'seller_plan_limit'], ['estimator', 'estimator_limit'] ] as const).map(([pool, overrideKey]) => {
+                    const used = usage[pool] as number
+                    const limit = limits[pool] as number
+                    const isOverridden = override?.[overrideKey] != null
+                    const isAtLimit = used >= limit
+                    return (
+                      <td key={pool} className="px-4 py-3 text-center">
+                        <span className={isAtLimit ? 'font-semibold text-red-600' : 'font-semibold text-gray-800'}>
+                          {used}
+                        </span>
+                        <span className="text-gray-400"> / </span>
+                        <span className={isOverridden ? 'text-blue-600 font-semibold' : 'text-gray-500'}>
+                          {limit}
+                        </span>
+                      </td>
+                    )
+                  })}
                       ? <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Custom</span>
                       : <span className="text-xs text-gray-400">Tenant Default</span>
                     }
