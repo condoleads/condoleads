@@ -94,13 +94,46 @@ export async function GET(request: NextRequest) {
         })
         .eq('id', vipRequest.session_id)
 
+      // Write to user_credit_overrides — single source of truth
+      const userId = vipRequest.chat_sessions?.user_id
+      const tenantId = vipRequest.chat_sessions?.tenant_id
+      if (userId && tenantId) {
+        const { data: tenantCfg } = await supabase
+          .from('tenants')
+          .select('plan_hard_cap, seller_plan_hard_cap')
+          .eq('id', tenantId)
+          .single()
+        const planType = vipRequest.buyer_type || 'buyer'
+        const hardCap = planType === 'seller'
+          ? (tenantCfg?.seller_plan_hard_cap ?? 10)
+          : (tenantCfg?.plan_hard_cap ?? 10)
+        const currentUsed = planType === 'seller'
+          ? (vipRequest.chat_sessions?.seller_plans_used || 0)
+          : (vipRequest.chat_sessions?.buyer_plans_used || 0)
+        const newLimit = Math.min(currentUsed + plansToGrant, hardCap)
+        const overrideField = planType === 'seller'
+          ? { seller_plan_limit: newLimit }
+          : { buyer_plan_limit: newLimit }
+        await supabase
+          .from('user_credit_overrides')
+          .upsert({
+            user_id: userId,
+            tenant_id: tenantId,
+            granted_by_agent_id: vipRequest.agent_id || null,
+            granted_by_tier: 'manager',
+            note: 'Email approval — ' + plansToGrant + ' ' + planType + ' plan credits granted',
+            ...overrideField,
+            granted_at: new Date().toISOString(),
+          }, { onConflict: 'user_id,tenant_id' })
+      }
+
       // Send approval email to user
       if (vipRequest.email) {
         try {
           await resend.emails.send({
             from: 'WALLiam <notifications@condoleads.ca>',
             to: vipRequest.email,
-            subject: '✨ Your WALLiam Plan Access is Approved',
+            subject: 'Your WALLiam Plan Access is Approved',
             html: buildUserApprovalEmailHtml(
               vipRequest.full_name,
               agent?.full_name || 'WALLiam',
@@ -160,11 +193,11 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGr
 
 function createHtmlResponse(status: string, message: string): NextResponse {
   const configs: Record<string, { bg: string; icon: string; title: string }> = {
-    approved:          { bg: '#10b981', icon: '✅', title: 'Approved' },
-    denied:            { bg: '#ef4444', icon: '❌', title: 'Denied' },
-    error:             { bg: '#ef4444', icon: '⚠️', title: 'Error' },
-    expired:           { bg: '#f59e0b', icon: '⏰', title: 'Expired' },
-    already_processed: { bg: '#64748b', icon: 'ℹ️', title: 'Already Processed' },
+    approved:          { bg: '#10b981', icon: '&#10003;', title: 'Approved' },
+    denied:            { bg: '#ef4444', icon: '&#10007;', title: 'Denied' },
+    error:             { bg: '#ef4444', icon: '&#9888;', title: 'Error' },
+    expired:           { bg: '#f59e0b', icon: '&#8987;', title: 'Expired' },
+    already_processed: { bg: '#64748b', icon: '&#8505;', title: 'Already Processed' },
   }
 
   const cfg = configs[status] || configs.error
@@ -172,7 +205,7 @@ function createHtmlResponse(status: string, message: string): NextResponse {
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>WALLiam — ${cfg.title}</title>
+  <title>WALLiam - ${cfg.title}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
