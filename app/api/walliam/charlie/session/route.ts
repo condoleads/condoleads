@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
       totalAllowed,
       buyerAllowed,
       sellerAllowed,
-      freePlans,
+      freePlans: agentConfig.ai_free_messages ?? 1,
       // VIP
       vipRequestStatus,
       vipRequestId,
