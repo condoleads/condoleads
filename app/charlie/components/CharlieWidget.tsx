@@ -40,12 +40,12 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
   const [bannerVisible, setBannerVisible] = useState(false)
 
   useEffect(() => {
-    if (state.vipCreditUsed) {
+    if (state.vipCreditUsed && state.userId) {
       setBannerVisible(true)
-      const t = setTimeout(() => setBannerVisible(false), 5000)
+      const t = setTimeout(() => setBannerVisible(false), 6000)
       return () => clearTimeout(t)
     }
-  }, [state.vipCreditUsed, state.vipCreditPlansUsed])
+  }, [state.vipCreditPlansUsed])
   const sessionInitialized = useRef(false)
 
   useEffect(() => {
@@ -215,7 +215,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
             </p>
             <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
               {state.vipCreditPlanType === 'seller' ? 'Seller' : 'Buyer'} Plan {state.vipCreditPlansUsed} of {state.vipCreditTotal} used
-              {state.vipCreditTotal - state.vipCreditPlansUsed > 0 ? ` · ${state.vipCreditTotal - state.vipCreditPlansUsed} remaining` : ' · No credits remaining'}
+              {state.vipCreditTotal - state.vipCreditPlansUsed > 0 ? ` · ${state.vipCreditTotal - state.vipCreditPlansUsed} remaining` : ' · No ' + (state.vipCreditPlanType === 'seller' ? 'Seller' : 'Buyer') + ' Plan credits remaining'}
             </p>
           </div>
         </div>
