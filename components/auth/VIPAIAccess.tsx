@@ -395,7 +395,7 @@ export default function VIPAIAccess({
             letterSpacing: '0.02em',
           }}
         >
-          {requesting ? 'Sending request...' : anyEmpty ? '”´ Credits Empty â€” Request More AI Access' : '✦ Request More AI Access'}
+          {requesting ? 'Sending request...' : anyEmpty ? '✦ Credits Empty — Request More AI Access' : '✦ Request More AI Access'}
         </button>
       )}
     </div>
