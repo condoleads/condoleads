@@ -206,7 +206,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
             </p>
             <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
               {state.vipCreditPlanType === 'seller' ? 'Seller' : 'Buyer'} Plan {state.vipCreditPlansUsed} of {state.vipCreditTotal} used
-              {state.vipCreditTotal - state.vipCreditPlansUsed > 0 ?  ·  remaining : ' · No credits remaining'}
+              {state.vipCreditTotal - state.vipCreditPlansUsed > 0 ? ` · ${state.vipCreditTotal - state.vipCreditPlansUsed} remaining` : ' · No credits remaining'}
             </p>
           </div>
         </div>
