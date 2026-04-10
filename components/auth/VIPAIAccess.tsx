@@ -45,6 +45,7 @@ export default function VIPAIAccess({
   const [showDropdown, setShowDropdown] = useState(false)
   const [requesting, setRequesting] = useState(false)
   const [requested, setRequested] = useState(false)
+  const [tenantConfig, setTenantConfig] = useState({ chatFree: 5, estFree: 2, planFree: 1 })
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -55,6 +56,21 @@ export default function VIPAIAccess({
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/walliam/tenant-config', {
+      headers: { 'x-tenant-id': TENANT_ID }
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.chatFree != null) setTenantConfig({
+          chatFree: d.chatFree,
+          estFree: d.estFree,
+          planFree: d.planFree,
+        })
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -169,9 +185,9 @@ export default function VIPAIAccess({
               </p>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 {[
-                  { e: '💬', label: 'AI Chats', v: '5 free', color: '#3b82f6' },
-                  { e: '📊', label: 'AI Estimates', v: '2 free', color: '#10b981' },
-                  { e: '📋', label: 'AI Plans', v: '1 free', color: '#7c3aed' },
+                  { e: '💬', label: 'AI Chats', v: tenantConfig.chatFree + ' free', color: '#3b82f6' },
+                  { e: '📊', label: 'AI Estimates', v: tenantConfig.estFree + ' free', color: '#10b981' },
+                  { e: '📋', label: 'AI Plans', v: tenantConfig.planFree + ' free', color: '#7c3aed' },
                 ].map(c => (
                   <div key={c.e} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.color}30`, borderRadius: 10, padding: '8px 12px' }}>
                     <span style={{ fontSize: 16 }}>{c.e}</span>

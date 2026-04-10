@@ -37,6 +37,15 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
   const [searchInput, setSearchInput] = useState('')
   const [isHomepage, setIsHomepage] = useState(false)
   const [showRegisterModal, setShowRegisterModal] = useState(false)
+  const [bannerVisible, setBannerVisible] = useState(false)
+
+  useEffect(() => {
+    if (state.vipCreditUsed) {
+      setBannerVisible(true)
+      const t = setTimeout(() => setBannerVisible(false), 5000)
+      return () => clearTimeout(t)
+    }
+  }, [state.vipCreditUsed, state.vipCreditPlansUsed])
   const sessionInitialized = useRef(false)
 
   useEffect(() => {
@@ -188,7 +197,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
       )}
 
       {/* VIP Credit Used Announcement */}
-      {state.vipCreditUsed && !!state.userId && (
+      {state.vipCreditUsed && !!state.userId && bannerVisible && (
         <div style={{
           position: 'fixed', bottom: 90, left: '50%',
           transform: 'translateX(-50%)',

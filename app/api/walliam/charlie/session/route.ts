@@ -179,21 +179,40 @@ export async function POST(request: NextRequest) {
     const vipRequestStatus = vipRequest?.status || 'idle'
     const vipRequestId = vipRequest?.id || null
 
-    // Step 6: Calculate plan allowance
-    // WALLiam unit = plans (not messages)
-    // ai_free_messages repurposed as free plans per type (buyer + seller independently)
-    const freePlans = agentConfig.ai_free_messages         // e.g. 1
+    // Step 6: Calculate plan allowance — check user_credit_overrides first
     const manualApprovalsCount = session.manual_approvals_count || 0
-    const vipMessagesGranted = session.vip_messages_granted || 0
-
-    // Total allowed = free + auto_approve (if vip) + (manual_approve × approvals)
     const isVip = session.status === 'vip'
-    let totalAllowed = freePlans
-    if (isVip) {
-      totalAllowed += agentConfig.ai_auto_approve_limit
-      totalAllowed += agentConfig.ai_manual_approve_limit * manualApprovalsCount
+    // Fetch user-level override if user is registered
+    let userOverride: any = null
+    if (userId && tenantId) {
+      const { data: ov } = await supabase
+        .from('user_credit_overrides')
+        .select('ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      userOverride = ov
     }
-    totalAllowed = Math.min(totalAllowed, agentConfig.ai_hard_cap)
+    // Resolve totalAllowed: override takes precedence over tenant tiers
+    let totalAllowed: number
+    if (userOverride?.buyer_plan_limit != null) {
+      totalAllowed = Math.min(userOverride.buyer_plan_limit, agentConfig.ai_hard_cap ?? 10)
+    } else {
+      totalAllowed = agentConfig.ai_free_messages ?? 1
+      if (isVip) {
+        totalAllowed += agentConfig.ai_auto_approve_limit ?? 0
+        totalAllowed += (agentConfig.ai_manual_approve_limit ?? 3) * manualApprovalsCount
+      }
+      totalAllowed = Math.min(totalAllowed, agentConfig.ai_hard_cap ?? 10)
+    }
+    // Resolve chat limit
+    const chatFreeMessages = userOverride?.ai_chat_limit != null
+      ? Math.min(userOverride.ai_chat_limit, agentConfig.ai_hard_cap ?? 25)
+      : (agentConfig.ai_free_messages ?? 1)
+    // Resolve estimator limit
+    const estimatorFreeAttempts = userOverride?.estimator_limit != null
+      ? Math.min(userOverride.estimator_limit, (agentConfig as any).estimator_hard_cap ?? 10)
+      : ((agentConfig as any).estimator_free_attempts ?? 2)
 
     const buyerPlansUsed = session.buyer_plans_used || 0
     const sellerPlansUsed = session.seller_plans_used || 0
@@ -221,11 +240,11 @@ export async function POST(request: NextRequest) {
       isRegistered: !!userId,
       // Chat credits
       messageCount: session.message_count || 0,
-      chatFreeMessages: agentConfig.ai_free_messages,
+      chatFreeMessages: chatFreeMessages,
       chatHardCap: agentConfig.ai_hard_cap,
       // Estimator credits
       estimatorCount: session.estimator_count || 0,
-      estimatorFreeAttempts: (agentConfig as any).estimator_free_attempts ?? 2,
+      estimatorFreeAttempts: estimatorFreeAttempts,
       estimatorHardCap: (agentConfig as any).estimator_hard_cap ?? 10,
       // Plan mode
       planMode: (agentConfig as any).plan_mode || 'shared',
