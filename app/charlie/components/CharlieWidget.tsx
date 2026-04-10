@@ -188,7 +188,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
       )}
 
       {/* VIP Credit Used Announcement */}
-      {state.vipCreditUsed && state.isRegistered && (
+      {state.vipCreditUsed && !!state.userId && (
         <div style={{
           position: 'fixed', bottom: 90, left: '50%',
           transform: 'translateX(-50%)',
