@@ -104,9 +104,23 @@ export default function CharlieOverlay({
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span>AI Real Estate Assistant</span>
                 <span style={{ color: 'rgba(255,255,255,0.15)', margin: '0 4px' }}>|</span>
-                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', borderRadius: 100, padding: '2px 6px' }}>{'chat ' + Math.max(0, state.chatFreeMessages - state.messageCount)}</span>
-                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', borderRadius: 100, padding: '2px 6px', margin: '0 2px' }}>{'est ' + Math.max(0, state.estimatorFreeAttempts - state.estimatorCount)}</span>
-                <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.05)', borderRadius: 100, padding: '2px 6px' }}>{'plan ' + Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed)}</span>
+                {[
+                  { e: '💬', label: 'chat', rem: Math.max(0, state.chatFreeMessages - state.messageCount) },
+                  { e: '📊', label: 'est',  rem: Math.max(0, state.estimatorFreeAttempts - state.estimatorCount) },
+                  { e: '📋', label: 'plan', rem: Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed) },
+                ].map(({ e, label, rem }) => (
+                  <span key={label} style={{
+                    display: 'flex', alignItems: 'center', gap: 3,
+                    fontSize: 10, fontWeight: 700,
+                    color: rem === 0 ? '#ef4444' : rem === 1 ? '#f59e0b' : 'rgba(255,255,255,0.5)',
+                    background: rem === 0 ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.05)',
+                    borderRadius: 100, padding: '2px 7px',
+                    border: rem === 0 ? '1px solid rgba(239,68,68,0.3)' : '1px solid transparent',
+                  }}>
+                    <span style={{ fontSize: 9 }}>{e}</span>
+                    <span>{rem}</span>
+                  </span>
+                ))}
               </div>
             </div>
           </div>
@@ -148,7 +162,7 @@ export default function CharlieOverlay({
             fontSize: 13,
             fontWeight: 600,
           }}>
-            âœ• Close
+            ✕ Close
           </button>
         </div>
 
