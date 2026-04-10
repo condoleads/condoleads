@@ -75,6 +75,7 @@ export interface CharlieState {
   vipRequestId: string | null
   vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
   vipCreditUsed: boolean
+  vipCreditPlanType: 'buyer' | 'seller' | null
   vipCreditPlansUsed: number
   vipCreditTotal: number
   blocks: ConversationBlock[]
@@ -125,6 +126,7 @@ const INITIAL_STATE: CharlieState = {
   vipCreditUsed: false,
   vipCreditPlansUsed: 0,
   vipCreditTotal: 1,
+  vipCreditPlanType: null,
   blocks: [],
 }
 
@@ -348,6 +350,7 @@ export function useCharlie() {
                 vipCreditUsed: true,
                 vipCreditPlansUsed: event.plansUsed,
                 vipCreditTotal: event.totalAllowed,
+                vipCreditPlanType: event.planType || 'buyer',
               }))
             }
 

@@ -187,6 +187,30 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
         />
       )}
 
+      {/* VIP Credit Used Announcement */}
+      {state.vipCreditUsed && state.isRegistered && (
+        <div style={{
+          position: 'fixed', bottom: 90, left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999, width: 'calc(100% - 40px)', maxWidth: 420,
+          background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+          border: '1px solid rgba(251,191,36,0.3)',
+          borderRadius: 14, padding: '14px 18px',
+          display: 'flex', alignItems: 'center', gap: 12,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        }}>
+          <span style={{ fontSize: 20 }}>✦</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, color: '#fbbf24', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              VIP Access Credit Used
+            </p>
+            <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+              {state.vipCreditPlanType === 'seller' ? 'Seller' : 'Buyer'} Plan {state.vipCreditPlansUsed} of {state.vipCreditTotal} used
+              {state.vipCreditTotal - state.vipCreditPlansUsed > 0 ?  ·  remaining : ' · No credits remaining'}
+            </p>
+          </div>
+        </div>
+      )}
       {/* Gate: VIP required overlay */}
       {state.gateActive && state.gateReason === 'vip_required' && (
         <div style={{
