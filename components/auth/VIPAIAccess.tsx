@@ -82,7 +82,7 @@ export default function VIPAIAccess({
     })
       .then(r => r.json())
       .then(d => {
-        if (d.sessionId) setCredits({
+        if (d.sessionId || d.chatFreeMessages) setCredits({
           messageCount: d.messageCount || 0,
           chatFreeMessages: d.chatFreeMessages || 5,
           chatHardCap: d.chatHardCap || 25,
