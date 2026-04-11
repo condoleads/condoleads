@@ -234,6 +234,24 @@ export function useCharlie() {
     }
   }, [])
 
+  // Poll VIP request status when pending — clear notification on approval
+  useEffect(() => {
+    if (stateRef.current?.vipRequestStatus !== 'pending') return
+    const requestId = stateRef.current?.vipRequestId
+    if (!requestId) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/walliam/charlie/vip-request?requestId=${requestId}`)
+        const data = await res.json()
+        if (data.status === 'approved' || data.status === 'denied') {
+          setState(s => ({ ...s, vipRequestStatus: data.status, gateActive: false }))
+          clearInterval(interval)
+        }
+      } catch {}
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [stateRef.current?.vipRequestStatus])
+
   const setLeadCaptured = useCallback(() => {
     setState(s => ({ ...s, leadCaptured: true }))
   }, [])
