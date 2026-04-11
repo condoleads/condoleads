@@ -499,7 +499,8 @@ export function useCharlie() {
     const lastMsg = lastUserMessageRef.current
     if (!lastMsg) return
     setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
-    setTimeout(() => sendMessageRef.current?.(lastMsg), 300)
+    // Longer delay to ensure new session is fully initialized before retrying
+    setTimeout(() => sendMessageRef.current?.(lastMsg), 1500)
   }, [])
 
   return {
