@@ -432,8 +432,8 @@ export function useCharlie() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sessionId: stateRef.current.sessionId,
-            userId: stateRef.current.userId,
+            sessionId: walliamSessionIdRef.current || stateRef.current.sessionId,
+            userId: userIdRef.current || stateRef.current.userId,
             planType: data.type,
             plan: data,
             analytics: analyticsRef.current,
