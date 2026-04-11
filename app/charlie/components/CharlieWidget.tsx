@@ -42,8 +42,6 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
   useEffect(() => {
     if (state.vipCreditUsed && state.userId) {
       setBannerVisible(true)
-      const t = setTimeout(() => setBannerVisible(false), 6000)
-      return () => clearTimeout(t)
     }
   }, [state.vipCreditPlansUsed])
   const sessionInitialized = useRef(false)
@@ -201,23 +199,36 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
         <div style={{
           position: 'fixed', bottom: 90, left: '50%',
           transform: 'translateX(-50%)',
-          zIndex: 9999, width: 'calc(100% - 40px)', maxWidth: 420,
+          zIndex: 9999, width: 'calc(100% - 40px)', maxWidth: 460,
           background: 'linear-gradient(135deg, #0f172a, #1e293b)',
           border: '1px solid rgba(251,191,36,0.3)',
           borderRadius: 14, padding: '14px 18px',
-          display: 'flex', alignItems: 'center', gap: 12,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
         }}>
-          <span style={{ fontSize: 20 }}>✦</span>
+          <span style={{ fontSize: 20, marginTop: 2 }}>✦</span>
           <div style={{ flex: 1 }}>
             <p style={{ margin: 0, color: '#fbbf24', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               VIP Access Credit Used
             </p>
-            <p style={{ margin: '2px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
+            <p style={{ margin: '3px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 1.5 }}>
               {state.vipCreditPlanType === 'seller' ? 'Seller' : 'Buyer'} Plan {state.vipCreditPlansUsed} of {state.vipCreditTotal} used
               {state.vipCreditTotal - state.vipCreditPlansUsed > 0 ? ` · ${state.vipCreditTotal - state.vipCreditPlansUsed} remaining` : ' · No ' + (state.vipCreditPlanType === 'seller' ? 'Seller' : 'Buyer') + ' Plan credits remaining'}
             </p>
+            <p style={{ margin: '6px 0 0', color: 'rgba(255,255,255,0.5)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span>📧</span>
+              <span>Your plan has been sent to your email</span>
+            </p>
           </div>
+          <button
+            onClick={() => setBannerVisible(false)}
+            style={{
+              background: 'none', border: 'none',
+              color: 'rgba(255,255,255,0.3)', cursor: 'pointer',
+              fontSize: 18, padding: '0 0 0 4px', lineHeight: 1,
+              flexShrink: 0,
+            }}
+          >✕</button>
         </div>
       )}
       {/* Gate: VIP required overlay */}
