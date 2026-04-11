@@ -162,15 +162,30 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
                   <td className="px-4 py-3 text-gray-600 text-sm">
                     {user.assigned_agent_id ? (agentMap[user.assigned_agent_id] || '—') : '—'}
                   </td>
-                  {POOLS.map(({ key, overrideKey }) => {
+                  {POOLS.map(({ key, overrideKey, label }) => {
                     const used = usage[key]
                     const limit = limits[key]
+                    const remaining = Math.max(0, limit - used)
                     const isOverridden = override?.[overrideKey] != null
+                    const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0
+                    const isEmpty = remaining === 0
+                    const isLow = remaining === 1
+                    const barColor = isEmpty ? '#ef4444' : isLow ? '#f59e0b' : isOverridden ? '#3b82f6' : '#10b981'
+                    const textColor = isEmpty ? 'text-red-600' : isLow ? 'text-amber-500' : isOverridden ? 'text-blue-600' : 'text-gray-700'
+                    const icons: Record<string,string> = { chat: '💬', buyer: '📋', seller: '💰', estimator: '📊' }
                     return (
-                      <td key={key} className="px-4 py-3 text-center">
-                        <span className={used >= limit ? 'font-semibold text-red-600' : 'font-semibold text-gray-800'}>{used}</span>
-                        <span className="text-gray-400"> / </span>
-                        <span className={isOverridden ? 'text-blue-600 font-semibold' : 'text-gray-500'}>{limit}</span>
+                      <td key={key} className="px-3 py-3">
+                        <div className="flex flex-col items-center gap-1 min-w-16">
+                          <div className={`flex items-center gap-1 text-sm font-bold ${textColor}`}>
+                            <span className="text-xs">{icons[key]}</span>
+                            <span>{remaining}</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div style={{ width: `${pct}%`, background: barColor }} className="h-full rounded-full transition-all" />
+                          </div>
+                          <div className="text-xs text-gray-400">{used}/{limit}</div>
+                          {isOverridden && <div className="text-xs text-blue-500 font-medium">custom</div>}
+                        </div>
                       </td>
                     )
                   })}
