@@ -185,7 +185,7 @@ export default function CharlieOverlay({
           }}>
             {formMode === 'buyer' ? (
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>ðŸ  Find Your Home</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>🏠 Find Your Home</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 20 }}>Tell us what you are looking for</div>
                 <BuyerForm
                   onSubmit={(data) => {

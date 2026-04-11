@@ -70,12 +70,20 @@ export async function POST(request: NextRequest) {
         .single()
       if (tenant) {
         agentConfig = {
-          ai_free_messages: tenant.ai_free_messages ?? 1,
+          ai_free_messages: tenant.ai_free_messages ?? 5,
           ai_auto_approve_limit: tenant.ai_auto_approve_limit ?? 2,
           ai_manual_approve_limit: tenant.ai_manual_approve_limit ?? 3,
-          ai_hard_cap: tenant.ai_hard_cap ?? 10,
+          ai_hard_cap: tenant.ai_hard_cap ?? 25,
           vip_auto_approve: tenant.vip_auto_approve ?? false,
           full_name: tenant.name,
+          plan_free_attempts: tenant.plan_free_attempts ?? 1,
+          plan_hard_cap: tenant.plan_hard_cap ?? 10,
+          plan_manual_approve_limit: tenant.plan_manual_approve_limit ?? 3,
+          plan_mode: tenant.plan_mode ?? 'shared',
+          seller_plan_free_attempts: tenant.seller_plan_free_attempts ?? 1,
+          seller_plan_hard_cap: tenant.seller_plan_hard_cap ?? 10,
+          estimator_free_attempts: tenant.estimator_free_attempts ?? 1,
+          estimator_hard_cap: tenant.estimator_hard_cap ?? 10,
         }
       }
     } else if (agentId) {
@@ -195,15 +203,16 @@ export async function POST(request: NextRequest) {
     }
     // Resolve totalAllowed: override takes precedence over tenant tiers
     let totalAllowed: number
+    const planHardCap = (agentConfig as any).plan_hard_cap ?? 10
     if (userOverride?.buyer_plan_limit != null) {
-      totalAllowed = Math.min(userOverride.buyer_plan_limit, agentConfig.ai_hard_cap ?? 10)
+      totalAllowed = Math.min(userOverride.buyer_plan_limit, planHardCap)
     } else {
-      totalAllowed = agentConfig.ai_free_messages ?? 1
+      totalAllowed = (agentConfig as any).plan_free_attempts ?? 1
       if (isVip) {
         totalAllowed += agentConfig.ai_auto_approve_limit ?? 0
         totalAllowed += (agentConfig.ai_manual_approve_limit ?? 3) * manualApprovalsCount
       }
-      totalAllowed = Math.min(totalAllowed, agentConfig.ai_hard_cap ?? 10)
+      totalAllowed = Math.min(totalAllowed, planHardCap)
     }
     // Resolve chat limit
     const chatFreeMessages = userOverride?.ai_chat_limit != null
