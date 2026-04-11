@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     if (tenantId) {
       const { data: tenant } = await supabase
         .from('tenants')
-        .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve, plan_free_attempts, plan_hard_cap, plan_mode, seller_plan_free_attempts, seller_plan_hard_cap, estimator_free_attempts, estimator_hard_cap`)
+        .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve, plan_free_attempts, plan_hard_cap, plan_mode, plan_manual_approve_limit, seller_plan_free_attempts, seller_plan_hard_cap, estimator_free_attempts, estimator_hard_cap`)
         .eq('id', tenantId)
         .single()
       if (tenant) {
