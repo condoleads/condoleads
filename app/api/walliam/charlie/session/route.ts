@@ -102,12 +102,20 @@ export async function POST(request: NextRequest) {
         .single()
       if (agent) {
         agentConfig = {
-          ai_free_messages: agent.ai_free_messages ?? 1,
+          ai_free_messages: agent.ai_free_messages ?? 5,
           ai_auto_approve_limit: agent.ai_auto_approve_limit ?? 2,
           ai_manual_approve_limit: agent.ai_manual_approve_limit ?? 3,
-          ai_hard_cap: agent.ai_hard_cap ?? 10,
+          ai_hard_cap: agent.ai_hard_cap ?? 25,
           vip_auto_approve: agent.vip_auto_approve ?? false,
           full_name: agent.full_name,
+          plan_free_attempts: 1,
+          plan_hard_cap: 10,
+          plan_manual_approve_limit: 3,
+          plan_mode: 'shared',
+          seller_plan_free_attempts: 1,
+          seller_plan_hard_cap: 10,
+          estimator_free_attempts: 1,
+          estimator_hard_cap: 10,
         }
       }
     }
@@ -124,12 +132,20 @@ export async function POST(request: NextRequest) {
 
       if (agent) {
         agentConfig = {
-          ai_free_messages: agent.ai_free_messages ?? 1,
+          ai_free_messages: agent.ai_free_messages ?? 5,
           ai_auto_approve_limit: agent.ai_auto_approve_limit ?? 2,
           ai_manual_approve_limit: agent.ai_manual_approve_limit ?? 3,
-          ai_hard_cap: agent.ai_hard_cap ?? 10,
+          ai_hard_cap: agent.ai_hard_cap ?? 25,
           vip_auto_approve: agent.vip_auto_approve ?? false,
           full_name: agent.full_name,
+          plan_free_attempts: 1,
+          plan_hard_cap: 10,
+          plan_manual_approve_limit: 3,
+          plan_mode: 'shared',
+          seller_plan_free_attempts: 1,
+          seller_plan_hard_cap: 10,
+          estimator_free_attempts: 1,
+          estimator_hard_cap: 10,
         }
       }
     }
