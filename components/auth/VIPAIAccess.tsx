@@ -78,7 +78,7 @@ export default function VIPAIAccess({
     fetch('/api/walliam/charlie/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-tenant-id': TENANT_ID },
-      body: JSON.stringify({ userId: user.id }),
+      body: JSON.stringify({ userId: user.id, read_only: true }),
     })
       .then(r => r.json())
       .then(d => {

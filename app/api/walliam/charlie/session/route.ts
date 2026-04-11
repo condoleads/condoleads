@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
       community_id,
       municipality_id,
       area_id,
+      read_only,       // if true, never create a session — just read credits
     } = await request.json()
 
     console.log("[session] route hit, userId:", userId)
@@ -169,7 +170,32 @@ export async function POST(request: NextRequest) {
       session = existing || null
     }
 
-    // Step 4: Create new session if none exists
+    // Step 4: Create new session if none exists (skip if read_only)
+    if (!session && read_only) {
+      // Read-only mode — return defaults without creating a session
+      return NextResponse.json({
+        sessionId: null,
+        totalAllowed: (agentConfig as any).plan_free_attempts ?? 1,
+        buyerPlansUsed: 0,
+        sellerPlansUsed: 0,
+        buyerAllowed: true,
+        sellerAllowed: true,
+        freePlans: (agentConfig as any).plan_free_attempts ?? 1,
+        vipRequestStatus: 'none',
+        vipRequestId: null,
+        vipAutoApprove: agentConfig.vip_auto_approve,
+        isRegistered: !!userId,
+        messageCount: 0,
+        chatFreeMessages: agentConfig.ai_free_messages ?? 5,
+        chatHardCap: agentConfig.ai_hard_cap ?? 25,
+        estimatorCount: 0,
+        estimatorFreeAttempts: (agentConfig as any).estimator_free_attempts ?? 1,
+        estimatorHardCap: (agentConfig as any).estimator_hard_cap ?? 10,
+        planMode: (agentConfig as any).plan_mode ?? 'shared',
+        sellerPlanFreeAttempts: (agentConfig as any).seller_plan_free_attempts ?? 1,
+        status: 'active',
+      })
+    }
     if (!session) {
       const { data: newSession, error: createError } = await supabase
         .from('chat_sessions')
