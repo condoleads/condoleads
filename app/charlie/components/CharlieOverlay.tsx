@@ -105,13 +105,14 @@ export default function CharlieOverlay({
                 <span>AI Real Estate Assistant</span>
                 <span style={{ color: 'rgba(255,255,255,0.15)', margin: '0 4px' }}>|</span>
                 {[
-                  { e: '💬', label: 'chat', rem: Math.max(0, state.chatFreeMessages - state.messageCount) },
-                  { e: '📊', label: 'est',  rem: Math.max(0, state.estimatorFreeAttempts - state.estimatorCount) },
-                  { e: '📋', label: 'plan', rem: Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed) },
-                ].map(({ e, label, rem }) => (
-                  <span key={label} style={{
-                    display: 'flex', alignItems: 'center', gap: 3,
-                    fontSize: 10, fontWeight: 700,
+                  { e: '💬', label: 'AI Chat',     used: state.messageCount,    total: state.chatFreeMessages, rem: Math.max(0, state.chatFreeMessages - state.messageCount) },
+                  { e: '📊', label: 'AI Estimates', used: state.estimatorCount, total: state.estimatorFreeAttempts, rem: Math.max(0, state.estimatorFreeAttempts - state.estimatorCount) },
+                  { e: '📋', label: 'AI Plans',     used: state.buyerPlansUsed + state.sellerPlansUsed, total: state.totalAllowed, rem: Math.max(0, state.totalAllowed - state.buyerPlansUsed - state.sellerPlansUsed) },
+                ].map(({ e, label, used, total, rem }) => (
+                  <span key={label} title={`${label}: ${rem} remaining (${used} of ${total} used)`} style={{
+                    position: 'relative',
+                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                    fontSize: 10, fontWeight: 700, cursor: 'default',
                     color: rem === 0 ? '#ef4444' : rem === 1 ? '#f59e0b' : 'rgba(255,255,255,0.5)',
                     background: rem === 0 ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.05)',
                     borderRadius: 100, padding: '2px 7px',
