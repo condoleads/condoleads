@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (agentId) {
+    if (agentId && !tenantId) {
       const { data: agent } = await supabase
         .from('agents')
         .select(`
