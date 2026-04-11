@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     chatFree:  tenant.ai_free_messages ?? 1,
-    estFree:   tenant.estimator_free_attempts ?? 2,
+    estFree:   tenant.estimator_free_attempts ?? 1,
     planFree:  tenant.plan_free_attempts ?? 1,
   })
 }

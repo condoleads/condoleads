@@ -246,11 +246,11 @@ export default function VIPAIAccess({
             ].map(c => (
               <span key={c.e} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <span style={{ fontSize: 10 }}>{c.e}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: creditColor(c.r) }}>{c.r ?? 'â€¦'}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: creditColor(c.r) }}>{c.r ?? '...'}</span>
               </span>
             ))}
           </span>
-        ) : <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>â€¦</span>}
+        ) : <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>...</span>}
         {(anyLow || anyEmpty) && (
           <span style={{ fontSize: 9, fontWeight: 700, color: anyEmpty ? '#ef4444' : '#f59e0b', background: anyEmpty ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', borderRadius: 100, padding: '2px 6px' }}>
             {anyEmpty ? 'Get More' : 'Low'}
@@ -268,7 +268,7 @@ export default function VIPAIAccess({
           boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
         }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
-            ✦ VIP Member Â· {user.email}
+            ✦ VIP Member · {user.email}
           </div>
 
           {[
@@ -298,7 +298,7 @@ export default function VIPAIAccess({
 
           {requested ? (
             <div style={{ textAlign: 'center', padding: '8px 0', fontSize: 12, color: '#10b981', fontWeight: 600 }}>
-              âœ“ Request sent â€” your agent will review shortly
+              ✓ Request sent — your agent will review shortly
             </div>
           ) : (
             <button
@@ -379,7 +379,7 @@ export default function VIPAIAccess({
 
       {requested ? (
         <div style={{ textAlign: 'center', padding: '10px', fontSize: 13, color: '#10b981', fontWeight: 600, background: 'rgba(16,185,129,0.1)', borderRadius: 10, border: '1px solid rgba(16,185,129,0.2)' }}>
-          âœ“ Request sent â€” your agent will review and approve shortly
+          ✓ Request sent — your agent will review and approve shortly
         </div>
       ) : (
         <button
