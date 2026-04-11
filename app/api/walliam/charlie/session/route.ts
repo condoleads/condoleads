@@ -54,12 +54,20 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Get config from tenant (primary) or agent (fallback)
     let agentConfig = {
-      ai_free_messages: 1,
+      ai_free_messages: 5,
       ai_auto_approve_limit: 2,
       ai_manual_approve_limit: 3,
-      ai_hard_cap: 10,
+      ai_hard_cap: 25,
       vip_auto_approve: false,
       full_name: 'WALLiam',
+      plan_free_attempts: 1,
+      plan_hard_cap: 10,
+      plan_manual_approve_limit: 3,
+      plan_mode: 'shared',
+      seller_plan_free_attempts: 1,
+      seller_plan_hard_cap: 10,
+      estimator_free_attempts: 1,
+      estimator_hard_cap: 10,
     }
 
     if (tenantId) {
