@@ -14,9 +14,9 @@ interface Props {
 
 function getTenantDefaults(tenant: any): Usage {
   return {
-    chat:      (tenant?.ai_free_messages ?? 1) + (tenant?.ai_auto_approve_limit ?? 2) + (tenant?.ai_manual_approve_limit ?? 3),
-    plans:     (tenant?.plan_free_attempts ?? 1) + (tenant?.plan_auto_approve_limit ?? 0) + (tenant?.plan_manual_approve_limit ?? 3),
-    estimator: (tenant?.estimator_free_attempts ?? 1) + (tenant?.estimator_auto_approve_attempts ?? 2) + (tenant?.estimator_manual_approve_attempts ?? 3),
+    chat:      tenant?.ai_free_messages ?? 1,
+    plans:     tenant?.plan_free_attempts ?? 1,
+    estimator: tenant?.estimator_free_attempts ?? 1,
   }
 }
 
