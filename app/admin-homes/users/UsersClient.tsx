@@ -129,8 +129,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
               <th className="px-4 py-3 font-medium">User</th>
               <th className="px-4 py-3 font-medium">Agent</th>
               <th className="px-4 py-3 font-medium text-center">AI Chat</th>
-              <th className="px-4 py-3 font-medium text-center">Buyer Plan</th>
-              <th className="px-4 py-3 font-medium text-center">Seller Plan</th>
+              <th className="px-4 py-3 font-medium text-center">AI Plans</th>
               <th className="px-4 py-3 font-medium text-center">Estimator</th>
               <th className="px-4 py-3 font-medium text-center">Override</th>
               <th className="px-4 py-3 font-medium"></th>
