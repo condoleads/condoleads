@@ -299,14 +299,13 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                     <input type="number" min={0} value={formData.plan_free_attempts} onChange={e => setFormData({...formData, plan_free_attempts: parseInt(e.target.value)||1})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
                   <div><label className="block text-xs font-medium text-gray-700 mb-1">Buyer Hard Cap</label>
                     <input type="number" min={1} value={formData.plan_hard_cap} onChange={e => setFormData({...formData, plan_hard_cap: parseInt(e.target.value)||10})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Free Seller Plans</label>
-                    <input type="number" min={0} value={formData.seller_plan_free_attempts} onChange={e => setFormData({...formData, seller_plan_free_attempts: parseInt(e.target.value)||1})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Seller Hard Cap</label>
-                    <input type="number" min={1} value={formData.seller_plan_hard_cap} onChange={e => setFormData({...formData, seller_plan_hard_cap: parseInt(e.target.value)||10})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                  
+                  
                 </>}
                 <div><label className="block text-xs font-medium text-gray-700 mb-1">Auto-Approve Limit</label>
                   <input type="number" min={0} value={formData.plan_auto_approve_limit} onChange={e => setFormData({...formData, plan_auto_approve_limit: parseInt(e.target.value)||0})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-                <div><label className="block text-xs font-medium text-gray-700 mb-1">Manual Approve Limit</label>
+                <div><label className="block text-xs font-medium text-gray-700 mb-1">Credits per Email Approval</label>
+                  <p className="text-xs text-gray-500 mb-1">Plans granted when approving a request via email.</p>
                   <input type="number" min={0} value={formData.plan_manual_approve_limit} onChange={e => setFormData({...formData, plan_manual_approve_limit: parseInt(e.target.value)||3})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
                 <div className="col-span-2"><label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={formData.plan_vip_auto_approve} onChange={e => setFormData({...formData, plan_vip_auto_approve: e.target.checked})} className="w-4 h-4 text-indigo-600" />
