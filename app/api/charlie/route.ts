@@ -209,6 +209,42 @@ Use these exact numbers when answering market questions.`
       }
       // ── END CHAT GATING ─────────────────────────────────────────────
 
+      // ── PRE-STREAM PLAN GATE ──────────────────────────────
+      // Gate fires BEFORE streaming — AI never starts if credits exhausted
+      if (sessionData && tenantId) {
+        const effectiveUserId = userId || sessionData?.user_id || null
+        if (effectiveUserId) {
+          const { data: planCfg } = await supabase.from('tenants').select('plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, plan_vip_auto_approve, plan_mode').eq('id', tenantId).single()
+          if (planCfg) {
+            const plansUsed = (sessionData.buyer_plans_used || 0) + (sessionData.seller_plans_used || 0)
+            const { data: userPlanOverride } = await supabase.from('user_credit_overrides').select('buyer_plan_limit').eq('user_id', effectiveUserId).eq('tenant_id', tenantId).maybeSingle()
+            const planHardCap = planCfg.plan_hard_cap ?? 10
+            let preCachedTotal: number
+            if (userPlanOverride?.buyer_plan_limit != null) {
+              preCachedTotal = Math.min(userPlanOverride.buyer_plan_limit, planHardCap)
+            } else {
+              const isVipPre = sessionData.status === 'vip'
+              const manualCountPre = sessionData.manual_approvals_count || 0
+              preCachedTotal = planCfg.plan_free_attempts ?? 1
+              if (isVipPre) {
+                preCachedTotal += planCfg.plan_auto_approve_limit ?? 0
+                preCachedTotal += (planCfg.plan_manual_approve_limit ?? 3) * manualCountPre
+              }
+              preCachedTotal = Math.min(preCachedTotal, planHardCap)
+            }
+            if (plansUsed >= preCachedTotal && !(planCfg as any).plan_vip_auto_approve) {
+              send({ type: 'gate', reason: 'vip_required', planType: undefined })
+              send({ type: 'done' })
+              controller.close()
+              return
+            }
+            ;(sessionData as any)._cachedTotalAllowed = preCachedTotal
+            ;(sessionData as any)._cachedPlansUsed = plansUsed
+          }
+        }
+      }
+      // ── END PRE-STREAM PLAN GATE ──────────────────────────
+
       try {
         let currentMessages = [...messages]
         let continueLoop = true
@@ -304,7 +340,10 @@ Use these exact numbers when answering market questions.`
                       totalAllowed = Math.min(totalAllowed, planHardCap)
                     }
 
-                  if (plansUsed >= totalAllowed && !(cfg as any).vip_auto_approve) {
+                  // Gate already checked pre-stream — use cached values
+                  const cachedTotal = (sessionData as any)._cachedTotalAllowed ?? totalAllowed
+                  const cachedUsed = (sessionData as any)._cachedPlansUsed ?? plansUsed
+                  if (cachedUsed >= cachedTotal && !(cfg as any).vip_auto_approve) {
                     send({ type: 'gate', reason: 'vip_required', planType })
                     send({ type: 'done' })
                     controller.close()
@@ -340,7 +379,8 @@ Use these exact numbers when answering market questions.`
                       }),
                     }).catch(err => console.error('[charlie] low credit email error:', err))
                   }
-                  send({ type: 'vip_credit_used', plansUsed: plansUsed + 1, totalAllowed, planType })
+                  // vip_credit_used fires AFTER done — stored for post-stream
+                  ;(sessionData as any)._pendingVipEvent = { plansUsed: cachedUsed + 1, totalAllowed: cachedTotal, planType }
                   // Send plan email notification to user
                 }
               }
@@ -377,7 +417,12 @@ Use these exact numbers when answering market questions.`
             .eq('id', sessionId)
         }
 
+        // Fire vip_credit_used AFTER full plan completion
         send({ type: 'done' })
+        if ((sessionData as any)?._pendingVipEvent) {
+          const evt = (sessionData as any)._pendingVipEvent
+          send({ type: 'vip_credit_used', plansUsed: evt.plansUsed, totalAllowed: evt.totalAllowed, planType: evt.planType })
+        }
         controller.close()
       } catch (err: any) {
         send({ type: 'error', message: err.message })
