@@ -1,4 +1,4 @@
-// app/charlie/components/ResultsPanel.tsx
+﻿// app/charlie/components/ResultsPanel.tsx
 'use client'
 import { useState } from 'react'
 import dynamic from 'next/dynamic'
@@ -37,7 +37,7 @@ interface Props {
 }
 
 const fmt = (n: number | null | undefined, prefix = '', suffix = '') =>
-  n == null ? '—' : `${prefix}${n.toLocaleString('en-CA')}${suffix}`
+  n == null ? 'ΓÇö' : `${prefix}${n.toLocaleString('en-CA')}${suffix}`
 
 function marketConditionLabel(stl: number | null, dom: number | null) {
   if (!stl || !dom) return { label: 'Insufficient Data', color: '#94a3b8' }
@@ -74,14 +74,14 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       {/* Conversation blocks - rendered in conversation order, never overwritten */}
       {(blocks || []).map((block: any, _bi: number) => {
 
-        /* ── ANALYTICS ── */
+        /* ΓöÇΓöÇ ANALYTICS ΓöÇΓöÇ */
         if (block.type === 'analytics') {
           const a = block.data
           const cond = marketConditionLabel(a.sale_to_list_ratio, a.closed_avg_dom_90)
           return (
             <div key={_bi}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
-                Market Intelligence · {block.geoName}
+                Market Intelligence ┬╖ {block.geoName}
               </div>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${cond.color}18`, border: `1px solid ${cond.color}40`, borderRadius: 100, padding: '5px 14px', marginBottom: 14 }}>
@@ -112,12 +112,12 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           )
         }
 
-        /* ── LISTINGS ── */
+        /* ΓöÇΓöÇ LISTINGS ΓöÇΓöÇ */
         if (block.type === 'listings') {
           return (
             <div key={_bi}>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                {block.label} · {block.listings.length} found
+                {block.label} ┬╖ {block.listings.length} found
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {block.listings.map((listing: any) => {
@@ -132,7 +132,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 3 }}>
-                          {listing.close_price ? '$' + listing.close_price.toLocaleString() : '$' + (listing.list_price?.toLocaleString() || '—')}
+                          {listing.close_price ? '$' + listing.close_price.toLocaleString() : '$' + (listing.list_price?.toLocaleString() || 'ΓÇö')}
                         </div>
                         <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {listing.unparsed_address}
@@ -143,7 +143,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                           {listing.property_subtype && <span style={{ color: 'rgba(255,255,255,0.2)' }}>{listing.property_subtype}</span>}
                         </div>
                       </div>
-                      <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, flexShrink: 0 }}>→</div>
+                      <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, flexShrink: 0 }}>ΓåÆ</div>
                     </div>
                   )
                 })}
@@ -152,11 +152,11 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           )
         }
 
-        /* ── BUILDINGS ── */
+        /* ΓöÇΓöÇ BUILDINGS ΓöÇΓöÇ */
         if (block.type === 'buildings') {
           return (
             <div key={_bi}>
-              <SectionHeader title={`Buildings Found · ${block.label} · ${block.buildings.length}`} />
+              <SectionHeader title={`Buildings Found ┬╖ ${block.label} ┬╖ ${block.buildings.length}`} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {block.buildings.map((b: any, i: number) => (
                   <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -183,11 +183,11 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           )
         }
 
-        /* ── RANKINGS ── */
+        /* ΓöÇΓöÇ RANKINGS ΓöÇΓöÇ */
         if (block.type === 'rankings') {
           if (block.rankType === 'investment' && block.data?.rankings?.length > 0) return (
             <div key={_bi}>
-              <SectionHeader title={`${(block.data.ranking_type || '').split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} · ${block.data.track === 'condo' ? 'Condos' : 'Homes'}`} />
+              <SectionHeader title={`${(block.data.ranking_type || '').split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')} ┬╖ ${block.data.track === 'condo' ? 'Condos' : 'Homes'}`} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {block.data.rankings.slice(0, 8).map((r: any, i: number) => (
                   <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -229,7 +229,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           return null
         }
 
-        /* ── PRICE TRENDS ── */
+        /* ΓöÇΓöÇ PRICE TRENDS ΓöÇΓöÇ */
         if (block.type === 'priceTrends' && block.data.current_median_sale) return (
           <div key={_bi}>
             <SectionHeader title="Price Trends" />
@@ -244,7 +244,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           </div>
         )
 
-        /* ── SELLER ESTIMATE (self-contained block with own analytics snapshot) ── */
+        /* ΓöÇΓöÇ SELLER ESTIMATE (self-contained block with own analytics snapshot) ΓöÇΓöÇ */
         if (block.type === 'sellerEstimate') {
           const se = block.data
           const aSnap = block.analyticsSnapshot
@@ -267,7 +267,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
               )}
               {se?.success && (
                 <div>
-                  <SectionHeader title={`Competing For Sale · ${(se?.competingListings || []).length} found`} />
+                  <SectionHeader title={`Competing For Sale ┬╖ ${(se?.competingListings || []).length} found`} />
                   {(se?.competingListings || []).length === 0 && (
                     <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, padding: '12px 0' }}>No active competing listings found.</div>
                   )}
@@ -294,10 +294,10 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
               {se?.success && !plan?.planReady && (
                 <div style={{ background: 'linear-gradient(135deg, #0f172a, #1e293b)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: 24 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #059669, #10b981)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>💰</div>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #059669, #10b981)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>≡ƒÆ░</div>
                     <div>
                       <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>Your Seller Strategy</div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{block.geoName} · {new Date().toLocaleDateString('en-CA')}</div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{block.geoName} ┬╖ {new Date().toLocaleDateString('en-CA')}</div>
                     </div>
                   </div>
                   {aSnap && (() => {
@@ -311,7 +311,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                   })()}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 16 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 8 }}>Your Property</div>
-                    {se.estimate?.estimatedPrice && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Estimated Value</span><span style={{ fontSize: 13, fontWeight: 700, color: '#10b981' }}>${se.estimate.priceRange?.low?.toLocaleString()} – ${se.estimate.priceRange?.high?.toLocaleString()}</span></div>}
+                    {se.estimate?.estimatedPrice && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}><span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Estimated Value</span><span style={{ fontSize: 13, fontWeight: 700, color: '#10b981' }}>${se.estimate.priceRange?.low?.toLocaleString()} ΓÇô ${se.estimate.priceRange?.high?.toLocaleString()}</span></div>}
                   </div>
                   {aSnap && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -337,10 +337,10 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           )
         }
 
-        /* ── COMPARABLES (standalone, non-seller) ── */
+        /* ΓöÇΓöÇ COMPARABLES (standalone, non-seller) ΓöÇΓöÇ */
         if (block.type === 'comparables') { if ((blocks||[]).some((b) => b.type === 'sellerEstimate')) return null; return (
           <div key={_bi}>
-            <SectionHeader title={`Comparable Sold · ${block.listings.length} found`} />
+            <SectionHeader title={`Comparable Sold ┬╖ ${block.listings.length} found`} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {block.listings.map((c: any, i: number) => (
                 <ComparableCard key={c.listingKey || i} comparable={c} isLease={block.intent === 'lease'} />
@@ -358,10 +358,10 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             <div key={_bi}>
               {vipCreditUsed && (
                 <div style={{ background: 'linear-gradient(135deg, rgba(29,78,216,0.15), rgba(79,70,229,0.15))', border: '1px solid rgba(99,102,241,0.4)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 18 }}>✦</span>
+                  <span style={{ fontSize: 18 }}>Γ£ª</span>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc' }}>VIP Access Credit Used</div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{vipCreditPlansUsed} of {vipCreditTotal} plan{(vipCreditTotal || 1) > 1 ? 's' : ''} used · Request more from your agent</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>{vipCreditPlansUsed} of {vipCreditTotal} plan{(vipCreditTotal || 1) > 1 ? 's' : ''} used ┬╖ Request more from your agent</div>
                   </div>
                 </div>
               )}
@@ -403,7 +403,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
               />
               <div style={{ margin: '12px 0', padding: '12px 14px', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 10 }}>
                 <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>
-                  <span style={{ color: '#fbbf24', fontWeight: 700 }}>⚠ AI Disclaimer:</span> This plan is generated by artificial intelligence using market data. For informational purposes only. Verify with a licensed real estate agent before making decisions.
+                  <span style={{ color: '#fbbf24', fontWeight: 700 }}>ΓÜá AI Disclaimer:</span> This plan is generated by artificial intelligence using market data. For informational purposes only. Verify with a licensed real estate agent before making decisions.
                 </p>
               </div>
             </div>
@@ -418,7 +418,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         <div>
           {communityBuildings.affordable.length > 0 && (
             <>
-              <SectionHeader title={`Most Affordable Buildings · ${communityBuildings.affordable.length} found`} />
+              <SectionHeader title={`Most Affordable Buildings ┬╖ ${communityBuildings.affordable.length} found`} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {communityBuildings.affordable.map((b, i) => <BuildingCard key={i} building={b} />)}
               </div>
@@ -426,7 +426,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           )}
           {communityBuildings.premium.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <SectionHeader title={`Premium Buildings · ${communityBuildings.premium.length} found`} />
+              <SectionHeader title={`Premium Buildings ┬╖ ${communityBuildings.premium.length} found`} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {communityBuildings.premium.map((b, i) => <BuildingCard key={i} building={b} />)}
               </div>
@@ -435,7 +435,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         </div>
       )}
 
-      {/* VIP Credit Announcement — registered users only */}
+      {/* VIP Credit Announcement ΓÇö registered users only */}
       {vipCreditUsed && plan?.planReady && !(blocks||[]).some((b:any) => b.type === "plan") && (
         <div style={{
           background: 'linear-gradient(135deg, rgba(29,78,216,0.15), rgba(79,70,229,0.15))',
@@ -446,19 +446,19 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           alignItems: 'center',
           gap: 10,
         }}>
-          <span style={{ fontSize: 18 }}>✦</span>
+          <span style={{ fontSize: 18 }}>Γ£ª</span>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc' }}>
               VIP Access Credit Used
             </div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
-              {vipCreditPlansUsed} of {vipCreditTotal} plan{(vipCreditTotal || 1) > 1 ? 's' : ''} used · Request more from your agent
+              {vipCreditPlansUsed} of {vipCreditTotal} plan{(vipCreditTotal || 1) > 1 ? 's' : ''} used ┬╖ Request more from your agent
             </div>
           </div>
         </div>
       )}
 
-      {/* Plan — fallback only when no plan blocks exist */}
+      {/* Plan ΓÇö fallback only when no plan blocks exist */}
       {plan?.planReady && !(blocks||[]).some((b:any) => b.type === "plan") && (
         <PlanDocument
           {...(plan.type === 'buyer' ? {
@@ -500,7 +500,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
       {plan?.planReady && !(blocks||[]).some((b:any) => b.type === "plan") && (
         <div style={{ margin: '12px 0', padding: '12px 14px', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 10 }}>
           <p style={{ margin: 0, fontSize: 11, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>
-            <span style={{ color: '#fbbf24', fontWeight: 700 }}>⚠ AI Disclaimer:</span> This plan is generated by artificial intelligence using market data. For informational purposes only. Verify with a licensed real estate agent before making decisions.
+            <span style={{ color: '#fbbf24', fontWeight: 700 }}>ΓÜá AI Disclaimer:</span> This plan is generated by artificial intelligence using market data. For informational purposes only. Verify with a licensed real estate agent before making decisions.
           </p>
         </div>
       )}
@@ -513,7 +513,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           color: 'rgba(255,255,255,0.15)', gap: 12,
           padding: '60px 20px',
         }}>
-          <div style={{ fontSize: 40 }}>✦</div>
+          <div style={{ fontSize: 40 }}>Γ£ª</div>
           <div style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.25)' }}>
             Results will appear here
           </div>
