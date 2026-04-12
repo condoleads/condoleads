@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useState } from 'react'
 
-interface Usage { chat: number; buyer: number; seller: number; estimator: number }
+interface Usage { chat: number; plans: number; estimator: number }
 interface Props {
   users: any[]
   usageMap: Record<string, Usage>
@@ -15,8 +15,7 @@ interface Props {
 function getTenantDefaults(tenant: any): Usage {
   return {
     chat:      (tenant?.ai_free_messages ?? 1) + (tenant?.ai_auto_approve_limit ?? 2) + (tenant?.ai_manual_approve_limit ?? 3),
-    buyer:     (tenant?.plan_free_attempts ?? 1) + (tenant?.plan_auto_approve_limit ?? 0) + (tenant?.plan_manual_approve_limit ?? 3),
-    seller:    (tenant?.seller_plan_free_attempts ?? 1) + (tenant?.seller_plan_auto_approve_limit ?? 0) + (tenant?.seller_plan_manual_approve_limit ?? 3),
+    plans:     (tenant?.plan_free_attempts ?? 1) + (tenant?.plan_auto_approve_limit ?? 0) + (tenant?.plan_manual_approve_limit ?? 3),
     estimator: (tenant?.estimator_free_attempts ?? 1) + (tenant?.estimator_auto_approve_attempts ?? 2) + (tenant?.estimator_manual_approve_attempts ?? 3),
   }
 }
@@ -25,16 +24,14 @@ function getResolvedLimits(tenant: any, override: any): Usage {
   const d = getTenantDefaults(tenant)
   return {
     chat:      override?.ai_chat_limit      != null ? Math.min(override.ai_chat_limit,      tenant?.ai_hard_cap ?? 10)          : d.chat,
-    buyer:     override?.buyer_plan_limit   != null ? Math.min(override.buyer_plan_limit,   tenant?.plan_hard_cap ?? 10)        : d.buyer,
-    seller:    override?.seller_plan_limit  != null ? Math.min(override.seller_plan_limit,  tenant?.seller_plan_hard_cap ?? 10) : d.seller,
+    plans:     override?.buyer_plan_limit   != null ? Math.min(override.buyer_plan_limit,   tenant?.plan_hard_cap ?? 10)        : d.plans,
     estimator: override?.estimator_limit    != null ? Math.min(override.estimator_limit,    tenant?.estimator_hard_cap ?? 10)   : d.estimator,
   }
 }
 
 const POOLS: { key: keyof Usage; label: string; overrideKey: string }[] = [
   { key: 'chat',      label: 'AI Chat',     overrideKey: 'ai_chat_limit' },
-  { key: 'buyer',     label: 'Buyer Plan',  overrideKey: 'buyer_plan_limit' },
-  { key: 'seller',    label: 'Seller Plan', overrideKey: 'seller_plan_limit' },
+  { key: 'plans',     label: 'AI Plans',    overrideKey: 'buyer_plan_limit' },
   { key: 'estimator', label: 'Estimator',   overrideKey: 'estimator_limit' },
 ]
 
@@ -45,15 +42,13 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
   const [saving, setSaving]               = useState(false)
   const [saveError, setSaveError]         = useState<string | null>(null)
   const [chatLimit, setChatLimit]         = useState('')
-  const [buyerLimit, setBuyerLimit]       = useState('')
-  const [sellerLimit, setSellerLimit]     = useState('')
+  const [plansLimit, setPlansLimit]       = useState('')
   const [estimatorLimit, setEstimatorLimit] = useState('')
   const [note, setNote]                   = useState('')
 
   const hardCaps = {
     chat:      tenant?.ai_hard_cap ?? 10,
-    buyer:     tenant?.plan_hard_cap ?? 10,
-    seller:    tenant?.seller_plan_hard_cap ?? 10,
+    plans:     tenant?.plan_hard_cap ?? 10,
     estimator: tenant?.estimator_hard_cap ?? 10,
   }
 
@@ -65,8 +60,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
   function openModal(user: any) {
     const ex = overrides[user.id]
     setChatLimit(ex?.ai_chat_limit      != null ? String(ex.ai_chat_limit)      : '')
-    setBuyerLimit(ex?.buyer_plan_limit  != null ? String(ex.buyer_plan_limit)   : '')
-    setSellerLimit(ex?.seller_plan_limit != null ? String(ex.seller_plan_limit) : '')
+    setPlansLimit(ex?.buyer_plan_limit  != null ? String(ex.buyer_plan_limit)   : '')
     setEstimatorLimit(ex?.estimator_limit != null ? String(ex.estimator_limit)  : '')
     setNote(ex?.note || '')
     setSaveError(null)
@@ -89,8 +83,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
           agentTier:       adminUser.role === 'admin' ? 'admin' : adminUser.role === 'manager' ? 'manager' : 'managed',
           note:            note.trim() || null,
           aiChatLimit:     chatLimit      !== '' ? parseInt(chatLimit)      : null,
-          buyerPlanLimit:  buyerLimit     !== '' ? parseInt(buyerLimit)     : null,
-          sellerPlanLimit: sellerLimit    !== '' ? parseInt(sellerLimit)    : null,
+          planLimit:  plansLimit     !== '' ? parseInt(plansLimit)     : null,
           estimatorLimit:  estimatorLimit !== '' ? parseInt(estimatorLimit) : null,
         }),
       })
@@ -148,7 +141,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
               <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No users found</td></tr>
             )}
             {filtered.map(user => {
-              const usage    = usageMap[user.id]  || { chat: 0, buyer: 0, seller: 0, estimator: 0 }
+              const usage    = usageMap[user.id]  || { chat: 0, plans: 0, estimator: 0 }
               const override = overrides[user.id] || null
               const limits   = getResolvedLimits(tenant, override)
               const hasOverride = !!override
@@ -172,7 +165,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
                     const isLow = remaining === 1
                     const barColor = isEmpty ? '#ef4444' : isLow ? '#f59e0b' : isOverridden ? '#3b82f6' : '#10b981'
                     const textColor = isEmpty ? 'text-red-600' : isLow ? 'text-amber-500' : isOverridden ? 'text-blue-600' : 'text-gray-700'
-                    const icons: Record<string,string> = { chat: '💬', buyer: '📋', seller: '💰', estimator: '📊' }
+                    const icons: Record<string,string> = { chat: '💬', plans: '📋', estimator: '📊' }
                     return (
                       <td key={key} className="px-3 py-3">
                         <div className="flex flex-col items-center gap-1 min-w-16">
@@ -223,8 +216,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
             <div className="space-y-4">
               {[
                 { label: 'AI Chat',     value: chatLimit,       set: setChatLimit,       cap: hardCaps.chat },
-                { label: 'Buyer Plan',  value: buyerLimit,      set: setBuyerLimit,      cap: hardCaps.buyer },
-                { label: 'Seller Plan', value: sellerLimit,     set: setSellerLimit,     cap: hardCaps.seller },
+                { label: 'AI Plans',  value: plansLimit,      set: setPlansLimit,      cap: hardCaps.plans },
                 { label: 'Estimator',   value: estimatorLimit,  set: setEstimatorLimit,  cap: hardCaps.estimator },
               ].map(({ label, value, set, cap }) => (
                 <div key={label} className="flex items-center gap-4">

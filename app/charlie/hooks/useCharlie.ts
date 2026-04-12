@@ -1,6 +1,6 @@
 ﻿// app/charlie/hooks/useCharlie.ts
 'use client'
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 
 export type MessageRole = 'user' | 'assistant'
 export type ConversationBlock =
@@ -75,6 +75,7 @@ export interface CharlieState {
   vipRequestId: string | null
   vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
   vipCreditUsed: boolean
+  isPlanGenerating: boolean
   vipCreditPlanType: 'buyer' | 'seller' | null
   vipCreditPlansUsed: number
   vipCreditTotal: number
@@ -124,6 +125,7 @@ const INITIAL_STATE: CharlieState = {
   vipRequestId: null,
   vipRequestStatus: 'idle',
   vipCreditUsed: false,
+  isPlanGenerating: false,
   vipCreditPlansUsed: 0,
   vipCreditTotal: 1,
   vipCreditPlanType: null,
@@ -233,6 +235,30 @@ export function useCharlie() {
       console.error('[useCharlie] requestVipAccess error:', err)
     }
   }, [])
+
+  // Poll VIP request status when pending — refresh credits on approval
+  useEffect(() => {
+    if (stateRef.current?.vipRequestStatus !== 'pending') return
+    const requestId = stateRef.current?.vipRequestId
+    if (!requestId) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/walliam/charlie/vip-request?requestId=${requestId}`)
+        const data = await res.json()
+        if (data.status === 'approved' || data.status === 'denied') {
+          clearInterval(interval)
+          if (data.status === 'approved') {
+            // Refresh session credits after approval
+            const uid = userIdRef.current
+            const pctx = pageContextRef.current
+            if (uid) await initSession(uid, pctx)
+          }
+          setState(s => ({ ...s, vipRequestStatus: data.status, gateActive: false }))
+        }
+      } catch {}
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [stateRef.current?.vipRequestStatus])
 
   const setLeadCaptured = useCallback(() => {
     setState(s => ({ ...s, leadCaptured: true }))
@@ -375,7 +401,7 @@ export function useCharlie() {
             if (event.type === 'done') {
               setState(s => ({
                 ...s,
-                isStreaming: false,
+                isStreaming: false, isPlanGenerating: false,
                 messages: s.messages.map(m =>
                   m.id === assistantId ? { ...m, streaming: false } : m
                 )
@@ -407,6 +433,9 @@ export function useCharlie() {
     }
     if (tool === 'search_listings' && data.listings) {
       setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], blocks: [...stateRef.current.blocks, { type: 'listings', label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
+    }
+    if (tool === 'generate_plan') {
+      setState(s => ({ ...s, isPlanGenerating: true }))
     }
     if (tool === 'generate_plan' && data.planReady) {
       setState(s => ({ ...s, planReady: true, plan: data, blocks: [...stateRef.current.blocks, { type: 'plan', data, analyticsSnapshot: analyticsRef.current, listingsSnapshot: stateRef.current.listingGroups.flatMap(g => g.listings), geoContext: stateRef.current.geoContext }], activePanel: 'results' }))

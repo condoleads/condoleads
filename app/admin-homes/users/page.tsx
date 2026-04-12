@@ -50,14 +50,13 @@ export default async function AdminHomesUsersPage() {
 
   // Aggregate usage per user (sum across all sessions)
   const usageMap: Record<string, {
-    chat: number; buyer: number; seller: number; estimator: number
+    chat: number; plans: number; estimator: number
   }> = {}
   for (const s of sessions || []) {
     if (!s.user_id) continue
-    if (!usageMap[s.user_id]) usageMap[s.user_id] = { chat: 0, buyer: 0, seller: 0, estimator: 0 }
+    if (!usageMap[s.user_id]) usageMap[s.user_id] = { chat: 0, plans: 0, estimator: 0 }
     usageMap[s.user_id].chat      += s.message_count || 0
-    usageMap[s.user_id].buyer     += s.buyer_plans_used || 0
-    usageMap[s.user_id].seller    += s.seller_plans_used || 0
+    usageMap[s.user_id].plans     += (s.buyer_plans_used || 0) + (s.seller_plans_used || 0)
     usageMap[s.user_id].estimator += s.estimator_count || 0
   }
 
