@@ -64,7 +64,19 @@ export async function GET(request: NextRequest) {
 
     const newStatus = action === 'approve' ? 'approved' : 'denied'
     const agent = vipRequest.agents
-    const plansToGrant = agent?.ai_manual_approve_limit ?? 3
+    // Use tenant plan_manual_approve_limit — not agent ai_manual_approve_limit
+      let plansToGrant = agent?.ai_manual_approve_limit ?? 3
+      const sessionTenantId = vipRequest.chat_sessions?.tenant_id
+      if (sessionTenantId) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('plan_manual_approve_limit')
+          .eq('id', sessionTenantId)
+          .single()
+        if (tenantRow?.plan_manual_approve_limit != null) {
+          plansToGrant = tenantRow.plan_manual_approve_limit
+        }
+      }
 
     // Update VIP request
     await supabase
