@@ -40,10 +40,18 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
   const [bannerVisible, setBannerVisible] = useState(false)
 
   useEffect(() => {
-    if (state.vipCreditUsed && state.userId) {
+    if (state.vipCreditUsed && state.userId && !state.isPlanGenerating) {
       setBannerVisible(true)
     }
   }, [state.vipCreditPlansUsed])
+  const [chatBannerVisible, setChatBannerVisible] = useState(false)
+  useEffect(() => {
+    if (state.chatCreditUsed && state.userId) {
+      setChatBannerVisible(true)
+      const t = setTimeout(() => setChatBannerVisible(false), 5000)
+      return () => clearTimeout(t)
+    }
+  }, [state.chatCreditCount])
   const sessionInitialized = useRef(false)
 
   useEffect(() => {
@@ -195,7 +203,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
       )}
 
       {/* VIP Credit Used Announcement */}
-      {state.vipCreditUsed && !!state.userId && bannerVisible && (
+      {state.vipCreditUsed && !!state.userId && bannerVisible && !state.isPlanGenerating && (
         <div style={{
           position: 'fixed', bottom: 90, left: '50%',
           transform: 'translateX(-50%)',
@@ -229,6 +237,30 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
               flexShrink: 0,
             }}
           >✕</button>
+        </div>
+      )}
+      {state.chatCreditUsed && !!state.userId && chatBannerVisible && (
+        <div style={{
+          position: 'fixed', bottom: 90, left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999, width: 'calc(100% - 40px)', maxWidth: 460,
+          background: 'linear-gradient(135deg, #0f172a, #1e293b)',
+          border: '1px solid rgba(99,102,241,0.3)',
+          borderRadius: 14, padding: '14px 18px',
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        }}>
+          <span style={{ fontSize: 20, marginTop: 2 }}>💬</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, color: '#818cf8', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              AI Chat Credit Used
+            </p>
+            <p style={{ margin: '3px 0 0', color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 1.5 }}>
+              Chat {state.chatCreditCount} of {state.chatCreditTotal} used
+              {state.chatCreditTotal - state.chatCreditCount > 0 ? ` · ${state.chatCreditTotal - state.chatCreditCount} remaining` : ' · No AI Chat credits remaining'}
+            </p>
+          </div>
+          <button onClick={() => setChatBannerVisible(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 18, padding: '0 0 0 4px', lineHeight: 1, flexShrink: 0 }}>✕</button>
         </div>
       )}
       {/* Gate: VIP required overlay */}

@@ -75,6 +75,9 @@ export interface CharlieState {
   vipRequestId: string | null
   vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
   vipCreditUsed: boolean
+  chatCreditUsed: boolean
+  chatCreditCount: number
+  chatCreditTotal: number
   isPlanGenerating: boolean
   vipCreditPlanType: 'buyer' | 'seller' | null
   vipCreditPlansUsed: number
@@ -125,6 +128,9 @@ const INITIAL_STATE: CharlieState = {
   vipRequestId: null,
   vipRequestStatus: 'idle',
   vipCreditUsed: false,
+  chatCreditUsed: false,
+  chatCreditCount: 0,
+  chatCreditTotal: 5,
   isPlanGenerating: false,
   vipCreditPlansUsed: 0,
   vipCreditTotal: 1,
@@ -380,6 +386,15 @@ export function useCharlie() {
               }))
             }
 
+            if (event.type === 'chat_credit_used') {
+              setState(s => ({
+                ...s,
+                chatCreditUsed: true,
+                chatCreditCount: (event as any).messageCount,
+                chatCreditTotal: (event as any).chatFreeMessages,
+              }))
+            }
+
             // Gate event â€” plan gating fired server-side
             if (event.type === 'gate') {
               setState(s => ({
@@ -406,10 +421,10 @@ export function useCharlie() {
                   m.id === assistantId ? { ...m, streaming: false } : m
                 )
               }))
-              // Refresh credits after every response
+              // Refresh credits after every response — delay to allow DB increment to complete
               const uid = userIdRef.current
               const pctx = pageContextRef.current
-              if (uid) initSession(uid, pctx).catch(() => {})
+              if (uid) setTimeout(() => initSession(uid, pctx).catch(() => {}), 800)
               messagesRef.current = [
                 ...messagesRef.current,
                 { role: 'assistant', content: assistantText }

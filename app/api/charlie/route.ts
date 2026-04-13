@@ -197,6 +197,8 @@ Use these exact numbers when answering market questions.`
           }
           // Increment message count
           await supabase.from('chat_sessions').update({ message_count: msgUsed + 1, last_activity_at: new Date().toISOString() }).eq('id', sessionId)
+          // Store pending chat credit event for post-stream
+          ;(sessionData as any)._pendingChatEvent = { messageCount: msgUsed + 1, chatFreeMessages: chatAllowed }
           // Low credit warning email at 1 remaining
           const remaining = chatAllowed - (msgUsed + 1)
           if (remaining === 1 && sessionData.user_id) {
@@ -419,6 +421,10 @@ Use these exact numbers when answering market questions.`
 
         // Fire vip_credit_used AFTER full plan completion
         send({ type: 'done' })
+        if ((sessionData as any)?._pendingChatEvent) {
+          const cevt = (sessionData as any)._pendingChatEvent
+          send({ type: 'chat_credit_used', messageCount: cevt.messageCount, chatFreeMessages: cevt.chatFreeMessages })
+        }
         if ((sessionData as any)?._pendingVipEvent) {
           const evt = (sessionData as any)._pendingVipEvent
           send({ type: 'vip_credit_used', plansUsed: evt.plansUsed, totalAllowed: evt.totalAllowed, planType: evt.planType })
