@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       .from('chat_sessions')
       .select(`
         id, agent_id, user_id, status, source,
-        buyer_plans_used, seller_plans_used,
+        message_count, buyer_plans_used, seller_plans_used,
         vip_messages_granted, manual_approvals_count
       `)
       .eq('id', sessionId)
