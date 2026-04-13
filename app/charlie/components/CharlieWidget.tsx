@@ -48,8 +48,6 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
   useEffect(() => {
     if (state.chatCreditUsed && state.userId) {
       setChatBannerVisible(true)
-      const t = setTimeout(() => setChatBannerVisible(false), 5000)
-      return () => clearTimeout(t)
     }
   }, [state.chatCreditCount])
   const sessionInitialized = useRef(false)
