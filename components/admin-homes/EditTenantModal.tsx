@@ -251,7 +251,7 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Free Plans Per User</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Free Chats Per User</label>
                   <input type="number" min={0} value={formData.ai_free_messages} onChange={e => setFormData({ ...formData, ai_free_messages: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   <p className="text-xs text-gray-400 mt-1">Granted without any approval</p>
                 </div>
@@ -261,12 +261,13 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                   <p className="text-xs text-gray-400 mt-1">Absolute maximum per user</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Plans on Auto-Approve</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Chats on Auto-Approve</label>
                   <input type="number" min={0} value={formData.ai_auto_approve_limit} onChange={e => setFormData({ ...formData, ai_auto_approve_limit: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   <p className="text-xs text-gray-400 mt-1">0 = skip auto, go straight to manual</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Plans on Manual Approve</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Credits per Email Approval</label>
+                  <p className="text-xs text-gray-500 mb-1">Chats granted when approving a request via email.</p>
                   <input type="number" min={0} value={formData.ai_manual_approve_limit} onChange={e => setFormData({ ...formData, ai_manual_approve_limit: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   <p className="text-xs text-gray-400 mt-1">Requires agent to approve request</p>
                 </div>
@@ -384,7 +385,8 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                   <p className="text-xs text-gray-400 mt-1">0 = skip auto, go straight to manual</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Attempts on Manual Approve</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Credits per Email Approval</label>
+                  <p className="text-xs text-gray-500 mb-1">Estimates granted when approving a request via email.</p>
                   <input type="number" min={0} value={formData.estimator_manual_approve_attempts} onChange={e => setFormData({ ...formData, estimator_manual_approve_attempts: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
                   <p className="text-xs text-gray-400 mt-1">Requires agent to approve request</p>
                 </div>
