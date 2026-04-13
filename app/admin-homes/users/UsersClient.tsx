@@ -83,7 +83,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
           agentTier:       adminUser.role === 'admin' ? 'admin' : adminUser.role === 'manager' ? 'manager' : 'managed',
           note:            note.trim() || null,
           aiChatLimit:     chatLimit      !== '' ? parseInt(chatLimit)      : null,
-          planLimit:  plansLimit     !== '' ? parseInt(plansLimit)     : null,
+          buyerPlanLimit:  plansLimit     !== '' ? parseInt(plansLimit)     : null,
           estimatorLimit:  estimatorLimit !== '' ? parseInt(estimatorLimit) : null,
         }),
       })
