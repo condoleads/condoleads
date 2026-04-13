@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
         .select('*')
         .eq('source', 'walliam')
         .eq('user_id', userId)
-        .eq('agent_id', agentId)
+        .eq('tenant_id', tenantId)
         .in('status', ['active', 'vip'])
         .order('last_activity_at', { ascending: false })
         .limit(1)
