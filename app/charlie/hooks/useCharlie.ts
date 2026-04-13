@@ -406,6 +406,10 @@ export function useCharlie() {
                   m.id === assistantId ? { ...m, streaming: false } : m
                 )
               }))
+              // Refresh credits after every response
+              const uid = userIdRef.current
+              const pctx = pageContextRef.current
+              if (uid) initSession(uid, pctx).catch(() => {})
               messagesRef.current = [
                 ...messagesRef.current,
                 { role: 'assistant', content: assistantText }
