@@ -48,6 +48,14 @@ export async function POST(request: NextRequest) {
 
     const agent = session.agents
 
+    // Load tenant config for credit limits
+    const tenantId = session.tenant_id
+    let tenantCfg: any = { vip_auto_approve: false, ai_auto_approve_limit: 0, ai_manual_approve_limit: 2, plan_auto_approve_limit: 0, plan_manual_approve_limit: 3, plan_hard_cap: 10, ai_hard_cap: 25, estimator_hard_cap: 10 }
+    if (tenantId) {
+      const { data: tData } = await supabase.from('tenants').select('vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
+      if (tData) tenantCfg = tData
+    }
+
     // Check for existing pending request
     const { data: existingRequest } = await supabase
       .from('vip_requests')
@@ -96,9 +104,10 @@ export async function POST(request: NextRequest) {
         .single()
       if (manager) managerEmail = manager.notification_email || manager.email
     }
-
-    const isAutoApprove = agent?.vip_auto_approve === true
-    const autoApproveMessages = agent?.ai_auto_approve_limit ?? 2
+
+    // Use tenant config for credit decisions
+    const isAutoApprove = tenantCfg.vip_auto_approve === true && (tenantCfg.ai_auto_approve_limit ?? 0) > 0
+    const autoApproveMessages = tenantCfg.ai_auto_approve_limit ?? 0
 
     // Create VIP request — no questionnaire fields required
     const { data: vipRequest, error: insertError } = await supabase
@@ -184,6 +193,21 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', sessionId)
+
+      // Write to user_credit_overrides using tenant configured values
+      if (session.user_id && tenantId) {
+        const currentUsed = (session.buyer_plans_used || 0) + (session.seller_plans_used || 0)
+        const newLimit = Math.min(currentUsed + autoApproveMessages, tenantCfg.plan_hard_cap ?? 10)
+        await supabase.from('user_credit_overrides').upsert({
+          user_id: session.user_id,
+          tenant_id: tenantId,
+          granted_by_agent_id: agent?.id || null,
+          granted_by_tier: 'auto',
+          note: 'Auto-approved — ' + autoApproveMessages + ' credits',
+          buyer_plan_limit: newLimit,
+          granted_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,tenant_id' })
+      }
 
       if (userEmail) {
         try {
