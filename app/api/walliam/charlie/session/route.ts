@@ -51,7 +51,12 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("[session] rpc result:", resolvedAgentId, resolveError)
-    const agentId = resolvedAgentId || null
+    // Fall back to tenant default_agent_id if RPC returns null
+    let agentId = resolvedAgentId || null
+    if (!agentId && tenantId) {
+      const { data: tenantDefault } = await supabase.from('tenants').select('default_agent_id').eq('id', tenantId).single()
+      if (tenantDefault?.default_agent_id) agentId = tenantDefault.default_agent_id
+    }
 
     // Step 2: Get config from tenant (primary) or agent (fallback)
     let agentConfig = {
