@@ -147,7 +147,7 @@ export default function VIPAIAccess({
           <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', letterSpacing: '0.05em' }}>VIP AI Access</span>
           <span style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.2)' }} />
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {[{ e: '💬', v: '5' }, { e: '📊', v: '2' }, { e: '📋', v: '1' }].map(c => (
+            {[{ e: '💬', v: String(chatRemaining ?? credits?.chatFreeMessages ?? '?') }, { e: '📊', v: String(estRemaining ?? credits?.estimatorFreeAttempts ?? '?') }, { e: '📋', v: String(planRemaining ?? credits?.totalAllowed ?? '?') }].map(c => (
               <span key={c.e} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <span style={{ fontSize: 10 }}>{c.e}</span>
                 <span style={{ fontSize: 10, fontWeight: 700, color: '#a5f3fc' }}>{c.v}</span>
