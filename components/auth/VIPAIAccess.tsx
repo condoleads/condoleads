@@ -74,17 +74,16 @@ export default function VIPAIAccess({
   }, [])
 
   useEffect(() => {
-    if (!user) { setCredits(null); return }
     fetch('/api/walliam/charlie/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-tenant-id': TENANT_ID },
-      body: JSON.stringify({ userId: user.id, read_only: true }),
+      body: JSON.stringify({ userId: user?.id || null, read_only: true }),
     })
       .then(r => r.json())
       .then(d => {
         if (d.sessionId || d.chatFreeMessages) setCredits({
           messageCount: d.messageCount || 0,
-          chatFreeMessages: d.chatFreeMessages || 5,
+          chatFreeMessages: d.chatFreeMessages || 0,
           chatHardCap: d.chatHardCap || 25,
           estimatorCount: d.estimatorCount || 0,
           estimatorFreeAttempts: d.estimatorFreeAttempts || 2,

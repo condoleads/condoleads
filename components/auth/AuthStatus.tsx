@@ -40,12 +40,11 @@ export default function AuthStatus({
   const [credits, setCredits] = useState<Credits | null>(null)
 
   useEffect(() => {
-    if (!user) { setCredits(null); return }
     const tenantId = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
     fetch('/api/walliam/charlie/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
-      body: JSON.stringify({ userId: user.id }),
+      body: JSON.stringify({ userId: user?.id || null, read_only: !user }),
     })
       .then(r => r.json())
       .then(d => {
@@ -55,7 +54,7 @@ export default function AuthStatus({
             sellerPlansUsed: d.sellerPlansUsed || 0,
             totalAllowed: d.totalAllowed || 1,
             messageCount: d.messageCount || 0,
-            chatFreeMessages: d.chatFreeMessages || 5,
+            chatFreeMessages: d.chatFreeMessages || 0,
             estimatorCount: d.estimatorCount || 0,
             estimatorFreeAttempts: d.estimatorFreeAttempts || 2,
           })
