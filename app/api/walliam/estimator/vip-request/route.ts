@@ -157,6 +157,7 @@ export async function POST(request: NextRequest) {
         page_url: pageUrl,
         building_name: buildingName,
         request_source: 'walliam_estimator',
+        request_type: 'estimator',
         status: isAutoApprove ? 'approved' : 'pending',
         messages_granted: autoApproveMessages,
         responded_at: isAutoApprove ? new Date().toISOString() : null,

@@ -54,7 +54,12 @@ export async function GET(request: NextRequest) {
 
     const newStatus = action === 'approve' ? 'approved' : 'denied'
     const agent = vipRequest.agents
-    const attemptsToGrant = agent?.ai_manual_approve_limit ?? 3
+    const tenantId = vipRequest.chat_sessions?.tenant_id
+    let attemptsToGrant = 3
+    if (tenantId) {
+      const { data: tenantCfg } = await supabase.from('tenants').select('estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
+      if (tenantCfg?.estimator_manual_approve_attempts != null) attemptsToGrant = tenantCfg.estimator_manual_approve_attempts
+    }
 
     await supabase
       .from('vip_requests')
@@ -82,6 +87,22 @@ export async function GET(request: NextRequest) {
         })
         .eq('id', vipRequest.session_id)
 
+      // Write to user_credit_overrides
+      const userId = vipRequest.chat_sessions?.user_id
+      if (userId && tenantId) {
+        const { data: tCfg } = await supabase.from('tenants').select('estimator_hard_cap').eq('id', tenantId).single()
+        const estimatorUsed = vipRequest.chat_sessions?.estimator_count || 0
+        const newLimit = Math.min(estimatorUsed + attemptsToGrant, tCfg?.estimator_hard_cap ?? 10)
+        await supabase.from('user_credit_overrides').upsert({
+          user_id: userId,
+          tenant_id: tenantId,
+          granted_by_agent_id: vipRequest.agent_id || null,
+          granted_by_tier: 'manager',
+          note: 'Email approval — ' + attemptsToGrant + ' estimator credits granted',
+          estimator_limit: newLimit,
+          granted_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,tenant_id' })
+      }
       if (vipRequest.email) {
         try {
           await resend.emails.send({
