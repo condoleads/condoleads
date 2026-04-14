@@ -76,6 +76,7 @@ export default function EstimatorVipWrapper({
   const [showWaiting, setShowWaiting] = useState(false)
   const [showDenied, setShowDenied] = useState(false)
   const [showBlocked, setShowBlocked] = useState(false)
+  const [showApprovalNotification, setShowApprovalNotification] = useState(false)
   const [vipLoading, setVipLoading] = useState(false)
   const [prefillPhone, setPrefillPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -99,6 +100,7 @@ export default function EstimatorVipWrapper({
 
         if (data.status === 'approved') {
           setSession(prev => ({ ...prev, vipRequestStatus: 'approved' }))
+          setShowApprovalNotification(true)
           
           if (data.questionnaireCompleted || session.questionnaireCompleted) {
             // Both conditions met - refresh session
@@ -494,7 +496,27 @@ export default function EstimatorVipWrapper({
           </div>
         )}
 
-        {/* Blocked Overlay */}
+        {/* Approval Notification */}
+        {showApprovalNotification && (
+          <div style={{
+            position: 'fixed', bottom: 24, left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999, width: 'calc(100% - 40px)', maxWidth: 460,
+            background: 'linear-gradient(135deg, #064e3b, #065f46)',
+            border: '1px solid rgba(16,185,129,0.4)',
+            borderRadius: 14, padding: '14px 18px',
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          }}>
+            <span style={{ fontSize: 20, marginTop: 2 }}>✅</span>
+            <div style={{ flex: 1 }}>
+              <p style={{ margin: 0, color: '#6ee7b7', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Access Approved!</p>
+              <p style={{ margin: '3px 0 0', color: 'rgba(255,255,255,0.8)', fontSize: 13, lineHeight: 1.5 }}>Your agent approved your estimator request. Your credits have been refreshed.</p>
+            </div>
+            <button onClick={() => setShowApprovalNotification(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 18, padding: '0 0 0 4px', lineHeight: 1, flexShrink: 0 }}>✕</button>
+          </div>
+        )}
+      {/* Blocked Overlay */}
         {showBlocked && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/90 rounded-lg z-10">
             <div className="bg-white p-6 rounded-xl shadow-lg text-center max-w-sm">
