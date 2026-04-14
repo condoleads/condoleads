@@ -76,6 +76,7 @@ export interface CharlieState {
   vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
   vipCreditUsed: boolean
   chatCreditUsed: boolean
+  approvalNotification: boolean
   chatCreditCount: number
   chatCreditTotal: number
   isPlanGenerating: boolean
@@ -129,6 +130,7 @@ const INITIAL_STATE: CharlieState = {
   vipRequestStatus: 'idle',
   vipCreditUsed: false,
   chatCreditUsed: false,
+  approvalNotification: false,
   chatCreditCount: 0,
   chatCreditTotal: 5,
   isPlanGenerating: false,
@@ -259,12 +261,12 @@ export function useCharlie() {
             const pctx = pageContextRef.current
             if (uid) await initSession(uid, pctx)
           }
-          setState(s => ({ ...s, vipRequestStatus: data.status, gateActive: false }))
+          setState(s => ({ ...s, vipRequestStatus: data.status, gateActive: false, approvalNotification: data.status === 'approved' ? true : s.approvalNotification }))
         }
       } catch {}
     }, 10000)
     return () => clearInterval(interval)
-  }, [stateRef.current?.vipRequestStatus])
+  }, [state.vipRequestStatus])
 
   const setLeadCaptured = useCallback(() => {
     setState(s => ({ ...s, leadCaptured: true }))

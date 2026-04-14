@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
       if (userId && tenantId) {
         const { data: tenantCfg } = await supabase
           .from('tenants')
-          .select('plan_hard_cap, seller_plan_hard_cap, ai_hard_cap, estimator_hard_cap')
+          .select('plan_hard_cap, seller_plan_hard_cap, ai_hard_cap, estimator_hard_cap, ai_manual_approve_limit, plan_manual_approve_limit, estimator_manual_approve_attempts')
           .eq('id', tenantId)
           .single()
         const planType = vipRequest.buyer_type || 'buyer'
@@ -132,13 +132,13 @@ export async function GET(request: NextRequest) {
           ? (vipRequest.chat_sessions?.seller_plans_used || 0)
           : (vipRequest.chat_sessions?.buyer_plans_used || 0)
         const newLimit = Math.min(currentUsed + plansToGrant, hardCap)
-        const overrideField = requestType === 'chat'
-          ? { ai_chat_limit: newLimit }
-          : requestType === 'estimator'
-          ? { estimator_limit: newLimit }
-          : planType === 'seller'
-          ? { seller_plan_limit: newLimit }
-          : { buyer_plan_limit: newLimit }
+        // Grant all three pools using tenant Credits per Email Approval config
+        const chatUsed = vipRequest.chat_sessions?.message_count || 0
+        const planUsed = (vipRequest.chat_sessions?.buyer_plans_used || 0) + (vipRequest.chat_sessions?.seller_plans_used || 0)
+        const estimatorUsed = vipRequest.chat_sessions?.estimator_count || 0
+        const newChatLimit = Math.min(chatUsed + (tenantCfg?.ai_manual_approve_limit ?? 3), tenantCfg?.ai_hard_cap ?? 25)
+        const newPlanLimit = Math.min(planUsed + (tenantCfg?.plan_manual_approve_limit ?? 3), tenantCfg?.plan_hard_cap ?? 10)
+        const newEstimatorLimit = Math.min(estimatorUsed + (tenantCfg?.estimator_manual_approve_attempts ?? 3), tenantCfg?.estimator_hard_cap ?? 10)
         await supabase
           .from('user_credit_overrides')
           .upsert({
@@ -146,8 +146,10 @@ export async function GET(request: NextRequest) {
             tenant_id: tenantId,
             granted_by_agent_id: vipRequest.agent_id || null,
             granted_by_tier: 'manager',
-            note: 'Email approval — ' + plansToGrant + ' ' + planType + ' plan credits granted',
-            ...overrideField,
+            note: 'Email approval — chat:' + newChatLimit + ' plans:' + newPlanLimit + ' estimator:' + newEstimatorLimit,
+            ai_chat_limit: newChatLimit,
+            buyer_plan_limit: newPlanLimit,
+            estimator_limit: newEstimatorLimit,
             granted_at: new Date().toISOString(),
           }, { onConflict: 'user_id,tenant_id' })
       }
