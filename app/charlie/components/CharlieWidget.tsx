@@ -337,7 +337,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
               Request additional access from your agent — they'll review and approve shortly.
             </p>
             <button
-              onClick={() => requestVipAccess('buyer')}
+              onClick={() => requestVipAccess('chat')}
               style={{
                 width: '100%', padding: '14px',
                 background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',

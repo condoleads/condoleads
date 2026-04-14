@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
         full_name: userName,
         email: userEmail || null,
         request_source: 'walliam_charlie',
+        request_type: planType === 'chat' ? 'chat' : planType === 'estimator' ? 'estimator' : 'plan',
         status: isAutoApprove ? 'approved' : 'pending',
         messages_granted: isAutoApprove ? autoApproveMessages : 0,
         responded_at: isAutoApprove ? new Date().toISOString() : null,

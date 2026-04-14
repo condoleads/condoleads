@@ -219,7 +219,7 @@ export function useCharlie() {
     setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
   }, [])
 
-  const requestVipAccess = useCallback(async (planType: 'buyer' | 'seller') => {
+  const requestVipAccess = useCallback(async (planType: 'buyer' | 'seller' | 'chat' | 'estimator') => {
     const sid = walliamSessionIdRef.current
     if (!sid) return
     try {

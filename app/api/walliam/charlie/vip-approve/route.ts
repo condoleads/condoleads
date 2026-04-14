@@ -112,18 +112,31 @@ export async function GET(request: NextRequest) {
       if (userId && tenantId) {
         const { data: tenantCfg } = await supabase
           .from('tenants')
-          .select('plan_hard_cap, seller_plan_hard_cap')
+          .select('plan_hard_cap, seller_plan_hard_cap, ai_hard_cap, estimator_hard_cap')
           .eq('id', tenantId)
           .single()
         const planType = vipRequest.buyer_type || 'buyer'
-        const hardCap = planType === 'seller'
+        const requestType = vipRequest.request_type || 'plan'
+        const hardCap = requestType === 'chat'
+          ? (tenantCfg?.ai_hard_cap ?? 25)
+          : requestType === 'estimator'
+          ? (tenantCfg?.estimator_hard_cap ?? 10)
+          : planType === 'seller'
           ? (tenantCfg?.seller_plan_hard_cap ?? 10)
           : (tenantCfg?.plan_hard_cap ?? 10)
-        const currentUsed = planType === 'seller'
+        const currentUsed = requestType === 'chat'
+          ? (vipRequest.chat_sessions?.message_count || 0)
+          : requestType === 'estimator'
+          ? (vipRequest.chat_sessions?.estimator_count || 0)
+          : planType === 'seller'
           ? (vipRequest.chat_sessions?.seller_plans_used || 0)
           : (vipRequest.chat_sessions?.buyer_plans_used || 0)
         const newLimit = Math.min(currentUsed + plansToGrant, hardCap)
-        const overrideField = planType === 'seller'
+        const overrideField = requestType === 'chat'
+          ? { ai_chat_limit: newLimit }
+          : requestType === 'estimator'
+          ? { estimator_limit: newLimit }
+          : planType === 'seller'
           ? { seller_plan_limit: newLimit }
           : { buyer_plan_limit: newLimit }
         await supabase
