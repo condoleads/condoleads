@@ -42,22 +42,27 @@ export default async function AdminHomesUsersPage() {
   const { data: sessions } = userIds.length > 0
     ? await supabase
         .from('chat_sessions')
-        .select('user_id, message_count, buyer_plans_used, seller_plans_used, estimator_count')
+        .select('user_id, message_count, buyer_plans_used, seller_plans_used, estimator_count, updated_at')
         .eq('tenant_id', TENANT_ID)
         .in('user_id', userIds)
+        .order('updated_at', { ascending: false })
         .limit(10000)
     : { data: [] }
 
-  // Aggregate usage per user (sum across all sessions)
+  // Use most recent session per user only
   const usageMap: Record<string, {
     chat: number; plans: number; estimator: number
   }> = {}
+  const seenUsers = new Set<string>()
   for (const s of sessions || []) {
     if (!s.user_id) continue
-    if (!usageMap[s.user_id]) usageMap[s.user_id] = { chat: 0, plans: 0, estimator: 0 }
-    usageMap[s.user_id].chat      += s.message_count || 0
-    usageMap[s.user_id].plans     += (s.buyer_plans_used || 0) + (s.seller_plans_used || 0)
-    usageMap[s.user_id].estimator += s.estimator_count || 0
+    if (seenUsers.has(s.user_id)) continue
+    seenUsers.add(s.user_id)
+    usageMap[s.user_id] = {
+      chat:      s.message_count || 0,
+      plans:     (s.buyer_plans_used || 0) + (s.seller_plans_used || 0),
+      estimator: s.estimator_count || 0,
+    }
   }
 
   // Fetch existing overrides for these users
