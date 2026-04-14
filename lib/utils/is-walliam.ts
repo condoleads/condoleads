@@ -74,7 +74,10 @@ export async function resolveWalliamAgent(params: {
       p_user_id: params.user_id || null,
       p_tenant_id: params.tenant_id,
     })
-    return data || null
+    if (data) return data
+    // Fall back to tenant default_agent_id
+    const { data: tenant } = await supabase.from('tenants').select('default_agent_id').eq('id', params.tenant_id).single()
+    return tenant?.default_agent_id || null
   } catch {
     return null
   }
