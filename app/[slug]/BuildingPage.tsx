@@ -547,13 +547,13 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingAddress={building.canonical_address}
                   agentId={agent.id}
                 />
-              ) : isWalliam && walliamAgentId ? (
+              ) : isWalliam ? (
                 <EstimatorSeller
                   buildingId={building.id}
                   buildingSlug={building.slug}
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
-                  agentId={walliamAgentId}
+                  agentId={walliamAgentId || 'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe'}
                   tenantId={tenantId}
                 />
               ) : null}
