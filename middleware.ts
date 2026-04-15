@@ -49,13 +49,13 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Auth refresh — only needed for non-static routes
-  // Wrapped in try/catch so a Supabase timeout never kills the request
-  try {
-    await supabase.auth.getUser()
-  } catch {
-    // Auth refresh failed — continue anyway, user just won't be refreshed
-  }
+  // Auth refresh — races against 800ms timeout
+  // If Supabase is slow, we skip the refresh and continue loading the page.
+  // Auth cookie will refresh on the next request when Supabase recovers.
+  await Promise.race([
+    supabase.auth.getUser().catch(() => {}),
+    new Promise<void>((resolve) => setTimeout(resolve, 800)),
+  ])
 
   const reqHost = request.headers.get('host') || ''
   const cleanReqHost = reqHost.replace(/^www\./, '')
