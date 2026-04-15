@@ -4,9 +4,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 // ─── Module-level cache ─────────────────────────────────────────────────────
 // Survives across requests within the same warm Edge instance.
 // TTL: 5 minutes. Prevents repeated DB hits for the same host.
-interface CacheEntry { value: { full_name: string; site_type: string; tenant_id: string | null } | null; expires: number }
-const agentCache = new Map<string, CacheEntry>()
-const tenantCache = new Map<string, CacheEntry>()
+type AgentResult = { full_name: string; site_type: string; tenant_id: string | null } | null
+const agentCache = new Map<string, { value: AgentResult; expires: number }>()
+const tenantCache = new Map<string, { value: string | null; expires: number }>()
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 function getCached<T>(map: Map<string, { value: T; expires: number }>, key: string): T | undefined {
