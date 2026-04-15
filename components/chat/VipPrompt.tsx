@@ -149,7 +149,7 @@ export default function VipPrompt({ agentName, onAccept, onDecline, isLoading, v
             <Star className="w-8 h-8 text-amber-500" />
           </div>
           <h4 className="text-lg font-semibold text-gray-900 mb-2">
-            Unlock 10 More Messages
+            Unlock More Estimates
           </h4>
           <p className="text-sm text-gray-600">
             Enter your phone number and {agentName} will approve your VIP access shortly.

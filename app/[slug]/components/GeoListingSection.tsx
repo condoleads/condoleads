@@ -395,6 +395,7 @@ export default function GeoListingSection({
           type={modalType === 'rent' ? 'lease' : 'sale'}
           exactSqft={modalExactSqft}
           agentId={agentId}
+          tenantId={tenantId}
         />
       )}
 

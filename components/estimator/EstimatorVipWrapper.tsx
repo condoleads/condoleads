@@ -84,7 +84,7 @@ export default function EstimatorVipWrapper({
   // Initialize session on mount
   useEffect(() => {
     initializeSession()
-  }, [agentId, userId])
+  }, [userId, tenantId])
 
   // Poll for VIP approval
   useEffect(() => {
@@ -182,7 +182,7 @@ export default function EstimatorVipWrapper({
       const response = await fetch(sessionUrl, {
         method: 'POST',
         headers: sessionHeaders,
-        body: JSON.stringify({ agentId, userId })
+        body: JSON.stringify({ agentId, userId, buildingId })
       })
 
       const data = await response.json()
@@ -276,13 +276,6 @@ export default function EstimatorVipWrapper({
       const requestId = vipResult.requestId
       const newStatus = vipResult.status === 'approved' ? 'approved' : 'pending'
       setSession(prev => ({ ...prev, vipRequestId: requestId, vipRequestStatus: newStatus }))
-      const qRes = await fetch('/api/walliam/estimator/vip-questionnaire', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId, budgetRange: formData.budgetRange, timeline: formData.timeline, buyerType: formData.buyerType, requirements: formData.requirements })
-      })
-      const qResult = await qRes.json()
-      if (!qResult.success) { setError(qResult.error || 'Failed to submit questionnaire'); return }
       setShowWalliamForm(false)
       setSession(prev => ({ ...prev, questionnaireCompleted: true }))
       if (newStatus === 'approved') { await initializeSession() } else { setShowWaiting(true) }
