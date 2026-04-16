@@ -97,8 +97,9 @@ export async function GET(request: NextRequest) {
       const userId = vipRequest.chat_sessions?.user_id
       if (userId && tenantId) {
         const { data: tCfg } = await supabase.from('tenants').select('estimator_hard_cap').eq('id', tenantId).single()
-        const estimatorUsed = vipRequest.chat_sessions?.estimator_count || 0
-        const newLimit = Math.min(estimatorUsed + attemptsToGrant, tCfg?.estimator_hard_cap ?? 10)
+        const { data: existingOverride } = await supabase.from('user_credit_overrides').select('estimator_limit').eq('user_id', userId).eq('tenant_id', tenantId).maybeSingle()
+        const currentLimit = existingOverride?.estimator_limit ?? 0
+        const newLimit = Math.min(currentLimit + attemptsToGrant, tCfg?.estimator_hard_cap ?? 50)
         await supabase.from('user_credit_overrides').upsert({
           user_id: userId,
           tenant_id: tenantId,
