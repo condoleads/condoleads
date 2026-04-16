@@ -101,14 +101,13 @@ export default function EstimatorVipWrapper({
         if (data.status === 'approved') {
           setSession(prev => ({ ...prev, vipRequestStatus: 'approved' }))
           setShowApprovalNotification(true)
-          
-          if (data.questionnaireCompleted || session.questionnaireCompleted) {
-            // Both conditions met - refresh session
-            setShowWaiting(false)
+          setShowWaiting(false)
+          // WALLiam has no questionnaire — always refresh on approval
+          if (tenantId) {
+            await initializeSession()
+          } else if (data.questionnaireCompleted || session.questionnaireCompleted) {
             await initializeSession()
           } else {
-            // Show questionnaire
-            setShowWaiting(false)
             setShowVipForm(true)
           }
           clearInterval(pollInterval)
