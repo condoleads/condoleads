@@ -108,12 +108,12 @@ export default function HomeEstimatorBuyerModal({
 
         if (data.status === 'approved') {
           setSession(prev => ({ ...prev, vipRequestStatus: 'approved' }))
-          if (data.questionnaireCompleted || session.questionnaireCompleted) {
-            setShowWaiting(false)
-            setShowVipForm(false)
+          setShowWaiting(false)
+          setShowVipForm(false)
+          // WALLiam skips questionnaire — always re-run
+          if (tenantId || data.questionnaireCompleted || session.questionnaireCompleted) {
             checkAndEstimate()
           } else {
-            setShowWaiting(false)
             setShowVipForm(true)
           }
           clearInterval(pollInterval)
