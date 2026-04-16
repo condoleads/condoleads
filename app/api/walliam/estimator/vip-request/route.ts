@@ -140,10 +140,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Auto-approve logic — reads from TENANT config, not agent
-    const isAutoApprove = tenant.estimator_vip_auto_approve === true
-    const autoApproveMessages = isAutoApprove
-      ? (tenant.estimator_auto_approve_attempts ?? 2)
-      : 0
+    // If auto_approve_attempts = 0, fall through to manual regardless of flag
+    const autoApproveMessages = tenant.estimator_auto_approve_attempts ?? 0
+    const isAutoApprove = tenant.estimator_vip_auto_approve === true && autoApproveMessages > 0
 
     // Create VIP request
     const { data: vipRequest, error: insertError } = await supabase
