@@ -278,7 +278,7 @@ export default function EstimatorVipWrapper({
       setSession(prev => ({ ...prev, vipRequestId: requestId, vipRequestStatus: newStatus }))
       setShowWalliamForm(false)
       setSession(prev => ({ ...prev, questionnaireCompleted: true }))
-      if (newStatus === 'approved') { await initializeSession() } else { setShowWaiting(true) }
+      if (newStatus === 'approved') { setShowApprovalNotification(true); await initializeSession() } else { setShowWaiting(true) }
     } catch (err) {
       console.error('WALLiam VIP submit error:', err)
       setError('Failed to submit request')
