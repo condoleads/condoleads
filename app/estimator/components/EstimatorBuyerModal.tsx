@@ -396,13 +396,6 @@ export default function EstimatorBuyerModal({
       const requestId = vipResult.requestId
       const newStatus = vipResult.status === 'approved' ? 'approved' : 'pending'
       setSession(prev => ({ ...prev, vipRequestId: requestId, vipRequestStatus: newStatus }))
-      const qRes = await fetch('/api/walliam/estimator/vip-questionnaire', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId, budgetRange: formData.budgetRange, timeline: formData.timeline, buyerType: formData.buyerType, requirements: formData.requirements })
-      })
-      const qResult = await qRes.json()
-      if (!qResult.success) { setError(qResult.error || 'Failed to submit questionnaire'); return }
       setShowWalliamForm(false)
       setSession(prev => ({ ...prev, questionnaireCompleted: true }))
       if (newStatus === 'approved') { checkAndEstimate() } else { setShowWaiting(true) }
