@@ -55,6 +55,12 @@ export async function GET(request: NextRequest) {
     const newStatus = action === 'approve' ? 'approved' : 'denied'
     const agent = vipRequest.agents
     const tenantId = vipRequest.chat_sessions?.tenant_id
+    // Fetch manager for CC
+    let managerEmail = null
+    if (agent?.parent_id) {
+      const { data: mgr } = await supabase.from('agents').select('email, notification_email').eq('id', agent.parent_id).single()
+      if (mgr) managerEmail = mgr.notification_email || mgr.email
+    }
     let attemptsToGrant = 3
     if (tenantId) {
       const { data: tenantCfg } = await supabase.from('tenants').select('estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
@@ -108,6 +114,8 @@ export async function GET(request: NextRequest) {
           await resend.emails.send({
             from: FROM,
             to: vipRequest.email,
+            cc: managerEmail ? [managerEmail] : undefined,
+            bcc: 'condoleads.ca@gmail.com',
             subject: '✨ Your WALLiam Estimator Access is Approved',
             html: buildUserApprovalEmailHtml(
               vipRequest.full_name,
