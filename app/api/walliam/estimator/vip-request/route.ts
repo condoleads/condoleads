@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
       }, pageUrl || '')
     }
 
-    // Auto-approve: update session + send user email
+    // Auto-approve: update session + write credit override + send user email
     if (isAutoApprove) {
       const currentGranted = session.vip_messages_granted || 0
 
@@ -260,6 +260,28 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', sessionId)
+
+      // Write to user_credit_overrides so session route picks up new limit
+      if (session.user_id && session.tenant_id) {
+        const { data: existing } = await supabase
+          .from('user_credit_overrides')
+          .select('estimator_limit')
+          .eq('user_id', session.user_id)
+          .eq('tenant_id', session.tenant_id)
+          .maybeSingle()
+
+        const currentLimit = existing?.estimator_limit ?? 0
+        const newLimit = currentLimit + autoApproveMessages
+
+        await supabase
+          .from('user_credit_overrides')
+          .upsert({
+            user_id: session.user_id,
+            tenant_id: session.tenant_id,
+            estimator_limit: newLimit,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'user_id,tenant_id' })
+      }
 
       if (userEmail) {
         try {
