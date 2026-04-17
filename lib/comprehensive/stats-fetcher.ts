@@ -103,9 +103,23 @@ export async function fetchTopAreas(access: ResolvedAccess, limit = 6): Promise<
     analyticsQuery = analyticsQuery.in('geo_id', access.municipalityIds);
   }
 
-  const [{ data: analyticsRows }, { data: munis }] = await Promise.all([
+  // Condo-track PSF + trend per municipality (for AreaCard display)
+  let psfTrendQuery = supabase
+    .from('geo_analytics')
+    .select('geo_id, median_psf, psf_trend_pct')
+    .eq('geo_type', 'municipality')
+    .eq('track', 'condo')
+    .eq('period_type', 'rolling_12mo')
+    .not('median_psf', 'is', null)
+    .limit(1000);
+  if (!access.isAllMLS && access.municipalityIds.length > 0) {
+    psfTrendQuery = psfTrendQuery.in('geo_id', access.municipalityIds);
+  }
+
+  const [{ data: analyticsRows }, { data: munis }, { data: psfTrendRows }] = await Promise.all([
     analyticsQuery,
     supabase.from('municipalities').select('id, name, slug').limit(500),
+    psfTrendQuery,
   ]);
 
   if (!analyticsRows?.length || !munis?.length) return [];
@@ -119,6 +133,14 @@ export async function fetchTopAreas(access: ResolvedAccess, limit = 6): Promise<
   for (const row of analyticsRows) {
     if (row.track === 'condo') condoMap.set(row.geo_id, (condoMap.get(row.geo_id) ?? 0) + (row.active_count ?? 0));
     if (row.track === 'homes') homeMap.set(row.geo_id, (homeMap.get(row.geo_id) ?? 0) + (row.active_count ?? 0));
+  }
+
+  // Build PSF + trend maps from the dedicated query
+  const psfMap = new Map<string, number>();
+  const trendMap = new Map<string, number>();
+  for (const row of psfTrendRows ?? []) {
+    if (row.median_psf != null) psfMap.set(row.geo_id, Math.round(Number(row.median_psf)));
+    if (row.psf_trend_pct != null) trendMap.set(row.geo_id, Number(row.psf_trend_pct));
   }
 
   // Get building counts in one query
@@ -154,8 +176,10 @@ export async function fetchTopAreas(access: ResolvedAccess, limit = 6): Promise<
         condoCount: condoMap.get(id) ?? 0,
         homeCount: homeMap.get(id) ?? 0,
         buildingCount: buildingMap.get(id) ?? 0,
-        avgPsf: 0,
-        trend: '+0.0%',
+        avgPsf: psfMap.get(id) ?? 0,
+        trend: trendMap.has(id)
+          ? `${trendMap.get(id)! >= 0 ? '+' : ''}${trendMap.get(id)!.toFixed(1)}%`
+          : '+0.0%',
       };
     })
     .filter(Boolean)
