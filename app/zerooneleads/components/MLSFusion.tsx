@@ -414,7 +414,8 @@ export default function MLSFusion() {
           </div>
         </div>
 
-        {/* Three-column fusion layout */}
+        {/* Fusion layout — grid on desktop, horizontal carousel on mobile */}
+        <div className="fusion-scroll">
         <div className="fusion-grid" style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr',
@@ -676,6 +677,7 @@ export default function MLSFusion() {
           </div>
         </div>
 
+        </div>
         {/* Scenario dots */}
         <div style={{
           display: 'flex',
@@ -729,8 +731,29 @@ export default function MLSFusion() {
           from { opacity: 0; transform: translateY(-6px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        .fusion-scroll {
+          margin: 0 -24px;
+          padding: 0 24px;
+        }
         @media (max-width: 768px) {
-          .fusion-grid { grid-template-columns: 1fr !important; }
+          .fusion-scroll {
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -24px;
+            padding: 0 24px 16px;
+          }
+          .fusion-scroll::-webkit-scrollbar { display: none; }
+          .fusion-grid {
+            grid-template-columns: 88vw 88vw !important;
+            gap: 16px !important;
+            width: max-content !important;
+            max-width: none !important;
+          }
+          .fusion-grid > div {
+            scroll-snap-align: center;
+            min-height: auto !important;
+          }
         }
       `}</style>
     </section>
