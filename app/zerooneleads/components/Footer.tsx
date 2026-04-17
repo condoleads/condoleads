@@ -31,11 +31,11 @@
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.18)' }}>© 2026 01leads. All rights reserved.</span>
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.40)' }}>© 2026 01leads. All rights reserved.</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.18)', fontFamily: 'monospace' }}>contact@01leads.com</span>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.15)' }}>Georgia, Tbilisi, Mtatsminda district, Tabakhmela, V. Tabakhmela</span>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.12)' }}>Operated by Individual Entrepreneur LINKA · ID: 304805726</span>
+          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', fontFamily: 'monospace' }}>contact@01leads.com</span>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Georgia, Tbilisi, Mtatsminda district, Tabakhmela, V. Tabakhmela</span>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Operated by Individual Entrepreneur LINKA · ID: 304805726</span>
         </div>
         </div>
       </div>
