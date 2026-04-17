@@ -1,4 +1,4 @@
-export default function Footer() {
+﻿export default function Footer() {
   return (
     <footer style={{ padding: '64px 24px 40px', background: '#020812', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -34,7 +34,8 @@ export default function Footer() {
           <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.18)' }}>© 2026 01leads. All rights reserved.</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
           <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.18)', fontFamily: 'monospace' }}>contact@01leads.com</span>
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.15)' }}>Kote Marjanishvili St. 30, Tbilisi, Georgia</span>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.15)' }}>Georgia, Tbilisi, Mtatsminda district, Tabakhmela, V. Tabakhmela</span>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.12)' }}>Operated by Individual Entrepreneur LINKA · ID: 304805726</span>
         </div>
         </div>
       </div>

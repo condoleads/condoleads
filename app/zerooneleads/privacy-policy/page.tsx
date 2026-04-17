@@ -1,4 +1,4 @@
-export default function PrivacyPolicy() {
+﻿export default function PrivacyPolicy() {
   return (
     <div style={{ background: '#020812', minHeight: '100vh' }}>
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '120px 24px', color: '#fff' }}>
@@ -28,7 +28,7 @@ export default function PrivacyPolicy() {
       <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12, color: '#fff' }}>Contact</h2>
       <p style={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.75 }}>
         For privacy inquiries: <a href="mailto:contact@01leads.com" style={{ color: '#3b82f6' }}>contact@01leads.com</a><br />
-        Kote Marjanishvili St. 30, Tbilisi, Georgia
+        Georgia, Tbilisi, Mtatsminda district, Tabakhmela, V. Tabakhmela
       </p>
     </div>
     </div>
