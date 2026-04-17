@@ -1,4 +1,13 @@
-'use client'
+// scripts/01leads-solution-cinematic.js
+// Full cinematic Solution section — animated branded AI widget
+
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = process.cwd();
+const file = path.join(ROOT, 'app', 'zerooneleads', 'components', 'Solution.tsx');
+
+const content = `'use client'
 import { useEffect, useRef, useState } from 'react'
 
 function useInView() {
@@ -123,7 +132,7 @@ export default function Solution() {
   return (
     <section ref={ref} id="solution" style={{
       padding: '140px 24px',
-      background: `linear-gradient(180deg,#020812 0%,#030d1f 100%)`,
+      background: \`linear-gradient(180deg,#020812 0%,#030d1f 100%)\`,
       position: 'relative',
       overflow: 'hidden',
     }}>
@@ -132,7 +141,7 @@ export default function Solution() {
         position: 'absolute', top: '50%', left: '50%',
         transform: 'translate(-50%,-50%)',
         width: 1100, height: 1100, borderRadius: '50%',
-        background: `radial-gradient(circle,rgba(${brand.accentRgb},0.10) 0%,transparent 70%)`,
+        background: \`radial-gradient(circle,rgba(\${brand.accentRgb},0.10) 0%,transparent 70%)\`,
         pointerEvents: 'none',
         transition: 'background 1.2s ease',
       }} />
@@ -142,8 +151,8 @@ export default function Solution() {
         <div style={{ textAlign: 'center', marginBottom: 64 }}>
           <div style={{
             display: 'inline-block', padding: '4px 14px', borderRadius: 100,
-            background: `rgba(${brand.accentRgb},0.12)`,
-            border: `1px solid rgba(${brand.accentRgb},0.35)`,
+            background: \`rgba(\${brand.accentRgb},0.12)\`,
+            border: \`1px solid rgba(\${brand.accentRgb},0.35)\`,
             fontSize: 11, fontWeight: 700,
             color: brand.accent,
             letterSpacing: '0.12em', textTransform: 'uppercase',
@@ -162,7 +171,7 @@ export default function Solution() {
           }}>
             With 01leads,<br />
             <span style={{
-              background: `linear-gradient(135deg,${brand.accent},#8b5cf6)`,
+              background: \`linear-gradient(135deg,\${brand.accent},#8b5cf6)\`,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
@@ -190,10 +199,10 @@ export default function Solution() {
         }}>
           <div style={{
             borderRadius: 24,
-            background: `linear-gradient(145deg, rgba(255,255,255,0.04), rgba(${brand.accentRgb},0.04))`,
-            border: `1px solid rgba(${brand.accentRgb},0.25)`,
+            background: \`linear-gradient(145deg, rgba(255,255,255,0.04), rgba(\${brand.accentRgb},0.04))\`,
+            border: \`1px solid rgba(\${brand.accentRgb},0.25)\`,
             overflow: 'hidden',
-            boxShadow: `0 30px 90px rgba(${brand.accentRgb},0.18), 0 0 0 1px rgba(255,255,255,0.03)`,
+            boxShadow: \`0 30px 90px rgba(\${brand.accentRgb},0.18), 0 0 0 1px rgba(255,255,255,0.03)\`,
             transition: 'all 1s ease',
           }}>
             {/* Widget header with avatar + name */}
@@ -201,20 +210,20 @@ export default function Solution() {
               padding: '20px 22px',
               borderBottom: '1px solid rgba(255,255,255,0.06)',
               display: 'flex', alignItems: 'center', gap: 14,
-              background: `rgba(${brand.accentRgb},0.06)`,
+              background: \`rgba(\${brand.accentRgb},0.06)\`,
               transition: 'background 0.8s ease',
             }}>
               {/* Avatar — morphs between brands */}
               <div style={{
                 width: 46, height: 46, borderRadius: brand.avatarStyle === 'logo' ? 10 : '50%',
-                background: `linear-gradient(135deg,${brand.accent},rgba(${brand.accentRgb},0.6))`,
+                background: \`linear-gradient(135deg,\${brand.accent},rgba(\${brand.accentRgb},0.6))\`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: '#fff',
                 fontWeight: 900,
                 fontSize: brand.avatarStyle === 'logo' ? 15 : 20,
                 letterSpacing: brand.avatarStyle === 'logo' ? '-0.02em' : 0,
                 fontFamily: brand.avatarStyle === 'logo' ? 'monospace' : 'inherit',
-                boxShadow: `0 4px 16px rgba(${brand.accentRgb},0.4)`,
+                boxShadow: \`0 4px 16px rgba(\${brand.accentRgb},0.4)\`,
                 flexShrink: 0,
                 opacity: isFading ? 0.3 : 1,
                 transform: isFading ? 'scale(0.92)' : 'scale(1)',
@@ -266,7 +275,7 @@ export default function Solution() {
                   opacity: questionText ? 1 : 0.3,
                   transition: 'opacity 0.4s',
                 }}>
-                  {questionText || '\u2026'}
+                  {questionText || '\\u2026'}
                   {phase === 'typing' && questionText.length > 0 && questionText.length < brand.question.length && (
                     <span style={{ display: 'inline-block', width: 2, height: 14, background: 'rgba(255,255,255,0.6)', marginLeft: 2, verticalAlign: 'middle', animation: 'blink 0.8s step-start infinite' }} />
                   )}
@@ -277,20 +286,20 @@ export default function Solution() {
               <div style={{ display: 'flex', justifyContent: 'flex-start', gap: 8, alignItems: 'flex-start' }}>
                 <div style={{
                   width: 28, height: 28, borderRadius: 8,
-                  background: `linear-gradient(135deg,${brand.accent},rgba(${brand.accentRgb},0.6))`,
+                  background: \`linear-gradient(135deg,\${brand.accent},rgba(\${brand.accentRgb},0.6))\`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   flexShrink: 0,
                   fontSize: 11, fontWeight: 900, color: '#fff',
                   fontFamily: brand.avatarStyle === 'logo' ? 'monospace' : 'inherit',
-                  boxShadow: `0 2px 8px rgba(${brand.accentRgb},0.3)`,
+                  boxShadow: \`0 2px 8px rgba(\${brand.accentRgb},0.3)\`,
                   transition: 'all 0.6s ease',
                 }}>{brand.avatar}</div>
                 <div style={{
                   maxWidth: '80%',
                   padding: '12px 16px',
                   borderRadius: '4px 18px 18px 18px',
-                  background: `linear-gradient(135deg, rgba(${brand.accentRgb},0.12), rgba(${brand.accentRgb},0.04))`,
-                  border: `1px solid rgba(${brand.accentRgb},0.2)`,
+                  background: \`linear-gradient(135deg, rgba(\${brand.accentRgb},0.12), rgba(\${brand.accentRgb},0.04))\`,
+                  border: \`1px solid rgba(\${brand.accentRgb},0.2)\`,
                   fontSize: 14,
                   color: 'rgba(255,255,255,0.92)',
                   lineHeight: 1.6,
@@ -337,7 +346,7 @@ export default function Solution() {
                 height: 8, borderRadius: 4,
                 background: i === brandIdx ? b.accent : 'rgba(255,255,255,0.12)',
                 transition: 'all 0.6s ease',
-                boxShadow: i === brandIdx ? `0 0 12px ${b.accent}aa` : 'none',
+                boxShadow: i === brandIdx ? \`0 0 12px \${b.accent}aa\` : 'none',
               }} />
             ))}
           </div>
@@ -364,7 +373,7 @@ export default function Solution() {
         </div>
       </div>
 
-      <style>{`
+      <style>{\`
         @keyframes blink { 50% { opacity: 0; } }
         @keyframes onlinePulse {
           0%, 100% { opacity: 1; transform: scale(1); }
@@ -374,7 +383,13 @@ export default function Solution() {
           0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
           30% { transform: translateY(-4px); opacity: 1; }
         }
-      `}</style>
+      \`}</style>
     </section>
   )
 }
+`;
+
+fs.writeFileSync(file, content, 'utf8');
+console.log(`✓ Wrote ${path.relative(ROOT, file)}`);
+console.log('\n✓ Cinematic Solution section ready.');
+console.log('Next: npx tsc --noEmit, then npm run dev to preview.');
