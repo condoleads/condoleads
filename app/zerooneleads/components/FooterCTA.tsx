@@ -22,17 +22,17 @@ export default function FooterCTA() {
           <span style={{ background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>leads on the table?</span>
         </h2>
         <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.42)', marginBottom: 52, lineHeight: 1.7, maxWidth: 560, margin: '0 auto 52px', opacity: v ? 1 : 0, transition: 'opacity 0.7s ease 0.1s' }}>
-          Every day without WALLiam is another day of midnight leads going cold, visitors bouncing without a trace, and competitors capturing the buyers that should have been yours.
+          Every day without 01leads AI is another day of midnight leads going cold, visitors bouncing without a trace, and competitors capturing the buyers that should have been yours.
         </p>
         <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap', opacity: v ? 1 : 0, transition: 'opacity 0.7s ease 0.2s' }}>
-          <a href="https://walliam.ca" target="_blank" rel="noopener" style={{ padding: '16px 40px', borderRadius: 100, background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', color: '#fff', fontSize: 16, fontWeight: 800, textDecoration: 'none', boxShadow: '0 8px 40px rgba(59,130,246,0.45)', transition: 'all 0.2s' }}
+          <a href="/contact" style={{ padding: '16px 40px', borderRadius: 100, background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', color: '#fff', fontSize: 16, fontWeight: 800, textDecoration: 'none', boxShadow: '0 8px 40px rgba(59,130,246,0.45)', transition: 'all 0.2s' }}
             onMouseEnter={e => { e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 14px 50px rgba(59,130,246,0.6)' }}
             onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 8px 40px rgba(59,130,246,0.45)' }}
-          >See WALLiam Live</a>
-          <a href="#pricing" style={{ padding: '16px 40px', borderRadius: 100, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', fontSize: 16, fontWeight: 700, textDecoration: 'none', transition: 'all 0.2s' }}
+          >Book Discovery Call</a>
+          <a href="https://walliam.ca" target="_blank" rel="noopener" style={{ padding: '16px 40px', borderRadius: 100, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', fontSize: 16, fontWeight: 700, textDecoration: 'none', transition: 'all 0.2s' }}
             onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.1)'}
             onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.05)'}
-          >View Pricing</a>
+          >See it Live →</a>
         </div>
       </div>
     </section>

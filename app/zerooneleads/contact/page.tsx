@@ -29,7 +29,7 @@ export default function Contact() {
         <div style={{ marginBottom: 48 }}>
           <div style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 100, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', fontSize: 11, fontWeight: 700, color: '#3b82f6', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 16 }}>Contact</div>
           <h1 style={{ fontSize: 40, fontWeight: 900, color: '#fff', marginBottom: 12, letterSpacing: '-0.02em' }}>Get in touch</h1>
-          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}>Interested in WALLiam for your team? Fill out the form and we'll get back to you within 24 hours.</p>
+          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.45)', lineHeight: 1.7 }}>Interested in 01leads AI for your team? Fill out the form and we'll get back to you within 24 hours. All clients subject to discovery call and approval.</p>
         </div>
 
         {status === 'success' ? (
@@ -60,9 +60,9 @@ export default function Contact() {
               <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>Plan Interest</label>
               <select name="plan" value={form.plan} onChange={handle} style={{ width: '100%', padding: '12px 16px', borderRadius: 12, background: '#0d1629', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: 14, outline: 'none' }}>
                 <option value="">Select a plan</option>
-                <option value="Solo Agent">Solo Agent — $500 setup + $999/mo</option>
-                <option value="Team / Brokerage">Team / Brokerage — $1,000 setup + $3,000+/mo</option>
-                <option value="Enterprise">Enterprise — Custom</option>
+                <option value="Solo Agent">Solo Agent — $3,500 setup + $2,500-$5,000/mo</option>
+                <option value="Team / Brokerage">Team / Brokerage — $5,000 setup + $5,000-$10,000/mo</option>
+                <option value="Enterprise">Enterprise — Custom (100+ agents)</option>
               </select>
             </div>
 

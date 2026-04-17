@@ -8,7 +8,7 @@ export default function Footer() {
               <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', fontSize: 13, fontWeight: 800, color: '#fff' }}>01</div>
               <span style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>leads</span>
             </div>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', maxWidth: 220, lineHeight: 1.65, margin: 0 }}>Powered by WALLiam AI. The real estate platform that never sleeps.</p>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.28)', maxWidth: 220, lineHeight: 1.65, margin: 0 }}>Powered by 01leads AI. The real estate platform that never sleeps.</p>
           </div>
           <div style={{ display: 'flex', gap: 64, flexWrap: 'wrap' }}>
             <div>

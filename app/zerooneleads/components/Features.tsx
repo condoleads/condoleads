@@ -11,12 +11,12 @@ function useInView() {
   return { ref, v }
 }
 const F = [
-  { icon: '🧠', title: 'Buyer Intelligence Plans', body: 'WALLiam analyses the local market, finds matching listings, computes offer strategy, and delivers a personalized buyer plan — before your agent says a word.', color: '#3b82f6' },
-  { icon: '💰', title: 'Instant Home Valuations', body: 'Sellers get a data-driven estimate based on real comparable sales — not a vague range. WALLiam shows the math, builds trust, captures the lead.', color: '#8b5cf6' },
-  { icon: '📍', title: 'Geo-Intelligent Search', body: 'Every neighbourhood and community has its own market data. WALLiam knows Whitby from Mississauga — and tells your client the difference.', color: '#06b6d4' },
-  { icon: '⚡', title: 'Instant Lead Capture', body: 'Name, email, phone, intent, budget, timeline — captured naturally in conversation. Your agent gets a notification with everything needed to close.', color: '#10b981' },
-  { icon: '🔒', title: 'VIP Access Control', body: 'Gate premium content behind registration. Control how many free plans each visitor gets. Your agent approves VIP access — staying in the loop.', color: '#f59e0b' },
-  { icon: '🏢', title: 'Full White Label', body: 'Your domain. Your brand. Your agents. WALLiam runs silently in the background — your clients think it’s you. Because it represents you.', color: '#ef4444' },
+  { icon: '💬', title: 'AI Chat', body: 'Your 24/7 conversational AI. Visitors ask anything — neighbourhoods, listings, mortgages, specific buildings. Answers pulled from live GTA data (RAG-grounded, no hallucinations).', color: '#3b82f6' },
+  { icon: '🧠', title: 'AI Plans — Buyer & Seller', body: 'Full personalized strategies delivered in 60 seconds. Buyers get market analysis, matching listings, offer strategy. Sellers get comps, valuation, next steps. Every plan = qualified lead.', color: '#8b5cf6' },
+  { icon: '💰', title: 'AI Estimator', body: 'Homeowners enter their address and get a data-driven valuation based on actual comparable sales — not a vague range from a national database. Real comps. Real math. Real trust.', color: '#06b6d4' },
+  { icon: '📊', title: 'Real GTA Data — RAG-Grounded', body: '1M+ GTA listings in our database, active and historical. Real comparable sales. Neighbourhood-level intelligence. Every building, community, municipality. Updated daily.', color: '#10b981' },
+  { icon: '🔒', title: 'VIP Access Control', body: 'Credit system you control. Three separate pools (Chat, Plans, Estimator). Your agent approves VIP upgrades via email — every serious lead stays in your loop.', color: '#f59e0b' },
+  { icon: '🏢', title: 'Full White Label', body: 'Your domain. Your brand. Your agents. 01leads AI runs silently in the background — your clients see only your brand, because it represents you.', color: '#ef4444' },
 ]
 const colorRgb: Record<string,string> = { '#3b82f6':'59,130,246','#8b5cf6':'139,92,246','#06b6d4':'6,182,212','#10b981':'16,185,129','#f59e0b':'245,158,11','#ef4444':'239,68,68' }
 export default function Features() {
@@ -25,9 +25,9 @@ export default function Features() {
     <section ref={ref} id="features" style={{ padding: '120px 24px', background: '#030d1f' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 72 }}>
-          <div style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 100, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', fontSize: 11, fontWeight: 700, color: '#8b5cf6', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 20 }}>Features</div>
+          <div style={{ display: 'inline-block', padding: '4px 14px', borderRadius: 100, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.3)', fontSize: 11, fontWeight: 700, color: '#8b5cf6', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 20 }}>Three AI Systems. One Platform.</div>
           <h2 style={{ fontSize: 'clamp(28px,5vw,54px)', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1.1, color: '#fff'  }}>
-            Everything your agents need.<br /><span style={{ color: 'rgba(255,255,255,0.28)' }}>Nothing they have to do.</span>
+            Built for real conversions.<br /><span style={{ color: 'rgba(255,255,255,0.28)' }}>Not generic AI chat.</span>
           </h2>
         </div>
         <div className="feat-scroll">

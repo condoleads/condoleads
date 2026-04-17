@@ -139,7 +139,7 @@ export default function Hero() {
             Your AI works 24/7.
           </span></div>
         <p style={{ ...t(0.2), fontSize: 'clamp(16px, 2.2vw, 21px)', color: 'rgba(255,255,255,0.5)', lineHeight: 1.75, maxWidth: 580, marginBottom: 48 }}>
-          WALLiam AI captures every lead, qualifies every buyer, estimates every home value — and delivers a personalized plan before your agent even picks up the phone.
+          01leads AI captures every lead, qualifies every buyer, estimates every home value — and delivers a personalized plan before your agent even picks up the phone.
         </p>
         {/* Binary strip */}
         <div style={{ ...t(0.25), fontFamily: 'monospace', fontSize: 11, color: 'rgba(59,130,246,0.4)', letterSpacing: '0.15em', marginBottom: 8, overflow: 'hidden', maxWidth: 580 }} className="binary-strip">
@@ -156,7 +156,7 @@ export default function Hero() {
           >See Live Demo →</a>
         </div>
         <div style={{ ...t(0.5), display: 'grid', gridTemplateColumns: 'repeat(4, auto)', gap: '0 48px', marginTop: 80, width: 'fit-content' }} className="hero-stats">
-          {[{v:24,s:'/7',l:'Lead Capture'},{v:68000,s:'+',l:'GTA Listings'},{v:3,s:' min',l:'To Qualified Lead'},{v:0,s:' missed',l:'After-Hours Leads'}].map((s,i) => (
+          {[{v:24,s:'/7',l:'Lead Capture'},{v:1,s:'M+',l:'GTA Listings'},{v:3,s:' min',l:'To Qualified Lead'},{v:0,s:' missed',l:'After-Hours Leads'}].map((s,i) => (
             <div key={i} style={{ borderLeft: '2px solid rgba(59,130,246,0.3)', paddingLeft: 20 }}>
               <div style={{ fontSize: 'clamp(24px,3vw,36px)', fontWeight: 900, color: '#fff', fontFamily: 'monospace', lineHeight: 1 }}>
                 <Counter target={s.v} suffix={s.s} />

@@ -11,9 +11,9 @@ function useInView() {
   return { ref, v }
 }
 const STEPS = [
-  { n: '01', title: 'Visitor lands on your site', body: 'They browse properties, neighbourhoods or search for a home value. WALLiam is watching — ready to engage the moment they show intent.', color: '#3b82f6' },
-  { n: '02', title: 'WALLiam starts the conversation', body: 'Naturally, intelligently. It asks the right questions, pulls live market data, and starts building their plan in real time.', color: '#8b5cf6' },
-  { n: '03', title: 'A personalized plan is delivered', body: 'Buyer gets market analysis, matching listings, offer strategy. Seller gets comparable sales, a valuation, and next steps. All in seconds.', color: '#06b6d4' },
+  { n: '01', title: 'Visitor lands on your site', body: 'They browse properties, neighbourhoods or search for a home value. 01leads AI is watching — ready to engage the moment they show intent.', color: '#3b82f6' },
+  { n: '02', title: '01leads AI starts the conversation', body: 'Naturally, intelligently. RAG-grounded responses pulled from real GTA listings and comparable sales — not generic web content. Every answer is data-backed.', color: '#8b5cf6' },
+  { n: '03', title: 'A personalized plan is delivered', body: 'Buyer gets market analysis, matching listings, offer strategy. Seller gets real comparable sales, a valuation, and next steps. Built on live data, delivered in seconds.', color: '#06b6d4' },
   { n: '04', title: 'Lead captured. Agent notified.', body: 'Name, email, phone, intent, budget, area, timeline — your agent gets it all instantly. The conversation is already warm.', color: '#10b981' },
 ]
 export default function HowItWorks() {

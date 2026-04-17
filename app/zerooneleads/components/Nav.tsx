@@ -34,7 +34,7 @@ export default function Nav() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <a href="https://walliam.ca" target="_blank" rel="noopener" style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontWeight: 500 }} className="nav-desktop">See Demo →</a>
-          <a href="#pricing" style={{ padding: '8px 20px', borderRadius: 100, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none', boxShadow: '0 4px 20px rgba(59,130,246,0.4)' }}>Get Started</a>
+          <a href="/contact" style={{ padding: '8px 20px', borderRadius: 100, background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', color: '#fff', fontSize: 13, fontWeight: 700, textDecoration: 'none', boxShadow: '0 4px 20px rgba(59,130,246,0.4)' }}>Book Call</a>
         </div>
       </div>
       <style>{`

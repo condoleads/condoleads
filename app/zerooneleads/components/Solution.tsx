@@ -13,7 +13,7 @@ function useInView() {
 const FLOW = [
   { icon: '👤', label: 'Visitor arrives' },
   null,
-  { icon: '🤖', label: 'WALLiam engages' },
+  { icon: '🤖', label: '01leads AI engages' },
   null,
   { icon: '📊', label: 'Plan generated' },
   null,
@@ -34,7 +34,7 @@ export default function Solution() {
             <span style={{ background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>your team’s AI real estate brain.</span>
           </h2>
           <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.45)', maxWidth: 580, margin: '0 auto', lineHeight: 1.75, opacity: v ? 1 : 0, transition: 'opacity 0.6s ease 0.2s' }}>
-            WALLiam is an AI assistant embedded into your real estate website. It talks to every visitor, understands their needs, delivers a personalized plan — and hands you a qualified lead.
+            01leads AI is embedded into your real estate website. It talks to every visitor, understands their needs, delivers a personalized plan — and hands you a qualified lead. All grounded in live GTA data — no hallucinations.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 56 }}>
