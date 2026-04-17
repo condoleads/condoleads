@@ -1,6 +1,7 @@
 import Nav from './components/Nav'
 import Hero from './components/Hero'
 import Solution from './components/Solution'
+import MLSFusion from './components/MLSFusion'
 import Features from './components/Features'
 import HowItWorks from './components/HowItWorks'
 import Pricing from './components/Pricing'
@@ -13,6 +14,7 @@ export default function Page() {
       <Nav />
       <Hero />
       <Solution />
+      <MLSFusion />
       <Features />
       <HowItWorks />
       <Pricing />
