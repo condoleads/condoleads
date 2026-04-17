@@ -165,20 +165,22 @@ function MLSStream({ lines, trigger, show }: { lines: string[]; trigger: number;
   }, [trigger, show])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', maxHeight: 220, paddingBottom: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', height: 280, paddingBottom: 4, position: 'relative' }}>
       {lines.slice(0, visibleCount).map((line, i) => (
         <div key={`${trigger}-${i}`} style={{
-          padding: '7px 10px',
+          padding: '9px 12px',
           background: 'rgba(59,130,246,0.06)',
           border: '1px solid rgba(59,130,246,0.18)',
           borderRadius: 6,
           fontSize: 11,
           fontFamily: 'monospace',
+          lineHeight: 1.5,
           color: 'rgba(255,255,255,0.7)',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           animation: 'streamIn 0.3s ease',
+          flexShrink: 0,
         }}>{line}</div>
       ))}
     </div>
@@ -429,6 +431,9 @@ export default function MLSFusion() {
             background: 'linear-gradient(180deg, rgba(59,130,246,0.06), rgba(139,92,246,0.04))',
             border: '1px solid rgba(59,130,246,0.25)',
             position: 'relative',
+            minHeight: 780,
+            display: 'flex',
+            flexDirection: 'column',
           }}>
             <div style={{
               position: 'absolute',
@@ -476,6 +481,7 @@ export default function MLSFusion() {
               marginBottom: 18,
               paddingTop: 18,
               borderTop: '1px solid rgba(255,255,255,0.08)',
+              minHeight: 170,
             }}>
               <div style={{
                 display: 'flex',
@@ -526,10 +532,10 @@ export default function MLSFusion() {
               color: '#fff',
               fontWeight: 600,
               lineHeight: 1.5,
-              marginBottom: showAnswer ? 14 : 0,
+              marginBottom: 14,
               opacity: fusedText || phase === 'hold' ? 1 : 0.3,
               transition: 'opacity 0.4s',
-              minHeight: 40,
+              minHeight: 48,
             }}>
               {fusedText}
               {phase === 'answer' && fusedText.length < scenario.fusedAnswer.length && (
@@ -544,7 +550,13 @@ export default function MLSFusion() {
               )}
             </div>
 
-            {showAnswer && <AnswerCard scenario={scenario} trigger={idx} show={showAnswer} />}
+            <div style={{
+              minHeight: 150,
+              opacity: showAnswer ? 1 : 0,
+              transition: 'opacity 0.5s ease',
+            }}>
+              <AnswerCard scenario={scenario} trigger={idx} show={showAnswer} />
+            </div>
           </div>
 
           {/* RIGHT — CHATGPT-STYLE AI (dim) */}
@@ -558,6 +570,7 @@ export default function MLSFusion() {
             filter: 'grayscale(0.3)',
             display: 'flex',
             flexDirection: 'column',
+            minHeight: 780,
           }}>
             <div style={{
               position: 'absolute',
