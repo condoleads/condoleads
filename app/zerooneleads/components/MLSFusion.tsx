@@ -165,7 +165,7 @@ function MLSStream({ lines, trigger, show }: { lines: string[]; trigger: number;
   }, [trigger, show])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', maxHeight: 180 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden', maxHeight: 220, paddingBottom: 4 }}>
       {lines.slice(0, visibleCount).map((line, i) => (
         <div key={`${trigger}-${i}`} style={{
           padding: '7px 10px',
@@ -294,7 +294,7 @@ export default function MLSFusion() {
 
   return (
     <section ref={ref} id="mls-fusion" style={{
-      padding: '140px 24px',
+      padding: '160px 24px 140px',
       background: '#020812',
       position: 'relative',
       overflow: 'hidden',
@@ -364,7 +364,8 @@ export default function MLSFusion() {
             transition: 'opacity 0.7s ease 0.25s',
           }}>
             01leads fuses live GTA MLS data with AI reasoning. That's why every answer is
-            grounded in real sales — not invented. ChatGPT-style AI has only half the equation.
+            grounded in real sales. ChatGPT-style AI lacks MLS feed access — so it can't
+            deliver answers like these.
           </p>
         </div>
 
@@ -423,7 +424,7 @@ export default function MLSFusion() {
         }}>
           {/* LEFT — 01LEADS: MLS + AI fusion */}
           <div style={{
-            padding: '24px 22px',
+            padding: '32px 26px 28px',
             borderRadius: 18,
             background: 'linear-gradient(180deg, rgba(59,130,246,0.06), rgba(139,92,246,0.04))',
             border: '1px solid rgba(59,130,246,0.25)',
@@ -443,7 +444,7 @@ export default function MLSFusion() {
             }}>01LEADS AI</div>
 
             {/* MLS Stream */}
-            <div style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 4 }}>
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -471,9 +472,10 @@ export default function MLSFusion() {
 
             {/* AI Reasoning */}
             <div style={{
-              marginBottom: 14,
-              paddingTop: 14,
-              borderTop: '1px dashed rgba(255,255,255,0.1)',
+              marginTop: 20,
+              marginBottom: 18,
+              paddingTop: 18,
+              borderTop: '1px solid rgba(255,255,255,0.08)',
             }}>
               <div style={{
                 display: 'flex',
@@ -496,7 +498,8 @@ export default function MLSFusion() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              marginBottom: 14,
+              marginTop: 8,
+              marginBottom: 18,
               opacity: showConvergence ? 1 : 0.2,
               transition: 'opacity 0.5s',
             }}>
@@ -546,13 +549,15 @@ export default function MLSFusion() {
 
           {/* RIGHT — CHATGPT-STYLE AI (dim) */}
           <div style={{
-            padding: '24px 22px',
+            padding: '32px 26px 28px',
             borderRadius: 18,
             background: 'rgba(255,255,255,0.02)',
             border: '1px solid rgba(255,255,255,0.08)',
             position: 'relative',
-            opacity: 0.55,
-            filter: 'grayscale(0.4)',
+            opacity: 0.6,
+            filter: 'grayscale(0.3)',
+            display: 'flex',
+            flexDirection: 'column',
           }}>
             <div style={{
               position: 'absolute',
@@ -642,16 +647,18 @@ export default function MLSFusion() {
               )}
             </div>
 
-            {/* Bottom caption */}
+            {/* Bottom caption — softer framing */}
             <div style={{
-              marginTop: 14,
+              marginTop: 'auto',
+              paddingTop: 18,
               textAlign: 'center',
-              fontSize: 11,
-              color: 'rgba(239,68,68,0.7)',
-              fontWeight: 700,
-              letterSpacing: '0.05em',
+              fontSize: 12,
+              color: 'rgba(255,255,255,0.55)',
+              fontWeight: 600,
+              lineHeight: 1.5,
             }}>
-              Half the equation. Half the answer.
+              ChatGPT-style AI lacks MLS feed access —<br />
+              so it can't deliver answers like these.
             </div>
           </div>
         </div>
