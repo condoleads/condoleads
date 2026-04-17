@@ -39,10 +39,47 @@ export async function generateMetadata(): Promise<Metadata> {
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
+// Known tenant domains resolved via tenant.default_agent_id (matches middleware pattern)
+const KNOWN_TENANTS: Record<string, string> = {
+  'walliam.ca': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9',
+  'www.walliam.ca': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9',
+}
+
 export default async function ComprehensiveHomePage() {
   const headersList = headers()
   const host = headersList.get('host') || ''
+  const cleanHost = host.replace(/^www\./, '')
 
+  // FAST PATH: known tenant domain — resolve via tenant.default_agent_id
+  const tenantId = KNOWN_TENANTS[cleanHost] || KNOWN_TENANTS[host]
+  if (tenantId) {
+    const { createClient } = await import('@/lib/supabase/server')
+    const supabase = createClient()
+
+    const { data: tenant, error: tenantErr } = await supabase
+      .from('tenants')
+      .select('default_agent_id')
+      .eq('id', tenantId)
+      .eq('is_active', true)
+      .single()
+
+    if (!tenantErr && tenant?.default_agent_id) {
+      const { data: agent } = await supabase
+        .from('agents')
+        .select('*')
+        .eq('id', tenant.default_agent_id)
+        .eq('is_active', true)
+        .single()
+
+      if (agent) {
+        return <HomePageComprehensive agent={{...agent, is_active: true}} />
+      }
+    }
+    // Tenant lookup failed for a known domain — log and fall through to default path
+    console.error('[comprehensive-site] Known tenant domain but default_agent_id lookup failed:', { host, tenantId })
+  }
+
+  // DEFAULT PATH: subdomain / custom domain resolution via agent-detection utility
   const agent = await getAgentFromHost(host)
   if (!agent) notFound()
 
