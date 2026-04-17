@@ -458,9 +458,27 @@ export default function Solution() {
             opacity: v ? 1 : 0,
             transition: 'opacity 0.7s ease 0.25s',
           }}>
-            Don't rent someone else's chatbot. Launch your own AI —
-            on your domain, in your voice, under your name.
+            Launch your brand with an AI lead magnet.<br />
+            Your own domain. Your name. Your leads.
           </p>
+
+          <div style={{
+            marginTop: 28,
+            opacity: v ? 1 : 0,
+            transition: 'opacity 0.7s ease 0.4s',
+          }}>
+            <a href="https://walliam.ca" target="_blank" rel="noopener" style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '13px 30px', borderRadius: 100,
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.18)',
+              color: '#fff', fontSize: 14, fontWeight: 700,
+              textDecoration: 'none', transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background='rgba(255,255,255,0.12)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.3)' }}
+            onMouseLeave={e => { e.currentTarget.style.background='rgba(255,255,255,0.06)'; e.currentTarget.style.borderColor='rgba(255,255,255,0.18)' }}
+            >See it Live →</a>
+          </div>
         </div>
 
         {/* THE CHAT WIDGET */}
