@@ -28,7 +28,7 @@
       <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 12, color: '#fff' }}>Contact</h2>
       <p style={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.75 }}>
         For privacy inquiries: <a href="mailto:contact@01leads.com" style={{ color: '#3b82f6' }}>contact@01leads.com</a><br />
-        Georgia, Tbilisi, Mtatsminda district, Tabakhmela, V. Tabakhmela
+        14 V. Tabakhmela, Tabakhmela, Mtatsminda district, Tbilisi 0114, Georgia
       </p>
     </div>
     </div>

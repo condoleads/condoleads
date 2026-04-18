@@ -86,7 +86,7 @@ export default function Contact() {
           <h3 style={{ fontSize: 16, fontWeight: 700, color: '#fff', marginBottom: 12 }}>Reach Us</h3>
           <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.55)', lineHeight: 1.75, margin: 0 }}>
             <strong style={{ color: 'rgba(255,255,255,0.8)' }}>01leads</strong><br />
-            Georgia, Tbilisi, Mtatsminda district, Tabakhmela, V. Tabakhmela<br />
+            14 V. Tabakhmela, Tabakhmela, Mtatsminda district, Tbilisi 0114, Georgia<br />
             Email: <a href="mailto:contact@01leads.com" style={{ color: '#3b82f6' }}>contact@01leads.com</a><br />
             <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>Response time: Within 24 hours</span>
           </p>
