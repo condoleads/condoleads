@@ -300,7 +300,7 @@ export function useCharlie() {
       activePanel: 'results',
       analytics: data.marketAnalytics ? [...s.analytics, { ...data.marketAnalytics }] : s.analytics,
       geoContext: data.analyticsGeoType ? { geoType: data.analyticsGeoType, geoId: data.analyticsGeoId, geoName: data.buildingName || '' } : s.geoContext,
-      blocks: [...stateRef.current.blocks, { type: 'sellerEstimate', data, analyticsSnapshot: data.marketAnalytics || null, geoName: data.analyticsGeoType ? (data.buildingName || '') : s.geoContext?.geoName || '' }],
+      blocks: [...s.blocks, { type: 'sellerEstimate', data, analyticsSnapshot: data.marketAnalytics || null, geoName: data.analyticsGeoType ? (data.buildingName || '') : s.geoContext?.geoName || '' }],
     }))
   }, [])
 
@@ -449,17 +449,17 @@ export function useCharlie() {
       setState(s => ({ ...s, geoContext: { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName } }))
     }
     if (tool === 'get_market_analytics' && data.analytics) {
-        setState(s => ({ ...s, analytics: [...s.analytics, { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }], blocks: [...stateRef.current.blocks, { type: 'analytics', data: { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }, geoName: s.geoContext?.geoName || '' }], activePanel: 'results' }))
+        setState(s => ({ ...s, analytics: [...s.analytics, { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }], blocks: [...s.blocks, { type: 'analytics', data: { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }, geoName: s.geoContext?.geoName || '' }], activePanel: 'results' }))
         analyticsRef.current = data.analytics
     }
     if (tool === 'search_listings' && data.listings) {
-      setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], blocks: [...stateRef.current.blocks, { type: 'listings', label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
+      setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], blocks: [...s.blocks, { type: 'listings', label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
     }
     if (tool === 'generate_plan') {
       setState(s => ({ ...s, isPlanGenerating: true }))
     }
     if (tool === 'generate_plan' && data.planReady) {
-      setState(s => ({ ...s, planReady: true, plan: data, blocks: [...stateRef.current.blocks, { type: 'plan', data, analyticsSnapshot: analyticsRef.current, listingsSnapshot: stateRef.current.listingGroups.flatMap(g => g.listings), geoContext: stateRef.current.geoContext }], activePanel: 'results' }))
+      setState(s => ({ ...s, planReady: true, plan: data, blocks: [...s.blocks, { type: 'plan', data, analyticsSnapshot: analyticsRef.current, listingsSnapshot: stateRef.current.listingGroups.flatMap(g => g.listings), geoContext: stateRef.current.geoContext }], activePanel: 'results' }))
         fetch('/api/charlie/plan-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -494,7 +494,7 @@ export function useCharlie() {
         yearBuilt: b.year_built || null,
         url: b.url || null,
       }))
-        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, { label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], blocks: [...stateRef.current.blocks, { type: 'buildings', label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], activePanel: 'results' }))
+        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, { label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], blocks: [...s.blocks, { type: 'buildings', label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], activePanel: 'results' }))
     }
     if (tool === 'get_building_directory' && data.buildings) {
       const mapped = (data.buildings || []).map((b: any) => ({
@@ -505,25 +505,25 @@ export function useCharlie() {
         activeCount: 0,
         url: b.url || null,
       }))
-        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, { label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], blocks: [...stateRef.current.blocks, { type: 'buildings', label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], activePanel: 'results' }))
+        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, { label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], blocks: [...s.blocks, { type: 'buildings', label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], activePanel: 'results' }))
     }
     if (tool === 'compare_geo' && data.comparisons) {
-        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'compare_geo', data }], blocks: [...stateRef.current.blocks, { type: 'rankings', rankType: 'compare_geo', data }], activePanel: 'results' }))
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'compare_geo', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'compare_geo', data }], activePanel: 'results' }))
     }
     if (tool === 'get_price_trends' && data.price_trend_monthly) {
-        setState(s => ({ ...s, priceTrends: [...s.priceTrends, data], blocks: [...stateRef.current.blocks, { type: 'priceTrends', data }], activePanel: 'results' }))
+        setState(s => ({ ...s, priceTrends: [...s.priceTrends, data], blocks: [...s.blocks, { type: 'priceTrends', data }], activePanel: 'results' }))
     }
     if (tool === 'get_investment_rankings' && data.rankings) {
-        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'investment', data }], blocks: [...stateRef.current.blocks, { type: 'rankings', rankType: 'investment', data }], activePanel: 'results' }))
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'investment', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'investment', data }], activePanel: 'results' }))
     }
     if (tool === 'get_inventory_rankings' && data.rankings) {
-        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'inventory', data }], blocks: [...stateRef.current.blocks, { type: 'rankings', rankType: 'inventory', data }], activePanel: 'results' }))
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'inventory', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'inventory', data }], activePanel: 'results' }))
     }
     if (tool === 'get_seasonal_trends' && data.insight_seasonal) {
-        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'seasonal', data }], blocks: [...stateRef.current.blocks, { type: 'rankings', rankType: 'seasonal', data }], activePanel: 'results' }))
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'seasonal', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'seasonal', data }], activePanel: 'results' }))
     }
     if (tool === 'get_comparables' && data.listings) {
-      setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), blocks: [...stateRef.current.blocks, { type: 'comparables', listings: data.listings, intent: '' }], activePanel: 'results' }))
+      setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), blocks: [...s.blocks, { type: 'comparables', listings: data.listings, intent: '' }], activePanel: 'results' }))
     }
   }
 
