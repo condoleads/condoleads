@@ -357,6 +357,7 @@ Use these exact numbers when answering market questions.`
                   const updateField = planType === 'seller'
                     ? { seller_plans_used: specificPlansUsed + 1 }
                     : { buyer_plans_used: specificPlansUsed + 1 }
+                  ;(sessionData as any)._planGeneratedThisTurn = true
                   await supabase
                     .from('chat_sessions')
                     .update({
@@ -423,7 +424,11 @@ Use these exact numbers when answering market questions.`
         send({ type: 'done' })
         if ((sessionData as any)?._pendingChatEvent) {
           const cevt = (sessionData as any)._pendingChatEvent
-          send({ type: 'chat_credit_used', messageCount: cevt.messageCount, chatFreeMessages: cevt.chatFreeMessages })
+          if ((sessionData as any)?._planGeneratedThisTurn) {
+            await supabase.from('chat_sessions').update({ message_count: Math.max(0, cevt.messageCount - 1) }).eq('id', sessionId)
+          } else {
+            send({ type: 'chat_credit_used', messageCount: cevt.messageCount, chatFreeMessages: cevt.chatFreeMessages })
+          }
         }
         if ((sessionData as any)?._pendingVipEvent) {
           const evt = (sessionData as any)._pendingVipEvent
