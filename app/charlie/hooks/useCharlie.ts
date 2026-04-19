@@ -207,6 +207,7 @@ export function useCharlie() {
           planMode: data.planMode || 'shared',
           sellerPlanFreeAttempts: data.sellerPlanFreeAttempts || 1,
           isRegistered: !!userId,
+          ...(userId ? { gateActive: false, gateReason: null, gatePlanType: null } : {}),
         }))
       }
     } catch (err) {
