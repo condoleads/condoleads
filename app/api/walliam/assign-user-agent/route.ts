@@ -95,12 +95,12 @@ export async function POST(req: NextRequest) {
     // Assign agent to user permanently
     const { error: updateError } = await supabase
       .from('user_profiles')
-      .upsert({
-        id: user_id,
+      .update({
         assigned_agent_id: resolvedAgentId,
         agent_assigned_at: new Date().toISOString(),
         agent_assignment_source: source,
-      }, { onConflict: 'id' })
+      })
+      .eq('id', user_id)
 
     if (updateError) {
       console.error('[assign-user-agent] update error:', updateError)
