@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       municipality_id,
       area_id,
       read_only,       // if true, never create a session — just read credits
+      existingSessionId, // optional — claim this anonymous session on registration
     } = await request.json()
 
     console.log("[session] route hit, userId:", userId)
@@ -156,11 +157,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Claim anonymous session on registration — if caller just registered and is carrying
+    // an existing anonymous sessionId, link it to the user so state (plans, messages, etc.) persists.
+    let session = null
+    if (userId && existingSessionId && tenantId) {
+      const { data: claimed } = await supabase
+        .from('chat_sessions')
+        .update({ user_id: userId })
+        .eq('id', existingSessionId)
+        .eq('tenant_id', tenantId)
+        .is('user_id', null)
+        .select('*')
+        .maybeSingle()
+      if (claimed) session = claimed
+    }
+
     // Step 3: Find existing active WALLiam session
     // Match on: agent_id + user_id (if logged in) OR session with same context (anonymous)
-    let session = null
 
-    if (userId) {
+    if (userId && !session) {
       const { data: existing } = await supabase
         .from('chat_sessions')
         .select('*')

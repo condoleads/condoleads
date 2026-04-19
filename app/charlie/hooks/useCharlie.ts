@@ -183,6 +183,7 @@ export function useCharlie() {
           community_id: pageContext?.community_id || null,
           municipality_id: pageContext?.municipality_id || null,
           area_id: pageContext?.area_id || null,
+          existingSessionId: walliamSessionIdRef.current,
         }),
       })
       const data = await res.json()
