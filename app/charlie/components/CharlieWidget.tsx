@@ -57,18 +57,43 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
     setIsHomepage(window.location.pathname === '/')
   }, [])
 
-  // Init WALLiam session on mount — read auth + resolve agent
+  // Init WALLiam session on mount — read auth + resolve agent.
+  // Also re-init when auth state changes (e.g. cookie hydration after first paint, login, logout)
+  // so userIdRef stays in sync and the server-side register gate doesn't fire for logged-in users.
   useEffect(() => {
-    if (sessionInitialized.current) return
-    sessionInitialized.current = true
-
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data }) => {
-      const userId = data?.user?.id || null
-      initSession(userId, pageContext)
-    }).catch(() => {
-      initSession(null, pageContext)
+    let currentUserId: string | null = null
+
+    const runInit = async () => {
+      try {
+        const { data } = await supabase.auth.getUser()
+        const uid = data?.user?.id || null
+        if (uid !== currentUserId || !sessionInitialized.current) {
+          currentUserId = uid
+          sessionInitialized.current = true
+          await initSession(uid, pageContext)
+        }
+      } catch {
+        if (!sessionInitialized.current) {
+          sessionInitialized.current = true
+          await initSession(null, pageContext)
+        }
+      }
+    }
+
+    // First attempt
+    runInit()
+
+    // Listen for future auth changes (SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED, INITIAL_SESSION)
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const uid = session?.user?.id || null
+      if (uid !== currentUserId) {
+        currentUserId = uid
+        initSession(uid, pageContext)
+      }
     })
+
+    return () => { sub.subscription.unsubscribe() }
   }, [initSession, pageContext])
 
   // Listen for homepage chip/search/form events
