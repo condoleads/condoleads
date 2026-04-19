@@ -96,11 +96,11 @@ export async function POST(req: NextRequest) {
     const { error: updateError } = await supabase
       .from('user_profiles')
       .upsert({
+        id: user_id,
         assigned_agent_id: resolvedAgentId,
         agent_assigned_at: new Date().toISOString(),
         agent_assignment_source: source,
-      })
-      .eq('id', user_id)
+      }, { onConflict: 'id' })
 
     if (updateError) {
       console.error('[assign-user-agent] update error:', updateError)
