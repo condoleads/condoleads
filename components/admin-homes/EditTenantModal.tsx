@@ -33,6 +33,13 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
     estimator_free_attempts: 1,
     estimator_auto_approve_attempts: 2, estimator_manual_approve_attempts: 3,
     estimator_hard_cap: 10,
+    // Assistant & Brokerage
+    assistant_name: 'Charlie',
+    brokerage_name: '',
+    brokerage_address: '',
+    brokerage_phone: '',
+    broker_of_record: '',
+    license_number: '',
   })
 
   useEffect(() => {
@@ -70,6 +77,12 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           estimator_auto_approve_attempts: data.estimator_auto_approve_attempts ?? 2,
           estimator_manual_approve_attempts: data.estimator_manual_approve_attempts ?? 3,
           estimator_hard_cap: data.estimator_hard_cap ?? 10,
+          assistant_name: data.assistant_name || 'Charlie',
+          brokerage_name: data.brokerage_name || '',
+          brokerage_address: data.brokerage_address || '',
+          brokerage_phone: data.brokerage_phone || '',
+          broker_of_record: data.broker_of_record || '',
+          license_number: data.license_number || '',
         })
         setLoading(false)
       })
@@ -112,6 +125,12 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           estimator_auto_approve_attempts: formData.estimator_auto_approve_attempts,
           estimator_manual_approve_attempts: formData.estimator_manual_approve_attempts,
           estimator_hard_cap: formData.estimator_hard_cap,
+          assistant_name: formData.assistant_name || 'Charlie',
+          brokerage_name: formData.brokerage_name || null,
+          brokerage_address: formData.brokerage_address || null,
+          brokerage_phone: formData.brokerage_phone || null,
+          broker_of_record: formData.broker_of_record || null,
+          license_number: formData.license_number || null,
         })
       })
       const data = await res.json()
@@ -252,6 +271,30 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                     : <><XCircle className="w-3 h-3" /> {keyTestResult.error || 'Invalid key'}</>}
                 </p>
               )}
+            </div>
+
+            {/* Brokerage & Branding */}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <h3 className="font-semibold text-slate-900 mb-1">Brokerage & Branding</h3>
+              <p className="text-xs text-slate-600 mb-3">Assistant name + legal info shown in footer. All optional.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Assistant Name</label>
+                  <input type="text" value={formData.assistant_name} onChange={e => setFormData({ ...formData, assistant_name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Charlie" />
+                </div>
+                <div className="pt-2 border-t border-slate-200">
+                  <p className="text-xs font-semibold text-slate-700 mb-2">Brokerage Legal Info</p>
+                  <div className="space-y-2">
+                    <input type="text" value={formData.brokerage_name} onChange={e => setFormData({ ...formData, brokerage_name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Brokerage Legal Name (e.g. RE/MAX Crossroads Realty Inc., Brokerage)" />
+                    <input type="text" value={formData.brokerage_address} onChange={e => setFormData({ ...formData, brokerage_address: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Office Address (street, city, province, postal)" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="text" value={formData.brokerage_phone} onChange={e => setFormData({ ...formData, brokerage_phone: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Office Phone" />
+                      <input type="text" value={formData.broker_of_record} onChange={e => setFormData({ ...formData, broker_of_record: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Broker of Record" />
+                    </div>
+                    <input type="text" value={formData.license_number} onChange={e => setFormData({ ...formData, license_number: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="RECO Registration #" />
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* AI Configuration */}
