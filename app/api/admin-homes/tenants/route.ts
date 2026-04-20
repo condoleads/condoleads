@@ -44,3 +44,25 @@ export async function PUT(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }
+
+// POST /api/admin-homes/tenants
+export async function POST(request: NextRequest) {
+  const supabase = createServiceClient()
+  const body = await request.json()
+
+  if (!body.name || !body.domain || !body.admin_email) {
+    return NextResponse.json(
+      { error: 'name, domain, and admin_email are required' },
+      { status: 400 }
+    )
+  }
+
+  const { data, error } = await supabase
+    .from('tenants')
+    .insert({ ...body, domain: body.domain.toLowerCase() })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ tenant: data })
+}

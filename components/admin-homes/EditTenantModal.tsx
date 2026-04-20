@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Loader2, Eye, EyeOff } from 'lucide-react'
+import { X, Loader2, Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react'
 
 interface Props {
   isOpen: boolean
@@ -16,6 +16,8 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
+  const [testingKey, setTestingKey] = useState(false)
+  const [keyTestResult, setKeyTestResult] = useState<{ valid: boolean; error?: string } | null>(null)
   const [formData, setFormData] = useState({
     name: '', domain: '', brand_name: '', admin_email: '',
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
@@ -119,6 +121,28 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
     setSaving(false)
   }
 
+  async function handleTestKey() {
+    const key = formData.anthropic_api_key?.trim()
+    if (!key) {
+      setKeyTestResult({ valid: false, error: 'Enter a key first' })
+      return
+    }
+    setTestingKey(true); setKeyTestResult(null)
+    try {
+      const res = await fetch('/api/admin-homes/tenants/verify-anthropic-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      })
+      const data = await res.json()
+      setKeyTestResult({ valid: !!data.valid, error: data.error })
+    } catch {
+      setKeyTestResult({ valid: false, error: 'Network error' })
+    } finally {
+      setTestingKey(false)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -207,11 +231,27 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                 <button type="button" onClick={() => setShowApiKey(v => !v)} className="px-3 py-2 border rounded-lg text-gray-500 hover:bg-gray-50">
                   {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
+                <button
+                  type="button"
+                  onClick={handleTestKey}
+                  disabled={testingKey || !formData.anthropic_api_key}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-1"
+                >
+                  {testingKey ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  {testingKey ? 'Testing...' : 'Test Key'}
+                </button>
               </div>
               {formData.anthropic_api_key
                 ? <p className="text-xs text-green-600 mt-1">API key configured</p>
                 : <p className="text-xs text-amber-600 mt-1">Using platform key - add a tenant key for isolation</p>
               }
+              {keyTestResult && (
+                <p className={`text-xs mt-2 flex items-center gap-1 ${keyTestResult.valid ? 'text-green-700' : 'text-red-600'}`}>
+                  {keyTestResult.valid
+                    ? <><CheckCircle2 className="w-3 h-3" /> Key is valid</>
+                    : <><XCircle className="w-3 h-3" /> {keyTestResult.error || 'Invalid key'}</>}
+                </p>
+              )}
             </div>
 
             {/* AI Configuration */}

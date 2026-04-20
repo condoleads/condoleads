@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Eye, EyeOff } from 'lucide-react'
+import { X, Eye, EyeOff, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 
 interface Props {
   isOpen: boolean
@@ -14,6 +14,8 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
+  const [testingKey, setTestingKey] = useState(false)
+  const [keyTestResult, setKeyTestResult] = useState<{ valid: boolean; error?: string } | null>(null)
   const [formData, setFormData] = useState({
     // Brand
     name: '', domain: '', brand_name: '', admin_email: '',
@@ -38,45 +40,70 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
     e.preventDefault()
     setSaving(true); setError('')
     try {
-      const { createClient } = await import('@supabase/supabase-js')
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
-      const { error: err } = await supabase.from('tenants').insert({
-        name: formData.name,
-        domain: formData.domain.toLowerCase(),
-        brand_name: formData.brand_name || formData.name,
-        admin_email: formData.admin_email,
-        logo_url: formData.logo_url || null,
-        primary_color: formData.primary_color,
-        secondary_color: formData.secondary_color,
-        anthropic_api_key: formData.anthropic_api_key || null,
-        ai_free_messages: formData.ai_free_messages,
-        vip_auto_approve: formData.vip_auto_approve,
-        ai_auto_approve_limit: formData.ai_auto_approve_limit,
-        ai_manual_approve_limit: formData.ai_manual_approve_limit,
-        ai_hard_cap: formData.ai_hard_cap,
-        plan_mode: formData.plan_mode,
-        plan_free_attempts: formData.plan_free_attempts,
-        plan_auto_approve_limit: formData.plan_auto_approve_limit,
-        plan_manual_approve_limit: formData.plan_manual_approve_limit,
-        plan_hard_cap: formData.plan_hard_cap,
-        plan_vip_auto_approve: formData.plan_vip_auto_approve,
-        seller_plan_free_attempts: formData.seller_plan_free_attempts,
-        seller_plan_hard_cap: formData.seller_plan_hard_cap,
-        estimator_ai_enabled: false,
-        estimator_nonai_enabled: formData.estimator_nonai_enabled,
-        estimator_free_attempts: formData.estimator_free_attempts,
-        estimator_vip_auto_approve: formData.estimator_vip_auto_approve,
-        estimator_auto_approve_attempts: formData.estimator_auto_approve_attempts,
-        estimator_manual_approve_attempts: formData.estimator_manual_approve_attempts,
-        estimator_hard_cap: formData.estimator_hard_cap,
+      const res = await fetch('/api/admin-homes/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          domain: formData.domain.toLowerCase(),
+          brand_name: formData.brand_name || formData.name,
+          admin_email: formData.admin_email,
+          logo_url: formData.logo_url || null,
+          primary_color: formData.primary_color,
+          secondary_color: formData.secondary_color,
+          anthropic_api_key: formData.anthropic_api_key || null,
+          ai_free_messages: formData.ai_free_messages,
+          vip_auto_approve: formData.vip_auto_approve,
+          ai_auto_approve_limit: formData.ai_auto_approve_limit,
+          ai_manual_approve_limit: formData.ai_manual_approve_limit,
+          ai_hard_cap: formData.ai_hard_cap,
+          plan_mode: formData.plan_mode,
+          plan_free_attempts: formData.plan_free_attempts,
+          plan_auto_approve_limit: formData.plan_auto_approve_limit,
+          plan_manual_approve_limit: formData.plan_manual_approve_limit,
+          plan_hard_cap: formData.plan_hard_cap,
+          plan_vip_auto_approve: formData.plan_vip_auto_approve,
+          seller_plan_free_attempts: formData.seller_plan_free_attempts,
+          seller_plan_hard_cap: formData.seller_plan_hard_cap,
+          estimator_ai_enabled: false,
+          estimator_nonai_enabled: formData.estimator_nonai_enabled,
+          estimator_free_attempts: formData.estimator_free_attempts,
+          estimator_vip_auto_approve: formData.estimator_vip_auto_approve,
+          estimator_auto_approve_attempts: formData.estimator_auto_approve_attempts,
+          estimator_manual_approve_attempts: formData.estimator_manual_approve_attempts,
+          estimator_hard_cap: formData.estimator_hard_cap,
+        }),
       })
-      if (err) { setError(err.message); return }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Failed to create tenant' }))
+        setError(data.error || 'Failed to create tenant')
+        return
+      }
       onSuccess(); onClose()
     } catch { setError('Failed to create tenant') }
     setSaving(false)
+  }
+
+  async function handleTestKey() {
+    const key = formData.anthropic_api_key?.trim()
+    if (!key) {
+      setKeyTestResult({ valid: false, error: 'Enter a key first' })
+      return
+    }
+    setTestingKey(true); setKeyTestResult(null)
+    try {
+      const res = await fetch('/api/admin-homes/tenants/verify-anthropic-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      })
+      const data = await res.json()
+      setKeyTestResult({ valid: !!data.valid, error: data.error })
+    } catch {
+      setKeyTestResult({ valid: false, error: 'Network error' })
+    } finally {
+      setTestingKey(false)
+    }
   }
 
   if (!isOpen) return null
@@ -147,7 +174,23 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
               <button type="button" onClick={() => setShowApiKey(v => !v)} className="px-3 py-2 border rounded-lg text-gray-500 hover:bg-gray-50">
                 {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
+              <button
+                type="button"
+                onClick={handleTestKey}
+                disabled={testingKey || !formData.anthropic_api_key}
+                className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                {testingKey ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                {testingKey ? 'Testing...' : 'Test Key'}
+              </button>
             </div>
+            {keyTestResult && (
+              <p className={`text-xs mt-2 flex items-center gap-1 ${keyTestResult.valid ? 'text-green-700' : 'text-red-600'}`}>
+                {keyTestResult.valid
+                  ? <><CheckCircle2 className="w-3 h-3" /> Key is valid</>
+                  : <><XCircle className="w-3 h-3" /> {keyTestResult.error || 'Invalid key'}</>}
+              </p>
+            )}
           </div>
 
           {/* AI Configuration â€” Charlie chat */}
