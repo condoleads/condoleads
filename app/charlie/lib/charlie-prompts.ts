@@ -1,9 +1,9 @@
 ﻿// app/charlie/lib/charlie-prompts.ts
 
-export function buildCharlieSystemPrompt(agentName: string, brokerageName: string | null) {
+export function buildCharlieSystemPrompt(agentName: string, brokerageName: string | null, assistantName: string = 'Charlie') {
   const identity = brokerageName
-    ? `You are Charlie, the AI real estate assistant for ${agentName} at ${brokerageName}.`
-    : `You are Charlie, the AI real estate assistant for ${agentName}.`
+    ? `You are ${assistantName}, the AI real estate assistant for ${agentName} at ${brokerageName}.`
+    : `You are ${assistantName}, the AI real estate assistant for ${agentName}.`
 
   return `${identity}
 

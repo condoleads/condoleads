@@ -75,12 +75,13 @@ export async function POST(request: NextRequest) {
       seller_plan_hard_cap: 10,
       estimator_free_attempts: 1,
       estimator_hard_cap: 10,
+      assistant_name: 'Charlie',
     }
 
     if (tenantId) {
       const { data: tenant } = await supabase
         .from('tenants')
-        .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve, plan_free_attempts, plan_hard_cap, plan_mode, plan_manual_approve_limit, seller_plan_free_attempts, seller_plan_hard_cap, estimator_free_attempts, estimator_hard_cap`)
+        .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve, plan_free_attempts, plan_hard_cap, plan_mode, plan_manual_approve_limit, seller_plan_free_attempts, seller_plan_hard_cap, estimator_free_attempts, estimator_hard_cap, assistant_name`)
         .eq('id', tenantId)
         .single()
       if (tenant) {
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
           seller_plan_hard_cap: tenant.seller_plan_hard_cap ?? 10,
           estimator_free_attempts: tenant.estimator_free_attempts ?? 1,
           estimator_hard_cap: tenant.estimator_hard_cap ?? 10,
+          assistant_name: tenant.assistant_name ?? 'Charlie',
         }
       }
     } else if (agentId) {
@@ -123,6 +125,7 @@ export async function POST(request: NextRequest) {
           seller_plan_hard_cap: 10,
           estimator_free_attempts: 1,
           estimator_hard_cap: 10,
+          assistant_name: 'Charlie',
         }
       }
     }
@@ -153,6 +156,7 @@ export async function POST(request: NextRequest) {
           seller_plan_hard_cap: 10,
           estimator_free_attempts: 1,
           estimator_hard_cap: 10,
+          assistant_name: 'Charlie',
         }
       }
     }
@@ -303,6 +307,7 @@ export async function POST(request: NextRequest) {
       sessionId: session.id,
       resolvedAgentId: agentId,
       agentName: agentConfig.full_name,
+      assistantName: (agentConfig as any).assistant_name ?? 'Charlie',
       status: session.status,
       // Plan usage
       buyerPlansUsed,

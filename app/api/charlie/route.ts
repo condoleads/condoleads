@@ -27,15 +27,17 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient()
 
-  // Load tenant API key for this request
+  // Load tenant API key and assistant name for this request
   let anthropicApiKey: string | null = null
+  let assistantName: string = 'Charlie'
   if (tenantId) {
     const { data: tenantRow } = await supabase
       .from('tenants')
-      .select('anthropic_api_key')
+      .select('anthropic_api_key, assistant_name')
       .eq('id', tenantId)
       .single()
     anthropicApiKey = tenantRow?.anthropic_api_key || null
+    assistantName = (tenantRow as any)?.assistant_name || 'Charlie'
   }
   const anthropic = createAnthropicClient(anthropicApiKey)
 
@@ -157,7 +159,7 @@ Use these exact numbers when answering market questions.`
       console.error('[CHARLIE] geo pre-load error:', e)
     }
   }
-  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName) + geoReminder + buildingContext + geoAnalyticsContext
+  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName, assistantName) + geoReminder + buildingContext + geoAnalyticsContext
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({

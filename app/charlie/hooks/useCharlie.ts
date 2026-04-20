@@ -84,6 +84,8 @@ export interface CharlieState {
   vipCreditPlansUsed: number
   vipCreditTotal: number
   blocks: ConversationBlock[]
+  // Assistant name (per-tenant)
+  assistantName: string
 }
 
 const INITIAL_STATE: CharlieState = {
@@ -138,6 +140,7 @@ const INITIAL_STATE: CharlieState = {
   vipCreditTotal: 1,
   vipCreditPlanType: null,
   blocks: [],
+  assistantName: 'Charlie',
 }
 
 export function useCharlie() {
@@ -194,6 +197,7 @@ export function useCharlie() {
         setState(s => ({
           ...s,
           sessionId: data.sessionId,
+          assistantName: data.assistantName || 'Charlie',
           userId,
           buyerPlansUsed: data.buyerPlansUsed || 0,
           sellerPlansUsed: data.sellerPlansUsed || 0,

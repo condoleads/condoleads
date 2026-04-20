@@ -100,7 +100,7 @@ export default function CharlieOverlay({
               <span style={{ fontSize: 16 }}>âœ¦</span>
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>Charlie</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{state.assistantName}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span>AI Real Estate Assistant</span>
                 <span style={{ color: 'rgba(255,255,255,0.15)', margin: '0 4px' }}>|</span>
@@ -243,6 +243,7 @@ export default function CharlieOverlay({
               <ChatPanel
                 messages={state.messages}
                 isStreaming={state.isStreaming}
+                assistantName={state.assistantName}
                 onSend={onSend}
                 onBuyClick={() => setFormMode('buyer')}
                 onSellClick={() => setFormMode('seller')}

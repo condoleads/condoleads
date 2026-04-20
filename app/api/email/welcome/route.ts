@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     // Get tenant credit config
     const { data: tenant } = await supabase
       .from('tenants')
-      .select('ai_free_messages, plan_free_attempts, estimator_free_attempts, brand_name')
+      .select('ai_free_messages, plan_free_attempts, estimator_free_attempts, brand_name, assistant_name')
       .eq('id', tenantId)
       .single()
 
@@ -99,7 +99,8 @@ export async function POST(req: NextRequest) {
     const brandName = tenant?.brand_name || 'WALLiam'
 
     // Send welcome email to user
-    const userHtml = buildWelcomeEmail({ userName, email, agent, chatCredits, planCredits, estimateCredits, brandName })
+    const assistantName = (tenant as any)?.assistant_name || 'Charlie'
+    const userHtml = buildWelcomeEmail({ userName, email, agent, chatCredits, planCredits, estimateCredits, brandName, assistantName })
     const subject = `Welcome to ${brandName} — your AI real estate assistant is ready`
 
     await resend.emails.send({ from: FROM, to: email, subject, html: userHtml })
@@ -148,6 +149,7 @@ function buildWelcomeEmail(data: {
   planCredits: number
   estimateCredits: number
   brandName: string
+  assistantName: string
 }): string {
   const { userName, agent, chatCredits, planCredits, estimateCredits, brandName } = data
 
@@ -212,7 +214,7 @@ function buildWelcomeEmail(data: {
             <td style="background:#eff6ff;border-radius:10px;padding:16px;">
               <a href="${BASE_URL}" style="display:block;text-decoration:none;">
                 <div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:4px;">🏠 Get My Buyer Plan</div>
-                <div style="font-size:12px;color:#3b82f6;">Tell Charlie your budget and area — get a full AI plan in minutes</div>
+                <div style="font-size:12px;color:#3b82f6;">Tell ${data.assistantName} your budget and area — get a full AI plan in minutes</div>
               </a>
             </td>
           </tr>
@@ -229,7 +231,7 @@ function buildWelcomeEmail(data: {
           <tr>
             <td style="background:#faf5ff;border-radius:10px;padding:16px;">
               <a href="${BASE_URL}" style="display:block;text-decoration:none;">
-                <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:4px;">✦ Ask Charlie</div>
+                <div style="font-size:13px;font-weight:700;color:#7c3aed;margin-bottom:4px;">✦ Ask ${data.assistantName}</div>
                 <div style="font-size:12px;color:#8b5cf6;">Market intelligence, neighbourhood data, investment rankings</div>
               </a>
             </td>

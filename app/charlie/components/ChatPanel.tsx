@@ -7,6 +7,7 @@ import { ChatMessage } from '../hooks/useCharlie'
 interface Props {
   messages: ChatMessage[]
   isStreaming: boolean
+  assistantName: string
   onSend: (msg: string) => void
   onBuyClick?: () => void
   onSellClick?: () => void
@@ -45,7 +46,7 @@ function renderContent(text: string): React.ReactNode[] {
 
 const QUICK_REPLIES = ['I want to buy', 'I want to sell', 'Just browsing']
 
-export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, onSellClick, gateReason, onOpenRegister }: Props) {
+export default function ChatPanel({ messages, isStreaming, assistantName, onSend, onBuyClick, onSellClick, gateReason, onOpenRegister }: Props) {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -83,7 +84,7 @@ export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, o
           }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>✦</div>
             <div style={{ fontWeight: 600, marginBottom: 8, color: 'rgba(255,255,255,0.4)' }}>
-              Charlie is ready
+              {assistantName} is ready
             </div>
             <div style={{ fontSize: 13 }}>Your AI real estate guide</div>
           </div>
@@ -183,7 +184,7 @@ export default function ChatPanel({ messages, isStreaming, onSend, onBuyClick, o
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
-          placeholder="Message Charlie..."
+          placeholder={`Message ${assistantName}...`}
           disabled={isStreaming}
           style={{
             flex: 1,
