@@ -453,22 +453,6 @@ function HowItWorks() {
   );
 }
 
-// ── Footer ────────────────────────────────────────────────────
-function WalliamFooter() {
-  return (
-    <footer style={{
-      borderTop: '1px solid rgba(255,255,255,0.06)',
-      background: '#060b18',
-      padding: '32px 24px',
-      textAlign: 'center',
-    }}>
-      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.1em' }}>
-        © 2026 WALLiam · AI Real Estate Plans · GTA
-      </div>
-    </footer>
-  );
-}
-
 // ── Hero ──────────────────────────────────────────────────────
 function WalliamHero() {
   const [taglineVisible, setTaglineVisible] = useState(false);
@@ -624,7 +608,6 @@ export default function HomePageComprehensiveClient({ agent, stats, topAreas, ac
     <div style={{ minHeight: '100vh', background: '#060b18' }}>
       <WalliamHero />
       <HowItWorks />
-      <WalliamFooter />
     </div>
   );
 }

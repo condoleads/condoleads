@@ -41,6 +41,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
     brokerage_phone: '',
     broker_of_record: '',
     license_number: '',
+    footer_tagline: '',
   })
 
   async function handleSubmit(e: React.FormEvent) {
@@ -85,6 +86,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
           brokerage_phone: formData.brokerage_phone || null,
           broker_of_record: formData.broker_of_record || null,
           license_number: formData.license_number || null,
+          footer_tagline: formData.footer_tagline || null,
         }),
       })
       if (!res.ok) {
@@ -225,6 +227,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
                     <input type="text" value={formData.broker_of_record} onChange={e => setFormData({ ...formData, broker_of_record: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Broker of Record" />
                   </div>
                   <input type="text" value={formData.license_number} onChange={e => setFormData({ ...formData, license_number: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="RECO Registration #" />
+                  <input type="text" value={formData.footer_tagline} onChange={e => setFormData({ ...formData, footer_tagline: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Footer tagline (e.g. AI-powered real estate for the GTA)" />
                 </div>
               </div>
             </div>
