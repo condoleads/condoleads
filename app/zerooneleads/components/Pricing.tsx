@@ -55,7 +55,7 @@ export default function Pricing() {
           </div>
         </div>
         <p style={{ textAlign: 'center', marginTop: 40, fontSize: 13, color: 'rgba(255,255,255,0.38)', maxWidth: 780, margin: '40px auto 0', lineHeight: 1.7 }}>
-          Exact price determined on discovery call based on agent count, traffic volume, and service requirements. All plans subject to approval. Setup fee includes full onboarding and your first month. Monthly billing begins month two.
+          Exact price determined on discovery call based on agent count, traffic volume, and service requirements. All plans subject to approval and subject to change at 01leads sole discretion with 30 days notice. Setup fee covers full onboarding and your first month. Monthly billing begins month two. All prices in USD. Payments processed by Paddle.com Market Ltd. as Merchant of Record.
         </p>
         <div style={{ marginTop: 32, padding: '24px 32px', borderRadius: 16, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', maxWidth: 780, margin: '32px auto 0' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>AI &amp; Ad Costs</div>
