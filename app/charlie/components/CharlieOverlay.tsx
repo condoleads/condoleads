@@ -97,7 +97,7 @@ export default function CharlieOverlay({
               background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <span style={{ fontSize: 16 }}>âœ¦</span>
+              <span style={{ fontSize: 16 }}>✦</span>
             </div>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{state.assistantName}</div>
@@ -167,7 +167,7 @@ export default function CharlieOverlay({
           </button>
         </div>
 
-        {/* Body â€” split panels */}
+        {/* Body — split panels */}
         <div style={{
           flex: 1,
           display: 'flex',

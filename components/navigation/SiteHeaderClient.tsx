@@ -32,7 +32,7 @@ function WalliamWordmark({ size = 'md' }: { size?: 'sm' | 'md' }) {
   )
 }
 
-// â”€â”€ Open Charlie helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Open Charlie helper ───────────────────────────────────────
 function openCharlie(form?: 'buyer' | 'seller') {
   window.dispatchEvent(new CustomEvent('charlie:open', { detail: { form } }))
 }
@@ -202,7 +202,7 @@ export default function SiteHeaderClient({
         <div className="fixed inset-0 z-40 bg-[#060b18] overflow-y-auto pt-16">
           <div className="px-4 py-6 space-y-1">
             <div className="mb-4">
-              <SearchBar placeholder="Searchâ€¦" autoFocus />
+              <SearchBar placeholder="Search…" autoFocus />
             </div>
 
             <div>
@@ -243,7 +243,7 @@ export default function SiteHeaderClient({
                           {n.total_communities > 5 && (
                             <Link href={`/toronto/${n.slug}`} onClick={() => setMobileOpen(false)}
                               className="flex items-center gap-1 px-3 py-2 text-xs text-blue-500">
-                              View all {n.total_communities} â†’
+                              View all {n.total_communities} →
                             </Link>
                           )}
                         </div>

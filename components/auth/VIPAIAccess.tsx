@@ -1,6 +1,6 @@
 ﻿'use client'
 // components/auth/VIPAIAccess.tsx
-// The core VIP AI Access block â€” compact nav version + full page version
+// The core VIP AI Access block — compact nav version + full page version
 // Replaces AuthStatus + Get VIP Access button entirely
 
 import { useState, useEffect, useRef } from 'react'
@@ -127,7 +127,7 @@ export default function VIPAIAccess({
     setRequesting(false)
   }
 
-  // â”€â”€ UNREGISTERED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── UNREGISTERED ──────────────────────────────────────────────────────
   if (!user) {
     if (variant === 'nav') return (
       <>
@@ -161,7 +161,7 @@ export default function VIPAIAccess({
       </>
     )
 
-    // Full variant â€” unregistered
+    // Full variant — unregistered
     return (
       <>
         <div style={{
@@ -219,7 +219,7 @@ export default function VIPAIAccess({
     )
   }
 
-  // â”€â”€ REGISTERED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── REGISTERED ────────────────────────────────────────────────────────
   if (variant === 'nav') return (
     <div ref={dropdownRef} style={{ position: 'relative' }}>
       <button
@@ -255,7 +255,7 @@ export default function VIPAIAccess({
             {anyEmpty ? 'Get More' : 'Low'}
           </span>
         )}
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>â–¾</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>▾</span>
       </button>
 
       {showDropdown && (
@@ -333,7 +333,7 @@ export default function VIPAIAccess({
     </div>
   )
 
-  // Full variant â€” registered
+  // Full variant — registered
   return (
     <div style={{
       background: 'linear-gradient(135deg, #0f172a, #1e1b4b)',

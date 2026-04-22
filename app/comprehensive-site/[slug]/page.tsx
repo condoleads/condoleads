@@ -96,7 +96,7 @@ export default async function ComprehensiveSlugPage({
     .from('developments').select('id, name, slug').eq('slug', params.slug).single()
   if (development) return <DevelopmentPage params={params} development={development} />
 
-  // FIX: Area â€” try exact slug first, then slug + '-area'
+  // FIX: Area — try exact slug first, then slug + '-area'
   const area = await findArea(params.slug)
   if (area) return <AreaPage area={area} />
 

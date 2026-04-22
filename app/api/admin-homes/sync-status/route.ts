@@ -61,20 +61,20 @@ export async function GET(request: NextRequest) {
       Promise.resolve(null), // placeholder - counts come from RPC above
 
 
-      // DB breakdown by status â€” Freehold
+      // DB breakdown by status — Freehold
       supabase.from('mls_listings')
         .select('standard_status')
         .eq('municipality_id', municipalityId).eq('property_type', 'Residential Freehold'),
-      // DB breakdown by status â€” Condo
+      // DB breakdown by status — Condo
       supabase.from('mls_listings')
         .select('standard_status')
         .eq('municipality_id', municipalityId).eq('property_type', 'Residential Condo & Other'),
-      // Last completed sync â€” Freehold
+      // Last completed sync — Freehold
       supabase.from('sync_history')
         .select('id, completed_at, duration_seconds, listings_found, listings_created, listings_skipped, media_saved, rooms_saved, sync_status')
         .eq('municipality_id', municipalityId).eq('property_type', 'Residential Freehold').eq('sync_status', 'completed')
         .order('completed_at', { ascending: false }).limit(1).single(),
-      // Last completed sync â€” Condo
+      // Last completed sync — Condo
       supabase.from('sync_history')
         .select('id, completed_at, duration_seconds, listings_found, listings_created, listings_skipped, media_saved, rooms_saved, sync_status')
         .eq('municipality_id', municipalityId).eq('property_type', 'Residential Condo & Other').eq('sync_status', 'completed')

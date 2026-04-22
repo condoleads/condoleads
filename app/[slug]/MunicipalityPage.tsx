@@ -52,7 +52,7 @@ const getMunicipalityData = unstable_cache(
     ] = await Promise.all([
     supabase.from('treb_areas').select('id, name, slug').eq('id', areaId).single(),
     supabase.from('communities').select('id, name, slug').eq('municipality_id', municipalityId).order('name'),
-    // FIX: flattened â€" still two steps but second is a single query, not chained
+    // FIX: flattened — still two steps but second is a single query, not chained
     supabase.from('communities').select('id').eq('municipality_id', municipalityId).then(async (res) => {
       const ids = (res.data || []).map(c => c.id)
       if (!ids.length) return { count: 0 }

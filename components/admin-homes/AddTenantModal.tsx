@@ -247,9 +247,9 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
             </div>
           </div>
 
-          {/* AI Configuration â€” Charlie chat */}
+          {/* AI Configuration — Charlie chat */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h3 className="font-semibold text-green-900 mb-1">âœ¦ AI Configuration</h3>
+            <h3 className="font-semibold text-green-900 mb-1">✦ AI Configuration</h3>
             <p className="text-xs text-green-700 mb-3">Controls Charlie AI chat access for all users on this tenant.</p>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -328,9 +328,9 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
           </div>
 
 
-          {/* Estimator Configuration â€” non-AI comparables */}
+          {/* Estimator Configuration — non-AI comparables */}
           <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-            <h3 className="font-semibold text-purple-900 mb-1">âŠ¹ Estimator Configuration</h3>
+            <h3 className="font-semibold text-purple-900 mb-1">⊹ Estimator Configuration</h3>
             <p className="text-xs text-purple-700 mb-3">Controls property estimator access (comparable data) for all users on this tenant.</p>
 
             <div className="mb-4">

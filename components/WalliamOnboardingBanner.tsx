@@ -52,12 +52,12 @@ export default function WalliamOnboardingBanner() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 14 }}>ðŸ”</span>
             <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
-              Browse freely â€” search, explore, compare listings
+              Browse freely — search, explore, compare listings
             </span>
           </div>
           <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)' }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 14 }}>âœ¦</span>
+            <span style={{ fontSize: 14 }}>✦</span>
             <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
               Browse unlimited · AI features free to try:
               <span style={{ color: '#60a5fa', fontWeight: 600 }}> 📋 1 Plan</span>
@@ -83,7 +83,7 @@ export default function WalliamOnboardingBanner() {
               letterSpacing: '0.02em',
             }}
           >
-            Register Free â†’
+            Register Free →
           </button>
           <button
             onClick={dismiss}
@@ -98,7 +98,7 @@ export default function WalliamOnboardingBanner() {
             }}
             title="Dismiss"
           >
-            âœ•
+            ✕
           </button>
         </div>
       </div>

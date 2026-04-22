@@ -97,7 +97,7 @@ NEVER truncate the geoId.` : ''
         const s = buildingIntel.stats
         buildingContext = `
 
-CURRENT BUILDING CONTEXT (pre-loaded â€” use this data directly):
+CURRENT BUILDING CONTEXT (pre-loaded — use this data directly):
 Building: ${b?.building_name} at ${b?.canonical_address}
 Total Units: ${b?.total_units || 'N/A'} | Year Built: ${b?.year_built || 'N/A'}
 Active For Sale: ${s?.active_for_sale} | Sold Last 90 Days: ${s?.sold_last_90}
@@ -147,7 +147,7 @@ Use this data to answer building-specific questions immediately without calling 
         }
         geoAnalyticsContext = `
 
-CURRENT GEO ANALYTICS (pre-loaded â€” use this data directly, do not call get_market_analytics again):
+CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do not call get_market_analytics again):
 Market Condition: ${marketCondition} | Urgency: ${urgency} | Negotiation: ${negotiation}
 Median Sale Price: $${geoA.median_sale_price?.toLocaleString() || "N/A"} | Avg PSF: $${geoA.avg_psf?.toLocaleString() || "N/A"}
 Avg DOM: ${geoA.closed_avg_dom_90 || "N/A"} days | Months of Inventory: ${moi}
@@ -289,11 +289,11 @@ Use these exact numbers when answering market questions.`
             const toolResults = []
 
             for (const tool of toolUses) {
-              // â”€â”€ PLAN GATING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── PLAN GATING ──────────────────────────────────────────────
               if (tool.name === 'generate_plan') {
                 const planType = tool.input?.type as 'buyer' | 'seller' | undefined
 
-                // Anonymous user â€” must register first
+                // Anonymous user — must register first
                 const effectiveUserId = userId || sessionData?.user_id || null
                 if (!effectiveUserId) {
                   send({ type: 'gate', reason: 'register' })
@@ -354,7 +354,7 @@ Use these exact numbers when answering market questions.`
                     return
                   }
 
-                  // Allowed â€” increment plan counter
+                  // Allowed — increment plan counter
                   const specificPlansUsed = planType === 'seller' ? (sessionData.seller_plans_used || 0) : (sessionData.buyer_plans_used || 0)
                   const updateField = planType === 'seller'
                     ? { seller_plans_used: specificPlansUsed + 1 }
@@ -368,9 +368,9 @@ Use these exact numbers when answering market questions.`
                     })
                     .eq('id', sessionId)
 
-                  // Notify frontend â€” registered user used a VIP credit
+                  // Notify frontend — registered user used a VIP credit
 
-                  // Low credit warning email â€” fire when 1 plan remaining
+                  // Low credit warning email — fire when 1 plan remaining
                   const plansRemaining = totalAllowed - (plansUsed + 1)
                   if (plansRemaining === 1 && sessionData?.user_id) {
                     fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
@@ -389,7 +389,7 @@ Use these exact numbers when answering market questions.`
                   // Send plan email notification to user
                 }
               }
-              // â”€â”€ END PLAN GATING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // ── END PLAN GATING ──────────────────────────────────────────
 
               const result = await executeTool(tool.name, tool.input, agentId, geoContext)
               send({ type: 'tool_result', tool: tool.name, data: result })

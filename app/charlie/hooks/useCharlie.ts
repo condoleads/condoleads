@@ -403,7 +403,7 @@ export function useCharlie() {
               }))
             }
 
-            // Gate event â€” plan gating fired server-side
+            // Gate event — plan gating fired server-side
             if (event.type === 'gate') {
               setState(s => ({
                 ...s,

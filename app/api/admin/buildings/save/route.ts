@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       }
       building = existingBuilding;
     }
-    console.log(`âœ… Building saved: ${building.id}`);
+    console.log(`✅ Building saved: ${building.id}`);
 
       // Migrate PSF data from old building(s) to new building
       if (oldBuildingIds && oldBuildingIds.length > 0) {
@@ -66,13 +66,13 @@ export async function POST(request: NextRequest) {
           if (oldId !== building.id) {
             await supabase.from('buildings').delete().eq('id', oldId);
           }
-          console.log(`âœ… Migrated PSF data and deleted old building: ${oldId}`);
+          console.log(`✅ Migrated PSF data and deleted old building: ${oldId}`);
         }
       }
     
     // STEP 3: Save listings with COMPLETE DLA mapping
     const savedListings = await saveListingsWithCompleteDLAMapping(building.id, listingsData);
-    console.log(`âœ… Listings saved: ${savedListings.length}`);
+    console.log(`✅ Listings saved: ${savedListings.length}`);
 
     // STEP 3.5: Link building to geographic hierarchy
     if (chunkIndex === 0) {
@@ -81,15 +81,15 @@ export async function POST(request: NextRequest) {
     
     // STEP 4: Save media (2 variants only - thumbnail + large)
     const mediaCount = await saveMediaWithVariantFiltering(savedListings, listingsData);
-    console.log(`âœ… Media saved: ${mediaCount} records`);
+    console.log(`✅ Media saved: ${mediaCount} records`);
     
     // STEP 5: Save rooms
     const roomCount = await savePropertyRooms(savedListings, listingsData);
-    console.log(`âœ… Rooms saved: ${roomCount} records`);
+    console.log(`✅ Rooms saved: ${roomCount} records`);
     
     // STEP 6: Save open houses
     const openHouseCount = await saveOpenHouses(savedListings, listingsData);
-    console.log(`âœ… Open houses saved: ${openHouseCount} records`);
+    console.log(`✅ Open houses saved: ${openHouseCount} records`);
     
     // STEP 7: Create sync history
     const duration = (Date.now() - startTime) / 1000;
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
     });
     
   } catch (error: any) {
-    console.error('âŒ Complete DLA save failed:', error);
+    console.error('❌ Complete DLA save failed:', error);
     return NextResponse.json(
       { 
         error: 'Save failed',
@@ -219,7 +219,7 @@ async function forceCleanBuildingByAddress(streetNumber: string, streetName: str
               throw new Error(`Failed to delete listings for building ${existingBuilding.id}: ${listingsError.message}`);
             }
           }
-          console.log(`âœ… Deleted ${listingIds.length} listings for ${existingBuilding.building_name}`);
+          console.log(`✅ Deleted ${listingIds.length} listings for ${existingBuilding.building_name}`);
         }
 
         // Delete building relationships and history
@@ -227,7 +227,7 @@ async function forceCleanBuildingByAddress(streetNumber: string, streetName: str
         if (syncError) console.error('Failed to delete sync_history:', syncError);
 
         // Don't delete building here - will be deleted after PSF migration
-        console.log(`âœ… Cleaned listings/media for: ${existingBuilding.building_name} (building kept for PSF migration)`);
+        console.log(`✅ Cleaned listings/media for: ${existingBuilding.building_name} (building kept for PSF migration)`);
     }
   }
   
@@ -260,7 +260,7 @@ async function saveBuildingData(buildingData: any) {
     .single();
   
   if (error) throw error;
-  console.log(`âœ… Building saved: ${data.id}`);
+  console.log(`✅ Building saved: ${data.id}`);
   return data;
 }
 
@@ -1104,14 +1104,14 @@ async function ensureGeographicHierarchy(
 ): Promise<string | null> {
   // If no community name, we can't link
   if (!communityName || !municipalityName) {
-    console.log('âš ï¸ Missing geographic data - skipping hierarchy creation');
+    console.log('⚠️ Missing geographic data - skipping hierarchy creation');
     return null;
   }
 
   // Default area to "Toronto" if not provided (most common case)
   const area = areaName || 'Toronto';
   
-  console.log(`ðŸ—ºï¸ Ensuring geographic hierarchy: ${area} â†’ ${municipalityName} â†’ ${communityName}`);
+  console.log(`ðŸ—º️ Ensuring geographic hierarchy: ${area} → ${municipalityName} → ${communityName}`);
 
   try {
     // STEP 1: Ensure Area exists
@@ -1146,7 +1146,7 @@ async function ensureGeographicHierarchy(
 
     let municipalityId: string;
     if (!existingMunicipality) {
-      // Extract code from name (e.g., "Toronto C01" â†’ "C01")
+      // Extract code from name (e.g., "Toronto C01" → "C01")
       const codeMatch = municipalityName.match(/([A-Z]\d{2})$/);
       const code = codeMatch ? codeMatch[1] : null;
       
@@ -1193,11 +1193,11 @@ async function ensureGeographicHierarchy(
       communityId = existingCommunity.id;
     }
 
-    console.log(`âœ… Geographic hierarchy ready - community_id: ${communityId}`);
+    console.log(`✅ Geographic hierarchy ready - community_id: ${communityId}`);
     return communityId;
 
   } catch (error: any) {
-    console.error('âŒ Failed to create geographic hierarchy:', error.message);
+    console.error('❌ Failed to create geographic hierarchy:', error.message);
     return null;
   }
 }
@@ -1209,7 +1209,7 @@ async function linkBuildingToHierarchy(
   // Get geographic data from first listing
   const firstListing = listingsData[0];
   if (!firstListing) {
-    console.log('âš ï¸ No listings to extract geographic data from');
+    console.log('⚠️ No listings to extract geographic data from');
     return;
   }
 
@@ -1226,9 +1226,9 @@ async function linkBuildingToHierarchy(
       .eq('id', buildingId);
     
     if (error) {
-      console.error('âŒ Failed to link building to community:', error.message);
+      console.error('❌ Failed to link building to community:', error.message);
     } else {
-      console.log(`âœ… Building linked to community: ${communityId}`);
+      console.log(`✅ Building linked to community: ${communityId}`);
     }
   }
 }

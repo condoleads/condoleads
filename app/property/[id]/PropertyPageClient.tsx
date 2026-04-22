@@ -188,8 +188,8 @@ export default function PropertyPageClient({
                       onClick={() => setShowBooking(b => !b)}
                       style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
                     >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>Ã°Å¸â€œâ€¦ Book a Visit</span>
-                      <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', transform: showBooking ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>Ã¢â‚¬Âº</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>📅 Book a Visit</span>
+                      <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', transform: showBooking ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>›</span>
                     </button>
                     {showBooking && (
                       <div style={{ padding: '0 20px 20px' }}>

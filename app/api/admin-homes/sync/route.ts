@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
       };
       const progress = (message: string) => send('progress', { message });
 
-      // Create sync_history record(s) â€” one per pass
+      // Create sync_history record(s) — one per pass
       const syncRecordIds: { label: string; id: string }[] = [];
 
       try {
