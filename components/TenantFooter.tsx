@@ -1,4 +1,4 @@
-﻿// components/TenantFooter.tsx
+// components/TenantFooter.tsx
 // Server component — renders per-tenant legal footer.
 // Reads tenant via getTenant() helper (reads x-tenant-id header).
 // Gracefully hides any missing legal fields so partial-data tenants still render cleanly.
@@ -99,7 +99,6 @@ export default async function TenantFooter() {
             </div>
             <FooterLink href="/#buyer">Get My Buyer Plan</FooterLink>
             <FooterLink href="/#seller">Get My Seller Plan</FooterLink>
-            <FooterLink href="/#browse">Browse Listings</FooterLink>
             <FooterLink href="/#estimate">Home Valuation</FooterLink>
           </div>
 
@@ -116,8 +115,8 @@ export default async function TenantFooter() {
             </div>
             <FooterLink href="/about">About {brand}</FooterLink>
             <FooterLink href="/contact">Contact</FooterLink>
-            <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
-            <FooterLink href="/terms-of-service">Terms of Use</FooterLink>
+            <FooterLink href="/privacy">Privacy Policy</FooterLink>
+            <FooterLink href="/terms">Terms of Use</FooterLink>
           </div>
 
           {/* Legal column */}
