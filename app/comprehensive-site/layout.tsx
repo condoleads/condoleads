@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { getAgentFromHost, getAgentBranding } from '@/lib/utils/agent-detection'
 import SiteHeader from '@/components/navigation/SiteHeader'
+import TenantFooter from '@/components/TenantFooter'
 
 export default async function ComprehensiveLayout({
   children,
@@ -21,6 +22,7 @@ export default async function ComprehensiveLayout({
         primaryColor={branding?.primaryColor ?? '#0A2540'}
       />
       <main>{children}</main>
+      <TenantFooter />
     </>
   )
 }
