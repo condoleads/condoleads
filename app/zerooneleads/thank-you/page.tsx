@@ -1,8 +1,8 @@
-// app/zerooneleads/thank-you/page.tsx
-// Post-checkout landing — shown after a successful Paddle payment
+﻿// app/zerooneleads/thank-you/page.tsx
+// Post-checkout landing â€” shown after a successful Paddle payment
 
 export const metadata = {
-  title: 'Thanks — 01leads',
+  title: 'Thanks â€” 01leads',
   description: 'Payment received. We will be in touch shortly.',
   robots: { index: false, follow: false },
 }
@@ -31,11 +31,8 @@ export default function ThankYouPage() {
         </div>
 
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <a href="/zerooneleads" style={{ padding: '14px 28px', borderRadius: 100, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 700 }}>
+          <a href="/zerooneleads" style={{ padding: '14px 28px', borderRadius: 100, background: 'linear-gradient(135deg,#8b5cf6,#3b82f6)', color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 700, boxShadow: '0 8px 24px rgba(139,92,246,0.3)' }}>
             Back to 01leads.com
-          </a>
-          <a href="https://walliam.ca" target="_blank" rel="noopener" style={{ padding: '14px 28px', borderRadius: 100, background: 'linear-gradient(135deg,#8b5cf6,#3b82f6)', color: '#fff', textDecoration: 'none', fontSize: 14, fontWeight: 700, boxShadow: '0 8px 24px rgba(139,92,246,0.3)' }}>
-            See WALLiam Live
           </a>
         </div>
 
