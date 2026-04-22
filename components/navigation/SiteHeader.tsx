@@ -1,6 +1,7 @@
 // Server Component — fetches neighbourhood + community data for mega-menu
 import { createClient } from '@supabase/supabase-js'
 import SiteHeaderClient from './SiteHeaderClient'
+import { getTenant } from '@/lib/tenant/getTenant'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -188,6 +189,7 @@ export default async function SiteHeader({
   primaryColor = '#0A2540',
 }: SiteHeaderProps) {
   const neighbourhoods = await getMenuData()
+  const tenant = await getTenant()
 
   return (
     <SiteHeaderClient
@@ -195,6 +197,8 @@ export default async function SiteHeader({
       agentName={agentName}
       agentLogo={agentLogo}
       primaryColor={primaryColor}
+      tenantId={tenant?.id}
+      brandName={tenant?.brand_name ?? agentName}
     />
   )
 }

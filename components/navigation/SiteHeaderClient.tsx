@@ -7,12 +7,17 @@ import type { NeighbourhoodMenuItem } from './SiteHeader'
 import SearchBar from './SearchBar'
 import dynamic from 'next/dynamic'
 const VIPAIAccess = dynamic(() => import('@/components/auth/VIPAIAccess'), { ssr: false })
+import BrandWordmark from './BrandWordmark'
+
+const WALLIAM_TENANT_ID = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
 
 interface SiteHeaderClientProps {
   neighbourhoods: NeighbourhoodMenuItem[]
   agentName: string
   agentLogo?: string | null
   primaryColor: string
+  tenantId?: string
+  brandName?: string
 }
 
 function WalliamWordmark({ size = 'md' }: { size?: 'sm' | 'md' }) {
@@ -42,6 +47,8 @@ export default function SiteHeaderClient({
   agentName,
   agentLogo,
   primaryColor,
+  tenantId,
+  brandName,
 }: SiteHeaderClientProps) {
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -90,8 +97,10 @@ export default function SiteHeaderClient({
             <Link href="/" className="flex items-center gap-2 flex-shrink-0">
               {agentLogo ? (
                 <Image src={agentLogo} alt={agentName} width={120} height={36} className="h-8 w-auto object-contain" />
-              ) : (
+              ) : tenantId === WALLIAM_TENANT_ID ? (
                 <WalliamWordmark size="md" />
+              ) : (
+                <BrandWordmark brand={brandName ?? agentName} size="md" />
               )}
             </Link>
 
