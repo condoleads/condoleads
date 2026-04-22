@@ -25,6 +25,12 @@ export async function openCheckout(options: OpenCheckoutOptions): Promise<void> 
     return
   }
 
+  // Build absolute success URL
+  const defaultSuccessUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/zerooneleads/thank-you`
+      : undefined
+
   try {
     paddle.Checkout.open({
       items: priceIds.map(priceId => ({ priceId, quantity: 1 })),
@@ -32,7 +38,8 @@ export async function openCheckout(options: OpenCheckoutOptions): Promise<void> 
       settings: {
         displayMode: 'overlay',
         theme: 'light',
-        successUrl: successUrl || undefined,
+        variant: 'one-page',
+        successUrl: successUrl || defaultSuccessUrl,
       },
     })
   } catch (err) {
