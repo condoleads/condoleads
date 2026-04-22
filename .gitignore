@@ -43,3 +43,20 @@ next-env.d.ts
 
 # Backup files
 *.backup_*
+
+.env.local
+.vercel
+
+# Env file backups (timestamped variants from backup workflows)
+.env.local.*
+.env.*.local.*
+.env.local.backup*
+.env.local.paddle*
+
+# Paddle rollback snapshots (contain secrets)
+paddle_rollback_snapshot_*.json
+paddle_rollback*.json
+
+# General timestamped backup files
+*.backup_*
+*.backup
