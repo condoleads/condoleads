@@ -1,7 +1,7 @@
-import { createServerClient } from '@supabase/ssr'
+﻿import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// ─── Module-level cache ─────────────────────────────────────────────────────
+// â”€â”€â”€ Module-level cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Survives across requests within the same warm Edge instance.
 // TTL: 5 minutes. Prevents repeated DB hits for the same host.
 type AgentResult = { full_name: string; site_type: string; tenant_id: string | null } | null
@@ -19,8 +19,8 @@ function setCached<T>(map: Map<string, { value: T; expires: number }>, key: stri
   map.set(key, { value, expires: Date.now() + CACHE_TTL })
 }
 
-// ─── Known tenant domains (no DB needed) ────────────────────────────────────
-// Add new tenants here as they onboard. Format: domain → tenant_id
+// â”€â”€â”€ Known tenant domains (no DB needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Add new tenants here as they onboard. Format: domain â†’ tenant_id
 // This eliminates DB calls entirely for known production tenants.
 const KNOWN_TENANT_DOMAINS: Record<string, string> = {
   'walliam.ca': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9',
@@ -49,7 +49,7 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Auth refresh — races against 800ms timeout
+  // Auth refresh â€” races against 800ms timeout
   // If Supabase is slow, we skip the refresh and continue loading the page.
   // Auth cookie will refresh on the next request when Supabase recovers.
   await Promise.race([
@@ -60,14 +60,19 @@ export async function middleware(request: NextRequest) {
   const reqHost = request.headers.get('host') || ''
   const cleanReqHost = reqHost.replace(/^www\./, '')
 
-  // 01leads.com — serve marketing site (no DB needed)
+  // 01leads.com â€” serve marketing site (no DB needed)
   if (cleanReqHost === '01leads.com') {
+    // API routes must stay at their real path (e.g. /api/paddle/webhook)
+    // â€” do not prefix them with /zerooneleads
+    if (pathname.startsWith('/api')) {
+      return supabaseResponse
+    }
     const url = request.nextUrl.clone()
     url.pathname = '/zerooneleads' + (pathname === '/' ? '' : pathname)
     return NextResponse.rewrite(url, { request })
   }
 
-  // ─── SYSTEM FORK ──────────────────────────────────────────────────────────
+  // â”€â”€â”€ SYSTEM FORK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (
     !pathname.startsWith('/api') &&
     !pathname.startsWith('/comprehensive-site') &&
@@ -95,7 +100,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // ─── API routes — inject tenant header ────────────────────────────────────
+  // â”€â”€â”€ API routes â€” inject tenant header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (pathname.startsWith('/api')) {
     const host = request.headers.get('host') || ''
     const tenantId = await resolveTenantIdFromHost(supabase, host)
@@ -107,7 +112,7 @@ export async function middleware(request: NextRequest) {
   return supabaseResponse
 }
 
-// ─── Agent resolution — cached + known-domain fast path ───────────────────
+// â”€â”€â”€ Agent resolution â€” cached + known-domain fast path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function resolveAgentFromHost(
   supabase: any,
   host: string
@@ -137,14 +142,14 @@ async function resolveAgentFromHost(
     const rootDomain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'condoleads.ca'
     const cleanDomain = host.replace(/^www\./, '')
 
-    // Known tenant domains — zero DB calls
+    // Known tenant domains â€” zero DB calls
     if (KNOWN_TENANT_DOMAINS[cleanDomain]) {
       result = { full_name: cleanDomain, site_type: 'comprehensive', tenant_id: KNOWN_TENANT_DOMAINS[cleanDomain] }
       setCached(agentCache, host, result)
       return result
     }
 
-    // Custom domain (not a known tenant) — check DB
+    // Custom domain (not a known tenant) â€” check DB
     if (!host.endsWith(rootDomain)) {
       const { data: tenant } = await supabase
         .from('tenants')
@@ -168,7 +173,7 @@ async function resolveAgentFromHost(
       return result
     }
 
-    // Subdomain (condoleads.ca) — System 1
+    // Subdomain (condoleads.ca) â€” System 1
     const parts = host.split('.')
     if (parts.length >= 3 && parts[1] === 'condoleads') {
       const subdomain = parts[0]
@@ -184,7 +189,7 @@ async function resolveAgentFromHost(
       return result
     }
   } catch {
-    // DB timeout — return null, don't crash the request
+    // DB timeout â€” return null, don't crash the request
     return null
   }
 
@@ -192,7 +197,7 @@ async function resolveAgentFromHost(
   return null
 }
 
-// ─── Tenant ID resolution — cached + known-domain fast path ───────────────
+// â”€â”€â”€ Tenant ID resolution â€” cached + known-domain fast path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function resolveTenantIdFromHost(supabase: any, host: string): Promise<string | null> {
   const cached = getCached(tenantCache, host)
   if (cached !== undefined) return cached
@@ -215,14 +220,14 @@ async function resolveTenantIdFromHost(supabase: any, host: string): Promise<str
 
     const cleanDomain = host.replace(/^www\./, '')
 
-    // Known tenant domains — zero DB calls
+    // Known tenant domains â€” zero DB calls
     if (KNOWN_TENANT_DOMAINS[cleanDomain]) {
       const id = KNOWN_TENANT_DOMAINS[cleanDomain]
       setCached(tenantCache, host, id)
       return id
     }
 
-    // Unknown domain — check DB
+    // Unknown domain â€” check DB
     const { data } = await supabase
       .from('tenants')
       .select('id')
