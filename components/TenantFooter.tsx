@@ -4,6 +4,7 @@
 // Gracefully hides any missing legal fields so partial-data tenants still render cleanly.
 
 import { getTenant } from '@/lib/tenant/getTenant'
+import CharlieFooterLink from './CharlieFooterLink'
 
 const currentYear = new Date().getFullYear()
 
@@ -97,9 +98,8 @@ export default async function TenantFooter() {
             }}>
               SERVICES
             </div>
-            <FooterLink href="/#buyer">Get My Buyer Plan</FooterLink>
-            <FooterLink href="/#seller">Get My Seller Plan</FooterLink>
-            <FooterLink href="/#estimate">Home Valuation</FooterLink>
+            <CharlieFooterLink form="buyer">Get My Buyer Plan</CharlieFooterLink>
+            <CharlieFooterLink form="seller">Get My Seller Plan</CharlieFooterLink>
           </div>
 
           {/* About column */}
