@@ -42,6 +42,9 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
     broker_of_record: '',
     license_number: '',
     footer_tagline: '',
+    about_content: '',
+    privacy_content: '',
+    terms_content: '',
   })
 
   async function handleSubmit(e: React.FormEvent) {
@@ -87,6 +90,9 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
           broker_of_record: formData.broker_of_record || null,
           license_number: formData.license_number || null,
           footer_tagline: formData.footer_tagline || null,
+          about_content: formData.about_content || null,
+          privacy_content: formData.privacy_content || null,
+          terms_content: formData.terms_content || null,
         }),
       })
       if (!res.ok) {
@@ -228,6 +234,14 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
                   </div>
                   <input type="text" value={formData.license_number} onChange={e => setFormData({ ...formData, license_number: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="RECO Registration #" />
                   <input type="text" value={formData.footer_tagline} onChange={e => setFormData({ ...formData, footer_tagline: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Footer tagline (e.g. AI-powered real estate for the GTA)" />
+                  <div className="pt-3 border-t border-slate-200 mt-3">
+                    <p className="text-xs font-semibold text-slate-700 mb-2">Editable Page Content (leave blank to use default WALLiam template)</p>
+                    <div className="space-y-2">
+                      <textarea value={formData.about_content} onChange={e => setFormData({ ...formData, about_content: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="About page content (HTML or Markdown)" rows={4} />
+                      <textarea value={formData.privacy_content} onChange={e => setFormData({ ...formData, privacy_content: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Privacy Policy (HTML or Markdown)" rows={4} />
+                      <textarea value={formData.terms_content} onChange={e => setFormData({ ...formData, terms_content: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Terms of Use (HTML or Markdown)" rows={4} />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
