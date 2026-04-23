@@ -18,6 +18,8 @@ interface SearchBarProps {
   placeholder?: string
   className?: string
   variant?: 'light' | 'dark'
+  typingPlaceholders?: string[]
+  onFocusChange?: (focused: boolean) => void
 }
 
 export default function SearchBar({
@@ -26,6 +28,8 @@ export default function SearchBar({
   placeholder = 'Search neighbourhoods, buildings, addresses…',
   className = '',
   variant = 'light',
+  typingPlaceholders,
+  onFocusChange,
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -36,6 +40,34 @@ export default function SearchBar({
   const [open, setOpen] = useState(false)
   const [activeIdx, setActiveIdx] = useState(-1)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+
+  // Typing placeholder animation
+  const [inputFocused, setInputFocused] = useState(false)
+  const [typedText, setTypedText] = useState('')
+  const [typingIdx, setTypingIdx] = useState(0)
+  const [deleting, setDeleting] = useState(false)
+  useEffect(() => {
+    if (!typingPlaceholders || typingPlaceholders.length === 0) return
+    if (query || inputFocused) return
+    const current = typingPlaceholders[typingIdx % typingPlaceholders.length]
+    let t: ReturnType<typeof setTimeout>
+    if (!deleting) {
+      if (typedText.length < current.length) {
+        t = setTimeout(() => setTypedText(current.slice(0, typedText.length + 1)), 55)
+      } else {
+        t = setTimeout(() => setDeleting(true), 2200)
+      }
+    } else {
+      if (typedText.length > 0) {
+        t = setTimeout(() => setTypedText(typedText.slice(0, -1)), 28)
+      } else {
+        setDeleting(false)
+        setTypingIdx(i => i + 1)
+        t = setTimeout(() => {}, 0)
+      }
+    }
+    return () => clearTimeout(t)
+  }, [typedText, deleting, typingIdx, query, inputFocused, typingPlaceholders])
 
   // Flat list for keyboard navigation
   const allResults = groups.flatMap(g => g.results)
@@ -130,12 +162,18 @@ export default function SearchBar({
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          onFocus={() => query.length >= 2 && groups.length && setOpen(true)}
+          onFocus={() => { setInputFocused(true); onFocusChange?.(true); if (query.length >= 2 && groups.length) setOpen(true) }}
+          onBlur={() => { setInputFocused(false); onFocusChange?.(false) }}
           placeholder={placeholder}
           className={variant === 'dark' ? "w-full pl-12 pr-10 py-4 bg-[rgba(255,255,255,0.07)] border border-white/20 rounded-2xl text-[15px] text-white placeholder-white/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_4px_20px_rgba(0,0,0,0.35)] focus:outline-none focus:border-white/35 focus:bg-[rgba(255,255,255,0.09)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_28px_rgba(0,0,0,0.45)] transition-all" : "w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"}
           autoComplete="off"
           spellCheck={false}
         />
+        {typingPlaceholders && typingPlaceholders.length > 0 && !query && !inputFocused && (
+          <div className={`absolute left-12 pointer-events-none ${variant === 'dark' ? 'text-white/55' : 'text-gray-400'}`} style={{ fontSize: 15 }}>
+            {typedText}<span className="animate-pulse">|</span>
+          </div>
+        )}
         <div className="absolute right-3 flex items-center gap-1">
           {loading && <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />}
           {!loading && query && (

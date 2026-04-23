@@ -153,7 +153,7 @@ function TypingPlaceholder() {
 
   if (!mounted) return null;
   return (
-    <span style={{ color: 'rgba(255,255,255,0.3)' }}>
+    <span style={{ color: 'rgba(255,255,255,0.55)' }}>
       {text}<span style={{ animation: 'blink 1s step-end infinite' }}>|</span>
     </span>
   );
