@@ -241,7 +241,7 @@ function WalliamSearch() {
         padding: 2,
         background: focused
           ? 'linear-gradient(135deg, #f59e0b, #3b82f6, #10b981)'
-          : 'linear-gradient(135deg, rgba(245,158,11,0.35), rgba(59,130,246,0.35), rgba(16,185,129,0.35))',
+          : 'linear-gradient(135deg, rgba(245,158,11,0.55), rgba(59,130,246,0.55), rgba(16,185,129,0.55))',
         transition: 'background 0.4s ease, box-shadow 0.4s ease',
         boxShadow: focused
           ? '0 0 50px rgba(245,158,11,0.25), 0 12px 40px rgba(0,0,0,0.4)'
