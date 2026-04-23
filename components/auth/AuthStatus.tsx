@@ -1,5 +1,6 @@
 'use client'
 import { useAuth } from './AuthContext'
+import { useTenantId } from '@/hooks/useTenantId'
 import { useState, useEffect } from 'react'
 import RegisterModal from './RegisterModal'
 import { User, LogOut } from 'lucide-react'
@@ -39,8 +40,9 @@ export default function AuthStatus({
   const [showRegister, setShowRegister] = useState(false)
   const [credits, setCredits] = useState<Credits | null>(null)
 
+  const tenantId = useTenantId()
   useEffect(() => {
-    const tenantId = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
+    if (!tenantId) return
     fetch('/api/walliam/charlie/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
@@ -61,7 +63,7 @@ export default function AuthStatus({
         }
       })
       .catch(() => {})
-  }, [user])
+  }, [user, tenantId])
 
   if (user) {
     const plansUsed = credits ? credits.buyerPlansUsed + credits.sellerPlansUsed : 0
