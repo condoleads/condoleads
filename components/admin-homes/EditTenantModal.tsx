@@ -22,6 +22,7 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
     name: '', domain: '', brand_name: '', admin_email: '',
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
     is_active: true,
+    homepage_layout: 'v1',
     anthropic_api_key: '',
     ai_free_messages: 1,
 
@@ -61,6 +62,7 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           primary_color: data.primary_color || '#1d4ed8',
           secondary_color: data.secondary_color || '#4f46e5',
           is_active: data.is_active !== false,
+          homepage_layout: data.homepage_layout || 'v1',
           anthropic_api_key: data.anthropic_api_key || '',
           ai_free_messages: data.ai_free_messages ?? 1,
           ai_auto_approve_limit: data.ai_auto_approve_limit ?? 1,
@@ -113,6 +115,7 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           primary_color: formData.primary_color,
           secondary_color: formData.secondary_color,
           is_active: formData.is_active,
+          homepage_layout: formData.homepage_layout,
           anthropic_api_key: formData.anthropic_api_key || null,
           ai_free_messages: formData.ai_free_messages,
           ai_auto_approve_limit: formData.ai_auto_approve_limit,
@@ -204,6 +207,17 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                 <div className="w-11 h-6 bg-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
                 <span className="ml-3 text-sm font-medium">{formData.is_active ? 'Active' : 'Inactive'}</span>
               </label>
+            </div>
+
+            {/* Homepage Layout */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Homepage Layout</label>
+              <select value={formData.homepage_layout} onChange={e => setFormData({ ...formData, homepage_layout: e.target.value as 'v1' | 'v2' | 'v3' })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white">
+                <option value="v1">v1 - AI-first (current)</option>
+                <option value="v2">v2 - With Browse toggle</option>
+                <option value="v3">v3 - Reserved (not yet built)</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Controls which homepage layout renders for this tenant. Change takes effect on next page load.</p>
             </div>
 
             {/* Brand */}
