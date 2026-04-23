@@ -162,6 +162,7 @@ export default function SiteHeaderClient({
               <BrowseMegaMenuContent
                 neighbourhoods={neighbourhoods}
                 onNavigate={() => setMegaMenuOpen(false)}
+                openInNewTab
               />
             </div>
           </div>
