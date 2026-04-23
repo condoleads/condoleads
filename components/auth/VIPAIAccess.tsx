@@ -6,8 +6,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from './AuthContext'
 import RegisterModal from './RegisterModal'
+import { useTenantId } from '@/hooks/useTenantId'
 
-const TENANT_ID = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
 
 interface Credits {
   // Chat
@@ -47,6 +47,7 @@ export default function VIPAIAccess({
   const [requested, setRequested] = useState(false)
   const [tenantConfig, setTenantConfig] = useState({ chatFree: 5, estFree: 2, planFree: 1 })
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const tenantId = useTenantId()
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -59,8 +60,9 @@ export default function VIPAIAccess({
   }, [])
 
   useEffect(() => {
+    if (!tenantId) return
     fetch('/api/walliam/tenant-config', {
-      headers: { 'x-tenant-id': TENANT_ID }
+      headers: { 'x-tenant-id': tenantId }
     })
       .then(r => r.json())
       .then(d => {
@@ -71,12 +73,13 @@ export default function VIPAIAccess({
         })
       })
       .catch(() => {})
-  }, [])
+  }, [tenantId])
 
   useEffect(() => {
+    if (!tenantId) return
     fetch('/api/walliam/charlie/session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-tenant-id': TENANT_ID },
+      headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
       body: JSON.stringify({ userId: user?.id || null, read_only: true }),
     })
       .then(r => r.json())
@@ -97,7 +100,7 @@ export default function VIPAIAccess({
         })
       })
       .catch(() => {})
-  }, [user])
+  }, [user, tenantId])
 
   const chatRemaining = credits ? Math.max(0, credits.chatFreeMessages - credits.messageCount) : null
   const estRemaining = credits ? Math.max(0, credits.estimatorFreeAttempts - credits.estimatorCount) : null
@@ -114,12 +117,12 @@ export default function VIPAIAccess({
   }
 
   const requestMore = async () => {
-    if (!credits?.sessionId || requesting) return
+    if (!credits?.sessionId || requesting || !tenantId) return
     setRequesting(true)
     try {
       await fetch('/api/walliam/charlie/vip-request', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': TENANT_ID },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
         body: JSON.stringify({ sessionId: credits.sessionId, planType: 'buyer' }),
       })
       setRequested(true)
