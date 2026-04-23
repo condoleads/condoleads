@@ -514,11 +514,11 @@ function WalliamHero({ topAreas, neighbourhoods, access }: { topAreas: AreaCard[
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 32 }}>
         <div style={{ position: 'relative', display: 'inline-flex', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 999, padding: 5 }}>
           <div style={{ position: 'absolute', top: 5, bottom: 5, width: 'calc(50% - 5px)', background: '#f59e0b', borderRadius: 999, transition: 'left 0.25s ease', left: homeMode === 'ai' ? 5 : 'calc(50% + 0px)', zIndex: 0 }} />
-          <button onClick={() => setHomeMode('ai')} style={{ position: 'relative', zIndex: 1, padding: '11px 26px', border: 0, background: 'transparent', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: homeMode === 'ai' ? '#0a1428' : 'rgba(255,255,255,0.7)', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => { setHomeMode('ai'); setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0); }} style={{ position: 'relative', zIndex: 1, padding: '11px 26px', border: 0, background: 'transparent', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: homeMode === 'ai' ? '#0a1428' : 'rgba(255,255,255,0.7)', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polygon points="12,2 15,9 22,12 15,15 12,22 9,15 2,12 9,9"/></svg>
             Ask WALLiam (AI)
           </button>
-          <button onClick={() => setHomeMode('browse')} style={{ position: 'relative', zIndex: 1, padding: '11px 26px', border: 0, background: 'transparent', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: homeMode === 'browse' ? '#0a1428' : 'rgba(255,255,255,0.7)', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => { setHomeMode('browse'); setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0); }} style={{ position: 'relative', zIndex: 1, padding: '11px 26px', border: 0, background: 'transparent', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: homeMode === 'browse' ? '#0a1428' : 'rgba(255,255,255,0.7)', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             Browse Listings
           </button>
