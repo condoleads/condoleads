@@ -21,16 +21,12 @@ const QUICK_CHIPS = [
 export default function BrowseListingsView({ neighbourhoods }: BrowseListingsViewProps) {
   return (
     <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px' }}>
-      {/* Search bar - wrapped to match HTML mockup styling */}
-      <div style={{
-        maxWidth: 720,
-        margin: '0 auto 18px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: 14,
-        padding: '6px 10px',
-      }}>
-        <SearchBar placeholder="Try 10 De Boers, Yonge and Eglinton, or Whitby" />
+      {/* Search bar - enhanced dark variant */}
+      <div style={{ maxWidth: 720, margin: '0 auto 18px' }}>
+        <SearchBar
+          variant="dark"
+          placeholder="Try 10 De Boers, Yonge and Eglinton, or Whitby"
+        />
       </div>
 
       {/* Caption */}
@@ -86,7 +82,7 @@ export default function BrowseListingsView({ neighbourhoods }: BrowseListingsVie
       {/* Full Browse mega-menu inline */}
       {neighbourhoods.length > 0 && (
         <div style={{ marginBottom: 40 }}>
-          <BrowseMegaMenuContent neighbourhoods={neighbourhoods} />
+          <BrowseMegaMenuContent neighbourhoods={neighbourhoods} openInNewTab />
         </div>
       )}
     </div>
