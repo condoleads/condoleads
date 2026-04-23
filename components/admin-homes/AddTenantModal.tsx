@@ -45,6 +45,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
     about_content: '',
     privacy_content: '',
     terms_content: '',
+    homepage_layout: 'v1',
   })
 
   async function handleSubmit(e: React.FormEvent) {
@@ -93,6 +94,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
           about_content: formData.about_content || null,
           privacy_content: formData.privacy_content || null,
           terms_content: formData.terms_content || null,
+          homepage_layout: formData.homepage_layout,
         }),
       })
       if (!res.ok) {
@@ -176,6 +178,15 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Logo URL</label>
                 <input type="url" value={formData.logo_url} onChange={e => setFormData({ ...formData, logo_url: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="https://..." />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Homepage Layout</label>
+                <select value={formData.homepage_layout} onChange={e => setFormData({ ...formData, homepage_layout: e.target.value as 'v1' | 'v2' | 'v3' })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white">
+                  <option value="v1">v1 — AI-first (current)</option>
+                  <option value="v2">v2 — With Browse toggle</option>
+                  <option value="v3">v3 — Reserved (not yet built)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Controls which homepage layout renders for this tenant. Change takes effect on next page load.</p>
               </div>
             </div>
           </div>
