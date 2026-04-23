@@ -123,7 +123,7 @@ export default function SearchBar({
     <div className={`relative w-full max-w-2xl ${className}`}>
       {/* Input */}
       <div className="relative flex items-center">
-        <Search className={`absolute left-4 w-[18px] h-[18px] pointer-events-none ${variant === 'dark' ? 'text-white/60' : 'text-gray-400'}`} />
+        <Search className={`absolute left-4 w-[18px] h-[18px] pointer-events-none ${variant === 'dark' ? 'text-white/75' : 'text-gray-400'}`} />
         <input
           ref={inputRef}
           type="text"
@@ -132,7 +132,7 @@ export default function SearchBar({
           onKeyDown={handleKeyDown}
           onFocus={() => query.length >= 2 && groups.length && setOpen(true)}
           placeholder={placeholder}
-          className={variant === 'dark' ? "w-full pl-12 pr-10 py-4 bg-[rgba(255,255,255,0.04)] border border-white/15 rounded-2xl text-[15px] text-white placeholder-white/35 focus:outline-none focus:border-white/30 focus:bg-[rgba(255,255,255,0.06)] transition-all" : "w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"}
+          className={variant === 'dark' ? "w-full pl-12 pr-10 py-4 bg-[rgba(255,255,255,0.07)] border border-white/20 rounded-2xl text-[15px] text-white placeholder-white/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_4px_20px_rgba(0,0,0,0.35)] focus:outline-none focus:border-white/35 focus:bg-[rgba(255,255,255,0.09)] focus:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_28px_rgba(0,0,0,0.45)] transition-all" : "w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"}
           autoComplete="off"
           spellCheck={false}
         />

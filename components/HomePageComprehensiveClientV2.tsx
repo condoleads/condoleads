@@ -241,9 +241,11 @@ function WalliamSearch() {
         padding: 2,
         background: focused
           ? 'linear-gradient(135deg, #f59e0b, #3b82f6, #10b981)'
-          : 'rgba(255,255,255,0.1)',
-        transition: 'background 0.4s ease',
-        boxShadow: focused ? '0 0 50px rgba(245,158,11,0.15)' : 'none',
+          : 'rgba(255,255,255,0.18)',
+        transition: 'background 0.4s ease, box-shadow 0.4s ease',
+        boxShadow: focused
+          ? '0 0 50px rgba(245,158,11,0.25), 0 12px 40px rgba(0,0,0,0.4)'
+          : '0 8px 32px rgba(0,0,0,0.35)',
       }}>
         <div style={{
           borderRadius: 18,
