@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import UsersClient from './UsersClient'
+import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
 
 function createServiceClient() {
   return createClient(
@@ -13,12 +14,12 @@ function createServiceClient() {
 
 export const metadata = { title: 'WALLiam Users - Admin' }
 
-const TENANT_ID = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
 
 export default async function AdminHomesUsersPage() {
   const supabase = createServiceClient()
+  const tenantId = await getCurrentTenantId()
   const adminUser = await resolveAdminHomesUser()
-  if (!adminUser) return null
+  if (!adminUser || !tenantId) return null
 
   // Scope users by role
   let usersQuery = supabase
@@ -43,7 +44,7 @@ export default async function AdminHomesUsersPage() {
     ? await supabase
         .from('chat_sessions')
         .select('user_id, message_count, buyer_plans_used, seller_plans_used, estimator_count, updated_at')
-        .eq('tenant_id', TENANT_ID)
+        .eq('tenant_id', tenantId)
         .in('user_id', userIds)
         .order('updated_at', { ascending: false })
         .limit(10000)
@@ -70,7 +71,7 @@ export default async function AdminHomesUsersPage() {
     ? await supabase
         .from('user_credit_overrides')
         .select('user_id, ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit, note, granted_at, granted_by_tier, granted_by_agent_id')
-        .eq('tenant_id', TENANT_ID)
+        .eq('tenant_id', tenantId)
         .in('user_id', userIds)
     : { data: [] }
 
@@ -83,14 +84,14 @@ export default async function AdminHomesUsersPage() {
   const { data: tenant } = await supabase
     .from('tenants')
     .select('ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, seller_plan_free_attempts, seller_plan_auto_approve_limit, seller_plan_manual_approve_limit, seller_plan_hard_cap, estimator_free_attempts, estimator_auto_approve_attempts, estimator_manual_approve_attempts, estimator_hard_cap')
-    .eq('id', TENANT_ID)
+    .eq('id', tenantId)
     .single()
 
   // Fetch agents for display names
   let agentsQuery = supabase
     .from('agents')
     .select('id, full_name')
-    .eq('tenant_id', TENANT_ID)
+    .eq('tenant_id', tenantId)
   if (adminUser.role === 'manager' && adminUser.agentId) {
     agentsQuery = agentsQuery.in('id', [adminUser.agentId, ...adminUser.managedAgentIds])
   } else if (adminUser.role === 'agent' && adminUser.agentId) {
@@ -108,7 +109,7 @@ export default async function AdminHomesUsersPage() {
       tenant={tenant}
       agentMap={agentMap}
       adminUser={adminUser}
-      tenantId={TENANT_ID}
+      tenantId={tenantId}
     />
   )
 }

@@ -1,5 +1,6 @@
 // lib/admin-homes/auth.ts
 import { createServerClient } from '@/lib/supabase/server'
+import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
 
 export type AdminHomesRole = 'admin' | 'manager' | 'agent'
 
@@ -15,12 +16,14 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
+  const tenantId = await getCurrentTenantId()
+  if (!tenantId) return null
 
   const { data: agent } = await supabase
     .from('agents')
     .select('id, full_name, parent_id, tenant_id')
     .eq('user_id', user.id)
-    .eq('tenant_id', 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9')
+    .eq('tenant_id', tenantId)
     .single()
 
   if (!agent) {
@@ -37,7 +40,7 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
     .from('agents')
     .select('id')
     .eq('parent_id', agent.id)
-    .eq('tenant_id', 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9')
+    .eq('tenant_id', tenantId)
 
   const managedIds = (managedAgents || []).map((a: any) => a.id)
 

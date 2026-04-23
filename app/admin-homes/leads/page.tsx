@@ -1,6 +1,7 @@
 // app/admin-homes/leads/page.tsx
 import { createClient } from '@supabase/supabase-js'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
 import AdminHomesLeadsClient from '@/components/admin-homes/AdminHomesLeadsClient'
 
 function createServiceClient() {
@@ -15,6 +16,7 @@ export const metadata = { title: 'WALLiam Leads — Admin' }
 
 export default async function AdminHomesLeadsPage() {
   const supabase = createServiceClient()
+  const tenantId = await getCurrentTenantId()
   const adminUser = await resolveAdminHomesUser()
 
   // Build query based on role
@@ -46,7 +48,7 @@ export default async function AdminHomesLeadsPage() {
     .from('agents')
     .select('id, full_name, email')
     .eq('site_type', 'comprehensive')
-    .eq('tenant_id', 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9')
+    .eq('tenant_id', tenantId ?? '')
     .order('full_name')
 
   if (adminUser?.role === 'manager' && adminUser.agentId) {
