@@ -43,7 +43,7 @@ export default function BrowseListingsView({ neighbourhoods }: BrowseListingsVie
         padding: 2,
         background: searchFocused
           ? 'linear-gradient(135deg, #8b5cf6, #ec4899, #06b6d4)'
-          : 'rgba(255,255,255,0.18)',
+          : 'linear-gradient(135deg, rgba(139,92,246,0.35), rgba(236,72,153,0.35), rgba(6,182,212,0.35))',
         transition: 'background 0.4s ease, box-shadow 0.4s ease',
         boxShadow: searchFocused
           ? '0 0 50px rgba(139,92,246,0.25), 0 12px 40px rgba(0,0,0,0.4)'

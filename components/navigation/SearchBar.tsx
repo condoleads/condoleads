@@ -170,7 +170,7 @@ export default function SearchBar({
           spellCheck={false}
         />
         {typingPlaceholders && typingPlaceholders.length > 0 && !query && !inputFocused && (
-          <div className={`absolute left-12 pointer-events-none ${variant === 'dark' ? 'text-white/55' : 'text-gray-400'}`} style={{ fontSize: 15 }}>
+          <div className={`absolute left-12 right-10 pointer-events-none whitespace-nowrap overflow-hidden text-ellipsis ${variant === 'dark' ? 'text-white/55' : 'text-gray-400'}`} style={{ fontSize: 15 }}>
             {typedText}<span className="animate-pulse">|</span>
           </div>
         )}
