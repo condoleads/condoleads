@@ -35,6 +35,7 @@ export interface Tenant {
   terms_content: string | null
   google_analytics_id: string | null
   is_active: boolean | null
+  homepage_layout: 'v1' | 'v2' | 'v3'
 }
 
 /**
@@ -55,7 +56,8 @@ export async function getTenant(): Promise<Tenant | null> {
       assistant_name, brokerage_name, brokerage_address,
       brokerage_phone, broker_of_record, license_number,
       footer_tagline, about_content, privacy_content, terms_content,
-      google_analytics_id, is_active
+      google_analytics_id, is_active,
+      homepage_layout
     `)
     .eq('id', tenantId)
     .single()
