@@ -245,7 +245,7 @@ function WalliamSearch() {
         transition: 'background 0.4s ease, box-shadow 0.4s ease',
         boxShadow: focused
           ? '0 0 50px rgba(245,158,11,0.25), 0 12px 40px rgba(0,0,0,0.4)'
-          : '0 8px 32px rgba(0,0,0,0.35)',
+          : '0 0 28px rgba(245,158,11,0.12), 0 8px 32px rgba(0,0,0,0.35)',
       }}>
         <div style={{
           borderRadius: 18,

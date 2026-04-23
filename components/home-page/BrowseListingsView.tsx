@@ -5,14 +5,15 @@ import BrowseMegaMenuContent from '@/components/navigation/BrowseMegaMenuContent
 import type { NeighbourhoodMenuItem } from '@/components/navigation/SiteHeader';
 
 const BROWSE_EXAMPLES = [
-  'Toronto',
+  'One Bloor East',
+  '25 Capreol Ct #2701',
+  'The Well',
   'Mississauga',
-  'Vaughan',
-  'Markham',
-  'Oakville',
+  '155 Yorkville Ave',
+  'Toronto',
+  'Maple Leaf Square',
+  '88 Harbour St #2501',
   'Whitby',
-  'Burlington',
-  'Richmond Hill',
 ];
 
 interface BrowseListingsViewProps {
@@ -46,7 +47,7 @@ export default function BrowseListingsView({ neighbourhoods }: BrowseListingsVie
         transition: 'background 0.4s ease, box-shadow 0.4s ease',
         boxShadow: searchFocused
           ? '0 0 50px rgba(139,92,246,0.25), 0 12px 40px rgba(0,0,0,0.4)'
-          : '0 8px 32px rgba(0,0,0,0.35)',
+          : '0 0 28px rgba(139,92,246,0.12), 0 8px 32px rgba(0,0,0,0.35)',
       }}>
         <div style={{ borderRadius: 18, background: 'rgba(8,15,26,0.95)' }}>
           <SearchBar
