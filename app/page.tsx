@@ -17,6 +17,7 @@ import CommunityApplication from '@/components/landing/CommunityApplication'
 
 import { getWalliamTenantId } from '@/lib/utils/is-walliam'
 import { HomePageComprehensive } from '@/components/HomePageComprehensive'
+import { HomePageComprehensiveV2 } from '@/components/HomePageComprehensiveV2'
 import ZeroOneLeadsPage from './zerooneleads/page'
 
 // Force dynamic rendering - no caching
@@ -46,8 +47,18 @@ export default async function RootPage() {
   if (walliamTenantId) {
     const { createClient: _sc } = await import('@supabase/supabase-js')
     const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
-    const { data: walliamAgent } = await _db.from('agents').select('*').eq('id', 'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe').single()
-    if (walliamAgent) return <HomePageComprehensive agent={{ ...walliamAgent, is_active: true }} />
+    const [agentResult, tenantResult] = await Promise.all([
+      _db.from('agents').select('*').eq('id', 'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe').single(),
+      _db.from('tenants').select('homepage_layout').eq('id', walliamTenantId).single(),
+    ])
+    const walliamAgent = agentResult.data
+    const layout = tenantResult.data?.homepage_layout ?? 'v1'
+    if (walliamAgent) {
+      const agentProps = { ...walliamAgent, is_active: true }
+      return layout === 'v2'
+        ? <HomePageComprehensiveV2 agent={agentProps} />
+        : <HomePageComprehensive agent={agentProps} />
+    }
   }
 
     // If no subdomain AND no custom domain agent, show new landing page

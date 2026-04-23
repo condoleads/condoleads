@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import { HomePageComprehensive } from '@/components/HomePageComprehensive'
+import { HomePageComprehensiveV2 } from '@/components/HomePageComprehensiveV2'
 import { extractSubdomain } from '@/lib/utils/agent-detection'
 export async function generateMetadata(): Promise<Metadata> {
   const headersList = headers()
@@ -58,7 +59,7 @@ export default async function ComprehensiveHomePage() {
 
     const { data: tenant, error: tenantErr } = await supabase
       .from('tenants')
-      .select('default_agent_id')
+      .select('default_agent_id, homepage_layout')
       .eq('id', tenantId)
       .eq('is_active', true)
       .single()
@@ -72,7 +73,11 @@ export default async function ComprehensiveHomePage() {
         .single()
 
       if (agent) {
-        return <HomePageComprehensive agent={{...agent, is_active: true}} />
+        const agentProps = {...agent, is_active: true}
+        const layout = tenant?.homepage_layout ?? 'v1'
+        return layout === 'v2'
+          ? <HomePageComprehensiveV2 agent={agentProps} />
+          : <HomePageComprehensive agent={agentProps} />
       }
     }
     // Tenant lookup failed for a known domain — log and fall through to default path
