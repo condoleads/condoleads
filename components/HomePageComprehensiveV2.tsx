@@ -3,7 +3,6 @@ import { fetchMarketStats, fetchTopAreas } from '@/lib/comprehensive/stats-fetch
 import { getMenuData } from '@/components/navigation/SiteHeader';
 import HomePageComprehensiveClientV2 from './HomePageComprehensiveClientV2';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
-import MobileContactBar from './MobileContactBar';
 
 interface Agent {
   id: string;
@@ -67,7 +66,6 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
         }}
       />
       <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />
-      <MobileContactBar agent={agent as any} />
     </>
   );
 }
