@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useTenantId } from '@/hooks/useTenantId'
 
 interface Props {
   type: 'buyer' | 'seller'
@@ -40,6 +41,7 @@ function getAvailableDates(): Date[] {
 }
 
 export default function AppointmentForm({ type, listings = [], userId, sessionId, geoContext, agent, onBooked }: Props) {
+  const tenantId = useTenantId()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -101,6 +103,7 @@ export default function AppointmentForm({ type, listings = [], userId, sessionId
   }
 
   async function handleSubmit() {
+    if (!tenantId) { setError('Still loading — please try again in a moment'); return }
     if (!name.trim() || !email.trim()) { setError('Name and email are required'); return }
     if (!selectedDate) { setError('Please select a date'); return }
     if (!selectedTime) { setError('Please select a time slot'); return }
@@ -120,7 +123,7 @@ export default function AppointmentForm({ type, listings = [], userId, sessionId
     try {
       const res = await fetch('/api/charlie/appointment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
         body: JSON.stringify({
           name: name.trim(),
           email: email.trim(),
