@@ -477,9 +477,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
                   buildingSlug={building.slug}
-                  agentId={isWalliam ? (walliamAgentId || '') : (agent?.id || "")}
-                  tenantId={isWalliam ? (tenantId || '') : (agent?.tenant_id || '')}
-                  isWalliam={isWalliam}
+                  agentId={isWalliam ? (walliamAgentId || '') : (agent?.id || '')}
+                  tenantId={isWalliam ? (tenantId ?? undefined) : (agent?.tenant_id ?? undefined)}
+                  isWalliam={isWalliam && !!walliamAgentId}
                 />
             </div>
             
@@ -547,13 +547,13 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingAddress={building.canonical_address}
                   agentId={agent.id}
                 />
-              ) : isWalliam ? (
+              ) : isWalliam && walliamAgentId && tenantId ? (
                 <EstimatorSeller
                   buildingId={building.id}
                   buildingSlug={building.slug}
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
-                  agentId={walliamAgentId || 'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe'}
+                  agentId={walliamAgentId}
                   tenantId={tenantId}
                 />
               ) : null}

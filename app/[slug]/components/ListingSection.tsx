@@ -100,6 +100,10 @@ export default function ListingSection({
       setShowRegister(true)
       return
     }
+    if (!agentId && !tenantId) {
+      console.warn('[ListingSection] Estimator click suppressed: no agentId or tenantId')
+      return
+    }
     setSelectedListing(listing)
     setModalType(type)
     setModalOpen(true)
