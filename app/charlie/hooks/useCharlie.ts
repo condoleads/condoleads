@@ -1,6 +1,7 @@
 ﻿// app/charlie/hooks/useCharlie.ts
 'use client'
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useTenantId } from '@/hooks/useTenantId'
 
 export type MessageRole = 'user' | 'assistant'
 export type ConversationBlock =
@@ -144,6 +145,7 @@ const INITIAL_STATE: CharlieState = {
 }
 
 export function useCharlie() {
+  const tenantId = useTenantId()
   const [state, setStateRaw] = useState<CharlieState>(INITIAL_STATE)
   const setState = (updater: CharlieState | ((s: CharlieState) => CharlieState)) => {
     setStateRaw(prev => {
@@ -176,9 +178,10 @@ export function useCharlie() {
     }
   ) => {
     try {
+      if (!tenantId) return
       const res = await fetch('/api/walliam/charlie/session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
         body: JSON.stringify({
           userId,
           listing_id: pageContext?.listing_id || null,
@@ -338,9 +341,10 @@ export function useCharlie() {
     }))
 
     try {
+      if (!tenantId) { setState(s => ({ ...s, isStreaming: false })); return }
       const res = await fetch('/api/charlie', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
         body: JSON.stringify({
           messages: messagesRef.current,
           sessionId: walliamSessionIdRef.current,
