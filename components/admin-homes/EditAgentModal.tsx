@@ -171,18 +171,11 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
               </label>
             </div>
 
-            {/* Team Hierarchy */}
+                        {/* Team Hierarchy */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2"><Users className="w-4 h-4" /> Team Hierarchy</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
-                  <select value={formData.tenant_id} onChange={e => setFormData({ ...formData, tenant_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm">
-                    <option value="">No Tenant</option>
-                    <option value="b16e1039-38ed-43d7-bbc5-dd02bb651bc9">WALLiam</option>
-                  </select>
-                </div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Reports To</label>
                   <select value={formData.parent_id} onChange={e => setFormData({ ...formData, parent_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm">
                     <option value="">None (Solo / Top-level)</option>
