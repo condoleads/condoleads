@@ -1,5 +1,6 @@
 ﻿import { resolveAgentAccess } from '@/lib/comprehensive/access-resolver';
 import { fetchMarketStats, fetchTopAreas } from '@/lib/comprehensive/stats-fetcher';
+import { getMenuData } from '@/components/navigation/SiteHeader';
 import HomePageComprehensiveClientV2 from './HomePageComprehensiveClientV2';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
 import MobileContactBar from './MobileContactBar';
@@ -34,9 +35,10 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
   }
 
   // Fetch all homepage data in parallel
-  const [stats, topAreas] = await Promise.all([
+  const [stats, topAreas, neighbourhoods] = await Promise.all([
     fetchMarketStats(access),
     fetchTopAreas(access, 6),
+    getMenuData(),
   ]);
 
   return (
@@ -56,6 +58,7 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
         }}
         stats={stats}
         topAreas={topAreas}
+        neighbourhoods={neighbourhoods}
         access={{
           isAllMLS: access.isAllMLS,
           buildings_access: access.buildings_access,

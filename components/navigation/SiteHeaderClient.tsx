@@ -8,6 +8,7 @@ import SearchBar from './SearchBar'
 import dynamic from 'next/dynamic'
 const VIPAIAccess = dynamic(() => import('@/components/auth/VIPAIAccess'), { ssr: false })
 import BrandWordmark from './BrandWordmark'
+import BrowseMegaMenuContent from './BrowseMegaMenuContent'
 
 const WALLIAM_TENANT_ID = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
 
@@ -158,49 +159,10 @@ export default function SiteHeaderClient({
         {megaMenuOpen && (
           <div ref={megaMenuRef} className="absolute left-0 right-0 top-full bg-[#0d1117] shadow-xl border-t border-white/10 z-40">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-              <p className="text-xs font-semibold text-white/30 uppercase tracking-widest mb-4">
-                Browse Toronto by Neighbourhood
-              </p>
-              <div className="grid grid-cols-3 gap-x-8 gap-y-6">
-                {neighbourhoods.map(n => (
-                  <div key={n.id}>
-                    <Link
-                      href={`/toronto/${n.slug}`}
-                      onClick={() => setMegaMenuOpen(false)}
-                      className="flex items-center justify-between group mb-2"
-                    >
-                      <span className="font-semibold text-white group-hover:text-blue-400 transition-colors">{n.name}</span>
-                      <span className="text-xs text-white/30 ml-2">{n.total_buildings.toLocaleString()} buildings</span>
-                    </Link>
-                    <ul className="space-y-1">
-                      {n.communities.map(c => (
-                        <li key={c.slug}>
-                          <Link
-                            href={`/${c.slug}`}
-                            onClick={() => setMegaMenuOpen(false)}
-                            className="flex items-center justify-between text-sm text-white/50 hover:text-blue-400 hover:pl-1 transition-all py-0.5"
-                          >
-                            <span>{c.name}</span>
-                            <span className="text-xs text-white/20">{c.buildings}</span>
-                          </Link>
-                        </li>
-                      ))}
-                      {n.total_communities > 5 && (
-                        <li>
-                          <Link
-                            href={`/toronto/${n.slug}`}
-                            onClick={() => setMegaMenuOpen(false)}
-                            className="text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1 mt-1"
-                          >
-                            View all {n.total_communities} communities
-                            <ChevronRight className="w-3 h-3" />
-                          </Link>
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+              <BrowseMegaMenuContent
+                neighbourhoods={neighbourhoods}
+                onNavigate={() => setMegaMenuOpen(false)}
+              />
             </div>
           </div>
         )}

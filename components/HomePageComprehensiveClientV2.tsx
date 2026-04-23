@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 const VIPAIAccess = dynamic(() => import('@/components/auth/VIPAIAccess'), { ssr: false })
 import { useState, useEffect, useRef } from 'react';
 import type { MarketStats, AreaCard } from '@/lib/comprehensive/types';
+import type { NeighbourhoodMenuItem } from '@/components/navigation/SiteHeader';
 import BrowseListingsView from './home-page/BrowseListingsView';
 
 interface Agent {
@@ -30,6 +31,7 @@ interface Props {
   agent: Agent;
   stats: MarketStats;
   topAreas: AreaCard[];
+  neighbourhoods: NeighbourhoodMenuItem[];
   access: AccessInfo;
 }
 
@@ -457,7 +459,7 @@ function HowItWorks() {
 // ── Hero ──────────────────────────────────────────────────────
 type HomeMode = 'ai' | 'browse';
 
-function WalliamHero({ topAreas, access }: { topAreas: AreaCard[]; access: AccessInfo }) {
+function WalliamHero({ topAreas, neighbourhoods, access }: { topAreas: AreaCard[]; neighbourhoods: NeighbourhoodMenuItem[]; access: AccessInfo }) {
   const [homeMode, setHomeMode] = useState<HomeMode>('ai');
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
@@ -587,7 +589,7 @@ function WalliamHero({ topAreas, access }: { topAreas: AreaCard[]; access: Acces
       </>)}
 
       {homeMode === 'browse' && (
-        <BrowseListingsView topAreas={topAreas} access={access} />
+        <BrowseListingsView neighbourhoods={neighbourhoods} />
       )}
 
       {/* VIP AI Access Block */}
@@ -628,10 +630,10 @@ function WalliamHero({ topAreas, access }: { topAreas: AreaCard[]; access: Acces
 }
 
 // ── Main Export ───────────────────────────────────────────────
-export default function HomePageComprehensiveClientV2({ agent, stats, topAreas, access }: Props) {
+export default function HomePageComprehensiveClientV2({ agent, stats, topAreas, neighbourhoods, access }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: '#060b18' }}>
-      <WalliamHero topAreas={topAreas} access={access} />
+      <WalliamHero topAreas={topAreas} neighbourhoods={neighbourhoods} access={access} />
       <HowItWorks />
     </div>
   );

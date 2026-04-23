@@ -100,7 +100,7 @@ async function getNeighbourhoodMenuData(): Promise<NeighbourhoodMenuItem[]> {
 }
 
 // ─── Cleaner approach: single optimised query ─────────────────────────────────
-async function getMenuData(): Promise<NeighbourhoodMenuItem[]> {
+export async function getMenuData(): Promise<NeighbourhoodMenuItem[]> {
   // Step 1: Get all neighbourhoods
   const { data: neighbourhoods, error: nErr } = await supabase
     .from('neighbourhoods')
