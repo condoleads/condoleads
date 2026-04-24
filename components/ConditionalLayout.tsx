@@ -13,9 +13,10 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
 
   const isAdminPage = pathname.startsWith('/admin')
   const isDashboardPage = pathname.startsWith('/dashboard')
+  const isPlatformPage = pathname.startsWith('/platform')
   const isLoginPage = pathname === '/login'
   const is01Leads = mounted && window.location.hostname.replace(/^www\./, '') === '01leads.com'
-  const isCharlieVisible = !isAdminPage && !isDashboardPage && !isLoginPage && !is01Leads
+  const isCharlieVisible = !isAdminPage && !isDashboardPage && !isLoginPage && !is01Leads && !isPlatformPage
   const [isComprehensiveSite, setIsComprehensiveSite] = useState(false)
   
 
@@ -51,7 +52,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const isTenantDomain = typeof window !== 'undefined' && !window.location.hostname.includes('condoleads.ca') && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('vercel.app')
   const isAgentSite = siteName && siteName !== 'CondoLeads'
   const isLandingPage = pathname === '/' && !isAgentSite
-  const showPublicLayout = mounted && !isAdminPage && !isDashboardPage && !isLoginPage && !isLandingPage && !isComprehensiveSite && !isTenantDomain
+  const showPublicLayout = mounted && !isAdminPage && !isDashboardPage && !isLoginPage && !isLandingPage && !isComprehensiveSite && !isTenantDomain && !isPlatformPage
 
   return (
     <>
