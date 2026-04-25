@@ -213,10 +213,19 @@ export default function AgentsManagementClient({ agents, tenants }: { agents: Ag
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">WALLiam Agents</h1>
-        <p className="text-gray-600">Manage agents, hierarchy, and territory assignments</p>
-      </div>
+      <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">WALLiam Agents</h1>
+            <p className="text-gray-600">Manage agents, hierarchy, and territory assignments</p>
+          </div>
+          <Link
+            href="/admin-homes/agents/tree"
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md"
+          >
+            <span>📊</span>
+            <span>Org Chart</span>
+          </Link>
+        </div>
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-6 mb-8">
