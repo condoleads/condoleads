@@ -1,6 +1,6 @@
 // lib/admin-homes/auth.ts
 import { createServerClient } from '@/lib/supabase/server'
-import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
+import { getAdminTenantContext } from '@/lib/admin-homes/tenant-context'
 
 export type AdminHomesRole = 'admin' | 'manager' | 'agent'
 
@@ -10,7 +10,10 @@ export interface AdminHomesUser {
   email: string
   agentId: string | null
   managedAgentIds: string[]
-  tenantId: string | null
+  tenantId: string | null         // effective tenant (= currentTenantId from context)
+  // 3.1 — new fields:
+  isPlatformAdmin: boolean        // user is in platform_admins
+  homeTenantId: string | null     // user's own tenant (before any override)
 }
 
 export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
@@ -18,46 +21,71 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Tenant context comes from middleware via x-tenant-id header.
-  // Present on tenant domains (walliam.ca etc.); absent on condoleads.ca, localhost.
-  const tenantId = await getCurrentTenantId()
+  // Is this user a platform admin? (Allows tenant override via cookie.)
+  const { data: platformAdminRow } = await supabase
+    .from('platform_admins')
+    .select('id, is_active')
+    .eq('user_id', user.id)
+    .eq('is_active', true)
+    .maybeSingle()
 
-  // Find the user's agent record.
-  // - With tenant context: scope to that tenant (multi-tenant safety).
-  // - Without tenant context (legacy condoleads.ca / localhost):
-  //   find their agent row in any tenant — the row's own tenant_id becomes scope.
+  const isPlatformAdmin = !!platformAdminRow
+
+  // Find the user's agent record. Without tenant context (legacy condoleads.ca / localhost),
+  // the agent's own tenant_id becomes their home tenant.
+  // With tenant context, the agent must belong to that tenant.
+  // Note: we resolve homeTenantId BEFORE applying any override, so we know
+  // where the user "lives" independent of where they're currently operating.
+
+  // First fetch — get any agent row for this user (to determine homeTenantId).
+  const { data: anyAgent } = await supabase
+    .from('agents')
+    .select('id, full_name, parent_id, tenant_id, is_admin')
+    .eq('user_id', user.id)
+    .order('tenant_id', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+
+  const homeTenantId = anyAgent?.tenant_id || null
+
+  // Resolve effective tenant context (override -> header -> home -> none).
+  const context = await getAdminTenantContext(homeTenantId, isPlatformAdmin)
+  const effectiveTenantId = context.currentTenantId
+
+  // Find the agent record scoped to the EFFECTIVE tenant (which may be an override).
   let agentQuery = supabase
     .from('agents')
     .select('id, full_name, parent_id, tenant_id, is_admin')
     .eq('user_id', user.id)
 
-  if (tenantId) {
-    agentQuery = agentQuery.eq('tenant_id', tenantId)
+  if (effectiveTenantId) {
+    agentQuery = agentQuery.eq('tenant_id', effectiveTenantId)
   }
 
   const { data: agent } = await agentQuery.maybeSingle()
 
-  // No agent row found.
-  // - On a tenant domain: user has no membership in this tenant -> deny.
-  // - Without tenant context: user has no agent record anywhere -> fallback admin
-  //   (preserves legacy behaviour for condoleads.ca/admin-homes founders).
+  // No agent row found in the effective tenant.
   if (!agent) {
-    if (tenantId) return null
+    // On a tenant domain (effectiveTenantId set, no override): user has no membership.
+    // BUT: platform admins overriding into a tenant they don't belong to are still allowed
+    // — they enter as admin via platform privilege, not as a member of the tenant.
+    if (effectiveTenantId && !isPlatformAdmin) return null
+
+    // Without tenant context, OR platform admin overriding: fallback admin user.
     return {
       role: 'admin',
       name: user.email?.split('@')[0] || 'Admin',
       email: user.email || '',
       agentId: null,
       managedAgentIds: [],
-      tenantId: null,
+      tenantId: effectiveTenantId,
+      isPlatformAdmin,
+      homeTenantId,
     }
   }
 
-  const effectiveTenantId = agent.tenant_id
-
   // Explicit admin flag wins over managed-children inference.
   if (agent.is_admin === true) {
-    // Find any managed agents (admin can also be a manager of a team).
     const { data: managedAgents } = await supabase
       .from('agents')
       .select('id')
@@ -72,10 +100,12 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
       agentId: agent.id,
       managedAgentIds: managedIds,
       tenantId: effectiveTenantId,
+      isPlatformAdmin,
+      homeTenantId,
     }
   }
 
-  // Non-admin: classify by managed children within the same tenant.
+  // Non-admin: classify by managed children within the effective tenant.
   let managedQuery = supabase
     .from('agents')
     .select('id')
@@ -96,6 +126,8 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
       agentId: agent.id,
       managedAgentIds: managedIds,
       tenantId: effectiveTenantId,
+      isPlatformAdmin,
+      homeTenantId,
     }
   }
 
@@ -106,5 +138,7 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
     agentId: agent.id,
     managedAgentIds: [],
     tenantId: effectiveTenantId,
+    isPlatformAdmin,
+    homeTenantId,
   }
 }
