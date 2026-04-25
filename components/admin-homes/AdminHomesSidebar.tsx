@@ -16,6 +16,7 @@ const ALL_NAV: { href: string; label: string; icon: string; positions: PositionG
   { href: '/admin-homes/bulk-sync', label: 'Bulk Sync', icon: '🔄', positions: ['tenant_admin', 'assistant'] },
   { href: '/admin-homes/tenants',   label: 'Tenants',   icon: '🏢', positions: ['tenant_admin', 'assistant'] },
   { href: '/admin-homes/listings',  label: 'Listings',  icon: '📄', positions: ['tenant_admin', 'assistant'] },
+  { href: '/admin-homes/settings',  label: 'Settings',  icon: '⚙️', positions: ['tenant_admin'] },
 ]
 
 const POSITION_LABELS: Record<AdminHomesPosition, { label: string; color: string }> = {
