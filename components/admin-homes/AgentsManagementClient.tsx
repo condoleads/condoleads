@@ -31,7 +31,7 @@ interface Agent {
   subdomain: string
 }
 
-export default function AgentsManagementClient({ agents, tenants }: { agents: Agent[], tenants: Tenant[] }) {
+export default function AgentsManagementClient({ agents, tenants, tenantName }: { agents: Agent[], tenants: Tenant[], tenantName: string | null }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -109,7 +109,7 @@ export default function AgentsManagementClient({ agents, tenants }: { agents: Ag
   }
 
   function AgentRow({ agent, isNested = false }: { agent: Agent; isNested?: boolean }) {
-    const teamMembers = agent.can_create_children ? getTeamMembers(agent.id) : []
+    const teamMembers = getTeamMembers(agent.id)
     const isExpanded = expandedManagers.has(agent.id)
     const managerName = getManagerName(agent.parent_id)
 
@@ -119,12 +119,12 @@ export default function AgentsManagementClient({ agents, tenants }: { agents: Ag
           {/* Agent */}
           <td className="px-5 py-4">
             <div className="flex items-center gap-3">
-              {!isNested && agent.can_create_children && teamMembers.length > 0 && (
-                <button onClick={() => toggleExpand(agent.id)} className="p-1 hover:bg-gray-200 rounded">
-                  {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              {teamMembers.length > 0 && (
+                  <button onClick={() => toggleExpand(agent.id)} className="p-1 hover:bg-gray-200 rounded">
+                    {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </button>
               )}
-              {(!agent.can_create_children || teamMembers.length === 0) && !isNested && <div className="w-6" />}
+              {teamMembers.length === 0 && <div className="w-6" />}
               {isNested && <div className="w-10" />}
               <div className="w-10 h-10 rounded-full bg-green-700 flex items-center justify-center text-white font-bold overflow-hidden flex-shrink-0 text-sm">
                 {agent.profile_photo_url
@@ -148,7 +148,7 @@ export default function AgentsManagementClient({ agents, tenants }: { agents: Ag
             <div className="flex flex-col gap-1">
               <RoleBadge agent={agent} />
               {managerName && <p className="text-xs text-gray-400">Under: {managerName}</p>}
-              {agent.can_create_children && teamMembers.length > 0 && (
+              {teamMembers.length > 0 && (
                 <p className="text-xs text-orange-600">{teamMembers.length} agent{teamMembers.length > 1 ? 's' : ''}</p>
               )}
             </div>
@@ -204,7 +204,7 @@ export default function AgentsManagementClient({ agents, tenants }: { agents: Ag
           </td>
         </tr>
         {/* Nested team members */}
-        {agent.can_create_children && isExpanded && teamMembers.map(member => (
+        {isExpanded && teamMembers.map(member => (
           <AgentRow key={member.id} agent={member} isNested />
         ))}
       </>
@@ -215,7 +215,7 @@ export default function AgentsManagementClient({ agents, tenants }: { agents: Ag
     <div className="p-8">
       <div className="mb-8 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">WALLiam Agents</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">{tenantName ? `${tenantName} Agents` : 'Agents'}</h1>
             <p className="text-gray-600">Manage agents, hierarchy, and territory assignments</p>
           </div>
           <Link

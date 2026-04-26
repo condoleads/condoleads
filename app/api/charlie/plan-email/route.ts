@@ -1,4 +1,4 @@
-export const maxDuration = 60
+﻿export const maxDuration = 60
 
 ﻿// app/api/charlie/plan-email/route.ts
 // Sends rich plan email to user + agent + manager + admin BCC
@@ -6,6 +6,7 @@ export const maxDuration = 60
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
     let agent: any = null
     let managerId: string | null = null
     let managerEmail: string | null = null
+    let areaManagerId: string | null = null
     let tenantId: string | null = null
 
     if (sessionId) {
@@ -79,12 +81,15 @@ export async function POST(req: NextRequest) {
 
         if (agentData) {
           agent = agentData
-          if (agentData.parent_id) {
-            managerId = agentData.parent_id
+          // Phase 3.4 — full hierarchy walk: classify each ancestor by role
+          const chain = await walkHierarchy(agentData.id, supabase)
+          managerId = chain.manager_id
+          areaManagerId = chain.area_manager_id
+          if (managerId) {
             const { data: manager } = await supabase
               .from('agents')
               .select('full_name, email, notification_email')
-              .eq('id', agentData.parent_id)
+              .eq('id', managerId)
               .single()
             if (manager) {
               managerEmail = manager.notification_email || manager.email
@@ -106,6 +111,7 @@ export async function POST(req: NextRequest) {
       budget_max: plan?.budgetMax || null,
       plan_data: { planType, plan, analytics, topListings: (listings || []).slice(0, 5) },
       manager_id: managerId,
+      area_manager_id: areaManagerId,
       assignment_source: agent ? 'geo' : 'admin',
       status: 'new',
       quality: 'hot',

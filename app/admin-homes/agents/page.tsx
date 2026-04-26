@@ -1,22 +1,56 @@
-// app/admin-homes/agents/page.tsx
+﻿// app/admin-homes/agents/page.tsx
+// Phase 3.4 — tenant-scoped agent list + tenant-aware title
+
 import { createClient } from '@/lib/supabase/server'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { redirect } from 'next/navigation'
 import AgentsManagementClient from '@/components/admin-homes/AgentsManagementClient'
-export const metadata = { title: 'WALLiam Agents – Admin' }
+
+export const metadata = { title: 'Agents – Admin' }
+export const dynamic = 'force-dynamic'
 
 export default async function AdminHomesAgentsPage() {
+  const user = await resolveAdminHomesUser()
+  if (!user) redirect('/login?redirect=/admin-homes/agents')
+
   const supabase = createClient()
 
+  // Tenant scoping
+  const seeAll = user.isPlatformAdmin === true && !user.tenantId
+  const scopedTenantId = user.tenantId
+
+  let agentsQuery = supabase
+    .from('agents')
+    .select('*')
+    .eq('site_type', 'comprehensive')
+    .order('created_at', { ascending: false })
+
+  if (!seeAll) {
+    if (!scopedTenantId) {
+      // Authenticated but no tenant context — return empty
+      return <AgentsManagementClient agents={[]} tenants={[]} tenantName={null} />
+    }
+    agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
+  }
+
+  let tenantsQuery = supabase
+    .from('tenants')
+    .select('id, name, domain')
+    .order('name')
+
+  if (!seeAll && scopedTenantId) {
+    tenantsQuery = tenantsQuery.eq('id', scopedTenantId)
+  }
+
   const [{ data: agents }, { data: tenants }] = await Promise.all([
-    supabase
-      .from('agents')
-      .select('*')
-      .eq('site_type', 'comprehensive')
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('tenants')
-      .select('id, name, domain')
-      .order('name'),
+    agentsQuery,
+    tenantsQuery,
   ])
+
+  const tenantName =
+    scopedTenantId
+      ? (tenants || []).find(t => t.id === scopedTenantId)?.name ?? null
+      : null
 
   const agentsWithStats = await Promise.all(
     (agents || []).map(async (agent) => {
@@ -36,5 +70,5 @@ export default async function AdminHomesAgentsPage() {
     })
   )
 
-  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} />
+  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} />
 }

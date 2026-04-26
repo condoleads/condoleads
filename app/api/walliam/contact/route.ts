@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
     let agent: any = null
     let managerEmail: string | null = null
     let managerId: string | null = null
+    let areaManagerId: string | null = null
 
     if (agentId) {
       const { data: agentData } = await supabase
@@ -80,12 +82,15 @@ export async function POST(req: NextRequest) {
 
       if (agentData) {
         agent = agentData
-        if (agentData.parent_id) {
-          managerId = agentData.parent_id
+        // Phase 3.4 — full hierarchy walk: classify each ancestor by role
+        const chain = await walkHierarchy(agentData.id, supabase)
+        managerId = chain.manager_id
+        areaManagerId = chain.area_manager_id
+        if (managerId) {
           const { data: manager } = await supabase
             .from('agents')
             .select('email, notification_email')
-            .eq('id', agentData.parent_id)
+            .eq('id', managerId)
             .single()
           if (manager) managerEmail = manager.notification_email || manager.email
         }
@@ -96,6 +101,7 @@ export async function POST(req: NextRequest) {
     const { data: lead } = await supabase.from('leads').insert({
       agent_id: agent?.id || null,
       manager_id: managerId,
+      area_manager_id: areaManagerId,
       tenant_id,
       contact_name: name,
       contact_email: email,

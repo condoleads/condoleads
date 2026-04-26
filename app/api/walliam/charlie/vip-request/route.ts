@@ -5,6 +5,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { Resend } from 'resend'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
@@ -104,7 +106,8 @@ export async function POST(request: NextRequest) {
         .single()
       if (manager) managerEmail = manager.notification_email || manager.email
     }
-
+
+
     // Use tenant config for credit decisions
     const isAutoApprove = tenantCfg.vip_auto_approve === true && (tenantCfg.ai_auto_approve_limit ?? 0) > 0
     const autoApproveMessages = tenantCfg.ai_auto_approve_limit ?? 0
@@ -165,11 +168,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Save lead
+    // Save lead — Phase 3.4: capture full hierarchy chain
     if (userEmail) {
+      let leadManagerId: string | null = null
+      let leadAreaManagerId: string | null = null
+      if (agent?.id) {
+        const chain = await walkHierarchy(agent.id, supabase)
+        leadManagerId = chain.manager_id
+        leadAreaManagerId = chain.area_manager_id
+      }
       await supabase.from('leads').insert({
         agent_id: agent?.id || null,
         user_id: session.user_id || null,
+        tenant_id: tenantId || null,
+        manager_id: leadManagerId,
+        area_manager_id: leadAreaManagerId,
         contact_name: userName,
         contact_email: userEmail,
         contact_phone: userPhone || null,

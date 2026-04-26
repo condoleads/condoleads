@@ -4,6 +4,7 @@
 // System 1 (app/api/admin/agents/) is NEVER touched
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 
 function createServiceClient() {
   return createClient(
@@ -13,14 +14,32 @@ function createServiceClient() {
   )
 }
 
-// GET /api/admin-homes/agents — list all comprehensive agents
+// GET /api/admin-homes/agents — list comprehensive agents, tenant-scoped
+// Phase 3.4: Tenant Admin sees only their tenant's agents.
+//             Platform Admin without a selected tenant sees all (legacy behavior).
+//             Platform Admin with platform_tenant_override cookie (3.7) — handled by tenantId being populated.
 export async function GET() {
+  const user = await resolveAdminHomesUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const supabase = createServiceClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('agents')
     .select('id, full_name, email, cell_phone, subdomain, can_create_children, is_active, profile_photo_url, tenant_id, parent_id, notification_email, brokerage_name, title, total_leads')
     .eq('site_type', 'comprehensive')
     .order('full_name')
+
+  // Tenant scoping: only Platform Admin without a selected tenant sees all rows.
+  if (!(user.isPlatformAdmin && !user.tenantId)) {
+    if (!user.tenantId) {
+      return NextResponse.json({ agents: [] })
+    }
+    query = query.eq('tenant_id', user.tenantId)
+  }
+
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ agents: data || [] })
 }
