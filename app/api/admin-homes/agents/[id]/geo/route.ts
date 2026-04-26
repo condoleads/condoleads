@@ -1,32 +1,24 @@
-// app/api/admin-homes/agents/[id]/geo/route.ts
+﻿// app/api/admin-homes/agents/[id]/geo/route.ts
 // Geo territory assignment for WALLiam agents
 // Uses agent_property_access table — System 1 never touched
+// Phase 3.4+: auth + tenant + role checks via shared api-auth helper.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-
-function createServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
+import { requireAgentAccess } from '@/lib/admin-homes/api-auth'
 
 // GET: fetch current geo assignments for agent
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createServiceClient()
-  const agentId = params.id
+  const auth = await requireAgentAccess(params.id)
+  if ('error' in auth) return auth.error
 
-  const { data, error } = await supabase
+  const { data, error } = await auth.supabase
     .from('agent_property_access')
     .select('*')
-    .eq('agent_id', agentId)
+    .eq('agent_id', params.id)
     .eq('is_active', true)
-
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ assignments: data || [] })
 }
@@ -36,8 +28,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createServiceClient()
-  const agentId = params.id
+  const auth = await requireAgentAccess(params.id, { requireWrite: true })
+  if ('error' in auth) return auth.error
 
   const { assignments } = await request.json()
   // assignments = array of:
@@ -45,24 +37,22 @@ export async function POST(
   //   area_id, municipality_id, community_id, neighbourhood_id,
   //   condo_access, homes_access, buildings_access, buildings_mode }
 
-  // Delete existing assignments for this agent (WALLiam only — source='walliam')
-  const { error: deleteError } = await supabase
+  // Delete existing assignments for this agent
+  const { error: deleteError } = await auth.supabase
     .from('agent_property_access')
     .delete()
-    .eq('agent_id', agentId)
-
+    .eq('agent_id', params.id)
   if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
 
   if (!assignments || assignments.length === 0) {
     return NextResponse.json({ success: true, count: 0 })
   }
 
-  const { data: agentRec, error: agentRecErr } = await supabase.from('agents').select('tenant_id').eq('id', agentId).single()
-  console.log('[geo] agentRec:', agentRec, 'err:', agentRecErr?.message, 'agentId:', agentId)
-  const tenantId = agentRec?.tenant_id || null
+  // Tenant id from the auth.target (already loaded by helper) — no extra DB read needed
+  const tenantId = auth.target.tenant_id
 
   const rows = assignments.map((a: any) => ({
-    agent_id: agentId,
+    agent_id: params.id,
     scope: a.scope,
     area_id: a.area_id || null,
     municipality_id: a.municipality_id || null,
@@ -76,10 +66,9 @@ export async function POST(
     tenant_id: tenantId,
   }))
 
-  const { error: insertError } = await supabase
+  const { error: insertError } = await auth.supabase
     .from('agent_property_access')
     .insert(rows)
-
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })
 
   return NextResponse.json({ success: true, count: rows.length })

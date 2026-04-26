@@ -1,21 +1,17 @@
-// app/api/admin-homes/tenants/[id]/geo/route.ts
+﻿// app/api/admin-homes/tenants/[id]/geo/route.ts
 // Tenant territory restriction management
 // Empty = full access. Rows = restricted to these territories only.
+// Platform-admin only — tenant boundaries are a platform operation.
+// Phase 3.4+: auth + role checks via shared api-auth helper.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { requirePlatformAdmin } from '@/lib/admin-homes/api-auth'
 
-function createServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requirePlatformAdmin()
+  if ('error' in auth) return auth.error
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createServiceClient()
-  const { data, error } = await supabase
+  const { data, error } = await auth.supabase
     .from('tenant_property_access')
     .select('*')
     .eq('tenant_id', params.id)
@@ -25,11 +21,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createServiceClient()
+  const auth = await requirePlatformAdmin()
+  if ('error' in auth) return auth.error
+
   const { restrictions } = await req.json()
 
   // Replace all restrictions for this tenant
-  await supabase.from('tenant_property_access').delete().eq('tenant_id', params.id)
+  await auth.supabase.from('tenant_property_access').delete().eq('tenant_id', params.id)
 
   if (!restrictions || restrictions.length === 0) {
     return NextResponse.json({ success: true, count: 0 })
@@ -48,7 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     is_active: true,
   }))
 
-  const { error } = await supabase.from('tenant_property_access').insert(rows)
+  const { error } = await auth.supabase.from('tenant_property_access').insert(rows)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true, count: rows.length })
 }
