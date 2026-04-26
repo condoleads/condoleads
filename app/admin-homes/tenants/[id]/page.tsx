@@ -1,10 +1,16 @@
 // app/admin-homes/tenants/[id]/page.tsx
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import TenantGeoAssignmentSection from '@/components/admin-homes/TenantGeoAssignmentSection'
 import Link from 'next/link'
 
 export default async function TenantDetailPage({ params }: { params: { id: string } }) {
+  // Phase 3.4+: Platform Admin only
+  const user = await resolveAdminHomesUser()
+  if (!user) redirect(`/login?redirect=/admin-homes/tenants/${params.id}`)
+  if (!user.isPlatformAdmin) redirect('/admin-homes')
+
   const supabase = createClient()
 
   const { data: tenant } = await supabase

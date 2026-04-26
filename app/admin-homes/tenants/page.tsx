@@ -1,10 +1,17 @@
 // app/admin-homes/tenants/page.tsx
 import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { redirect } from 'next/navigation'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import TenantsClient from '@/components/admin-homes/TenantsClient'
 
 export const metadata = { title: 'Tenants — Admin' }
 
 export default async function TenantsPage() {
+  // Phase 3.4+: Platform Admin only
+  const user = await resolveAdminHomesUser()
+  if (!user) redirect('/login?redirect=/admin-homes/tenants')
+  if (!user.isPlatformAdmin) redirect('/admin-homes')
+
   const supabase = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
 
   const { data: tenants } = await supabase

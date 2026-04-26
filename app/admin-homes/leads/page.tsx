@@ -12,12 +12,19 @@ function createServiceClient() {
   )
 }
 
-export const metadata = { title: 'WALLiam Leads — Admin' }
+export const metadata = { title: 'Leads — Admin' }
 
 export default async function AdminHomesLeadsPage() {
   const supabase = createServiceClient()
   const tenantId = await getCurrentTenantId()
   const adminUser = await resolveAdminHomesUser()
+
+  // Phase 3.4+: tenant scoping
+  // Tenant Admin / staff: filter by their own tenant
+  // Platform Admin with no selected tenant: see all leads
+  // Platform Admin with host-resolved tenant: filter by that
+  const seeAll = adminUser?.isPlatformAdmin === true && !adminUser.tenantId && !tenantId
+  const scopedTenantId = adminUser?.tenantId ?? tenantId
 
   // Build query based on role
   let query = supabase
@@ -27,9 +34,23 @@ export default async function AdminHomesLeadsPage() {
       agents!leads_agent_id_fkey ( id, full_name, email ),
       manager:agents!leads_manager_id_fkey ( id, full_name, email )
     `)
-    .like('source', 'walliam_%')
     .order('created_at', { ascending: false })
     .limit(10000)
+
+  if (!seeAll) {
+    if (!scopedTenantId) {
+      // Authenticated but no tenant context — return empty
+      return (
+        <AdminHomesLeadsClient
+          initialLeads={[]}
+          agents={[]}
+          currentRole={adminUser?.role || 'admin'}
+          currentAgentId={adminUser?.agentId || null}
+        />
+      )
+    }
+    query = query.eq('tenant_id', scopedTenantId)
+  }
 
   if (adminUser?.role === 'manager' && adminUser.agentId) {
     // Manager sees own leads + all managed agents' leads
@@ -48,8 +69,11 @@ export default async function AdminHomesLeadsPage() {
     .from('agents')
     .select('id, full_name, email')
     .eq('site_type', 'comprehensive')
-    .eq('tenant_id', tenantId ?? '')
     .order('full_name')
+
+  if (!seeAll && scopedTenantId) {
+    agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
+  }
 
   if (adminUser?.role === 'manager' && adminUser.agentId) {
     // Manager only sees themselves + their managed agents in filter

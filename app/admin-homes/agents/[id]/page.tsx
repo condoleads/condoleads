@@ -1,22 +1,33 @@
 // app/admin-homes/agents/[id]/page.tsx
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import GeoAssignmentSection from '@/components/admin-homes/GeoAssignmentSection'
 import BuildingAssignmentSection from '@/components/admin-homes/BuildingAssignmentSection'
 import ListingAssignmentSection from '@/components/admin-homes/ListingAssignmentSection'
 import Link from 'next/link'
 
 export default async function AgentDetailPage({ params }: { params: { id: string } }) {
-  const supabase = createClient()
+  // Phase 3.4+: auth + cross-tenant access guard
+  const user = await resolveAdminHomesUser()
+  if (!user) redirect(`/login?redirect=/admin-homes/agents/${params.id}`)
 
+  const supabase = createClient()
   const { data: agent } = await supabase
     .from('agents')
     .select('*')
     .eq('id', params.id)
     .eq('site_type', 'comprehensive')
     .single()
-
   if (!agent) notFound()
+
+  // Tenant-check: non-platform-admins can only view agents in their own tenant.
+  // Platform Admin can view any agent.
+  if (!user.isPlatformAdmin) {
+    if (!user.tenantId || agent.tenant_id !== user.tenantId) {
+      redirect('/admin-homes/agents')
+    }
+  }
 
   // Geo data for assignment UI
   const [

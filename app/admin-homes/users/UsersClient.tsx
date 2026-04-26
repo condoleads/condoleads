@@ -9,7 +9,7 @@ interface Props {
   tenant: any
   agentMap: Record<string, string>
   adminUser: any
-  tenantId: string
+  tenantId: string | null
 }
 
 function getTenantDefaults(tenant: any): Usage {
@@ -71,6 +71,10 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
 
   async function handleSave() {
     if (!modalUser) return
+    if (!tenantId) {
+      setSaveError('Select a tenant before granting overrides.')
+      return
+    }
     setSaving(true); setSaveError(null)
     try {
       const res = await fetch('/api/admin-homes/users/override', {
@@ -96,6 +100,7 @@ export default function UsersClient({ users, usageMap, overrideMap, tenant, agen
   }
 
   async function handleClear(userId: string) {
+    if (!tenantId) return
     try {
       await fetch('/api/admin-homes/users/override', {
         method: 'DELETE',

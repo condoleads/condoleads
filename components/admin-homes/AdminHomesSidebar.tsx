@@ -6,15 +6,15 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import type { AdminHomesUser, AdminHomesPosition } from '@/lib/admin-homes/auth'
 
-type PositionGate = 'all' | AdminHomesPosition[]
+type PositionGate = 'all' | 'platform_admin_only' | AdminHomesPosition[]
 
 const ALL_NAV: { href: string; label: string; icon: string; positions: PositionGate }[] = [
   { href: '/admin-homes',           label: 'Dashboard', icon: '🏠', positions: 'all' },
   { href: '/admin-homes/leads',     label: 'Leads',     icon: '📋', positions: 'all' },
   { href: '/admin-homes/users',     label: 'Users',     icon: '👤', positions: 'all' },
   { href: '/admin-homes/agents',    label: 'Agents',    icon: '👥', positions: ['tenant_admin', 'assistant', 'area_manager', 'manager'] },
-  { href: '/admin-homes/bulk-sync', label: 'Bulk Sync', icon: '🔄', positions: ['tenant_admin', 'assistant'] },
-  { href: '/admin-homes/tenants',   label: 'Tenants',   icon: '🏢', positions: ['tenant_admin', 'assistant'] },
+  { href: '/admin-homes/bulk-sync', label: 'Bulk Sync', icon: '🔄', positions: 'platform_admin_only' },
+  { href: '/admin-homes/tenants',   label: 'Tenants',   icon: '🏢', positions: 'platform_admin_only' },
   { href: '/admin-homes/listings',  label: 'Listings',  icon: '📄', positions: ['tenant_admin', 'assistant'] },
   { href: '/admin-homes/settings',  label: 'Settings',  icon: '⚙️', positions: ['tenant_admin'] },
 ]
@@ -33,9 +33,11 @@ export default function AdminHomesSidebar({ user }: { user: AdminHomesUser }) {
   const pathname = usePathname()
   const router = useRouter()
 
-  const navItems = ALL_NAV.filter(item =>
-    item.positions === 'all' || item.positions.includes(user.position)
-  )
+  const navItems = ALL_NAV.filter(item => {
+    if (item.positions === 'all') return true
+    if (item.positions === 'platform_admin_only') return user.isPlatformAdmin === true
+    return item.positions.includes(user.position)
+  })
 
   const handleLogout = async () => {
     const supabase = createBrowserClient(
