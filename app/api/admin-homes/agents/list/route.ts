@@ -1,25 +1,32 @@
-// app/api/admin-homes/agents/list/route.ts
-// Lightweight dropdown list — id, full_name, subdomain, can_create_children only
+﻿// app/api/admin-homes/agents/list/route.ts
+// Lightweight dropdown list — id, full_name, subdomain, can_create_children, role
 // Used by AddAgentModal and EditAgentModal for the "Reports To" selector
-import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+// Phase 3.4+: tenant-scoped via shared api-auth helper.
 
-function createServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
+import { NextResponse } from 'next/server'
+import { requireAdminHomesUser } from '@/lib/admin-homes/api-auth'
 
 export async function GET() {
-  const supabase = createServiceClient()
-  const { data, error } = await supabase
+  const auth = await requireAdminHomesUser()
+  if ('error' in auth) return auth.error
+  const { user, supabase } = auth
+
+  let query = supabase
     .from('agents')
-    .select('id, full_name, subdomain, can_create_children')
+    .select('id, full_name, subdomain, can_create_children, role, tenant_id')
     .eq('site_type', 'comprehensive')
     .eq('is_active', true)
     .order('full_name')
+
+  // Tenant scoping: only Platform Admin without selected tenant sees all.
+  if (!(user.isPlatformAdmin && !user.tenantId)) {
+    if (!user.tenantId) {
+      return NextResponse.json({ agents: [] })
+    }
+    query = query.eq('tenant_id', user.tenantId)
+  }
+
+  const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ agents: data || [] })
 }

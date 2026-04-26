@@ -1,32 +1,26 @@
-﻿// app/api/admin-homes/users/override/route.ts - v2
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+﻿// app/api/admin-homes/users/override/route.ts
+// Phase 3.4+: auth + tenant + role gate via shared api-auth helper.
 
-function createServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
+import { NextRequest, NextResponse } from 'next/server'
+import { requireTenantAccess } from '@/lib/admin-homes/api-auth'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { userId, tenantId, agentId, agentTier, note, aiChatLimit, buyerPlanLimit, sellerPlanLimit, estimatorLimit } = body
-
     if (!userId || !tenantId) {
       return NextResponse.json({ error: 'userId and tenantId required' }, { status: 400 })
     }
 
-    const supabase = createServiceClient()
+    const auth = await requireTenantAccess(tenantId, { allowedRoles: ['admin', 'manager'] })
+    if ('error' in auth) return auth.error
+    const { supabase } = auth
 
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
       .select('ai_hard_cap, plan_hard_cap, seller_plan_hard_cap, estimator_hard_cap')
       .eq('id', tenantId)
       .single()
-
     if (tenantError) return NextResponse.json({ error: 'Tenant fetch failed', detail: tenantError.message }, { status: 500 })
     if (!tenant) return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
 
@@ -55,7 +49,6 @@ export async function POST(request: NextRequest) {
     if (upsertError) {
       return NextResponse.json({ error: 'Upsert failed', detail: upsertError.message, code: upsertError.code }, { status: 500 })
     }
-
     return NextResponse.json({ override })
   } catch (e: any) {
     return NextResponse.json({ error: 'Unexpected error', detail: e?.message }, { status: 500 })
@@ -68,7 +61,11 @@ export async function DELETE(request: NextRequest) {
     if (!userId || !tenantId) {
       return NextResponse.json({ error: 'userId and tenantId required' }, { status: 400 })
     }
-    const supabase = createServiceClient()
+
+    const auth = await requireTenantAccess(tenantId, { allowedRoles: ['admin', 'manager'] })
+    if ('error' in auth) return auth.error
+    const { supabase } = auth
+
     const { error } = await supabase
       .from('user_credit_overrides')
       .delete()

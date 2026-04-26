@@ -1,24 +1,20 @@
-// app/api/admin-homes/agents/[id]/route.ts
-// GET: fetch single agent, PUT: update agent fields
-// System 2 only — site_type='comprehensive' guard on GET
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+﻿// app/api/admin-homes/agents/[id]/route.ts
+// GET: fetch single agent, PUT: update agent fields, DELETE: remove agent + auth user
+// System 2 only — site_type='comprehensive' guard inside requireAgentAccess
+// Phase 3.4+: auth + tenant + role checks via shared api-auth helper.
 
-function createServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAgentAccess } from '@/lib/admin-homes/api-auth'
 
 // GET /api/admin-homes/agents/[id]
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createServiceClient()
-  const { data, error } = await supabase
+  const auth = await requireAgentAccess(params.id)
+  if ('error' in auth) return auth.error
+
+  const { data, error } = await auth.supabase
     .from('agents')
     .select('*')
     .eq('id', params.id)
@@ -33,7 +29,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createServiceClient()
+  const auth = await requireAgentAccess(params.id, { requireWrite: true })
+  if ('error' in auth) return auth.error
+
   const body = await request.json()
 
   const {
@@ -46,6 +44,18 @@ export async function PUT(
     ai_free_messages, vip_auto_approve,
     ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap,
   } = body
+
+  // Cross-tenant parent_id guard: parent must belong to the same tenant as the target.
+  if (parent_id) {
+    const { data: parent } = await auth.supabase
+      .from('agents')
+      .select('tenant_id')
+      .eq('id', parent_id)
+      .maybeSingle()
+    if (!parent || parent.tenant_id !== auth.target.tenant_id) {
+      return NextResponse.json({ error: 'parent_id must belong to the same tenant' }, { status: 400 })
+    }
+  }
 
   // Build update payload — only include fields that were sent
   const update: Record<string, any> = {}
@@ -73,7 +83,7 @@ export async function PUT(
   if (ai_manual_approve_limit !== undefined) update.ai_manual_approve_limit = ai_manual_approve_limit
   if (ai_hard_cap !== undefined) update.ai_hard_cap = ai_hard_cap
 
-  const { error } = await supabase
+  const { error } = await auth.supabase
     .from('agents')
     .update(update)
     .eq('id', params.id)
@@ -82,11 +92,13 @@ export async function PUT(
   return NextResponse.json({ success: true })
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-  const supabase = createServiceClient()
+// DELETE /api/admin-homes/agents/[id]
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireAgentAccess(params.id, { requireWrite: true, requireAdmin: true })
+  if ('error' in auth) return auth.error
 
   // Delete auth user if exists
-  const { data: agent } = await supabase
+  const { data: agent } = await auth.supabase
     .from('agents')
     .select('user_id')
     .eq('id', params.id)
@@ -94,12 +106,12 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
   if (agent?.user_id) {
     // Clean up user_profiles first to avoid FK constraint
-    await supabase.from('user_profiles').delete().eq('id', agent.user_id)
-    await supabase.auth.admin.deleteUser(agent.user_id)
+    await auth.supabase.from('user_profiles').delete().eq('id', agent.user_id)
+    await auth.supabase.auth.admin.deleteUser(agent.user_id)
   }
 
   // Delete agent record
-  const { error } = await supabase
+  const { error } = await auth.supabase
     .from('agents')
     .delete()
     .eq('id', params.id)
