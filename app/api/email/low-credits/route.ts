@@ -5,12 +5,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
-const FROM = 'WALLiam <notifications@condoleads.ca>'
 
 function createServiceClient() {
   return createClient(
@@ -102,7 +100,7 @@ export async function POST(req: NextRequest) {
     const html = buildLowCreditEmail({ userName, creditLabel, creditEmoji, remaining, agent, brandName })
     const subject = `⚠️ You have 1 ${creditLabel} remaining — ${brandName}`
 
-    await resend.emails.send({ from: FROM, to: userEmail, subject, html })
+    await sendTenantEmail({ tenantId, to: userEmail, subject, html })
       .catch(err => console.error('[low-credits] email error:', err))
 
     // Mark as sent — update only the specific credit type key
