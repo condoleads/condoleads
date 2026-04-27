@@ -6,9 +6,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
@@ -23,6 +22,7 @@ function createServiceClient() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const tenantId = req.headers.get('x-tenant-id') || ''
     const {
       // Contact info — from inline form in PlanDocument
       name,
@@ -164,8 +164,8 @@ export async function POST(req: NextRequest) {
 
     // Step 5: Send rich plan email → USER
     try {
-      await resend.emails.send({
-        from: 'WALLiam <notifications@condoleads.ca>',
+      await sendTenantEmail({
+        tenantId,
         to: email,
         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
         html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent }),
@@ -180,8 +180,8 @@ export async function POST(req: NextRequest) {
       const toList = [agentNotifyEmail]
 
       try {
-        await resend.emails.send({
-          from: 'WALLiam <notifications@condoleads.ca>',
+        await sendTenantEmail({
+          tenantId,
           to: toList,
           cc: managerEmail ? [managerEmail] : undefined,
           bcc: [ADMIN_EMAIL],
@@ -194,8 +194,8 @@ export async function POST(req: NextRequest) {
     } else {
       // No agent — send directly to admin only
       try {
-        await resend.emails.send({
-          from: 'WALLiam <notifications@condoleads.ca>',
+        await sendTenantEmail({
+          tenantId,
           to: ADMIN_EMAIL,
           subject: `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead (Unassigned) — ${name}`,
           html: buildAgentLeadEmail({ name, email, phone, intent, buyerProfile, sellerProfile, listings, analytics }),
