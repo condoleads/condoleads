@@ -13,6 +13,7 @@ interface Tenant {
   id: string
   name: string
   brand_name: string | null
+  assistant_name: string | null
   domain: string
   admin_email: string
   primary_color: string | null
@@ -160,9 +161,10 @@ export default function SettingsClient({
       )}
 
       {tab === 'general' && (
-        <Section title="General" onSave={() => saveSection(['name', 'brand_name', 'domain', 'admin_email', 'homepage_layout'])} saving={saving}>
+        <Section title="General" onSave={() => saveSection(['name', 'brand_name', 'assistant_name', 'domain', 'admin_email', 'homepage_layout'])} saving={saving}>
           <Field label="Tenant Name" value={tenant.name} onChange={v => update('name', v)} />
           <Field label="Brand Name" value={tenant.brand_name || ''} onChange={v => update('brand_name', v)} />
+          <Field label="Assistant Name (AI persona)" value={tenant.assistant_name || ''} onChange={v => update('assistant_name', v)} placeholder="e.g. Charlie, Johnny, Sage" />
           <Field label="Domain" value={tenant.domain} onChange={v => update('domain', v)} />
           <Field label="Admin Email" type="email" value={tenant.admin_email} onChange={v => update('admin_email', v)} />
           <SelectField

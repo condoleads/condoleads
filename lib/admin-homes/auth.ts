@@ -19,11 +19,16 @@ const ALL_POSITIONS: AdminHomesPosition[] = [
 ]
 
 function normalizePosition(raw: string | null | undefined, isAdminCapability: boolean): AdminHomesPosition {
-  if (raw && (ALL_POSITIONS as string[]).includes(raw)) {
-    return raw as AdminHomesPosition
-  }
+  // Phase 3.3 W1 fix: is_admin = true must win.
+  // Previously a raw role string of 'agent' or 'managed' would short-circuit
+  // the admin capability check and lock real admins out of admin-only views
+  // (e.g., King Shah of WALLiam: role='agent', is_admin=true).
+  const validRaw = raw && (ALL_POSITIONS as string[]).includes(raw) ? (raw as AdminHomesPosition) : null
+  if (validRaw && validRaw !== 'agent' && validRaw !== 'managed') return validRaw
+  if (isAdminCapability) return 'tenant_admin'
+  if (validRaw) return validRaw
   if (raw === 'admin') return 'tenant_admin'
-  return isAdminCapability ? 'tenant_admin' : 'agent'
+  return 'agent'
 }
 
 export interface AdminHomesUser {

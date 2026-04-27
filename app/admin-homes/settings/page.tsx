@@ -3,7 +3,7 @@
 
 import { redirect } from 'next/navigation'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
-import { createServerClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@/lib/supabase/server'
 import SettingsClient from './SettingsClient'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +26,9 @@ export default async function SettingsPage() {
     )
   }
 
-  const supabase = await createServerClient()
+  // Phase 3.3 W1 fix: service-role read — page-level gate already enforced above.
+  // anon-key createServerClient() returned 0 rows here despite RLS=false because of missing grants.
+  const supabase = createServiceClient()
   const { data: tenant } = await supabase
     .from('tenants')
     .select('*')
