@@ -146,6 +146,8 @@ const INITIAL_STATE: CharlieState = {
 
 export function useCharlie() {
   const tenantId = useTenantId()
+  const tenantIdRef = useRef<string | null>(null)
+  useEffect(() => { tenantIdRef.current = tenantId }, [tenantId])
   const [state, setStateRaw] = useState<CharlieState>(INITIAL_STATE)
   const setState = (updater: CharlieState | ((s: CharlieState) => CharlieState)) => {
     setStateRaw(prev => {
@@ -341,10 +343,11 @@ export function useCharlie() {
     }))
 
     try {
-      if (!tenantId) { setState(s => ({ ...s, isStreaming: false })); return }
+      const currentTenantId = tenantIdRef.current
+      if (!currentTenantId) { setState(s => ({ ...s, isStreaming: false })); return }
       const res = await fetch('/api/charlie', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': currentTenantId },
         body: JSON.stringify({
           messages: messagesRef.current,
           sessionId: walliamSessionIdRef.current,

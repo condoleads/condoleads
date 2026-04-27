@@ -4,6 +4,7 @@ import "./globals.css";
 import ConditionalLayout from "@/components/ConditionalLayout"
 import TenantHeader from "@/components/TenantHeader";
 import { AuthProvider } from "@/components/auth/AuthContext";
+import { getWalliamTenantId } from "@/lib/utils/is-walliam";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -26,17 +27,19 @@ export const viewport = {
   maximumScale: 5,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const tenantId = await getWalliamTenantId();
+
   return (
     <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
       </head>
-      <body className={inter.className}>
+      <body className={inter.className} data-tenant-id={tenantId || ""}>
         <AuthProvider>
           <TenantHeader />
           <ConditionalLayout>
