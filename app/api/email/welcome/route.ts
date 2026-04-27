@@ -4,12 +4,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
-const FROM = 'WALLiam <notifications@condoleads.ca>'
 
 function createServiceClient() {
   return createClient(
@@ -103,15 +101,15 @@ export async function POST(req: NextRequest) {
     const userHtml = buildWelcomeEmail({ userName, email, agent, chatCredits, planCredits, estimateCredits, brandName, assistantName })
     const subject = `Welcome to ${brandName} — your AI real estate assistant is ready`
 
-    await resend.emails.send({ from: FROM, to: email, subject, html: userHtml })
+    await sendTenantEmail({ tenantId, to: email, subject, html: userHtml })
       .catch(err => console.error('[welcome] user email error:', err))
 
     // Notify agent of new registration
     if (agent?.email) {
       const agentNotifyEmail = agent.notification_email || agent.email
       const agentHtml = buildAgentRegistrationEmail({ userName, email, brandName })
-      await resend.emails.send({
-        from: FROM,
+      await sendTenantEmail({
+        tenantId,
         to: agentNotifyEmail,
         cc: managerEmail ? [managerEmail] : undefined,
         bcc: [ADMIN_EMAIL],
@@ -119,8 +117,8 @@ export async function POST(req: NextRequest) {
         html: agentHtml,
       }).catch(err => console.error('[welcome] agent email error:', err))
     } else {
-      await resend.emails.send({
-        from: FROM,
+      await sendTenantEmail({
+        tenantId,
         to: ADMIN_EMAIL,
         subject: `New registration — ${userName} on ${brandName}`,
         html: buildAgentRegistrationEmail({ userName, email, brandName }),
