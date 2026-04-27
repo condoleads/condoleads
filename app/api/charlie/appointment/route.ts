@@ -5,9 +5,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
@@ -145,8 +144,8 @@ export async function POST(req: NextRequest) {
 
     // Step 4: Confirmation email → user
     try {
-      await resend.emails.send({
-        from: 'WALLiam <notifications@condoleads.ca>',
+      await sendTenantEmail({
+        tenantId: tenantId || '',
         to: email,
         subject: `Your ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${formattedDate} at ${appointment_time}`,
         html: buildUserConfirmationEmail({
@@ -163,8 +162,8 @@ export async function POST(req: NextRequest) {
     const notifyTo = agentNotifyEmail || ADMIN_EMAIL
 
     try {
-      await resend.emails.send({
-        from: 'WALLiam <notifications@condoleads.ca>',
+      await sendTenantEmail({
+        tenantId: tenantId || '',
         to: notifyTo,
         cc: managerEmail ? [managerEmail] : undefined,
         bcc: agentNotifyEmail ? [ADMIN_EMAIL] : undefined,
