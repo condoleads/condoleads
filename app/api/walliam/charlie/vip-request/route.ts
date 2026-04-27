@@ -4,11 +4,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 
 function createServiceClient() {
@@ -155,8 +154,8 @@ export async function POST(request: NextRequest) {
     // Email agent
     if (agentEmail) {
       try {
-        await resend.emails.send({
-          from: 'WALLiam <notifications@condoleads.ca>',
+        await sendTenantEmail({
+          tenantId: tenantId || '',
           to: agentEmail,
           cc: managerEmail ? [managerEmail] : undefined,
           bcc: [ADMIN_EMAIL],
@@ -225,8 +224,8 @@ export async function POST(request: NextRequest) {
 
       if (userEmail) {
         try {
-          await resend.emails.send({
-            from: 'WALLiam <notifications@condoleads.ca>',
+          await sendTenantEmail({
+            tenantId: tenantId || '',
             to: userEmail,
             subject: '✨ Your WALLiam Plan Access is Approved',
             html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
