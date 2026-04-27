@@ -6,12 +6,10 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
-const FROM = 'WALLiam <notifications@condoleads.ca>'
 
 
 // Track user activity in user_activities table
@@ -123,16 +121,32 @@ export async function POST(req: NextRequest) {
     // Send to agent (or admin if no agent)
     if (agent?.email) {
       const agentNotifyEmail = agent.notification_email || agent.email
-      await resend.emails.send({
-        from: FROM,
+      try {
+      await sendTenantEmail({
+        tenantId: tenant_id,
         to: agentNotifyEmail,
         cc: managerEmail ? [managerEmail] : undefined,
         bcc: [ADMIN_EMAIL],
         subject,
         html,
       })
+    } catch (e) {
+      if (e instanceof TenantEmailNotConfigured) {
+        console.warn('[walliam/contact] tenant email not configured, lead captured but no email sent:', e.message)
+      } else if (e instanceof TenantEmailFailed) {
+        console.error('[walliam/contact] resend send failed:', e.message)
+      } else { throw e }
+    }
     } else {
-      await resend.emails.send({ from: FROM, to: ADMIN_EMAIL, subject, html })
+      try {
+      await sendTenantEmail({ tenantId: tenant_id, to: ADMIN_EMAIL, subject, html })
+    } catch (e) {
+      if (e instanceof TenantEmailNotConfigured) {
+        console.warn('[walliam/contact] tenant email not configured, lead captured but no email sent:', e.message)
+      } else if (e instanceof TenantEmailFailed) {
+        console.error('[walliam/contact] resend send failed:', e.message)
+      } else { throw e }
+    }
     }
 
     // Track activity
