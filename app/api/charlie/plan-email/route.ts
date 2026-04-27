@@ -7,12 +7,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
-const FROM = 'WALLiam <notifications@condoleads.ca>'
 
 
 async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
@@ -129,12 +127,12 @@ export async function POST(req: NextRequest) {
     const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [] })
     const subject = `\u2756 WALLiam ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
-    await resend.emails.send({ from: FROM, to: userEmail, subject, html }).then(r => console.log("[plan-email] user send result:", JSON.stringify(r))).catch(e => console.error("[plan-email] user send error:", e))
+    await sendTenantEmail({ tenantId: tenantId || '', to: userEmail, subject, html }).then(r => console.log("[plan-email] user send result:", JSON.stringify(r))).catch(e => console.error("[plan-email] user send error:", e))
 
     if (agent?.email) {
       const agentNotifyEmail = agent.notification_email || agent.email
-      await resend.emails.send({
-        from: FROM,
+      await sendTenantEmail({
+        tenantId: tenantId || '',
         to: agentNotifyEmail,
         cc: managerEmail ? [managerEmail] : undefined,
         bcc: [ADMIN_EMAIL],
@@ -142,7 +140,7 @@ export async function POST(req: NextRequest) {
         html,
       })
     } else {
-      await resend.emails.send({ from: FROM, to: ADMIN_EMAIL, subject, html })
+      await sendTenantEmail({ tenantId: tenantId || '', to: ADMIN_EMAIL, subject, html })
     }
 
     return NextResponse.json({ success: true })
