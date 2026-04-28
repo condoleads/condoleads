@@ -12,10 +12,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM = 'WALLiam <notifications@condoleads.ca>'
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 
 
@@ -191,8 +189,8 @@ export async function POST(request: NextRequest) {
     if (managerEmail) ccList.push(managerEmail)
 
     try {
-      await resend.emails.send({
-        from: FROM,
+      await sendTenantEmail({
+        tenantId: session.tenant_id || '',
         to: agentEmail,
         cc: ccList.length > 0 ? ccList : undefined,
         subject: `🔔 WALLiam Estimator VIP Request — ${phone}`,
@@ -204,8 +202,8 @@ export async function POST(request: NextRequest) {
 
     // BCC admin
     try {
-      await resend.emails.send({
-        from: FROM,
+      await sendTenantEmail({
+        tenantId: session.tenant_id || '',
         to: ADMIN_EMAIL,
         subject: `🔔 WALLiam Estimator VIP [${agent.full_name}] — ${phone}`,
         html: emailHtml,
@@ -284,8 +282,8 @@ export async function POST(request: NextRequest) {
 
       if (userEmail) {
         try {
-          await resend.emails.send({
-            from: FROM,
+          await sendTenantEmail({
+            tenantId: session.tenant_id || '',
             to: userEmail,
             subject: '✦ WALLiam Estimator Access Approved',
             html: buildUserApprovalEmailHtml(userName, agent.full_name, autoApproveMessages),
