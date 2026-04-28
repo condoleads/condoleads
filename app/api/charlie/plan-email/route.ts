@@ -38,9 +38,23 @@ export async function POST(req: NextRequest) {
   try {
     const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
 
-    if (!userId || !planType) {
-      return NextResponse.json({ error: 'userId and planType required' }, { status: 400 })
+    if (!sessionId || !userId || !planType) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
+
+    // W-RECOVERY A1.5 auth gate — verify session belongs to userId before any email fires
+    const _gateSupabase = createServiceClient()
+    const { data: validSession } = await _gateSupabase
+      .from('chat_sessions')
+      .select('id, tenant_id')
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .eq('source', 'walliam')
+      .maybeSingle()
+    if (!validSession) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+    // END W-RECOVERY A1.5 auth gate
 
     const supabase = createServiceClient()
 
