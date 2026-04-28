@@ -44,11 +44,29 @@ export async function POST(req: NextRequest) {
       area_id,
     } = body
 
+    // W-RECOVERY A1.5 auth gate — block forged lead submissions
+    if (!sessionId || !userId) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
     if (!name || !email || !intent) {
       return NextResponse.json({ error: 'name, email and intent are required' }, { status: 400 })
     }
 
     const supabase = createServiceClient()
+
+    // W-RECOVERY A1.5 auth gate — verify session belongs to userId
+    const { data: validSession } = await supabase
+      .from('chat_sessions')
+      .select('id')
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .eq('source', 'walliam')
+      .maybeSingle()
+    if (!validSession) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+    // END W-RECOVERY A1.5 auth gate
 
     // Step 1: Resolve agent
     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
