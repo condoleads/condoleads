@@ -1,26 +1,40 @@
 ﻿// app/api/admin-homes/tenants/verify-anthropic-key/route.ts
-// POST { key: string } -> { valid: boolean, error?: string }
-// Makes a minimal Claude call to verify the key works
-// Platform-admin only — no DB access, just the Anthropic API call.
-// Phase 3.4+: auth + role checks via shared api-auth helper.
+// W5.5b: verify a tenant's Anthropic API key + detect credit status.
+// POST { key: string, tenantId?: string }
+//   -> { valid, error?, creditStatus?, lastCheckedAt }
+//
+// creditStatus:
+//   'ok'       - key works, credits available
+//   'depleted' - request rejected because balance too low
+//
+// Auth:
+//   - If tenantId provided: requireTenantAccess (tenant_admin of that tenant OR platform admin)
+//   - If no tenantId: requirePlatformAdmin (back-compat for old callers)
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { requirePlatformAdmin } from '@/lib/admin-homes/api-auth'
+import { requirePlatformAdmin, requireTenantAccess } from '@/lib/admin-homes/api-auth'
 
 export async function POST(request: NextRequest) {
-  const auth = await requirePlatformAdmin()
-  if ('error' in auth) return auth.error
-
   const body = await request.json().catch(() => ({}))
   const key = typeof body.key === 'string' ? body.key.trim() : ''
+  const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : ''
 
-  if (!key) {
-    return NextResponse.json({ valid: false, error: 'No key provided' }, { status: 400 })
+  if (tenantId) {
+    const auth = await requireTenantAccess(tenantId, { allowedRoles: ['admin'] })
+    if ('error' in auth) return auth.error
+  } else {
+    const auth = await requirePlatformAdmin()
+    if ('error' in auth) return auth.error
   }
 
+  const lastCheckedAt = new Date().toISOString()
+
+  if (!key) {
+    return NextResponse.json({ valid: false, error: 'No key provided', lastCheckedAt }, { status: 400 })
+  }
   if (!key.startsWith('sk-ant-')) {
-    return NextResponse.json({ valid: false, error: 'Invalid format (expected sk-ant-...)' })
+    return NextResponse.json({ valid: false, error: 'Invalid format (expected sk-ant-...)', lastCheckedAt })
   }
 
   try {
@@ -30,17 +44,29 @@ export async function POST(request: NextRequest) {
       max_tokens: 1,
       messages: [{ role: 'user', content: 'hi' }],
     })
-    return NextResponse.json({ valid: true })
+    return NextResponse.json({ valid: true, creditStatus: 'ok', lastCheckedAt })
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
-    let friendly = msg
-    if (msg.includes('401') || msg.toLowerCase().includes('authentication')) {
-      friendly = 'Invalid API key'
-    } else if (msg.includes('429') || msg.toLowerCase().includes('rate')) {
-      friendly = 'Rate limited - try again in a moment'
-    } else if (msg.toLowerCase().includes('network') || msg.toLowerCase().includes('fetch')) {
-      friendly = 'Network error - check connection'
+    const lower = msg.toLowerCase()
+
+    if (lower.includes('credit balance') || lower.includes('insufficient credits')) {
+      return NextResponse.json({
+        valid: false,
+        creditStatus: 'depleted',
+        error: 'Credit balance too low - top up at console.anthropic.com',
+        lastCheckedAt,
+      })
     }
-    return NextResponse.json({ valid: false, error: friendly })
+    if (msg.includes('401') || lower.includes('authentication') || lower.includes('invalid x-api-key')) {
+      return NextResponse.json({ valid: false, error: 'Invalid API key', lastCheckedAt })
+    }
+    if (msg.includes('429') || lower.includes('rate')) {
+      return NextResponse.json({ valid: false, error: 'Rate limited - try again in a moment', lastCheckedAt })
+    }
+    if (lower.includes('network') || lower.includes('fetch') || lower.includes('econnrefused')) {
+      return NextResponse.json({ valid: false, error: 'Network error - check connection', lastCheckedAt })
+    }
+
+    return NextResponse.json({ valid: false, error: msg, lastCheckedAt })
   }
 }

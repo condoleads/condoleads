@@ -5,9 +5,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Save, AlertTriangle, Power, RotateCcw, XCircle } from 'lucide-react'
+import { Loader2, Save, AlertTriangle, Power, RotateCcw, XCircle, Eye, EyeOff, RefreshCw, CheckCircle2 } from 'lucide-react'
 
-type Tab = 'general' | 'branding' | 'caps' | 'notifications' | 'lifecycle'
+type Tab = 'general' | 'branding' | 'caps' | 'integrations' | 'content' | 'notifications' | 'lifecycle'
 
 interface Tenant {
   id: string
@@ -51,6 +51,24 @@ interface Tenant {
   suspended_reason: string | null
   terminated_at: string | null
   termination_grace_until: string | null
+  // Integrations
+  anthropic_api_key: string | null
+  resend_api_key: string | null
+  email_from_domain: string | null
+  google_analytics_id: string | null
+  google_ads_id: string | null
+  google_conversion_label: string | null
+  facebook_pixel_id: string | null
+  // Site Content
+  about_content: string | null
+  privacy_content: string | null
+  terms_content: string | null
+  // VIP toggles
+  vip_auto_approve: boolean | null
+  plan_vip_auto_approve: boolean | null
+  estimator_ai_enabled: boolean | null
+  estimator_nonai_enabled: boolean | null
+  estimator_vip_auto_approve: boolean | null
   is_active: boolean
 }
 
@@ -58,6 +76,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'general', label: 'General' },
   { id: 'branding', label: 'Branding' },
   { id: 'caps', label: 'VIP & Credits' },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'content', label: 'Site Content' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'lifecycle', label: 'Lifecycle' },
 ]
@@ -75,6 +95,68 @@ export default function SettingsClient({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  // Integration health state
+  const [anthropicHealth, setAnthropicHealth] = useState<{ state: HealthState; message: string; checkedAt: string | null }>({
+    state: tenant.anthropic_api_key ? 'unknown' : 'unconfigured',
+    message: tenant.anthropic_api_key ? 'Not yet checked — click Check now' : 'No key configured',
+    checkedAt: null,
+  })
+  const [resendHealth, setResendHealth] = useState<{ state: HealthState; message: string; checkedAt: string | null }>({
+    state: tenant.resend_api_key ? 'unknown' : 'unconfigured',
+    message: tenant.resend_api_key ? 'Not yet checked — click Send test' : 'No key configured',
+    checkedAt: null,
+  })
+
+  async function checkAnthropic() {
+    setAnthropicHealth({ state: 'checking', message: 'Checking...', checkedAt: null })
+    try {
+      const res = await fetch('/api/admin-homes/tenants/verify-anthropic-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: tenant.anthropic_api_key, tenantId: tenant.id }),
+      })
+      const j = await res.json().catch(() => ({}))
+      const now = new Date().toISOString()
+      if (j.valid) {
+        setAnthropicHealth({ state: 'healthy', message: j.creditStatus === 'low' ? 'Key valid · credits low' : 'Key valid · credits OK', checkedAt: now })
+      } else {
+        const msg = (j.error || '').toLowerCase()
+        if (msg.includes('credit')) setAnthropicHealth({ state: 'broken', message: 'Credits depleted — top up at console.anthropic.com', checkedAt: now })
+        else if (msg.includes('invalid') || msg.includes('401')) setAnthropicHealth({ state: 'broken', message: 'Invalid API key', checkedAt: now })
+        else setAnthropicHealth({ state: 'broken', message: j.error || 'Check failed', checkedAt: now })
+      }
+    } catch {
+      setAnthropicHealth({ state: 'broken', message: 'Network error', checkedAt: new Date().toISOString() })
+    }
+  }
+
+  async function checkResend() {
+    setResendHealth({ state: 'checking', message: 'Sending test email...', checkedAt: null })
+    try {
+      const res = await fetch(`/api/admin-homes/tenants/${tenant.id}/verify-resend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resend_api_key: tenant.resend_api_key,
+          email_from_domain: tenant.email_from_domain,
+          send_from: tenant.send_from,
+        }),
+      })
+      const j = await res.json().catch(() => ({}))
+      const now = new Date().toISOString()
+      if (j.valid) {
+        setResendHealth({ state: 'healthy', message: `Test email sent · ${j.messageId || 'OK'}`, checkedAt: now })
+      } else {
+        const msg = (j.error || '').toLowerCase()
+        if (msg.includes('domain')) setResendHealth({ state: 'broken', message: 'Domain not verified in Resend', checkedAt: now })
+        else if (msg.includes('401') || msg.includes('invalid')) setResendHealth({ state: 'broken', message: 'Invalid Resend API key', checkedAt: now })
+        else setResendHealth({ state: 'broken', message: j.error || 'Send failed', checkedAt: now })
+      }
+    } catch {
+      setResendHealth({ state: 'broken', message: 'Network error', checkedAt: new Date().toISOString() })
+    }
+  }
 
   function update<K extends keyof Tenant>(key: K, value: Tenant[K]) {
     setTenant(t => ({ ...t, [key]: value }))
@@ -196,18 +278,31 @@ export default function SettingsClient({
 
       {tab === 'caps' && (
         <Section title="VIP & Credits" onSave={() => saveSection([
-          'ai_free_messages','ai_auto_approve_limit','ai_manual_approve_limit','ai_hard_cap',
-          'plan_mode','plan_free_attempts','plan_auto_approve_limit','plan_manual_approve_limit','plan_hard_cap',
+          'ai_free_messages','ai_auto_approve_limit','ai_manual_approve_limit','ai_hard_cap','vip_auto_approve',
+          'plan_mode','plan_free_attempts','plan_auto_approve_limit','plan_manual_approve_limit','plan_hard_cap','plan_vip_auto_approve',
           'seller_plan_free_attempts','seller_plan_auto_approve_limit','seller_plan_manual_approve_limit','seller_plan_hard_cap',
+          'estimator_nonai_enabled','estimator_ai_enabled','estimator_vip_auto_approve',
           'estimator_free_attempts','estimator_auto_approve_attempts','estimator_manual_approve_attempts','estimator_hard_cap',
         ])} saving={saving}>
           <SubHeading>AI Chat (Charlie)</SubHeading>
+          <BooleanField
+            label="Auto-approve VIP requests"
+            value={!!tenant.vip_auto_approve}
+            onChange={v => update('vip_auto_approve', v)}
+            help="When ON, VIP credit requests for chat are granted automatically. When OFF, agent must approve via email."
+          />
           <NumberField label="Free Messages" value={tenant.ai_free_messages} onChange={v => update('ai_free_messages', v)} />
           <NumberField label="Auto-Approve Limit" value={tenant.ai_auto_approve_limit} onChange={v => update('ai_auto_approve_limit', v)} />
           <NumberField label="Manual-Approve Limit" value={tenant.ai_manual_approve_limit} onChange={v => update('ai_manual_approve_limit', v)} />
           <NumberField label="Hard Cap" value={tenant.ai_hard_cap} onChange={v => update('ai_hard_cap', v)} />
 
           <SubHeading>Buyer Plans</SubHeading>
+          <BooleanField
+            label="Auto-approve plan requests"
+            value={!!tenant.plan_vip_auto_approve}
+            onChange={v => update('plan_vip_auto_approve', v)}
+            help="When ON, buyer/seller plan requests are granted automatically. When OFF, agent approval required via email."
+          />
           <SelectField label="Plan Mode" value={tenant.plan_mode || 'shared'} options={[{ value: 'shared', label: 'Shared' }, { value: 'independent', label: 'Independent' }]} onChange={v => update('plan_mode', v)} />
           <NumberField label="Free Attempts" value={tenant.plan_free_attempts} onChange={v => update('plan_free_attempts', v)} />
           <NumberField label="Auto-Approve Limit" value={tenant.plan_auto_approve_limit} onChange={v => update('plan_auto_approve_limit', v)} />
@@ -221,10 +316,136 @@ export default function SettingsClient({
           <NumberField label="Hard Cap" value={tenant.seller_plan_hard_cap} onChange={v => update('seller_plan_hard_cap', v)} />
 
           <SubHeading>Estimator</SubHeading>
+          <BooleanField
+            label="Enable Estimator (statistical)"
+            value={!!tenant.estimator_nonai_enabled}
+            onChange={v => update('estimator_nonai_enabled', v)}
+            help="Show comparable sales data and price estimate. Master switch for the estimator surface."
+          />
+          <BooleanField
+            label="Enable AI Insights"
+            value={!!tenant.estimator_ai_enabled}
+            onChange={v => update('estimator_ai_enabled', v)}
+            help="Add AI analysis on top of the statistical estimate (concession %, negotiation position, comparable units cited). Requires Estimator to be enabled."
+          />
+          <BooleanField
+            label="Auto-approve estimator requests"
+            value={!!tenant.estimator_vip_auto_approve}
+            onChange={v => update('estimator_vip_auto_approve', v)}
+            help="When ON, estimator credit requests are granted automatically. When OFF, agent approval required."
+          />
           <NumberField label="Free Attempts" value={tenant.estimator_free_attempts} onChange={v => update('estimator_free_attempts', v)} />
           <NumberField label="Auto-Approve Attempts" value={tenant.estimator_auto_approve_attempts} onChange={v => update('estimator_auto_approve_attempts', v)} />
           <NumberField label="Manual-Approve Attempts" value={tenant.estimator_manual_approve_attempts} onChange={v => update('estimator_manual_approve_attempts', v)} />
           <NumberField label="Hard Cap" value={tenant.estimator_hard_cap} onChange={v => update('estimator_hard_cap', v)} />
+        </Section>
+      )}
+
+      {tab === 'integrations' && (
+        <Section title="Integrations" onSave={() => saveSection([
+          'anthropic_api_key', 'resend_api_key', 'email_from_domain',
+          'google_analytics_id', 'google_ads_id', 'google_conversion_label', 'facebook_pixel_id',
+        ])} saving={saving}>
+          <div className="md:col-span-2 space-y-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-blue-900">Anthropic API</h3>
+                  <p className="text-xs text-blue-700">Powers Charlie AI. Tenant pays Anthropic directly.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={checkAnthropic}
+                  disabled={!tenant.anthropic_api_key || anthropicHealth.state === 'checking'}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-medium rounded hover:bg-blue-100 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${anthropicHealth.state === 'checking' ? 'animate-spin' : ''}`} />
+                  Check now
+                </button>
+              </div>
+              <StatusBadge state={anthropicHealth.state} message={anthropicHealth.message} lastCheckedAt={anthropicHealth.checkedAt} />
+              <MaskedField
+                label="API Key"
+                value={tenant.anthropic_api_key || ''}
+                onChange={v => update('anthropic_api_key', v)}
+                placeholder="sk-ant-..."
+                help="Console: https://console.anthropic.com"
+              />
+            </div>
+
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-orange-900">Resend (Email Delivery)</h3>
+                  <p className="text-xs text-orange-700">All tenant emails. Domain must be verified in Resend.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={checkResend}
+                  disabled={!tenant.resend_api_key || resendHealth.state === 'checking'}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-white border border-orange-300 text-orange-700 text-xs font-medium rounded hover:bg-orange-100 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${resendHealth.state === 'checking' ? 'animate-spin' : ''}`} />
+                  Send test
+                </button>
+              </div>
+              <StatusBadge state={resendHealth.state} message={resendHealth.message} lastCheckedAt={resendHealth.checkedAt} />
+              <MaskedField
+                label="API Key"
+                value={tenant.resend_api_key || ''}
+                onChange={v => update('resend_api_key', v)}
+                placeholder="re_..."
+                help="Dashboard: https://resend.com/api-keys"
+              />
+              <Field
+                label="From Domain"
+                value={tenant.email_from_domain || ''}
+                onChange={v => update('email_from_domain', v)}
+                placeholder="walliam.ca"
+              />
+              <p className="text-xs text-orange-700 -mt-2">From-domain must be verified in your Resend account. The Send-From address (Notifications tab) must use this domain.</p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+              <h3 className="font-semibold text-slate-900 mb-1">Marketing & Analytics</h3>
+              <p className="text-xs text-slate-700 mb-3">Tenant-level tracking IDs. No live health check — verify in each provider's dashboard.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Google Analytics ID" value={tenant.google_analytics_id || ''} onChange={v => update('google_analytics_id', v)} placeholder="G-XXXXXXX" />
+                <Field label="Google Ads ID" value={tenant.google_ads_id || ''} onChange={v => update('google_ads_id', v)} placeholder="AW-XXXXXXX" />
+                <Field label="Google Conversion Label" value={tenant.google_conversion_label || ''} onChange={v => update('google_conversion_label', v)} placeholder="AbCdEfGhIjKlMnOp" />
+                <Field label="Facebook Pixel ID" value={tenant.facebook_pixel_id || ''} onChange={v => update('facebook_pixel_id', v)} placeholder="XXXXXXXXXXXXXXXX" />
+              </div>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      {tab === 'content' && (
+        <Section title="Site Content" onSave={() => saveSection(['about_content', 'privacy_content', 'terms_content'])} saving={saving}>
+          <div className="md:col-span-2">
+            <p className="text-xs text-gray-500 mb-3">Custom content for About, Privacy, and Terms pages. HTML or Markdown supported. Leave blank to use the platform default template.</p>
+          </div>
+          <TextareaField
+            label="About Page"
+            value={tenant.about_content || ''}
+            onChange={v => update('about_content', v)}
+            placeholder="Tell visitors about your brokerage, your team, your specialty areas..."
+            rows={8}
+          />
+          <TextareaField
+            label="Privacy Policy"
+            value={tenant.privacy_content || ''}
+            onChange={v => update('privacy_content', v)}
+            placeholder="Your tenant's privacy policy. Required for CASL/PIPEDA compliance."
+            rows={8}
+          />
+          <TextareaField
+            label="Terms of Use"
+            value={tenant.terms_content || ''}
+            onChange={v => update('terms_content', v)}
+            placeholder="Terms governing visitor use of your site."
+            rows={8}
+          />
         </Section>
       )}
 
@@ -309,6 +530,94 @@ function ColorField({ label, value, onChange }: { label: string; value: string; 
         <input type="color" value={value} onChange={e => onChange(e.target.value)} className="w-12 h-10 border border-gray-300 rounded cursor-pointer" />
         <input type="text" value={value} onChange={e => onChange(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm" />
       </div>
+    </div>
+  )
+}
+
+function MaskedField({ label, value, onChange, placeholder, help }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; help?: string }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="md:col-span-2">
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <div className="flex gap-2">
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          placeholder={placeholder}
+          onChange={e => onChange(e.target.value)}
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        />
+        <button
+          type="button"
+          onClick={() => setShow(v => !v)}
+          className="px-3 py-2 border border-gray-300 rounded-md text-gray-500 hover:bg-gray-50"
+          title={show ? 'Hide' : 'Show'}
+        >
+          {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </button>
+      </div>
+      {help && <p className="text-xs text-gray-500 mt-1">{help}</p>}
+    </div>
+  )
+}
+
+function TextareaField({ label, value, onChange, placeholder, rows = 6 }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) {
+  return (
+    <div className="md:col-span-2">
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        rows={rows}
+        onChange={e => onChange(e.target.value)}
+        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      />
+    </div>
+  )
+}
+
+function BooleanField({ label, value, onChange, help }: { label: string; value: boolean; onChange: (v: boolean) => void; help?: string }) {
+  return (
+    <div className="md:col-span-2">
+      <label className="flex items-start gap-3 cursor-pointer p-3 bg-gray-50 rounded-md border border-gray-200 hover:bg-gray-100 transition">
+        <input
+          type="checkbox"
+          checked={value}
+          onChange={e => onChange(e.target.checked)}
+          className="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+        />
+        <div className="flex-1">
+          <span className="text-sm font-medium text-gray-900">{label}</span>
+          {help && <p className="text-xs text-gray-500 mt-0.5">{help}</p>}
+        </div>
+      </label>
+    </div>
+  )
+}
+
+type HealthState = 'healthy' | 'warning' | 'broken' | 'unknown' | 'unconfigured' | 'checking'
+function StatusBadge({ state, message, lastCheckedAt }: { state: HealthState; message: string; lastCheckedAt?: string | null }) {
+  const styles: Record<HealthState, { dot: string; text: string; bg: string; border: string }> = {
+    healthy:      { dot: 'bg-green-500',  text: 'text-green-800',  bg: 'bg-green-50',  border: 'border-green-200' },
+    warning:      { dot: 'bg-amber-500',  text: 'text-amber-800',  bg: 'bg-amber-50',  border: 'border-amber-200' },
+    broken:       { dot: 'bg-red-500',    text: 'text-red-800',    bg: 'bg-red-50',    border: 'border-red-200' },
+    unknown:      { dot: 'bg-gray-400',   text: 'text-gray-700',   bg: 'bg-gray-50',   border: 'border-gray-200' },
+    unconfigured: { dot: 'bg-gray-300',   text: 'text-gray-600',   bg: 'bg-gray-50',   border: 'border-gray-200' },
+    checking:     { dot: 'bg-blue-400 animate-pulse', text: 'text-blue-800', bg: 'bg-blue-50', border: 'border-blue-200' },
+  }
+  const s = styles[state]
+  let ago = ''
+  if (lastCheckedAt) {
+    const diff = Math.max(0, Math.floor((Date.now() - new Date(lastCheckedAt).getTime()) / 1000))
+    if (diff < 60) ago = `${diff}s ago`
+    else if (diff < 3600) ago = `${Math.floor(diff / 60)}m ago`
+    else ago = `${Math.floor(diff / 3600)}h ago`
+  }
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-md border ${s.bg} ${s.border}`}>
+      <span className={`w-2.5 h-2.5 rounded-full ${s.dot}`}></span>
+      <span className={`text-sm font-medium ${s.text}`}>{message}</span>
+      {ago && <span className="text-xs text-gray-500 ml-auto">checked {ago}</span>}
     </div>
   )
 }

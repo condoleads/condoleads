@@ -21,7 +21,8 @@ const ALLOWED_FIELDS = new Set<string>([
   // Site Content
   'about_content', 'privacy_content', 'terms_content',
   // Integrations
-  'anthropic_api_key', 'google_analytics_id',
+  'anthropic_api_key', 'google_analytics_id', 'resend_api_key', 'email_from_domain',
+  'google_ads_id', 'google_conversion_label', 'facebook_pixel_id',
   // VIP & Credits — Charlie
   'ai_free_messages', 'vip_auto_approve',
   'ai_auto_approve_limit', 'ai_manual_approve_limit', 'ai_hard_cap',

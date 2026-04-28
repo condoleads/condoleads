@@ -321,6 +321,23 @@ export function useCharlie() {
     const userMessage = { role: 'user', content: userText }
     if (!isGreeting) lastUserMessageRef.current = userText
 
+    // W-RECOVERY A1.2 client gate — require registration before any /api/charlie call.
+    // Server enforces this too (returns 401 without auth), but client gate prevents the
+    // wasted round-trip and surfaces the register modal immediately.
+    if (!userIdRef.current && !isGreeting) {
+      setState(s => ({
+        ...s,
+        gateActive: true,
+        gateReason: 'register',
+        gatePlanType: null,
+        isStreaming: false,
+        // Echo the user's message into the conversation but do NOT add a streaming assistant placeholder
+        messages: [...s.messages, { id: Date.now().toString(), role: 'user' as const, content: userText }],
+      }))
+      return
+    }
+    // END W-RECOVERY A1.2 client gate
+
     if (!isGreeting) {
       const uiMsg: ChatMessage = {
         id: Date.now().toString(),

@@ -27,6 +27,29 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient()
 
+  // W-RECOVERY A1.1 auth gate — block bots and unauthenticated requests
+  if (!sessionId || !tenantId || !userId) {
+    return new Response(
+      JSON.stringify({ error: 'Authentication required', missing: { sessionId: !sessionId, tenantId: !tenantId, userId: !userId } }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  const { data: validSession } = await supabase
+    .from('chat_sessions')
+    .select('id')
+    .eq('id', sessionId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('source', 'walliam')
+    .maybeSingle()
+  if (!validSession) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid session' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  // END W-RECOVERY A1.1 auth gate
+
   // Load tenant API key and assistant name for this request
   let anthropicApiKey: string | null = null
   let assistantName: string = 'Charlie'
