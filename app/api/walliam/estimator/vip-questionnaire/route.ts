@@ -8,10 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM = 'WALLiam <notifications@condoleads.ca>'
 const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 
 
@@ -53,7 +51,7 @@ export async function POST(request: NextRequest) {
       .select(`
         *,
         agents (id, full_name, email, notification_email, parent_id),
-        chat_sessions (user_id, current_page_type, current_page_id)
+        chat_sessions (user_id, current_page_type, current_page_id, tenant_id)
       `)
       .eq('id', requestId)
       .single()
@@ -141,8 +139,8 @@ export async function POST(request: NextRequest) {
 
     if (agentEmail) {
       try {
-        await resend.emails.send({
-          from: FROM,
+        await sendTenantEmail({
+          tenantId: vipRequest.chat_sessions?.tenant_id || '',
           to: agentEmail,
           cc: ccList.length > 0 ? ccList : undefined,
           subject: `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`,
@@ -155,8 +153,8 @@ export async function POST(request: NextRequest) {
 
     // Admin BCC
     try {
-      await resend.emails.send({
-        from: FROM,
+      await sendTenantEmail({
+        tenantId: vipRequest.chat_sessions?.tenant_id || '',
         to: ADMIN_EMAIL,
         subject: `📋 WALLiam Estimator Questionnaire [${agent?.full_name}] — ${userName || vipRequest.phone}`,
         html: emailHtml,
@@ -184,6 +182,7 @@ export async function POST(request: NextRequest) {
           status: 'new',
           quality: 'hot',
           manager_id: managerId,
+          tenant_id: vipRequest.chat_sessions?.tenant_id || null,
         })
       if (leadError) console.error('[walliam/estimator/vip-questionnaire] lead error:', leadError)
     }
