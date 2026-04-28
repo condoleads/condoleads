@@ -4,9 +4,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 function createServiceClient() {
   return createClient(
@@ -157,8 +156,8 @@ export async function GET(request: NextRequest) {
       // Send approval email to user
       if (vipRequest.email) {
         try {
-          await resend.emails.send({
-            from: 'WALLiam <notifications@condoleads.ca>',
+          await sendTenantEmail({
+            tenantId: tenantId || '',
             to: vipRequest.email,
             subject: 'Your WALLiam Plan Access is Approved',
             html: buildUserApprovalEmailHtml(
