@@ -1,6 +1,6 @@
-// app/api/walliam/charlie/vip-request/route.ts
-// WALLiam VIP plan request — no questionnaire, user already registered
-// Adapted from app/api/chat/vip-request/route.ts — System 1 never touched
+﻿// app/api/walliam/charlie/vip-request/route.ts
+// WALLiam VIP plan request â€” no questionnaire, user already registered
+// Adapted from app/api/chat/vip-request/route.ts â€” System 1 never touched
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
@@ -23,8 +23,9 @@ export async function POST(request: NextRequest) {
     const { sessionId, planType } = await request.json()
     // planType: 'buyer' | 'seller'
 
+    // W-RECOVERY A1.5 auth gate (part 1) — block requests without sessionId
     if (!sessionId) {
-      return NextResponse.json({ error: 'Session ID required' }, { status: 400 })
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
     const supabase = createServiceClient()
@@ -44,8 +45,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (sessionError || !session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
+    // W-RECOVERY A1.5 auth gate (part 2) — verify session belongs to a registered user
+    if (!session.user_id) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+    // END W-RECOVERY A1.5 auth gate
 
     const agent = session.agents
 
@@ -74,7 +80,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Get user contact info from user_profiles — already registered, no form needed
+    // Get user contact info from user_profiles â€” already registered, no form needed
     let userName = 'WALLiam User'
     let userEmail = ''
     let userPhone = ''
@@ -111,7 +117,7 @@ export async function POST(request: NextRequest) {
     const isAutoApprove = tenantCfg.vip_auto_approve === true && (tenantCfg.ai_auto_approve_limit ?? 0) > 0
     const autoApproveMessages = tenantCfg.ai_auto_approve_limit ?? 0
 
-    // Create VIP request — no questionnaire fields required
+    // Create VIP request â€” no questionnaire fields required
     const { data: vipRequest, error: insertError } = await supabase
       .from('vip_requests')
       .insert({
@@ -125,7 +131,7 @@ export async function POST(request: NextRequest) {
         status: isAutoApprove ? 'approved' : 'pending',
         messages_granted: isAutoApprove ? autoApproveMessages : 0,
         responded_at: isAutoApprove ? new Date().toISOString() : null,
-        // WALLiam specific — no questionnaire fields (buyer_type, budget_range, timeline = null)
+        // WALLiam specific â€” no questionnaire fields (buyer_type, budget_range, timeline = null)
       })
       .select()
       .single()
@@ -159,7 +165,7 @@ export async function POST(request: NextRequest) {
           to: agentEmail,
           cc: managerEmail ? [managerEmail] : undefined,
           bcc: [ADMIN_EMAIL],
-          subject: `🔔 VIP Plan Request — ${userName} (${planType === 'seller' ? 'Seller' : 'Buyer'} Plan)`,
+          subject: `ðŸ”” VIP Plan Request â€” ${userName} (${planType === 'seller' ? 'Seller' : 'Buyer'} Plan)`,
           html: emailHtml,
         })
       } catch (err) {
@@ -167,7 +173,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Save lead — Phase 3.4: capture full hierarchy chain
+    // Save lead â€” Phase 3.4: capture full hierarchy chain
     if (userEmail) {
       let leadManagerId: string | null = null
       let leadAreaManagerId: string | null = null
@@ -216,7 +222,7 @@ export async function POST(request: NextRequest) {
           tenant_id: tenantId,
           granted_by_agent_id: agent?.id || null,
           granted_by_tier: 'auto',
-          note: 'Auto-approved — ' + autoApproveMessages + ' credits',
+          note: 'Auto-approved â€” ' + autoApproveMessages + ' credits',
           buyer_plan_limit: newLimit,
           granted_at: new Date().toISOString(),
         }, { onConflict: 'user_id,tenant_id' })
@@ -227,7 +233,7 @@ export async function POST(request: NextRequest) {
           await sendTenantEmail({
             tenantId: tenantId || '',
             to: userEmail,
-            subject: '✨ Your WALLiam Plan Access is Approved',
+            subject: 'âœ¨ Your WALLiam Plan Access is Approved',
             html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
           })
         } catch (err) {
@@ -248,7 +254,7 @@ export async function POST(request: NextRequest) {
       success: true,
       requestId: vipRequest.id,
       status: 'pending',
-      message: 'Request submitted — your agent will review shortly',
+      message: 'Request submitted â€” your agent will review shortly',
     })
 
   } catch (error) {
@@ -299,14 +305,14 @@ function buildAgentEmailHtml(data: {
   denyUrl: string
   agentName: string
 }): string {
-  const planLabel = data.planType === 'seller' ? '💰 Seller Plan' : '🏠 Buyer Plan'
+  const planLabel = data.planType === 'seller' ? 'ðŸ’° Seller Plan' : 'ðŸ  Buyer Plan'
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
-        <div style="font-size: 32px; margin-bottom: 8px;">✦</div>
+        <div style="font-size: 32px; margin-bottom: 8px;">âœ¦</div>
         <h1 style="color: white; margin: 0; font-size: 22px;">New VIP Plan Request</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 6px 0 0; font-size: 13px;">WALLiam · ${planLabel}</p>
+        <p style="color: rgba(255,255,255,0.5); margin: 6px 0 0; font-size: 13px;">WALLiam Â· ${planLabel}</p>
       </div>
 
       <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0;">
@@ -338,10 +344,10 @@ function buildAgentEmailHtml(data: {
           Approve to grant this user additional WALLiam plan credits.
         </p>
         <a href="${data.approveUrl}" style="display: inline-block; padding: 12px 28px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px; font-size: 14px;">
-          ✅ Approve
+          âœ… Approve
         </a>
         <a href="${data.denyUrl}" style="display: inline-block; padding: 12px 28px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
-          ❌ Deny
+          âŒ Deny
         </a>
         <p style="margin: 20px 0 0; font-size: 11px; color: #94a3b8;">
           Manage all requests at walliam.ca/admin-homes/leads
@@ -355,7 +361,7 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGr
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
-        <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+        <div style="font-size: 48px; margin-bottom: 12px;">âœ¦</div>
         <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
       </div>
@@ -372,7 +378,7 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGr
         </p>
         <div style="text-align: center;">
           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
-            ✦ Back to WALLiam
+            âœ¦ Back to WALLiam
           </a>
         </div>
       </div>
