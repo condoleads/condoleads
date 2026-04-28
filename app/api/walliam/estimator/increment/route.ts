@@ -1,4 +1,4 @@
-// app/api/walliam/estimator/increment/route.ts
+﻿// app/api/walliam/estimator/increment/route.ts
 // Increments estimator_count on chat_sessions after a successful estimate
 // System 1 (app/api/estimator/increment/route.ts) is NEVER touched
 
@@ -18,21 +18,25 @@ export async function POST(request: NextRequest) {
     const { sessionId } = await request.json()
 
     if (!sessionId) {
-      return NextResponse.json({ error: 'Session ID required' }, { status: 400 })
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
     const supabase = createServiceClient()
 
-    // Fetch current count first
+    // W-RECOVERY A1.5 auth gate — fetch session AND verify it belongs to a registered walliam user
     const { data: session, error: fetchError } = await supabase
       .from('chat_sessions')
-      .select('estimator_count')
+      .select('estimator_count, user_id, source')
       .eq('id', sessionId)
       .single()
 
     if (fetchError || !session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
+    if (!session.user_id || session.source !== 'walliam') {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+    // END W-RECOVERY A1.5 auth gate
 
     const newCount = (session.estimator_count || 0) + 1
 
