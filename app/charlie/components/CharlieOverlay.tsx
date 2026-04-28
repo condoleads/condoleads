@@ -247,7 +247,9 @@ export default function CharlieOverlay({
                 onSend={onSend}
                 onBuyClick={() => setFormMode('buyer')}
                 onSellClick={() => setFormMode('seller')}
-              />
+                  gateReason={state.gateReason}
+                  onOpenRegister={onOpenRegister}
+                />
             )}
           </div>
 

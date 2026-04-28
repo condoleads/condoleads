@@ -331,8 +331,6 @@ export function useCharlie() {
         gateReason: 'register',
         gatePlanType: null,
         isStreaming: false,
-        // Echo the user's message into the conversation but do NOT add a streaming assistant placeholder
-        messages: [...s.messages, { id: Date.now().toString(), role: 'user' as const, content: userText }],
       }))
       return
     }

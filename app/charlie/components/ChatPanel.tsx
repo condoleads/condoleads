@@ -11,7 +11,7 @@ interface Props {
   onSend: (msg: string) => void
   onBuyClick?: () => void
   onSellClick?: () => void
-  gateReason?: 'register' | 'vip_required' | null
+  gateReason?: 'register' | 'vip_required' | 'chat_limit' | null
   onOpenRegister?: () => void
 }
 
@@ -138,6 +138,7 @@ export default function ChatPanel({ messages, isStreaming, assistantName, onSend
               <button key={r} onClick={() => {
                 if (r === 'I want to buy') { onBuyClick?.(); return }
                 if (r === 'I want to sell') { onSellClick?.(); return }
+                if (isGated) { onOpenRegister?.(); return }
                 onSend(r)
               }} style={{
                 padding: '7px 14px',
@@ -185,7 +186,7 @@ export default function ChatPanel({ messages, isStreaming, assistantName, onSend
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder={`Message ${assistantName}...`}
-          disabled={isStreaming}
+          disabled={isStreaming || isGated}
           style={{
             flex: 1,
             background: 'rgba(255,255,255,0.07)',
@@ -199,7 +200,7 @@ export default function ChatPanel({ messages, isStreaming, assistantName, onSend
         />
         <button
           onClick={handleSend}
-          disabled={!input.trim() || isStreaming}
+          disabled={!input.trim() || isStreaming || isGated}
           style={{
             width: 42, height: 42,
             borderRadius: 12,
