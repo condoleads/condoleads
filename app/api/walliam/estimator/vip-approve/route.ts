@@ -8,10 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { Resend } from 'resend'
+import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM = 'WALLiam <notifications@condoleads.ca>'
 
 function createServiceClient() {
   return createClient(
@@ -112,8 +110,8 @@ export async function GET(request: NextRequest) {
       }
       if (vipRequest.email) {
         try {
-          await resend.emails.send({
-            from: FROM,
+          await sendTenantEmail({
+            tenantId: tenantId || '',
             to: vipRequest.email,
             cc: managerEmail ? [managerEmail] : undefined,
             bcc: 'condoleads.ca@gmail.com',
