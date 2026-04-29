@@ -27,7 +27,7 @@ export interface CreditSessionState {
   buyerPlansUsed: number
   sellerPlansUsed: number
   totalAllowed: number
-  planMode: string
+  planMode: 'shared' | 'independent'
   sellerPlanFreeAttempts: number
 
   // Estimator credit state
@@ -51,7 +51,7 @@ interface CreditSessionContextValue {
   /** Bump plans_used locally after a successful plan generation. */
   incrementPlansUsed: (planType: 'buyer' | 'seller') => void
   /** Re-fetch session from server (e.g. after registration completes). */
-  refresh: () => Promise<void>
+  refresh: (pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }) => Promise<void>
   /** Reset to defaults (e.g. on sign-out). */
   clear: () => void
 }

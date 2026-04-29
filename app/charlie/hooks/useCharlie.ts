@@ -2,6 +2,7 @@
 'use client'
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTenantId } from '@/hooks/useTenantId'
+import { useCreditSession } from '@/components/credits/CreditSessionContext'
 
 export type MessageRole = 'user' | 'assistant'
 export type ConversationBlock =
@@ -148,6 +149,9 @@ export function useCharlie() {
   const tenantId = useTenantId()
   const tenantIdRef = useRef<string | null>(null)
   useEffect(() => { tenantIdRef.current = tenantId }, [tenantId])
+  const credits = useCreditSession()
+  const creditsRef = useRef(credits)
+  useEffect(() => { creditsRef.current = credits }, [credits])
   const [state, setStateRaw] = useState<CharlieState>(INITIAL_STATE)
   const setState = (updater: CharlieState | ((s: CharlieState) => CharlieState)) => {
     setStateRaw(prev => {
@@ -164,78 +168,7 @@ export function useCharlie() {
   const messagesRef = useRef<any[]>([])
   const lastUserMessageRef = useRef<string | null>(null)
   const sendMessageRef = useRef<any>(null)
-  // WALLiam session ref
-  const walliamSessionIdRef = useRef<string | null>(null)
-  const userIdRef = useRef<string | null>(null)
   const pageContextRef = useRef<any>(null)
-
-  const initSession = useCallback(async (
-    userId: string | null,
-    pageContext?: {
-      listing_id?: string
-      building_id?: string
-      community_id?: string
-      municipality_id?: string
-      area_id?: string
-    }
-  ) => {
-    // W-RECOVERY A1.7 — propagate userId BEFORE the tenantId check.
-    // Otherwise initSession bails on early renders (tenantId race) and userIdRef stays null.
-    if (userId) userIdRef.current = userId
-    try {
-      // W-RECOVERY A1.7 — wait for tenantId via ref (captured prop may be stale on early calls)
-      let _waitMs = 0
-      while (!tenantIdRef.current && _waitMs < 3000) {
-        await new Promise(r => setTimeout(r, 100))
-        _waitMs += 100
-      }
-      const liveTenantId = tenantIdRef.current
-      if (!liveTenantId) {
-        console.error('[useCharlie] tenantId still null after 3s wait — aborting initSession')
-        return
-      }
-        const res = await fetch('/api/walliam/charlie/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': liveTenantId },
-        body: JSON.stringify({
-          userId,
-          listing_id: pageContext?.listing_id || null,
-          building_id: pageContext?.building_id || null,
-          community_id: pageContext?.community_id || null,
-          municipality_id: pageContext?.municipality_id || null,
-          area_id: pageContext?.area_id || null,
-          existingSessionId: walliamSessionIdRef.current,
-        }),
-      })
-      const data = await res.json()
-      if (data.sessionId) {
-        walliamSessionIdRef.current = data.sessionId
-        pageContextRef.current = pageContext || null
-        userIdRef.current = userId
-        setState(s => ({
-          ...s,
-          sessionId: data.sessionId,
-          assistantName: data.assistantName || 'Charlie',
-          userId,
-          buyerPlansUsed: data.buyerPlansUsed || 0,
-          sellerPlansUsed: data.sellerPlansUsed || 0,
-          totalAllowed: data.totalAllowed || 1,
-          messageCount: data.messageCount || 0,
-          chatFreeMessages: data.chatFreeMessages || 5,
-          chatHardCap: data.chatHardCap || 25,
-          estimatorCount: data.estimatorCount || 0,
-          estimatorFreeAttempts: data.estimatorFreeAttempts || 2,
-          estimatorHardCap: data.estimatorHardCap || 10,
-          planMode: data.planMode || 'shared',
-          sellerPlanFreeAttempts: data.sellerPlanFreeAttempts || 1,
-          isRegistered: !!userId,
-          ...(userId ? { gateActive: false, gateReason: null, gatePlanType: null } : {}),
-        }))
-      }
-    } catch (err) {
-      console.error('[useCharlie] initSession error:', err)
-    }
-  }, [])
 
   const setPageContext = useCallback((context: any) => {
     pageContextRef.current = context
@@ -246,7 +179,7 @@ export function useCharlie() {
   }, [])
 
   const requestVipAccess = useCallback(async (planType: 'buyer' | 'seller' | 'chat' | 'estimator') => {
-    const sid = walliamSessionIdRef.current
+    const sid = creditsRef.current.state.sessionId
     if (!sid) return
     try {
       const res = await fetch('/api/walliam/charlie/vip-request', {
@@ -281,9 +214,9 @@ export function useCharlie() {
           clearInterval(interval)
           if (data.status === 'approved') {
             // Refresh session credits after approval
-            const uid = userIdRef.current
+            const uid = creditsRef.current.state.userId
             const pctx = pageContextRef.current
-            if (uid) await initSession(uid, pctx)
+            if (uid) await creditsRef.current.refresh(pctx)
           }
           setState(s => ({ ...s, vipRequestStatus: data.status, gateActive: false, approvalNotification: data.status === 'approved' ? true : s.approvalNotification }))
         }
@@ -337,7 +270,7 @@ export function useCharlie() {
     // W-RECOVERY A1.2 client gate — require registration before any /api/charlie call.
     // Server enforces this too (returns 401 without auth), but client gate prevents the
     // wasted round-trip and surfaces the register modal immediately.
-    if (!userIdRef.current && !isGreeting) {
+    if (!creditsRef.current.state.userId && !isGreeting) {
         setState(s => ({
         ...s,
         gateActive: true,
@@ -374,14 +307,9 @@ export function useCharlie() {
       const currentTenantId = tenantIdRef.current
       if (!currentTenantId) { setState(s => ({ ...s, isStreaming: false })); return }
 
-      // W-RECOVERY A1.7 — wait for sessionId if registration just completed and initSession is still in-flight
-      let _waitMs = 0
-      while (!walliamSessionIdRef.current && userIdRef.current && _waitMs < 3000) {
-        await new Promise(r => setTimeout(r, 100))
-        _waitMs += 100
-      }
-      if (!walliamSessionIdRef.current) {
-        console.error('[useCharlie] sessionId still null after 3s wait — aborting send')
+      // W-CREDITS Phase 7b — fail-fast on context not ready
+      if (creditsRef.current.state.loading || !creditsRef.current.state.sessionId) {
+        console.error('[useCharlie] credit session not ready — aborting send')
         setState(s => ({ ...s, isStreaming: false }))
         return
       }
@@ -391,8 +319,8 @@ export function useCharlie() {
         headers: { 'Content-Type': 'application/json', 'x-tenant-id': currentTenantId },
         body: JSON.stringify({
           messages: messagesRef.current,
-          sessionId: walliamSessionIdRef.current,
-          userId: userIdRef.current,
+          sessionId: creditsRef.current.state.sessionId,
+          userId: creditsRef.current.state.userId,
           geoContext: geoContextRef.current ? { ...geoContextRef.current, building_id: pageContextRef.current?.building_id || null } : (pageContextRef.current?.building_id ? { building_id: pageContextRef.current.building_id } : null),
         }),
       })
@@ -432,7 +360,7 @@ export function useCharlie() {
               }
             }
 
-            if (event.type === 'vip_credit_used' && userIdRef.current) {
+            if (event.type === 'vip_credit_used' && creditsRef.current.state.userId) {
               setState(s => ({
                 ...s,
                 vipCreditUsed: true,
@@ -477,10 +405,8 @@ export function useCharlie() {
                   m.id === assistantId ? { ...m, streaming: false } : m
                 )
               }))
-              // Refresh credits after every response — delay to allow DB increment to complete
-              const uid = userIdRef.current
-              const pctx = pageContextRef.current
-              if (uid) setTimeout(() => initSession(uid, pctx).catch(() => {}), 800)
+              // W-CREDITS Phase 7b — synchronous local increment, no refetch
+              creditsRef.current.incrementMessageCount()
               messagesRef.current = [
                 ...messagesRef.current,
                 { role: 'assistant', content: assistantText }
@@ -514,12 +440,13 @@ export function useCharlie() {
     }
     if (tool === 'generate_plan' && data.planReady) {
       setState(s => ({ ...s, planReady: true, plan: data, blocks: [...s.blocks, { type: 'plan', data, analyticsSnapshot: analyticsRef.current, listingsSnapshot: stateRef.current.listingGroups.flatMap(g => g.listings), geoContext: stateRef.current.geoContext }], activePanel: 'results' }))
+      creditsRef.current.incrementPlansUsed(data.type === 'seller' ? 'seller' : 'buyer')
         fetch('/api/charlie/plan-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sessionId: stateRef.current.sessionId,
-            userId: stateRef.current.userId,
+            sessionId: creditsRef.current.state.sessionId,
+            userId: creditsRef.current.state.userId,
             planType: data.type,
             plan: data,
             analytics: analyticsRef.current,
@@ -591,14 +518,42 @@ export function useCharlie() {
   }, [])
 
   return {
-    state,
+    state: {
+      ...state,
+      sessionId: credits.state.sessionId,
+      userId: credits.state.userId,
+      isRegistered: credits.state.isRegistered,
+      assistantName: credits.state.assistantName,
+      messageCount: credits.state.messageCount,
+      chatFreeMessages: credits.state.chatFreeMessages,
+      chatHardCap: credits.state.chatHardCap,
+      buyerPlansUsed: credits.state.buyerPlansUsed,
+      sellerPlansUsed: credits.state.sellerPlansUsed,
+      totalAllowed: credits.state.totalAllowed,
+      planMode: credits.state.planMode,
+      sellerPlanFreeAttempts: credits.state.sellerPlanFreeAttempts,
+      estimatorCount: credits.state.estimatorCount,
+      estimatorFreeAttempts: credits.state.estimatorFreeAttempts,
+      estimatorHardCap: credits.state.estimatorHardCap,
+    },
     open,
     close,
     sendMessage,
     setActivePanel,
     setSellerEstimate,
     setGeoContext,
-    initSession,
+    // Phase 7b compatibility stub. CharlieWidget still calls initSession in its
+    // post-register flow. Phase 7c removes this when CharlieWidget migrates to
+    // creditsCtx.refresh() directly. Wait briefly for AuthContext to propagate
+    // the new user (Supabase cookie race), then refresh through provider.
+    initSession: async (uid: string | null, pageContext?: any) => {
+      let waitMs = 0
+      while (uid && !creditsRef.current.state.userId && waitMs < 3000) {
+        await new Promise(r => setTimeout(r, 100))
+        waitMs += 100
+      }
+      await creditsRef.current.refresh(pageContext)
+    },
     dismissGate,
     setPageContext,
     requestVipAccess,

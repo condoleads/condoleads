@@ -55,19 +55,10 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
       setChatBannerVisible(true)
     }
   }, [state.chatCreditCount])
-  const sessionInitialized = useRef(false)
 
   useEffect(() => {
     setIsHomepage(window.location.pathname === '/')
   }, [])
-
-  // W-RECOVERY A1.7 — drive session init from useAuth context (single source of truth).
-  // Replaces previous getUser/onAuthStateChange listener which had race conditions and closure bugs.
-  // user from useAuth() updates synchronously when register/sign-in completes.
-  useEffect(() => {
-    initSession(user?.id ?? null, pageContext)
-    sessionInitialized.current = true
-  }, [user?.id, initSession, pageContext])
 
   // Listen for homepage chip/search/form events
   useEffect(() => {
