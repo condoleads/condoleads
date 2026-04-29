@@ -50,6 +50,30 @@ export async function POST(req: NextRequest) {
   }
   // END W-RECOVERY A1.1 auth gate
 
+  // W-RECOVERY Chunk 6 — capture forensic context for logging
+  const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
+  const userAgent = req.headers.get('user-agent') || null
+  const lastUserMessage = Array.isArray(messages) && messages.length > 0 ? messages[messages.length - 1] : null
+  const userMessageContent = lastUserMessage?.role === 'user'
+    ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content : JSON.stringify(lastUserMessage.content))
+    : ''
+  const pageContextSnapshot = geoContext || null
+  // END W-RECOVERY Chunk 6 capture
+
+  // Log the user message NOW (before any Anthropic call) — guarantees we have the prompt even if the stream errors
+  if (userMessageContent) {
+    await supabase.from('chat_messages_v2').insert({
+      session_id: sessionId,
+      tenant_id: tenantId,
+      user_id: userId,
+      role: 'user',
+      content: userMessageContent,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      page_context: pageContextSnapshot,
+    })
+  }
+
   // Load tenant API key and assistant name for this request
   let anthropicApiKey: string | null = null
   let assistantName: string = 'Charlie'
@@ -285,6 +309,33 @@ Use these exact numbers when answering market questions.`
             messages: currentMessages,
             stream: false,
           })
+
+          // W-RECOVERY Chunk 6 — log this Anthropic call (one row per messages.create = one billable charge)
+          try {
+            const _logTextParts: string[] = []
+            const _logToolNames: string[] = []
+            for (const _b of response.content) {
+              if (_b.type === 'text') _logTextParts.push(_b.text)
+              else if (_b.type === 'tool_use') _logToolNames.push(_b.name)
+            }
+            const _logContent = _logTextParts.join('').trim() || (_logToolNames.length ? '[tool_use: ' + _logToolNames.join(', ') + ']' : '[empty]')
+            await supabase.from('chat_messages_v2').insert({
+              session_id: sessionId,
+              tenant_id: tenantId,
+              user_id: userId,
+              role: 'assistant',
+              content: _logContent,
+              tokens_in: response.usage?.input_tokens ?? null,
+              tokens_out: response.usage?.output_tokens ?? null,
+              model: 'claude-sonnet-4-6',
+              ip_address: ipAddress,
+              user_agent: userAgent,
+              page_context: pageContextSnapshot,
+            })
+          } catch (_logErr) {
+            console.error('[CHARLIE] message log error:', _logErr)
+          }
+          // END W-RECOVERY Chunk 6 log
 
           // Collect text + tool uses
           let textContent = ''

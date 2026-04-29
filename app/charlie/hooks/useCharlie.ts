@@ -179,11 +179,24 @@ export function useCharlie() {
       area_id?: string
     }
   ) => {
+    // W-RECOVERY A1.7 — propagate userId BEFORE the tenantId check.
+    // Otherwise initSession bails on early renders (tenantId race) and userIdRef stays null.
+    if (userId) userIdRef.current = userId
     try {
-      if (!tenantId) return
-      const res = await fetch('/api/walliam/charlie/session', {
+      // W-RECOVERY A1.7 — wait for tenantId via ref (captured prop may be stale on early calls)
+      let _waitMs = 0
+      while (!tenantIdRef.current && _waitMs < 3000) {
+        await new Promise(r => setTimeout(r, 100))
+        _waitMs += 100
+      }
+      const liveTenantId = tenantIdRef.current
+      if (!liveTenantId) {
+        console.error('[useCharlie] tenantId still null after 3s wait — aborting initSession')
+        return
+      }
+        const res = await fetch('/api/walliam/charlie/session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': liveTenantId },
         body: JSON.stringify({
           userId,
           listing_id: pageContext?.listing_id || null,
@@ -325,7 +338,7 @@ export function useCharlie() {
     // Server enforces this too (returns 401 without auth), but client gate prevents the
     // wasted round-trip and surfaces the register modal immediately.
     if (!userIdRef.current && !isGreeting) {
-      setState(s => ({
+        setState(s => ({
         ...s,
         gateActive: true,
         gateReason: 'register',
@@ -360,6 +373,19 @@ export function useCharlie() {
     try {
       const currentTenantId = tenantIdRef.current
       if (!currentTenantId) { setState(s => ({ ...s, isStreaming: false })); return }
+
+      // W-RECOVERY A1.7 — wait for sessionId if registration just completed and initSession is still in-flight
+      let _waitMs = 0
+      while (!walliamSessionIdRef.current && userIdRef.current && _waitMs < 3000) {
+        await new Promise(r => setTimeout(r, 100))
+        _waitMs += 100
+      }
+      if (!walliamSessionIdRef.current) {
+        console.error('[useCharlie] sessionId still null after 3s wait — aborting send')
+        setState(s => ({ ...s, isStreaming: false }))
+        return
+      }
+
       const res = await fetch('/api/charlie', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-tenant-id': currentTenantId },
@@ -556,10 +582,12 @@ export function useCharlie() {
   }
 
   const resumeAfterGate = useCallback(() => {
-    const lastMsg = lastUserMessageRef.current
-    if (!lastMsg) return
+    // W-RECOVERY A1.7 — clear gate first, regardless of whether there's a queued message
     setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
-    setTimeout(() => sendMessageRef.current?.(lastMsg), 300)
+    const lastMsg = lastUserMessageRef.current
+    if (lastMsg) {
+      setTimeout(() => sendMessageRef.current?.(lastMsg), 300)
+    }
   }, [])
 
   return {

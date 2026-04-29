@@ -1,4 +1,4 @@
-import { HeroSection } from './home/HeroSection';
+﻿import { HeroSection } from './home/HeroSection';
 import { StatsSection } from './home/StatsSection';
 import { HowItWorks } from './home/HowItWorks';
 import { BuildingsGrid } from './home/BuildingsGrid';
@@ -9,6 +9,7 @@ import { MarketTicker } from './home/MarketTicker';
 import { ScrollReveal } from './home/useScrollReveal';
 import { ContactSection } from './home/ContactSection';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
+import { getWalliamTenantId } from '@/lib/utils/is-walliam';
 import MobileContactBar from './MobileContactBar';
 
 interface HomePageProps {
@@ -66,7 +67,9 @@ interface HomePageProps {
     }>;
   }
 
-export function HomePage({ agent, buildings, developments = [], isTeamSite = false, teamAgents = [] }: HomePageProps) {
+export async function HomePage({ agent, buildings, developments = [], isTeamSite = false, teamAgents = [] }: HomePageProps) {
+  const tenantId = await getWalliamTenantId();
+  const isWalliam = !!tenantId;
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -131,7 +134,7 @@ export function HomePage({ agent, buildings, developments = [], isTeamSite = fal
       {/* Contact Section */}
       <ContactSection agent={{ id: agent.id, full_name: agent.full_name, email: agent.email, cell_phone: agent.phone }} />
       {/* AI Chat Widget */}
-      <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />
+      {!isWalliam && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
       
       {/* Mobile Contact Bar */}
       <MobileContactBar 

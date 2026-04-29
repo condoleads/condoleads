@@ -5,6 +5,7 @@ import { useCharlie } from '../hooks/useCharlie'
 import CharlieOverlay from './CharlieOverlay'
 import { createClient } from '@/lib/supabase/client'
 import RegisterModal from '@/components/auth/RegisterModal'
+import { useAuth } from '@/components/auth/AuthContext'
 
 interface CharlieWidgetProps {
   // Optional page context for agent resolution + session
@@ -34,6 +35,9 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
     resumeAfterGate,
   } = useCharlie()
 
+  // W-RECOVERY A1.7 — single source of truth for auth state across the app
+  const { user } = useAuth()
+
   const [searchInput, setSearchInput] = useState('')
   const [isHomepage, setIsHomepage] = useState(false)
   const [showRegisterModal, setShowRegisterModal] = useState(false)
@@ -57,44 +61,13 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
     setIsHomepage(window.location.pathname === '/')
   }, [])
 
-  // Init WALLiam session on mount — read auth + resolve agent.
-  // Also re-init when auth state changes (e.g. cookie hydration after first paint, login, logout)
-  // so userIdRef stays in sync and the server-side register gate doesn't fire for logged-in users.
+  // W-RECOVERY A1.7 — drive session init from useAuth context (single source of truth).
+  // Replaces previous getUser/onAuthStateChange listener which had race conditions and closure bugs.
+  // user from useAuth() updates synchronously when register/sign-in completes.
   useEffect(() => {
-    const supabase = createClient()
-    let currentUserId: string | null = null
-
-    const runInit = async () => {
-      try {
-        const { data } = await supabase.auth.getUser()
-        const uid = data?.user?.id || null
-        if (uid !== currentUserId || !sessionInitialized.current) {
-          currentUserId = uid
-          sessionInitialized.current = true
-          await initSession(uid, pageContext)
-        }
-      } catch {
-        if (!sessionInitialized.current) {
-          sessionInitialized.current = true
-          await initSession(null, pageContext)
-        }
-      }
-    }
-
-    // First attempt
-    runInit()
-
-    // Listen for future auth changes (SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED, INITIAL_SESSION)
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const uid = session?.user?.id || null
-      if (uid !== currentUserId) {
-        currentUserId = uid
-        initSession(uid, pageContext)
-      }
-    })
-
-    return () => { sub.subscription.unsubscribe() }
-  }, [initSession, pageContext])
+    initSession(user?.id ?? null, pageContext)
+    sessionInitialized.current = true
+  }, [user?.id, initSession, pageContext])
 
   // Listen for homepage chip/search/form events
   useEffect(() => {
@@ -213,14 +186,24 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
           }}
           onSuccess={() => {
             setShowRegisterModal(false)
+            // W-RECOVERY A1.7 — retry getUser to handle Supabase cookie propagation race after register.
+            // Without this, getUser() can return null immediately post-register, skipping initSession.
             const supabase = createClient()
-            supabase.auth.getUser().then(({ data }) => {
-              if (data?.user?.id) {
-                initSession(data.user.id, pageContext).then(() => {
+            let attempts = 0
+            const tryInit = () => {
+              supabase.auth.getUser().then(({ data }) => {
+                if (data?.user?.id) {
+                  initSession(data.user.id, pageContext).then(() => resumeAfterGate())
+                } else if (attempts < 10) {
+                  attempts++
+                  setTimeout(tryInit, 200)
+                } else {
+                  console.error('[CharlieWidget] register succeeded but getUser stayed null after 10 retries')
                   resumeAfterGate()
-                })
-              }
-            })
+                }
+              })
+            }
+            tryInit()
           }}
           registrationSource="walliam_charlie_gate"
         />

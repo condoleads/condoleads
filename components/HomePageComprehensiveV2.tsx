@@ -3,6 +3,7 @@ import { fetchMarketStats, fetchTopAreas } from '@/lib/comprehensive/stats-fetch
 import { getMenuData } from '@/components/navigation/SiteHeader';
 import HomePageComprehensiveClientV2 from './HomePageComprehensiveClientV2';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
+import { getWalliamTenantId } from '@/lib/utils/is-walliam';
 
 interface Agent {
   id: string;
@@ -26,7 +27,9 @@ interface HomePageComprehensiveV2Props {
 
 export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2Props) {
   // Resolve agent's geographic access
-  const access = await resolveAgentAccess(agent.id);
+  const tenantId = await getWalliamTenantId();
+  const isWalliam = !!tenantId;
+    const access = await resolveAgentAccess(agent.id);
 
   if (!access) {
     // Shouldn't happen — routing should have caught this
@@ -65,7 +68,7 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
           homes_access: access.homes_access,
         }}
       />
-      <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />
+      {!isWalliam && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
     </>
   );
 }
