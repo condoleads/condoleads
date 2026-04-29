@@ -4,6 +4,7 @@ import "./globals.css";
 import ConditionalLayout from "@/components/ConditionalLayout"
 import TenantHeader from "@/components/TenantHeader";
 import { AuthProvider } from "@/components/auth/AuthContext";
+import { CreditSessionProvider } from "@/components/credits/CreditSessionContext";
 import { getWalliamTenantId } from "@/lib/utils/is-walliam";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -41,10 +42,12 @@ export default async function RootLayout({
       </head>
       <body className={inter.className} data-tenant-id={tenantId || ""}>
         <AuthProvider>
-          <TenantHeader />
-          <ConditionalLayout>
-            {children}
-          </ConditionalLayout>
+          <CreditSessionProvider>
+            <TenantHeader />
+            <ConditionalLayout>
+              {children}
+            </ConditionalLayout>
+          </CreditSessionProvider>
         </AuthProvider>
       </body>
     </html>
