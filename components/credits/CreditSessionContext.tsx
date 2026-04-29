@@ -143,18 +143,18 @@ export function CreditSessionProvider({ children }: { children: ReactNode }) {
   // For registered users: single POST to the session route.
   // The route handles claim-existing-anonymous + create-if-none.
 
-  const loadSession = useCallback(async (uid: string, tid: string) => {
+  const loadSession = useCallback(async (uid: string, tid: string, pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }) => {
     try {
       const res = await fetch('/api/walliam/charlie/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-tenant-id': tid },
         body: JSON.stringify({
           userId: uid,
-          listing_id: null,
-          building_id: null,
-          community_id: null,
-          municipality_id: null,
-          area_id: null,
+          listing_id: pageContext?.listing_id || null,
+          building_id: pageContext?.building_id || null,
+          community_id: pageContext?.community_id || null,
+          municipality_id: pageContext?.municipality_id || null,
+          area_id: pageContext?.area_id || null,
           existingSessionId: null,
         }),
       })
@@ -231,14 +231,14 @@ export function CreditSessionProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }) => {
     if (!tenantId) return
     if (isInertRoute(pathname)) return
     const userId = user?.id ?? null
     // Force refetch by clearing dedupe key
     lastFetchKey.current = null
     if (userId) {
-      await loadSession(userId, tenantId)
+      await loadSession(userId, tenantId, pageContext)
     } else {
       await loadAnonymousDefaults(tenantId)
     }
