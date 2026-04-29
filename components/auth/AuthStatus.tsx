@@ -1,9 +1,9 @@
 'use client'
 import { useAuth } from './AuthContext'
-import { useTenantId } from '@/hooks/useTenantId'
-import { useState, useEffect } from 'react'
+import { useCreditSession } from '@/components/credits/CreditSessionContext'
+import { useState } from 'react'
 import RegisterModal from './RegisterModal'
-import { User, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 
 interface AuthStatusProps {
   agentId?: string
@@ -14,16 +14,6 @@ interface AuthStatusProps {
   listingAddress?: string
   unitNumber?: string
   registrationSource?: string
-}
-
-interface Credits {
-  buyerPlansUsed: number
-  sellerPlansUsed: number
-  totalAllowed: number
-  messageCount: number
-  chatFreeMessages: number
-  estimatorCount: number
-  estimatorFreeAttempts: number
 }
 
 export default function AuthStatus({
@@ -37,41 +27,19 @@ export default function AuthStatus({
   registrationSource = 'home_page'
 }: AuthStatusProps) {
   const { user, signOut } = useAuth()
+  const { state } = useCreditSession()
   const [showRegister, setShowRegister] = useState(false)
-  const [credits, setCredits] = useState<Credits | null>(null)
 
-  const tenantId = useTenantId()
-  useEffect(() => {
-    if (!tenantId) return
-    fetch('/api/walliam/charlie/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
-      body: JSON.stringify({ userId: user?.id || null, read_only: !user }),
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d.sessionId) {
-          setCredits({
-            buyerPlansUsed: d.buyerPlansUsed || 0,
-            sellerPlansUsed: d.sellerPlansUsed || 0,
-            totalAllowed: d.totalAllowed || 1,
-            messageCount: d.messageCount || 0,
-            chatFreeMessages: d.chatFreeMessages || 0,
-            estimatorCount: d.estimatorCount || 0,
-            estimatorFreeAttempts: d.estimatorFreeAttempts || 2,
-          })
-        }
-      })
-      .catch(() => {})
-  }, [user, tenantId])
+  // Pills only render after the provider's first fetch resolves
+  const creditsReady = !state.loading
 
   if (user) {
-    const plansUsed = credits ? credits.buyerPlansUsed + credits.sellerPlansUsed : 0
-    const plansTotal = credits?.totalAllowed ?? 1
+    const plansUsed = state.buyerPlansUsed + state.sellerPlansUsed
+    const plansTotal = state.totalAllowed
     const plansRemaining = Math.max(0, plansTotal - plansUsed)
 
-    const chatRemaining = credits ? Math.max(0, credits.chatFreeMessages - credits.messageCount) : null
-    const estimateRemaining = credits ? Math.max(0, credits.estimatorFreeAttempts - credits.estimatorCount) : null
+    const chatRemaining = creditsReady ? Math.max(0, state.chatFreeMessages - state.messageCount) : null
+    const estimateRemaining = creditsReady ? Math.max(0, state.estimatorFreeAttempts - state.estimatorCount) : null
 
     const pill = (emoji: string, remaining: number | null, title: string) => {
       if (remaining === null) return null
@@ -83,7 +51,7 @@ export default function AuthStatus({
         <div title={title} style={{ display: 'flex', alignItems: 'center', gap: 4, background: bg, border: `1px solid ${color}30`, borderRadius: 100, padding: '3px 8px' }}>
           <span style={{ fontSize: 11 }}>{emoji}</span>
           <span style={{ fontSize: 11, fontWeight: 700, color }}>
-            {remaining}{isLow ? ' ⚠️' : ''}{isEmpty ? ' 🔴' : ''}
+            {remaining}{isLow ? ' âš ï¸' : ''}{isEmpty ? ' ðŸ”´' : ''}
           </span>
         </div>
       )
@@ -91,11 +59,11 @@ export default function AuthStatus({
 
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {credits && (
+        {creditsReady && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {pill('💬', chatRemaining, `${chatRemaining} AI chats remaining`)}
-            {pill('📊', estimateRemaining, `${estimateRemaining} AI estimates remaining`)}
-            {pill('📋', plansRemaining, `${plansRemaining} AI plans remaining`)}
+            {pill('ðŸ’¬', chatRemaining, `${chatRemaining} AI chats remaining`)}
+            {pill('ðŸ“Š', estimateRemaining, `${estimateRemaining} AI estimates remaining`)}
+            {pill('ðŸ“‹', plansRemaining, `${plansRemaining} AI plans remaining`)}
           </div>
         )}
         <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }} className="hidden sm:inline">
@@ -112,13 +80,18 @@ export default function AuthStatus({
     )
   }
 
+  // Unregistered — pull tenant defaults from context, no hardcoded numbers
+  const chatFreeLabel = creditsReady ? `${state.chatFreeMessages} free` : '— free'
+  const estFreeLabel = creditsReady ? `${state.estimatorFreeAttempts} free` : '— free'
+  const planFreeLabel = creditsReady ? `${state.totalAllowed} free` : '— free'
+
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 4 }}>
         {[
-          { emoji: '💬', label: '5 free', title: '5 AI chats free on registration' },
-          { emoji: '📊', label: '2 free', title: '2 AI estimates free on registration' },
-          { emoji: '📋', label: '1 free', title: '1 AI plan free on registration' },
+          { emoji: 'ðŸ’¬', label: chatFreeLabel, title: `${chatFreeLabel} AI chats on registration` },
+          { emoji: 'ðŸ“Š', label: estFreeLabel, title: `${estFreeLabel} AI estimates on registration` },
+          { emoji: 'ðŸ“‹', label: planFreeLabel, title: `${planFreeLabel} AI plan on registration` },
         ].map(c => (
           <div key={c.emoji} title={c.title} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 100, padding: '3px 8px' }}>
             <span style={{ fontSize: 11 }}>{c.emoji}</span>
