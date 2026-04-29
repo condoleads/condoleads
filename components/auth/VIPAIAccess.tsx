@@ -6,27 +6,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from './AuthContext'
 import RegisterModal from './RegisterModal'
-import { useTenantId } from '@/hooks/useTenantId'
+import { useCreditSession } from '@/components/credits/CreditSessionContext'
 
-
-interface Credits {
-  // Chat
-  messageCount: number
-  chatFreeMessages: number
-  chatHardCap: number
-  // Estimates
-  estimatorCount: number
-  estimatorFreeAttempts: number
-  // Plans
-  buyerPlansUsed: number
-  sellerPlansUsed: number
-  totalAllowed: number
-  planMode: string
-  // Session
-  sessionId: string | null
-  status: string
-  vipRequestStatus: string
-}
 
 interface Props {
   variant?: 'nav' | 'full'
@@ -40,14 +21,36 @@ export default function VIPAIAccess({
   primaryColor = '#1d4ed8',
 }: Props) {
   const { user, signOut } = useAuth()
-  const [credits, setCredits] = useState<Credits | null>(null)
+  const { state } = useCreditSession()
   const [showRegister, setShowRegister] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [requesting, setRequesting] = useState(false)
   const [requested, setRequested] = useState(false)
-  const [tenantConfig, setTenantConfig] = useState({ chatFree: 5, estFree: 2, planFree: 1 })
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const tenantId = useTenantId()
+
+  // Tenant config for unregistered "X free" labels — derived from context
+  const tenantConfig = {
+    chatFree: state.chatFreeMessages,
+    estFree: state.estimatorFreeAttempts,
+    planFree: state.totalAllowed,
+  }
+
+  // Credits — derived from context. Null when context is still loading
+  // (preserves existing render-guard behavior for the `credits` variable).
+  const credits = state.loading ? null : {
+    messageCount: state.messageCount,
+    chatFreeMessages: state.chatFreeMessages,
+    chatHardCap: state.chatHardCap,
+    estimatorCount: state.estimatorCount,
+    estimatorFreeAttempts: state.estimatorFreeAttempts,
+    buyerPlansUsed: state.buyerPlansUsed,
+    sellerPlansUsed: state.sellerPlansUsed,
+    totalAllowed: state.totalAllowed,
+    planMode: state.planMode,
+    sessionId: state.sessionId,
+    status: state.status,
+    vipRequestStatus: state.vipRequestStatus,
+  }
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -58,50 +61,8 @@ export default function VIPAIAccess({
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
-
-  useEffect(() => {
-    if (!tenantId) return
-    fetch('/api/walliam/tenant-config', {
-      headers: { 'x-tenant-id': tenantId }
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d.chatFree != null) setTenantConfig({
-          chatFree: d.chatFree,
-          estFree: d.estFree,
-          planFree: d.planFree,
-        })
-      })
-      .catch(() => {})
-  }, [tenantId])
-
-  useEffect(() => {
-    if (!tenantId) return
-    fetch('/api/walliam/charlie/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
-      body: JSON.stringify({ userId: user?.id || null, read_only: true }),
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d.sessionId || d.chatFreeMessages) setCredits({
-          messageCount: d.messageCount || 0,
-          chatFreeMessages: d.chatFreeMessages || 0,
-          chatHardCap: d.chatHardCap || 25,
-          estimatorCount: d.estimatorCount || 0,
-          estimatorFreeAttempts: d.estimatorFreeAttempts || 2,
-          buyerPlansUsed: d.buyerPlansUsed || 0,
-          sellerPlansUsed: d.sellerPlansUsed || 0,
-          totalAllowed: d.totalAllowed || 1,
-          planMode: d.planMode || 'shared',
-          sessionId: d.sessionId,
-          status: d.status || 'active',
-          vipRequestStatus: d.vipRequestStatus || 'none',
-        })
-      })
-      .catch(() => {})
-  }, [user, tenantId])
-
+  
+  
   const chatRemaining = credits ? Math.max(0, credits.chatFreeMessages - credits.messageCount) : null
   const estRemaining = credits ? Math.max(0, credits.estimatorFreeAttempts - credits.estimatorCount) : null
   const planRemaining = credits ? Math.max(0, credits.totalAllowed - credits.buyerPlansUsed - credits.sellerPlansUsed) : null
@@ -117,12 +78,12 @@ export default function VIPAIAccess({
   }
 
   const requestMore = async () => {
-    if (!credits?.sessionId || requesting || !tenantId) return
+    if (!credits?.sessionId || requesting || !state.tenantId) return
     setRequesting(true)
     try {
       await fetch('/api/walliam/charlie/vip-request', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': state.tenantId },
         body: JSON.stringify({ sessionId: credits.sessionId, planType: 'buyer' }),
       })
       setRequested(true)
