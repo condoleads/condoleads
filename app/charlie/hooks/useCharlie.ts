@@ -542,18 +542,6 @@ export function useCharlie() {
     setActivePanel,
     setSellerEstimate,
     setGeoContext,
-    // Phase 7b compatibility stub. CharlieWidget still calls initSession in its
-    // post-register flow. Phase 7c removes this when CharlieWidget migrates to
-    // creditsCtx.refresh() directly. Wait briefly for AuthContext to propagate
-    // the new user (Supabase cookie race), then refresh through provider.
-    initSession: async (uid: string | null, pageContext?: any) => {
-      let waitMs = 0
-      while (uid && !creditsRef.current.state.userId && waitMs < 3000) {
-        await new Promise(r => setTimeout(r, 100))
-        waitMs += 100
-      }
-      await creditsRef.current.refresh(pageContext)
-    },
     dismissGate,
     setPageContext,
     requestVipAccess,

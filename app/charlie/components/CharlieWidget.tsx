@@ -6,6 +6,7 @@ import CharlieOverlay from './CharlieOverlay'
 import { createClient } from '@/lib/supabase/client'
 import RegisterModal from '@/components/auth/RegisterModal'
 import { useAuth } from '@/components/auth/AuthContext'
+import { useCreditSession } from '@/components/credits/CreditSessionContext'
 
 interface CharlieWidgetProps {
   // Optional page context for agent resolution + session
@@ -27,7 +28,6 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
     setActivePanel,
     setSellerEstimate,
     setGeoContext,
-    initSession,
     dismissGate,
     setPageContext,
     requestVipAccess,
@@ -37,6 +37,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
 
   // W-RECOVERY A1.7 — single source of truth for auth state across the app
   const { user } = useAuth()
+  const creditsCtx = useCreditSession()
 
   const [searchInput, setSearchInput] = useState('')
   const [isHomepage, setIsHomepage] = useState(false)
@@ -184,7 +185,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
             const tryInit = () => {
               supabase.auth.getUser().then(({ data }) => {
                 if (data?.user?.id) {
-                  initSession(data.user.id, pageContext).then(() => resumeAfterGate())
+                  creditsCtx.refresh(pageContext).then(() => resumeAfterGate())
                 } else if (attempts < 10) {
                   attempts++
                   setTimeout(tryInit, 200)
