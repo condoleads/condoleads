@@ -1,9 +1,9 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { Send, Phone, Mail, MessageSquare, Sparkles } from 'lucide-react'
-import { getOrCreateLead } from '@/lib/actions/leads'
-import { trackActivity } from '@/lib/actions/user-activity'
+import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 
 interface ContactSectionProps {
   agent: {
@@ -23,7 +23,7 @@ export function ContactSection({ agent }: ContactSectionProps) {
     e.preventDefault()
     setIsSubmitting(true)
     try {
-      await getOrCreateLead({
+      await submitLeadFromForm({
         contactEmail: formData.email,
         contactName: formData.name,
         contactPhone: formData.phone || undefined,
@@ -31,7 +31,7 @@ export function ContactSection({ agent }: ContactSectionProps) {
         source: 'contact_form',
         forceNew: true
       })
-      await trackActivity({
+      await submitActivityFromForm({
         contactEmail: formData.email,
         activityType: 'contact_form',
         activityData: { name: formData.name, phone: formData.phone, message: formData.message, source: 'homepage' },

@@ -1,9 +1,9 @@
-'use client'
+﻿'use client'
 
 import { useAuth } from '@/components/auth/AuthContext'
 import RegisterModal from '@/components/auth/RegisterModal'
 import { useState, useEffect } from 'react'
-import { trackActivity } from '@/lib/actions/user-activity'
+import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 import { MLSListing } from '@/lib/types/building'
 import { formatPriceShort } from '@/lib/utils/formatters'
 
@@ -30,7 +30,7 @@ export default function TransactionHistory({
   // Track when authenticated user views transaction history
   useEffect(() => {
     if (user?.email && (closedSales.length > 0 || closedRentals.length > 0)) {
-      trackActivity({
+      submitActivityFromForm({
         contactEmail: user.email,
         activityType: 'viewed_transaction_history',
         activityData: {

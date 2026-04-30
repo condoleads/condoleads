@@ -1,7 +1,7 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
-import { getOrCreateLead } from '@/lib/actions/leads'
-import { trackActivity } from '@/lib/actions/user-activity'
+import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 
 interface ListYourUnitProps {
   buildingName: string
@@ -35,7 +35,7 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     setIsEvaluationSubmitting(true)
     
     // Track market evaluation request
-    await trackActivity({
+    await submitActivityFromForm({
       contactEmail: evaluationForm.email,
       agentId: agentId,
       activityType: 'sale_evaluation_request',
@@ -46,9 +46,9 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
       }
     })
 
-    console.log('?? Calling getOrCreateLead for EVALUATION')
+    console.log('?? Calling submitLeadFromForm for EVALUATION')
     // Create lead for market evaluation request
-    const result = await getOrCreateLead({
+    const result = await submitLeadFromForm({
       agentId,
       contactName: evaluationForm.name,
       contactEmail: evaluationForm.email,
@@ -74,7 +74,7 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     setIsVisitSubmitting(true)
     
     // Track building visit request
-    await trackActivity({
+    await submitActivityFromForm({
       contactEmail: visitForm.email,
       agentId: agentId,
       activityType: 'building_visit_request',
@@ -86,9 +86,9 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
       }
     })
 
-    console.log(' Calling getOrCreateLead for VISIT')
+    console.log(' Calling submitLeadFromForm for VISIT')
     // Create lead for visit booking
-    const result = await getOrCreateLead({
+    const result = await submitLeadFromForm({
       agentId,
       contactName: visitForm.name,
       contactEmail: visitForm.email,

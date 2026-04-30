@@ -1,8 +1,8 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
-import { getOrCreateLead } from '@/lib/actions/leads'
-import { trackActivity } from '@/lib/actions/user-activity'
+import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 
 interface OfferInquiryModalProps {
   isOpen: boolean
@@ -51,7 +51,7 @@ export default function OfferInquiryModal({
 
     try {
       // Create or get lead
-      const lead = await getOrCreateLead({
+      const lead = await submitLeadFromForm({
         contactName: formData.name,
         contactEmail: formData.email,
         contactPhone: formData.phone,
@@ -71,7 +71,7 @@ export default function OfferInquiryModal({
 
       if (lead) {
         // Track activity
-        await trackActivity({
+        await submitActivityFromForm({
           contactEmail: formData.email,
           agentId: agent.id,
           activityType: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',

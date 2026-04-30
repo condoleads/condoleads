@@ -1,14 +1,20 @@
-// app/api/email/low-credits/route.ts
-// Sends warning email when user has 1 credit remaining
-// Triggered from charlie/route.ts and estimator session route
-// Deduped via low_credit_email_sent JSONB on user_profiles
+﻿// app/api/email/low-credits/route.ts
+//
+// Sends warning email when a user has 1 credit remaining for a given credit type
+// (chat | plan | estimate). Triggered from charlie/route.ts and estimator session route.
+//
+// Architectural role (W-TENANT-AUTH Phase 4a):
+//   - Reads x-tenant-id from headers. REQUIRED. No fallback. Returns 400 if missing.
+//   - Resolves brand/domain/agent from the tenant row, never from hardcoded constants.
+//   - Dedup flag (jsonb) lives on tenant_users.low_credit_email_sent (per-tenant).
+//     Same user on two tenants gets two distinct dedup buckets — they should receive
+//     a low-credit warning on each tenant they engage with.
+//   - Legacy user_profiles.low_credit_email_sent is dual-written for back-compat
+//     (D1 decision; cleanup tracked as W-PROFILE-CLEANUP).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
-
-const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+import { sendTenantEmail } from '@/lib/email/sendTenantEmail'
 
 function createServiceClient() {
   return createClient(
@@ -20,6 +26,14 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   try {
+    const tenantId = req.headers.get('x-tenant-id')
+    if (!tenantId) {
+      return NextResponse.json(
+        { error: 'x-tenant-id header required' },
+        { status: 400 }
+      )
+    }
+
     const { userId, creditType, remaining, sessionId } = await req.json()
     // creditType: 'chat' | 'plan' | 'estimate'
 
@@ -29,85 +43,117 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // Check dedup — only send once per credit type
-    const { data: profile } = await supabase
-      .from('user_profiles')
-      .select('low_credit_email_sent, full_name, assigned_agent_id')
-      .eq('id', userId)
-      .single()
+    // Per-tenant dedup check — primary source of truth
+    const { data: tenantUser } = await supabase
+      .from('tenant_users')
+      .select('low_credit_email_sent, assigned_agent_id')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
 
-    const sent = profile?.low_credit_email_sent || {}
+    const sent = (tenantUser?.low_credit_email_sent as Record<string, boolean>) || {}
     if (sent[creditType] === true) {
-      return NextResponse.json({ success: true, skipped: true })
+      return NextResponse.json({ success: true, skipped: true, reason: 'already_sent_for_tenant' })
     }
 
-    // Get user email
+    // Get user email from auth
     const { data: authData } = await supabase.auth.admin.getUserById(userId)
     const userEmail = authData?.user?.email
-    if (!userEmail) return NextResponse.json({ error: 'User email not found' }, { status: 404 })
+    if (!userEmail) {
+      return NextResponse.json({ error: 'User email not found' }, { status: 404 })
+    }
 
+    // Get user name (best-effort from profile)
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('full_name')
+      .eq('id', userId)
+      .maybeSingle()
     const userName = profile?.full_name || 'there'
 
-    // Resolve agent
-    const tenantId = req.headers.get('x-tenant-id') || 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
+    // Resolve tenant config
+    const { data: tenant, error: tenantErr } = await supabase
+      .from('tenants')
+      .select('id, name, domain, brand_name, default_agent_id, admin_email')
+      .eq('id', tenantId)
+      .single()
+
+    if (tenantErr || !tenant) {
+      console.error('[low-credits] tenant not found:', tenantId, tenantErr)
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+    }
+
+    const brandName = tenant.brand_name || tenant.name || 'Your Real Estate Assistant'
+    const tenantDomain = tenant.domain
+    const baseUrl = `https://${tenantDomain}`
+
+    // Resolve agent — per-tenant assigned -> tenant default fallback
     let agent: any = null
 
-    if (profile?.assigned_agent_id) {
+    const agentId = tenantUser?.assigned_agent_id
+    if (agentId) {
       const { data: agentData } = await supabase
         .from('agents')
-        .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title')
-        .eq('id', profile.assigned_agent_id)
-        .single()
+        .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, tenant_id')
+        .eq('id', agentId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
       if (agentData) agent = agentData
     }
 
-    if (!agent) {
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('default_agent_id, brand_name')
-        .eq('id', tenantId)
-        .single()
-      if (tenant?.default_agent_id) {
-        const { data: agentData } = await supabase
-          .from('agents')
-          .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title')
-          .eq('id', tenant.default_agent_id)
-          .single()
-        if (agentData) agent = agentData
-      }
+    if (!agent && tenant.default_agent_id) {
+      const { data: agentData } = await supabase
+        .from('agents')
+        .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, tenant_id')
+        .eq('id', tenant.default_agent_id)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      if (agentData) agent = agentData
     }
-
-    const { data: tenant } = await supabase
-      .from('tenants')
-      .select('brand_name')
-      .eq('id', tenantId)
-      .single()
-    const brandName = tenant?.brand_name || 'WALLiam'
 
     const creditLabels: Record<string, string> = {
       chat: 'AI Chat',
       plan: 'AI Plan',
       estimate: 'AI Estimate',
     }
-    const creditEmojis: Record<string, string> = {
-      chat: '💬',
-      plan: '📋',
-      estimate: '📊',
-    }
     const creditLabel = creditLabels[creditType] || creditType
-    const creditEmoji = creditEmojis[creditType] || '✦'
 
-    const html = buildLowCreditEmail({ userName, creditLabel, creditEmoji, remaining, agent, brandName })
-    const subject = `⚠️ You have 1 ${creditLabel} remaining — ${brandName}`
+    const html = buildLowCreditEmail({
+      userName,
+      creditLabel,
+      remaining,
+      agent,
+      brandName,
+      tenantDomain,
+      baseUrl,
+    })
+    const subject = `You have 1 ${creditLabel} remaining \u2014 ${brandName}`
 
     await sendTenantEmail({ tenantId, to: userEmail, subject, html })
       .catch(err => console.error('[low-credits] email error:', err))
 
-    // Mark as sent — update only the specific credit type key
-    const updatedSent = { ...sent, [creditType]: true }
+    // Mark sent — per-tenant primary, legacy global dual-write.
+    const updatedTenantSent = { ...sent, [creditType]: true }
+    await supabase
+      .from('tenant_users')
+      .update({
+        low_credit_email_sent: updatedTenantSent,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId)
+
+    // Legacy back-compat
+    const { data: legacyProfile } = await supabase
+      .from('user_profiles')
+      .select('low_credit_email_sent')
+      .eq('id', userId)
+      .maybeSingle()
+    const legacySent = (legacyProfile?.low_credit_email_sent as Record<string, boolean>) || {}
+    const updatedLegacy = { ...legacySent, [creditType]: true }
     await supabase
       .from('user_profiles')
-      .update({ low_credit_email_sent: updatedSent })
+      .update({ low_credit_email_sent: updatedLegacy })
       .eq('id', userId)
 
     return NextResponse.json({ success: true })
@@ -121,12 +167,13 @@ export async function POST(req: NextRequest) {
 function buildLowCreditEmail(data: {
   userName: string
   creditLabel: string
-  creditEmoji: string
   remaining: number
   agent: any
   brandName: string
+  tenantDomain: string
+  baseUrl: string
 }): string {
-  const { userName, creditLabel, creditEmoji, agent, brandName } = data
+  const { userName, creditLabel, agent, brandName, tenantDomain, baseUrl } = data
 
   const agentHtml = agent ? `
     <div style="background:#0f172a;border-radius:12px;padding:20px;margin:24px 0;text-align:center;">
@@ -145,40 +192,37 @@ function buildLowCreditEmail(data: {
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;background:#fff;">
       <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:32px 28px;border-radius:12px 12px 0 0;">
-        <div style="font-size:26px;font-weight:900;color:#fff;margin-bottom:16px;">
-          <span style="font-weight:900;">WALL</span><span style="font-weight:300;color:rgba(255,255,255,0.5);">iam</span>
-        </div>
-        <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0 0 8px;">⚠️ 1 ${creditLabel} Remaining</h1>
-        <p style="color:rgba(255,255,255,0.5);margin:0;font-size:14px;">Hi ${userName} — use it wisely.</p>
+        <div style="font-size:26px;font-weight:900;color:#fff;margin-bottom:16px;">${brandName}</div>
+        <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0 0 8px;">1 ${creditLabel} Remaining</h1>
+        <p style="color:rgba(255,255,255,0.5);margin:0;font-size:14px;">Hi ${userName} \u2014 use it wisely.</p>
       </div>
       <div style="padding:24px 28px;border:1px solid #e2e8f0;border-top:none;">
 
         <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:18px;margin-bottom:24px;text-align:center;">
-          <div style="font-size:36px;margin-bottom:8px;">${creditEmoji}</div>
           <div style="font-size:32px;font-weight:900;color:#d97706;">1</div>
           <div style="font-size:14px;color:#92400e;font-weight:600;margin-top:4px;">${creditLabel} remaining</div>
         </div>
 
         <p style="font-size:14px;color:#1e293b;line-height:1.7;margin:0 0 16px;">
-          You've almost used all your free ${creditLabel.toLowerCase()} credits. 
-          To get more, request additional access from your agent — they'll review and approve within 24 hours.
+          You've almost used all your free ${creditLabel.toLowerCase()} credits.
+          To get more, request additional access from your agent \u2014 they'll review and approve within 24 hours.
         </p>
 
         <p style="font-size:14px;color:#1e293b;line-height:1.7;margin:0 0 24px;">
-          In the meantime, you can still <a href="${BASE_URL}" style="color:#1d4ed8;font-weight:600;">browse listings, buildings and neighbourhoods</a> freely — no credits needed.
+          In the meantime, you can still <a href="${baseUrl}" style="color:#1d4ed8;font-weight:600;">browse listings, buildings and neighbourhoods</a> freely \u2014 no credits needed.
         </p>
 
         ${agentHtml}
 
         <div style="text-align:center;margin:24px 0 8px;">
-          <a href="${BASE_URL}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#1d4ed8,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px;">
-            ✦ Open ${brandName}
+          <a href="${baseUrl}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#1d4ed8,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px;">
+            Open ${brandName}
           </a>
         </div>
 
       </div>
       <div style="padding:16px 28px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;text-align:center;">
-        <p style="margin:0;color:#94a3b8;font-size:11px;">${brandName} &middot; walliam.ca</p>
+        <p style="margin:0;color:#94a3b8;font-size:11px;">${brandName} &middot; ${tenantDomain}</p>
       </div>
     </div>
   `

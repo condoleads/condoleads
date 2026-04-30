@@ -1,10 +1,10 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Send, Loader2 } from 'lucide-react'
-import { getOrCreateLead } from '@/lib/actions/leads'
-import { trackActivity } from '@/lib/actions/user-activity'
+import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 
 interface ContactModalProps {
   isOpen: boolean
@@ -66,7 +66,7 @@ export default function ContactModal({
     }
 
     // Track contact form submission
-    await trackActivity({
+    await submitActivityFromForm({
         contactEmail: formData.email,
         activityType: 'contact_form',
         activityData: {
@@ -82,7 +82,7 @@ export default function ContactModal({
       })
 
     // ALWAYS create new lead for form submissions (forceNew: true)
-    const result = await getOrCreateLead({
+    const result = await submitLeadFromForm({
       agentId: agent.id,
       contactName: formData.name,
       contactEmail: formData.email,

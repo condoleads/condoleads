@@ -1,4 +1,4 @@
-// app/estimator/components/EstimatorResults.tsx
+﻿// app/estimator/components/EstimatorResults.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -6,8 +6,8 @@ import { EstimateResult, TEMPERATURE_CONFIG } from '@/lib/estimator/types'
 import { formatPrice } from '@/lib/utils/formatters'
 import { generateHomePropertySlug } from '@/lib/utils/slugs'
 import { MessageSquare, AlertTriangle, Phone } from 'lucide-react'
-import { getOrCreateLead } from '@/lib/actions/leads'
-import { trackActivity } from '@/lib/actions/user-activity'
+import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 import { useAuth } from '@/components/auth/AuthContext'
 
 interface EstimatorResultsProps {
@@ -105,7 +105,7 @@ export default function HomeEstimatorResults({
     }
 
     try {
-      await trackActivity({
+      await submitActivityFromForm({
         contactEmail: contactForm.email,
         agentId: agentId,
         activityType: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
@@ -126,12 +126,12 @@ export default function HomeEstimatorResults({
       })
       console.log('✅ Activity tracked successfully')
     } catch (error) {
-      console.error('❌ trackActivity error:', error)
+      console.error('❌ submitActivityFromForm error:', error)
     }
 
     console.log('✅ Now creating lead...')
     try {
-      const leadResult = await getOrCreateLead({
+      const leadResult = await submitLeadFromForm({
         agentId,
         contactName: contactForm.name,
         contactEmail: contactForm.email,

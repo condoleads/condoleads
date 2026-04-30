@@ -1,12 +1,12 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { X, MessageSquare } from 'lucide-react'
 import { formatPrice } from '@/lib/utils/formatters'
 import { getStatusDisplay } from '@/lib/utils/dom'
 import { useAuth } from '@/components/auth/AuthContext'
-import { getOrCreateLead } from '@/lib/actions/leads'
-import { trackActivity } from '@/lib/actions/user-activity'
+import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 
 interface HistoryItem {
   id: string
@@ -115,7 +115,7 @@ export default function UnitHistoryModal({
 
     if (agentId) {
       try {
-        await trackActivity({
+        await submitActivityFromForm({
           contactEmail: contactForm.email,
           agentId: agentId,
           activityType: 'unit_history_inquiry',
@@ -127,11 +127,11 @@ export default function UnitHistoryModal({
           }
         })
       } catch (error) {
-        console.error('trackActivity error:', error)
+        console.error('submitActivityFromForm error:', error)
       }
 
       try {
-        await getOrCreateLead({
+        await submitLeadFromForm({
           agentId,
           contactName: contactForm.name,
           contactEmail: contactForm.email,

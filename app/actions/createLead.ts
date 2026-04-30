@@ -1,4 +1,26 @@
-'use server'
+﻿'use server'
+
+/**
+ * createLeadFromRegistration
+ *
+ * Server action invoked from registration flows.
+ *
+ * Architectural role (W-TENANT-AUTH Phase 3):
+ *   - Reads `x-tenant-id` from request headers (set by middleware).
+ *   - Resolves a building/development from the URL slug if no buildingId was passed
+ *     (preserves `extractBuildingFromUrl` logic — independent of agent resolution).
+ *   - Delegates lead creation to `getOrCreateLead`, which:
+ *       - Performs duplicate detection on (contact_email, tenant_id).
+ *       - Resolves agent via `resolve_agent_for_context(tenant_id, ...)` RPC.
+ *       - Writes tenant_id to the leads row.
+ *
+ * Removed in Phase 3: `resolveAgentFromHost(supabase, host)` — System 1 host-based agent
+ * resolution. System 1 isolation preserved (System 1 routes still have their own host
+ * resolver, untouched). Single caller is RegisterModal (System 2). After File 9 lands
+ * (RegisterModal rewrite to call joinTenant), this function becomes dead code; deletion
+ * deferred to post-W-TENANT-AUTH cleanup ticket.
+ */
+
 import { createClient } from '@/lib/supabase/server'
 import { getOrCreateLead } from '@/lib/actions/leads'
 import { trackActivity } from '@/lib/actions/user-activity'
@@ -25,20 +47,17 @@ interface CreateLeadFromRegistrationParams {
 
 export async function createLeadFromRegistration(params: CreateLeadFromRegistrationParams) {
   try {
-    const supabase = createClient()
-    
-    // Get host from request headers
     const headersList = headers()
-    const host = headersList.get('host') || ''
-    
-    console.log('🔍 Lead creation - Host detected:', host)
+    const tenantId = headersList.get('x-tenant-id')
 
-    // Find agent by subdomain OR custom domain
-    const agentId = await resolveAgentFromHost(supabase, host)
-    
-    console.log(`✅ Lead assigned to agent: ${agentId}`)
+    if (!tenantId) {
+      console.error('[createLeadFromRegistration] x-tenant-id missing')
+      return { success: false, error: 'Tenant context unavailable' }
+    }
 
-    // Enhanced source mapping with specific action types
+    const supabase = createClient()
+
+    // Source mapping (preserved verbatim from prior version)
     const sourceMap: Record<string, string> = {
       'home_page': 'registration',
       'listing_card': 'property_inquiry',
@@ -53,22 +72,21 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
 
     const leadSource = sourceMap[params.registrationSource] || 'registration'
 
-    // Extract building from URL if not provided
+    // Building resolution: if no buildingId was passed, try to derive from URL.
     let finalBuildingId = params.buildingId
     let finalBuildingName = params.buildingName
     let finalBuildingAddress = params.buildingAddress
-    
+
     if (!finalBuildingId && params.registrationUrl) {
       const buildingInfo = await extractBuildingFromUrl(supabase, params.registrationUrl)
       if (buildingInfo) {
         finalBuildingId = buildingInfo.id || undefined
         if (!finalBuildingName) finalBuildingName = buildingInfo.building_name
         if (!finalBuildingAddress) finalBuildingAddress = buildingInfo.canonical_address
-        console.log('📍 Extracted building from URL:', buildingInfo.building_name)
       }
     }
 
-    // If we have buildingId but missing name/address, fetch it
+    // Enrich missing building info if we have buildingId but missing name/address
     if (finalBuildingId && (!finalBuildingName || !finalBuildingAddress)) {
       const { data: buildingData } = await supabase
         .from('buildings')
@@ -78,11 +96,10 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
       if (buildingData) {
         if (!finalBuildingName) finalBuildingName = buildingData.building_name
         if (!finalBuildingAddress) finalBuildingAddress = buildingData.canonical_address
-        console.log('📍 Fetched building info:', buildingData.building_name)
       }
     }
 
-    // If we have listingId but no unitNumber, fetch it from the listing
+    // Enrich unit number from listing if missing
     if (params.listingId && !params.unitNumber) {
       const { data: listingData } = await supabase
         .from('mls_listings')
@@ -91,15 +108,12 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
         .single()
       if (listingData?.unit_number) {
         params.unitNumber = listingData.unit_number
-        console.log('📍 Fetched unit number from listing:', listingData.unit_number)
       }
     }
 
-    // Build source URL - DON'T double-concatenate!
-    // params.registrationUrl is already the full URL from window.location.href
     const sourceUrl = params.registrationUrl || undefined
 
-    // Determine if this should force create a new lead
+    // Form-submission sources always force a new lead row (preserved behavior)
     const formSubmissionSources = [
       'contact_form',
       'listing_card',
@@ -112,292 +126,170 @@ export async function createLeadFromRegistration(params: CreateLeadFromRegistrat
     ]
     const shouldForceNewLead = formSubmissionSources.includes(params.registrationSource)
 
-    if (shouldForceNewLead) {
-      console.log('📝 Form submission/Registration detected - creating NEW lead')
+    // Track the activity for analytics (best-effort; non-fatal). Tenant-scoped.
+    try {
+      await trackActivity({
+        tenantId,
+        contactEmail: params.email,
+        activityType: leadSource as any,
+        activityData: {
+          buildingId: finalBuildingId,
+          buildingName: finalBuildingName,
+          listingId: params.listingId,
+          source: params.registrationSource,
+        },
+      })
+    } catch (err) {
+      console.error('[createLeadFromRegistration] trackActivity error (non-fatal):', err)
     }
 
-    // Use the createLead function which sends emails
+    // Delegate to tenant-aware lead creation.
+    // No agentId passed — getOrCreateLead resolves it via resolve_agent_for_context(tenant_id, ...).
     const result = await getOrCreateLead({
-      agentId: agentId,
+      tenantId,
+      userId: params.userId,
       contactName: params.fullName,
       contactEmail: params.email,
       contactPhone: params.phone,
-      source: leadSource as any,
+      source: leadSource,
       sourceUrl: sourceUrl,
       buildingId: finalBuildingId,
       listingId: params.listingId,
-      message: params.message || buildLeadMessage(params, finalBuildingName, finalBuildingAddress),
+      message: params.message,
       estimatedValueMin: params.estimatedValueMin,
       estimatedValueMax: params.estimatedValueMax,
       propertyDetails: {
         ...(params.propertyDetails || {}),
         buildingName: finalBuildingName,
         buildingAddress: finalBuildingAddress,
-        unitNumber: params.unitNumber
+        unitNumber: params.unitNumber,
+        listingAddress: params.listingAddress,
       },
-      forceNew: shouldForceNewLead
+      forceNew: shouldForceNewLead,
     })
 
     if (!result.success) {
-      console.error('❌ Error creating lead from registration')
-      return { success: false, error: 'Failed to create lead' }
-    }
-
-    console.log('✅ Lead created successfully with email notification:', result.lead?.id)
-
-    // Track registration activity with building info
-    if (result.lead?.id) {
-      await trackActivity({
-        contactEmail: params.email,
-        agentId: agentId,
-        activityType: 'registration',
-        activityData: {
-          buildingId: finalBuildingId,
-          buildingName: finalBuildingName,
-          buildingAddress: finalBuildingAddress,
-          listingId: params.listingId,
-          unitNumber: params.unitNumber,
-          registrationSource: params.registrationSource
-        }
-      }).catch(err => console.error('Failed to track registration activity:', err))
+      return { success: false, error: result.error }
     }
 
     return { success: true, leadId: result.lead?.id }
 
-  } catch (error) {
-    console.error('❌ Unexpected error creating lead:', error)
-    return { success: false, error: 'Failed to create lead' }
+  } catch (error: any) {
+    console.error('[createLeadFromRegistration] error:', error)
+    return { success: false, error: error.message }
   }
 }
 
-// Build descriptive message for the lead
-function buildLeadMessage(
-  params: CreateLeadFromRegistrationParams,
-  buildingName?: string,
-  buildingAddress?: string
-): string {
-  const parts = ['New user registration']
-  if (buildingName) parts.push(`for ${buildingName}`)
-  if (params.unitNumber) parts.push(`Unit ${params.unitNumber}`)
-  if (buildingAddress) parts.push(`(${buildingAddress})`)
-  parts.push(`via ${params.registrationSource}`)
-  return parts.join(' ')
-}
-
-// Resolve agent from host - handles both subdomains AND custom domains
-async function resolveAgentFromHost(supabase: any, host: string): Promise<string> {
-  const DEFAULT_AGENT_ID = 'd5ab9f8b-5819-4363-806c-a414657e7763' // Mary Smith fallback
-  
-  // Handle localhost - return default
-  if (host.includes('localhost')) {
-    console.log('🏠 Localhost detected - using default agent')
-    return DEFAULT_AGENT_ID
-  }
-
-  const parts = host.split('.')
-  
-  // Check if it's a custom domain (not condoleads.ca or *.condoleads.ca)
-  const isCondoleadsDomain = host.includes('condoleads.ca')
-  
-  if (!isCondoleadsDomain) {
-    // Custom domain like yourcondorealtor.ca or www.yourcondorealtor.ca
-    // Strip www. if present
-    const cleanDomain = host.replace(/^www\./, '')
-    console.log('🌐 Custom domain detected:', cleanDomain)
-    
-    const { data: agent, error } = await supabase
-      .from('agents')
-      .select('id, full_name')
-      .eq('custom_domain', cleanDomain)
-      .eq('is_active', true)
-      .single()
-    
-    if (agent) {
-      console.log(`✅ Found agent for custom domain ${cleanDomain}: ${agent.full_name} (${agent.id})`)
-      return agent.id
-    } else {
-      console.warn(`⚠️ No agent found for custom domain: ${cleanDomain}`, error?.message)
-      // Also try with www. just in case it's stored that way
-      const { data: agentWww } = await supabase
-        .from('agents')
-        .select('id, full_name')
-        .eq('custom_domain', `www.${cleanDomain}`)
-        .eq('is_active', true)
-        .single()
-      
-      if (agentWww) {
-        console.log(`✅ Found agent for www.${cleanDomain}: ${agentWww.full_name}`)
-        return agentWww.id
-      }
-      
-      return DEFAULT_AGENT_ID
-    }
-  }
-  
-  // condoleads.ca domain - check for subdomain
-  // condoleads.ca or www.condoleads.ca = no subdomain
-  if (parts.length === 2 || (parts.length === 3 && parts[0] === 'www')) {
-    console.log('🏠 Main condoleads.ca domain - using default agent')
-    return DEFAULT_AGENT_ID
-  }
-  
-  // subdomain.condoleads.ca
-  if (parts.length >= 3) {
-    const subdomain = parts[0]
-    console.log('🔗 Subdomain detected:', subdomain)
-    
-    const { data: agent, error } = await supabase
-      .from('agents')
-      .select('id, full_name')
-      .eq('subdomain', subdomain)
-      .eq('is_active', true)
-      .single()
-    
-    if (agent) {
-      console.log(`✅ Found agent for subdomain ${subdomain}: ${agent.full_name} (${agent.id})`)
-      return agent.id
-    } else {
-      console.warn(`⚠️ No agent found for subdomain: ${subdomain}`, error?.message)
-      return DEFAULT_AGENT_ID
-    }
-  }
-  
-  return DEFAULT_AGENT_ID
-}
-
-// Extract building OR development info from URL with flexible slug matching
+/**
+ * extractBuildingFromUrl
+ *
+ * Resolve a building or development from a URL slug.
+ * Preserved verbatim from the pre-W-TENANT-AUTH version — agent-resolution-independent.
+ */
 async function extractBuildingFromUrl(
-  supabase: any, 
+  supabase: any,
   registrationUrl: string
 ): Promise<{ id: string; building_name: string; canonical_address: string } | null> {
   try {
-    // Parse URL to get pathname
     const url = new URL(registrationUrl, 'https://condoleads.ca')
     const pathSegments = url.pathname.split('/').filter(s => s)
-    const slug = pathSegments[0] // First segment after domain
-    
+    const slug = pathSegments[0]
+
     if (!slug || ['estimator', 'dashboard', 'login', 'admin', 'property', 'team'].includes(slug)) {
       return null
     }
-    
-    console.log('🔍 Looking up building/development by slug:', slug)
-    
-    // Try exact building match first
+
     const { data: exactBuildingMatch } = await supabase
       .from('buildings')
       .select('id, building_name, canonical_address')
       .eq('slug', slug)
       .single()
-    
+
     if (exactBuildingMatch) {
-      console.log('📍 Found exact building match:', exactBuildingMatch.building_name)
       return exactBuildingMatch
     }
-    
-    // Try exact development match
+
     const { data: exactDevMatch } = await supabase
       .from('developments')
       .select('id, name, slug')
       .eq('slug', slug)
       .single()
-    
+
     if (exactDevMatch) {
-  console.log('📍 Found development match:', exactDevMatch.name)
-  // Get ALL buildings in this development for combined addresses
-  const { data: devBuildings } = await supabase
-    .from('buildings')
-    .select('id, building_name, canonical_address')
-    .eq('development_id', exactDevMatch.id)
-    .order('building_name')
-  
-  if (devBuildings && devBuildings.length > 0) {
-    // Combine all addresses with " & "
-    const allAddresses = devBuildings.map((b: any) => b.canonical_address).join(' & ')
-    // Return first building id but with development name and ALL addresses
-    return {
-      id: devBuildings[0].id,
-      building_name: exactDevMatch.name,
-      canonical_address: allAddresses
+      const { data: devBuildings } = await supabase
+        .from('buildings')
+        .select('id, building_name, canonical_address')
+        .eq('development_id', exactDevMatch.id)
+        .order('building_name')
+
+      if (devBuildings && devBuildings.length > 0) {
+        const allAddresses = devBuildings.map((b: any) => b.canonical_address).join(' & ')
+        return {
+          id: devBuildings[0].id,
+          building_name: exactDevMatch.name,
+          canonical_address: allAddresses,
+        }
+      }
+      return {
+        id: '',
+        building_name: exactDevMatch.name,
+        canonical_address: '',
+      }
     }
-  }
-  // No buildings linked
-  return {
-    id: '',
-    building_name: exactDevMatch.name,
-    canonical_address: ''
-  }
-}
-    
-    // No exact match - try partial building match
+
     const slugParts = slug.split('-')
-    
-    // Try progressively shorter prefixes to find a match
     for (let i = Math.min(slugParts.length, 6); i >= 2; i--) {
       const partialSlug = slugParts.slice(0, i).join('-')
-      
-      // Check buildings
+
       const { data: partialBuildingMatches } = await supabase
         .from('buildings')
         .select('id, building_name, canonical_address, slug')
         .ilike('slug', `${partialSlug}%`)
         .limit(5)
-      
+
       if (partialBuildingMatches && partialBuildingMatches.length > 0) {
         if (partialBuildingMatches.length === 1) {
-          console.log(`📍 Found building via partial match (${partialSlug}):`, partialBuildingMatches[0].building_name)
           return partialBuildingMatches[0]
         }
-        
-        // Multiple matches - try to find the best one
         for (const building of partialBuildingMatches) {
           if (slug.includes(building.slug.split('-').slice(0, 4).join('-'))) {
-            console.log(`📍 Found best building match:`, building.building_name)
             return building
           }
         }
-        
-        console.log(`📍 Using first partial building match:`, partialBuildingMatches[0].building_name)
         return partialBuildingMatches[0]
       }
-      
-      // Check developments with partial match
+
       const { data: partialDevMatches } = await supabase
         .from('developments')
         .select('id, name, slug')
         .ilike('slug', `${partialSlug}%`)
         .limit(3)
-      
+
       if (partialDevMatches && partialDevMatches.length > 0) {
         const dev = partialDevMatches[0]
-        console.log(`📍 Found development via partial match (${partialSlug}):`, dev.name)
-        
-        // Get first building in development
         const { data: devBuilding } = await supabase
           .from('buildings')
           .select('id, building_name, canonical_address')
           .eq('development_id', dev.id)
           .limit(1)
           .single()
-        
+
         if (devBuilding) {
           return {
             id: devBuilding.id,
             building_name: dev.name,
-            canonical_address: devBuilding.canonical_address
+            canonical_address: devBuilding.canonical_address,
           }
         }
-        
         return {
           id: '',
           building_name: dev.name,
-          canonical_address: ''
+          canonical_address: '',
         }
       }
     }
-    
-    console.log('⚠️ No building or development found for slug:', slug)
+
     return null
-    
   } catch (error) {
     console.error('Error extracting building from URL:', error)
     return null

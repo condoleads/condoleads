@@ -1,8 +1,8 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
-import { getOrCreateLead } from '@/lib/actions/leads'
-import { trackActivity } from '@/lib/actions/user-activity'
+import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 
 interface AgentContactFormProps {
   listing: MLSListing
@@ -49,7 +49,7 @@ export default function AgentContactForm({ listing, status, isSale, agent, isHom
       : `Inquiry about ${unitInfo} at ${buildingInfo}`
 
     // Track property inquiry
-    await trackActivity({
+    await submitActivityFromForm({
       contactEmail: formData.email,
       activityType: 'property_inquiry',
       activityData: {
@@ -66,7 +66,7 @@ export default function AgentContactForm({ listing, status, isSale, agent, isHom
     })
 
     // Create lead with listing context
-    const result = await getOrCreateLead({
+    const result = await submitLeadFromForm({
       agentId: agent.id,
       contactName: formData.name,
       contactEmail: formData.email,

@@ -1,10 +1,30 @@
 ﻿'use client'
 
+/**
+ * RegisterModal — System 2 user registration + sign-in.
+ *
+ * Architectural role (W-TENANT-AUTH File 9):
+ *   - Both registration (signUp) and sign-in (signInWithPassword) success paths call
+ *     `joinTenant`, an idempotent server action that:
+ *       - Creates tenant_users(user_id, tenant_id) if missing
+ *       - Creates the per-tenant lead via getOrCreateLead
+ *       - Calls assign-user-agent for per-tenant agent resolution
+ *       - Sends welcome email
+ *
+ *   - This eliminates the cross-tenant blind-spot bug: previously, an existing user
+ *     signing in on tenant-2 would be invisible to tenant-2 (no lead, no welcome).
+ *     With joinTenant called on every successful auth, tenant-2 captures every user
+ *     who ever interacts with it — even users who originally registered on tenant-1.
+ *
+ *   - The user-facing UI is unchanged. All side effects move into joinTenant
+ *     (server-side, tenant-context-aware).
+ */
+
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Mail, Lock, User, Phone, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
-import { createLeadFromRegistration } from '@/app/actions/createLead'
+import { joinTenant } from '@/app/actions/joinTenant'
 
 interface RegisterModalProps {
   isOpen: boolean
@@ -57,16 +77,54 @@ export default function RegisterModal({
 
   if (!isOpen || !mounted) return null
 
+  // Helper: invoke joinTenant with all available context.
+  // Used by BOTH registration and sign-in success paths — joinTenant is idempotent.
+  const callJoinTenant = async (
+    userId: string,
+    fullName: string,
+    email: string,
+    phone: string
+  ) => {
+    try {
+      const result = await joinTenant({
+        userId,
+        fullName,
+        email,
+        phone,
+        registrationSource,
+        registrationUrl: window.location.href,
+        marketingConsent: true,
+        buildingId,
+        buildingName,
+        buildingAddress,
+        listingId,
+        listingAddress,
+        unitNumber,
+        estimatedValueMin,
+        estimatedValueMax,
+        propertyDetails,
+      })
+
+      if (!result.success) {
+        console.error('[RegisterModal] joinTenant failed:', result.error)
+      } else if (result.isNewToTenant) {
+        console.log('[RegisterModal] new tenant relationship — lead created, agent assigned, welcome sent')
+      } else {
+        console.log('[RegisterModal] returning user — no-op')
+      }
+    } catch (err) {
+      console.error('[RegisterModal] joinTenant exception:', err)
+    }
+  }
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
-    // Validation
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords don't match")
       return
     }
-
     if (formData.password.length < 6) {
       setError("Password must be at least 6 characters")
       return
@@ -75,7 +133,6 @@ export default function RegisterModal({
     setIsSubmitting(true)
 
     try {
-      // Register with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -91,61 +148,15 @@ export default function RegisterModal({
       if (authError) throw authError
 
       if (authData.user) {
-        // Update user_profiles with additional info
-        const { error: profileError } = await supabase
-          .from('user_profiles')
-          .update({
-            registration_source: registrationSource,
-            referred_by_agent: agentId || null,
-            marketing_consent: true
-          })
-          .eq('id', authData.user.id)
+        // joinTenant handles all server-side cascade:
+        // tenant_users insert, agent assignment, lead creation, welcome email.
+        await callJoinTenant(
+          authData.user.id,
+          formData.fullName,
+          formData.email,
+          formData.phone
+        )
 
-        if (profileError) console.error('Profile update error:', profileError)
-        // Assign agent to user based on page context (WALLiam System 2)
-        fetch('/api/walliam/assign-user-agent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: authData.user.id,
-            listing_id: listingId || null,
-            building_id: buildingId || null,
-          })
-        }).catch(e => console.error('Agent assignment error:', e))
-
-        // Auto-create lead from registration
-        const leadResult = await createLeadFromRegistration({
-          userId: authData.user.id,
-          fullName: formData.fullName,
-          email: formData.email,
-          phone: formData.phone,
-          registrationSource: registrationSource,
-          registrationUrl: window.location.href,
-          buildingId: buildingId,
-          buildingName: buildingName,
-          buildingAddress: buildingAddress,
-          listingId: listingId,
-          listingAddress: listingAddress,
-          unitNumber: unitNumber,
-          estimatedValueMin: estimatedValueMin,
-          estimatedValueMax: estimatedValueMax,
-          propertyDetails: propertyDetails
-        })
-
-        if (!leadResult.success) {
-          console.error('Failed to create lead:', leadResult.error)
-          // Don't fail the registration if lead creation fails
-        } else {
-          console.log('Lead created successfully:', leadResult.leadId)
-        }
-
-        // Success!
-        // Send welcome email
-        fetch('/api/email/welcome', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: authData.user.id, email: formData.email, fullName: formData.fullName }),
-        }).catch(err => console.error('[RegisterModal] welcome email error:', err))
         if (onSuccess) onSuccess()
         onClose()
       }
@@ -170,6 +181,19 @@ export default function RegisterModal({
       if (loginError) throw loginError
 
       if (data.user) {
+        // CRITICAL: call joinTenant on EVERY successful sign-in.
+        // For returning users on a known tenant: idempotent no-op.
+        // For users new to this tenant (e.g., walliam user signing in on tenant-2 for
+        // the first time): creates tenant_users row, lead, agent, welcome email.
+        // This is the fix for the cross-tenant blind-spot bug.
+        await callJoinTenant(
+          data.user.id,
+          // Pull what we have from form; fullName/phone may be empty on sign-in form.
+          formData.fullName || (data.user.user_metadata?.full_name as string) || '',
+          data.user.email || formData.email,
+          formData.phone || (data.user.user_metadata?.phone as string) || ''
+        )
+
         if (onSuccess) onSuccess()
         onClose()
       }
@@ -199,13 +223,13 @@ export default function RegisterModal({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">        
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <div>
               <h3 className="text-2xl font-bold text-gray-900" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 18 }}>✦</span> {showLogin ? 'Welcome Back' : 'VIP AI Access'}
+                <span style={{ fontSize: 18 }}>{'\u2726'}</span> {showLogin ? 'Welcome Back' : 'VIP AI Access'}
               </h3>
               <p className="text-gray-600 mt-1">
-                {showLogin ? 'Sign in to your VIP account' : 'Register free — browse unlimited, AI features included'}
+                {showLogin ? 'Sign in to your VIP account' : 'Register free \u2014 browse unlimited, AI features included'}
               </p>
             </div>
             <button
@@ -217,7 +241,7 @@ export default function RegisterModal({
           </div>
 
           {/* Form */}
-          <form onSubmit={showLogin ? handleLogin : handleRegister} className="p-6 space-y-4">    
+          <form onSubmit={showLogin ? handleLogin : handleRegister} className="p-6 space-y-4">
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <p className="text-red-800 text-sm">{error}</p>
@@ -313,7 +337,7 @@ export default function RegisterModal({
                     required
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    placeholder="••••••••"
+                    placeholder={'\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'}
                     className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>

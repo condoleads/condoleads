@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation'
+﻿import { redirect } from 'next/navigation'
 import { requireAgent } from '@/lib/auth/helpers'
 import { createClient } from '@/lib/supabase/server'
 import { getLeadNotes, getAgentBuildings } from '@/lib/actions/lead-management'
@@ -68,11 +68,11 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   const notes = notesResult.success ? notesResult.notes : []
 
   // Fetch user activities
-  const activitiesResult = await getUserActivities(lead.contact_email)
+  const activitiesResult = await getUserActivities(lead.contact_email, lead.tenant_id)
   const activities = activitiesResult.success ? activitiesResult.activities : []
 
   // Calculate engagement score
-  const engagement = await calculateEngagementScore(lead.contact_email)
+  const engagement = await calculateEngagementScore(lead.contact_email, lead.tenant_id)
 
   // Fetch available buildings for dropdown
   const buildingsResult = await getAgentBuildings(agent.id)
