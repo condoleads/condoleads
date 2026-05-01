@@ -8,8 +8,8 @@ import { buildCharlieSystemPrompt } from '@/app/charlie/lib/charlie-prompts'
 
 export const maxDuration = 60 // seconds
 
-function createAnthropicClient(apiKey?: string | null) {
-  return new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY })
+function createAnthropicClient(apiKey: string) {
+  return new Anthropic({ apiKey })
 }
 
 function createServiceClient() {
@@ -27,28 +27,15 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient()
 
-  // W-RECOVERY A1.1 auth gate — block bots and unauthenticated requests
+  // W-RECOVERY A1.1 auth gate — shape check (block bots and unauthenticated requests)
   if (!sessionId || !tenantId || !userId) {
     return new Response(
       JSON.stringify({ error: 'Authentication required', missing: { sessionId: !sessionId, tenantId: !tenantId, userId: !userId } }),
       { status: 401, headers: { 'Content-Type': 'application/json' } }
     )
   }
-  const { data: validSession } = await supabase
-    .from('chat_sessions')
-    .select('id')
-    .eq('id', sessionId)
-    .eq('tenant_id', tenantId)
-    .eq('user_id', userId)
-    .eq('source', 'walliam')
-    .maybeSingle()
-  if (!validSession) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid session' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
-    )
-  }
-  // END W-RECOVERY A1.1 auth gate
+  // Session DB validation moved below tenant config fetch — see Edit 3
+  // END W-RECOVERY A1.1 auth gate (shape check)
 
   // W-RECOVERY Chunk 6 — capture forensic context for logging
   const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
@@ -74,19 +61,54 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // Load tenant API key and assistant name for this request
-  let anthropicApiKey: string | null = null
-  let assistantName: string = 'Charlie'
-  if (tenantId) {
-    const { data: tenantRow } = await supabase
-      .from('tenants')
-      .select('anthropic_api_key, assistant_name')
-      .eq('id', tenantId)
-      .single()
-    anthropicApiKey = tenantRow?.anthropic_api_key || null
-    assistantName = (tenantRow as any)?.assistant_name || 'Charlie'
+  // D2a — fetch tenant config once at request entry, propagate through route
+  if (!tenantId) {
+    return new Response(
+      JSON.stringify({ error: 'Tenant required (missing x-tenant-id header)' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
   }
-  const anthropic = createAnthropicClient(anthropicApiKey)
+  const { data: tenantConfig, error: tenantErr } = await supabase
+    .from('tenants')
+    .select('source_key, domain, name, assistant_name, anthropic_api_key')
+    .eq('id', tenantId)
+    .single()
+  if (tenantErr || !tenantConfig) {
+    console.error('[CHARLIE] tenant config fetch failed:', tenantErr)
+    return new Response(
+      JSON.stringify({ error: 'Invalid tenant' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  // F36 — strict tenant-key requirement, no env fallback
+  if (!tenantConfig.anthropic_api_key) {
+    console.error('[CHARLIE] tenant has no anthropic_api_key configured:', tenantId)
+    return new Response(
+      JSON.stringify({ error: 'AI not configured for this tenant' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  const sourceKey = tenantConfig.source_key
+  const tenantDomain = tenantConfig.domain
+  const brandName = tenantConfig.name
+  const assistantName = tenantConfig.assistant_name || 'Charlie'
+  const anthropic = createAnthropicClient(tenantConfig.anthropic_api_key)
+
+  // D2a — session DB validation (uses sourceKey from tenant config, not hardcoded 'walliam')
+  const { data: validSession } = await supabase
+    .from('chat_sessions')
+    .select('id')
+    .eq('id', sessionId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('source', sourceKey)
+    .maybeSingle()
+  if (!validSession) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid session' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
 
   // Resolve agent + session from WALLiam session (NOT getAgentFromHost)
   let agentId: string | null = null
@@ -103,7 +125,7 @@ export async function POST(req: NextRequest) {
         vip_messages_granted, manual_approvals_count
       `)
       .eq('id', sessionId)
-      .eq('source', 'walliam')
+      .eq('source', sourceKey)
       .single()
 
     if (session) {
@@ -244,10 +266,20 @@ Use these exact numbers when answering market questions.`
             controller.close()
             return
           }
-          // Increment message count
-          await supabase.from('chat_sessions').update({ message_count: msgUsed + 1, last_activity_at: new Date().toISOString() }).eq('id', sessionId)
-          // Store pending chat credit event for post-stream
-          ;(sessionData as any)._pendingChatEvent = { messageCount: msgUsed + 1, chatFreeMessages: chatAllowed }
+          // Atomic increment — D0 fix retiring F5 race condition
+          const { data: newMsgCount, error: incErr } = await supabase.rpc('increment_chat_session_counter', {
+            p_session_id: sessionId,
+            p_counter: 'message_count',
+          })
+          if (incErr) {
+            console.error('[CHARLIE] message_count increment failed:', incErr)
+            send({ type: 'error', message: 'counter increment failed' })
+            send({ type: 'done' })
+            controller.close()
+            return
+          }
+          // Store pending chat credit event for post-stream — uses RPC return value, not stale read
+          ;(sessionData as any)._pendingChatEvent = { messageCount: newMsgCount, chatFreeMessages: chatAllowed }
           // Low credit warning email at 1 remaining
           const remaining = chatAllowed - (msgUsed + 1)
           if (remaining === 1 && sessionData.user_id) {
@@ -428,19 +460,20 @@ Use these exact numbers when answering market questions.`
                     return
                   }
 
-                  // Allowed — increment plan counter
-                  const specificPlansUsed = planType === 'seller' ? (sessionData.seller_plans_used || 0) : (sessionData.buyer_plans_used || 0)
-                  const updateField = planType === 'seller'
-                    ? { seller_plans_used: specificPlansUsed + 1 }
-                    : { buyer_plans_used: specificPlansUsed + 1 }
+                  // Atomic increment — D0 fix retiring F5 race condition
+                  const planCounterCol = planType === 'seller' ? 'seller_plans_used' : 'buyer_plans_used'
                   ;(sessionData as any)._planGeneratedThisTurn = true
-                  await supabase
-                    .from('chat_sessions')
-                    .update({
-                      ...updateField,
-                      last_activity_at: new Date().toISOString(),
-                    })
-                    .eq('id', sessionId)
+                  const { error: planIncErr } = await supabase.rpc('increment_chat_session_counter', {
+                    p_session_id: sessionId,
+                    p_counter: planCounterCol,
+                  })
+                  if (planIncErr) {
+                    console.error('[CHARLIE] plan counter increment failed:', planIncErr)
+                    send({ type: 'error', message: 'plan counter increment failed' })
+                    send({ type: 'done' })
+                    controller.close()
+                    return
+                  }
 
                   // Notify frontend — registered user used a VIP credit
 
@@ -501,7 +534,12 @@ Use these exact numbers when answering market questions.`
         if ((sessionData as any)?._pendingChatEvent) {
           const cevt = (sessionData as any)._pendingChatEvent
           if ((sessionData as any)?._planGeneratedThisTurn) {
-            await supabase.from('chat_sessions').update({ message_count: Math.max(0, cevt.messageCount - 1) }).eq('id', sessionId)
+            // Atomic decrement — refund the chat credit because a plan was generated this turn
+            const { error: decErr } = await supabase.rpc('decrement_chat_session_counter', {
+              p_session_id: sessionId,
+              p_counter: 'message_count',
+            })
+            if (decErr) console.error('[CHARLIE] message_count decrement failed:', decErr)
           } else {
             send({ type: 'chat_credit_used', messageCount: cevt.messageCount, chatFreeMessages: cevt.chatFreeMessages })
           }
