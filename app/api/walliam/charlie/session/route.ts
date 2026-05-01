@@ -34,6 +34,29 @@ export async function POST(request: NextRequest) {
     const tenantId = request.headers.get('x-tenant-id') || null
     const supabase = createServiceClient()
 
+    // D2b — F9 fix: tenant-required guard
+    if (!tenantId) {
+      return NextResponse.json(
+        { error: 'Tenant required (missing x-tenant-id header)' },
+        { status: 400 }
+      )
+    }
+
+    // D2b — F8 fix: fetch source_key from tenant config (replaces hardcoded 'walliam')
+    const { data: sourceTenant, error: sourceErr } = await supabase
+      .from('tenants')
+      .select('source_key')
+      .eq('id', tenantId)
+      .single()
+    if (sourceErr || !sourceTenant?.source_key) {
+      console.error('[session] tenant source_key fetch failed:', sourceErr)
+      return NextResponse.json(
+        { error: 'Invalid tenant' },
+        { status: 400 }
+      )
+    }
+    const sourceKey = sourceTenant.source_key
+
     // Step 1: Resolve agent via priority chain
     console.log("[session] calling rpc")
     const { data: resolvedAgentId, error: resolveError } = await supabase
@@ -130,36 +153,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (agentId && !tenantId) {
-      const { data: agent } = await supabase
-        .from('agents')
-        .select(`
-          full_name, ai_free_messages, ai_auto_approve_limit,
-          ai_manual_approve_limit, ai_hard_cap, vip_auto_approve
-        `)
-        .eq('id', agentId)
-        .single()
-
-      if (agent) {
-        agentConfig = {
-          ai_free_messages: agent.ai_free_messages ?? 5,
-          ai_auto_approve_limit: agent.ai_auto_approve_limit ?? 2,
-          ai_manual_approve_limit: agent.ai_manual_approve_limit ?? 3,
-          ai_hard_cap: agent.ai_hard_cap ?? 25,
-          vip_auto_approve: agent.vip_auto_approve ?? false,
-          full_name: agent.full_name,
-          plan_free_attempts: 1,
-          plan_hard_cap: 10,
-          plan_manual_approve_limit: 3,
-          plan_mode: 'shared',
-          seller_plan_free_attempts: 1,
-          seller_plan_hard_cap: 10,
-          estimator_free_attempts: 1,
-          estimator_hard_cap: 10,
-          assistant_name: 'Charlie',
-        }
-      }
-    }
+    // D2b — F10 fix: removed dead `if (agentId && !tenantId)` block.
+    // Unreachable since tenant guard at top of handler returns 400 when tenantId is null.
 
     // Claim anonymous session on registration — if caller just registered and is carrying
     // an existing anonymous sessionId, link it to the user so state (plans, messages, etc.) persists.
@@ -183,7 +178,7 @@ export async function POST(request: NextRequest) {
       const { data: existing } = await supabase
         .from('chat_sessions')
         .select('*')
-        .eq('source', 'walliam')
+        .eq('source', sourceKey)
         .eq('user_id', userId)
         .eq('tenant_id', tenantId)
         .in('status', ['active', 'vip'])
@@ -226,7 +221,7 @@ export async function POST(request: NextRequest) {
         .insert({
           agent_id: agentId,
           user_id: userId || null,
-          source: 'walliam',
+          source: sourceKey,
           session_token: crypto.randomUUID(),
           tenant_id: tenantId,
           status: 'active',
