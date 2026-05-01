@@ -51,7 +51,7 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
       }
 
       try {
-        const response = await estimateHomeSale(specs, true)
+        const response = await estimateHomeSale(specs, false)
         if (response.success && response.data) {
           setResult(response.data)
         } else {

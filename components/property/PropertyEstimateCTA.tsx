@@ -45,8 +45,8 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
 
       try {
         const response = isSale
-          ? await estimateSale(specs, true)
-          : await estimateRent(specs, true)
+          ? await estimateSale(specs, false)
+          : await estimateRent(specs, false)
 
         if (response.success && response.data) {
           setResult(response.data)
