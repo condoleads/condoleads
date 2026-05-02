@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
             to: vipRequest.email,
             cc: managerEmail ? [managerEmail] : undefined,
             bcc: 'condoleads.ca@gmail.com',
-            subject: '✨ Your WALLiam Estimator Access is Approved',
+            subject: 'Your WALLiam Estimator Access is Approved',
             html: buildUserApprovalEmailHtml(
               vipRequest.full_name,
               agent?.full_name || 'WALLiam',

@@ -1,5 +1,5 @@
 ﻿// app/api/walliam/estimator/vip-request/route.ts
-// WALLiam estimator VIP request â€” adapted from app/api/chat/vip-request/route.ts
+// WALLiam estimator VIP request — adapted from app/api/chat/vip-request/route.ts
 // System 1 never touched.
 // Key differences vs System 1:
 //   - source = 'walliam_estimator_vip_request' (visible in /admin-homes/leads)
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Auto-approve logic â€” reads from TENANT config, not agent
+    // Auto-approve logic — reads from TENANT config, not agent
     // If auto_approve_attempts = 0, fall through to manual regardless of flag
     const autoApproveMessages = tenant.estimator_auto_approve_attempts ?? 0
     const isAutoApprove = tenant.estimator_vip_auto_approve === true && autoApproveMessages > 0
@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
         tenantId: session.tenant_id || '',
         to: agentEmail,
         cc: ccList.length > 0 ? ccList : undefined,
-        subject: `ðŸ”” WALLiam Estimator VIP Request â€” ${phone}`,
+        subject: `WALLiam Estimator VIP Request: ${phone}`,
         html: emailHtml,
       })
     } catch (err) {
@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
       await sendTenantEmail({
         tenantId: session.tenant_id || '',
         to: ADMIN_EMAIL,
-        subject: `ðŸ”” WALLiam Estimator VIP [${agent.full_name}] â€” ${phone}`,
+        subject: `WALLiam Estimator VIP [${agent.full_name}]: ${phone}`,
         html: emailHtml,
       })
     } catch (err) {
@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
           source: 'walliam_estimator_vip_request',
           source_url: pageUrl,
           building_id: session.current_page_type === 'building' ? session.current_page_id : null,
-          message: `WALLiam Estimator VIP Request${buildingName ? ` â€” ${buildingName}` : ''}`,
+          message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
           status: 'new',
           quality: 'hot',
           manager_id: managerId,
@@ -291,7 +291,7 @@ export async function POST(request: NextRequest) {
           await sendTenantEmail({
             tenantId: session.tenant_id || '',
             to: userEmail,
-            subject: 'âœ¦ WALLiam Estimator Access Approved',
+            subject: 'WALLiam Estimator Access Approved',
             html: buildUserApprovalEmailHtml(userName, agent.full_name, autoApproveMessages),
           })
         } catch (err) {
@@ -322,7 +322,7 @@ export async function POST(request: NextRequest) {
 }
 
 // GET: Poll for approval status
-// questionnaireCompleted always true â€” WALLiam has no questionnaire
+// questionnaireCompleted always true — WALLiam has no questionnaire
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -373,8 +373,8 @@ function buildApprovalEmailHtml(data: {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 22px;">ðŸ”” WALLiam Estimator VIP Request</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">ðŸ“Š Estimator</p>
+        <h1 style="color: white; margin: 0; font-size: 22px;">🔔 WALLiam Estimator VIP Request</h1>
+        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">📊 Estimator</p>
       </div>
       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
         <h2 style="margin-top: 0; color: #1f2937; font-size: 16px;">Contact Information</h2>
@@ -409,10 +409,10 @@ function buildApprovalEmailHtml(data: {
           Approve to grant this visitor additional estimator access.
         </p>
         <a href="${data.approveUrl}" style="display: inline-block; padding: 14px 32px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px;">
-          âœ… Approve
+          ✅ Approve
         </a>
         <a href="${data.denyUrl}" style="display: inline-block; padding: 14px 32px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
-          âŒ Deny
+          ❌ Deny
         </a>
         <p style="margin: 20px 0 0; font-size: 12px; color: #9ca3af;">Expires in 24 hours.</p>
       </div>
@@ -424,7 +424,7 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, attempt
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
-        <div style="font-size: 48px; margin-bottom: 12px;">âœ¦</div>
+        <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
       </div>
@@ -437,7 +437,7 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, attempt
         <div style="text-align: center;">
           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}"
              style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
-            âœ¦ Back to WALLiam
+            ✦ Back to WALLiam
           </a>
         </div>
       </div>
