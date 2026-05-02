@@ -28,7 +28,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
+    // D2c — tenant required for branded emails + source-key filtering
+    const tenantId = request.headers.get('x-tenant-id')
+    if (!tenantId) {
+      return NextResponse.json(
+        { error: 'Tenant required (missing x-tenant-id header)' },
+        { status: 400 }
+      )
+    }
+
     const supabase = createServiceClient()
+
+    const { data: tenantConfig, error: tenantConfigError } = await supabase
+      .from('tenants')
+      .select('source_key, name, brand_name, domain, assistant_name, vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, estimator_manual_approve_attempts, estimator_hard_cap')
+      .eq('id', tenantId)
+      .single()
+
+    if (tenantConfigError || !tenantConfig?.source_key) {
+      console.error('[walliam/vip-request] tenant config fetch failed:', tenantConfigError)
+      return NextResponse.json({ error: 'Invalid tenant' }, { status: 400 })
+    }
+
+    const sourceKey = tenantConfig.source_key
+    const brandName = (tenantConfig.brand_name || tenantConfig.name || '').trim()
+    const tenantDomain = (tenantConfig.domain || '').trim()
+
+    if (!brandName || !tenantDomain) {
+      console.error('[walliam/vip-request] tenant misconfigured: brand_name or domain missing for', tenantId)
+      return NextResponse.json({ error: 'Tenant configuration incomplete' }, { status: 500 })
+    }
 
     // Get session + agent
     const { data: session, error: sessionError } = await supabase
@@ -41,7 +70,7 @@ export async function POST(request: NextRequest) {
         )
       `)
       .eq('id', sessionId)
-      .eq('source', 'walliam')
+      .eq('source', sourceKey)
       .single()
 
     if (sessionError || !session) {
@@ -55,12 +84,10 @@ export async function POST(request: NextRequest) {
 
     const agent = session.agents
 
-    // Load tenant config for credit limits
-    const tenantId = session.tenant_id
-    let tenantCfg: any = { vip_auto_approve: false, ai_auto_approve_limit: 0, ai_manual_approve_limit: 2, plan_auto_approve_limit: 0, plan_manual_approve_limit: 3, plan_hard_cap: 10, ai_hard_cap: 25, estimator_hard_cap: 10 }
-    if (tenantId) {
-      const { data: tData } = await supabase.from('tenants').select('vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
-      if (tData) tenantCfg = tData
+    // D2c — tenant-boundary check: session must belong to the tenant in the header
+    if (session.tenant_id && session.tenant_id !== tenantId) {
+      console.error('[walliam/vip-request] tenant mismatch: session.tenant_id=' + session.tenant_id + ' header tenantId=' + tenantId)
+      return NextResponse.json({ error: 'Tenant mismatch' }, { status: 403 })
     }
 
     // Check for existing pending request
@@ -81,7 +108,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user contact info from user_profiles â€” already registered, no form needed
-    let userName = 'WALLiam User'
+    let userName = `${brandName} User`
     let userEmail = ''
     let userPhone = ''
 
@@ -114,8 +141,8 @@ export async function POST(request: NextRequest) {
 
 
     // Use tenant config for credit decisions
-    const isAutoApprove = tenantCfg.vip_auto_approve === true && (tenantCfg.ai_auto_approve_limit ?? 0) > 0
-    const autoApproveMessages = tenantCfg.ai_auto_approve_limit ?? 0
+    const isAutoApprove = tenantConfig.vip_auto_approve === true && (tenantConfig.ai_auto_approve_limit ?? 0) > 0
+    const autoApproveMessages = tenantConfig.ai_auto_approve_limit ?? 0
 
     // Create VIP request â€” no questionnaire fields required
     const { data: vipRequest, error: insertError } = await supabase
@@ -123,10 +150,11 @@ export async function POST(request: NextRequest) {
       .insert({
         session_id: sessionId,
         agent_id: agent?.id || null,
+        tenant_id: tenantId,
         phone: userPhone || 'Not provided',
         full_name: userName,
         email: userEmail || null,
-        request_source: 'walliam_charlie',
+        request_source: `${sourceKey}_charlie`,
         request_type: planType === 'chat' ? 'chat' : planType === 'estimator' ? 'estimator' : 'plan',
         status: isAutoApprove ? 'approved' : 'pending',
         messages_granted: isAutoApprove ? autoApproveMessages : 0,
@@ -141,7 +169,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create request' }, { status: 500 })
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`
     const approveUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=approve`
     const denyUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=deny`
 
@@ -153,6 +181,8 @@ export async function POST(request: NextRequest) {
       approveUrl,
       denyUrl,
       agentName: agent?.full_name || 'Agent',
+      brandName,
+      tenantDomain,
     })
 
     const agentEmail = agent?.notification_email || agent?.email
@@ -191,7 +221,7 @@ export async function POST(request: NextRequest) {
         contact_name: userName,
         contact_email: userEmail,
         contact_phone: userPhone || null,
-        source: 'walliam_charlie_vip_request',
+        source: `${sourceKey}_charlie_vip_request`,
         intent: planType || 'buyer',
         status: 'new',
         quality: 'hot',
@@ -216,7 +246,7 @@ export async function POST(request: NextRequest) {
       // Write to user_credit_overrides using tenant configured values
       if (session.user_id && tenantId) {
         const currentUsed = (session.buyer_plans_used || 0) + (session.seller_plans_used || 0)
-        const newLimit = Math.min(currentUsed + autoApproveMessages, tenantCfg.plan_hard_cap ?? 10)
+        const newLimit = Math.min(currentUsed + autoApproveMessages, tenantConfig.plan_hard_cap ?? 10)
         await supabase.from('user_credit_overrides').upsert({
           user_id: session.user_id,
           tenant_id: tenantId,
@@ -233,8 +263,8 @@ export async function POST(request: NextRequest) {
           await sendTenantEmail({
             tenantId: tenantId || '',
             to: userEmail,
-            subject: 'âœ¨ Your WALLiam Plan Access is Approved',
-            html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
+            subject: `âœ¨ Your ${brandName} Plan Access is Approved`,
+            html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, tenantDomain),
           })
         } catch (err) {
           console.error('[walliam/vip-request] user approval email error:', err)
@@ -273,12 +303,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Request ID required' }, { status: 400 })
     }
 
+    const tenantId = request.headers.get('x-tenant-id')
+    if (!tenantId) {
+      return NextResponse.json(
+        { error: 'Tenant required (missing x-tenant-id header)' },
+        { status: 400 }
+      )
+    }
+
     const supabase = createServiceClient()
 
     const { data: vipRequest } = await supabase
       .from('vip_requests')
       .select('status, responded_at, messages_granted')
       .eq('id', requestId)
+      .eq('tenant_id', tenantId)
       .single()
 
     if (!vipRequest) {
@@ -304,6 +343,8 @@ function buildAgentEmailHtml(data: {
   approveUrl: string
   denyUrl: string
   agentName: string
+  brandName: string
+  tenantDomain: string
 }): string {
   const planLabel = data.planType === 'seller' ? 'ðŸ’° Seller Plan' : 'ðŸ  Buyer Plan'
 
@@ -312,7 +353,7 @@ function buildAgentEmailHtml(data: {
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 32px; margin-bottom: 8px;">âœ¦</div>
         <h1 style="color: white; margin: 0; font-size: 22px;">New VIP Plan Request</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 6px 0 0; font-size: 13px;">WALLiam Â· ${planLabel}</p>
+        <p style="color: rgba(255,255,255,0.5); margin: 6px 0 0; font-size: 13px;">${data.brandName} Â· ${planLabel}</p>
       </div>
 
       <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0;">
@@ -341,7 +382,7 @@ function buildAgentEmailHtml(data: {
 
       <div style="padding: 24px; text-align: center; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
         <p style="margin: 0 0 20px; color: #64748b; font-size: 14px;">
-          Approve to grant this user additional WALLiam plan credits.
+          Approve to grant this user additional ${data.brandName} plan credits.
         </p>
         <a href="${data.approveUrl}" style="display: inline-block; padding: 12px 28px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px; font-size: 14px;">
           âœ… Approve
@@ -350,35 +391,35 @@ function buildAgentEmailHtml(data: {
           âŒ Deny
         </a>
         <p style="margin: 20px 0 0; font-size: 11px; color: #94a3b8;">
-          Manage all requests at walliam.ca/admin-homes/leads
+          Manage all requests at ${data.tenantDomain}/admin-homes/leads
         </p>
       </div>
     </div>
   `
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number): string {
+function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number, brandName: string, tenantDomain: string): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
         <div style="font-size: 48px; margin-bottom: 12px;">âœ¦</div>
         <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
       </div>
       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
           Hi ${userName},
         </p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-          <strong>${agentName}</strong> has approved your request for additional WALLiam plan credits.
+          <strong>${agentName}</strong> has approved your request for additional ${brandName} plan credits.
           You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available.
         </p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-          Head back to WALLiam to generate your personalized real estate plan. Your agent may also reach out directly.
+          Head back to ${brandName} to generate your personalized real estate plan. Your agent may also reach out directly.
         </p>
         <div style="text-align: center;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
-            âœ¦ Back to WALLiam
+          <a href="${process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+            âœ¦ Back to ${brandName}
           </a>
         </div>
       </div>
