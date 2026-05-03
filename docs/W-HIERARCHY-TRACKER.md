@@ -1,8 +1,8 @@
-# W-HIERARCHY Tracker
+# W-HIERARCHY Tracker (COMPLETE)
 
 **Started:** 2026-05-02 (resumed; original work began Apr 2026 as Phase 3.4+)
 **Owner:** Shah (sole dev)
-**Status:** H1 + H2 + H3.0–H3.8b + H3.9 + H4 + H5 DONE (Path X close). Only H6 housekeeping remains.
+**Status:** ✅ COMPLETE — all phases (H1 + H2 + H3.0–H3.8b + H3.9 + H4 + H5 + H6) DONE.
 **Last patched:** 2026-05-03 v16 — H5 CLOSED via Path X. Recovery commit `3edbdf6` shipped the H3.3-H3.8b wave that lived only in working tree (helper + 8 routes + 2 docs). Vercel build green on `3edbdf6`; production walliam.ca now serves full Lead+Email contract. H5 programmatic smoke executed: H5.4 (walliam/contact) PASS in production; 3 auth-gated routes (H5.3, H5.5, H5.6) returned 401/400 because anonymous-POST hits W-RECOVERY auth gates before contract code runs. 4 charlie-session routes (H5.1, H5.2, H5.7, H5.8) require established AI sessions and remain manual. Auth-aware smoke deferred to project-wide programmatic testing pass. Coverage rationale: Stage 1 (3/3) + H5.4 (1) + canonical-pattern diff verification (8 routes match `walliam/contact` pattern) + Vercel green build = contract proven by combined evidence. H6 = drop backup tables + cleanup `scripts/` + open W-ROLES-DELEGATION.
 
 ---
@@ -381,17 +381,22 @@ All Rule Zero invariants hold for every change:
 - **2026-05-03 v14** — H4 reframed and executed. Verification confirmed all 277 pre-existing leads test data (all walliam tenant, all test-pattern emails, all null hierarchy IDs). Backups taken (`*_backup_20260503` tables, 277 + 32 + 214 rows). Wipe transaction executed atomically with in-flight rollback-on-failure verification: leads → 0, lead_email_log → 0, lead_notes → 0, vip_requests → 0; chat_sessions (2096) and chat_messages_v2 (64) preserved per design. Backup-table cleanup deferred to post-H6.
 - **2026-05-03 v15** — H3.9 SHIPPED (commit `bd1f462`). `lib/actions/leads.ts` brought into Lead+Email contract end-to-end: walker captures full chain on insert, INSERT payload expanded from agent_id-only to all 5 hierarchy IDs (was a contract regression; now compliant), 3-call sendActivityEmail loop replaced with single helper-driven sendTenantEmail, F67 try/catch standardized. Option A locked: dup-branch in `getOrCreateLead` silent. 3 call sites verified passing tenantId correctly. **Stage 1 contract smoke 3/3 PASS** via `scripts/h3-9-smoke.js` against real Supabase + real Resend; Resend message IDs `20ebfd4e`, `2efc1cb5`, `07c0fdda`. Stage 2 (HTTP smoke against running Next.js) folded into H5 — efficiency decision, no duplication. F51 retired. Tracker rewritten v8 → v15 (per Approach A) because v9–v14 chat-artifact patches never landed on disk. **Tracker progress: H1 + H2 + H3.0–H3.8b + H3.9 + H4 DONE. Only H5 + H6 remain.** Next action: H5 smoke matrix.
 - **2026-05-03 v16** — H5 CLOSED via Path X. Three commits pushed to origin/main today: `bd1f462` (H3.9 `lib/actions/leads.ts` refactor — first build-attempted, FAILED Vercel because helper missing in git), `f9aeed9` (tracker v8 → v15 rewrite), `3edbdf6` (recovery commit: H3.3 helper + 8 H3.3-H3.8b refactored routes + 2 docs that lived only in working tree across prior sessions; build GREEN on this). Recovery commit was the most important of the session — brought ~8 prior sessions of W-HIERARCHY work into git history. Production walliam.ca went from pre-H3.3 (no helper, hardcoded admin emails, dual-send anti-patterns) → post-H3.9 (full Lead+Email contract uniformly applied across 8 routes + lib/actions/leads.ts) in one atomic deploy via Vercel build F3BW1JLxf (1m12s). H5 programmatic smoke: H5.4 PASS; H5.3 + H5.5 + H5.6 returned 401/400 (W-RECOVERY auth gates working as intended); H5.1 + H5.2 + H5.7 + H5.8 require Charlie session (manual). Path X close: contract proven by combined evidence (Stage 1 helper-level 3/3 PASS + H5.4 production + canonical-pattern diff verification + Vercel green). Auth-aware smoke deferred to project-wide testing pass. **Tracker progress: H1 + H2 + H3.0–H3.8b + H3.9 + H4 + H5 DONE. Only H6 housekeeping remains.** Next action: H6 — drop `*_backup_20260503` tables, cleanup `scripts/` (9 dev-local scripts), open W-ROLES-DELEGATION sister tracker (R1 recon).
+- **2026-05-03 v17 (FINAL)** — H6 housekeeping complete. Dropped 3 backup tables (`leads_backup_20260503`, `vip_requests_backup_20260503`, `lead_email_log_backup_20260503`). Deleted 1 file backup (`lib/actions/leads.ts.backup_20260503_131924`). Deleted 11 dev-local scripts (9 W-HIERARCHY scripts from this session + 2 smoke-fix backups). Pre-existing scripts from other trackers preserved. **W-HIERARCHY closed.** Production walliam.ca runs full Lead+Email contract: walker uniformity, helper uniformity, insert payload uniformity, single-send uniformity, layer-6 unconditional BCC. Recipients helper (`lib/admin-homes/lead-email-recipients.ts`) is the integration point W-ROLES-DELEGATION will extend additively for universal delegation overlay. Carry-forward findings: F55 (3 platform-level routes still hold `condoleads.ca@gmail.com` literal — separate phase), F68 (walker contract documentation — verified, not a bug), F69 (estimator VIP modal phone redundancy — frontend bug). All in-scope code work shipped today across 4 commits: `bd1f462` (H3.9), `f9aeed9` (tracker rewrite), `3edbdf6` (recovery), `7668045` (v16). Next session: open W-ROLES-DELEGATION sister tracker (R1 recon).
 
 ---
 
 ## Next action
 
-**H6 — close-out housekeeping.** No more code work. Three deletion passes + one tracker handoff:
+**None — W-HIERARCHY is closed.** Next session opens `docs/W-ROLES-DELEGATION-TRACKER.md` at R1 (recon).
 
-1. **Drop H4 backup tables** (Supabase): `leads_backup_20260503`, `vip_requests_backup_20260503`, `lead_email_log_backup_20260503`. Were retained through H5 in case rollback was needed; H5 closed cleanly so they can go.
-2. **Delete `lib/actions/leads.ts.backup_20260503_131924`** (file): backup taken by `scripts/h3-9-patch.js` before the H3.9 refactor wrote the new file. H3.9 verified working in production; backup no longer needed.
-3. **Cleanup `scripts/`**: 9 dev-local scripts that served their purpose this session — `h3-9-patch.js`, `h3-9-smoke.js`, `h3-9-smoke-fix.js`, `h3-9-smoke-fix-v2.js`, `patch-tracker-v15.js`, `rewrite-tracker-v15.js`, `recovery-stage-h3-wave.js`, `patch-tracker-v16.js` (this script), and the `h5-smoke-matrix.js`. Pre-existing scripts `smoke-recipients-helper.ts` and `smoke-w-credit-verify.js` are W-CREDIT-VERIFY-era artifacts; they go too if W-CREDIT-VERIFY is closed.
-4. **Mark this tracker COMPLETE** at the top header.
-5. **Open `W-ROLES-DELEGATION-TRACKER.md` R1 recon** as the next session's first action.
+### Handoff to W-ROLES-DELEGATION
 
-After H6: W-HIERARCHY is done. Production walliam.ca is on the full Lead+Email contract. The recipients helper layer is the extension point W-ROLES-DELEGATION will hook into for the universal delegation overlay (Support / Supervisor / Assistant per locked product model).
+The recipients helper (`lib/admin-homes/lead-email-recipients.ts`) is W-ROLES-DELEGATION's integration point. The locked product model defines universal delegation (Support / Supervisor / Assistant) as additive: same return shape from the helper, more BCC entries when active delegations exist for any layer's principal. No changes to the 8 lead routes consuming the helper — they pass through unchanged.
+
+W-ROLES-DELEGATION R1 (recon) starts with:
+1. Read sister tracker spec on disk
+2. Schema verify: any existing delegation tables? RLS state?
+3. Decision: extend recipients helper signature, or add a separate `getDelegationOverlay` helper that the existing one composes?
+4. Plan R2+ phases
+
+W-HIERARCHY itself requires no further work. Production is on the contract; the table is clean; the chain works; the helper is the API.
