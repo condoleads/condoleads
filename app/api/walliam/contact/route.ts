@@ -2,14 +2,24 @@
 // WALLiam contact form lead capture
 // Used by: building pages, property pages, geo pages
 // Resolves agent via resolve_agent_for_context
-// Emails: agent TO, manager CC, admin BCC
+//
+// W-HIERARCHY H3.8 (2026-05-03):
+//   - getLeadEmailRecipients enforces 6-layer chain (was: inline manager-CC + hardcoded ADMIN_EMAIL)
+//   - tenant_admin_id captured into lead insert payload (F58)
+//   - F47 hardcoded ADMIN_EMAIL constant removed
+//   - F66 walker call shape standardized via helper
+//   - F67 try/catch standard (was already partially correct on this route — now uniform across both branches)
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
-
-const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
 
 
 // Track user activity in user_activities table
@@ -65,11 +75,11 @@ export async function POST(req: NextRequest) {
       p_tenant_id: tenant_id,
     })
 
-    // Get agent + manager details
+    // Get agent details + walk hierarchy
     let agent: any = null
-    let managerEmail: string | null = null
-    let managerId: string | null = null
-    let areaManagerId: string | null = null
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
 
     if (agentId) {
       const { data: agentData } = await supabase
@@ -80,26 +90,19 @@ export async function POST(req: NextRequest) {
 
       if (agentData) {
         agent = agentData
-        // Phase 3.4 — full hierarchy walk: classify each ancestor by role
         const chain = await walkHierarchy(agentData.id, supabase)
-        managerId = chain.manager_id
-        areaManagerId = chain.area_manager_id
-        if (managerId) {
-          const { data: manager } = await supabase
-            .from('agents')
-            .select('email, notification_email')
-            .eq('id', managerId)
-            .single()
-          if (manager) managerEmail = manager.notification_email || manager.email
-        }
+        chainManagerId = chain.manager_id
+        chainAreaManagerId = chain.area_manager_id
+        chainTenantAdminId = chain.tenant_admin_id
       }
     }
 
-    // Save lead
+    // Save lead with full hierarchy chain (per Lead+Email contract)
     const { data: lead } = await supabase.from('leads').insert({
       agent_id: agent?.id || null,
-      manager_id: managerId,
-      area_manager_id: areaManagerId,
+      manager_id: chainManagerId,
+      area_manager_id: chainAreaManagerId,
+      tenant_admin_id: chainTenantAdminId,
       tenant_id,
       contact_name: name,
       contact_email: email,
@@ -116,37 +119,40 @@ export async function POST(req: NextRequest) {
 
     // Build email HTML
     const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id })
-    const subject = `✦ WALLiam Inquiry — ${name} — ${geo_name || source || 'WALLiam'}`
+    const subject = `\u2756 WALLiam Inquiry \u2014 ${name} \u2014 ${geo_name || source || 'WALLiam'}`
 
-    // Send to agent (or admin if no agent)
-    if (agent?.email) {
-      const agentNotifyEmail = agent.notification_email || agent.email
-      try {
-      await sendTenantEmail({
-        tenantId: tenant_id,
-        to: agentNotifyEmail,
-        cc: managerEmail ? [managerEmail] : undefined,
-        bcc: [ADMIN_EMAIL],
-        subject,
-        html,
-      })
-    } catch (e) {
-      if (e instanceof TenantEmailNotConfigured) {
-        console.warn('[walliam/contact] tenant email not configured, lead captured but no email sent:', e.message)
-      } else if (e instanceof TenantEmailFailed) {
-        console.error('[walliam/contact] resend send failed:', e.message)
-      } else { throw e }
+    // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
+    let recipients
+    try {
+      recipients = await getLeadEmailRecipients(tenant_id, agent?.id || null, supabase)
+    } catch (err) {
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[walliam/contact] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
     }
-    } else {
+
+    if (recipients) {
       try {
-      await sendTenantEmail({ tenantId: tenant_id, to: ADMIN_EMAIL, subject, html })
-    } catch (e) {
-      if (e instanceof TenantEmailNotConfigured) {
-        console.warn('[walliam/contact] tenant email not configured, lead captured but no email sent:', e.message)
-      } else if (e instanceof TenantEmailFailed) {
-        console.error('[walliam/contact] resend send failed:', e.message)
-      } else { throw e }
-    }
+        await sendTenantEmail({
+          tenantId: tenant_id,
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+          subject,
+          html,
+        })
+      } catch (err) {
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[walliam/contact] tenant email not configured:', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[walliam/contact] resend send failed:', err.message)
+        } else {
+          console.error('[walliam/contact] unexpected email error:', err)
+        }
+      }
     }
 
     // Track activity

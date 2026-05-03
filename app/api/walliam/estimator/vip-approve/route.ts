@@ -5,10 +5,20 @@
 //   - Redirects to /admin-homes/leads
 //   - FROM: notifications@condoleads.ca
 //   - WALLiam dark theme HTML response
+//
+// W-HIERARCHY H3.8b (2026-05-03): inline ADMIN_EMAIL literal removed.
+// BCC now resolved via getLeadEmailRecipients helper (Admin Platform layer 6,
+// extensible to delegations via W-ROLES-DELEGATION). F54 retired.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
 
 
 function createServiceClient() {
@@ -36,7 +46,7 @@ export async function GET(request: NextRequest) {
         *,
         chat_sessions (*),
         agents (
-          full_name, email, notification_email,
+          full_name, email, notification_email, parent_id,
           ai_manual_approve_limit
         )
       `)
@@ -53,12 +63,7 @@ export async function GET(request: NextRequest) {
     const newStatus = action === 'approve' ? 'approved' : 'denied'
     const agent = vipRequest.agents
     const tenantId = vipRequest.chat_sessions?.tenant_id
-    // Fetch manager for CC
-    let managerEmail = null
-    if (agent?.parent_id) {
-      const { data: mgr } = await supabase.from('agents').select('email, notification_email').eq('id', agent.parent_id).single()
-      if (mgr) managerEmail = mgr.notification_email || mgr.email
-    }
+
     let attemptsToGrant = 3
     if (tenantId) {
       const { data: tenantCfg } = await supabase.from('tenants').select('estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
@@ -108,13 +113,46 @@ export async function GET(request: NextRequest) {
           granted_at: new Date().toISOString(),
         }, { onConflict: 'user_id,tenant_id' })
       }
+
       if (vipRequest.email) {
+        // Resolve helper recipients for this approval notification.
+        // TO/CC stay route-driven (TO=user, CC=manager). BCC comes from helper layer 6.
+        // Future delegations of Admin Platform will appear here via W-ROLES-DELEGATION.
+        let bccList: string[] = []
+        try {
+          const recipients = await getLeadEmailRecipients(
+            tenantId || '',
+            vipRequest.agent_id || null,
+            supabase
+          )
+          bccList = recipients.bcc
+        } catch (err) {
+          if (err instanceof AdminPlatformUnreachable) {
+            console.error('[walliam/estimator/vip-approve] admin platform unreachable:', err.message)
+            // Fail closed: don't send the email if we can't BCC platform admin
+            return createHtmlResponse('error', 'System notification failed. Approval recorded; please contact support.')
+          }
+          throw err
+        }
+
+        // Manager CC: pull manager email if agent has parent_id (preserves existing CC pattern;
+        // also fixes pre-existing bug where parent_id was missing from agents SELECT).
+        let managerEmail: string | null = null
+        if (agent?.parent_id) {
+          const { data: mgr } = await supabase
+            .from('agents')
+            .select('email, notification_email')
+            .eq('id', agent.parent_id)
+            .single()
+          if (mgr) managerEmail = mgr.notification_email || mgr.email
+        }
+
         try {
           await sendTenantEmail({
             tenantId: tenantId || '',
             to: vipRequest.email,
             cc: managerEmail ? [managerEmail] : undefined,
-            bcc: 'condoleads.ca@gmail.com',
+            bcc: bccList,
             subject: 'Your WALLiam Estimator Access is Approved',
             html: buildUserApprovalEmailHtml(
               vipRequest.full_name,
@@ -123,7 +161,14 @@ export async function GET(request: NextRequest) {
             ),
           })
         } catch (err) {
-          console.error('[walliam/estimator/vip-approve] user email error:', err)
+          // F67 standard try/catch pattern
+          if (err instanceof TenantEmailNotConfigured) {
+            console.warn('[walliam/estimator/vip-approve] tenant email not configured:', err.message)
+          } else if (err instanceof TenantEmailFailed) {
+            console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
+          } else {
+            console.error('[walliam/estimator/vip-approve] unexpected email error:', err)
+          }
         }
       }
 
@@ -161,7 +206,7 @@ function createHtmlResponse(status: string, message: string): NextResponse {
   const configs: Record<string, { bg: string; icon: string; title: string }> = {
     approved:          { bg: '#10b981', icon: '✅', title: 'Approved' },
     denied:            { bg: '#ef4444', icon: '❌', title: 'Denied' },
-    error:             { bg: '#ef4444', icon: '⚠️', title: 'Error' },
+    error:             { bg: '#ef4444', icon: '❌', title: 'Error' },
     expired:           { bg: '#f59e0b', icon: '⏰', title: 'Expired' },
     already_processed: { bg: '#64748b', icon: 'ℹ️', title: 'Already Processed' },
   }

@@ -1,14 +1,35 @@
 ﻿// app/api/charlie/lead/route.ts
-// WALLiam Charlie lead capture — full rewrite
+// WALLiam Charlie lead capture — form-submission enrichment writer
 // Resolves agent via resolve_agent_for_context() — NOT getAgentFromHost
-// Saves lead with full plan_data JSONB
-// Emails: rich plan → user, brief → agent, CC → manager, BCC → admin
+//
+// W-HIERARCHY H3.4b (2026-05-03): comprehensive refactor.
+//
+//   ROLE CHANGE: This route was the lead CREATOR. Now it's the lead ENRICHER.
+//   Plan-email creates the lead at plan-generation time. This route updates that
+//   row with form-submitted follow-up details (name correction, phone, message).
+//
+//   - F53: walkHierarchy replaces direct parent_id query — full chain capture
+//   - F57: INSERT → UPSERT keyed on (user_id, session_id, intent).
+//          Defensive INSERT only if no matching plan-email row found.
+//   - F60: server-authoritative auth email — uses auth.users.email regardless of
+//          form-supplied email; form's email field is informational only.
+//          Name + phone from form (those can legitimately differ from registration).
+//   - F58 piece: tenant_admin_id captured into lead payload.
+//   - F47: helper replaces hardcoded ADMIN_EMAIL constant.
+//   - F67: standard try/catch (TenantEmailNotConfigured / TenantEmailFailed /
+//          AdminPlatformUnreachable / unexpected).
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
 
-const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
 function createServiceClient() {
@@ -24,17 +45,16 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const tenantId = req.headers.get('x-tenant-id') || ''
     const {
-      // Contact info — from inline form in PlanDocument
+      // Contact info — name + phone come from form. email IGNORED (F60).
       name,
-      email,
       phone,
-      // Plan context
+      // Plan context (for chain notification email content)
       intent,         // 'buyer' | 'seller'
       buyerProfile,
       sellerProfile,
       listings,
       analytics,
-      // Agent resolution context
+      // Agent resolution context (for defensive insert path only)
       sessionId,
       userId,
       listing_id,
@@ -49,8 +69,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    if (!name || !email || !intent) {
-      return NextResponse.json({ error: 'name, email and intent are required' }, { status: 400 })
+    if (!name || !intent) {
+      return NextResponse.json({ error: 'name and intent are required' }, { status: 400 })
     }
 
     const supabase = createServiceClient()
@@ -68,7 +88,14 @@ export async function POST(req: NextRequest) {
     }
     // END W-RECOVERY A1.5 auth gate
 
-    // Step 1: Resolve agent
+    // F60: auth email is identity. Pull from auth.users; ignore any form-supplied email.
+    const { data: authData } = await supabase.auth.admin.getUserById(userId)
+    const authEmail = authData?.user?.email
+    if (!authEmail) {
+      return NextResponse.json({ error: 'User email not found' }, { status: 404 })
+    }
+
+    // Step 1: Resolve agent (still needed for defensive insert path + chain recipients)
     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
       p_listing_id: listing_id || null,
       p_building_id: building_id || null,
@@ -76,16 +103,16 @@ export async function POST(req: NextRequest) {
       p_municipality_id: municipality_id || null,
       p_area_id: area_id || null,
       p_user_id: userId || null,
-      p_tenant_id: req.headers.get('x-tenant-id') || null,
+      p_tenant_id: tenantId || null,
     })
 
     const agentId = resolvedAgentId || null
 
-    // Step 2: Get agent + manager info
+    // Step 2: Get agent details + walk hierarchy chain
     let agent: any = null
-    let managerId: string | null = null
-    let managerEmail: string | null = null
-    let assignmentSource = 'admin'
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
 
     if (agentId) {
       const { data: agentData } = await supabase
@@ -96,24 +123,14 @@ export async function POST(req: NextRequest) {
 
       if (agentData) {
         agent = agentData
-        assignmentSource = 'geo'
-
-        // Check for manager
-        if (agentData.parent_id) {
-          managerId = agentData.parent_id
-          const { data: manager } = await supabase
-            .from('agents')
-            .select('email, notification_email, full_name')
-            .eq('id', agentData.parent_id)
-            .single()
-          if (manager) {
-            managerEmail = manager.notification_email || manager.email
-          }
-        }
+        const chain = await walkHierarchy(agentData.id, supabase)
+        chainManagerId = chain.manager_id
+        chainAreaManagerId = chain.area_manager_id
+        chainTenantAdminId = chain.tenant_admin_id
       }
     }
 
-    // Step 3: Build plan_data JSONB
+    // Build plan_data for storage on the lead row
     const profile = intent === 'buyer' ? buyerProfile : sellerProfile
     const planData = {
       intent,
@@ -144,86 +161,139 @@ export async function POST(req: NextRequest) {
       generatedAt: new Date().toISOString(),
     }
 
-    // Step 4: Save lead
-    const { data: lead, error: leadError } = await supabase
-      .from('leads')
-      .insert({
-        agent_id: agentId,
-        user_id: userId || null,
-        contact_name: name,
-        contact_email: email,
-        contact_phone: phone || null,
-        source: 'walliam_charlie',
-        intent,
-        geo_name: profile?.geoName || null,
-        budget_max: buyerProfile?.budgetMax || null,
-        plan_data: planData,
-        manager_id: managerId,
-        assignment_source: assignmentSource,
-        tenant_id: req.headers.get('x-tenant-id') || null,
-        status: 'new',
-        quality: 'hot',
-      })
-      .select('id')
-      .single()
+    // F57: UPSERT into existing plan-email lead row, not new INSERT.
+    // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+    // in the rare case multiple plan-email rows exist for same user+intent.
+    let leadId: string | null = null
 
-    if (leadError || !lead) {
-      console.error('[charlie/lead] save error:', leadError)
-      return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 })
+    const { data: existingLeads } = await supabase
+      .from('leads')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId || '')
+      .eq('source', 'walliam_charlie')
+      .eq('intent', intent)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    const existingLead = existingLeads?.[0]
+
+    if (existingLead) {
+      // UPDATE: enrich the existing plan-email row with form-supplied detail
+      leadId = existingLead.id
+      const { error: updateError } = await supabase
+        .from('leads')
+        .update({
+          contact_name: name,           // form-supplied; can legitimately differ from auth name
+          contact_email: authEmail,     // F60: auth-authoritative
+          contact_phone: phone || null, // form-supplied
+          plan_data: planData,
+          manager_id: chainManagerId,
+          area_manager_id: chainAreaManagerId,
+          tenant_admin_id: chainTenantAdminId,
+          assignment_source: agentId ? 'geo' : 'admin',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingLead.id)
+
+      if (updateError) {
+        console.error('[charlie/lead] enrichment update error:', updateError)
+        return NextResponse.json({ error: 'Failed to update lead' }, { status: 500 })
+      }
+    } else {
+      // Defensive INSERT: plan-email never created a row (shouldn't happen, but don't lose data)
+      const { data: newLead, error: insertError } = await supabase
+        .from('leads')
+        .insert({
+          agent_id: agentId,
+          user_id: userId,
+          contact_name: name,
+          contact_email: authEmail,
+          contact_phone: phone || null,
+          source: 'walliam_charlie',
+          intent,
+          geo_name: profile?.geoName || null,
+          budget_max: buyerProfile?.budgetMax || null,
+          plan_data: planData,
+          manager_id: chainManagerId,
+          area_manager_id: chainAreaManagerId,
+          tenant_admin_id: chainTenantAdminId,
+          assignment_source: agentId ? 'geo' : 'admin',
+          tenant_id: tenantId || null,
+          status: 'new',
+          quality: 'hot',
+        })
+        .select('id')
+        .single()
+
+      if (insertError || !newLead) {
+        console.error('[charlie/lead] defensive insert error:', insertError)
+        return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 })
+      }
+      leadId = newLead.id
     }
 
     // Link lead to session
-    if (sessionId) {
+    if (sessionId && leadId) {
       await supabase
         .from('chat_sessions')
-        .update({ lead_id: lead.id, last_activity_at: new Date().toISOString() })
+        .update({ lead_id: leadId, last_activity_at: new Date().toISOString() })
         .eq('id', sessionId)
     }
 
-    // Step 5: Send rich plan email → USER
+    // Step: Send rich plan email → USER (single recipient, not chain)
     try {
       await sendTenantEmail({
         tenantId,
-        to: email,
+        to: authEmail,
         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
         html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent }),
       })
     } catch (err) {
-      console.error('[charlie/lead] user email error:', err)
+      if (err instanceof TenantEmailNotConfigured) {
+        console.warn('[charlie/lead] tenant email not configured (user):', err.message)
+      } else if (err instanceof TenantEmailFailed) {
+        console.error('[charlie/lead] resend send failed (user):', err.message)
+      } else {
+        console.error('[charlie/lead] unexpected user email error:', err)
+      }
     }
 
-    // Step 6: Send lead brief → AGENT (+ manager CC + admin BCC)
-    if (agent?.email) {
-      const agentNotifyEmail = agent.notification_email || agent.email
-      const toList = [agentNotifyEmail]
+    // Step: Chain notification — single helper-driven send (replaces inline manager-CC + ADMIN_EMAIL)
+    let recipients
+    try {
+      recipients = await getLeadEmailRecipients(tenantId, agentId, supabase)
+    } catch (err) {
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[charlie/lead] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
+    }
 
+    if (recipients) {
       try {
         await sendTenantEmail({
           tenantId,
-          to: toList,
-          cc: managerEmail ? [managerEmail] : undefined,
-          bcc: [ADMIN_EMAIL],
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
           subject: `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead — ${name} — ${profile?.geoName || 'GTA'}`,
-          html: buildAgentLeadEmail({ name, email, phone, intent, buyerProfile, sellerProfile, listings, analytics }),
+          html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics }),
         })
       } catch (err) {
-        console.error('[charlie/lead] agent email error:', err)
-      }
-    } else {
-      // No agent — send directly to admin only
-      try {
-        await sendTenantEmail({
-          tenantId,
-          to: ADMIN_EMAIL,
-          subject: `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead (Unassigned) — ${name}`,
-          html: buildAgentLeadEmail({ name, email, phone, intent, buyerProfile, sellerProfile, listings, analytics }),
-        })
-      } catch (err) {
-        console.error('[charlie/lead] admin fallback email error:', err)
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[charlie/lead] tenant email not configured (chain):', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[charlie/lead] resend send failed (chain):', err.message)
+        } else {
+          console.error('[charlie/lead] unexpected chain email error:', err)
+        }
       }
     }
 
-    return NextResponse.json({ success: true, leadId: lead.id })
+    return NextResponse.json({ success: true, leadId })
 
   } catch (error) {
     console.error('[charlie/lead] error:', error)
@@ -315,7 +385,6 @@ function buildUserPlanEmail(data: {
 
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
-      <!-- Header -->
       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 28px; font-weight: 900; color: #fff; letter-spacing: -0.02em; margin-bottom: 4px;">
           <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.6);">iam</span>
@@ -329,10 +398,8 @@ function buildUserPlanEmail(data: {
         </p>
       </div>
 
-      <!-- Body -->
       <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
 
-        <!-- Market Intelligence -->
         ${analytics ? `
         <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.08em;">
           Market Intelligence · ${profile?.geoName || ''}
@@ -340,16 +407,12 @@ function buildUserPlanEmail(data: {
         ${marketCards}
         ` : ''}
 
-        <!-- Profile -->
         ${profileSection}
 
-        <!-- Listings -->
         ${listingCards}
 
-        <!-- Agent -->
         ${agentSection}
 
-        <!-- CTA -->
         <div style="text-align: center; margin: 24px 0 8px;">
           <a href="${BASE_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
             ✦ Continue on WALLiam
@@ -357,7 +420,6 @@ function buildUserPlanEmail(data: {
         </div>
       </div>
 
-      <!-- Footer -->
       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
         <p style="margin: 0; color: #94a3b8; font-size: 11px;">
           Sent by WALLiam AI · walliam.ca
@@ -367,7 +429,7 @@ function buildUserPlanEmail(data: {
   `
 }
 
-// ─── Lead brief email → agent ─────────────────────────────────────────────
+// ─── Lead brief email → agent / chain ─────────────────────────────────────
 
 function buildAgentLeadEmail(data: {
   name: string
@@ -397,7 +459,6 @@ function buildAgentLeadEmail(data: {
       </div>
 
       <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-top: none;">
-        <!-- Contact -->
         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Contact</h2>
         <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px;">
           <tr><td style="padding: 5px 0; color: #64748b; width: 80px;">Name</td><td style="padding: 5px 0; font-weight: 700; color: #0f172a;">${name}</td></tr>
@@ -407,7 +468,6 @@ function buildAgentLeadEmail(data: {
           <tr><td style="padding: 5px 0; color: #64748b;">Intent</td><td style="padding: 5px 0; color: #0f172a;">${isBuyer ? 'Buyer' : 'Seller'}</td></tr>
         </table>
 
-        <!-- Plan Summary -->
         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Plan Summary</h2>
         <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 13px;">
           ${isBuyer ? `
@@ -423,7 +483,6 @@ function buildAgentLeadEmail(data: {
           `}
         </div>
 
-        <!-- Top Listings -->
         ${topListings.length > 0 ? `
         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Top Matched Listings</h2>
         ${topListings.map((l: any) => `

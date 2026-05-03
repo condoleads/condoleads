@@ -1,15 +1,27 @@
 ﻿export const maxDuration = 60
 
-﻿// app/api/charlie/plan-email/route.ts
+// app/api/charlie/plan-email/route.ts
 // Sends rich plan email to user + agent + manager + admin BCC
 // Called client-side from useCharlie after generate_plan tool completes
+//
+// W-HIERARCHY H3.8 (2026-05-03):
+//   - getLeadEmailRecipients enforces 6-layer chain (was: inline conditional with hardcoded ADMIN_EMAIL)
+//   - tenant_admin_id captured into lead insert payload (F58)
+//   - F47 hardcoded ADMIN_EMAIL constant removed
+//   - F66 walker call shape standardized via helper
+//   - F67 try/catch standard
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
 
-const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
 
@@ -70,9 +82,9 @@ export async function POST(req: NextRequest) {
     const userName = profile?.full_name || 'there'
 
     let agent: any = null
-    let managerId: string | null = null
-    let managerEmail: string | null = null
-    let areaManagerId: string | null = null
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
     let tenantId: string | null = null
 
     if (sessionId) {
@@ -93,25 +105,18 @@ export async function POST(req: NextRequest) {
 
         if (agentData) {
           agent = agentData
-          // Phase 3.4 — full hierarchy walk: classify each ancestor by role
+          // Walker captures full chain (manager + area_manager + tenant_admin)
           const chain = await walkHierarchy(agentData.id, supabase)
-          managerId = chain.manager_id
-          areaManagerId = chain.area_manager_id
-          if (managerId) {
-            const { data: manager } = await supabase
-              .from('agents')
-              .select('full_name, email, notification_email')
-              .eq('id', managerId)
-              .single()
-            if (manager) {
-              managerEmail = manager.notification_email || manager.email
-            }
-          }
+          chainManagerId = chain.manager_id
+          chainAreaManagerId = chain.area_manager_id
+          chainTenantAdminId = chain.tenant_admin_id
         }
       }
     }
 
     const geoName = geoContext?.geoName || plan?.geoName || null
+
+    // Save lead with full hierarchy chain stamped (per Lead+Email contract)
     await supabase.from('leads').insert({
       agent_id: agent?.id || null,
       user_id: userId,
@@ -122,8 +127,9 @@ export async function POST(req: NextRequest) {
       geo_name: geoName,
       budget_max: plan?.budgetMax || null,
       plan_data: { planType, plan, analytics, topListings: (listings || []).slice(0, 5) },
-      manager_id: managerId,
-      area_manager_id: areaManagerId,
+      manager_id: chainManagerId,
+      area_manager_id: chainAreaManagerId,
+      tenant_admin_id: chainTenantAdminId,
       assignment_source: agent ? 'geo' : 'admin',
       status: 'new',
       quality: 'hot',
@@ -141,20 +147,51 @@ export async function POST(req: NextRequest) {
     const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [] })
     const subject = `\u2756 WALLiam ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
-    await sendTenantEmail({ tenantId: tenantId || '', to: userEmail, subject, html }).then(r => console.log("[plan-email] user send result:", JSON.stringify(r))).catch(e => console.error("[plan-email] user send error:", e))
+    // User-facing plan email — single recipient, not chain
+    try {
+      await sendTenantEmail({ tenantId: tenantId || '', to: userEmail, subject, html })
+    } catch (err) {
+      if (err instanceof TenantEmailNotConfigured) {
+        console.warn('[plan-email] tenant email not configured (user):', err.message)
+      } else if (err instanceof TenantEmailFailed) {
+        console.error('[plan-email] resend send failed (user):', err.message)
+      } else {
+        console.error('[plan-email] unexpected user email error:', err)
+      }
+    }
 
-    if (agent?.email) {
-      const agentNotifyEmail = agent.notification_email || agent.email
-      await sendTenantEmail({
-        tenantId: tenantId || '',
-        to: agentNotifyEmail,
-        cc: managerEmail ? [managerEmail] : undefined,
-        bcc: [ADMIN_EMAIL],
-        subject,
-        html,
-      })
-    } else {
-      await sendTenantEmail({ tenantId: tenantId || '', to: ADMIN_EMAIL, subject, html })
+    // Chain notification — single helper-driven send (replaces inline conditional ADMIN_EMAIL)
+    let recipients
+    try {
+      recipients = await getLeadEmailRecipients(tenantId || '', agent?.id || null, supabase)
+    } catch (err) {
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[plan-email] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
+    }
+
+    if (recipients) {
+      try {
+        await sendTenantEmail({
+          tenantId: tenantId || '',
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+          subject,
+          html,
+        })
+      } catch (err) {
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[plan-email] tenant email not configured (chain):', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[plan-email] resend send failed (chain):', err.message)
+        } else {
+          console.error('[plan-email] unexpected chain email error:', err)
+        }
+      }
     }
 
     return NextResponse.json({ success: true })
@@ -187,7 +224,6 @@ function buildRichPlanEmail(data: {
   const isBuyer = planType === 'buyer'
   const topListings = (listings || []).slice(0, 10)
 
-  // Market condition
   const stl = analytics?.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio) : null
   const dom = analytics?.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90) : null
   const conditionLabel = !stl || !dom ? 'Insufficient Data'
@@ -200,8 +236,6 @@ function buildRichPlanEmail(data: {
     : stl < 95 || (dom && dom > 70) ? '#ef4444'
     : '#f59e0b'
 
-
-  // RAG conversation blocks
   const blocksHtml = (blocks || []).length > 0 ? (() => {
     const parts: string[] = []
     for (const block of (blocks || [])) {
@@ -466,7 +500,6 @@ function buildRichPlanEmail(data: {
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Comparable Sold (${sellerComps.length})</div>
       ${sellerComps.map((c: any) => {
         const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
-        const addr = (c.unparsedAddress || c.unparsed_address || '').split(',')[0]
         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
         const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
         return `

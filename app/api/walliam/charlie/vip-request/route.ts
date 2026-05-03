@@ -1,14 +1,25 @@
 ﻿// app/api/walliam/charlie/vip-request/route.ts
 // WALLiam VIP plan request — no questionnaire, user already registered
 // Adapted from app/api/chat/vip-request/route.ts — System 1 never touched
+//
+// W-HIERARCHY H3.8 (2026-05-03):
+//   - getLeadEmailRecipients enforces 6-layer chain (was: inline manager-CC + hardcoded ADMIN_EMAIL)
+//   - tenant_admin_id captured into lead insert payload (F58)
+//   - F47 hardcoded ADMIN_EMAIL constant removed
+//   - F66 walker call shape standardized via helper
+//   - F67 try/catch standard
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
 
-
-const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
 
 function createServiceClient() {
   return createClient(
@@ -65,7 +76,7 @@ export async function POST(request: NextRequest) {
       .select(`
         *,
         agents (
-          id, full_name, email, notification_email,
+          id, full_name, email, notification_email, parent_id,
           vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit
         )
       `)
@@ -128,23 +139,23 @@ export async function POST(request: NextRequest) {
       if (authUser?.user?.email) userEmail = authUser.user.email
     }
 
-    // Get manager email for CC
-    let managerEmail: string | null = null
-    if (agent?.parent_id) {
-      const { data: manager } = await supabase
-        .from('agents')
-        .select('email, notification_email')
-        .eq('id', agent.parent_id)
-        .single()
-      if (manager) managerEmail = manager.notification_email || manager.email
-    }
+    // Walk hierarchy chain — full chain capture
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
 
+    if (agent?.id) {
+      const chain = await walkHierarchy(agent.id, supabase)
+      chainManagerId = chain.manager_id
+      chainAreaManagerId = chain.area_manager_id
+      chainTenantAdminId = chain.tenant_admin_id
+    }
 
     // Use tenant config for credit decisions
     const isAutoApprove = tenantConfig.vip_auto_approve === true && (tenantConfig.ai_auto_approve_limit ?? 0) > 0
     const autoApproveMessages = tenantConfig.ai_auto_approve_limit ?? 0
 
-    // Create VIP request — no questionnaire fields required
+    // Create VIP request
     const { data: vipRequest, error: insertError } = await supabase
       .from('vip_requests')
       .insert({
@@ -159,7 +170,6 @@ export async function POST(request: NextRequest) {
         status: isAutoApprove ? 'approved' : 'pending',
         messages_granted: isAutoApprove ? autoApproveMessages : 0,
         responded_at: isAutoApprove ? new Date().toISOString() : null,
-        // WALLiam specific — no questionnaire fields (buyer_type, budget_range, timeline = null)
       })
       .select()
       .single()
@@ -185,39 +195,15 @@ export async function POST(request: NextRequest) {
       tenantDomain,
     })
 
-    const agentEmail = agent?.notification_email || agent?.email
-
-    // Email agent
-    if (agentEmail) {
-      try {
-        await sendTenantEmail({
-          tenantId: tenantId || '',
-          to: agentEmail,
-          cc: managerEmail ? [managerEmail] : undefined,
-          bcc: [ADMIN_EMAIL],
-          subject: `VIP Plan Request: ${userName} (${planType === 'seller' ? 'Seller' : 'Buyer'} Plan)`,
-          html: emailHtml,
-        })
-      } catch (err) {
-        console.error('[walliam/vip-request] agent email error:', err)
-      }
-    }
-
-    // Save lead — Phase 3.4: capture full hierarchy chain
+    // Save lead with full hierarchy chain (per Lead+Email contract)
     if (userEmail) {
-      let leadManagerId: string | null = null
-      let leadAreaManagerId: string | null = null
-      if (agent?.id) {
-        const chain = await walkHierarchy(agent.id, supabase)
-        leadManagerId = chain.manager_id
-        leadAreaManagerId = chain.area_manager_id
-      }
-      await supabase.from('leads').insert({
+      const { error: leadError } = await supabase.from('leads').insert({
         agent_id: agent?.id || null,
         user_id: session.user_id || null,
-        tenant_id: tenantId || null,
-        manager_id: leadManagerId,
-        area_manager_id: leadAreaManagerId,
+        tenant_id: tenantId,
+        manager_id: chainManagerId,
+        area_manager_id: chainAreaManagerId,
+        tenant_admin_id: chainTenantAdminId,
         contact_name: userName,
         contact_email: userEmail,
         contact_phone: userPhone || null,
@@ -225,8 +211,43 @@ export async function POST(request: NextRequest) {
         intent: planType || 'buyer',
         status: 'new',
         quality: 'hot',
-        assignment_source: 'vip_request',
+        assignment_source: agent?.id ? 'geo' : 'admin',
       })
+      if (leadError) console.error('[walliam/vip-request] lead error:', leadError)
+    }
+
+    // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
+    let recipients
+    try {
+      recipients = await getLeadEmailRecipients(tenantId, agent?.id || null, supabase)
+    } catch (err) {
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[walliam/vip-request] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
+    }
+
+    if (recipients) {
+      try {
+        await sendTenantEmail({
+          tenantId: tenantId,
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+          subject: `VIP Plan Request: ${userName} (${planType === 'seller' ? 'Seller' : 'Buyer'} Plan)`,
+          html: emailHtml,
+        })
+      } catch (err) {
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[walliam/vip-request] tenant email not configured:', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[walliam/vip-request] resend send failed:', err.message)
+        } else {
+          console.error('[walliam/vip-request] unexpected email error:', err)
+        }
+      }
     }
 
     // Auto-approve path
@@ -258,16 +279,23 @@ export async function POST(request: NextRequest) {
         }, { onConflict: 'user_id,tenant_id' })
       }
 
+      // User-facing approval email — single recipient, not chain
       if (userEmail) {
         try {
           await sendTenantEmail({
-            tenantId: tenantId || '',
+            tenantId: tenantId,
             to: userEmail,
             subject: `Your ${brandName} Plan Access is Approved`,
             html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, tenantDomain),
           })
         } catch (err) {
-          console.error('[walliam/vip-request] user approval email error:', err)
+          if (err instanceof TenantEmailNotConfigured) {
+            console.warn('[walliam/vip-request] tenant email not configured (user approval):', err.message)
+          } else if (err instanceof TenantEmailFailed) {
+            console.error('[walliam/vip-request] resend send failed (user approval):', err.message)
+          } else {
+            console.error('[walliam/vip-request] unexpected user approval email error:', err)
+          }
         }
       }
 

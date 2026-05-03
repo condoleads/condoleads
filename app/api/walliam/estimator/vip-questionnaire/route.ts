@@ -1,16 +1,25 @@
 // app/api/walliam/estimator/vip-questionnaire/route.ts
 // Adapted from app/api/chat/vip-questionnaire/route.ts — System 1 never touched
-// Key differences:
-//   - source = 'walliam_estimator_questionnaire' (visible in /admin-homes/leads)
-//   - Manager CC via agent.parent_id
-//   - FROM: notifications@condoleads.ca
-//   - WALLiam dark theme email
+//
+// W-HIERARCHY H3.5 (2026-05-03):
+//   - walkHierarchy added (was: NO walker — F48 piece)
+//   - getLeadEmailRecipients enforces 6-layer chain on agent notification
+//   - Two-email anti-pattern collapsed to single send (F64 fully retired with H3.4)
+//   - Lead UPSERT instead of INSERT — questionnaire enriches existing vip-request lead
+//     instead of creating duplicate row (F57-class fix for estimator flow)
+//   - Lead row stamped with full hierarchy chain on enrichment write
+//   - F67 try/catch standard
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
-
-const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
 
 
 // Track user activity in user_activities table
@@ -45,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // Get VIP request with session + agent (including parent_id for manager CC)
+    // Get VIP request with session + agent
     const { data: vipRequest, error: fetchError } = await supabase
       .from('vip_requests')
       .select(`
@@ -60,11 +69,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Request not found' }, { status: 404 })
     }
 
+    const agent = vipRequest.agents
+    const session = vipRequest.chat_sessions
+    const tenantId = session?.tenant_id || null
+    const userId = session?.user_id || null
+
     // Resolve user name + email (registered user — use profile/auth data)
     let userName = vipRequest.full_name
     let userEmail = vipRequest.email
 
-    const userId = vipRequest.chat_sessions?.user_id
     if (userId) {
       const { data: profile } = await supabase
         .from('user_profiles')
@@ -87,24 +100,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
     }
 
-    const agent = vipRequest.agents
+    // Walk hierarchy for full chain capture
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
 
-    // Lookup manager for CC
-    let managerEmail: string | null = null
-    let managerId: string | null = null
-    if (agent?.parent_id) {
-      const { data: manager } = await supabase
-        .from('agents')
-        .select('id, email, notification_email')
-        .eq('id', agent.parent_id)
-        .single()
-      if (manager) {
-        managerId = manager.id
-        managerEmail = manager.notification_email || manager.email
-      }
+    if (agent?.id) {
+      const chain = await walkHierarchy(agent.id, supabase)
+      chainManagerId = chain.manager_id
+      chainAreaManagerId = chain.area_manager_id
+      chainTenantAdminId = chain.tenant_admin_id
     }
 
-    // Format display values
+    // Format display values for the chain notification email + the lead message
     const budgetDisplay = budgetRange ? budgetRange.replace(/-/g, ' - ').replace('plus', '+') : 'Not specified'
     const timelineMap: Record<string, string> = {
       immediate: 'Immediate (0-3 months)',
@@ -121,6 +129,68 @@ export async function POST(request: NextRequest) {
     const timelineDisplay = timeline ? (timelineMap[timeline] || timeline) : 'Not specified'
     const buyerTypeDisplay = buyerType ? (buyerTypeMap[buyerType] || buyerType) : 'Not specified'
 
+    // UPSERT lead — enrichment, not duplicate creation (F57-class fix for estimator flow)
+    // The vip-request route already created the original lead row. We update that row
+    // with questionnaire detail. If somehow no row exists (defensive), we insert one.
+    if (userEmail && userId && tenantId) {
+      const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
+
+      // Match the lead row created by vip-request:
+      //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+      // (vip-request writes source='walliam_estimator_vip_request')
+      const { data: existingLeads } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .like('source', 'walliam_estimator%')
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      const existingLead = existingLeads?.[0]
+
+      if (existingLead) {
+        // UPDATE: enrich the existing row with questionnaire detail
+        const { error: updateLeadError } = await supabase
+          .from('leads')
+          .update({
+            contact_name: userName || 'WALLiam User',
+            contact_email: userEmail,
+            manager_id: chainManagerId,
+            area_manager_id: chainAreaManagerId,
+            tenant_admin_id: chainTenantAdminId,
+            message: enrichedMessage,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingLead.id)
+        if (updateLeadError) console.error('[walliam/estimator/vip-questionnaire] lead update error:', updateLeadError)
+      } else {
+        // Defensive INSERT: vip-request didn't leave a row (shouldn't happen, but don't lose data)
+        const { error: insertLeadError } = await supabase
+          .from('leads')
+          .insert({
+            agent_id: agent?.id || null,
+            user_id: userId,
+            tenant_id: tenantId,
+            manager_id: chainManagerId,
+            area_manager_id: chainAreaManagerId,
+            tenant_admin_id: chainTenantAdminId,
+            contact_name: userName || 'WALLiam User',
+            contact_email: userEmail,
+            contact_phone: vipRequest.phone,
+            source: 'walliam_estimator_questionnaire',
+            source_url: vipRequest.page_url,
+            building_id: session?.current_page_type === 'building' ? session?.current_page_id : null,
+            message: enrichedMessage,
+            status: 'new',
+            quality: 'hot',
+            assignment_source: agent?.id ? 'geo' : 'admin',
+          })
+        if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadError)
+      }
+    }
+
+    // Build the chain notification email
     const emailHtml = buildQuestionnaireEmailHtml({
       userName: userName || 'WALLiam User',
       phone: vipRequest.phone,
@@ -132,59 +202,39 @@ export async function POST(request: NextRequest) {
       requirements,
     })
 
-    // Email agent + manager CC
-    const agentEmail = agent?.notification_email || agent?.email
-    const ccList: string[] = []
-    if (managerEmail) ccList.push(managerEmail)
+    // Single email to full chain via helper (replaces F64 dual-send)
+    let recipients
+    try {
+      recipients = await getLeadEmailRecipients(tenantId || '', agent?.id || null, supabase)
+    } catch (err) {
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[walliam/estimator/vip-questionnaire] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
+    }
 
-    if (agentEmail) {
+    if (recipients) {
       try {
         await sendTenantEmail({
-          tenantId: vipRequest.chat_sessions?.tenant_id || '',
-          to: agentEmail,
-          cc: ccList.length > 0 ? ccList : undefined,
+          tenantId: tenantId || '',
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
           subject: `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`,
           html: emailHtml,
         })
       } catch (err) {
-        console.error('[walliam/estimator/vip-questionnaire] agent email error:', err)
+        // F67 standard try/catch
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[walliam/estimator/vip-questionnaire] tenant email not configured:', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[walliam/estimator/vip-questionnaire] resend send failed:', err.message)
+        } else {
+          console.error('[walliam/estimator/vip-questionnaire] unexpected email error:', err)
+        }
       }
-    }
-
-    // Admin BCC
-    try {
-      await sendTenantEmail({
-        tenantId: vipRequest.chat_sessions?.tenant_id || '',
-        to: ADMIN_EMAIL,
-        subject: `📋 WALLiam Estimator Questionnaire [${agent?.full_name}] — ${userName || vipRequest.phone}`,
-        html: emailHtml,
-      })
-    } catch (err) {
-      console.error('[walliam/estimator/vip-questionnaire] admin email error:', err)
-    }
-
-    // Save lead
-    if (userEmail) {
-      const { error: leadError } = await supabase
-        .from('leads')
-        .insert({
-          agent_id: agent?.id,
-          user_id: userId,
-          contact_name: userName || 'WALLiam User',
-          contact_email: userEmail,
-          contact_phone: vipRequest.phone,
-          source: 'walliam_estimator_questionnaire',
-          source_url: vipRequest.page_url,
-          building_id: vipRequest.chat_sessions?.current_page_type === 'building'
-            ? vipRequest.chat_sessions?.current_page_id
-            : null,
-          message: `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`,
-          status: 'new',
-          quality: 'hot',
-          manager_id: managerId,
-          tenant_id: vipRequest.chat_sessions?.tenant_id || null,
-        })
-      if (leadError) console.error('[walliam/estimator/vip-questionnaire] lead error:', leadError)
     }
 
     // Track activity

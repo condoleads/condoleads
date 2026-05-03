@@ -1,20 +1,25 @@
 ﻿// app/api/walliam/estimator/vip-request/route.ts
 // WALLiam estimator VIP request — adapted from app/api/chat/vip-request/route.ts
 // System 1 never touched.
-// Key differences vs System 1:
-//   - source = 'walliam_estimator_vip_request' (visible in /admin-homes/leads)
-//   - manager CC via agent.parent_id
-//   - manager_id set on lead insert
-//   - Approve/Deny URL â†’ /api/walliam/estimator/vip-approve
-//   - FROM: notifications@condoleads.ca
-//   - GET poll: questionnaireCompleted always true (no questionnaire in WALLiam)
-//   - No questionnaire fields (user already registered)
+//
+// W-HIERARCHY H3.4 (2026-05-03):
+//   - walkHierarchy added (was: NO walker — F48 piece)
+//   - getLeadEmailRecipients enforces 6-layer chain on agent notification
+//   - Two-email anti-pattern collapsed to single send (F64)
+//   - Lead insert payload now includes manager_id + area_manager_id + tenant_admin_id + tenant_id
+//     (was: manager_id only, no tenant_id — F48 + F58)
+//   - F67 try/catch standard
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
-
-const ADMIN_EMAIL = 'condoleads.ca@gmail.com'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
 
 
 // Track user activity in user_activities table
@@ -55,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // Get session + agent (with parent_id for manager CC)
+    // Get session + agent
     const { data: session, error: sessionError } = await supabase
       .from('chat_sessions')
       .select(`
@@ -77,12 +82,13 @@ export async function POST(request: NextRequest) {
     // END W-RECOVERY A1.5 auth gate
 
     const agent = session.agents
+    const tenantId = session.tenant_id || null
 
     // Load tenant estimator config (auto-approve lives on tenant, not agent)
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
       .select('estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
-      .eq('id', session.tenant_id)
+      .eq('id', tenantId)
       .single()
 
     if (tenantError || !tenant) {
@@ -128,23 +134,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Lookup manager for CC
-    let managerEmail: string | null = null
-    let managerId: string | null = null
-    if (agent.parent_id) {
-      const { data: manager } = await supabase
-        .from('agents')
-        .select('id, full_name, email, notification_email')
-        .eq('id', agent.parent_id)
-        .single()
-      if (manager) {
-        managerId = manager.id
-        managerEmail = manager.notification_email || manager.email
-      }
+    // Walk hierarchy chain — full chain capture per H3.6/H3.7 pattern
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
+
+    if (agent?.id) {
+      const chain = await walkHierarchy(agent.id, supabase)
+      chainManagerId = chain.manager_id
+      chainAreaManagerId = chain.area_manager_id
+      chainTenantAdminId = chain.tenant_admin_id
     }
 
     // Auto-approve logic — reads from TENANT config, not agent
-    // If auto_approve_attempts = 0, fall through to manual regardless of flag
     const autoApproveMessages = tenant.estimator_auto_approve_attempts ?? 0
     const isAutoApprove = tenant.estimator_vip_auto_approve === true && autoApproveMessages > 0
 
@@ -153,7 +155,8 @@ export async function POST(request: NextRequest) {
       .from('vip_requests')
       .insert({
         session_id: sessionId,
-        agent_id: agent.id,
+        agent_id: agent?.id || null,
+        tenant_id: tenantId,
         phone,
         full_name: userName || 'WALLiam User',
         email: userEmail || null,
@@ -173,6 +176,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create request' }, { status: 500 })
     }
 
+    // Save lead — H3.4: capture full hierarchy chain + tenant_id
+    if (userEmail) {
+      const { error: leadError } = await supabase
+        .from('leads')
+        .insert({
+          agent_id: agent?.id || null,
+          user_id: session.user_id,
+          tenant_id: tenantId,
+          manager_id: chainManagerId,
+          area_manager_id: chainAreaManagerId,
+          tenant_admin_id: chainTenantAdminId,
+          contact_name: userName || 'WALLiam User',
+          contact_email: userEmail,
+          contact_phone: phone,
+          source: 'walliam_estimator_vip_request',
+          source_url: pageUrl,
+          building_id: session.current_page_type === 'building' ? session.current_page_id : null,
+          message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
+          status: 'new',
+          quality: 'hot',
+          assignment_source: agent?.id ? 'geo' : 'admin',
+        })
+      if (leadError) console.error('[walliam/estimator/vip-request] lead error:', leadError)
+    }
+
     // Build approval URLs
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
@@ -186,57 +214,42 @@ export async function POST(request: NextRequest) {
       pageUrl,
       approveUrl,
       denyUrl,
-      agentName: agent.full_name,
+      agentName: agent?.full_name || 'Agent',
     })
 
-    // Email agent
-    const agentEmail = agent.notification_email || agent.email
-    const ccList: string[] = []
-    if (managerEmail) ccList.push(managerEmail)
-
+    // Single email to full chain via helper (replaces F64 dual-send anti-pattern)
+    let recipients
     try {
-      await sendTenantEmail({
-        tenantId: session.tenant_id || '',
-        to: agentEmail,
-        cc: ccList.length > 0 ? ccList : undefined,
-        subject: `WALLiam Estimator VIP Request: ${phone}`,
-        html: emailHtml,
-      })
+      recipients = await getLeadEmailRecipients(tenantId || '', agent?.id || null, supabase)
     } catch (err) {
-      console.error('[walliam/estimator/vip-request] agent email error:', err)
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[walliam/estimator/vip-request] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
     }
 
-    // BCC admin
-    try {
-      await sendTenantEmail({
-        tenantId: session.tenant_id || '',
-        to: ADMIN_EMAIL,
-        subject: `WALLiam Estimator VIP [${agent.full_name}]: ${phone}`,
-        html: emailHtml,
-      })
-    } catch (err) {
-      console.error('[walliam/estimator/vip-request] admin email error:', err)
-    }
-
-    // Save lead
-    if (userEmail) {
-      const { error: leadError } = await supabase
-        .from('leads')
-        .insert({
-          agent_id: agent.id,
-          user_id: session.user_id,
-          contact_name: userName || 'WALLiam User',
-          contact_email: userEmail,
-          contact_phone: phone,
-          source: 'walliam_estimator_vip_request',
-          source_url: pageUrl,
-          building_id: session.current_page_type === 'building' ? session.current_page_id : null,
-          message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
-          status: 'new',
-          quality: 'hot',
-          manager_id: managerId,
+    if (recipients) {
+      try {
+        await sendTenantEmail({
+          tenantId: tenantId || '',
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+          subject: `WALLiam Estimator VIP Request: ${phone}`,
+          html: emailHtml,
         })
-      if (leadError) console.error('[walliam/estimator/vip-request] lead error:', leadError)
+      } catch (err) {
+        // F67 standard try/catch
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[walliam/estimator/vip-request] tenant email not configured:', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[walliam/estimator/vip-request] resend send failed:', err.message)
+        } else {
+          console.error('[walliam/estimator/vip-request] unexpected email error:', err)
+        }
+      }
     }
 
     // Track activity
@@ -265,12 +278,12 @@ export async function POST(request: NextRequest) {
         .eq('id', sessionId)
 
       // Write to user_credit_overrides so session route picks up new limit
-      if (session.user_id && session.tenant_id) {
+      if (session.user_id && tenantId) {
         const { data: existing } = await supabase
           .from('user_credit_overrides')
           .select('estimator_limit')
           .eq('user_id', session.user_id)
-          .eq('tenant_id', session.tenant_id)
+          .eq('tenant_id', tenantId)
           .maybeSingle()
 
         const currentLimit = existing?.estimator_limit ?? 0
@@ -280,22 +293,30 @@ export async function POST(request: NextRequest) {
           .from('user_credit_overrides')
           .upsert({
             user_id: session.user_id,
-            tenant_id: session.tenant_id,
+            tenant_id: tenantId,
             estimator_limit: newLimit,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'user_id,tenant_id' })
       }
 
+      // User-confirmation email (single recipient, not chain)
       if (userEmail) {
         try {
           await sendTenantEmail({
-            tenantId: session.tenant_id || '',
+            tenantId: tenantId || '',
             to: userEmail,
             subject: 'WALLiam Estimator Access Approved',
-            html: buildUserApprovalEmailHtml(userName, agent.full_name, autoApproveMessages),
+            html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
           })
         } catch (err) {
-          console.error('[walliam/estimator/vip-request] user approval email error:', err)
+          // F67 standard try/catch
+          if (err instanceof TenantEmailNotConfigured) {
+            console.warn('[walliam/estimator/vip-request] tenant email not configured (user approval):', err.message)
+          } else if (err instanceof TenantEmailFailed) {
+            console.error('[walliam/estimator/vip-request] resend send failed (user approval):', err.message)
+          } else {
+            console.error('[walliam/estimator/vip-request] unexpected user approval email error:', err)
+          }
         }
       }
 
