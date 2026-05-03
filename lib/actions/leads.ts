@@ -1,9 +1,29 @@
-﻿'use server'
+'use server'
+// lib/actions/leads.ts
+// Tenant-aware lead creation with full Lead+Email contract compliance (W-HIERARCHY H3.9).
+//
+// W-HIERARCHY H3.9 (2026-05-03):
+//   - walkHierarchy captures full chain (manager_id, area_manager_id, tenant_admin_id) — was: single parent_id query
+//   - Insert payload now includes manager_id, area_manager_id, tenant_admin_id (was: agent_id only)
+//   - Email fan-out replaced: was 3 sequential sendActivityEmail calls (agent → manager → admin loop with receive_*_emails flags),
+//     now single getLeadEmailRecipients + sendTenantEmail with TO/CC/BCC (open chain, no suppression per Q1)
+//   - F67 try/catch standard: TenantEmailNotConfigured warn, TenantEmailFailed error, AdminPlatformUnreachable soft-fail
+//   - F51 (W-TENANT-AUTH coordination) retired
+//
+// Option A (locked 2026-05-03): dup-branch in getOrCreateLead stays silent.
+// When a lead already exists for (contact_email, tenant_id), updated_at is bumped, no email fires.
+// Re-engagement signaling is out of W-HIERARCHY scope; future lead-lifecycle work can revisit.
+
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { headers } from 'next/headers'
-import { sendActivityEmail } from '@/lib/email/sendActivityEmail'
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
 
 // Create service role client that bypasses RLS
 function createServiceClient() {
@@ -67,6 +87,8 @@ async function resolveAgentForLead(
 // Smart lead handler — prevents duplicates, scoped per tenant.
 // Duplicate detection key: (contact_email, tenant_id).
 // Same email can legitimately be a lead on multiple tenants.
+//
+// Option A: dup branch is silent. Bumps updated_at, no email.
 export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: boolean }) {
   if (!params.tenantId) {
     return { success: false, error: 'tenantId is required' }
@@ -89,7 +111,8 @@ export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: bo
     .maybeSingle()
 
   if (existingLead && !searchError) {
-    console.log('[leads] Lead exists for tenant — bumping updated_at:', existingLead.id)
+    // Option A: silent re-engagement bump. No email fires on dup.
+    console.log('[leads] Lead exists for tenant — bumping updated_at (Option A: silent):', existingLead.id)
     await supabase
       .from('leads')
       .update({ updated_at: new Date().toISOString() })
@@ -110,13 +133,25 @@ export async function createLead(params: CreateLeadParams) {
 
   const supabase = createServiceClient()
 
-  // Resolve agent if not provided
+  // ─── Resolve agent (tenant-scoped RPC) ─────────────────────────────────────
   const resolvedAgentId = await resolveAgentForLead(supabase, params)
   if (!resolvedAgentId) {
     console.warn('[leads] No agent resolved for tenant', params.tenantId, '— lead will route to admin only')
   }
 
-  // Source detection from referer if not explicit
+  // ─── Walker: capture full hierarchy chain ──────────────────────────────────
+  let chainManagerId: string | null = null
+  let chainAreaManagerId: string | null = null
+  let chainTenantAdminId: string | null = null
+
+  if (resolvedAgentId) {
+    const chain = await walkHierarchy(resolvedAgentId, supabase)
+    chainManagerId = chain.manager_id
+    chainAreaManagerId = chain.area_manager_id
+    chainTenantAdminId = chain.tenant_admin_id
+  }
+
+  // ─── Source detection from referer if not explicit ─────────────────────────
   const headersList = headers()
   const referer = headersList.get('referer') || ''
 
@@ -131,11 +166,15 @@ export async function createLead(params: CreateLeadParams) {
     }
   }
 
+  // ─── Insert lead row with full hierarchy chain (Lead+Email contract) ───────
   const { data: lead, error } = await supabase
     .from('leads')
     .insert({
       tenant_id: params.tenantId,
       agent_id: resolvedAgentId,
+      manager_id: chainManagerId,
+      area_manager_id: chainAreaManagerId,
+      tenant_admin_id: chainTenantAdminId,
       building_id: params.buildingId || null,
       listing_id: params.listingId || null,
       source_url: params.sourceUrl || null,
@@ -147,6 +186,7 @@ export async function createLead(params: CreateLeadParams) {
       contact_phone: params.contactPhone,
       message: params.message,
       source: source,
+      assignment_source: resolvedAgentId ? 'geo' : 'admin',
       quality: 'cold',
       status: 'new',
       created_at: new Date().toISOString()
@@ -161,106 +201,101 @@ export async function createLead(params: CreateLeadParams) {
 
   console.log('[leads] Lead created:', lead.id)
 
-  // Fetch agent details for email cascade (only if agent was resolved)
-  let agent: any = null
-  if (resolvedAgentId) {
-    const { data: agentData } = await supabase
-      .from('agents')
-      .select('full_name, email, parent_id')
-      .eq('id', resolvedAgentId)
-      .single()
-    agent = agentData
+  // ─── Chain notification: single helper-driven send (F67 try/catch) ─────────
+  // Replaces the prior 3-step loop (agent → manager → admin) with one send
+  // that hits the full 6-layer chain via the recipients helper.
+  let recipients
+  try {
+    recipients = await getLeadEmailRecipients(params.tenantId, resolvedAgentId, supabase)
+  } catch (err) {
+    if (err instanceof AdminPlatformUnreachable) {
+      console.error('[leads] admin platform unreachable:', err.message)
+      recipients = null
+    } else {
+      throw err
+    }
   }
 
-  // Notify the assigned agent
-  if (agent?.email) {
+  if (recipients) {
+    const html = buildLeadEmail({
+      contactName: params.contactName,
+      contactEmail: params.contactEmail,
+      contactPhone: params.contactPhone,
+      message: params.message,
+      source,
+      buildingName: params.propertyDetails?.buildingName,
+      buildingAddress: params.propertyDetails?.buildingAddress,
+      unitNumber: params.propertyDetails?.unitNumber,
+    })
+    const subject = `✦ New Lead — ${params.contactName} — ${source}`
+
     try {
-      console.log('[leads] Notifying agent:', agent.email)
-      await sendActivityEmail({
-        leadId: lead.id,
-        activityType: source,
-        agentEmail: agent.email,
-        agentName: agent.full_name || 'Agent',
-        buildingName: params.propertyDetails?.buildingName,
-        buildingAddress: params.propertyDetails?.buildingAddress,
-        unitNumber: params.propertyDetails?.unitNumber,
-        message: params.message
+      await sendTenantEmail({
+        tenantId: params.tenantId,
+        to: recipients.to,
+        cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+        bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+        subject,
+        html,
       })
-    } catch (emailError) {
-      console.error('[leads] Agent email error:', emailError)
-    }
-  }
-
-  await delay(600)
-
-  // Notify manager (parent agent) if subscribed
-  let manager: any = null
-  if (agent?.parent_id) {
-    const { data: managerData } = await supabase
-      .from('agents')
-      .select('id, full_name, email, receive_team_lead_emails')
-      .eq('id', agent.parent_id)
-      .single()
-    manager = managerData
-
-    if (manager?.receive_team_lead_emails && manager.email) {
-      try {
-        console.log('[leads] Notifying manager:', manager.email)
-        await sendActivityEmail({
-          leadId: lead.id,
-          activityType: source,
-          agentEmail: manager.email,
-          agentName: manager.full_name || 'Manager',
-          buildingName: params.propertyDetails?.buildingName,
-          buildingAddress: params.propertyDetails?.buildingAddress,
-          unitNumber: params.propertyDetails?.unitNumber,
-          message: params.message,
-          isManagerNotification: true,
-          teamAgentName: agent.full_name
-        })
-      } catch (err) {
-        console.error('[leads] Manager email error:', err)
-      }
-    }
-  }
-
-  await delay(600)
-
-  // Notify admins with receive_all_lead_emails — scoped to tenant
-  const { data: admins } = await supabase
-    .from('agents')
-    .select('id, full_name, email')
-    .eq('receive_all_lead_emails', true)
-    .eq('is_active', true)
-    .eq('tenant_id', params.tenantId)
-
-  if (admins && admins.length > 0) {
-    for (const admin of admins) {
-      if (admin.email && admin.email !== agent?.email && admin.email !== manager?.email) {
-        try {
-          console.log('[leads] Notifying admin:', admin.email)
-          await sendActivityEmail({
-            leadId: lead.id,
-            activityType: source,
-            agentEmail: admin.email,
-            agentName: admin.full_name || 'Admin',
-            buildingName: params.propertyDetails?.buildingName,
-            buildingAddress: params.propertyDetails?.buildingAddress,
-            unitNumber: params.propertyDetails?.unitNumber,
-            message: params.message,
-            isAdminNotification: true,
-            teamAgentName: agent?.full_name,
-            teamManagerName: manager?.full_name
-          })
-        } catch (err) {
-          console.error('[leads] Admin email error:', err)
-        }
+    } catch (err) {
+      if (err instanceof TenantEmailNotConfigured) {
+        console.warn('[leads] tenant email not configured:', err.message)
+      } else if (err instanceof TenantEmailFailed) {
+        console.error('[leads] resend send failed:', err.message)
+      } else {
+        console.error('[leads] unexpected email error:', err)
       }
     }
   }
 
   return { success: true, lead }
 }
+
+// ─── Email body ──────────────────────────────────────────────────────────────
+// Mirrors the visual shape used by walliam/contact for consistency across all
+// chain notifications. No agent-specific branding here — the helper resolves
+// recipients per tenant; this template is content-only.
+function buildLeadEmail(params: {
+  contactName: string
+  contactEmail: string
+  contactPhone?: string
+  message?: string
+  source: string
+  buildingName?: string
+  buildingAddress?: string
+  unitNumber?: string
+}): string {
+  const { contactName, contactEmail, contactPhone, message, source, buildingName, buildingAddress, unitNumber } = params
+  const propertyLine = buildingName || buildingAddress
+    ? `${buildingName || ''}${buildingAddress ? ' — ' + buildingAddress : ''}${unitNumber ? ' #' + unitNumber : ''}`
+    : null
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">New Lead</div>
+        <div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${source}</div>
+      </div>
+      <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+        <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+          <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${contactName}</td></tr>
+          <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${contactEmail}" style="color: #1d4ed8;">${contactEmail}</a></td></tr>
+          ${contactPhone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${contactPhone}" style="color: #1d4ed8;">${contactPhone}</a></td></tr>` : ''}
+          ${propertyLine ? `<tr><td style="color: #64748b;">Property</td><td style="color: #0f172a;">${propertyLine}</td></tr>` : ''}
+          ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+        </table>
+        <div style="margin-top: 20px; text-align: center;">
+          <a href="mailto:${contactEmail}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+            Reply to ${contactName}
+          </a>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// ─── Untouched read/update helpers ───────────────────────────────────────────
 
 export async function updateLeadStatus(leadId: string, status: string, notes?: string) {
   const supabase = createServiceClient()
