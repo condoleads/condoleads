@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-02 (spec locked); R1 executed 2026-05-03
 **Owner:** Shah (sole dev)
-**Status:** R1 + R2 DONE. R3 (permission middleware) is next action. Schema landed: agents.role CHECK tightened, agent_delegations + agent_role_changes tables live with constraints + RLS, is_admin column dropped.
+**Status:** R1 + R2 + R3 DONE (2026-05-04). R3 shipped permissions.ts with can() decision function (42-cell matrix smoke), GRANT migration on delegation tables, auth.ts extension populating ActorPermissionContext, and closed P0 auth hole on POST /api/admin-homes/agents (F11). R3.5 (delete api-auth.ts) spun out as W-ADMIN-AUTH-LOCKDOWN sister ticket: 13 production routes still call api-auth.ts and require per-route can() migration. R4 (transition state machine) is next action.
 **Sister tracker:** `docs/W-HIERARCHY-TRACKER.md` (CLOSED 2026-05-03; recipients helper at H3.3 is the integration point this tracker extends)
 
 ---
@@ -337,19 +337,61 @@ All W-HIERARCHY rules apply identically: multi-tenant rule zero, no regressions,
 
 ## Next action
 
-**R3 — permission middleware.** New file lib/admin-homes/permissions.ts with single function:
+**R4 — transition state machine.** New file lib/admin-homes/role-transitions.ts with functions promote(), demote(), reassignParent(), grantDelegation(), revokeDelegation(). Each:
+1. Calls can() (R3.1) for permission decision.
+2. Validates invariants (no orphan, no cycle, single-admin cardinality).
+3. Applies the change.
+4. Writes append-only audit row to agent_role_changes (R2.3).
+5. Returns result. All-or-nothing: failure at any step rolls back.
 
-    can(actor, action, target) returns boolean
+Sister tickets opened by R3 close:
 
-Consolidates the ~10 ad-hoc enforcement branches currently in lib/admin-homes/api-auth.ts (F5) into the spec permission matrix. Resolves "actor X has rights of Y" via active delegations from agent_delegations (R2.2).
+- **W-ADMIN-AUTH-LOCKDOWN** (new, opens immediately) — migrate the 13 production routes still calling api-auth.ts onto can(). Each route gets surgical patch + per-route smoke. After all 13 ship, api-auth.ts deletion (the original R3.5) becomes safe. Scope: app/api/admin-homes/{activities,agents/[id]/*, agents/list, leads/[id], tenants/*, users/override}/route.ts.
 
-After R3 ships, api-auth.ts becomes a thin wrapper: every requireAgentAccess / requireLeadAccess / requireTenantAccess calls can() for the actual decision.
+---
 
-R3 sequence:
-1. Define PermAction enum + TargetSpec types
-2. Implement can() matrix per spec
-3. Add active-delegation lookup to "actor has rights of" resolution
-4. Refactor api-auth.ts branches to delegate to can()
-5. TSC clean, smoke each surface (cross-tenant, role-mutation, lead-ownership)
+## R3 status log (2026-05-04)
 
-After R3: R4 (transition state machine) — promote(), demote(), reassignParent(), grantDelegation(), revokeDelegation() all use can() for permission + invariant checks + audit row writes.
+**R3.0 — api-auth.ts catalogue.** Read existing api-auth.ts in full. 14 distinct authorization branches across 5 helpers. Mapped each branch to a (PermAction, TargetSpec) cell. Identified 2 new findings: F9 (System 1 isolation via site_type=comprehensive belongs in route handler not can()), F10 (position assistant/support predates delegation table, now display-only). Verified initial caller grep returned only scripts/ matches — caller count claim was based on under-recursing PowerShell glob, corrected during R3.5.
+
+**R3.1 — permissions.ts shipped.** New file with PermAction enum (14 actions), TargetSpec discriminated union (5 kinds), ActorPermissionContext shape, and can() pure synchronous decision function. Delegation overlay implemented as effective-principal expansion (no SOS for delegation.grant). Self-protection on (promote/demote/reassignParent self) blocks before delegation overlay. 375 lines. TSC clean.
+
+**R3.1 fix — Manager Platform.** Initial implementation virtualized Manager Platform as tenant_admin and routed through evaluateRoleChange. evaluateRoleChange blocks tenant_admin from acting on tenant_admin targets — correct rule for actual tenant_admins, wrong restriction for Manager Platform per locked spec ("Mgr Plat can promote a/m/am/ta within overseen tenants"). Fix: simplified Manager Platform to "OK except platform.write". Delta -160 bytes. Validated by R3.3 cell 26.
+
+**R3.2.0 — GRANT migration.** R2.2 + R2.3 created agent_delegations + agent_role_changes with RLS but no GRANT to service_role. Service role hit "permission denied" before BYPASSRLS could apply. Migration 20260504_r3_2_0_grants_on_delegation_tables.sql added GRANT SELECT, INSERT, UPDATE, DELETE on both tables. Verified via information_schema.role_table_grants (8 rows) and live service-role probe (0 rows returned, no error).
+
+**R3.2.1 — auth.ts extension.** resolveAdminHomesUser() return shape extended with permissions: ActorPermissionContext field. Three new internal helpers: computeManagedAgentIds (subtree-aware: direct children for manager, direct + grandchildren for area_manager, empty for agent/tenant_admin tier short-circuits), fetchActiveDelegators (agent_delegations join with FK embed). All existing fields preserved verbatim — 7 existing callers continue working unchanged.
+
+**R3.2.2 — live verification against King Shah.** Smoke replicated R3.2.1 logic against production data. 6/6 checks PASS: agentId, tenantId, roleDb=tenant_admin, platformTier=null (King Shah is not in platform_admins), managedAgentIds=[] (tenant_admin tier short-circuit), activeDelegators=[].
+
+**R3.3 — 42-cell matrix smoke.** scripts/r3-3-smoke-permissions.ts — in-memory tests of can() across 11 categories: self-protection (3), cross-tenant (3), agent tier (4), manager scope (5), area manager subtree (4), tenant admin (4), Manager Platform (5 incl. R3.1 fix regression), Admin Platform (3), delegation grant (3), delegation revoke (2), delegation overlay (5), self-protection vs delegation (1). Result: 42/42 PASS. Run via npx tsx. Re-runnable as ongoing CI asset.
+
+**R3.4 — P0 security closure.** Recon of 7 existing auth'd surfaces revealed only 1 file required gate change: app/api/admin-homes/agents/route.ts. POST handler had no authentication check. Curl probe (Mon May 04 16:45 UTC) confirmed: unauthenticated request reached handler with X-Tenant-Id resolved to b16e1039 (WALLiam tenant context assigned to anonymous external request). Fix: resolveAdminHomesUser() gate + can('agent.adminMutate', target) check. Verified locally (401) and in production (Mon May 04 17:53 UTC, 401 confirmed). Other 6 surfaces (agents/leads/users/settings/bulk-sync/tenants pages) had correct gates already — no can() refactor.
+
+**R3.5 — deletion attempted, reverted.** api-auth.ts deletion failed: TSC immediately surfaced 14 errors across 13 files. Initial recon (Block 1 grep at 09:31) used PowerShell glob "**\*.ts" which under-recurses by default; missed deeper paths like app/api/admin-homes/activities/route.ts, .../tenants/[id]/route.ts, etc. Wrong claim of "zero callers" was the proximate cause. Deletion commit edbf773 was reverted via 1657b59 within minutes. api-auth.ts restored byte-for-byte. Production stayed at 401 throughout (R3.4 gate is upstream of api-auth.ts). Spun out as W-ADMIN-AUTH-LOCKDOWN sister ticket; 13 routes need per-route can() migration before deletion is safe.
+
+**Lesson logged:** PowerShell glob "**\*.ts" does NOT recurse into nested subdirectories by default. For caller-search before deletion, use git grep (index-aware, recurses correctly) or Get-ChildItem -Recurse | Select-String. TSC errors immediately after a delete are a hard-stop signal — abort, do not push past.
+
+### Findings retired
+
+- **F1 (CHECK tightened)** — retired R2.1.
+- **F2 (audit table)** — retired R2.3.
+- **F3 (delegations table)** — retired R2.2.
+- **F4 (is_admin deprecation)** — retired R2.4a/b.
+- **F5 (api-auth.ts consolidation)** — partially retired R3.1 (can() exists; new code uses it). Full retirement deferred to W-ADMIN-AUTH-LOCKDOWN.
+
+### Findings open or spun out
+
+- **F6 (setAgentParent hardening)** — R4 owns.
+- **F7 (territory orthogonality)** — territory phase (deferred per Shah).
+- **F8 (api-auth.ts dead code)** — spun out: W-ADMIN-AUTH-LOCKDOWN.
+- **F9 (System 1 site_type guard)** — belongs in route handler, not can(). Documented in permissions.ts header. No action.
+- **F10 (assistant/support position legacy)** — display-only, not in any decision path. Future cleanup ticket. No action.
+- **F11 (POST /api/admin-homes/agents had no auth gate)** — NEW, surfaced during R3.4 recon. Closed in production at 17:20 UTC via R3.4 patch.
+
+### R3 commits on main
+
+- e0586ce — fix(security/W-ROLES-DELEGATION/R3.4): close P0 auth hole on POST /api/admin-homes/agents
+- 6591ab9 — fix(W-ROLES-DELEGATION/R3): commit missing permissions.ts + auth.ts + migration (recovery from incomplete prior commit)
+- edbf773 — chore(R3.5): delete dead api-auth.ts (BAD: reverted)
+- 1657b59 — Revert "chore...R3.5...delete dead api-auth.ts"
