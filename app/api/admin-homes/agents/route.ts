@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { can } from '@/lib/admin-homes/permissions'
 
 function createServiceClient() {
   return createClient(
@@ -44,10 +45,38 @@ export async function GET() {
   return NextResponse.json({ agents: data || [] })
 }
 
-// POST /api/admin-homes/agents — create new comprehensive agent
+// POST /api/admin-homes/agents — create new comprehensive agent.
+// R3.4: gated via can() against ActorPermissionContext.
 export async function POST(request: NextRequest) {
+  const user = await resolveAdminHomesUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const supabase = createServiceClient()
   const body = await request.json()
+
+  // can() target needs the prospective tenant scope. We read tenant_id from
+  // the body before doing the permission check; if absent, fall back to
+  // the actor's home tenant (Tenant Admin creating in their own tenant).
+  const targetTenantId: string | null = body?.tenant_id ?? user.tenantId
+  if (!targetTenantId) {
+    return NextResponse.json({ error: 'tenant_id required' }, { status: 400 })
+  }
+
+  // Use a synthetic agent target with role='agent' for the prospective new
+  // agent. 'agent.adminMutate' requires Tenant Admin tier or higher; lower
+  // tiers cannot create comprehensive agents.
+  const decision = can(user.permissions, 'agent.adminMutate', {
+    kind: 'agent',
+    agentId: '00000000-0000-0000-0000-000000000000',
+    tenantId: targetTenantId,
+    parentId: body?.parent_id ?? null,
+    roleDb: 'agent',
+  })
+  if (!decision.ok) {
+    return NextResponse.json({ error: decision.reason }, { status: decision.status })
+  }
 
   const {
     full_name, email, password,
