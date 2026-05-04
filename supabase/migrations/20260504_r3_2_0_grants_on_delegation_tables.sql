@@ -1,0 +1,48 @@
+-- W-ROLES-DELEGATION/R3.2.0 — grant table privileges to service_role
+-- on agent_delegations and agent_role_changes.
+--
+-- CONTEXT
+--   R2.2 (agent_delegations) and R2.3 (agent_role_changes) created the
+--   tables with RLS ENABLED but no GRANT statements. Result:
+--     SELECT * FROM agent_delegations  → ERROR: permission denied for table
+--   even when the caller authenticates as service_role.
+--
+--   service_role normally has BYPASSRLS, which skips policy evaluation,
+--   but BYPASSRLS only applies AFTER the role is permitted to touch the
+--   table at all. Without explicit GRANT, the role is denied at the
+--   privilege-check stage that runs before RLS.
+--
+--   Verified pre-migration via Supabase SQL editor:
+--     SELECT grantee, privilege_type
+--     FROM information_schema.role_table_grants
+--     WHERE table_name IN ('agent_delegations','agent_role_changes')
+--       AND grantee = 'service_role';
+--   → 0 rows.
+--
+--   Verified pre-migration via service-role client (scripts/r3-probe-auth-extension.js,
+--   scripts/r3-probe-grants.js):
+--     agent_delegations  → "permission denied for table agent_delegations"
+--     agent_role_changes → "permission denied for table agent_role_changes"
+--
+-- DESIGN
+--   - Grants SELECT/INSERT/UPDATE/DELETE only. No TRUNCATE (not needed by app),
+--     no REFERENCES (DDL-time, already done).
+--   - Grants only to service_role. authenticated and anon must NOT have access
+--     — this matches the locked spec: "all access mediated by application code
+--     running as service_role".
+--   - No sequence grants: both tables use uuid PKs with gen_random_uuid() default,
+--     no SERIAL/BIGSERIAL columns. Verified via R2.2 and R2.3 migration files.
+--   - No ALTER DEFAULT PRIVILEGES — that would change policy for future tables,
+--     out of scope for R3.2.0.
+--   - Idempotent: re-running is a no-op (Postgres GRANT semantics).
+--
+-- VERIFICATION (run manually in Supabase SQL editor after applying)
+--   SELECT grantee, table_name, privilege_type
+--   FROM information_schema.role_table_grants
+--   WHERE table_name IN ('agent_delegations','agent_role_changes')
+--     AND grantee = 'service_role'
+--   ORDER BY table_name, privilege_type;
+--   → Expected: 8 rows (4 privileges × 2 tables).
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.agent_delegations TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.agent_role_changes TO service_role;
