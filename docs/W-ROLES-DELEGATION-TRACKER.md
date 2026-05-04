@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-02 (spec locked); R1 executed 2026-05-03
 **Owner:** Shah (sole dev)
-**Status:** R1 (recon) DONE. R2 (schema) is next action. 7 findings documented. Test fixture tenant wiped.
+**Status:** R1 + R2 DONE. R3 (permission middleware) is next action. Schema landed: agents.role CHECK tightened, agent_delegations + agent_role_changes tables live with constraints + RLS, is_admin column dropped.
 **Sister tracker:** `docs/W-HIERARCHY-TRACKER.md` (CLOSED 2026-05-03; recipients helper at H3.3 is the integration point this tracker extends)
 
 ---
@@ -183,7 +183,9 @@ Test fixture tenant `00000000-0000-0000-0000-000000000003` (7 agents at `@test-3
 
 7 findings documented (see Findings section).
 
-### R2 — Schema migrations (NEXT)
+### R2 — Schema migrations (DONE 2026-05-04)
+
+Four migrations applied to production Supabase, code-side patches shipped, all verified.
 
 Three schema migrations + one code-then-schema migration for is_admin deprecation:
 
@@ -313,19 +315,41 @@ All W-HIERARCHY rules apply identically: multi-tenant rule zero, no regressions,
 
 - **2026-05-02 v1** — Tracker created from W-HIERARCHY F63 spinoff. Spec locked from product discussion. Ready for R1 recon.
 - **2026-05-03 v2** — R1 (recon) DONE. W-HIERARCHY closed earlier same day, opening this tracker. Schema state verified: `agents.role` CHECK has 8 values (4 spec + 4 vestigial); no audit tables; `agent_delegations` doesn't exist. 4 grep tasks executed across role/is_admin/parent_id/permission patterns. Test fixture tenant `00000000-0000-0000-0000-000000000003` (7 agents, 0 downstream rows) wiped — vestigial Phase 3.2 prototype. 7 findings recorded (F1-F7). Spec corrections: `admin_platform` → `admin` (codebase wins), Layer 5-6 storage is `platform_admins.tier` not `agents.role`, `is_admin` scheduled for deprecation in R2. Shah noted F7 (all roles are selling roles — territory orthogonality) — deferred to territory phase but documented. **Tracker rewritten in clean UTF-8** to fix mojibake (em-dashes were corrupted as `â€"`). Next action: R2 schema migrations (CHECK tightening, agent_delegations + agent_role_changes tables, is_admin deprecation).
+- **2026-05-04 v3** (R2 DONE) — Four SQL migrations applied to production Supabase, all verified:
+
+  - **R2.1** — agents.role CHECK tightened to spec values: agent, manager, area_manager, tenant_admin, admin. Vestigial values (assistant, support, managed) dropped from constraint.
+
+  - **R2.2** — agent_delegations table created. Constraints: no-self CHECK, no-cycle trigger (named dollar-tag cycle), no-support-of-support trigger (named dollar-tag sos), revoke-consistency CHECK. Four indexes (PK + 3 functional). Service-role-only RLS. Smoke 4/4 PASS: valid grant succeeded; cycle attempt fired Delegation cycle; no-self attempt fired CHECK violation; support-of-support attempt fired No support-of-support.
+
+  - **R2.3** — agent_role_changes audit table created. Append-only triggers (named dollar-tag append). At-least-one-change CHECK. Three indexes (PK + 2 functional). Service-role-only RLS. Structural verification passed. Runtime smoke deferred to R5 since Supabase SQL editor runs as superuser.
+
+  - **R2.4a** — Code patches: app/dashboard/page.tsx and lib/admin-homes/auth.ts (3 sites) migrated from is_admin reads to role IN admin/tenant_admin checks. lib/credits/getAgentTier.ts deleted entirely (zero callers, dead code).
+
+  - **R2.4b** — is_admin column dropped. TSC clean. Agents table integrity preserved (7 rows: 5 agents, 1 tenant_admin, 1 admin).
+
+  **Lessons:** Supabase SQL editor cannot parse plain dollar-quoted function bodies that contain complex SQL (recursive CTEs especially). Always use named dollar-tags for function definitions. R2.2 SQL file on disk updated to match what was actually run.
+
+  **R2 close mechanics note:** First close attempt corrupted the tracker (script v1 used template literals with dollar-tag names; tooling interpolated them as variables, causing 5x file repetition). Reset --soft, restored tracker from backup, re-patched with this v2 script (pure string concat, no template literals). Lesson logged for future tracker patch scripts.
+
+  **Next action:** R3 — permission middleware (lib/admin-homes/permissions.ts with can() function consolidating the 10 ad-hoc branches in api-auth.ts per F5).
 
 ---
 
 ## Next action
 
-**R2 — schema migrations.** Five commits, each self-contained:
+**R3 — permission middleware.** New file lib/admin-homes/permissions.ts with single function:
 
-```
-feat(W-ROLES-DELEGATION/R2.1): tighten agents.role CHECK constraint
-feat(W-ROLES-DELEGATION/R2.2): create agent_delegations + cycle/no-self triggers
-feat(W-ROLES-DELEGATION/R2.3): create agent_role_changes audit table
-refactor(W-ROLES-DELEGATION/R2.4a): migrate is_admin readers to role-based
-feat(W-ROLES-DELEGATION/R2.4b): drop is_admin column
-```
+    can(actor, action, target) returns boolean
 
-R2.1 → R2.2 → R2.3 → R2.4a → R2.4b sequenced. Each migration runs in its own transaction. After R2 ships: TSC clean check, then R3 (permission middleware) opens.
+Consolidates the ~10 ad-hoc enforcement branches currently in lib/admin-homes/api-auth.ts (F5) into the spec permission matrix. Resolves "actor X has rights of Y" via active delegations from agent_delegations (R2.2).
+
+After R3 ships, api-auth.ts becomes a thin wrapper: every requireAgentAccess / requireLeadAccess / requireTenantAccess calls can() for the actual decision.
+
+R3 sequence:
+1. Define PermAction enum + TargetSpec types
+2. Implement can() matrix per spec
+3. Add active-delegation lookup to "actor has rights of" resolution
+4. Refactor api-auth.ts branches to delegate to can()
+5. TSC clean, smoke each surface (cross-tenant, role-mutation, lead-ownership)
+
+After R3: R4 (transition state machine) — promote(), demote(), reassignParent(), grantDelegation(), revokeDelegation() all use can() for permission + invariant checks + audit row writes.

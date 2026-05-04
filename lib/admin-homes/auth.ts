@@ -59,7 +59,7 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
 
   const { data: anyAgent } = await supabase
     .from('agents')
-    .select('id, full_name, parent_id, tenant_id, is_admin, role')
+    .select('id, full_name, parent_id, tenant_id, role')
     .eq('user_id', user.id)
     .order('tenant_id', { ascending: false, nullsFirst: false })
     .limit(1)
@@ -72,7 +72,7 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
 
   let agentQuery = supabase
     .from('agents')
-    .select('id, full_name, parent_id, tenant_id, is_admin, role')
+    .select('id, full_name, parent_id, tenant_id, role')
     .eq('user_id', user.id)
 
   if (effectiveTenantId) {
@@ -96,9 +96,9 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
     }
   }
 
-  const position = normalizePosition(agent.role, agent.is_admin === true)
+  const position = normalizePosition(agent.role, agent.role === 'admin' || agent.role === 'tenant_admin')
 
-  if (agent.is_admin === true) {
+  if (agent.role === 'admin' || agent.role === 'tenant_admin') {
     const { data: managedAgents } = await supabase
       .from('agents')
       .select('id')

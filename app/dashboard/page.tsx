@@ -12,7 +12,7 @@ export default async function DashboardPage() {
   }
 
   // Fetch leads based on admin status
-  const leadsResult = agent.is_admin
+  const leadsResult = (agent.role === 'admin' || agent.role === 'tenant_admin')
     ? await getAllLeadsForAdmin()
     : agent.can_create_children
       ? { success: true, leads: await getVisibleLeads(agent.id) }
