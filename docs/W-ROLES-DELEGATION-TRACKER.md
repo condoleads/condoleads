@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-02 (spec locked); R1 executed 2026-05-03
 **Owner:** Shah (sole dev)
-**Status:** R1 + R2 + R3 DONE (2026-05-04). R3 shipped permissions.ts with can() decision function (42-cell matrix smoke), GRANT migration on delegation tables, auth.ts extension populating ActorPermissionContext, and closed P0 auth hole on POST /api/admin-homes/agents (F11). R3.5 (delete api-auth.ts) spun out as W-ADMIN-AUTH-LOCKDOWN sister ticket: 13 production routes still call api-auth.ts and require per-route can() migration. R4 (transition state machine) is next action.
+**Status:** R1 + R2 + R3 + R4 DONE (2026-05-04). R4 shipped 5 atomic Postgres RPCs (rpc_promote_agent / rpc_demote_agent / rpc_reassign_parent / rpc_grant_delegation / rpc_revoke_delegation), TypeScript wrapper at lib/admin-homes/role-transitions.ts, and RPC integration smoke at scripts/r4-2-smoke-rpcs.js (25/25 against real DB). Roles ticket is functionally complete. Sister ticket W-ADMIN-AUTH-LOCKDOWN (13 routes still on api-auth.ts) is open but does not block roadmap. Per Shah roadmap: territory → leads → dashboard UI → massive testing → production.
 **Sister tracker:** `docs/W-HIERARCHY-TRACKER.md` (CLOSED 2026-05-03; recipients helper at H3.3 is the integration point this tracker extends)
 
 ---
@@ -337,16 +337,17 @@ All W-HIERARCHY rules apply identically: multi-tenant rule zero, no regressions,
 
 ## Next action
 
-**R4 — transition state machine.** New file lib/admin-homes/role-transitions.ts with functions promote(), demote(), reassignParent(), grantDelegation(), revokeDelegation(). Each:
-1. Calls can() (R3.1) for permission decision.
-2. Validates invariants (no orphan, no cycle, single-admin cardinality).
-3. Applies the change.
-4. Writes append-only audit row to agent_role_changes (R2.3).
-5. Returns result. All-or-nothing: failure at any step rolls back.
+Per Shah roadmap (locked 2026-05-04):
 
-Sister tickets opened by R3 close:
+1. **Territory system** — next ticket. Per-agent geo / building access boundaries; tenant-scoped lead routing rules.
+2. **Leads system enhancement** — routing using territory + can() permissions.
+3. **Dashboard UI** — surface hierarchy, role transitions, delegations in /admin-homes (consumes R4 wrappers).
+4. **Massive testing** — full integration pass before production launch.
+5. **Production launch.**
 
-- **W-ADMIN-AUTH-LOCKDOWN** (new, opens immediately) — migrate the 13 production routes still calling api-auth.ts onto can(). Each route gets surgical patch + per-route smoke. After all 13 ship, api-auth.ts deletion (the original R3.5) becomes safe. Scope: app/api/admin-homes/{activities,agents/[id]/*, agents/list, leads/[id], tenants/*, users/override}/route.ts.
+### Open sister tickets (do not block roadmap)
+
+- **W-ADMIN-AUTH-LOCKDOWN** — migrate the 13 production routes still calling api-auth.ts onto can() + role-transitions.ts. After all 13 ship, lib/admin-homes/api-auth.ts deletion becomes safe. Scope: app/api/admin-homes/{activities, agents/[id]/*, agents/list, leads/[id], tenants/*, users/override}/route.ts. Independent of feature roadmap; can ship anytime.
 
 ---
 
@@ -395,3 +396,23 @@ Sister tickets opened by R3 close:
 - 6591ab9 — fix(W-ROLES-DELEGATION/R3): commit missing permissions.ts + auth.ts + migration (recovery from incomplete prior commit)
 - edbf773 — chore(R3.5): delete dead api-auth.ts (BAD: reverted)
 - 1657b59 — Revert "chore...R3.5...delete dead api-auth.ts"
+
+---
+
+## R4 status log (2026-05-04)
+
+**R4.0 — atomic role transition RPCs.** New migration 20260504_r4_0_role_transition_rpcs.sql added 5 SECURITY DEFINER PL/pgSQL functions (rpc_promote_agent, rpc_demote_agent, rpc_reassign_parent, rpc_grant_delegation, rpc_revoke_delegation) plus 2 helpers (role_tier_rank, assert_same_tenant). Each RPC is a single Postgres transaction with structured RAISE EXCEPTION on invariant violations (INVARIANT_<NAME>: <details> prefix). Service-role-only EXECUTE grants. Verified via pg_proc query (7 functions in public schema) and information_schema.role_routine_grants (5 EXECUTE grants).
+
+**R4.1 — TypeScript wrappers.** New file lib/admin-homes/role-transitions.ts with 5 exported async functions (promoteAgent, demoteAgent, reassignParent, grantDelegation, revokeDelegation). Each runs app-layer can() check first (R3.1) for fast 403 rejection, then invokes the corresponding RPC. INVARIANT_* error prefixes parsed and mapped to 400 with structured reason. Locked design (Q1=A, Q2=A, Q3=A): platform actors must act via tenant override before invoking; promote/demote are separate exported functions; RPC invariant errors return 400 verbatim. TSC clean. Size 16,207 bytes.
+
+**R4.2 — RPC integration smoke.** scripts/r4-2-smoke-rpcs.js — fixture-driven test against real DB. Builds 2 sentinel tenants + 10 agents (TENANT_A: TA1, TA2, AM, M1, M2, A1, A2, A3; TENANT_B: TB_TA, TB_AGENT). Runs 25 cells across all 5 RPCs covering: promote success/self-block/cross-tenant/no-change/not-promotion/invalid-role; demote success/self-block/no-orphan/sole-TA/not-demotion; reassign success/self-block/self-parent/cross-tenant/parent-tier; grant success/self-block (table CHECK)/cross-tenant/no-SOS/no-cycle (trigger); revoke success/already-revoked/not-found. Wipes fixture in finally block. Result: 25/25 PASS.
+
+**R4.2.1 — cell 17 retired.** Initial cell 17 attempted to test the CYCLE invariant by reassigning AM (area_manager) to A1 (agent, in AM's subtree). PARENT_TIER fired first because A1's tier is below AM's. Investigation: any reachable cycle case necessarily has the proposed parent at lower tier than target (cycle requires parent in target's subtree; subtrees are strictly lower-tier per spec). PARENT_TIER and CYCLE both correctly enforced; PARENT_TIER is checked first (cheaper). CYCLE remains in RPC as defense-in-depth against schema-corruption scenarios. Cell 17 retired with gravestone comment in smoke; smoke now 25 cells total.
+
+### R4 commits on main
+
+Single-batch commit pending; covers:
+- supabase/migrations/20260504_r4_0_role_transition_rpcs.sql
+- lib/admin-homes/role-transitions.ts
+- scripts/r4-2-smoke-rpcs.js
+- docs/W-ROLES-DELEGATION-TRACKER.md (this update)
