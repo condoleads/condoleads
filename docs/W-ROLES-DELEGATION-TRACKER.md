@@ -337,19 +337,22 @@ All W-HIERARCHY rules apply identically: multi-tenant rule zero, no regressions,
 
 ## Next action
 
-Per Shah roadmap (locked 2026-05-04):
+**Master launch tracker first.** Per session 2026-05-04 strategic pivot: produce docs/W-LAUNCH-TRACKER.md before any further feature ticket. Rationale: scattered backend pieces shipped without top-down cohesion check; no master view of how systems integrate; UI not yet seen end-to-end.
 
-1. **Territory system** — next ticket. Per-agent geo / building access boundaries; tenant-scoped lead routing rules.
-2. **Leads system enhancement** — routing using territory + can() permissions.
-3. **Dashboard UI** — surface hierarchy, role transitions, delegations in /admin-homes (consumes R4 wrappers).
-4. **Massive testing** — full integration pass before production launch.
-5. **Production launch.**
+Master tracker recon order (next session):
+1. Read W-HIERARCHY-TRACKER.md + this tracker (known good baselines)
+2. Recon leads + email flow (recipients helper, sendActivityEmail, every lead-creating route)
+3. Recon user management (user_profiles, chat_sessions, user_credit_overrides, user-tenant linkage)
+4. Recon credit system (lib/credits/*, smoke-w-credit-verify.js)
+5. Recon dashboard UI (every /admin-homes page + component)
+6. Recon territory tables (agent_property_access, agent_geo_buildings, tenant_property_access)
+7. Write W-LAUNCH-TRACKER.md with: systems status grid, integration matrix, launch blockers, active execution trackers
+
+**After master tracker exists**, decide next ticket based on what recon reveals. Likely candidates: territory backend, user-tenant assignment ticket, dashboard UI ticket, or wiring fixes between existing systems.
 
 ### Open sister tickets (do not block roadmap)
 
 - **W-ADMIN-AUTH-LOCKDOWN** — migrate the 13 production routes still calling api-auth.ts onto can() + role-transitions.ts. After all 13 ship, lib/admin-homes/api-auth.ts deletion becomes safe. Scope: app/api/admin-homes/{activities, agents/[id]/*, agents/list, leads/[id], tenants/*, users/override}/route.ts. Independent of feature roadmap; can ship anytime.
-
----
 
 ## R3 status log (2026-05-04)
 
