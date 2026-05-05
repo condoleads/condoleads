@@ -46,7 +46,7 @@ Pairs that matter for launch readiness. Each entry: does A correctly consume B? 
 
 ### Roles & Delegation as provider
 
-- **Roles → Permission gating**: 🟡 `can()` shipped (R3.1); **only `POST /admin-homes/agents` gates through it in production**. W-ADMIN-AUTH-LOCKDOWN: 13 routes still on legacy `api-auth.ts`.
+- **Roles → Permission gating**: ✅ `can()` shipped (R3.1); **all 15 admin-homes routes gate through it in production** (P0-5 commit `87b9b53` 2026-05-05). Legacy `api-auth.ts` deleted.
 - **Delegation → Email BCC overlay**: ✅ Helper reads `agent_delegations` and adds active delegates’ `notification_email` to BCC at layers 1–4 (R7 shipped 2026-05-05 commit `8a686c0`; 5 smoke cases pass). Layers 5–6 (platform_admins) out of scope — would need parallel mechanism.
 - **Roles → Audit trail**: ✅ `agent_role_changes` append-only with triggers; 73-cell smoke confirms invariants.
 
@@ -117,11 +117,6 @@ Concrete items required to ship to first paid customer (P0), to scale beyond 3 c
 - Architecture: extracted `createServiceClient` to `lib/admin-homes/service-client.ts`. `agents/route.ts` updated to import from utility (kills duplication that existed pre-P0-5). Deleted `lib/admin-homes/api-auth.ts` (zero consumers).
 - Verification: TSC clean; project-wide grep for `@/lib/admin-homes/api-auth` returns 0; all 4 regression smoke suites pass (r3-3 42/42, r3-2-2 6/6, r4-2 25/25, smoke-recipients-helper 5/5).
 
-**P0-5. W-ADMIN-AUTH-LOCKDOWN — 13 routes on legacy `api-auth.ts`**
-- Symptom: only `POST /admin-homes/agents` uses `can()`; remainder bypass matrix policy.
-- Verify: every admin-homes route imports + calls `can()` before any mutation.
-- Source: sister ticket noted in W-ROLES-DELEGATION close.
-
 ### P1 — ship before scale
 
 **P1-1. W-ROLES-DELEGATION R5/R6 — delegation CRUD + workspace UI**
@@ -186,7 +181,7 @@ Pointers to per-ticket trackers on disk. Each one is the implementation detail; 
 | `docs/W-CREDIT-VERIFY-TRACKER.md` | OPEN @ `cd0fb14`; **Phase D0 (atomic counters) SHIPPED Apr 30** = P0-2 | Phase C smoke + Phase D regression sweep not confirmed |
 | W-CREDITS Phase 9 (now W-CREDIT-VERIFY D0) | SHIPPED Apr 30 = P0-2 | P1-6 (post-increment check) is residual polish |
 | W-TENANT-AUTH | CLOSED @ `7dd818d` | 50 legacy users without `tenant_users` (P2-2) |
-| W-ADMIN-AUTH-LOCKDOWN (sister ticket) | OPEN | 13 routes — P0-5 |
+| W-ADMIN-AUTH-LOCKDOWN (sister ticket) | CLOSED 2026-05-05 (commit `87b9b53`) | none — closed via P0-5 |
 | W-MULTITENANT (defined Apr 28, parked) | OPEN | Wide audit, post-launch |
 | Territory ticket (not yet started) | NOT STARTED | Per W-ROLES-DELEGATION model: "Defaults cascade. Assignments override. Leads follow ownership." Schema 70%, UI 0%. |
 
