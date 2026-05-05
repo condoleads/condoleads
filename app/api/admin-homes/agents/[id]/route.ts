@@ -4,17 +4,36 @@
 // Phase 3.4+: auth + tenant + role checks via shared api-auth helper.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAgentAccess } from '@/lib/admin-homes/api-auth'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
+import { can, type DbRole } from '@/lib/admin-homes/permissions'
 
 // GET /api/admin-homes/agents/[id]
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireAgentAccess(params.id)
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createServiceClient()
+  const { data: target } = await supabase
+    .from('agents')
+    .select('id, tenant_id, parent_id, site_type, role')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!target || target.site_type !== 'comprehensive') {
+    return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  }
+  const decision = can(user.permissions, 'agent.read', {
+    kind: 'agent',
+    agentId: target.id,
+    tenantId: target.tenant_id,
+    parentId: target.parent_id,
+    roleDb: (target.role || 'agent') as DbRole,
+  })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabase
     .from('agents')
     .select('*')
     .eq('id', params.id)
@@ -29,8 +48,25 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireAgentAccess(params.id, { requireWrite: true })
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createServiceClient()
+  const { data: target } = await supabase
+    .from('agents')
+    .select('id, tenant_id, parent_id, site_type, role')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!target || target.site_type !== 'comprehensive') {
+    return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  }
+  const decision = can(user.permissions, 'agent.write', {
+    kind: 'agent',
+    agentId: target.id,
+    tenantId: target.tenant_id,
+    parentId: target.parent_id,
+    roleDb: (target.role || 'agent') as DbRole,
+  })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
   const body = await request.json()
 
@@ -47,12 +83,12 @@ export async function PUT(
 
   // Cross-tenant parent_id guard: parent must belong to the same tenant as the target.
   if (parent_id) {
-    const { data: parent } = await auth.supabase
+    const { data: parent } = await supabase
       .from('agents')
       .select('tenant_id')
       .eq('id', parent_id)
       .maybeSingle()
-    if (!parent || parent.tenant_id !== auth.target.tenant_id) {
+    if (!parent || parent.tenant_id !== target.tenant_id) {
       return NextResponse.json({ error: 'parent_id must belong to the same tenant' }, { status: 400 })
     }
   }
@@ -83,7 +119,7 @@ export async function PUT(
   if (ai_manual_approve_limit !== undefined) update.ai_manual_approve_limit = ai_manual_approve_limit
   if (ai_hard_cap !== undefined) update.ai_hard_cap = ai_hard_cap
 
-  const { error } = await auth.supabase
+  const { error } = await supabase
     .from('agents')
     .update(update)
     .eq('id', params.id)
@@ -94,11 +130,28 @@ export async function PUT(
 
 // DELETE /api/admin-homes/agents/[id]
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAgentAccess(params.id, { requireWrite: true, requireAdmin: true })
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createServiceClient()
+  const { data: target } = await supabase
+    .from('agents')
+    .select('id, tenant_id, parent_id, site_type, role')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!target || target.site_type !== 'comprehensive') {
+    return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  }
+  const decision = can(user.permissions, 'agent.adminMutate', {
+    kind: 'agent',
+    agentId: target.id,
+    tenantId: target.tenant_id,
+    parentId: target.parent_id,
+    roleDb: (target.role || 'agent') as DbRole,
+  })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
   // Delete auth user if exists
-  const { data: agent } = await auth.supabase
+  const { data: agent } = await supabase
     .from('agents')
     .select('user_id')
     .eq('id', params.id)
@@ -106,12 +159,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
   if (agent?.user_id) {
     // Clean up user_profiles first to avoid FK constraint
-    await auth.supabase.from('user_profiles').delete().eq('id', agent.user_id)
-    await auth.supabase.auth.admin.deleteUser(agent.user_id)
+    await supabase.from('user_profiles').delete().eq('id', agent.user_id)
+    await supabase.auth.admin.deleteUser(agent.user_id)
   }
 
   // Delete agent record
-  const { error } = await auth.supabase
+  const { error } = await supabase
     .from('agents')
     .delete()
     .eq('id', params.id)

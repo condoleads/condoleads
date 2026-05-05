@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { can } from '@/lib/admin-homes/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,18 +44,19 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const allowed =
-    user.isPlatformAdmin === true ||
-    user.position === 'tenant_admin' ||
-    user.position === 'assistant' ||
-    user.position === 'area_manager' ||
-    user.position === 'manager'
-  if (!allowed) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
-
   if (!user.tenantId) {
     return NextResponse.json({ nodes: [], edges: [] })
+  }
+
+  const decision = can(user.permissions, 'agent.read', {
+    kind: 'agent',
+    agentId: '00000000-0000-0000-0000-000000000000',
+    tenantId: user.tenantId,
+    parentId: null,
+    roleDb: 'agent',
+  })
+  if (!decision.ok) {
+    return NextResponse.json({ error: decision.reason }, { status: decision.status })
   }
 
   const supabase = createClient()

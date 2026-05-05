@@ -2,7 +2,8 @@
 // Phase 3.4+: auth + tenant + role gate via shared api-auth helper.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireTenantAccess } from '@/lib/admin-homes/api-auth'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,9 +13,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'userId and tenantId required' }, { status: 400 })
     }
 
-    const auth = await requireTenantAccess(tenantId, { allowedRoles: ['admin', 'manager'] })
-    if ('error' in auth) return auth.error
-    const { supabase } = auth
+    const user = await resolveAdminHomesUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Trust-based policy 2026-05-05: any tenant-resident can adjust user credits.
+    // Hard cap (clamped below) is the safety net; tenant config gates the cap.
+    if (!user.isPlatformAdmin && user.tenantId !== tenantId) {
+      return NextResponse.json({ error: 'Forbidden — cross-tenant access blocked' }, { status: 403 })
+    }
+    const supabase = createServiceClient()
 
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
@@ -62,9 +68,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'userId and tenantId required' }, { status: 400 })
     }
 
-    const auth = await requireTenantAccess(tenantId, { allowedRoles: ['admin', 'manager'] })
-    if ('error' in auth) return auth.error
-    const { supabase } = auth
+    const user = await resolveAdminHomesUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Trust-based policy 2026-05-05: any tenant-resident can adjust user credits.
+    // Hard cap (clamped below) is the safety net; tenant config gates the cap.
+    if (!user.isPlatformAdmin && user.tenantId !== tenantId) {
+      return NextResponse.json({ error: 'Forbidden — cross-tenant access blocked' }, { status: 403 })
+    }
+    const supabase = createServiceClient()
 
     const { error } = await supabase
       .from('user_credit_overrides')

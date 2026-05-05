@@ -6,7 +6,9 @@
 // Sibling routes: ?id=xxx variant in tenants/route.ts (Platform-Admin only, kept for AddTenantModal compat).
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireTenantAccess } from '@/lib/admin-homes/api-auth'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
+import { can } from '@/lib/admin-homes/permissions'
 
 // Whitelist of columns SettingsClient is allowed to update via PATCH.
 // Keeps the route surface tight — anything not in this list is silently dropped.
@@ -46,10 +48,13 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireTenantAccess(params.id)
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const decision = can(user.permissions, 'tenant.read', { kind: 'tenant', tenantId: params.id })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+  const supabase = createServiceClient()
 
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabase
     .from('tenants')
     .select('*')
     .eq('id', params.id)
@@ -66,8 +71,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireTenantAccess(params.id)
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const decision = can(user.permissions, 'tenant.write', { kind: 'tenant', tenantId: params.id })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+  const supabase = createServiceClient()
 
   let body: Record<string, unknown>
   try {
@@ -88,7 +96,7 @@ export async function PATCH(
 
   update.updated_at = new Date().toISOString()
 
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabase
     .from('tenants')
     .update(update)
     .eq('id', params.id)

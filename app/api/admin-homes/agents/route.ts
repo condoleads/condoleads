@@ -3,17 +3,9 @@
 // GET: list agents for dropdown, POST: create new agent
 // System 1 (app/api/admin/agents/) is NEVER touched
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
 import { can } from '@/lib/admin-homes/permissions'
-
-function createServiceClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
-}
 
 // GET /api/admin-homes/agents — list comprehensive agents, tenant-scoped
 // Phase 3.4: Tenant Admin sees only their tenant's agents.

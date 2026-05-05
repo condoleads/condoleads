@@ -9,7 +9,9 @@
 // Auth: tenant_admin (own tenant) OR platform admin.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireTenantAccess } from '@/lib/admin-homes/api-auth'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
+import { can } from '@/lib/admin-homes/permissions'
 
 export async function POST(
   request: NextRequest,
@@ -17,10 +19,11 @@ export async function POST(
 ) {
   const { id: tenantId } = await params
 
-  const auth = await requireTenantAccess(tenantId, { allowedRoles: ['admin'] })
-  if ('error' in auth) return auth.error
-
-  const { supabase } = auth
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const decision = can(user.permissions, 'tenant.write', { kind: 'tenant', tenantId })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+  const supabase = createServiceClient()
 
   const body = await request.json().catch(() => ({}))
   const apiKey = typeof body.resend_api_key === 'string' ? body.resend_api_key.trim() : ''

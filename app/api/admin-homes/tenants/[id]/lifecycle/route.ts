@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { can } from '@/lib/admin-homes/permissions'
 
 type LifecycleAction = 'suspend' | 'reactivate' | 'terminate'
 
@@ -21,12 +22,9 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Authorization: platform admin OR tenant_admin of this tenant
-  const isPlatformAdmin = user.isPlatformAdmin === true
-  const isOwnTenantAdmin = user.position === 'tenant_admin' && user.tenantId === tenantId
-  if (!isPlatformAdmin && !isOwnTenantAdmin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
+  // Authorization via can() - tenant.write requires tier 4 (tenant_admin) or platform tier.
+  const decision = can(user.permissions, 'tenant.write', { kind: 'tenant', tenantId })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
   const body = await req.json().catch(() => null) as { action?: LifecycleAction; reason?: string } | null
   if (!body || !body.action) {

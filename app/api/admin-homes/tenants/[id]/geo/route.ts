@@ -5,13 +5,18 @@
 // Phase 3.4+: auth + role checks via shared api-auth helper.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePlatformAdmin } from '@/lib/admin-homes/api-auth'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
+import { can } from '@/lib/admin-homes/permissions'
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requirePlatformAdmin()
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const decision = can(user.permissions, 'platform.read', { kind: 'platform' })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+  const supabase = createServiceClient()
 
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabase
     .from('tenant_property_access')
     .select('*')
     .eq('tenant_id', params.id)
@@ -21,13 +26,16 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requirePlatformAdmin()
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const decision = can(user.permissions, 'platform.write', { kind: 'platform' })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+  const supabase = createServiceClient()
 
   const { restrictions } = await req.json()
 
   // Replace all restrictions for this tenant
-  await auth.supabase.from('tenant_property_access').delete().eq('tenant_id', params.id)
+  await supabase.from('tenant_property_access').delete().eq('tenant_id', params.id)
 
   if (!restrictions || restrictions.length === 0) {
     return NextResponse.json({ success: true, count: 0 })
@@ -46,7 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     is_active: true,
   }))
 
-  const { error } = await auth.supabase.from('tenant_property_access').insert(rows)
+  const { error } = await supabase.from('tenant_property_access').insert(rows)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true, count: rows.length })
 }

@@ -13,19 +13,22 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
-import { requirePlatformAdmin, requireTenantAccess } from '@/lib/admin-homes/api-auth'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { can } from '@/lib/admin-homes/permissions'
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const key = typeof body.key === 'string' ? body.key.trim() : ''
   const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : ''
 
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (tenantId) {
-    const auth = await requireTenantAccess(tenantId, { allowedRoles: ['admin'] })
-    if ('error' in auth) return auth.error
+    const decision = can(user.permissions, 'tenant.write', { kind: 'tenant', tenantId })
+    if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
   } else {
-    const auth = await requirePlatformAdmin()
-    if ('error' in auth) return auth.error
+    const decision = can(user.permissions, 'platform.write', { kind: 'platform' })
+    if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
   }
 
   const lastCheckedAt = new Date().toISOString()

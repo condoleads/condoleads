@@ -4,17 +4,36 @@
 // Phase 3.4+: auth + tenant + role checks via shared api-auth helper.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAgentAccess } from '@/lib/admin-homes/api-auth'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
+import { can, type DbRole } from '@/lib/admin-homes/permissions'
 
 // GET: fetch current geo assignments for agent
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireAgentAccess(params.id)
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createServiceClient()
+  const { data: target } = await supabase
+    .from('agents')
+    .select('id, tenant_id, parent_id, site_type, role')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!target || target.site_type !== 'comprehensive') {
+    return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  }
+  const decision = can(user.permissions, 'agent.read', {
+    kind: 'agent',
+    agentId: target.id,
+    tenantId: target.tenant_id,
+    parentId: target.parent_id,
+    roleDb: (target.role || 'agent') as DbRole,
+  })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabase
     .from('agent_property_access')
     .select('*')
     .eq('agent_id', params.id)
@@ -28,8 +47,25 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireAgentAccess(params.id, { requireWrite: true })
-  if ('error' in auth) return auth.error
+  const user = await resolveAdminHomesUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const supabase = createServiceClient()
+  const { data: target } = await supabase
+    .from('agents')
+    .select('id, tenant_id, parent_id, site_type, role')
+    .eq('id', params.id)
+    .maybeSingle()
+  if (!target || target.site_type !== 'comprehensive') {
+    return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
+  }
+  const decision = can(user.permissions, 'agent.write', {
+    kind: 'agent',
+    agentId: target.id,
+    tenantId: target.tenant_id,
+    parentId: target.parent_id,
+    roleDb: (target.role || 'agent') as DbRole,
+  })
+  if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
   const { assignments } = await request.json()
   // assignments = array of:
@@ -38,7 +74,7 @@ export async function POST(
   //   condo_access, homes_access, buildings_access, buildings_mode }
 
   // Delete existing assignments for this agent
-  const { error: deleteError } = await auth.supabase
+  const { error: deleteError } = await supabase
     .from('agent_property_access')
     .delete()
     .eq('agent_id', params.id)
@@ -48,8 +84,8 @@ export async function POST(
     return NextResponse.json({ success: true, count: 0 })
   }
 
-  // Tenant id from the auth.target (already loaded by helper) — no extra DB read needed
-  const tenantId = auth.target.tenant_id
+  // Tenant id from the target (already loaded by helper) — no extra DB read needed
+  const tenantId = target.tenant_id
 
   const rows = assignments.map((a: any) => ({
     agent_id: params.id,
@@ -66,7 +102,7 @@ export async function POST(
     tenant_id: tenantId,
   }))
 
-  const { error: insertError } = await auth.supabase
+  const { error: insertError } = await supabase
     .from('agent_property_access')
     .insert(rows)
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 })

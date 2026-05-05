@@ -4,12 +4,15 @@
 // Phase 3.4+: tenant-scoped via shared api-auth helper.
 
 import { NextResponse } from 'next/server'
-import { requireAdminHomesUser } from '@/lib/admin-homes/api-auth'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
 
 export async function GET() {
-  const auth = await requireAdminHomesUser()
-  if ('error' in auth) return auth.error
-  const { user, supabase } = auth
+  const user = await resolveAdminHomesUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const supabase = createServiceClient()
 
   let query = supabase
     .from('agents')
