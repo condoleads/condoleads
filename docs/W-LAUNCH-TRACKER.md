@@ -3,6 +3,7 @@
 **Started:** 2026-05-05
 **Owner:** Shah (sole dev)
 **Status:** TRACKER COMPLETE; **P0 TIER CLOSED — P0 execution: 5/5 closed (P0-1 ✅, P0-2 ✅, P0-3 ✅, P0-4 ✅, P0-5 ✅ 2026-05-05)**. Launch unblocked modulo external Paddle KYC.
+- **2026-05-05 v12** — **Cleanup pass.** Verified W-HIERARCHY status from on-disk `docs/W-HIERARCHY-TRACKER.md`: all phases H1..H6 closed 2026-05-03 (v17 FINAL). H3.9 shipped commit `bd1f462`; H4 in-place wipe; H5 closed via Path X; H6 housekeeping. The Next Action's "confirm closed or schedule" note for H3.9/H4/H5 was a false ambiguity introduced in my v6 — those phases shipped over a month ago. Removed. Also removed Section 3 "External blockers" subsection (Paddle KYC) and the "01leads.com go-to-market" line from Next Action — payment processor onboarding and 01leads launch are operational/business scope, not product-system cohesion; they don't belong in this tracker. Result: launch tracker is now strictly product/code launch readiness. P0 closed; W-HIERARCHY closed; remaining product work is W-ROLES-DELEGATION R5/R6/R8 (deferred), F55/P2-4 hygiene, W-TERRITORY build, scripts cleanup.
 **Purpose:** Top-down product tracker. Every system, integration state, launch readiness.
 
 ---
@@ -159,10 +160,6 @@ Concrete items required to ship to first paid customer (P0), to scale beyond 3 c
 - Verify: `git grep "condoleads.ca@gmail.com"` returns nothing.
 - Approach: env var `ADMIN_NOTIFICATION_EMAIL`. **System 1 routes are isolation-protected — touch with extreme care.**
 
-### External blockers
-
-**E-1. Paddle KYC** — Sumsub verification + action required per dashboard.
-
 ### Scripts cleanup (per memory rule)
 
 **S-1.** `node scripts/seed-test-data.js --clean` then `Remove-Item -Recurse -Force "scripts"` after testing verified complete.
@@ -212,10 +209,11 @@ Pointers to per-ticket trackers on disk. Each one is the implementation detail; 
 
 ## Next action
 
-**P0 TIER CLOSED 2026-05-05.** All five P0 items (P0-1 through P0-5) shipped in a single working block. The only remaining launch blocker is external: Paddle KYC review (submitted; awaiting Sumsub/Paddle outcome). Once Paddle clears, payment processor onboarding completes and the platform is launch-ready.
+**P0 TIER CLOSED 2026-05-05.** All five P0 items (P0-1 through P0-5) shipped in a single working block.
 
-**Post-P0 backlog** (not blocking launch):
+**Post-P0 backlog** (not blocking launch — see Section 3 P1/P2 + Section 4 trackers for detail):
 - W-ROLES-DELEGATION R5 (delegation CRUD), R6 (workspace UI), R8 (full smoke matrix) — deferred per cohesion review.
-- W-HIERARCHY H3.9, H4 (backfill), H5 (smoke) — confirm closed or schedule.
-- 01leads.com go-to-market once payment processor live.
+- W-HIERARCHY: ✅ CLOSED 2026-05-03 (v17 FINAL — all phases H1..H6 done; production walliam.ca on full Lead+Email contract).
+- W-LEADS-EMAIL: F55 / P2-4 — replace remaining hardcoded admin email literals with env var (hygiene).
+- W-TERRITORY: largest open feature; required before tenant-2 onboarding.
 - Scripts cleanup: `Remove-Item -Recurse -Force scripts` after final verification.
