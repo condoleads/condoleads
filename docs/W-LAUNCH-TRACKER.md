@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-05
 **Owner:** Shah (sole dev)
-**Status:** TRACKER COMPLETE; **P0 execution: 3/5 closed (P0-1 ✅, P0-2 ✅, P0-3 ✅ 2026-05-05)**.
+**Status:** TRACKER COMPLETE; **P0 execution: 4/5 closed (P0-1 ✅, P0-2 ✅, P0-3 ✅, P0-4 ✅ 2026-05-05)**.
 **Purpose:** Top-down product tracker. Every system, integration state, launch readiness.
 
 ---
@@ -20,8 +20,8 @@ Sister trackers (execution detail) are pointed to in Section 4. This tracker doe
 | System | Built | Wired | Tested | UI | Notes |
 |---|---|---|---|---|---|
 | Hierarchy (parent/child walker, role ladder) | ✅ | ✅ | ✅ | ✅ | Walker in 7/7 lead routes. `agents.role` CHECK constrains 5 values. `lib/admin-homes/hierarchy.ts` shipped W-HIERARCHY. **`AgentOrgChart` shipped** (`components/admin-homes/AgentOrgChart.tsx` 10.3KB Apr 25 + `app/admin-homes/agents/tree/page.tsx` 2KB) — corrects v1 claim. |
-| Roles & Delegation (transitions, audit, can()) | ✅ | 🟡 | ✅ | ❌ | W-ROLES-DELEGATION R1–R4 shipped. 5 RPCs + `can()` + `role-transitions.ts` live. 73 cells passing. **R5 (delegation CRUD), R6 (workspace UI), R7 (delegate BCC overlay), R8 (full smoke matrix) NOT shipped — scope-defined, deferred per cohesion review.** Sister W-ADMIN-AUTH-LOCKDOWN: 13 routes still on legacy `api-auth.ts`. |
-| Leads & Email Flow (helper, fan-out, lead rows) | ✅ | ✅ | ✅ | — | Helper `lib/admin-homes/lead-email-recipients.ts` (8458B, 4 exports). 10 consumers, 7 walker consumers. `leads` enforces `tenant_id NOT NULL` + `agent_id NOT NULL`. **Delegation BCC overlay NOT live (depends on R7).** 6 admin email literals remain in System 1 + platform routes (F55 class, out-of-scope). `leads` table currently empty — fresh state. |
+| Roles & Delegation (transitions, audit, can()) | ✅ | 🟡 | ✅ | ❌ | W-ROLES-DELEGATION R1–R4 + **R7 shipped** (commit `8a686c0` 2026-05-05 — delegate BCC overlay live for layers 1–4; 5 smoke cases pass). 5 RPCs + `can()` + `role-transitions.ts` live. 73 cells + 5 R7 cases passing. **R5 (delegation CRUD), R6 (workspace UI), R8 (full smoke matrix) NOT shipped — scope-defined, deferred per cohesion review.** Sister W-ADMIN-AUTH-LOCKDOWN: 13 routes still on legacy `api-auth.ts`. |
+| Leads & Email Flow (helper, fan-out, lead rows) | ✅ | ✅ | ✅ | — | Helper `lib/admin-homes/lead-email-recipients.ts` (8458B, 4 exports). 10 consumers, 7 walker consumers. `leads` enforces `tenant_id NOT NULL` + `agent_id NOT NULL`. **Delegation BCC overlay LIVE** via R7 (commit `8a686c0` 2026-05-05 — layers 1–4; layers 5–6 platform_admins out of scope). 6 admin email literals remain in System 1 + platform routes (F55 class, out-of-scope). `leads` table currently empty — fresh state. |
 | User Management (profiles, sessions, tenant link) | ✅ | ✅ | 🟡 | 🟡 | `user_profiles` (96 rows, no `tenant_id` — global metadata). `tenant_users` (46 rows, **9 active callers**: `joinTenant.ts`, `RegisterModal.tsx`, welcome + low-credit emails, `assign-user-agent`, `smoke-w-tenant-auth`, 3 migrations) — per-tenant consent + agent assignment + email throttle. `chat_sessions` (2096 rows). `user_credit_overrides` (11 rows, `tenant_id NOT NULL`). 50 pre-W-TENANT-AUTH legacy users have no `tenant_users` row (52% of profiles). Auth helper: `lib/admin-homes/auth.ts` (R3.2.1). |
 | Credit System (pools, gates, overrides, logging) | ✅ | ✅ | 🟡 | ✅ | `lib/credits/resolveUserLimits.ts` + `components/credits/CreditSessionContext.tsx` + `app/charlie/hooks/useCharlie.ts`. `chat_messages_v2` writes from 2 sites in `/api/charlie/route.ts` — 64 rows logged Apr 29 → May 2 (Chunk 6 working). **Atomic counter SHIPPED** as W-CREDIT-VERIFY D0 (`increment_chat_session_counter` + `decrement_chat_session_counter`, parameterized whitelist, SECURITY DEFINER, UPDATE…RETURNING row-lock). v3 claim retired — grep used wrong name. **Residual:** pre-increment gate uses stale msgUsed; concurrent race can soft-exceed cap by 1–2 — P1-6. **P0-3 ✅**: logging gap verified as no-traffic, not a code break (`chat_sessions` shows 0 activity post-May-2 11:00 UTC, aligned with last logged row at May 2 10:42). 2 stale `useCharlie.ts` backups on disk. |
 | Dashboard UI (/admin-homes pages + components) | ✅ | 🟡 | ❌ | 🟡 | **10 pages, 16 components.** Substantial: `SettingsClient` 35.8KB, `BulkSyncClient` 27.2KB + `CommandCenter` 25.4KB, `AdminHomesLeadsClient` 26.9KB, `EditTenantModal` 34.4KB. Per Phase 3 spec sidebar has 9 nav items; **6 pages shipped (Dashboard, Leads, Users, Agents, Settings, Tenants); 3 missing (Territory, Approvals, Tickets)**. AgentOrgChart wired at `/admin-homes/agents/tree`. Modal layer kept during deprecation window per Phase 3.3 spec. **Sidebar role-gating logic not verified from grep — needs file inspection** (per Phase 3.2 spec each role should see different nav). No UI smoke tests located. R5–R6 delegation UI not shipped. |
@@ -47,7 +47,7 @@ Pairs that matter for launch readiness. Each entry: does A correctly consume B? 
 ### Roles & Delegation as provider
 
 - **Roles → Permission gating**: 🟡 `can()` shipped (R3.1); **only `POST /admin-homes/agents` gates through it in production**. W-ADMIN-AUTH-LOCKDOWN: 13 routes still on legacy `api-auth.ts`.
-- **Delegation → Email BCC overlay**: ❌ Helper does NOT yet read `agent_delegations`. R7 deferred. **Granting a delegation today does not cause the delegate to receive lead emails.**
+- **Delegation → Email BCC overlay**: ✅ Helper reads `agent_delegations` and adds active delegates’ `notification_email` to BCC at layers 1–4 (R7 shipped 2026-05-05 commit `8a686c0`; 5 smoke cases pass). Layers 5–6 (platform_admins) out of scope — would need parallel mechanism.
 - **Roles → Audit trail**: ✅ `agent_role_changes` append-only with triggers; 73-cell smoke confirms invariants.
 
 ### Credit & Auth as provider
@@ -86,7 +86,7 @@ Pairs that matter for launch readiness. Each entry: does A correctly consume B? 
 
 Concrete items required to ship to first paid customer (P0), to scale beyond 3 customers (P1), or hygiene before launch (P2). Each with the verification step that confirms removal.
 
-**P0 progress: 3/5 closed (P0-1 ✅, P0-2 ✅, P0-3 ✅ 2026-05-05).**
+**P0 progress: 4/5 closed (P0-1 ✅, P0-2 ✅, P0-3 ✅, P0-4 ✅ 2026-05-05).**
 
 ### P0 — must ship before first paid customer
 
@@ -105,10 +105,10 @@ Concrete items required to ship to first paid customer (P0), to scale beyond 3 c
 - **Logging code is fine; the gap reflects zero chat traffic on the dev environment between May 2 and May 5.**
 - Followup: after each future deploy, smoke by sending a chat and verifying a new `chat_messages_v2` row lands within the same minute.
 
-**P0-4. W-ROLES-DELEGATION R7 — delegate BCC overlay**
-- Symptom: delegate gets no email when delegator's lead fires.
-- Verify: grant delegation → POST a lead → delegate's email is in BCC array.
-- Source: `docs/W-ROLES-DELEGATION-TRACKER.md`
+**P0-4. W-ROLES-DELEGATION R7 — delegate BCC overlay** — ✅ **SHIPPED 2026-05-05** commit `8a686c0`
+- Helper `lib/admin-homes/lead-email-recipients.ts` extended via 5 surgical patches: single batched query against `agent_delegations` (delegator_id IN principalIds, tenant_id, revoked_at IS NULL), in-memory map keyed by delegator, BCC entries added during assembly. Layers 1–4 only (5–6 are platform_admins, different table).
+- Smoke `scripts/smoke-recipients-helper.ts` rewritten: Case 4 (active delegation → delegate in BCC + resolved.tenant_admin_delegates) + Case 5 (revoked → delegate absent). Both PASS. Setup/teardown safe via try/finally.
+- Sister R5 (CRUD) + R6 (UI) + R8 (full smoke matrix) remain in P1 backlog.
 
 **P0-5. W-ADMIN-AUTH-LOCKDOWN — 13 routes on legacy `api-auth.ts`**
 - Symptom: only `POST /admin-homes/agents` uses `can()`; remainder bypass matrix policy.
@@ -174,7 +174,7 @@ Pointers to per-ticket trackers on disk. Each one is the implementation detail; 
 | Tracker | Status | Open items |
 |---|---|---|
 | `docs/W-HIERARCHY-TRACKER.md` | CLOSED 2026-05-03 | F55 (out-of-scope, queued P2-4); F69 (frontend bug) |
-| `docs/W-ROLES-DELEGATION-TRACKER.md` | R1–R4 CLOSED 2026-05-04 | **R5 CRUD, R6 UI, R7 delegate BCC, R8 smoke matrix — DEFERRED per cohesion review** |
+| `docs/W-ROLES-DELEGATION-TRACKER.md` | R1–R4 CLOSED 2026-05-04; **R7 SHIPPED via P0-4** 2026-05-05 commit `8a686c0` | **R5 CRUD, R6 UI, R8 smoke matrix — DEFERRED per cohesion review** (R7 upgraded to P0 and closed via P0-4) |
 | `docs/W-RECOVERY-A1.5-TRACKER.md` | A1 + Wave 1–2 SHIPPED Apr 28; **Chunk 5 SHIPPED via P0-1** 2026-05-05 commit `6dee05f` | Chunk 6 logging confirmed working (May 5); Waves 3–4 deferred |
 | `docs/W-CREDIT-VERIFY-TRACKER.md` | OPEN @ `cd0fb14`; **Phase D0 (atomic counters) SHIPPED Apr 30** = P0-2 | Phase C smoke + Phase D regression sweep not confirmed |
 | W-CREDITS Phase 9 (now W-CREDIT-VERIFY D0) | SHIPPED Apr 30 = P0-2 | P1-6 (post-increment check) is residual polish |
@@ -203,9 +203,10 @@ Pointers to per-ticket trackers on disk. Each one is the implementation detail; 
 - **2026-05-05 v7** — **P0-1 SHIPPED.** Commit `6dee05f` pushed; TSC clean; SQL acceptance returned `anonymous_after_ship=0`. Three structural changes in `app/api/walliam/charlie/session/route.ts`: (i) read-only branch extended to `(read_only || !userId)`; (ii) create branch defensive `userId` guard; (iii) Step 4 comment updated to document W-RECOVERY P0-1. **Auth & Sessions row Wired column flipped 🟡 → ✅.** Section 4 W-RECOVERY-A1.5 row updated. **Next:** P0-2 recon — find current `message_count` increment site in `/api/charlie/route.ts`, write atomic RPC migration, replace read-then-write.
 - **2026-05-05 v8** — **P0-2 SHIPPED** (already shipped Apr 30 as W-CREDIT-VERIFY Phase D0, migration `20260430_phase_d0_atomic_session_counters.sql`). **v3 claim retired**: atomic counter IS in codebase under name `increment_chat_session_counter` (parameterized), not `increment_chat_message_count` as the W-CREDITS plan named it. Migration verified: SECURITY DEFINER, EXECUTE format with whitelist over 4 counter columns, UPDATE…RETURNING with row-lock serialization, built-in DO $ smoke checks. Decrement uses GREATEST(0, …) — no underflow. Both wired in route.ts (lines 270 + 466 increment, 538 decrement). **Residual race opens as P1-6**: pre-increment gate uses stale `msgUsed`; concurrent burst can soft-exceed cap by 1–2 messages per user. Counter stays correct (atomic), subsequent requests gated normally. **Pattern note**: this is the THIRD too-narrow-grep correction (v3 tenant_users, v4 AgentOrgChart, v8 RPC name). Going forward, when checking "is X shipped" — grep on functional behavior or migration filenames, not on guessed function names. **Status: 2/5 P0 shipped. Next: P0-3 (logging continuity gap May 3–5).**
 - **2026-05-05 v9** — **P0-3 RESOLVED** (no code change required). Diagnostic SQL on `chat_sessions`: 0 sessions had `last_activity_at > 2026-05-02 11:00 UTC`; most recent activity at May 2 10:42 aligns exactly with most recent `chat_messages_v2` row. **The May 3–5 gap reflects zero chat traffic on the dev environment, not a logging break.** Logging code at `/api/charlie/route.ts` lines 52, 354 is fine. **Status: 3/5 P0 closed in one working block.** Next: P0-4 (W-ROLES-DELEGATION R7 — delegate BCC overlay in `lib/admin-homes/lead-email-recipients.ts`). After R7, P0-5 (W-ADMIN-AUTH-LOCKDOWN — 13 routes) finishes the P0 tier.
+- **2026-05-05 v10** — **P0-4 SHIPPED.** Commit `8a686c0` pushed; TSC clean; 5 smoke cases all PASS (1: leaf no-delegations, 2: null agent, 3: tenant_admin as agent, 4: active delegation → delegate in BCC + resolved fields, 5: revoked delegation → delegate removed). Helper `lib/admin-homes/lead-email-recipients.ts` extended via 5 surgical patches. Smoke `scripts/smoke-recipients-helper.ts` rewritten with try/finally teardown. Layers 5–6 (platform_admins) explicitly out of R7 scope. **R7 was upgraded from P1 to P0 during cohesion review** — it was the only R5–R8 item that was P0 because granting a delegation without BCC overlay creates a silent business-process failure (delegate never sees leads). **Note**: v10 first-attempt hit an apostrophe-class mismatch (curly ’ vs straight ') in P0-4 entry OLD anchor; fixed in 19.2-fixed; idempotency guard added so future reruns are safe no-ops. **Status: 4/5 P0 closed.** Next: P0-5 (W-ADMIN-AUTH-LOCKDOWN — 13 routes).
 
 ---
 
 ## Next action
 
-**P0-4 in progress: W-ROLES-DELEGATION R7** — extend `lib/admin-homes/lead-email-recipients.ts` to query `agent_delegations` for each populated principal (layers 1–6) and add active delegates’ `notification_email` to BCC. Update `scripts/smoke-recipients-helper.ts` to cover delegation cases. After P0-4, P0-5 (auth lockdown sweep) closes the P0 tier.
+**P0-5 in progress: W-ADMIN-AUTH-LOCKDOWN** — sweep 13 production routes onto `can()` + `role-transitions.ts`, off legacy `api-auth.ts`. Scope: `app/api/admin-homes/{activities, agents/[id]/*, agents/list, leads/[id], tenants/*, users/override}/route.ts`. After P0-5 ships, P0 tier is closed and launch milestone is unblocked (modulo external Paddle KYC).
