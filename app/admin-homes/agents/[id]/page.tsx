@@ -5,6 +5,7 @@ import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import GeoAssignmentSection from '@/components/admin-homes/GeoAssignmentSection'
 import BuildingAssignmentSection from '@/components/admin-homes/BuildingAssignmentSection'
 import ListingAssignmentSection from '@/components/admin-homes/ListingAssignmentSection'
+import DelegationsSection from '@/components/admin-homes/DelegationsSection'
 import Link from 'next/link'
 
 export default async function AgentDetailPage({ params }: { params: { id: string } }) {
@@ -105,6 +106,9 @@ export default async function AgentDetailPage({ params }: { params: { id: string
           assignedBuildingIds={(currentBuildings || []).map(b => b.building_id)}
         />
         <ListingAssignmentSection
+          agentId={params.id}
+        />
+        <DelegationsSection
           agentId={params.id}
         />
       </div>
