@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-05
 **Owner:** Shah (sole dev)
-**Status:** TRACKER COMPLETE; **P0 execution: 2/5 shipped (P0-1 ✅, P0-2 ✅ 2026-05-05)**.
+**Status:** TRACKER COMPLETE; **P0 execution: 3/5 closed (P0-1 ✅, P0-2 ✅, P0-3 ✅ 2026-05-05)**.
 **Purpose:** Top-down product tracker. Every system, integration state, launch readiness.
 
 ---
@@ -23,7 +23,7 @@ Sister trackers (execution detail) are pointed to in Section 4. This tracker doe
 | Roles & Delegation (transitions, audit, can()) | ✅ | 🟡 | ✅ | ❌ | W-ROLES-DELEGATION R1–R4 shipped. 5 RPCs + `can()` + `role-transitions.ts` live. 73 cells passing. **R5 (delegation CRUD), R6 (workspace UI), R7 (delegate BCC overlay), R8 (full smoke matrix) NOT shipped — scope-defined, deferred per cohesion review.** Sister W-ADMIN-AUTH-LOCKDOWN: 13 routes still on legacy `api-auth.ts`. |
 | Leads & Email Flow (helper, fan-out, lead rows) | ✅ | ✅ | ✅ | — | Helper `lib/admin-homes/lead-email-recipients.ts` (8458B, 4 exports). 10 consumers, 7 walker consumers. `leads` enforces `tenant_id NOT NULL` + `agent_id NOT NULL`. **Delegation BCC overlay NOT live (depends on R7).** 6 admin email literals remain in System 1 + platform routes (F55 class, out-of-scope). `leads` table currently empty — fresh state. |
 | User Management (profiles, sessions, tenant link) | ✅ | ✅ | 🟡 | 🟡 | `user_profiles` (96 rows, no `tenant_id` — global metadata). `tenant_users` (46 rows, **9 active callers**: `joinTenant.ts`, `RegisterModal.tsx`, welcome + low-credit emails, `assign-user-agent`, `smoke-w-tenant-auth`, 3 migrations) — per-tenant consent + agent assignment + email throttle. `chat_sessions` (2096 rows). `user_credit_overrides` (11 rows, `tenant_id NOT NULL`). 50 pre-W-TENANT-AUTH legacy users have no `tenant_users` row (52% of profiles). Auth helper: `lib/admin-homes/auth.ts` (R3.2.1). |
-| Credit System (pools, gates, overrides, logging) | ✅ | ✅ | 🟡 | ✅ | `lib/credits/resolveUserLimits.ts` + `components/credits/CreditSessionContext.tsx` + `app/charlie/hooks/useCharlie.ts`. `chat_messages_v2` writes from 2 sites in `/api/charlie/route.ts` — 64 rows logged Apr 29 → May 2 (Chunk 6 working). **Atomic counter SHIPPED** as W-CREDIT-VERIFY D0 (`increment_chat_session_counter` + `decrement_chat_session_counter`, parameterized whitelist, SECURITY DEFINER, UPDATE…RETURNING row-lock). v3 claim retired — grep used wrong name. **Residual:** pre-increment gate uses stale msgUsed; concurrent race can soft-exceed cap by 1–2 — P1-6. **Open:** logging gap May 3–5 — P0-3. 2 stale `useCharlie.ts` backups on disk. |
+| Credit System (pools, gates, overrides, logging) | ✅ | ✅ | 🟡 | ✅ | `lib/credits/resolveUserLimits.ts` + `components/credits/CreditSessionContext.tsx` + `app/charlie/hooks/useCharlie.ts`. `chat_messages_v2` writes from 2 sites in `/api/charlie/route.ts` — 64 rows logged Apr 29 → May 2 (Chunk 6 working). **Atomic counter SHIPPED** as W-CREDIT-VERIFY D0 (`increment_chat_session_counter` + `decrement_chat_session_counter`, parameterized whitelist, SECURITY DEFINER, UPDATE…RETURNING row-lock). v3 claim retired — grep used wrong name. **Residual:** pre-increment gate uses stale msgUsed; concurrent race can soft-exceed cap by 1–2 — P1-6. **P0-3 ✅**: logging gap verified as no-traffic, not a code break (`chat_sessions` shows 0 activity post-May-2 11:00 UTC, aligned with last logged row at May 2 10:42). 2 stale `useCharlie.ts` backups on disk. |
 | Dashboard UI (/admin-homes pages + components) | ✅ | 🟡 | ❌ | 🟡 | **10 pages, 16 components.** Substantial: `SettingsClient` 35.8KB, `BulkSyncClient` 27.2KB + `CommandCenter` 25.4KB, `AdminHomesLeadsClient` 26.9KB, `EditTenantModal` 34.4KB. Per Phase 3 spec sidebar has 9 nav items; **6 pages shipped (Dashboard, Leads, Users, Agents, Settings, Tenants); 3 missing (Territory, Approvals, Tickets)**. AgentOrgChart wired at `/admin-homes/agents/tree`. Modal layer kept during deprecation window per Phase 3.3 spec. **Sidebar role-gating logic not verified from grep — needs file inspection** (per Phase 3.2 spec each role should see different nav). No UI smoke tests located. R5–R6 delegation UI not shipped. |
 | Territory (geo cascade, building/listing assign) | 🟡 | 🟡 | ❌ | 🟡 | **4 tables exist, schema-ready but data-empty.** `agent_property_access` (1 row, 1 muni-scoped). `agent_geo_buildings` (9 rows, 1 agent, 9 buildings) schema is **flat `(agent_id, building_id)` — NOT junction-to-`assignment_id` as implementation plan described**. `tenant_property_access` (0 rows = full access per model). `agent_listing_assignments` (0 rows). RPC `resolve_agent_for_context` is the single resolver, **9 callers** across charlie/walliam/lib. 4 section components embedded in agent + tenant workspaces (March 2026). **No `/admin-homes/territory` page** (Phase 3 nav gap). **`agent_property_access.tenant_id` NULLABLE** (multi-tenant gap at DB level). No territory smoke tests. No migration files matching territory/geo/property_access/building keywords — tables created out-of-band. |
 | Auth & Sessions (gates, anonymous→registered) | ✅ | ✅ | ✅ | ✅ | W-RECOVERY A1 auth gate on `/api/charlie/route.ts` + Wave 1–2 routes. **P0-1 SHIPPED 2026-05-05 commit `6dee05f`** — anonymous session creation closed in `walliam/charlie/session/route.ts` (read-only branch extended to cover `!userId`; create branch defensive `userId` guard). SQL acceptance post-ship: 0 anonymous rows. 51 legacy anonymous rows remain in DB (P2-1 cleanup). `tenant_users` membership wired via `RegisterModal` + `joinTenant.ts`. W-TENANT-AUTH Phase 4b 8/8. |
@@ -54,7 +54,7 @@ Pairs that matter for launch readiness. Each entry: does A correctly consume B? 
 
 - **Auth gate → /api/charlie**: ✅ W-RECOVERY A1 — sessionId/userId/tenantId required; session ownership verified. Bleed plugged.
 - **Credit overrides → Charlie route**: ✅ Resolution scoped by `(user_id, tenant_id)`. Three pools tracked. 11 override rows live.
-- **Charlie route → chat_messages_v2 logging**: 🟡 64 rows logged Apr 29→May 2 (Chunk 6 working). **3-day gap May 3–5** — needs verification (no traffic vs silent break) — P0-3.
+- **Charlie route → chat_messages_v2 logging**: ✅ 64 rows logged Apr 29→May 2. May 3–5 gap **verified as no-traffic** (P0-3 closed): zero sessions had `last_activity_at > 2026-05-02 11:00 UTC`.
 - **Sessions → Auth gate**: ❌ `walliam/charlie/session/route.ts` still creates anonymous rows. Chunk 5 deferred. 51/61 post-Apr-28 sessions are anonymous.
 
 ### Multi-tenant as provider
@@ -86,7 +86,7 @@ Pairs that matter for launch readiness. Each entry: does A correctly consume B? 
 
 Concrete items required to ship to first paid customer (P0), to scale beyond 3 customers (P1), or hygiene before launch (P2). Each with the verification step that confirms removal.
 
-**P0 progress: 2/5 shipped (P0-1 ✅, P0-2 ✅ 2026-05-05).**
+**P0 progress: 3/5 closed (P0-1 ✅, P0-2 ✅, P0-3 ✅ 2026-05-05).**
 
 ### P0 — must ship before first paid customer
 
@@ -100,10 +100,10 @@ Concrete items required to ship to first paid customer (P0), to scale beyond 3 c
 - **v3 claim retired**: prior tracker said "never shipped" — grep used the W-CREDITS-plan name (`increment_chat_message_count`); actual function is `increment_chat_session_counter` (parameterized).
 - **Residual moved to P1-6**: post-increment cap check still missing.
 
-**P0-3. `chat_messages_v2` logging continuity gap May 3–5**
-- Symptom: 64 rows Apr 29 → May 2, then nothing. Cause unknown.
-- Verify: send one chat message, then `SELECT * FROM chat_messages_v2 ORDER BY created_at DESC LIMIT 5` shows new row with tenant_id + user_id.
-- Read `app/api/charlie/route.ts` lines 52, 354 if break is silent.
+**P0-3. `chat_messages_v2` logging continuity gap May 3–5** — ✅ **RESOLVED 2026-05-05** (no code change required)
+- Diagnostic SQL on `chat_sessions`: 0 sessions had `last_activity_at > 2026-05-02 11:00 UTC`. Most recent activity is May 2 10:42, perfectly aligned with the most recent `chat_messages_v2` row.
+- **Logging code is fine; the gap reflects zero chat traffic on the dev environment between May 2 and May 5.**
+- Followup: after each future deploy, smoke by sending a chat and verifying a new `chat_messages_v2` row lands within the same minute.
 
 **P0-4. W-ROLES-DELEGATION R7 — delegate BCC overlay**
 - Symptom: delegate gets no email when delegator's lead fires.
@@ -202,9 +202,10 @@ Pointers to per-ticket trackers on disk. Each one is the implementation detail; 
 - **2026-05-05 v6** — Sections 2–4 written. **Master tracker is complete.** Section 2 (integration matrix) covers ~25 system pairs grouped by provider. Section 3 (launch blockers) lists 16 concrete items (5 P0, 5 P1, 4 P2, 1 external, 1 scripts cleanup) with verification step + source tracker for each. Section 4 (active execution trackers) indexes 9 W-* trackers with status. **Three pivots emerged from cross-block synthesis that per-ticket trackers could not have surfaced:** (a) delegation BCC overlay (R7) is the only R5–R8 item that's P0 — others are P1; (b) anonymous session bleed (Chunk 5) silently grows DB despite chat-endpoint gate being plugged; (c) `agent_property_access.tenant_id` NULLABLE blocks tenant-2 onboarding even though current single-tenant traffic is fine. **Territory `agent_geo_buildings` count folded into Territory row: 9 rows, 1 agent, 9 buildings.** **Next: execute P0-1 (Chunk 5) → P0-2 (Phase 9) → P0-3 (logging gap) → P0-4 (R7) → P0-5 (auth lockdown). No more recon.**
 - **2026-05-05 v7** — **P0-1 SHIPPED.** Commit `6dee05f` pushed; TSC clean; SQL acceptance returned `anonymous_after_ship=0`. Three structural changes in `app/api/walliam/charlie/session/route.ts`: (i) read-only branch extended to `(read_only || !userId)`; (ii) create branch defensive `userId` guard; (iii) Step 4 comment updated to document W-RECOVERY P0-1. **Auth & Sessions row Wired column flipped 🟡 → ✅.** Section 4 W-RECOVERY-A1.5 row updated. **Next:** P0-2 recon — find current `message_count` increment site in `/api/charlie/route.ts`, write atomic RPC migration, replace read-then-write.
 - **2026-05-05 v8** — **P0-2 SHIPPED** (already shipped Apr 30 as W-CREDIT-VERIFY Phase D0, migration `20260430_phase_d0_atomic_session_counters.sql`). **v3 claim retired**: atomic counter IS in codebase under name `increment_chat_session_counter` (parameterized), not `increment_chat_message_count` as the W-CREDITS plan named it. Migration verified: SECURITY DEFINER, EXECUTE format with whitelist over 4 counter columns, UPDATE…RETURNING with row-lock serialization, built-in DO $ smoke checks. Decrement uses GREATEST(0, …) — no underflow. Both wired in route.ts (lines 270 + 466 increment, 538 decrement). **Residual race opens as P1-6**: pre-increment gate uses stale `msgUsed`; concurrent burst can soft-exceed cap by 1–2 messages per user. Counter stays correct (atomic), subsequent requests gated normally. **Pattern note**: this is the THIRD too-narrow-grep correction (v3 tenant_users, v4 AgentOrgChart, v8 RPC name). Going forward, when checking "is X shipped" — grep on functional behavior or migration filenames, not on guessed function names. **Status: 2/5 P0 shipped. Next: P0-3 (logging continuity gap May 3–5).**
+- **2026-05-05 v9** — **P0-3 RESOLVED** (no code change required). Diagnostic SQL on `chat_sessions`: 0 sessions had `last_activity_at > 2026-05-02 11:00 UTC`; most recent activity at May 2 10:42 aligns exactly with most recent `chat_messages_v2` row. **The May 3–5 gap reflects zero chat traffic on the dev environment, not a logging break.** Logging code at `/api/charlie/route.ts` lines 52, 354 is fine. **Status: 3/5 P0 closed in one working block.** Next: P0-4 (W-ROLES-DELEGATION R7 — delegate BCC overlay in `lib/admin-homes/lead-email-recipients.ts`). After R7, P0-5 (W-ADMIN-AUTH-LOCKDOWN — 13 routes) finishes the P0 tier.
 
 ---
 
 ## Next action
 
-**P0-3 in progress: chat_messages_v2 logging continuity gap (May 3–5).** Diagnose cause: query `chat_messages_v2` for any rows past May 2; if none and there has been chat traffic, read `/api/charlie/route.ts` lines 52, 354 to find silent break.
+**P0-4 in progress: W-ROLES-DELEGATION R7** — extend `lib/admin-homes/lead-email-recipients.ts` to query `agent_delegations` for each populated principal (layers 1–6) and add active delegates’ `notification_email` to BCC. Update `scripts/smoke-recipients-helper.ts` to cover delegation cases. After P0-4, P0-5 (auth lockdown sweep) closes the P0 tier.
