@@ -189,8 +189,12 @@ export async function POST(request: NextRequest) {
       session = existing || null
     }
 
-    // Step 4: Create new session if none exists (skip if read_only)
-    if (!session && read_only) {
+    // Step 4: Create new session if none exists.
+    // W-RECOVERY P0-1: skip create for read_only OR anonymous (!userId).
+    // Anonymous callers get the same default-shaped response as read_only
+    // — no DB row created. Bleed cause: prior code inserted rows with
+    // user_id=null on every anonymous page load (51 such rows Apr 28→May 2).
+    if (!session && (read_only || !userId)) {
       // Read-only mode — return defaults without creating a session
       return NextResponse.json({
         sessionId: null,
@@ -215,7 +219,10 @@ export async function POST(request: NextRequest) {
         status: 'active',
       })
     }
-    if (!session) {
+    if (!session && userId) {
+      // W-RECOVERY P0-1 defense-in-depth: only create if userId is set.
+      // Anonymous case is already handled by the branch above; this guard
+      // prevents regression if someone restructures the conditions later.
       const { data: newSession, error: createError } = await supabase
         .from('chat_sessions')
         .insert({
