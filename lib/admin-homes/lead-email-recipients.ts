@@ -45,6 +45,11 @@ export interface LeadEmailRecipients {
     tenant_admin: string | null
     manager_platforms: string[]
     admin_platforms: string[]
+    /** W-ROLES-DELEGATION R7 — active delegates of each layer-1–4 principal. */
+    agent_delegates: string[]
+    manager_delegates: string[]
+    area_manager_delegates: string[]
+    tenant_admin_delegates: string[]
   }
 }
 
@@ -84,6 +89,10 @@ export async function getLeadEmailRecipients(
     tenant_admin: null,
     manager_platforms: [],
     admin_platforms: [],
+    agent_delegates: [],
+    manager_delegates: [],
+    area_manager_delegates: [],
+    tenant_admin_delegates: [],
   }
 
   let agentEmail: string | null = null
@@ -106,9 +115,10 @@ export async function getLeadEmailRecipients(
   }
 
   // ─── Layers 2–4: walker (manager / area_manager / tenant_admin) ──────────
-  if (agentId) {
-    const chain = await walkHierarchy(agentId, supabase)
-
+  // R7: walker hoisted to outer scope so the delegation overlay block below
+  // can reuse the chain without a second walkHierarchy round-trip.
+  const chain = agentId ? await walkHierarchy(agentId, supabase) : null
+  if (chain) {
     // Resolve emails for any walker-classified ancestor in one query
     const idsToResolve = [
       chain.manager_id,
@@ -136,6 +146,58 @@ export async function getLeadEmailRecipients(
         tenantAdminEmail = byId.get(chain.tenant_admin_id) || null
         resolved.tenant_admin = tenantAdminEmail
       }
+    }
+  }
+
+  // ─── Layers 1–4 delegation overlay (W-ROLES-DELEGATION R7) ──────────
+  // For each populated principal at layers 1–4, fetch active delegates and add
+  // their notification_email to BCC. Single batched query; in-memory map keyed
+  // by delegator. Layers 5–6 are platform_admins (different table); their
+  // delegation overlay would require a parallel mechanism — out of R7 scope.
+  const principalAgentIds: string[] = [
+    agentId,
+    chain?.manager_id ?? null,
+    chain?.area_manager_id ?? null,
+    chain?.tenant_admin_id ?? null,
+  ].filter((x): x is string => !!x)
+
+  const delegateEmailsByDelegator = new Map<string, string[]>()
+  if (principalAgentIds.length > 0) {
+    const { data: delegationRows } = await supabase
+      .from('agent_delegations')
+      .select('delegator_id, delegate_id')
+      .in('delegator_id', principalAgentIds)
+      .eq('tenant_id', tenantId)
+      .is('revoked_at', null)
+
+    const delegateIds = (delegationRows || [])
+      .map(r => (r as { delegator_id: string; delegate_id: string }).delegate_id)
+
+    if (delegateIds.length > 0) {
+      const { data: delegateAgentRows } = await supabase
+        .from('agents')
+        .select('id, email, notification_email')
+        .in('id', delegateIds)
+
+      const emailByDelegateId = new Map<string, string | null>()
+      for (const r of (delegateAgentRows || []) as AgentEmailRow[]) {
+        emailByDelegateId.set(r.id, r.notification_email || r.email || null)
+      }
+
+      for (const d of (delegationRows || []) as Array<{ delegator_id: string; delegate_id: string }>) {
+        const email = emailByDelegateId.get(d.delegate_id)
+        if (email) {
+          const arr = delegateEmailsByDelegator.get(d.delegator_id) || []
+          arr.push(email)
+          delegateEmailsByDelegator.set(d.delegator_id, arr)
+        }
+      }
+
+      // Populate diagnostic resolved.* fields
+      if (agentId) resolved.agent_delegates = delegateEmailsByDelegator.get(agentId) || []
+      if (chain?.manager_id) resolved.manager_delegates = delegateEmailsByDelegator.get(chain.manager_id) || []
+      if (chain?.area_manager_id) resolved.area_manager_delegates = delegateEmailsByDelegator.get(chain.area_manager_id) || []
+      if (chain?.tenant_admin_id) resolved.tenant_admin_delegates = delegateEmailsByDelegator.get(chain.tenant_admin_id) || []
     }
   }
 
@@ -210,6 +272,10 @@ export async function getLeadEmailRecipients(
   if (areaManagerEmail) bcc.push(areaManagerEmail)
   // Layer 4 → BCC
   if (tenantAdminEmail) bcc.push(tenantAdminEmail)
+  // Layers 1–4 delegate overlay → BCC (W-ROLES-DELEGATION R7)
+  for (const emails of delegateEmailsByDelegator.values()) {
+    for (const e of emails) bcc.push(e)
+  }
   // Layer 5 → BCC
   for (const e of managerPlatformEmails) bcc.push(e)
   // Layer 6 → BCC (unconditional)
