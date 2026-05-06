@@ -96,6 +96,7 @@ export async function POST(req: NextRequest) {
     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
       p_listing_id: null,
       p_building_id: null,
+      p_neighbourhood_id: null,
       p_community_id: community_id || null,
       p_municipality_id: municipality_id || null,
       p_area_id: area_id || null,

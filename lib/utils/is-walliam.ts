@@ -68,6 +68,7 @@ export async function resolveWalliamAgent(params: {
     const { data } = await supabase.rpc('resolve_agent_for_context', {
       p_listing_id: params.listing_id || null,
       p_building_id: params.building_id || null,
+      p_neighbourhood_id: null,
       p_community_id: params.community_id || null,
       p_municipality_id: params.municipality_id || null,
       p_area_id: params.area_id || null,

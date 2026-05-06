@@ -70,6 +70,7 @@ async function resolveAgentForLead(
   const { data: agentId, error } = await supabase.rpc('resolve_agent_for_context', {
     p_listing_id: params.listingId || null,
     p_building_id: params.buildingId || null,
+    p_neighbourhood_id: null,
     p_community_id: params.communityId || null,
     p_municipality_id: params.municipalityId || null,
     p_area_id: params.areaId || null,
