@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-05
 **Owner:** Shah (sole dev)
-**Status:** **T3b CLOSED 2026-05-06.** All four sub-phases (T3b-A: cache column, T3b-B: distribution functions, T3b-C: triggers, T3b-D: caller updates) shipped to production. End-to-end smoke PASS (11/11 community primaries assigned at N=1 canonical scenario). TSC clean. The territory system is **fully autonomous** — any `agent_property_access` change auto-cascades through territory updates without manual function calls. T1, T2a, T3a, T3b all complete. **T6 (smoke matrix) is the next gate** — validate autonomous behavior under realistic edge cases before T4a/T4b UI work. T2b (percentage mode) remains optional/parallel.
+**Status:** **T6 SCRIPT READY 2026-05-06.** `scripts/r-territory-t6-smoke.sql` produced — 6-test transactional smoke (BEGIN…ROLLBACK; production data untouched). Covers: (1) cascade resolution, (2) AFTER INSERT trigger creates community primaries, (3) UPDATE on `is_primary` is no-op, (4) recursion guard prevents area→community cascade, (5) AFTER DELETE fires without crash, (6) audit trail rows written. Three deferrals documented (race safety not single-tx-testable; MLS-sync is a decision item not a test; multi-level cascade + `is_active` flip are followups). **Pending:** paste into Supabase SQL editor + record PASS/FAIL per test. T1, T2a, T3a, T3b shipped. T4a/T4b UI work is the next gate after T6 PASS.
 **Sister tracker:** `docs/W-LAUNCH-TRACKER.md` — Section 1 Territory row + Section 2 "Territory as provider" + Section 3 P1-3 + Section 4 W-TERRITORY row all point here.
 
 ---
@@ -306,23 +306,36 @@ Specific to W-TERRITORY:
   - **Pre-existing finding logged**: `app/api/walliam/estimator/session/route.ts` missing `p_tenant_id` arg (multi-tenant gap, predates T3a; not in scope for T3b-D's patch).
   - **T3 phase fully closed.** Next gate: T6 (smoke matrix) recommended before T4a/T4b UI work, to validate edge cases under autonomous trigger fires (race conditions, scope changes, scale, MLS sync boundary).
 
+- **2026-05-06 v7** — **T6 SCRIPT SHIPPED (execution pending).** `scripts/r-territory-t6-smoke.sql` reconstructed and produced complete after prior session cut off mid-artifact. Single transaction with `ROLLBACK;` at end — production data is never touched. Six tests + setup row + summary row.
+  - **Test 1** — `resolve_geo_primary('municipality', whitby_id, tenant_id)` returns King Shah. Verifies the T3a resolver baseline still works post-T3b trigger install.
+  - **Test 2** — INSERT apa at muni scope on a Whitby-area sibling muni (selected at runtime: must have communities AND no existing apa) → assert community-primary count increases by `test_muni_communities`. Verifies `handle_apa_insert` + `distribute_geo_to_children` end-to-end.
+  - **Test 3** — Pick any existing community-primary row, toggle `is_primary` false→true. Assert `agent_property_access` row count and `territory_assignment_changes` row count unchanged. Verifies `handle_apa_update` early-return.
+  - **Test 4** — INSERT apa at AREA scope on Whitby's parent area. Assert community-primary count UNCHANGED (recursion guard at depth 2). Muni-primary count is allowed to change (area→muni at depth 1 is the legitimate fan-out).
+  - **Test 5** — DELETE the area-scope row from Test 4. Assert no exception (proves `handle_apa_delete` + `reroll_listings_at_geo` both run clean). Status `PASS` if delete completes; `SKIP` if Test 4 never inserted.
+  - **Test 6** — Count audit rows written by Test 2's distribution. Expected = `test_muni_communities`, actual must match.
+  - **Deferrals (intentional, with reason):** (a) **race safety** — concurrent inserts at same child scope can't be simulated inside a single transaction; needs two connections or external harness; tracked as **T6-followup-A**. (b) **MLS-sync boundary** — this is a decision (add INSERT trigger on `mls_listings` vs accept on-demand fallback via resolver), not a test; tracked as **T6-decision**. (c) **multi-level cascade** (area, community, neighbourhood) — Test 1 only covers muni; other levels would need synthetic geo data setup; tracked as **T6-followup-B**. (d) **`is_active` flip DOES fire reroll** — Test 3 covers the no-op direction (`is_primary` toggle); the inverse (`is_active` true→false fires reroll/audit) is **T6-followup-C**.
+  - **Pre-existing finding logged** (not in T6 scope): `app/api/walliam/estimator/session/route.ts` still missing `p_tenant_id` arg per v6. Multi-tenant gap predates T3a; needs its own surgical patch.
+  - **Next:** Paste the script into Supabase SQL editor as one block, record per-test PASS/FAIL/SKIP results in this log as v8. Resolve T6-decision (MLS-sync trigger Y/N) before T4a/T4b. Then T4a/T4b UI work.
+
 ---
 
 ## Next action
 
-**T6 — Smoke matrix.** Now that the territory system is autonomous, validate it under realistic edge cases before T4a/T4b UI work. Recommended over T2b (percentage) because T6 protects all the autonomous behavior we just shipped; T2b is additive and can ship anytime.
+**T6 — Execute the smoke matrix.** Script ready: `scripts/r-territory-t6-smoke.sql`. Ship-ready, no parameters, transactional. Steps:
 
-T6 ships as a SQL test script (or PL/pgSQL DO block) that asserts each of the following and reports PASS/FAIL per assertion:
+1. Open Supabase SQL editor for the condoleads project.
+2. Open `scripts/r-territory-t6-smoke.sql` locally, copy the entire contents (BEGIN through ROLLBACK).
+3. Paste as one block into the SQL editor and Run.
+4. Read the final result table — one row per test (0=SETUP info, 1–6=tests, 99=summary). Each row: `test_id | test_name | result | detail`.
+5. Record results in this tracker as v8: per-test PASS/FAIL/SKIP plus the SUMMARY row.
+6. If any FAIL: do not patch the script blindly. Read the SQLERRM detail, find the root cause in the trigger or distribute function, fix at source. Re-run script (it's idempotent; ROLLBACK undoes everything every time).
 
-1. **Cascade resolution** — for synthetic data at each level (area, muni, community, neighbourhood), `resolve_agent_for_context` returns the expected agent. Display variant returns the selling agent.
-2. **Trigger fires on INSERT** — inserting an apa row at muni scope auto-creates community primaries for that muni's children.
-3. **Trigger fires on UPDATE** — flipping `is_active` from true→false triggers reroll. Flipping `is_primary` does NOT trigger reroll (early-return in handle_apa_update).
-4. **Trigger fires on DELETE** — removing an apa row reverts cached listings to fall through to the next cascade level.
-5. **Recursion guard works** — `distribute_geo_to_children` insertions don't infinite-loop the trigger.
-6. **Race safety** — concurrent inserts at the same child scope produce exactly one primary (partial unique index + EXCEPTION WHEN unique_violation handler).
-7. **Audit trail** — every distribute_geo_to_children call writes one audit row per child to `territory_assignment_changes` with change_type='primary_set'.
-8. **MLS sync boundary** — new `mls_listings` rows arrive with NULL `assigned_agent_id`. Decide: do we add an INSERT trigger on mls_listings to call distribute_listings_at_geo, or accept on-demand fallback via resolver?
+**After T6 PASS, in order:**
 
-Alternative path: T4b (public UI) first if Shah wants visible end-user value before deep smoke testing. T6 can run in parallel.
+- **T6-decision** — MLS-sync boundary. Decide: add an `AFTER INSERT` trigger on `mls_listings` to call `distribute_listings_at_geo`, or accept on-demand fallback via the resolver when a request hits a row with NULL `assigned_agent_id`. Document choice in v9.
+- **T6-followup-A/B/C** — Race safety harness, multi-level cascade tests, `is_active` flip reroll test. Ship together as `scripts/r-territory-t6-followups.sql` once the core six tests are green.
+- **T4a** — Admin UI at `/admin-homes/territory`.
+- **T4b** — Public-facing geo page primary agent display.
+- **T7** — Close the ticket.
 
-After T6 closes, T4a and T4b are the remaining work before T7 closes the ticket.
+**Alternative path:** T2b (percentage mode) is still optional/parallel. If Shah wants visible end-user value before deeper smoke testing, T4b can run in parallel with T6 followups — but T6 core PASS is a hard prerequisite for ANY UI work, because the UI is a window onto a system that must already be correct.
