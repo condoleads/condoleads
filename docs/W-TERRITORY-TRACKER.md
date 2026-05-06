@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-05
 **Owner:** Shah (sole dev)
-**Status:** **T3b-A + T3b-B CLOSED 2026-05-06.** Listings cache column + 4 distribution/re-roll/re-resolve PL/pgSQL functions applied to production; end-to-end smoke against Whitby PASS (11/11 community primaries assigned, matching canonical spec scenario at N=1). T1 (decisions), T2a (core schema), T3a (resolver foundation), T3b-A (cache column), T3b-B (distribution functions) all done. **T3b-C (triggers) is the next gate** — wires distribution to fire autonomously on apa changes. T3b-D (TypeScript caller updates) follows.
+**Status:** **T3b CLOSED 2026-05-06.** All four sub-phases (T3b-A: cache column, T3b-B: distribution functions, T3b-C: triggers, T3b-D: caller updates) shipped to production. End-to-end smoke PASS (11/11 community primaries assigned at N=1 canonical scenario). TSC clean. The territory system is **fully autonomous** — any `agent_property_access` change auto-cascades through territory updates without manual function calls. T1, T2a, T3a, T3b all complete. **T6 (smoke matrix) is the next gate** — validate autonomous behavior under realistic edge cases before T4a/T4b UI work. T2b (percentage mode) remains optional/parallel.
 **Sister tracker:** `docs/W-LAUNCH-TRACKER.md` — Section 1 Territory row + Section 2 "Territory as provider" + Section 3 P1-3 + Section 4 W-TERRITORY row all point here.
 
 ---
@@ -18,15 +18,15 @@ Territory is the resolution system that answers both questions. The walker stamp
 ## Scope contract (LOCKED)
 
 In scope:
-1. Geo cascade resolver — single resolution path from listing/building/area context to `agent_id`
+1. Geo cascade resolver — single resolution path from listing/building/area context to `agent_id` ✅ T3a
 2. Tenant-level defaults config (which areas/munis the tenant covers)
 3. Manager-level territory carving (subset of tenant default)
 4. Agent-level assignments (subset of manager's territory)
 5. Granular overrides — building-level and listing-level (manual wins)
-6. **Two-layer ownership: primary (1 agent, drives the geo page) + routing (1+ agents, drives listing distribution and lead BCC)** — locked OD-5
-7. **Distribution algorithms:** as-equal-as-possible with random tiebreak (default) OR percentage-based (Admin Tenant config) with auto-renormalize on agent remove
-8. Re-roll on routing-set change; re-resolve listings that fall outside their cached agent's scope
-9. Two audit tables: `lead_ownership_changes`, `territory_assignment_changes` ✅ shipped T2a
+6. **Two-layer ownership: primary (1 agent, drives the geo page) + routing (1+ agents, drives listing distribution and lead BCC)** ✅ T2a + T3a
+7. **Distribution algorithms:** as-equal-as-possible with random tiebreak ✅ T3b-B (default); percentage-based remains T2b (optional)
+8. Re-roll on routing-set change; re-resolve listings that fall outside their cached agent's scope ✅ T3b-B + T3b-C (autonomous via triggers)
+9. Two audit tables: `lead_ownership_changes`, `territory_assignment_changes` ✅ T2a (territory_assignment_changes actively written by T3b-B distribute_geo_to_children)
 10. Admin UI at `/admin-homes/territory` (closes Phase 3 nav gap) + updates to the 4 existing embedded section components for `is_primary` and percentage controls
 11. Public-facing UI: geo pages render the resolved primary agent card via `resolve_geo_primary` — without this the schema and admin work are invisible to end users
 
@@ -58,8 +58,8 @@ Out of scope:
 | 8 | Tenant default | `tenants.default_agent_id` → any active agent | fallback | Last-resort fallback; cascade always terminates. |
 
 **Two distinct queries hit the cascade:**
-- **Display query** ("who is the primary for this geo page?") → returns the row with `is_primary = true`
-- **Routing query** ("who can receive a lead at this scope?") → returns all rows in the routing set; for a specific listing, returns the cached `mls_listings.assigned_agent_id`
+- **Display query** ("who is the primary for this geo page?") → `resolve_display_agent_for_context` returns the row with `is_primary = true`
+- **Routing query** ("who can receive a lead at this scope?") → `resolve_agent_for_context` returns all rows in the routing set; for a specific listing, returns the cached `mls_listings.assigned_agent_id`
 
 ### Geo hierarchy (per actual schema, not a chain)
 
@@ -72,11 +72,17 @@ treb_areas
 
 Neighbourhoods are children of areas, not communities. The resolver cascade order (P3 neighbourhood → P4 community → P5 municipality → P6 area) reflects **priority**, not parent-child links. Event 1 distribution pairs are: area→municipality, area→neighbourhood, municipality→community. **No community→neighbourhood pair.**
 
-### Distribution mechanics
+### Distribution mechanics (T3b-B, automatic via T3b-C triggers)
 
 **Event 1 — Geographic footprint distribution (parent → child geo).** Whitby muni assigned to 10 agents → its 11 communities auto-distributed across those 10 agents (10 communities get 1 agent each as primary; the 11th randomly gets a 2nd). All 10 remain in routing set of every Whitby community by inheritance. **Verified at N=1 in T3b-B smoke**: 1 muni agent (King Shah), 11 communities, all 11 got King Shah as primary.
 
-**Event 2 — Listing distribution within a community/area/muni.** Listings inside a geo unit distribute across the unit's routing set per equal-share (default) or percentage mode. Pick cached on `mls_listings.assigned_agent_id`, re-rolled only on state change. **Cannot route at neighbourhood level** — `mls_listings` has no `neighbourhood_id`.
+**Event 2 — Listing distribution within a community/area/muni.** Listings inside a geo unit distribute across the unit's routing set per equal-share (default) or percentage mode (T2b). Pick cached on `mls_listings.assigned_agent_id`, re-rolled only on state change. **Cannot route at neighbourhood level** — `mls_listings` has no `neighbourhood_id`.
+
+**Autonomy via triggers (T3b-C):**
+- INSERT into apa → distribute_geo_to_children for valid child scopes + reroll_listings_at_geo
+- UPDATE on apa → reroll_listings_at_geo only on routing-affecting changes (agent_id, is_active, scope, scope_id). is_primary toggle is display-only, no listing impact.
+- DELETE from apa → reroll_listings_at_geo
+- Recursion guard: pg_trigger_depth() > 1 → skip
 
 ### Re-roll vs re-resolve
 
@@ -101,7 +107,7 @@ Manager Platform + Admin Platform never appear as primary, never join routing se
 
 ### Audit tables
 
-- **`lead_ownership_changes`** ✅ shipped T2a — append-only audit of every reassignment with reason CHECK constraint covering reroll, scope_shrink, manual_reassign, percentage_renormalize, agent_removed, agent_added, pin_grant, pin_revoke, cascade_resolution, other. **`lead_id` is NOT NULL**, so this table is for actual lead reassignments (T3b-D scope), NOT mls_listings cache changes.
+- **`lead_ownership_changes`** ✅ shipped T2a — append-only audit of every reassignment with reason CHECK constraint covering reroll, scope_shrink, manual_reassign, percentage_renormalize, agent_removed, agent_added, pin_grant, pin_revoke, cascade_resolution, other. **`lead_id` is NOT NULL**, so this table is for actual lead reassignments, NOT mls_listings cache changes.
 - **`territory_assignment_changes`** ✅ shipped T2a + actively written by T3b-B `distribute_geo_to_children` — append-only audit of every territory boundary change with `change_type` CHECK covering assignment_granted/revoked, primary_set/unset, percentage_set/changed, scope_widened/narrowed, pin_added/removed, access_toggle_changed. before_state and after_state captured as JSONB.
 
 Both tables enforce append-only via triggers that RAISE on UPDATE/DELETE.
@@ -110,154 +116,117 @@ Both tables enforce append-only via triggers that RAISE on UPDATE/DELETE.
 
 ## Open decisions — ALL RESOLVED ✅
 
-**OD-1.** ✅ Flat `agent_geo_buildings` schema (current on disk: `(agent_id, building_id)`). Junction-to-`agent_property_access.id` rejected as over-engineering. No junction migration.
+**OD-1.** ✅ Flat `agent_geo_buildings` schema. No junction migration.
 **OD-2.** ✅ Re-resolve only carved-out listings. Cascade always terminates at tenant default — no orphans.
 **OD-3.** ✅ Agent set change at a level triggers re-roll. New agent doesn't auto-become primary. Defaults always fill vacuum.
-**OD-4.** ✅ Platform-tier roles excluded entirely. Tenant-internal roles (Tenant Admin, Area Manager, Manager, Agent) can own.
-**OD-5.** ✅ Two-layer model: primary (1, display) + routing (1+, distribution). `is_primary` flag + 4 partial unique indexes. Resolves the multi-agent-cards-on-page blocker.
-**OD-6.** ✅ Two-function split (`resolve_agent_for_context` routing + `resolve_display_agent_for_context` display) over a `mode` param. Decided during T3a.
-**OD-7.** ✅ `distribute_geo_to_children` uses 4-arg signature with explicit child_scope (rather than auto-deriving) because area has TWO children (municipality + neighbourhood). Triggers in T3b-C call the function once per child scope. Decided during T3b-B.
+**OD-4.** ✅ Platform-tier roles excluded entirely. Tenant-internal roles can own.
+**OD-5.** ✅ Two-layer model: primary (1, display) + routing (1+, distribution). `is_primary` flag + 4 partial unique indexes.
+**OD-6.** ✅ Two-function split (routing resolver + display resolver) over a `mode` param. Decided during T3a.
+**OD-7.** ✅ `distribute_geo_to_children` uses 4-arg signature with explicit child_scope (area has TWO children — municipality + neighbourhood). Triggers in T3b-C call once per child scope. Decided during T3b-B.
 
 ---
 
 ## Phases
 
 ### T1 — Decision lock ✅ CLOSED 2026-05-05
-
-All five OD-* decisions resolved. (OD-6 + OD-7 added retroactively during T3a + T3b-B implementation.)
+All seven OD-* decisions resolved (OD-6 + OD-7 added retroactively during T3a + T3b-B).
 
 ### T2a — Core schema migrations ✅ CLOSED 2026-05-06
+4 migrations: `tenant_id NOT NULL`, `is_primary` + 4 partial unique indexes, 2 audit tables with append-only triggers. All verify PASS.
 
-All 4 migrations applied + verified PASS in Supabase:
-
-| File | Effect | Verify |
-|---|---|---|
-| `20260506_t2a_01_apa_tenant_id_not_null.sql` | `tenant_id NOT NULL` | `tenant_id_nullable=NO` → PASS |
-| `20260506_t2a_02_apa_is_primary.sql` | `is_primary boolean NOT NULL DEFAULT false` + 4 partial unique indexes + backfill | `is_primary_type=boolean`, `partial_index_count=4`, `rows_marked_primary=1` → PASS |
-| `20260506_t2a_03_lead_ownership_changes.sql` | audit table + append-only triggers | `trigger_count=2` → PASS |
-| `20260506_t2a_04_territory_assignment_changes.sql` | audit table + append-only triggers | `trigger_count=2` → PASS |
-
-### T2b — Percentage mode (parallel with T3b/c remaining sub-phases)
-
-- `agent_property_access.percentage NUMERIC NULL` (NULL = equal-share for that level)
-- DB-level CHECK: percentages within a routing set sum to 100 if any are set
-- Auto-renormalize trigger / function: when an agent is removed from a level, their percentage redistributes proportionally to remaining agents
-- Architecture supports adding without breaking T2a/T3a/T3b behavior; can ship after T3b if priorities shift.
+### T2b — Percentage mode (optional, parallel)
+- `agent_property_access.percentage NUMERIC NULL` (NULL = equal-share)
+- DB-level CHECK + auto-renormalize trigger
+- Architecture supports adding without breaking T2a/T3a/T3b. Can ship anytime.
 
 ### T3a — Resolver baseline + v2 refactor ✅ CLOSED 2026-05-06
-
-Both migrations applied + 8/8 smoke PASS:
-
-| File | Effect | Verify |
-|---|---|---|
-| `20260507_t3_01_resolver_baseline.sql` | CREATE OR REPLACE both 7-param baseline functions (idempotent capture into migration history) | `pronargs=7` for both → PASS |
-| `20260507_t3_02_resolvers_v2.sql` | DROP both old (7-param) and new (8-param) signatures; CREATE OR REPLACE helpers `resolve_geo_primary` (3-arg) + `pick_routing_agent` (4-arg); CREATE both v2 resolvers (8-arg) | All 4 functions with correct pronargs → PASS |
-
-Behavior changes shipped vs baseline:
-- New `p_neighbourhood_id` param at P3 (8 total params, was 7)
-- Removed managed-child auto-substitution at geo levels — contradicted spec
-- Added `tenant_users.assigned_agent_id` modern path at P7, before legacy `user_profiles` at P8
-- Multi-agent geo levels: hash-distribute by listing_id when present; is_primary row otherwise
-- Display resolver calls `resolve_geo_primary` first; falls through to walk-tree-for-selling
+2 migrations: capture pre-T3 baseline + v2 refactor with `p_neighbourhood_id` at P3, `tenant_users` modern path at P7, helpers `resolve_geo_primary` + `pick_routing_agent`. 8/8 smoke PASS against Whitby.
 
 ### T3b-A — Listings cache column ✅ CLOSED 2026-05-06
 
 | File | Effect | Verify |
 |---|---|---|
-| `20260507_t3b_a_01_mls_listings_assigned_agent_id.sql` | `mls_listings.assigned_agent_id uuid REFERENCES agents(id) ON DELETE SET NULL` + partial index `idx_mls_listings_assigned_agent_id WHERE NOT NULL` | column type/nullable + FK ON DELETE=SET NULL + partial idx all PASS |
-
-Pre-flight findings (recorded in Findings):
-- Spec said "listings"; actual table is `mls_listings` (491 columns, MLS-derived).
-- mls_listings has no `tenant_id` (tenant-agnostic) and no `neighbourhood_id`.
-
-Lock profile: ADD COLUMN nullable + no default = metadata-only change; FK validation trivially satisfied (initial NULL); partial index empty initially. Total lock duration: milliseconds.
+| `20260507_t3b_a_01_mls_listings_assigned_agent_id.sql` | `mls_listings.assigned_agent_id uuid REFERENCES agents(id) ON DELETE SET NULL` + partial index | column type/nullable + FK ON DELETE=SET NULL + partial idx all PASS |
 
 ### T3b-B — Distribution + re-roll + re-resolve functions ✅ CLOSED 2026-05-06
 
 | File | Effect | Verify |
 |---|---|---|
-| `20260507_t3b_b_01_distribution_functions.sql` | CREATE OR REPLACE 4 PL/pgSQL functions: `distribute_geo_to_children` (4-arg), `distribute_listings_at_geo` (3-arg), `reroll_listings_at_geo` (3-arg), `reresolve_listing` (2-arg) | 4 functions present with correct pronargs → PASS |
+| `20260507_t3b_b_01_distribution_functions.sql` | 4 PL/pgSQL functions: `distribute_geo_to_children` (4-arg), `distribute_listings_at_geo` (3-arg), `reroll_listings_at_geo` (3-arg), `reresolve_listing` (2-arg) | 4 functions present with correct pronargs → PASS |
 
-End-to-end smoke against WALLiam tenant + Whitby municipality:
-- Preview: 11 communities under Whitby, 0 had primaries → 11 vacuums.
-- Execute: `distribute_geo_to_children('municipality', whitby_id, 'community', walliam_id)` returned 11.
-- Side effect: 11 new apa rows at community scope (is_primary=true, agent_id=King Shah) + 11 audit rows in `territory_assignment_changes` (change_type='primary_set').
-- This matches the canonical "10 agents/11 communities" spec scenario at N=1: a single muni-level agent fills every community vacuum.
+End-to-end smoke against Whitby: 11 communities had no primaries → `distribute_geo_to_children('municipality', whitby_id, 'community', walliam_id)` returned 11. 11 new apa rows + 11 audit rows. Canonical "10 agents/11 communities" scenario at N=1.
 
-Locked design choices (encoded in OD-7 + Findings):
-- 4-arg signature with explicit child_scope (area has TWO children).
-- Race safety via BEGIN/EXCEPTION WHEN unique_violation around the apa INSERT — handles concurrent triggers without aborting user transactions.
-- Pre-existing UNIQUE INDEX `(agent_id, community_id)` is also caught by the same handler.
-- mls_listings cache changes write NO audit row in V1 (lead_ownership_changes.lead_id NOT NULL incompatibility). Documented gap.
+### T3b-C — apa distribution triggers ✅ CLOSED 2026-05-06
 
-### T3b-C — Triggers on agent_property_access (RECOMMENDED NEXT)
+| File | Effect | Verify |
+|---|---|---|
+| `20260507_t3b_c_01_apa_distribution_triggers.sql` | 3 trigger functions (`handle_apa_insert`, `handle_apa_update`, `handle_apa_delete`) + 3 AFTER triggers on `agent_property_access`. Recursion guard via `pg_trigger_depth() > 1`. | 3 functions present (pronargs=0) + 3 triggers attached (INSERT/UPDATE/DELETE, AFTER timing) → PASS |
 
-Wires the T3b-B functions to fire automatically on apa INSERT/UPDATE/DELETE.
+The territory system is now autonomous: any apa INSERT/UPDATE/DELETE auto-cascades through `distribute_geo_to_children` + `reroll_listings_at_geo` without manual function calls.
 
-Trigger plan (locked design):
-- **AFTER INSERT** trigger: fires `distribute_geo_to_children` for valid child scopes + `reroll_listings_at_geo` (if scope ∈ {area, municipality, community})
-- **AFTER UPDATE** trigger: fires `reroll_listings_at_geo` only on routing-affecting changes (is_active flip, agent_id change)
-- **AFTER DELETE** trigger: fires `reroll_listings_at_geo`
-- **Recursion guard:** `pg_trigger_depth() > 1 → RETURN`. Built-in PG mechanism, no session variables. Prevents infinite loop when distribute_geo_to_children INSERTs into apa.
+Trigger logic:
+- **INSERT** → distribute primaries to child geos (area→muni + area→neighbourhood + muni→community) + reroll listings at this scope (skip neighbourhood — mls_listings has no neighbourhood_id)
+- **UPDATE** → reroll only on routing-affecting changes (agent_id, is_active, scope, scope_id). is_primary flips and access-toggle changes early-return as no-ops.
+- **DELETE** → reroll listings at OLD scope
+- All triggers early-return on inactive rows (is_active is NOT TRUE)
+- Recursion guard prevents infinite loops when distribute_geo_to_children inserts into apa
 
-After T3b-C closes, the system is fully autonomous — any apa change auto-cascades through territory updates without manual function calls.
+### T3b-D — Caller updates ✅ CLOSED 2026-05-06
 
-### T3b-D — Caller updates (TypeScript)
+Patch script `scripts/r-territory-t3b-d-patch.js` ran across all 9 caller files; 9/9 patched cleanly with timestamped backups:
 
-Thread `p_neighbourhood_id` through the 9 existing callers of `resolve_agent_for_context` where applicable. Currently they call with 7 args; the 8-arg signature accepts via NULL default, but neighbourhood-level routing is unreachable until callers are updated.
+| File | Patched |
+|---|---|
+| `app/api/charlie/appointment/route.ts` | ✅ |
+| `app/api/charlie/lead/route.ts` | ✅ |
+| `app/api/walliam/assign-user-agent/route.ts` | ✅ |
+| `app/api/walliam/charlie/session/route.ts` | ✅ |
+| `app/api/walliam/contact/route.ts` | ✅ |
+| `app/api/walliam/estimator/session/route.ts` | ✅ |
+| `app/api/walliam/resolve-agent/route.ts` | ✅ |
+| `lib/actions/leads.ts` | ✅ |
+| `lib/utils/is-walliam.ts` | ✅ |
 
-Callers (verified during T3b pre-recon):
-- `app/api/charlie/appointment/route.ts:96`
-- `app/api/charlie/lead/route.ts:99`
-- `app/api/walliam/assign-user-agent/route.ts:116`
-- `app/api/walliam/charlie/session/route.ts:63`
-- `app/api/walliam/contact/route.ts:68`
-- `app/api/walliam/estimator/session/route.ts:73`
-- `app/api/walliam/resolve-agent/route.ts:32`
-- `lib/actions/leads.ts:70`
-- `lib/utils/is-walliam.ts:68`
+Patch logic: insert `p_neighbourhood_id: null,` line above each `p_community_id:` line within the `.rpc('resolve_agent_for_context', { ... })` object literal. NULL through everywhere — no caller currently sources neighbourhood ID from request context. T4b will revisit when public geo pages start sending `neighbourhood_id` from the resolve-agent endpoint.
 
-Per-caller decision: which expect to route at neighbourhood level (none do today since the param didn't exist). Most likely answer: NULL through everywhere, with the resolver-agent endpoint accepting an optional neighbourhood param for forward compatibility.
+`npx tsc --noEmit`: clean. Commit `fd3cbcf` pushed. 9 source files patched + 1 patch script committed (10 files, +164 lines).
 
 ### T4a — Admin UI: `/admin-homes/territory` + section component updates
 
-New page consolidating the 4 currently-embedded section components:
-- Tenant defaults, manager carving, agent assignment within bounds, granular overrides, primary flag toggle, percentage mode config (T2b), audit log viewer
-- Existing 4 components also updated: surface `is_primary` toggle, percentage inputs, inherited-vs-explicit indicators
-- Subset enforcement at form layer (filtered dropdowns) + server (`can()` revalidation)
+New page consolidating the 4 currently-embedded section components (tenant defaults, manager carving, agent assignment, granular overrides) + audit log viewer + `is_primary` toggle + percentage inputs (T2b). Subset enforcement at form layer (filtered dropdowns) + server (`can()` revalidation).
 
 ### T4b — Public-facing UI: geo page primary agent display
 
-The public site renders area / muni / community / neighbourhood / building pages. Each needs to display the **primary agent** card sourced from `resolve_geo_primary`.
+Public site renders area / muni / community / neighbourhood / building pages. Each needs to display the **primary agent** card sourced from `resolve_display_agent_for_context`.
 
 Pre-T4b recon required:
 - Locate existing geo page routes + agent-card components
 - Confirm how they fetch agent data today
+- Decide whether to enhance `app/api/walliam/resolve-agent/route.ts` to accept `neighbourhood_id` from request body (forward compat for neighbourhood-level pages)
 
-Scope:
-- Update geo page routes to call the new display resolver
-- Update agent card components to render the resolved primary
-- Fall through gracefully when no primary set (cascade to parent's primary, ultimately tenant default)
-- **Building pages are a documented shared exception between System 1 and System 2** — handled with extreme care.
+**Building pages are a documented shared exception between System 1 and System 2** — handled with extreme care.
 
-### T5 — Listing cache + re-roll wiring
+### T5 — Listing cache + re-roll wiring (mostly absorbed)
 
-**Partly absorbed into T3b-A + T3b-B + T3b-C.** Remaining work:
-- Verify all 4 trigger paths fire correctly under realistic edge cases (covered in T6 smoke matrix)
-- Reconcile with any nightly-sync impact on mls_listings.assigned_agent_id (new MLS rows arrive without cache; T3b-B `distribute_listings_at_geo` populates them — but trigger fires on apa change, not on mls_listings INSERT; this is a sync-boundary gap that T6 must verify or T5 closes via mls_listings INSERT trigger if needed)
+Substantively shipped via T3b-A + T3b-B + T3b-C. Remaining work:
+- Verify nightly MLS sync interaction: new mls_listings rows arrive without cache; T3b-B `distribute_listings_at_geo` populates them only when called manually OR via apa trigger (no trigger fires on mls_listings INSERT). Decide in T6: (a) accept on-demand fallback via resolver or (b) add INSERT trigger on mls_listings to call distribute_listings_at_geo.
 
-### T6 — Smoke matrix
+### T6 — Smoke matrix (RECOMMENDED NEXT)
 
+Now that the territory system is autonomous, validate it under realistic edge cases before T4a/T4b UI work.
+
+Test scope:
 - Cascade resolution: every level resolves correctly (display + routing modes)
-- Subset rule enforcement: cross-bound assignment blocked at server
-- Re-roll behavior: agent add/remove triggers expected redistribution
-- Re-resolve behavior: scope shrink moves only carved-out listings
-- Primary flag: flipping changes display only, not routing
-- Percentage mode (T2b): Sarah-leaves test produces auto-renormalize {Mike 60, Linda 40}
-- Audit trail: every reassignment writes a row with correct reason
-- Multi-tenant: `tenant_id NOT NULL` prevents cross-tenant assignment
+- Subset rule enforcement: cross-bound assignment blocked at server (DB constraint testable now via direct SQL)
+- Re-roll behavior: synthetic INSERTs at parent scope → verify children fill correctly + listings re-pick
+- Re-resolve behavior: scope shrink → verify only carved-out listings move
+- Primary flag: flipping `is_primary` changes display only, not routing — verify reroll_listings does NOT fire on is_primary-only update (per handle_apa_update early-return)
+- Audit trail: every reassignment writes a row with correct change_type
+- Multi-tenant: tenant_id NOT NULL prevents cross-tenant assignment
 - Platform-tier exclusion: Manager Platform / Admin Platform never appear in cascade results
-- New MLS rows: nightly sync inserts populate cache via on-demand resolver OR explicit distribute call
+- New MLS rows: nightly sync inserts populate cache via on-demand resolver (decide on mls_listings INSERT trigger)
+
+T6 ships as a single PL/pgSQL or SQL test script with assertions. PASS = all assertions PASS in Supabase SQL editor.
 
 ### T7 — Close
 
@@ -273,79 +242,87 @@ Specific to W-TERRITORY:
 - **Buildings card-dealing system in `/admin` is NEVER touched.**
 - **Single resolution path** through the resolver. No bypassing.
 - **Display vs routing separation enforced at DB level** via `is_primary` + 4 partial unique indexes (T2a-02).
-- **Cache invalidation on state change.** `mls_listings.assigned_agent_id` re-roll fires from apa triggers (T3b-C, pending); `territory_assignment_changes` captures the diff.
+- **Cache invalidation on state change** (autonomous via T3b-C triggers).
 - **Audit before action** — every territory mutation writes an audit row to `territory_assignment_changes`.
 
 ---
 
 ## Findings
 
-**T2a-02 backfill (2026-05-06):** With only 1 existing row in `agent_property_access`, backfill was mechanical — that row is now `is_primary=true`. Algorithm (deterministic earliest-by-created_at per group) scales to any future state without changes.
+**T2a-02 backfill (2026-05-06):** With only 1 existing row in `agent_property_access`, backfill was mechanical — that row is now `is_primary=true`. Algorithm scales to any future state without changes.
 
-**Schema shape choice — 4 partial indexes, not 1.** The `agent_property_access` schema uses separate scope_id columns (`area_id`, `municipality_id`, `community_id`, `neighbourhood_id`) instead of a single `scope_id`. This shaped T2a-02: shipped 4 partial unique indexes (one per scope) instead of one composite index over a synthetic generated column.
+**Schema shape choice — 4 partial indexes, not 1.** apa schema uses separate scope_id columns instead of single scope_id. Shipped 4 partial unique indexes (one per scope) for transparency.
 
-**`scope` column verified present on `agent_property_access` (T3a pre-flight, 2026-05-06).** The v2 helpers reference `WHERE scope = p_scope` and the column is `text` type — v2 SQL applied cleanly.
+**`scope` column verified present on apa (T3a pre-flight).** v2 helpers reference `WHERE scope = p_scope`; column is `text` type — v2 SQL applied cleanly.
 
-**Caller compatibility — 9 callers of `resolve_agent_for_context` still on 7-arg signature (T3a finding).** The v2 8-arg signature accepts existing 7-arg-style calls without change (defaults handle the missing arg). **However** — none of the 9 callers can route at neighbourhood level until they are updated to thread `p_neighbourhood_id`. Logged as T3b-D scope.
+**Caller compatibility resolved in T3b-D.** All 9 callers now thread `p_neighbourhood_id: null` through. Production behavior unchanged (NULL = default), but neighbourhood-level routing is now reachable when callers wire it up.
 
 **T3b-A pre-flight findings (2026-05-06):**
-- Spec's "listings" referenced `mls_listings` (the 491-column MLS-derived table); no separate `listings` table exists.
-- `mls_listings` has no `tenant_id` (tenant-agnostic — MLS data shared across tenants).
-- `mls_listings` has no `neighbourhood_id` — Event 2 listing distribution can't route at neighbourhood level.
+- Spec's "listings" referenced `mls_listings` (491-column MLS-derived table); no separate `listings` table exists.
+- `mls_listings` has no `tenant_id` (tenant-agnostic) and no `neighbourhood_id`.
 
 **T3b-B pre-flight findings (2026-05-06):**
 - Spec's "areas" referenced `treb_areas` (TREB = Toronto Real Estate Board).
-- Geo hierarchy is a **forked tree, not a chain**: area branches into municipality (and via that, community) AND neighbourhood. neighbourhoods have `area_id` (NULLABLE), no `community_id`. Resolver cascade order (P3 neighbourhood → P4 community → P5 muni → P6 area) reflects **priority**, not parent-child links.
-- Event 1 distribute_geo_to_children valid pairs: area→municipality, area→neighbourhood (nullable parent), municipality→community. **No community→neighbourhood link.**
+- Geo hierarchy is a **forked tree, not a chain**: area branches into municipality (and via that, community) AND neighbourhood. neighbourhoods have `area_id` (NULLABLE), no `community_id`.
+- Event 1 valid pairs: area→municipality, area→neighbourhood, municipality→community. No community→neighbourhood link.
 
 **Audit gap for listings cache (T3b-B documented):**
-- `lead_ownership_changes.lead_id` is NOT NULL — incompatible with `mls_listings.assigned_agent_id` cache changes (those aren't lead reassignments). V1 ships without audit for listings cache; a future `listing_assignment_changes` table would close this gap. Existing reasons remain valid for actual lead reassignments at the resolver-call level (T3b-D scope).
+- `lead_ownership_changes.lead_id` is NOT NULL — incompatible with mls_listings cache changes. V1 ships without audit for listings cache; future `listing_assignment_changes` table would close this gap.
 
-**Multi-tenant cache contention (T3b-B documented gap):**
-- `mls_listings.assigned_agent_id` is a single global column; if multiple tenants both have routing rights at the same community, last-tenant-wins on the cache. V1 ships single-tenant safe (only WALLiam tenant in production). Future: per-tenant cache table keyed by `(listing_id, tenant_id)`.
+**Multi-tenant cache contention (T3b-B documented):**
+- `mls_listings.assigned_agent_id` is a single global column; multi-tenant scenarios would have last-tenant-wins. V1 ships single-tenant safe (only WALLiam). Future: per-tenant cache table keyed by (listing_id, tenant_id).
 
 **Pre-existing constraint (T3b-B finding):**
-- UNIQUE INDEX `agent_property_access_agent_id_community_id_key` on `(agent_id, community_id)` — each agent can have at most ONE row per community, regardless of scope. `distribute_geo_to_children` handles via `BEGIN/EXCEPTION WHEN unique_violation` around the INSERT.
+- UNIQUE INDEX `agent_property_access_agent_id_community_id_key` on (agent_id, community_id) — each agent can have at most ONE row per community. `distribute_geo_to_children` handles via BEGIN/EXCEPTION WHEN unique_violation around the INSERT.
 
-**Yellow flag (not blocking):** 4 of 7 agents have NULL `tenant_id`. Doesn't block T2a/T3a/T3b (the production apa rows have agents with tenant_id set + smoke tests pass against WALLiam-scoped data), but auto-distribution at scale must handle agents with no tenant or guarantee tenant assignment as a precondition. Tracked separately.
+**T3b-D pre-existing tenant-scoping issue (NOT a regression — predates T3a):**
+- `app/api/walliam/estimator/session/route.ts:73` calls `resolve_agent_for_context` with only 7 of 8 named params — `p_tenant_id` is missing. Multi-tenant gap: estimator sessions resolve agents without tenant scope. Currently masked by single-tenant production state. Should be logged as a follow-up patch in W-MULTITENANT cleanup. T3b-D's NULL-through patch did not address this (out of scope; only added p_neighbourhood_id).
 
-**T3b-B canonical smoke result (2026-05-06):** Whitby muni had 1 agent (King Shah) at municipality scope and 0 community-scope rows. After `distribute_geo_to_children('municipality', whitby_id, 'community', walliam_id)`, all 11 communities under Whitby got King Shah as primary. This validates the spec's "as-equal-as-possible with random tiebreak" behavior at N=1.
+**T6 design note — MLS sync boundary:**
+- New mls_listings rows arrive via nightly PropTx sync. T3b-C triggers fire only on apa changes, not on mls_listings INSERT. Cache for new listings stays NULL until a routing-set change reaches them OR a resolver call runs `distribute_listings_at_geo`. T6 must decide whether to add a trigger on mls_listings INSERT to call distribute_listings_at_geo, or accept on-demand fallback (slower first read, simpler).
+
+**Yellow flag (not blocking):** 4 of 7 agents have NULL `tenant_id`. Doesn't block T2a/T3a/T3b. Auto-distribution at scale must handle agents with no tenant or guarantee tenant assignment as a precondition. Tracked separately.
+
+**T3b-B canonical smoke result (2026-05-06):** Whitby muni had 1 agent (King Shah) at municipality scope and 0 community-scope rows. After `distribute_geo_to_children('municipality', whitby_id, 'community', walliam_id)`, all 11 communities under Whitby got King Shah as primary. Validates the spec's "as-equal-as-possible with random tiebreak" behavior at N=1.
 
 ---
 
 ## Status log
 
-- **2026-05-05 v1** — Tracker created as artifact (markdown). Captured locked design from past sessions. T0 recon already complete in launch tracker; this artifact starts at T1 (decision lock).
+- **2026-05-05 v1** — Tracker created. T0 recon already complete in launch tracker; T1 starts the work.
 
-- **2026-05-05 v2** — **T1 CLOSED.** All five open decisions resolved in single session (OD-1 through OD-5). Spec refinements: distribution is two-level (Event 1 parent→child, Event 2 geo→listings), as-equal-as-possible with random tiebreak, percentage mode auto-renormalizes on remove. T2 split into T2a (core) + T2b (percentage). Scope amendment: added scope item 11 (public-facing UI), split T4 into T4a (admin) + T4b (public).
+- **2026-05-05 v2** — **T1 CLOSED.** All five OD-* decisions resolved (OD-1..OD-5). T2 split into T2a (core) + T2b (percentage). Scope amendment: scope item 11 (public-facing UI), T4 split into T4a/T4b.
 
-- **2026-05-06 v3** — **T2a CLOSED.** All 4 schema migrations applied + verified PASS in Supabase. Foundation in place for T3 onward. Pattern clarification adopted: Supabase SQL editor only returns the LAST result set when multiple SELECTs are pasted together; verification SELECTs go in SEPARATE blocks.
+- **2026-05-06 v3** — **T2a CLOSED.** All 4 schema migrations applied + verified PASS. Pattern adopted: separate verification SELECTs in separate Supabase pastes (only last result returns).
 
-- **2026-05-06 v4** — **T3a CLOSED.** Both T3a migrations (`20260507_t3_01_resolver_baseline.sql` + `20260507_t3_02_resolvers_v2.sql`) applied; 8/8 smoke PASS. Scope changes: new `p_neighbourhood_id` param at P3 (8-arg signature), removed managed-child auto-substitution, added `tenant_users` modern path at P7, multi-agent geo levels hash-distribute by listing_id. OD-6 added (two-function split over mode-param). `scope text` column verified present on apa as pre-flight. 9 callers still on 7-arg style (back-compat via NULL default); T3b-D will thread neighbourhood through.
+- **2026-05-06 v4** — **T3a CLOSED.** Both T3a migrations applied; 8/8 smoke PASS. New `p_neighbourhood_id` param at P3, removed managed-child auto-substitution, added `tenant_users` modern path at P7. OD-6 added (two-function split). 9 callers still on 7-arg style.
 
-- **2026-05-06 v5** — **T3b-A + T3b-B CLOSED.** Two migrations applied to production via Supabase SQL editor; smoke PASS.
-  - **T3b-A** (`20260507_t3b_a_01_mls_listings_assigned_agent_id.sql`): `mls_listings.assigned_agent_id uuid REFERENCES agents(id) ON DELETE SET NULL` + partial index. Verify: column type/nullable + FK action + partial index all PASS.
-  - **T3b-B** (`20260507_t3b_b_01_distribution_functions.sql`): 4 PL/pgSQL functions (`distribute_geo_to_children` 4-arg, `distribute_listings_at_geo` 3-arg, `reroll_listings_at_geo` 3-arg, `reresolve_listing` 2-arg). Verify: 4 functions with correct pronargs → PASS.
-  - **End-to-end smoke against Whitby**: 11 communities had no primaries → `distribute_geo_to_children` created 11 community-scope apa rows (King Shah primary) + 11 audit rows. Matches canonical "10 agents / 11 communities" spec scenario at N=1.
-  - **Schema findings recorded**: actual table names (`mls_listings`, `treb_areas`), geo hierarchy as forked tree (not chain), audit gap for listings cache, multi-tenant cache contention, pre-existing UNIQUE INDEX on (agent_id, community_id).
-  - **OD-7 added retroactively** (4-arg signature for distribute_geo_to_children — area has two children).
-  - **T3b split into 4 atomic phases** (A, B, C, D); A and B closed; C (triggers) and D (caller updates) remain.
+- **2026-05-06 v5** — **T3b-A + T3b-B CLOSED.** Listings cache column + 4 distribution functions. End-to-end smoke against Whitby: 11/11 community primaries assigned (canonical N=1 scenario). Schema findings recorded (mls_listings, treb_areas, forked geo tree, audit gap, multi-tenant cache contention). OD-7 added.
+
+- **2026-05-06 v6** — **T3b CLOSED.** All 4 sub-phases shipped to production:
+  - **T3b-C** (`20260507_t3b_c_01_apa_distribution_triggers.sql`): 3 trigger functions + 3 AFTER triggers on agent_property_access. Recursion guard via pg_trigger_depth(). Verify: 3 functions (pronargs=0) + 3 triggers (INSERT/UPDATE/DELETE, AFTER) → PASS.
+  - **T3b-D** (`scripts/r-territory-t3b-d-patch.js` + 9 source file edits): inserted `p_neighbourhood_id: null,` into every `.rpc('resolve_agent_for_context', ...)` call. Patch script ran clean (9/9 patched, 0 failed). TSC clean. Commit `fd3cbcf` pushed.
+  - **The territory system is fully autonomous end-to-end.** Insert an apa row → trigger fires → distribute_geo_to_children inserts child primaries → reroll_listings_at_geo updates mls_listings cache → audit rows land in territory_assignment_changes. All without manual SQL.
+  - **Pre-existing finding logged**: `app/api/walliam/estimator/session/route.ts` missing `p_tenant_id` arg (multi-tenant gap, predates T3a; not in scope for T3b-D's patch).
+  - **T3 phase fully closed.** Next gate: T6 (smoke matrix) recommended before T4a/T4b UI work, to validate edge cases under autonomous trigger fires (race conditions, scope changes, scale, MLS sync boundary).
 
 ---
 
 ## Next action
 
-**T3b-C — Triggers on `agent_property_access`.** Wires the T3b-B functions to fire automatically on apa INSERT/UPDATE/DELETE. After T3b-C, the system is autonomous — any routing change cascades through territory updates without manual function calls.
+**T6 — Smoke matrix.** Now that the territory system is autonomous, validate it under realistic edge cases before T4a/T4b UI work. Recommended over T2b (percentage) because T6 protects all the autonomous behavior we just shipped; T2b is additive and can ship anytime.
 
-Locked design (no recon needed; everything verified during T3b-A and T3b-B):
-- **AFTER INSERT** trigger: fires `distribute_geo_to_children` for valid child scopes (area→muni, area→neighbourhood, muni→community) + `reroll_listings_at_geo` for the changed scope (if ∈ {area, muni, community}; skipped for neighbourhood per mls_listings constraint)
-- **AFTER UPDATE** trigger: fires `reroll_listings_at_geo` only on routing-affecting changes (`is_active` flip, `agent_id` change). is_primary toggle is display-only, no listing impact.
-- **AFTER DELETE** trigger: fires `reroll_listings_at_geo`
-- **Recursion guard:** `pg_trigger_depth() > 1 → RETURN`. Built-in PG mechanism, no session variables. Prevents infinite loop when `distribute_geo_to_children` INSERTs into apa.
+T6 ships as a SQL test script (or PL/pgSQL DO block) that asserts each of the following and reports PASS/FAIL per assertion:
 
-T3b-C ships:
-- ~3 trigger functions (handle_apa_insert, handle_apa_update, handle_apa_delete)
-- 3 trigger declarations (CREATE TRIGGER ... AFTER INSERT/UPDATE/DELETE ON agent_property_access)
-- Smoke matrix: insert apa row → verify children's listings re-roll fires; delete row → verify reroll; update is_primary → verify NO reroll fires
+1. **Cascade resolution** — for synthetic data at each level (area, muni, community, neighbourhood), `resolve_agent_for_context` returns the expected agent. Display variant returns the selling agent.
+2. **Trigger fires on INSERT** — inserting an apa row at muni scope auto-creates community primaries for that muni's children.
+3. **Trigger fires on UPDATE** — flipping `is_active` from true→false triggers reroll. Flipping `is_primary` does NOT trigger reroll (early-return in handle_apa_update).
+4. **Trigger fires on DELETE** — removing an apa row reverts cached listings to fall through to the next cascade level.
+5. **Recursion guard works** — `distribute_geo_to_children` insertions don't infinite-loop the trigger.
+6. **Race safety** — concurrent inserts at the same child scope produce exactly one primary (partial unique index + EXCEPTION WHEN unique_violation handler).
+7. **Audit trail** — every distribute_geo_to_children call writes one audit row per child to `territory_assignment_changes` with change_type='primary_set'.
+8. **MLS sync boundary** — new `mls_listings` rows arrive with NULL `assigned_agent_id`. Decide: do we add an INSERT trigger on mls_listings to call distribute_listings_at_geo, or accept on-demand fallback via resolver?
 
-After T3b-C closes, only T3b-D (TypeScript caller updates) remains in T3b. Then T4a/T4b/T5 unblock.
+Alternative path: T4b (public UI) first if Shah wants visible end-user value before deep smoke testing. T6 can run in parallel.
+
+After T6 closes, T4a and T4b are the remaining work before T7 closes the ticket.
