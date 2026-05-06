@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-05
 **Owner:** Shah (sole dev)
-**Status:** **T6 CORE PASS 2026-05-06.** All 6 tests PASS via `scripts/run-r-territory-t6-smoke.js` (Node + pg, bypasses Studio's payload limit). Confirms: resolver baseline holds post-T3b; INSERT trigger fans out 20 community primaries on a sibling-muni INSERT; `is_primary` toggle is a true no-op (no audit, no apa change); recursion guard blocks depth-2 cascade (area INSERT does NOT touch community level); DELETE trigger runs clean; audit trail writes one row per child primary. **One P1 production finding surfaced — F-AREA-REROLL-TIMEOUT:** area-scope reroll on a large area (Whitby) exceeds Supabase's default `statement_timeout`; admin UI must batch or async this in production. Three followups still tracked: race safety (T6-followup-A, needs external harness), multi-level cascade (T6-followup-B), `is_active` flip reroll (T6-followup-C); plus T6-decision (MLS-sync trigger Y/N). T1, T2a, T3a, T3b, T6-core all closed. **Next:** address F-AREA-REROLL-TIMEOUT mitigation + close T6-decision before T4a UI work.
+**Status:** **T6 CORE PASS + F-AREA-REROLL CLOSED 2026-05-06.** All 6 T6 tests verified PASS under Supabase's default `statement_timeout` (no override) after deploying the set-based reroll/distribute fix to production. F-AREA-REROLL-TIMEOUT closed: `reroll_listings_at_geo` and `distribute_listings_at_geo` rewritten from row-by-row loops to single CTE-based UPDATE statements; identical hash-distribute semantics, identical signatures, ~200x fewer SQL operations per call. T6-decision LOCKED at (b): accept on-demand resolver fallback for `mls_listings.assigned_agent_id IS NULL`; no INSERT trigger on `mls_listings`. T1, T2a, T3a, T3b, T6-core, F-AREA-REROLL, T6-decision all closed. Three followups remain for full T6 closure: T6-followup-A (race safety harness), B (multi-level cascade resolver tests), C (`is_active` flip fires reroll). **Next:** ship T6-followup-A/B/C, then T4a/T4b UI.
 **Sister tracker:** `docs/W-LAUNCH-TRACKER.md` — Section 1 Territory row + Section 2 "Territory as provider" + Section 3 P1-3 + Section 4 W-TERRITORY row all point here.
 
 ---
@@ -330,41 +330,60 @@ Specific to W-TERRITORY:
   - **Workflow note:** the runner pattern (Node + `pg` + connection-string env-var fallback chain + body/finalSelect split on comment markers) is now the established way to run any future SQL test that exceeds Studio's ~10 KB limit. Reusable for T6 followups.
   - **Next:** decide F-AREA-REROLL-TIMEOUT mitigation; resolve T6-decision (MLS-sync INSERT trigger Y/N); ship T6-followup-A/B/C as `scripts/r-territory-t6-followups.sql` + `scripts/r-territory-t6-followup-race.js`. Then T4a UI work.
 
+- **2026-05-06 v9** — **F-AREA-REROLL-TIMEOUT CLOSED + T6-decision LOCKED.** P1 production blocker surfaced in v8 is resolved; T6 smoke re-runs cleanly under Supabase's default `statement_timeout` (no override). All 6 tests PASS in single execution.
+  - **What shipped to production DB** (CREATE OR REPLACE x2 in one transaction via `scripts/apply-f-area-reroll-fix.js`):
+    - **`reroll_listings_at_geo(text,uuid,uuid)`** — row-by-row loop replaced by CTE-based set UPDATE. Routing set computed once via `ROW_NUMBER() OVER (ORDER BY id) - 1`; per-listing pick computed inline via `LEFT JOIN routing ON r.rn = abs(hashtext(ml.id::text)) % NULLIF(v_total, 0)`; final UPDATE filtered by `IS DISTINCT FROM` to preserve old "only update if pick changed" semantics. Empty routing set → picks become NULL via NULLIF + LEFT JOIN, matching old NULL return path.
+    - **`distribute_listings_at_geo(text,uuid,uuid)`** — same restructure. Filters to `assigned_agent_id IS NULL` (only fills empty slots, matching its existing semantics). Inner JOIN (not LEFT) since `IF v_total = 0 RETURN 0` shortcuts the empty-routing case before the UPDATE runs.
+    - Caller signatures unchanged. Triggers in T3b-C (`handle_apa_insert/update/delete`) call these unchanged.
+  - **Files committed in v9 batch:**
+    - `scripts/apply-f-area-reroll-fix.js` — runner: rollback snapshot + forward SQL archive + transactional CREATE OR REPLACE x2 + 6/6 verification of new bodies (contain `WITH routing AS`; old `FOR rec IN` / `FOR v_listing_id IN` markers gone).
+    - `scripts/r-territory-f-area-reroll-fix.sql` — forward SQL (5150 bytes), git-archived for history.
+    - `scripts/r-territory-f-area-reroll-rollback_20260506_165646.sql` — pre-apply snapshot of OLD function bodies (2256 bytes). Apply this file to revert to the row-by-row implementation.
+    - `scripts/probe-reroll-function.js` — diagnostic that surfaced the row-by-row bug; reusable for future function audits.
+    - `scripts/patch-smoke-runner-realistic-timeout.js` — turned forced `SET statement_timeout = 0` into env-gated opt-in. Default behavior now tests under Supabase's realistic ceiling; `DISABLE_STATEMENT_TIMEOUT=1` re-enables for tests that genuinely need long timeouts.
+    - `scripts/run-r-territory-t6-smoke.js` — patched per above.
+  - **Verification (this is the proof, not the claim):** smoke re-run with realistic `statement_timeout` produced identical PASS results to the v8 run. Setup row matched (whitby_area=`03d4e133-...`, test_muni=`94447f26-...`, test_muni_communities=20). Test 4 — the area-scope INSERT that triggered the timeout in v8 — completed without error. Audit deltas matched (Test 6 expected 20, actual 20). Final SUMMARY: `pass=6 fail=0 skip=0 total=6`.
+  - **T6-decision LOCKED at (b):** accept on-demand resolver fallback for `mls_listings.assigned_agent_id IS NULL`. No INSERT trigger on `mls_listings`. Existing resolver behavior IS the locked behavior — no code change required. Avoids thousands of unnecessary trigger fires per nightly MLS sync.
+  - **Performance characterization (qualitative):** old code = 67,850 calls × ~3 SQL ops each ≈ 200,000 ops per area-scope reroll, killed by statement_timeout mid-loop. New code = 1 set-based UPDATE planned as a hash join (verifiable with `EXPLAIN ANALYZE` if needed). Scales linearly with listing count. Quantitative benchmark deferred — not required for closure since `pass=6` under default timeout proves the threshold is met.
+  - **What's NOT closed yet (T6-followups remaining for full T6 closure):**
+    - **T6-followup-A** — race safety harness (concurrent INSERTs at same child scope). Needs Node + `pg.Pool` with two real connections. Will use the existing runner pattern.
+    - **T6-followup-B** — multi-level cascade resolver tests (area, community, neighbourhood — Test 1 only covered muni).
+    - **T6-followup-C** — `is_active` flip true→false fires reroll. Add Test 3b to the smoke (inverse of existing Test 3 which proves `is_primary` toggle is no-op).
+  - **Next gate:** T6-followup-A/B/C, then T4a (admin UI — F-AREA-REROLL mitigation no longer required since the underlying functions are now fast), then T4b (public geo page primary display), then T7 close.
+
 ---
 
 ## Next action
 
-**Three items in sequence, all this working block:**
+**Three smoke followups, then UI work.** F-AREA-REROLL is no longer a blocker for T4a — the underlying functions complete within Supabase's default timeout, so admin endpoints don't need batching, queue infrastructure, or per-endpoint timeout raises.
 
-### 1. F-AREA-REROLL-TIMEOUT — design mitigation
+### 1. T6-followup-A — race safety harness
 
-Surfaced in T6 Test 4. Production blocker for any admin who assigns an agent at area scope on a large area (the Whitby area has 8 munis, hundreds-to-thousands of listings). Three options to evaluate:
+Two pg connections in parallel attempt INSERTs at the same child scope. Assert exactly one succeeds (partial unique indexes from T2a-02 + `EXCEPTION WHEN unique_violation` in the trigger functions handle the conflict). Ships as `scripts/r-territory-t6-followup-race.js` using `pg.Pool` with two clients, `Promise.all` on competing INSERTs.
 
-- **(a) Batch the UPDATE** — modify `reroll_listings_at_geo` to chunk the UPDATE into N rows (e.g., 500/iter) so the trigger doesn't blow past statement_timeout. Pros: single-tx, deterministic. Cons: still synchronous, still slow, ties up the request.
-- **(b) Async via job table** — apa INSERT writes a row to a `territory_reroll_jobs` queue; a worker (cron / pg_cron / external poller) picks it up and runs the reroll outside the request lifecycle. Pros: request returns instantly, no user-perceived latency. Cons: eventual consistency (geo page may show stale agents for seconds-to-minutes); needs queue infra.
-- **(c) Per-endpoint timeout raise** — admin endpoints `SET LOCAL statement_timeout = '5min'` in their request handler. Apa INSERT still blocks but doesn't error. Pros: minimal code change. Cons: 5-minute admin requests are bad UX; still a hard ceiling for huge areas.
+Acceptance: 100 trial runs, every run shows exactly one INSERT succeeded and one raised `unique_violation` (caught by the trigger and retried, or surfaced cleanly to the caller — depends on T3b-C's actual handling; verify against current code).
 
-Most production-grade is (b); fastest to ship is (c); cleanest single-tx is (a). Decision pending Shah's call.
+### 2. T6-followup-B — multi-level cascade resolver tests
 
-### 2. T6-decision — MLS-sync INSERT trigger
+Extend `scripts/r-territory-t6-smoke.sql` (or a sibling `t6-smoke-extended.sql`) with sub-tests:
 
-When nightly MLS sync inserts new `mls_listings` rows, they arrive with NULL `assigned_agent_id`. Two options:
+- **Test 1b** — `resolve_geo_primary('area', whitby_area_id, tenant_id)` returns expected primary
+- **Test 1c** — `resolve_geo_primary('community', some_community_id, tenant_id)` returns expected primary
+- **Test 1d** — `resolve_geo_primary('neighbourhood', some_neighbourhood_id, tenant_id)` returns expected primary
 
-- **(a) Add an INSERT trigger on `mls_listings`** that calls `distribute_listings_at_geo` for the new row's geo scope. Pro: cache always populated. Con: nightly sync of thousands of rows = thousands of trigger fires.
-- **(b) Accept on-demand fallback via resolver** — when `mls_listings.assigned_agent_id` is NULL on read, the resolver falls through to `agent_property_access` and returns a routing agent. Pro: zero overhead on sync. Con: read path is slightly slower for unsynced rows.
+Each picks synthetic test data at runtime (same pattern as the existing Test 2's test_muni selection — pick a sibling at runtime, no hardcoded IDs).
 
-**Recommendation: (b).** Resolver already handles NULL gracefully; trigger overhead on sync is real and avoidable. Decision can be locked once Shah confirms.
+### 3. T6-followup-C — `is_active` flip fires reroll
 
-### 3. T6-followup-A/B/C — extend the smoke
+Add Test 3b to the smoke: pick an existing apa row, flip `is_active` true→false, assert `territory_assignment_changes` row count INCREASES (some change was logged) AND `mls_listings.assigned_agent_id` for that scope's listings is updated. This is the inverse of Test 3 (which proves `is_primary` toggle is a no-op). Together they exhaustively cover handle_apa_update's two paths.
 
-- **A — race safety** — needs external harness (two pg connections, concurrent INSERT at same child scope, assert exactly one primary survives via partial unique index). Ships as `scripts/r-territory-t6-followup-race.js` (Node + `pg` Pool).
-- **B — multi-level cascade** — extend the existing smoke with sub-tests covering area-, community-, and neighbourhood-level resolver calls. Synthetic geo data picked at runtime.
-- **C — `is_active` flip fires reroll** — add a Test 3b: flip `is_active` true→false on an existing apa row, assert audit row count increases AND `mls_listings.assigned_agent_id` for that scope's listings is updated.
+### After T6-followup-A/B/C close:
 
-B and C ship together as additions to `scripts/r-territory-t6-smoke.sql` (or a sibling `t6-smoke-extended.sql` if size grows). A ships as a separate Node script.
+- **T4a** — Admin UI at `/admin-homes/territory`. Standard implementation, no special async / batch / timeout-raise infra required (F-AREA-REROLL closed at function level, not endpoint level).
+- **T4b** — Public-facing geo page primary agent display via `resolve_display_agent_for_context`.
+- **T7** — Close the ticket. Update `W-LAUNCH-TRACKER.md` Section 4 W-TERRITORY row to CLOSED with commit hashes.
 
-### After T6-* fully closed:
+### Optional / parallel:
 
-- **T4a** — Admin UI at `/admin-homes/territory`. **Must implement the F-AREA-REROLL-TIMEOUT mitigation** chosen above.
-- **T4b** — Public-facing geo page primary agent display.
-- **T7** — Close the ticket.
+- **T2b** — percentage mode (still optional; can ship anytime, doesn't block T4).
+- **Hygiene** — ~30 untracked patch scripts in `scripts/` from earlier W-RECOVERY / W-ROLES-DELEGATION / W-LAUNCH work. Reproducibility debt; commit batch when convenient.

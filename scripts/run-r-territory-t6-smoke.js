@@ -126,12 +126,16 @@ async function main() {
     await client.connect();
     console.log('Connected to Postgres.');
 
-    // Disable statement_timeout for this session. Area-scope reroll in Test 4
-    // touches every mls_listings row in the area, which exceeds Supabase's
-    // default timeout. Session-scoped: cleared when client.end() runs.
-    // (Production behavior unaffected — this only applies to this runner.)
-    await client.query('SET statement_timeout = 0;');
-    console.log('statement_timeout disabled for this session.');
+    // F-AREA-REROLL fix (2026-05-06): set-based reroll/distribute now
+    // completes within Supabase's default statement_timeout. Disable only
+    // when DISABLE_STATEMENT_TIMEOUT=1 in env (safety net for future tests
+    // like race-safety harness that need long-running operations).
+    if (process.env.DISABLE_STATEMENT_TIMEOUT === '1') {
+      await client.query('SET statement_timeout = 0;');
+      console.log('statement_timeout DISABLED (DISABLE_STATEMENT_TIMEOUT=1).');
+    } else {
+      console.log('statement_timeout at Supabase default — verifies F-AREA-REROLL fix.');
+    }
     console.log('');
 
     // The body contains BEGIN; ... it does NOT commit. The transaction is open
