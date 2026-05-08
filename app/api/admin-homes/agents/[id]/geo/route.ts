@@ -98,9 +98,37 @@ export async function POST(
     homes_access: a.homes_access ?? true,
     buildings_access: a.buildings_access ?? true,
     buildings_mode: a.buildings_mode || 'all',
+    is_primary: a.is_primary === true,
     is_active: true,
     tenant_id: tenantId,
   }))
+
+  // T4a-1 auto-reassign: for any incoming row claiming primary, unset OTHER
+  // agents' is_primary at same (scope, scope_id) within the same tenant. Avoids
+  // partial-unique-index conflict on INSERT and produces clean primary_unset
+  // audit rows via handle_apa_update (per F-APA-PRIMARY-AUDIT-GAP fix v13).
+  for (const row of rows) {
+    if (row.is_primary !== true) continue
+    let scopeCol: string | null = null
+    let scopeVal: string | null = null
+    if (row.scope === 'area') { scopeCol = 'area_id'; scopeVal = row.area_id }
+    else if (row.scope === 'municipality') { scopeCol = 'municipality_id'; scopeVal = row.municipality_id }
+    else if (row.scope === 'community') { scopeCol = 'community_id'; scopeVal = row.community_id }
+    else if (row.scope === 'neighbourhood') { scopeCol = 'neighbourhood_id'; scopeVal = row.neighbourhood_id }
+    if (!scopeCol || !scopeVal) continue
+    const { error: reassignError } = await supabase
+      .from('agent_property_access')
+      .update({ is_primary: false })
+      .eq('scope', row.scope)
+      .eq(scopeCol, scopeVal)
+      .eq('is_active', true)
+      .eq('is_primary', true)
+      .eq('tenant_id', tenantId)
+      .neq('agent_id', params.id)
+    if (reassignError) {
+      return NextResponse.json({ error: 'auto-reassign failed: ' + reassignError.message }, { status: 500 })
+    }
+  }
 
   const { error: insertError } = await supabase
     .from('agent_property_access')

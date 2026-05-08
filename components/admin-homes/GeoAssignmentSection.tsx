@@ -6,7 +6,7 @@
 'use client'
 
 import { useState } from 'react'
-import { MapPin, Plus, X, Check, Info, Lock } from 'lucide-react'
+import { MapPin, Plus, X, Check, Info, Lock, Star } from 'lucide-react'
 
 interface GeoItem { id: string; name: string; slug: string }
 interface MuniItem extends GeoItem { area_id: string }
@@ -24,6 +24,7 @@ interface Assignment {
   homes_access: boolean
   buildings_access: boolean
   buildings_mode: string
+  is_primary?: boolean
 }
 
 interface Props {
@@ -54,6 +55,32 @@ function AccessBadges({ a }: { a: Assignment }) {
   )
 }
 
+function PrimaryToggle({ active, onToggle, locked }: { active: boolean; onToggle?: () => void; locked?: boolean }) {
+  if (locked) {
+    return active ? (
+      <span className="flex items-center gap-1 bg-amber-50 text-amber-700 text-xs px-2 py-0.5 rounded">
+        <Star className="w-3 h-3 fill-amber-500" /> PRIMARY
+      </span>
+    ) : null
+  }
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={
+        'flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors ' +
+        (active
+          ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+          : 'bg-gray-50 text-gray-400 hover:bg-amber-50 hover:text-amber-600')
+      }
+      title={active ? 'Click to unset primary' : 'Click to set as primary'}
+    >
+      <Star className={'w-3 h-3 ' + (active ? 'fill-amber-500' : 'fill-none')} />
+      {active ? 'PRIMARY' : 'set primary'}
+    </button>
+  )
+}
+
 export default function GeoAssignmentSection({
   agentId, areas, municipalities, communities, neighbourhoods,
   currentAssignments, inheritedAssignments = [], inheritedFrom = null,
@@ -74,6 +101,7 @@ export default function GeoAssignmentSection({
   const [homesAccess, setHomesAccess] = useState(true)
   const [buildingsAccess, setBuildingsAccess] = useState(true)
   const [buildingsMode, setBuildingsMode] = useState('all')
+  const [isPrimary, setIsPrimary] = useState(false)
 
   const filteredMunis = selectedAreaId ? municipalities.filter(m => m.area_id === selectedAreaId) : municipalities
   const filteredComms = selectedMuniId ? communities.filter(c => c.municipality_id === selectedMuniId) : communities
@@ -106,13 +134,18 @@ export default function GeoAssignmentSection({
       homes_access: homesAccess,
       buildings_access: buildingsAccess,
       buildings_mode: buildingsMode,
+      is_primary: isPrimary,
     }
     setAssignments([...assignments, newA])
-    setSelectedAreaId(''); setSelectedMuniId(''); setSelectedCommId(''); setSelectedNeighId('')
+    setSelectedAreaId(''); setSelectedMuniId(''); setSelectedCommId(''); setSelectedNeighId(''); setIsPrimary(false)
   }
 
   function removeAssignment(idx: number) {
     setAssignments(assignments.filter((_, i) => i !== idx))
+  }
+
+  function togglePrimary(idx: number) {
+    setAssignments(assignments.map((a, i) => i === idx ? { ...a, is_primary: !a.is_primary } : a))
   }
 
   async function saveAssignments() {
@@ -174,6 +207,7 @@ export default function GeoAssignmentSection({
                 <div key={i} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
                   <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-1 rounded">{SCOPE_LABELS[a.scope]}</span>
                   <span className="text-sm font-medium text-gray-700">{getDisplayName(a)}</span>
+                  <PrimaryToggle active={!!a.is_primary} locked />
                   <AccessBadges a={a} />
                   <Lock className="w-3.5 h-3.5 text-gray-300 ml-auto" />
                 </div>
@@ -202,6 +236,7 @@ export default function GeoAssignmentSection({
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded">{SCOPE_LABELS[a.scope]}</span>
                   <span className="text-sm font-medium text-gray-900">{getDisplayName(a)}</span>
+                  <PrimaryToggle active={!!a.is_primary} onToggle={() => togglePrimary(i)} />
                   <AccessBadges a={a} />
                 </div>
                 <button onClick={() => removeAssignment(i)} className="text-red-400 hover:text-red-600 p-1 ml-2">
@@ -225,6 +260,7 @@ export default function GeoAssignmentSection({
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded">{SCOPE_LABELS[a.scope]}</span>
                   <span className="text-sm font-medium text-gray-900">{getDisplayName(a)}</span>
+                  <PrimaryToggle active={!!a.is_primary} onToggle={() => togglePrimary(i)} />
                   <AccessBadges a={a} />
                 </div>
                 <button onClick={() => removeAssignment(i)} className="text-red-400 hover:text-red-600 p-1 ml-2">
@@ -340,6 +376,11 @@ export default function GeoAssignmentSection({
               <option value="none">No buildings</option>
             </select>
           )}
+          <label className="flex items-center gap-2 text-sm cursor-pointer ml-auto">
+            <input type="checkbox" checked={isPrimary} onChange={e => setIsPrimary(e.target.checked)} className="w-4 h-4" />
+            <Star className={'w-3.5 h-3.5 ' + (isPrimary ? 'fill-amber-500 text-amber-500' : 'text-gray-400')} />
+            Primary
+          </label>
         </div>
 
         <button
