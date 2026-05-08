@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { MapPin, Activity, Users, Star } from 'lucide-react'
+import TerritoryMatrix from './TerritoryMatrix'
 
 interface CoverageRow {
   id: string
@@ -52,6 +53,7 @@ interface Props {
 }
 
 export default function TerritoryClient({ tenantId, tenantName, seeAll }: Props) {
+  const [activeTab, setActiveTab] = useState<'coverage' | 'matrix' | 'audit'>('coverage')
   const [coverage, setCoverage] = useState<CoverageRow[]>([])
   const [stats, setStats] = useState<CoverageStats | null>(null)
   const [audit, setAudit] = useState<AuditRow[]>([])
@@ -138,6 +140,15 @@ export default function TerritoryClient({ tenantId, tenantName, seeAll }: Props)
         <StatCard label="Audit events" value={audit.length === 100 ? '100+' : audit.length} icon={<Activity className="w-4 h-4" />} />
       </div>
 
+      <div className="border-b mb-4">
+        <nav className="flex gap-1">
+          <button type="button" onClick={() => setActiveTab('coverage')} className={'px-3 py-2 text-sm font-medium border-b-2 transition-colors ' + (activeTab === 'coverage' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900')}>Coverage</button>
+          <button type="button" onClick={() => setActiveTab('matrix')} className={'px-3 py-2 text-sm font-medium border-b-2 transition-colors ' + (activeTab === 'matrix' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900')}>Matrix</button>
+          <button type="button" onClick={() => setActiveTab('audit')} className={'px-3 py-2 text-sm font-medium border-b-2 transition-colors ' + (activeTab === 'audit' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900')}>Audit log</button>
+        </nav>
+      </div>
+
+      {activeTab === 'coverage' && (
       <section className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Coverage</h2>
@@ -189,7 +200,13 @@ export default function TerritoryClient({ tenantId, tenantName, seeAll }: Props)
           </table>
         </div>
       </section>
+      )}
 
+      {activeTab === 'matrix' && tenantId && (
+        <TerritoryMatrix tenantId={tenantId} tenantName={tenantName} />
+      )}
+
+      {activeTab === 'audit' && (
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Audit Log</h2>
@@ -235,6 +252,7 @@ export default function TerritoryClient({ tenantId, tenantName, seeAll }: Props)
           Showing latest {audit.length} events{audit.length === 100 ? ' (capped at 100)' : ''}.
         </p>
       </section>
+      )}
     </div>
   )
 }
