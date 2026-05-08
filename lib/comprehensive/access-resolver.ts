@@ -4,6 +4,12 @@ import type { GeoAssignment, ResolvedAccess } from './types';
 /**
  * Resolves an agent's geographic access for System 2 (Comprehensive Homepage).
  * Returns null if agent has no System 2 assignments (should use System 1 instead).
+ *
+ * T4a-3b (2026-05-08): added 'neighbourhood' case to switch (was silently
+ * dropped pre-fix). Minimal fix matches existing 'community' propagation
+ * pattern (parent ids only); downstream listing filtering remains community-
+ * grained. Tighter neighbourhood-grained filtering would extend ResolvedAccess
+ * with neighbourhoodIds + downstream filter -- a future T4d.
  */
 export async function resolveAgentAccess(agentId: string): Promise<ResolvedAccess | null> {
   const supabase = createClient();
@@ -16,7 +22,7 @@ export async function resolveAgentAccess(agentId: string): Promise<ResolvedAcces
 
   console.log('[resolveAgentAccess] Query result:', { count: assignments?.length, error: error?.message });
   if (error || !assignments || assignments.length === 0) {
-    return null; // No System 2 access  use System 1
+    return null; // No System 2 access - use System 1
   }
 
   // 2. Check for "ALL" scope (entire MLS)
@@ -26,7 +32,7 @@ export async function resolveAgentAccess(agentId: string): Promise<ResolvedAcces
       hasAccess: true,
       isAllMLS: true,
       assignments: assignments as GeoAssignment[],
-      areaIds: [],        // Empty = no filter (all)
+      areaIds: [],
       municipalityIds: [],
       communityIds: [],
       buildings_access: allScope.buildings_access,
@@ -35,7 +41,7 @@ export async function resolveAgentAccess(agentId: string): Promise<ResolvedAcces
     };
   }
 
-  // 3. Expand geography  collect all IDs
+  // 3. Expand geography - collect all IDs
   const areaIds = new Set<string>();
   const municipalityIds = new Set<string>();
   const communityIds = new Set<string>();
@@ -90,6 +96,19 @@ export async function resolveAgentAccess(agentId: string): Promise<ResolvedAcces
           if (assignment.area_id) areaIds.add(assignment.area_id);
         }
         break;
+
+      // T4a-3b: F-COMPREHENSIVE-RESOLVER-NEIGHBOURHOOD-GAP fix.
+      // Neighbourhood-scope rows used to fall through this switch silently.
+      // Minimal fix: propagate to parent community/muni/area (matches the
+      // existing 'community' case shape). Downstream filter is community-
+      // grained today; tighter neighbourhood narrowing is a future T4d.
+      case 'neighbourhood':
+        if (assignment.neighbourhood_id) {
+          if (assignment.community_id) communityIds.add(assignment.community_id);
+          if (assignment.municipality_id) municipalityIds.add(assignment.municipality_id);
+          if (assignment.area_id) areaIds.add(assignment.area_id);
+        }
+        break;
     }
   }
 
@@ -108,7 +127,7 @@ export async function resolveAgentAccess(agentId: string): Promise<ResolvedAcces
 
 /**
  * Quick check: does this agent use System 2?
- * Lighter than full resolveAgentAccess  just checks existence.
+ * Lighter than full resolveAgentAccess - just checks existence.
  */
 export async function hasComprehensiveAccess(agentId: string): Promise<boolean> {
   const supabase = createClient();
@@ -119,6 +138,6 @@ export async function hasComprehensiveAccess(agentId: string): Promise<boolean> 
     .eq('agent_id', agentId)
     .eq('is_active', true);
 
-    console.log('[System2] Access check result:', { count, error: error?.message });
+  console.log('[System2] Access check result:', { count, error: error?.message });
   return !error && (count ?? 0) > 0;
 }
