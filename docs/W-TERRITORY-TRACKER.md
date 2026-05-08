@@ -2,7 +2,7 @@
 
 **Started:** 2026-05-05
 **Owner:** Shah (sole dev)
-**Status:** **T6 FULL CLOSURE 2026-05-07.** Race-safety verified (T6-followup-A v10, 3/3 PASS), multi-level cascade resolver verified at all four scope levels (T6-followup-B v11, 3/3 PASS area/community/neighbourhood), is_active flip fires reroll AND audit (T6-followup-C v11, PASS). F-RACE-DEADLOCK closed in-flight (autocommit pattern in race harness — explicit BEGIN/COMMIT inside Promise.allSettled deadlocked at the application layer when triggers acquire xact-scoped advisory locks). F-APA-NEIGHBOURHOOD-CHECK closed via ALTER TABLE adding `'neighbourhood'` to `agent_property_access.scope` CHECK constraint (option a per Shah 2026-05-07; resolver/trigger/distribute/partial unique index were already wired for neighbourhood, the CHECK was the only thing preventing rows at that scope). F-APA-UPDATE-AUDIT-GAP discovered during T6-followup-C: `handle_apa_insert/update/delete` triggers were silently rerolling 84,586 mls_listings on a single is_active flip with no audit trail; only `distribute_geo_to_children` was writing audit rows. Fix added audit-row writes for direct apa state changes (assignment_granted on INSERT, assignment_revoked on DELETE / is_active=false flip, paired revoke+grant on agent/scope changes) via CREATE OR REPLACE FUNCTION inside transaction with verify-then-commit. T1, T2a, T3a, T3b, T6 (core + A/B/C), F-AREA-REROLL, F-RACE-DEADLOCK, F-APA-NEIGHBOURHOOD-CHECK, F-APA-UPDATE-AUDIT-GAP all closed. **Database/triggers/resolvers/race safety/audit coverage layer is functionally complete.** Four pieces remain for W-TERRITORY closure: T4a (admin UI — 4 sub-phases locked v12), T4c (manager carving — carved out of T4a; ships immediately after T4a in same working block per Rule Zero — Nothing Deferred), T4b (public geo page primary agent display), T7 (close ticket). **Next:** T4a-1 ✅ CLOSED v13 (handle_apa_update audits primary_set/unset + access_toggle_changed; UI toggle + auto-reassign route logic; smoke 9/9 PASS). T4a-2 `/admin-homes/territory` coverage page, T4a-3 server-side diff fix for F-APA-DELETE-INSERT-CHURN, T4a-3b gated F-COMPREHENSIVE-RESOLVER-NEIGHBOURHOOD-GAP fix (gate = caller probe at start of T4a-3 coding), then T4c, T4b, T7.
+**Status:** **T6 FULL CLOSURE 2026-05-07.** Race-safety verified (T6-followup-A v10, 3/3 PASS), multi-level cascade resolver verified at all four scope levels (T6-followup-B v11, 3/3 PASS area/community/neighbourhood), is_active flip fires reroll AND audit (T6-followup-C v11, PASS). F-RACE-DEADLOCK closed in-flight (autocommit pattern in race harness — explicit BEGIN/COMMIT inside Promise.allSettled deadlocked at the application layer when triggers acquire xact-scoped advisory locks). F-APA-NEIGHBOURHOOD-CHECK closed via ALTER TABLE adding `'neighbourhood'` to `agent_property_access.scope` CHECK constraint (option a per Shah 2026-05-07; resolver/trigger/distribute/partial unique index were already wired for neighbourhood, the CHECK was the only thing preventing rows at that scope). F-APA-UPDATE-AUDIT-GAP discovered during T6-followup-C: `handle_apa_insert/update/delete` triggers were silently rerolling 84,586 mls_listings on a single is_active flip with no audit trail; only `distribute_geo_to_children` was writing audit rows. Fix added audit-row writes for direct apa state changes (assignment_granted on INSERT, assignment_revoked on DELETE / is_active=false flip, paired revoke+grant on agent/scope changes) via CREATE OR REPLACE FUNCTION inside transaction with verify-then-commit. T1, T2a, T3a, T3b, T6 (core + A/B/C), F-AREA-REROLL, F-RACE-DEADLOCK, F-APA-NEIGHBOURHOOD-CHECK, F-APA-UPDATE-AUDIT-GAP all closed. **Database/triggers/resolvers/race safety/audit coverage layer is functionally complete.** Four pieces remain for W-TERRITORY closure: T4a (admin UI — 4 sub-phases locked v12), T4c (manager carving — carved out of T4a; ships immediately after T4a in same working block per Rule Zero — Nothing Deferred), T4b (public geo page primary agent display), T7 (close ticket). **Next:** T4a-1 ✅ + T4a-2 ✅ + T4a-3 ✅ + T4a-3b ✅ all CLOSED v14 (full T4a phase done; coverage page + apa+tpa diff + resolver neighbourhood case all shipped + smoked). T4c phase opened with multi-tenant comprehensive scope: T4c-1 bulk-assign API route with per-agent permission gating + atomic transaction + smoke; T4c-2 matrix component + page + cell editor + conflict UX (desktop); T4c-3 mobile responsive + a11y + inheritance preview + bulk row actions. Then T4b, T7.
 **Sister tracker:** `docs/W-LAUNCH-TRACKER.md` — Section 1 Territory row + Section 2 "Territory as provider" + Section 3 P1-3 + Section 4 W-TERRITORY row all point here.
 
 ---
@@ -247,6 +247,7 @@ Specific to W-TERRITORY:
 - **Concurrency harness pattern (v10):** any future test of trigger behaviour under concurrent client connections must use the **autocommit pattern** (no explicit `BEGIN`/`COMMIT` from the client) when the triggers under test acquire transaction-scoped advisory locks. Explicit-transaction patterns inside `Promise.all` / `Promise.allSettled` deadlock at the application layer because Postgres cannot detect a stall where a client holds a transaction open while waiting on its own concurrent client to commit. The lock acquire-and-release happens within the autocommit boundary of the single statement that fires the trigger; that boundary is what serializes parallel attempts. Encoded in `scripts/r-territory-t6-followup-race.js` header DESIGN NOTE block.
 - **Audit-on-state-change pattern (v11):** any trigger function that mutates routing state on `agent_property_access` must write an audit row to `territory_assignment_changes` for the direct state change, IN ADDITION TO any audit rows written by cascading helpers (e.g., `distribute_geo_to_children` writes `primary_set` for child rows; that's not a substitute for the parent INSERT's `assignment_granted`). The audit table's `change_type` CHECK list is the contract for what events must be logged. Encoded in `handle_apa_insert` / `handle_apa_update` / `handle_apa_delete` per F-APA-UPDATE-AUDIT-GAP fix; future apa-touching triggers must follow the same pattern.
 - **Probe-then-patch pattern (v11):** any production trigger or function modification must be preceded by a read-only probe (`scripts/probe-*.js`) that captures the exact current source. The probe output is the ground truth; the patch is derived from it, not from training memory or assumed structure. Encoded in `scripts/probe-apa-trigger-functions.js` -> `scripts/r-territory-f-apa-update-audit-gap-fix.js` workflow.
+- **Per-row-diff via computeApaDiff pattern (v14):** any future write path that ingests a desired-state payload for `agent_property_access` (or any similarly-shaped table) must use a server-side diff against the current active state, not a DELETE-all + INSERT-all pattern. Identity key for the diff is the natural compound key minus mutable fields (for apa: `(scope, area_id, municipality_id, community_id, neighbourhood_id)`). Diff produces `toDelete` (existing not in incoming), `toInsert` (incoming not in existing), `toUpdate` (in both with mutable-field difference), and `unchanged`. Apply order: auto-reassign for primary claims first (unset OTHERS' is_primary at claimed (scope, scope_id) within tenant), then DELETEs by id, then UPDATEs by id, then INSERTs. Result: identical save → 0 SQL ops + 0 audit rows; partial change → minimum-necessary writes. Encoded in `lib/admin-homes/apa-diff.ts` and the apa+tpa geo POST routes. Reusable for any future apa-shaped reconciliation route.
 - **Smoke-via-savepoint-isolation pattern (v13):** any future trigger or route smoke test should run all assertions inside a single transaction with a final `ROLLBACK`; each test isolated via per-test `SAVEPOINT` + `ROLLBACK TO SAVEPOINT` so tests don't drift. Production data is never committed. Pattern: setup state inside savepoint, snapshot audit count, perform action, count delta + read latest N audit rows, assert, rollback to savepoint. Encoded in `scripts/r-territory-t4a-1-smoke.js`. Reusable for any future apa / route / trigger verification.
 
 ---
@@ -299,6 +300,10 @@ Specific to W-TERRITORY:
 
 **F-COMPREHENSIVE-RESOLVER-NEIGHBOURHOOD-GAP (2026-05-07, surfaced v12, fix gated T4a-3b):** `lib/comprehensive/access-resolver.ts` exports `resolveAgentAccess(agentId)` whose `switch (assignment.scope)` covers `'area' | 'municipality' | 'community'` only — no `'neighbourhood'` case. Default switch behaviour drops the row from the expanded geo IDs returned in `ResolvedAccess`. Type definition in `lib/comprehensive/types.ts` `GeoAssignment.scope` union is also missing `'neighbourhood'`. Predates W-TERRITORY entirely (file is older System 2 path; PL/pgSQL `resolve_agent_for_context` from T3a is the modern replacement and does handle neighbourhood). Post-F-APA-NEIGHBOURHOOD-CHECK closure (v11), neighbourhood-scope rows can now legitimately be created — and will be the moment T4a's UI persists them. Fix scope is gated on caller analysis: if `resolveAgentAccess` / `hasComprehensiveAccess` are reached from any production route, T4a-3b ships the fix (add `case 'neighbourhood':` to switch + update type union); if callers are legacy/dormant, finding is logged as accepted technical debt. Caller probe runs at start of T4a-3 coding.
 
+**F-APA-DELETE-INSERT-CHURN (2026-05-07 logged v12, 2026-05-08 CLOSED v14):** geo POST routes for apa and tpa used a `DELETE all + INSERT all` pattern: every save fired N × `assignment_revoked` + N' × `assignment_granted` + distribute fan-out + reroll, even when the payload was identical to existing state. Audit table accumulated churn, trigger pipeline did unnecessary work, and listings cache was rerolled redundantly. Fix: server-side diff via `computeApaDiff` (`lib/admin-homes/apa-diff.ts`) -- identity-keyed map of `(scope, area_id, municipality_id, community_id, neighbourhood_id)`, diff classifies rows as toDelete / toInsert / toUpdate / unchanged, route applies only the actual changes. Same fix shape applied to tpa POST route (no triggers/audit on tpa, but same primitive class of bug; consistent fix). Smoke T5 (identical-save → 0 audit rows) is the canonical proof. Inactive rows now preserved on save as a behavior improvement (previously nuked).
+
+**F-COMPREHENSIVE-RESOLVER-NEIGHBOURHOOD-GAP (2026-05-07 logged v12, 2026-05-08 CLOSED v14):** `lib/comprehensive/access-resolver.ts` switch on `assignment.scope` handled `area`, `municipality`, `community` only -- `neighbourhood` rows fell through silently. Caller probe confirmed live: 2 callers (`HomePageComprehensive.tsx`, `HomePageComprehensiveV2.tsx`), both wired into `app/page.tsx` and `app/comprehensive-site/page.tsx`. Currently 0 neighbourhood-scope rows in production, so the gap was theoretical -- but Rule Zero (multi-tenant at scale) demands the path be correct before tenant #2 onboards with neighbourhood-grained agents. Fix: added `case 'neighbourhood':` with parent propagation (community + muni + area added to access ID sets) -- matches the existing `community` case shape. Tighter neighbourhood-grained listing filter (extending `ResolvedAccess` with `neighbourhoodIds` + downstream filter) deferred as future T4d (non-regressive, additive).
+
 **F-APA-PRIMARY-AUDIT-GAP (2026-05-08, CLOSED v13):** `handle_apa_update` early-returned silently on display/policy-only changes (`is_primary` flip + access toggles) — those events were never audited despite the audit table's `change_type` CHECK accepting `'primary_set'`, `'primary_unset'`, `'access_toggle_changed'`. Same root pattern as F-APA-UPDATE-AUDIT-GAP (v11) one layer deeper. Fix added three audit-write blocks BEFORE the early-return in `handle_apa_update` — `primary_set`/`primary_unset` on `is_primary` flip, `access_toggle_changed` on any access-related field change. Early-return preserved AFTER audit writes; reroll unchanged. Migration applied via `scripts/r-territory-f-apa-primary-audit-gap-fix.js` with verify-then-commit (8-marker check); smoke 9/9 PASS in `scripts/r-territory-t4a-1-smoke.js`. Commit `c85174e`.
 
 **F-DISTRIBUTE-AUDIT-STATE-INCOMPLETE (2026-05-08, OPEN — minor):** `distribute_geo_to_children` writes `primary_set` audit rows when fanning parent-scope assignments to child geos, but the rows have NULL `before_state` AND NULL `after_state` — the function neglects to populate the JSON state columns. Surfaced during T4a-1 smoke baseline read of the historical distribute_geo_to_children-written rows from the canonical N=11 Whitby smoke (T3b-B v6). Data-quality issue not blocking — `agent_id` / `scope` / `scope_id` / `change_type` carry the routing-relevant signal; missing state JSON only affects reconstruction of full row state from audit log. Fix scope: add `to_jsonb(NEW)` capture to `distribute_geo_to_children` PL/pgSQL `INSERT INTO territory_assignment_changes`. Deferred — `distribute_geo_to_children` callers are well-understood; cleanup non-urgent.
@@ -347,6 +352,38 @@ Specific to W-TERRITORY:
   - **NEW P1 production finding (F-AREA-REROLL-TIMEOUT):** Initial run hit `canceling statement due to statement timeout` on Test 4's area-scope INSERT — the trigger called `reroll_listings_at_geo('area', whitby_area_id, ...)` which tried to UPDATE every `mls_listings` row in the area in one statement. Supabase's default `statement_timeout` killed it. Fixed in the runner via `SET statement_timeout = 0;`. **In production, an admin assigning at area scope will hit the same wall via the API/UI.** Three mitigation options for T4a (admin UI) design: (a) batch the UPDATE into chunks of N rows; (b) async the reroll via a background job after the apa INSERT commits; (c) accept the slowdown and raise per-request statement_timeout for admin endpoints only. Decision needed at or before T4a kickoff.
   - **Workflow note:** the runner pattern (Node + `pg` + connection-string env-var fallback chain + body/finalSelect split on comment markers) is now the established way to run any future SQL test that exceeds Studio's ~10 KB limit. Reusable for T6 followups.
   - **Next:** decide F-AREA-REROLL-TIMEOUT mitigation; resolve T6-decision (MLS-sync INSERT trigger Y/N); ship T6-followup-A/B/C as `scripts/r-territory-t6-followups.sql` + `scripts/r-territory-t6-followup-race.js`. Then T4a UI work.
+
+- **2026-05-08 v14** — **T4a-2 CLOSED + T4a-3 CLOSED + T4a-3b CLOSED + T4c phase opened with multi-tenant comprehensive scope.** Three closures in one working block; full T4a sub-phase set complete. Per Rule Zero (multi-tenant at scale + comprehensive), T4c scope explicitly locked: full recursive managed-agent subtree (W-HIERARCHY walker, no depth cap), all 4 scopes (area / muni / community / neighbourhood), all access flags (condo / homes / buildings + buildings_mode), per-cell primary toggle, row-level conflict UX. Cross-tenant write attempts and out-of-subtree write attempts return 403. T4c builds in three phases shipping in sequence within the working block.
+
+  - **T4a-2 CLOSED (commit `d8ef4c5`):** new `/admin-homes/territory` page + 2 API routes (`coverage`, `audit-log`) + TerritoryClient component (coverage table + audit log viewer + 5-card stats). Per-tenant scoping (Q1 product call from v12). 1051 LOC across 5 files, TSC clean, 4 files written atomically via `scripts/r-territory-t4a-2-deploy.js`.
+
+  - **T4a-3 CLOSED:** F-APA-DELETE-INSERT-CHURN comprehensive fix. Replaced DELETE-all + INSERT-all churn pattern with server-side diff in both apa (`agents/[id]/geo/route.ts`) and tpa (`tenants/[id]/geo/route.ts`) POST routes. Diff logic extracted to `lib/admin-homes/apa-diff.ts` (computeApaDiff: pure function over identity-keyed maps). Auto-reassign for primary claims preserved (T4a-1 behavior). Inactive rows preserved on save (no longer nuked, behavior improvement over the original DELETE-all). 5 files via `scripts/r-territory-t4a-3-deploy.js` (1 NEW apa-diff + 3 REWRITES with timestamped backups + 1 NEW smoke).
+
+  - **T4a-3b CLOSED:** F-COMPREHENSIVE-RESOLVER-NEIGHBOURHOOD-GAP fix. Caller probe confirmed live in production: 2 callers (`HomePageComprehensive.tsx`, `HomePageComprehensiveV2.tsx`) both invoked from `app/page.tsx` and `app/comprehensive-site/page.tsx` (V1/V2 split via runtime feature flag). Pre-fix: `case 'neighbourhood'` was missing from `resolveAgentAccess` switch; neighbourhood-scope rows silently dropped from access set. Fix: added `case 'neighbourhood':` with parent propagation (matches existing `community` case shape: adds parent community + muni + area to access ID sets). Tighter neighbourhood-grained filtering (extending ResolvedAccess + downstream listing filter) deferred to a future T4d -- not blocking and not regressive.
+
+  - **Smoke (9/9 PASS via `scripts/r-territory-t4a-3-smoke.ts`, savepoint-isolated):**
+    - T1–T4: pure unit tests of computeApaDiff (identical → 0 changes; addition → 1 insert; removal → 1 delete; primary toggle → 1 update + 1 claim).
+    - T5: identical save → **0 audit rows** (the headline F-APA-DELETE-INSERT-CHURN proof).
+    - T6: row added → 1 `assignment_granted`.
+    - T7: row removed → 1 `assignment_revoked`.
+    - T8: `is_primary` off → 1 `primary_unset` (no churn).
+    - T9: `condo_access` flip → 1 `access_toggle_changed` (no churn).
+    Production data ROLLED BACK; no rows committed.
+
+  - **T4c phase scope (locked, multi-tenant comprehensive):**
+    - **T4c-1**: `POST /api/admin-homes/territory/bulk-assign` route. Accepts `{ agentId → ApaRow[] }` payload. Per-agent permission gate via `can()` with `agent.write` (manager must have write on every agent in payload; cross-tenant or out-of-subtree → 403, zero DB writes). Per-tenant scoping enforced server-side. Atomic: all-or-nothing via single pg.Client transaction (BEGIN / per-agent computeApaDiff + apply / COMMIT, ROLLBACK on any failure). Auto-reassign primary runs once per (scope, scope_id) pair across the entire payload, not per-agent. Smoke covers: no-change save → 0 audits; cross-tenant attempt → 403 + 0 writes; out-of-subtree attempt → 403 + 0 writes; per-agent failure mid-payload → full rollback.
+    - **T4c-2**: `/admin-homes/territory/manage` page + matrix component. Rows = manager's effective coverage geos at all 4 scopes. Columns = full recursive managed-agent subtree + a self column for the manager. Cell editor: `is_primary`, `condo_access`, `homes_access`, `buildings_access`, `buildings_mode` (full apa row spec, no fields hidden). Per-row primary-conflict surface (visual indicator before save). Per-row bulk actions (assign-all-to-X, clear-row). Inheritance preview (rows where agent currently inherits from manager are visually distinct from explicit assignments).
+    - **T4c-3**: mobile responsive (matrix → stacked per-agent accordion). Keyboard navigation + ARIA cell semantics. a11y audit. Empty states + loading states.
+
+  - **Files shipped in v14 batch:**
+    - `scripts/r-territory-t4a-2-deploy.js` + 4 created files (page + 2 routes + TerritoryClient component).
+    - `scripts/r-territory-t4a-3-deploy.js` + 5 created/rewritten files (apa-diff + 2 route rewrites + access-resolver rewrite + smoke).
+    - `scripts/r-territory-t4a-3-smoke.ts` (9-test smoke, savepoint-isolated, runs via `npx tsx`).
+    - `scripts/patch-tracker-v14.js` (this patch).
+
+  - **Commits:** `d8ef4c5` (T4a-2 ship), [T4a-3 commit hash to be added on push].
+
+  - **Next:** T4c-1 — backend bulk-assign API + smoke. Recon precedes build (existing matrix patterns inventory + transaction story confirmation: pg.Client in route vs RPC vs best-effort).
 
 - **2026-05-08 v13** — **F-APA-PRIMARY-AUDIT-GAP CLOSED + T4a-1 CLOSED + smoke pattern established.** Pre-T4a-1 coding surfaced a third audit gap parallel to F-APA-UPDATE-AUDIT-GAP (v11): `handle_apa_update`'s early-return for "no routing-affecting changes" silenced both `is_primary` flips AND access-toggle changes (`condo_access` / `homes_access` / `buildings_access` / `buildings_mode`). The audit table's `change_type` CHECK already accepted `'primary_set'`, `'primary_unset'`, `'access_toggle_changed'` — architecture intended these to be tracked; trigger code never wrote them. Closed before T4a-1's UI introduced silent state changes via the new toggle.
 
@@ -455,47 +492,49 @@ T4a is sub-phased per Rule Zero — Comprehensive Work Only. Each sub-phase ship
 - Code smoke 9/9 PASS via `scripts/r-territory-t4a-1-smoke.js` (single-transaction, SAVEPOINT-isolated tests, ROLLBACK at end). Verified: trigger writes `primary_set`/`primary_unset`/`access_toggle_changed` on respective changes; v11 routing-affecting path preserved; early-return preserved on no-op; auto-reassign produces `primary_unset` on displaced agent.
 - Commits: `c85174e` (audit-gap fix) + `167c477` (T4a-1 close + smoke).
 
-**T4a-2: New `/admin-homes/territory` page**
+**T4a-2: New `/admin-homes/territory` page** ✅ CLOSED 2026-05-08 v14
 
-- File created: `app/admin-homes/territory/page.tsx` (server component for initial fetch + client islands for filters / pagination).
-- Per-tenant view scope. Auth pattern mirrors `app/admin-homes/agents/page.tsx`:
-  - `seeAll = user.isPlatformAdmin === true && !user.tenantId`
-  - `scopedTenantId = user.tenantId`
-  - Platform admin without a tenant context gets a tenant-picker; tenant admins see only their own tenant's coverage.
-- Three on-page sections:
-  1. **Coverage table.** For the active tenant, list every geo unit (area / municipality / community / neighbourhood) and show: which agent(s) hold an apa row covering it, which agent is `is_primary`, holes (geos with no apa coverage). Click a row → jumps to per-agent edit at `/admin-homes/agents/[id]`.
-  2. **Audit log viewer.** Paginated table reading from `territory_assignment_changes` for the tenant. Filters: agent, scope, `change_type`, date range. Page size 50; cursor-paginated by `created_at desc`.
-  3. **Stats card.** Total apa rows (active), total primaries set, distinct agents covering territory, holes count.
-- New API routes:
-  - `GET /api/admin-homes/territory/coverage` — aggregated coverage data for the scoped tenant.
-  - `GET /api/admin-homes/territory/audit` — paged audit rows with filter params.
-- Both routes use the established auth pattern: `resolveAdminHomesUser()` → load any target row needed → `can(user.permissions, 'agent.read', { ... })` → if ok, use `createServiceClient()` for DB reads.
-- **Multi-tenant by default** — every query scoped by `scopedTenantId` (or all tenants for platform admin only). No `walliam` or `condoleads` constants. Code must work identically for tenant #2, #50, #1000.
+- New server component `app/admin-homes/territory/page.tsx` (auth + tenant scoping mirrors `agents/page.tsx` pattern). New client component `components/admin-homes/TerritoryClient.tsx` (coverage table + audit log viewer + 5-card stats with scope filter + change_type filter).
+- Two new GET API routes: `/api/admin-homes/territory/coverage` (active APA rows joined with agent + geo names + stats), `/api/admin-homes/territory/audit-log` (TAC rows with limit + change_type + agent_id filters + distinct change_types for filter UI).
+- Per-tenant scoping; platform admin can override via `?tenant_id=...`; cross-tenant access for non-platform users → 400.
+- Commit `d8ef4c5` -- 5 files, 1051 LOC, TSC clean.
 
-**T4a-3: F-APA-DELETE-INSERT-CHURN comprehensive fix**
+**T4a-3: F-APA-DELETE-INSERT-CHURN comprehensive fix** ✅ CLOSED 2026-05-08 v14
 
-- File touched: `app/api/admin-homes/agents/[id]/geo/route.ts` POST.
-- Replace the current `DELETE WHERE agent_id = $1` + `INSERT (all rows)` pattern with a server-side diff:
-  1. Fetch existing rows for this agent (`SELECT * FROM agent_property_access WHERE agent_id = $1 AND is_active = true`).
-  2. Build a key for each row from `(agent_id, scope, area_id, municipality_id, community_id, neighbourhood_id)` — the natural identity of an assignment.
-  3. Compute three sets: `removed` (in existing, not in incoming), `added` (in incoming, not in existing), `modified` (in both, with different access flags / `is_primary` / `buildings_mode`).
-  4. Run only the necessary mutations: DELETE `removed`, INSERT `added`, UPDATE `modified`.
-- Net effect: audit rows in `territory_assignment_changes` reflect actual user intent. Save with one row changed → 1 audit row, not 2N.
-- **Verification step before commit:** smoke a save with no changes → confirm 0 audit rows written. Save with one row added → confirm exactly 1 `assignment_granted` audit row.
+- Server-side diff in apa POST route (`agents/[id]/geo/route.ts`) and tpa POST route (`tenants/[id]/geo/route.ts`). Diff logic extracted to `lib/admin-homes/apa-diff.ts` (`computeApaDiff` + `ApaRow` + `ApaDiff` types).
+- Identity key per row: `(scope, area_id, municipality_id, community_id, neighbourhood_id)`. Diff outcomes: identical → 0 SQL ops; added → INSERT only new rows; removed → DELETE by id only the removed rows; mutated → UPDATE by id only the changed rows.
+- Auto-reassign for primary claims preserved (T4a-1 behavior). Inactive rows now preserved on save (no longer nuked -- behavior improvement).
+- Smoke 9/9 PASS via `scripts/r-territory-t4a-3-smoke.ts` (savepoint-isolated). T5 identical-save delta = 0 audit rows is the headline proof.
 
-**T4a-3b (gated): F-COMPREHENSIVE-RESOLVER-NEIGHBOURHOOD-GAP fix**
+**T4a-3b: F-COMPREHENSIVE-RESOLVER-NEIGHBOURHOOD-GAP fix** ✅ CLOSED 2026-05-08 v14
 
-- **Gate:** at start of T4a-3 coding, run:
-  ```
-  Get-ChildItem -Recurse -Include *.ts,*.tsx -Path app,lib,components |
-    Select-String -Pattern 'resolveAgentAccess|hasComprehensiveAccess' -SimpleMatch
-  ```
-- **If any caller is reached from a public-facing System 2 route** (e.g., a `/comprehensive/*` page or a non-admin API): fix in T4a-3b. File `lib/comprehensive/access-resolver.ts` — add `case 'neighbourhood':` to the switch (neighbourhood-scope rows have `area_id` set and no community link; expand to area + munis + communities of that area, mirroring the area case but skipping the muni-only resolution). File `lib/comprehensive/types.ts` — add `'neighbourhood'` to the `GeoAssignment.scope` union.
-- **If callers are dormant/legacy/test-only**: log F-COMPREHENSIVE-RESOLVER-NEIGHBOURHOOD-GAP as accepted technical debt; no code change in T4a-3b. Decision documented in v13 status log entry.
-- Either way, the investigation completes within this working block per Rule Zero — Nothing Deferred.
+- Caller probe confirmed live: `HomePageComprehensive.tsx` + `HomePageComprehensiveV2.tsx`, both wired from `app/page.tsx` and `app/comprehensive-site/page.tsx`.
+- Added `case 'neighbourhood':` to `resolveAgentAccess` switch in `lib/comprehensive/access-resolver.ts` with parent propagation (matches existing `community` case shape).
+- Tighter neighbourhood-grained listing filter (extending `ResolvedAccess` with `neighbourhoodIds` + downstream filter) deferred to future T4d -- non-regressive, additive.
 
+**T4c-1: Bulk-assign API route + smoke**
 
-### 2. T4c — Manager carving (deferred from T4a, ships immediately after T4a)
+- New route `POST /api/admin-homes/territory/bulk-assign`. Payload: `{ assignments: { [agentId]: ApaRow[] } }`.
+- Per-agent permission gate via `can()` with `agent.write`. Manager must have write on every agent in payload. Out-of-subtree or cross-tenant agent in payload → 403, zero DB writes (atomicity guard).
+- Atomic: single pg.Client transaction wrapping per-agent computeApaDiff + apply. ROLLBACK on any per-agent failure.
+- Auto-reassign primary runs ONCE per (scope, scope_id) pair across the entire payload (not per-agent) to avoid redundant updates and partial-unique-index churn.
+- Smoke (savepoint-isolated): no-change bulk save → 0 audits; cross-tenant attempt → 403 + 0 writes; out-of-subtree attempt → 403 + 0 writes; per-agent mid-payload failure → full rollback verified at row count level.
+
+**T4c-2: Matrix component + page (desktop)**
+
+- New page `/admin-homes/territory/manage`. Server component fetches manager's effective coverage geos (all 4 scopes) + full recursive managed-agent subtree (via `auth.ts` `managedAgentIds`).
+- Matrix component: rows = geos, columns = managed agents + self. Per-cell editor: `is_primary`, `condo_access`, `homes_access`, `buildings_access`, `buildings_mode`.
+- Per-row conflict UX: when two cells in same row both claim primary, visually flag before save (preempts the partial-unique-index rejection from the apa partial unique constraints).
+- Per-row bulk actions: assign-all-to-X, clear-row.
+- Inheritance preview: rows where agent has no explicit apa for that geo show inherited-from-manager state distinctly from explicit rows.
+
+**T4c-3: Mobile + a11y**
+
+- Matrix collapses to stacked per-agent accordion on narrow viewports (each agent = expandable card with their geo rows).
+- Keyboard navigation: arrow keys move focus between cells; Enter toggles primary; space toggles access flags.
+- ARIA cell semantics throughout (table is the natural primitive). Loading states + empty states + error states audited.
+
+**T4b: Public-facing UI### 2. T4c — Manager carving (deferred from T4a, ships immediately after T4a)
 
 Currently a managed agent without manual apa rows automatically inherits their manager's territory via `lib/utils/territory.ts` (manual → inherited from manager → inherited from tenant pool). T4c adds the **explicit** manager-driven distribution: a manager opens a UI and explicitly carves their territory into specific managed agents (creating manual rows that override the implicit inheritance).
 
