@@ -26,7 +26,7 @@ Sister trackers (execution detail) are pointed to in Section 4. This tracker doe
 | User Management (profiles, sessions, tenant link) | ✅ | ✅ | 🟡 | 🟡 | `user_profiles` (96 rows, no `tenant_id` — global metadata). `tenant_users` (46 rows, **9 active callers**: `joinTenant.ts`, `RegisterModal.tsx`, welcome + low-credit emails, `assign-user-agent`, `smoke-w-tenant-auth`, 3 migrations) — per-tenant consent + agent assignment + email throttle. `chat_sessions` (2096 rows). `user_credit_overrides` (11 rows, `tenant_id NOT NULL`). 50 pre-W-TENANT-AUTH legacy users have no `tenant_users` row (52% of profiles). Auth helper: `lib/admin-homes/auth.ts` (R3.2.1). |
 | Credit System (pools, gates, overrides, logging) | ✅ | ✅ | 🟡 | ✅ | `lib/credits/resolveUserLimits.ts` + `components/credits/CreditSessionContext.tsx` + `app/charlie/hooks/useCharlie.ts`. `chat_messages_v2` writes from 2 sites in `/api/charlie/route.ts` — 64 rows logged Apr 29 → May 2 (Chunk 6 working). **Atomic counter SHIPPED** as W-CREDIT-VERIFY D0 (`increment_chat_session_counter` + `decrement_chat_session_counter`, parameterized whitelist, SECURITY DEFINER, UPDATE…RETURNING row-lock). v3 claim retired — grep used wrong name. **Residual:** pre-increment gate uses stale msgUsed; concurrent race can soft-exceed cap by 1–2 — P1-6. **P0-3 ✅**: logging gap verified as no-traffic, not a code break (`chat_sessions` shows 0 activity post-May-2 11:00 UTC, aligned with last logged row at May 2 10:42). 2 stale `useCharlie.ts` backups on disk. |
 | Dashboard UI (/admin-homes pages + components) | ✅ | 🟡 | ❌ | 🟡 | **10 pages, 16 components.** Substantial: `SettingsClient` 35.8KB, `BulkSyncClient` 27.2KB + `CommandCenter` 25.4KB, `AdminHomesLeadsClient` 26.9KB, `EditTenantModal` 34.4KB. Per Phase 3 spec sidebar has 9 nav items; **6 pages shipped (Dashboard, Leads, Users, Agents, Settings, Tenants); 3 missing (Territory, Approvals, Tickets)**. AgentOrgChart wired at `/admin-homes/agents/tree`. Modal layer kept during deprecation window per Phase 3.3 spec. **Sidebar role-gating logic not verified from grep — needs file inspection** (per Phase 3.2 spec each role should see different nav). No UI smoke tests located. R5–R6 delegation UI not shipped. |
-| Territory (geo cascade, building/listing assign) | 🟡 | 🟡 | ❌ | 🟡 | **4 tables exist, schema-ready but data-empty.** `agent_property_access` (1 row, 1 muni-scoped). `agent_geo_buildings` (9 rows, 1 agent, 9 buildings) schema is **flat `(agent_id, building_id)` — NOT junction-to-`assignment_id` as implementation plan described**. `tenant_property_access` (0 rows = full access per model). `agent_listing_assignments` (0 rows). RPC `resolve_agent_for_context` is the single resolver, **9 callers** across charlie/walliam/lib. 4 section components embedded in agent + tenant workspaces (March 2026). **No `/admin-homes/territory` page** (Phase 3 nav gap). **`agent_property_access.tenant_id` NULLABLE** (multi-tenant gap at DB level). No territory smoke tests. No migration files matching territory/geo/property_access/building keywords — tables created out-of-band. |
+| Territory (geo cascade, building/listing assign) | ✅ | ✅ | ✅ | ✅ | **W-TERRITORY workstream CLOSED 2026-05-09 v21.** Full system shipped: `agent_property_access` (apa) with `is_primary` flag + 4 partial unique indexes + tenant_id NOT NULL (T2a); `agent_geo_buildings` flat `(agent_id, building_id)` schema confirmed-final (OD-1 lock); 4 distribution functions + 3 apa triggers with recursion guard (T3b-B/C); `mls_listings.assigned_agent_id` cache + autonomous reroll (T3b-A); 3 resolver functions -- routing (`resolve_agent_for_context`), display (`resolve_display_agent_for_context`, is_selling-aware), single-scope (`resolve_geo_primary`); 10 callers wired through `p_neighbourhood_id` (T3b-D `fd3cbcf`). **Admin UI**: `/admin-homes/territory` page with coverage table + audit log + cross-agent matrix component (T4a-2 `d8ef4c5`, T4c-2 v17, T4c-3 `d18578b`/`eac3afa`/`00a312b`). **Public UI**: `WalliamAgentCard` wired across 8 callers using display resolver (T4b commit `1bfdcfa`). **Audit coverage**: `territory_assignment_changes` actively written for every state change (post-F-APA-UPDATE-AUDIT-GAP v11 + F-APA-PRIMARY-AUDIT-GAP `c85174e`). **T6 smoke**: 6/6 core + 3/3 race-safety + 3/3 multi-level cascade + is_active flip PASS. Conditional-defer findings open (F-DISTRIBUTE-AUDIT-STATE-INCOMPLETE, F-INHERITANCE-DEPTH-1, F-AREA-MANAGER-SUBTREE-DEPTH-INCONSISTENCY, F-RESET-TO-INHERITED-BUILDER-DEPENDENCY) -- accepted as deferred per dedicated tenant-onboarding triggers. T2b percentage mode remains optional/parallel. |
 | Auth & Sessions (gates, anonymous→registered) | ✅ | ✅ | ✅ | ✅ | W-RECOVERY A1 auth gate on `/api/charlie/route.ts` + Wave 1–2 routes. **P0-1 SHIPPED 2026-05-05 commit `6dee05f`** — anonymous session creation closed in `walliam/charlie/session/route.ts` (read-only branch extended to cover `!userId`; create branch defensive `userId` guard). SQL acceptance post-ship: 0 anonymous rows. 51 legacy anonymous rows remain in DB (P2-1 cleanup). `tenant_users` membership wired via `RegisterModal` + `joinTenant.ts`. W-TENANT-AUTH Phase 4b 8/8. |
 | Multi-tenant isolation (tenant_id propagation) | ✅ | ✅ | ✅ | — | `tenant_id NOT NULL` on `agents`, `leads`, `user_credit_overrides`, `tenant_users`. `chat_sessions.tenant_id` nullable but **all 48 NULL rows are pre-W-RECOVERY (Apr 28); 0 NULL post-recovery** — historical hygiene, not active leak. By design: `user_profiles` has no `tenant_id` (global metadata; per-tenant membership lives in `tenant_users`). W-TENANT-AUTH Phase 4b 8/8. |
 
@@ -72,14 +72,14 @@ Pairs that matter for launch readiness. Each entry: does A correctly consume B? 
 
 ### Territory as provider
 
-- **resolve_agent_for_context → 9 callers**: ✅ charlie session/lead/appointment, walliam session/contact/estimator/assign-user-agent/resolve-agent, lib leads, is-walliam.
-- **Territory data → resolution**: 🟡 1 muni-scoped assignment + 9 building picks (1 agent). Cascade is mostly fall-through to tenant default.
-- **Territory → UI**: ❌ No `/admin-homes/territory` page; configuration is fragmented across 4 embedded section components.
+- **resolve_agent_for_context → 10 callers**: ✅ charlie session/lead/appointment, walliam session/contact/estimator/assign-user-agent/resolve-agent, lib leads, is-walliam, app/actions/createLead. All callers thread `p_neighbourhood_id` post-T3b-D. Public card now uses `resolve_display_agent_for_context` (is_selling-aware) per T4b v20.
+- **Territory data → resolution**: ✅ Cascade resolves end-to-end via 10-step routing chain + 4-step display chain. Autonomous reroll on apa state change via T3b-C triggers. Multi-level cascade verified (area/community/neighbourhood) per T6-followup-B 3/3 PASS.
+- **Territory → UI**: ✅ Admin page at `/admin-homes/territory` shipped (T4a-2 `d8ef4c5`) with coverage table + audit log viewer + 5-card stats + cross-agent matrix component (T4c-2 v17 / T4c-3 `00a312b`). Public geo cards across 8 callers (Area / Muni / Community / Building / 3 property pages + Toronto neighbourhood) wired through display resolver (T4b `1bfdcfa`).
 
 ### Dashboard UI as provider
 
 - **Sidebar → role-gated nav**: ❓ logic not yet visible from grep — needs file inspection. Per Phase 3.2 spec each role should see different items.
-- **Pages → /admin-homes nav spec**: 🟡 6/9 nav items shipped. Missing: Territory, Approvals, Tickets.
+- **Pages → /admin-homes nav spec**: 🟡 7/9 nav items shipped (Territory ✅ added via T4a-2 `d8ef4c5`). Missing: Approvals, Tickets.
 
 ---
 
@@ -126,9 +126,9 @@ Concrete items required to ship to first paid customer (P0), to scale beyond 3 c
 **P1-2. Sidebar role-gating verification**
 - Verify: read `components/admin-homes/AdminHomesSidebar.tsx`; confirm role checks gate every nav item per Phase 3.2 spec.
 
-**P1-3. Territory configurability**
-- Three sub-items: (a) build `/admin-homes/territory` page; (b) make `agent_property_access.tenant_id` NOT NULL (after backfill from `agents.tenant_id`); (c) decide whether `agent_geo_buildings` migrates to `(assignment_id, building_id)` junction or stays flat.
-- Verify: tenant onboarding can configure territory end-to-end without DB writes.
+**P1-3. Territory configurability** ✅ CLOSED 2026-05-09 via W-TERRITORY workstream.
+- Sub-items resolved: (a) `/admin-homes/territory` page shipped (T4a-2 commit `d8ef4c5`) with coverage + audit + matrix; (b) `agent_property_access.tenant_id NOT NULL` shipped via T2a; (c) `agent_geo_buildings` flat `(agent_id, building_id)` schema confirmed-final per OD-1 lock -- no junction migration needed.
+- Verified: tenant onboarding can configure territory end-to-end via the UI; no DB-level intervention required. T6 smoke matrix 6/6 + race-safety 3/3 + multi-level cascade 3/3 PASS.
 
 **P1-4. Tenant onboarding — Phase 3.7**
 - Verify: platform admin can onboard, suspend, reactivate, terminate via `/platform` UI.
@@ -180,13 +180,14 @@ Pointers to per-ticket trackers on disk. Each one is the implementation detail; 
 | W-TENANT-AUTH | CLOSED @ `7dd818d` | 50 legacy users without `tenant_users` (P2-2) |
 | W-ADMIN-AUTH-LOCKDOWN (sister ticket) | CLOSED 2026-05-05 (commit `87b9b53`) | none — closed via P0-5 |
 | W-MULTITENANT (defined Apr 28, parked) | OPEN | Wide audit, post-launch |
-| Territory ticket (not yet started) | NOT STARTED | Per W-ROLES-DELEGATION model: "Defaults cascade. Assignments override. Leads follow ownership." Schema 70%, UI 0%. |
+| `docs/W-TERRITORY-TRACKER.md` | CLOSED 2026-05-09 (T4b `1bfdcfa`; T4c-3 `00a312b`; T4a-2 `d8ef4c5`; T4a-1 `167c477`; F-APA-PRIMARY-AUDIT-GAP `c85174e`; T3b-D `fd3cbcf`) | Conditional-defer findings: F-DISTRIBUTE-AUDIT-STATE-INCOMPLETE, F-INHERITANCE-DEPTH-1, F-AREA-MANAGER-SUBTREE-DEPTH-INCONSISTENCY, F-RESET-TO-INHERITED-BUILDER-DEPENDENCY. T2b (percentage mode) remains optional/parallel. |
 
 ### Closed tickets (reference only)
 - W-HIERARCHY (2026-05-03)
 - W-ROLES-DELEGATION R1–R4 (2026-05-04)
 - W-TENANT-AUTH Phase 4b (8/8 smoke per W-CREDIT-VERIFY)
 - W-RECOVERY A1 + Wave 1–2 + Chunk 6 logging confirmed
+- W-TERRITORY (2026-05-09)
 
 ---
 
@@ -211,9 +212,11 @@ Pointers to per-ticket trackers on disk. Each one is the implementation detail; 
 
 **P0 TIER CLOSED 2026-05-05.** All five P0 items (P0-1 through P0-5) shipped in a single working block.
 
+- **2026-05-09 v13** — **W-TERRITORY WORKSTREAM CLOSED.** All seven phases (T1 decision lock, T2a schema, T3a-D resolver+distribution+triggers+caller updates, T4a-1/2/3/3b admin UI, T4c-1/2/3 manager carving, T4b public geo card, T6 smoke + followups, T7 close) shipped. Database / triggers / resolvers / race safety / audit coverage / admin UI / public UI layers all functionally complete. Section 1 Territory row flipped to ✅/✅/✅/✅; Section 2 "Territory as provider" subsection all three lines flipped (10 callers, autonomous resolution, public + admin UI shipped); Section 2 nav spec 6/9 -> 7/9 (Territory shipped, Approvals + Tickets remain); Section 3 P1-3 marked CLOSED with sub-item resolution; Section 4 "Territory ticket (not yet started)" row replaced with `docs/W-TERRITORY-TRACKER.md | CLOSED 2026-05-09` + commit hashes; Closed tickets reference list updated; bottom backlog line flipped. Major milestone commits: T4b `1bfdcfa`; T4c-3 `00a312b`; T4a-2 `d8ef4c5`; T4a-1 `167c477`; F-APA-PRIMARY-AUDIT-GAP `c85174e`; T3b-D `fd3cbcf`. Conditional-defer findings carried forward (F-DISTRIBUTE-AUDIT-STATE-INCOMPLETE, F-INHERITANCE-DEPTH-1, F-AREA-MANAGER-SUBTREE-DEPTH-INCONSISTENCY, F-RESET-TO-INHERITED-BUILDER-DEPENDENCY). T2b (percentage mode) remains optional/parallel and unscoped. **Tenant-2 onboarding now unblocked end-to-end.**
+
 **Post-P0 backlog** (not blocking launch — see Section 3 P1/P2 + Section 4 trackers for detail):
 - W-ROLES-DELEGATION R5 (delegation CRUD), R6 (workspace UI), R8 (full smoke matrix) — deferred per cohesion review.
 - W-HIERARCHY: ✅ CLOSED 2026-05-03 (v17 FINAL — all phases H1..H6 done; production walliam.ca on full Lead+Email contract).
 - W-LEADS-EMAIL: F55 / P2-4 — replace remaining hardcoded admin email literals with env var (hygiene).
-- W-TERRITORY: largest open feature; required before tenant-2 onboarding.
+- W-TERRITORY: ✅ CLOSED 2026-05-09 (v21 FINAL -- all 7 phases T1-T7 shipped; tracker `docs/W-TERRITORY-TRACKER.md` is now reference-only). Tenant-2 onboarding unblocked.
 - Scripts cleanup: `Remove-Item -Recurse -Force scripts` after final verification.
