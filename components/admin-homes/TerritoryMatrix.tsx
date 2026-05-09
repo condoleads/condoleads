@@ -22,7 +22,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { Star, Check, AlertCircle, Save as SaveIcon } from 'lucide-react'
+import { Star, Check, AlertCircle, Save as SaveIcon, Lock, MoreVertical } from 'lucide-react'
 import {
   type TerritoryMatrix as TerritoryMatrixData,
   type MatrixCell,
@@ -59,6 +59,7 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<ConflictInfo[] | null>(null)
   const [openCellKey, setOpenCellKey] = useState<string | null>(null)
+  const [openKebabAgentId, setOpenKebabAgentId] = useState<string | null>(null)
 
   // ---- Fetch matrix on mount + scope change + tenant change ----
   useEffect(() => {
@@ -134,6 +135,57 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
     },
     [getCell]
   )
+
+  // ---- Bulk row actions (kebab menu) ----
+  const handleSetAllPrimary = useCallback((agentId: string) => {
+    if (!matrix) return
+    const updates: Record<string, MatrixCell | null> = {}
+    for (const col of matrix.columns) {
+      const key = cellKey(agentId, col.geo_id)
+      const current = getCell(agentId, col.geo_id)
+      if (!current) continue
+      if (current.presence === 'explicit' && current.is_primary) continue
+      updates[key] = { ...current, presence: 'explicit' as const, is_primary: true }
+    }
+    if (Object.keys(updates).length === 0) return
+    setEditedCells(prev => ({ ...prev, ...updates }))
+    setEditedAgentIds(prev => new Set(prev).add(agentId))
+  }, [matrix, getCell])
+
+  const handleClearRow = useCallback((agentId: string) => {
+    if (!matrix) return
+    const updates: Record<string, MatrixCell | null> = {}
+    for (const col of matrix.columns) {
+      const key = cellKey(agentId, col.geo_id)
+      const current = getCell(agentId, col.geo_id)
+      if (current?.presence === 'explicit') updates[key] = null
+    }
+    if (Object.keys(updates).length === 0) return
+    setEditedCells(prev => ({ ...prev, ...updates }))
+    setEditedAgentIds(prev => new Set(prev).add(agentId))
+  }, [matrix, getCell])
+
+  const handleCopyFromAgent = useCallback((targetAgentId: string, sourceAgentId: string) => {
+    if (!matrix) return
+    const updates: Record<string, MatrixCell | null> = {}
+    for (const col of matrix.columns) {
+      const sourceCell = getCell(sourceAgentId, col.geo_id)
+      if (!sourceCell || sourceCell.presence !== 'explicit') continue
+      const targetKey = cellKey(targetAgentId, col.geo_id)
+      updates[targetKey] = {
+        presence: 'explicit' as const,
+        apa_id: null,
+        is_primary: false,
+        condo_access: sourceCell.condo_access,
+        homes_access: sourceCell.homes_access,
+        buildings_access: sourceCell.buildings_access,
+        buildings_mode: sourceCell.buildings_mode,
+      }
+    }
+    if (Object.keys(updates).length === 0) return
+    setEditedCells(prev => ({ ...prev, ...updates }))
+    setEditedAgentIds(prev => new Set(prev).add(targetAgentId))
+  }, [matrix, getCell])
 
   // ---- Save lifecycle ----
   const pendingCount = Object.keys(editedCells).length
@@ -292,13 +344,42 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
               {matrix.rows.map(row => (
                 <tr key={row.agent_id} className="border-t">
                   <td className="p-2 sticky left-0 bg-white z-10 align-top">
-                    <div className="font-medium">{row.agent_name}</div>
-                    <div className="text-xs text-gray-500">
-                      {row.agent_role || 'agent'}{row.is_self ? ' (you)' : ''}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium">{row.agent_name}</div>
+                        <div className="text-xs text-gray-500">
+                          {row.agent_role || 'agent'}{row.is_self ? ' (you)' : ''}
+                        </div>
+                        {!row.can_write && (
+                          <div className="text-[10px] text-gray-400 mt-0.5">read-only</div>
+                        )}
+                      </div>
+                      {row.can_write && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setOpenKebabAgentId(openKebabAgentId === row.agent_id ? null : row.agent_id)}
+                            aria-label={`Bulk actions for ${row.agent_name}`}
+                            aria-haspopup="menu"
+                            aria-expanded={openKebabAgentId === row.agent_id}
+                            className="p-1.5 -mr-1 text-gray-400 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded"
+                          >
+                            <MoreVertical className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                          {openKebabAgentId === row.agent_id && (
+                            <KebabMenu
+                              agentId={row.agent_id}
+                              agentName={row.agent_name}
+                              matrix={matrix}
+                              onSetAllPrimary={() => handleSetAllPrimary(row.agent_id)}
+                              onClearRow={() => handleClearRow(row.agent_id)}
+                              onCopyFromAgent={(sourceId) => handleCopyFromAgent(row.agent_id, sourceId)}
+                              onClose={() => setOpenKebabAgentId(null)}
+                            />
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {!row.can_write && (
-                      <div className="text-[10px] text-gray-400 mt-0.5">read-only</div>
-                    )}
                   </td>
                   {matrix.columns.map(col => {
                     const ck = cellKey(row.agent_id, col.geo_id)
@@ -388,33 +469,38 @@ function CellButton({
   onUpdate,
 }: CellButtonProps) {
   const isExplicit = cell?.presence === 'explicit'
-  const isPrimary = isExplicit && cell?.is_primary === true
+  const isInherited = cell?.presence === 'inherited'
+  const isPrimary = (isExplicit || isInherited) && cell?.is_primary === true
+  const inheritedFrom = isInherited ? (cell?.inherited_from_agent_name ?? 'manager') : null
   const buttonRef = useRef<HTMLButtonElement>(null)
 
   // Compose a11y label by state.
   const stateLabel = !canWrite
-    ? `${isExplicit ? (isPrimary ? 'primary' : 'assigned') : 'unassigned'}, read-only`
+    ? `${isExplicit ? (isPrimary ? 'primary' : 'assigned') : isInherited ? `inherited from ${inheritedFrom}` : 'unassigned'}, read-only`
     : isConflict
       ? 'primary conflict, click to edit'
       : isExplicit
         ? `${isPrimary ? 'primary' : 'assigned'}, click to edit access flags`
-        : 'unassigned, click to assign'
+        : isInherited
+          ? `inherited from ${inheritedFrom}${isPrimary ? ' (primary)' : ''}, click to override`
+          : 'unassigned, click to assign'
   const ariaLabel = `${agentName}, ${geoName}, ${stateLabel}`
 
-  // Compose visual classes by precedence: conflict > edited > explicit > empty,
+  // Compose visual classes by precedence: conflict > edited > explicit > inherited > empty,
   // dimmed if !canWrite.
   let bg = 'bg-gray-50 hover:bg-blue-50'
+  if (isInherited) bg = 'bg-gray-100 hover:bg-gray-200'
   if (isExplicit) bg = 'bg-blue-100 hover:bg-blue-200'
   if (isEdited) bg = 'bg-yellow-100 border border-yellow-400 hover:bg-yellow-200'
   if (isConflict) bg = 'bg-red-200 border-2 border-red-500 ring-2 ring-red-300'
   if (!canWrite) {
-    bg = isExplicit ? 'bg-gray-100' : 'bg-gray-50 opacity-60'
+    bg = isExplicit ? 'bg-gray-100' : isInherited ? 'bg-gray-100 opacity-80' : 'bg-gray-50 opacity-60'
   }
 
   const handleClick = () => {
     if (!canWrite) return
-    if (isExplicit) {
-      // Explicit cell -> open popover for editing access flags / removing.
+    if (isExplicit || isInherited) {
+      // Explicit -> edit; inherited -> open popover (editing creates an override).
       onOpen()
     } else {
       // Empty cell -> toggle to explicit (default state).
@@ -437,21 +523,31 @@ function CellButton({
         disabled={!canWrite}
         aria-label={ariaLabel}
         aria-pressed={isExplicit}
-        aria-haspopup={isExplicit ? 'dialog' : undefined}
-        aria-expanded={isExplicit ? isOpen : undefined}
-        className={`w-12 h-10 sm:h-7 rounded ${bg} flex items-center justify-center transition-colors disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1`}
+        aria-haspopup={(isExplicit || isInherited) ? 'dialog' : undefined}
+        aria-expanded={(isExplicit || isInherited) ? isOpen : undefined}
+        className={`relative w-12 h-10 sm:h-7 rounded ${bg} flex items-center justify-center transition-colors disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1`}
         title={
           !canWrite
             ? 'You do not have permission to edit this row'
             : isExplicit
               ? `Edit (primary: ${isPrimary ? 'yes' : 'no'})`
-              : 'Click to assign'
+              : isInherited
+                ? `Inherited from ${inheritedFrom}${isPrimary ? ' (primary)' : ''} -- click to override`
+                : 'Click to assign'
         }
       >
+        {isInherited && (
+          <Lock className="absolute top-0.5 right-0.5 w-2.5 h-2.5 text-gray-400" aria-hidden="true" />
+        )}
         {isExplicit && (
           isPrimary
             ? <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
             : <Check className="w-3 h-3 text-blue-700" />
+        )}
+        {isInherited && (
+          isPrimary
+            ? <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
+            : <Check className="w-3 h-3 text-gray-500" />
         )}
       </button>
       {isOpen && cell && (
@@ -536,6 +632,15 @@ function CellEditor({ cell, onUpdate, onRemove, onClose }: CellEditorProps) {
       className="absolute top-full left-0 z-50 bg-white border-2 border-gray-300 rounded shadow-lg p-3 min-w-[220px] mt-1"
       onClick={e => e.stopPropagation()}
     >
+      {cell.presence === 'inherited' && (
+        <div className="bg-gray-50 border-b border-gray-200 -mt-3 -mx-3 mb-3 px-3 py-2 text-xs text-gray-700 flex items-center gap-1.5 rounded-t">
+          <Lock className="w-3 h-3 text-gray-500" aria-hidden="true" />
+          <span>
+            Inherited from <span className="font-medium">{cell.inherited_from_agent_name ?? 'manager'}</span>
+            <span className="text-gray-400"> -- editing creates an override</span>
+          </span>
+        </div>
+      )}
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
           <input
@@ -587,13 +692,17 @@ function CellEditor({ cell, onUpdate, onRemove, onClose }: CellEditorProps) {
         </div>
       </div>
       <div className="flex items-center justify-between mt-3 pt-2 border-t">
-        <button
-          type="button"
-          onClick={onRemove}
-          className="text-xs text-red-600 hover:text-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 rounded"
-        >
-          Remove assignment
-        </button>
+        {cell.presence === 'explicit' ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-xs text-red-600 hover:text-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 rounded"
+          >
+            Remove assignment
+          </button>
+        ) : (
+          <span aria-hidden="true" />
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -602,6 +711,125 @@ function CellEditor({ cell, onUpdate, onRemove, onClose }: CellEditorProps) {
           Close
         </button>
       </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// KebabMenu -- per-row bulk actions dropdown
+// ============================================================================
+
+interface KebabMenuProps {
+  agentId: string
+  agentName: string
+  matrix: TerritoryMatrixData
+  onSetAllPrimary: () => void
+  onClearRow: () => void
+  onCopyFromAgent: (sourceAgentId: string) => void
+  onClose: () => void
+}
+
+function KebabMenu({
+  agentId,
+  agentName,
+  matrix,
+  onSetAllPrimary,
+  onClearRow,
+  onCopyFromAgent,
+  onClose,
+}: KebabMenuProps) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Initial focus on first menu item (mount only).
+  useEffect(() => {
+    const first = ref.current?.querySelector<HTMLElement>('button')
+    first?.focus()
+  }, [])
+
+  // ESC closes; Tab/Shift+Tab traps focus inside the menu.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+      if (e.key === 'Tab' && ref.current) {
+        const focusables = ref.current.querySelectorAll<HTMLElement>('button')
+        if (focusables.length === 0) return
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+        const active = document.activeElement
+        if (e.shiftKey && active === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  // Click-outside closes.
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [onClose])
+
+  const otherAgents = matrix.rows.filter(r => r.agent_id !== agentId)
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      aria-label={`Bulk actions for ${agentName}`}
+      className="absolute right-0 top-full z-30 mt-1 bg-white border border-gray-200 rounded shadow-lg min-w-[200px] py-1 max-h-[60vh] overflow-y-auto"
+      onClick={e => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => { onSetAllPrimary(); onClose() }}
+        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus-visible:bg-blue-50"
+      >
+        Set all primary
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => { onClearRow(); onClose() }}
+        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus-visible:bg-blue-50 text-red-600"
+      >
+        Clear row
+      </button>
+      {otherAgents.length > 0 && (
+        <>
+          <div className="border-t border-gray-200 my-1" role="separator" />
+          <div className="px-3 py-1 text-xs text-gray-500 font-medium uppercase tracking-wider">
+            Copy from
+          </div>
+          {otherAgents.map(other => (
+            <button
+              type="button"
+              role="menuitem"
+              key={other.agent_id}
+              onClick={() => { onCopyFromAgent(other.agent_id); onClose() }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 focus:outline-none focus-visible:bg-blue-50"
+            >
+              {other.agent_name}
+              {other.agent_role && (
+                <span className="text-xs text-gray-400 ml-1">({other.agent_role})</span>
+              )}
+            </button>
+          ))}
+        </>
+      )}
     </div>
   )
 }

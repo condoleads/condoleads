@@ -165,6 +165,52 @@ export async function GET(request: NextRequest) {
   }
   for (const id of agentIds) if (!apaRowsByAgent[id]) apaRowsByAgent[id] = []
 
+  // ---- 7b. Fetch parent agent names + parent APA rows (depth-1 inheritance walk) ----
+  // Per W-TERRITORY v18 design lock Q3=1 + F-INHERITANCE-DEPTH-1: each managed
+  // agent's matrix cells inherit from the agent's parent (depth-1 only -- mirrors
+  // the per-agent page pattern in app/admin-homes/agents/[id]/page.tsx).
+  const distinctParentIds = Array.from(
+    new Set(agents.map(a => a.parent_id).filter((x): x is string => x !== null))
+  )
+
+  const inheritedRowsByAgent: Record<string, ApaRow[]> = {}
+  const inheritedFromNamesByAgent: Record<string, string> = {}
+
+  if (distinctParentIds.length > 0) {
+    const [parentsRes, parentApaRes] = await Promise.all([
+      supabase
+        .from('agents')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .in('id', distinctParentIds),
+      supabase
+        .from('agent_property_access')
+        .select('id, agent_id, tenant_id, scope, area_id, municipality_id, community_id, neighbourhood_id, is_primary, is_active, condo_access, homes_access, buildings_access, buildings_mode')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .in('agent_id', distinctParentIds),
+    ])
+    if (parentsRes.error) return NextResponse.json({ error: parentsRes.error.message }, { status: 500 })
+    if (parentApaRes.error) return NextResponse.json({ error: parentApaRes.error.message }, { status: 500 })
+
+    const parentNamesById = new Map<string, string>(
+      (parentsRes.data || []).map((p: any) => [p.id, p.name as string])
+    )
+    const parentApaByParent: Record<string, ApaRow[]> = {}
+    for (const r of (parentApaRes.data || []) as ApaRow[]) {
+      const arr = parentApaByParent[r.agent_id] || []
+      arr.push(r)
+      parentApaByParent[r.agent_id] = arr
+    }
+
+    for (const a of agents) {
+      if (!a.parent_id) continue
+      inheritedRowsByAgent[a.id] = parentApaByParent[a.parent_id] || []
+      const pname = parentNamesById.get(a.parent_id)
+      if (pname) inheritedFromNamesByAgent[a.id] = pname
+    }
+  }
+
   // ---- 8. Compute tenant footprint at chosen scope ----
   const footprintGeoIds = new Set<string>()
   for (const r of apaRows) {
@@ -272,6 +318,8 @@ export async function GET(request: NextRequest) {
     geos,
     apaRowsByAgent,
     writeDecisions,
+    inheritedRowsByAgent,
+    inheritedFromNamesByAgent,
   })
 
   return NextResponse.json({ tenant_id: tenantId, scope, matrix })

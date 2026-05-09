@@ -23,12 +23,15 @@
 //   Q3 = 1: explicit Save button; one POST commits the whole batch atomically.
 //   Q4 = 1: matrix lives in a tab inside TerritoryClient alongside Coverage + Audit.
 //
-// SCOPE NOT YET COVERED (deferred to T4c-3 or follow-ups)
-//   - Inheritance preview (manager-wider-scope auto-covers managed agents).
-//   - Mobile responsive layout + a11y polish.
-//   - Bulk row actions ("apply this row to all communities in this muni").
-//   - Cross-agent primary conflict pre-check at edit time (currently surfaces
-//     server-side via the bulk-assign 400 response on Save).
+// SCOPE EXTENSIONS (post-v17)
+//   T4c-3 Phase 1: mobile responsive layout (component-only).
+//   T4c-3 Phase 2: a11y basic floor (component-only).
+//   T4c-3 Phase 3: inheritance preview (THIS FILE -- adds 'inherited' presence
+//     value + inheritance-fetch contract; serializer auto-excludes inherited
+//     cells via existing presence === 'explicit' filter).
+//   Still deferred: bulk row actions (T4c-3 Phase 4); cross-agent primary
+//     conflict pre-check at edit time (currently surfaces server-side via
+//     the bulk-assign 400 response on Save).
 
 import type { DbRole } from '@/lib/admin-homes/permissions'
 import type { ApaRow } from '@/lib/admin-homes/apa-diff'
@@ -68,17 +71,25 @@ export interface MatrixGeoColumn {
 /**
  * Cell state for an (agent, geo) pair at the matrix's scope.
  * `presence: 'empty'` is implicit for missing keys -- the cells map stores
- * only explicit assignments. Inheritance is intentionally NOT modelled here
- * (T4c-3 scope).
+ * only explicit assignments and inherited cells.
+ *
+ * 'explicit' = this agent's own active APA row at (scope, geo).
+ * 'inherited' = this agent's parent has an active APA row at (scope, geo)
+ *   AND this agent has no explicit row there. Inherited cells are read-through
+ *   visibility only; the serializer filters them out via presence === 'explicit'
+ *   so a Save never persists them as the agent's own rows. Editing an inherited
+ *   cell flips it to 'explicit' (creating an override).
  */
 export interface MatrixCell {
-  presence: 'explicit'
+  presence: 'explicit' | 'inherited'
   apa_id: string | null
   is_primary: boolean
   condo_access: boolean
   homes_access: boolean
   buildings_access: boolean
   buildings_mode: string
+  inherited_from_agent_id?: string | null
+  inherited_from_agent_name?: string | null
 }
 
 /**
@@ -133,6 +144,8 @@ export interface MatrixBuildInputs {
   }>
   apaRowsByAgent: Record<string, ApaRow[]>
   writeDecisions: Record<string, boolean>
+  inheritedRowsByAgent?: Record<string, ApaRow[]>
+  inheritedFromNamesByAgent?: Record<string, string>
 }
 
 /**
@@ -276,6 +289,38 @@ export function buildTerritoryMatrix(input: MatrixBuildInputs): TerritoryMatrix 
     }
 
     preservedRowsByAgent[agentId] = preserved
+  }
+
+  // Process inherited cells (depth-1 parent walk per F-INHERITANCE-DEPTH-1):
+  // for each authorized agent with parent APA rows at the chosen scope, fill
+  // in cells where the agent has no explicit row. Explicit always wins.
+  const inheritedByAgent = input.inheritedRowsByAgent || {}
+  const inheritedNamesByAgent = input.inheritedFromNamesByAgent || {}
+
+  for (const agent of input.agents) {
+    if (!agent.parent_id) continue
+    const inheritedApa = inheritedByAgent[agent.id] || []
+    const parentName = inheritedNamesByAgent[agent.id] ?? null
+
+    for (const r of inheritedApa) {
+      if (r.scope !== input.scope) continue
+      const geoId = scopeColumnId(r, input.scope)
+      if (!geoId) continue
+      const key = agent.id + '|' + geoId
+      if (cells[key]) continue // explicit always wins
+
+      cells[key] = {
+        presence: 'inherited',
+        apa_id: r.id ?? null,
+        is_primary: r.is_primary,
+        condo_access: r.condo_access,
+        homes_access: r.homes_access,
+        buildings_access: r.buildings_access,
+        buildings_mode: r.buildings_mode,
+        inherited_from_agent_id: agent.parent_id,
+        inherited_from_agent_name: parentName,
+      }
+    }
   }
 
   return {

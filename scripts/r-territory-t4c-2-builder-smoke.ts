@@ -15,6 +15,9 @@
 //   T7 -- untouched agents are excluded from the payload (editedAgentIds gates inclusion)
 //   T8 -- round-trip: build -> serialize unchanged -> payload contains all original rows
 //         (regression sentinel: catches accidental other-scope-row deletion)
+//   T9 -- inheritance: inherited cells appear with presence='inherited'; explicit
+//         beats inherited at same key; serializer emits ZERO inherited rows in
+//         payload (regression sentinel: catches accidental over-serialization).
 
 import {
   buildTerritoryMatrix,
@@ -306,6 +309,65 @@ function inputs(o: Partial<MatrixBuildInputs> = {}): MatrixBuildInputs {
       muni?.municipality_id === M1 && muni?.is_primary === true &&
       area?.area_id === AREA1 && area?.buildings_mode === 'whitelist',
     detail: `rows=${rows.length}, c1.primary=${c1?.is_primary}, c2.primary=${c2?.is_primary} c2.condo=${c2?.condo_access}, muni.id=${muni?.municipality_id} muni.primary=${muni?.is_primary}, area.id=${area?.area_id} area.mode=${area?.buildings_mode}`,
+  })
+}
+
+// ============================================================================
+// T9: inheritance preview (regression sentinel + visibility check)
+// ============================================================================
+// Inherited cells appear with presence='inherited'. Explicit ALWAYS wins at
+// the same key. The serializer emits zero inherited rows in the payload
+// (regression sentinel: any accidental over-serialization would duplicate the
+// parent's APA rows onto the managed agent's record on next Save).
+{
+  // A2 is managed by A1. Parent A1 has 2 community APA rows (C1 primary, C2
+  // condo-disabled). A2 has its own explicit row at C1 only -- which must beat
+  // the inherited row at the same (A2, C1) key. C2 falls through to inherited.
+  const inheritedA2: ApaRow[] = [
+    apa({ id: 'pr1', agent_id: A1, scope: 'community', community_id: C1, is_primary: true }),
+    apa({ id: 'pr2', agent_id: A1, scope: 'community', community_id: C2, is_primary: false, condo_access: false }),
+  ]
+  const apaA2WithExplicit: ApaRow[] = [
+    apa({ id: 'r2', agent_id: A2, scope: 'community', community_id: C1, is_primary: false }),
+  ]
+
+  const m = buildTerritoryMatrix(inputs({
+    scope: 'community',
+    authorizedAgentIds: [A2],
+    agents: [{ id: A2, name: 'Bob', role: 'agent', parent_id: A1 }],
+    geos: [
+      { id: C1, name: 'Comm 1', parent_id: null, parent_name: null },
+      { id: C2, name: 'Comm 2', parent_id: null, parent_name: null },
+    ],
+    apaRowsByAgent: { [A2]: apaA2WithExplicit },
+    writeDecisions: { [A2]: true },
+    inheritedRowsByAgent: { [A2]: inheritedA2 },
+    inheritedFromNamesByAgent: { [A2]: 'Alice' },
+  }))
+
+  const explicitCell = m.cells[cellKey(A2, C1)]
+  const inheritedCell = m.cells[cellKey(A2, C2)]
+
+  // Round-trip: serialize without edits -- inherited rows must NOT appear
+  const payload = serializeMatrixToBulkAssignPayload(m, {}, [A2])
+  const rows = payload.assignments[A2] || []
+  const inheritedInPayload = rows.some(r => r.community_id === C2)
+  const explicitInPayload = rows.some(r => r.community_id === C1)
+
+  results.push({
+    name: 'T9: inheritance -- explicit wins, inherited renders, serializer omits inherited',
+    pass:
+      explicitCell?.presence === 'explicit' &&
+      explicitCell?.apa_id === 'r2' &&
+      explicitCell?.is_primary === false &&
+      inheritedCell?.presence === 'inherited' &&
+      inheritedCell?.inherited_from_agent_id === A1 &&
+      inheritedCell?.inherited_from_agent_name === 'Alice' &&
+      inheritedCell?.condo_access === false &&
+      explicitInPayload &&
+      !inheritedInPayload &&
+      rows.length === 1,
+    detail: `explicit.presence=${explicitCell?.presence} apa_id=${explicitCell?.apa_id} primary=${explicitCell?.is_primary}; inherited.presence=${inheritedCell?.presence} from=${inheritedCell?.inherited_from_agent_name} condo=${inheritedCell?.condo_access}; payloadRows=${rows.length} explicitInPayload=${explicitInPayload} inheritedInPayload=${inheritedInPayload}`,
   })
 }
 
