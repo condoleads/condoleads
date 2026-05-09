@@ -7,8 +7,6 @@
 import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 
-const WALLIAM_TENANT_ID = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
-
 export async function getWalliamTenantId(): Promise<string | null> {
   try {
     const headersList = headers()
@@ -57,6 +55,7 @@ export async function isWalliamTenant(): Promise<boolean> {
 export async function resolveWalliamAgent(params: {
   listing_id?: string | null
   building_id?: string | null
+  neighbourhood_id?: string | null
   community_id?: string | null
   municipality_id?: string | null
   area_id?: string | null
@@ -68,7 +67,7 @@ export async function resolveWalliamAgent(params: {
     const { data } = await supabase.rpc('resolve_agent_for_context', {
       p_listing_id: params.listing_id || null,
       p_building_id: params.building_id || null,
-      p_neighbourhood_id: null,
+      p_neighbourhood_id: params.neighbourhood_id || null,
       p_community_id: params.community_id || null,
       p_municipality_id: params.municipality_id || null,
       p_area_id: params.area_id || null,

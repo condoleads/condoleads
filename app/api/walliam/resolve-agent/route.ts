@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     const {
       listing_id,
       building_id,
+      neighbourhood_id,
       community_id,
       municipality_id,
       area_id,
@@ -28,11 +29,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // Call the DB resolution function
-    const { data, error } = await supabase.rpc('resolve_agent_for_context', {
+    // Call the DB display-resolution function (is_selling-aware, public-card surface)
+    const { data, error } = await supabase.rpc('resolve_display_agent_for_context', {
       p_listing_id: listing_id || null,
       p_building_id: building_id || null,
-      p_neighbourhood_id: null,
+      p_neighbourhood_id: neighbourhood_id || null,
       p_community_id: community_id || null,
       p_municipality_id: municipality_id || null,
       p_area_id: area_id || null,
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
         .single()
       if (ba) source = 'building_assignment'
     }
-    if (source === 'walliam_default' && (community_id || municipality_id || area_id)) {
+    if (source === 'walliam_default' && (neighbourhood_id || community_id || municipality_id || area_id)) {
       source = 'geo_assignment'
     }
     if (source === 'walliam_default' && user_id) {

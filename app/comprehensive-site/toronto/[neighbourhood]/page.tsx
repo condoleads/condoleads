@@ -181,7 +181,7 @@ export default async function NeighbourhoodPage({ params }: Props) {
   const isWalliam = !!tenantId
   let walliamAgentId: string | null = null
   if (isWalliam && tenantId) {
-    walliamAgentId = await resolveWalliamAgent({ tenant_id: tenantId })
+    walliamAgentId = await resolveWalliamAgent({ neighbourhood_id: data.neighbourhood.id, tenant_id: tenantId })
   }
 
   const { neighbourhood, municipalities, municipalityIds, communities, stats, initialListings, initialTotal, initialCounts } = data
@@ -254,7 +254,7 @@ export default async function NeighbourhoodPage({ params }: Props) {
       {isWalliam && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
           <WalliamCTA context={neighbourhood.name} />
-          <WalliamAgentCard tenant_id={tenantId!} />
+          <WalliamAgentCard neighbourhood_id={neighbourhood.id} tenant_id={tenantId!} />
           <CharliePageContext
             municipality_id={municipalityIds[0] || null}
             municipality_slug={municipalities[0]?.slug || null}

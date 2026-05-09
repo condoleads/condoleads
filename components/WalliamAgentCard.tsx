@@ -12,6 +12,7 @@ interface WalliamAgentCardProps {
   // Page context for agent resolution — pass whatever is available
   listing_id?: string | null
   building_id?: string | null
+  neighbourhood_id?: string | null
   community_id?: string | null
   municipality_id?: string | null
   area_id?: string | null
@@ -92,6 +93,7 @@ function ContactForm({ agentEmail, tenantId, listingId, buildingId }: {
 export default function WalliamAgentCard({
   listing_id,
   building_id,
+  neighbourhood_id,
   community_id,
   municipality_id,
   area_id,
@@ -116,6 +118,7 @@ export default function WalliamAgentCard({
           body: JSON.stringify({
             listing_id: listing_id || null,
             building_id: building_id || null,
+            neighbourhood_id: neighbourhood_id || null,
             community_id: community_id || null,
             municipality_id: municipality_id || null,
             area_id: area_id || null,
@@ -130,7 +133,7 @@ export default function WalliamAgentCard({
           .catch(() => setLoading(false))
       })
     })
-  }, [listing_id, building_id, community_id, municipality_id, area_id])
+  }, [listing_id, building_id, neighbourhood_id, community_id, municipality_id, area_id])
 
   if (loading) return null
 
