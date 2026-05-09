@@ -219,7 +219,7 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
             id="matrix-scope"
             value={scope}
             onChange={e => setScope(e.target.value as MatrixScope)}
-            className="border rounded px-2 py-1"
+            className="border rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             disabled={loading || saving}
           >
             {SCOPE_OPTIONS.map(o => (
@@ -306,6 +306,8 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
                       <td key={col.geo_id} className="p-1 align-middle relative">
                         <CellButton
                           cell={getCell(row.agent_id, col.geo_id)}
+                          agentName={row.agent_name}
+                          geoName={col.geo_name}
                           isEdited={ck in editedCells}
                           isConflict={conflictCellKeys.has(ck)}
                           canWrite={row.can_write}
@@ -335,7 +337,7 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
             type="button"
             onClick={handleDiscard}
             disabled={saving}
-            className="text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50"
+            className="text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-1 rounded"
           >
             Discard
           </button>
@@ -343,7 +345,7 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1.5 disabled:opacity-50"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1.5 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2"
           >
             <SaveIcon className="w-3.5 h-3.5" />
             {saving ? 'Saving…' : 'Save'}
@@ -360,6 +362,8 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
 
 interface CellButtonProps {
   cell: MatrixCell | null
+  agentName: string
+  geoName: string
   isEdited: boolean
   isConflict: boolean
   canWrite: boolean
@@ -372,6 +376,8 @@ interface CellButtonProps {
 
 function CellButton({
   cell,
+  agentName,
+  geoName,
   isEdited,
   isConflict,
   canWrite,
@@ -383,6 +389,17 @@ function CellButton({
 }: CellButtonProps) {
   const isExplicit = cell?.presence === 'explicit'
   const isPrimary = isExplicit && cell?.is_primary === true
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  // Compose a11y label by state.
+  const stateLabel = !canWrite
+    ? `${isExplicit ? (isPrimary ? 'primary' : 'assigned') : 'unassigned'}, read-only`
+    : isConflict
+      ? 'primary conflict, click to edit'
+      : isExplicit
+        ? `${isPrimary ? 'primary' : 'assigned'}, click to edit access flags`
+        : 'unassigned, click to assign'
+  const ariaLabel = `${agentName}, ${geoName}, ${stateLabel}`
 
   // Compose visual classes by precedence: conflict > edited > explicit > empty,
   // dimmed if !canWrite.
@@ -405,13 +422,24 @@ function CellButton({
     }
   }
 
+  // Restore focus to originating button after popover closes.
+  const handleEditorClose = () => {
+    onClose()
+    requestAnimationFrame(() => buttonRef.current?.focus())
+  }
+
   return (
     <>
       <button
+        ref={buttonRef}
         type="button"
         onClick={handleClick}
         disabled={!canWrite}
-        className={`w-12 h-10 sm:h-7 rounded ${bg} flex items-center justify-center transition-colors disabled:cursor-not-allowed`}
+        aria-label={ariaLabel}
+        aria-pressed={isExplicit}
+        aria-haspopup={isExplicit ? 'dialog' : undefined}
+        aria-expanded={isExplicit ? isOpen : undefined}
+        className={`w-12 h-10 sm:h-7 rounded ${bg} flex items-center justify-center transition-colors disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1`}
         title={
           !canWrite
             ? 'You do not have permission to edit this row'
@@ -432,9 +460,9 @@ function CellButton({
           onUpdate={onUpdate}
           onRemove={() => {
             onToggle()
-            onClose()
+            handleEditorClose()
           }}
-          onClose={onClose}
+          onClose={handleEditorClose}
         />
       )}
     </>
@@ -455,6 +483,41 @@ interface CellEditorProps {
 function CellEditor({ cell, onUpdate, onRemove, onClose }: CellEditorProps) {
   const ref = useRef<HTMLDivElement>(null)
 
+  // Initial focus on first focusable inside the dialog (mount only).
+  useEffect(() => {
+    const first = ref.current?.querySelector<HTMLElement>('input, button, select')
+    first?.focus()
+  }, [])
+
+  // ESC closes; Tab/Shift+Tab traps focus inside the dialog.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+      if (e.key === 'Tab' && ref.current) {
+        const focusables = ref.current.querySelectorAll<HTMLElement>(
+          'input, button, select, [tabindex]:not([tabindex="-1"])'
+        )
+        if (focusables.length === 0) return
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+        const active = document.activeElement
+        if (e.shiftKey && active === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
   // Click-outside closes.
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
@@ -467,6 +530,9 @@ function CellEditor({ cell, onUpdate, onRemove, onClose }: CellEditorProps) {
   return (
     <div
       ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit cell access flags"
       className="absolute top-full left-0 z-50 bg-white border-2 border-gray-300 rounded shadow-lg p-3 min-w-[220px] mt-1"
       onClick={e => e.stopPropagation()}
     >
@@ -511,7 +577,7 @@ function CellEditor({ cell, onUpdate, onRemove, onClose }: CellEditorProps) {
               id="cell-buildings-mode"
               value={cell.buildings_mode}
               onChange={e => onUpdate({ buildings_mode: e.target.value })}
-              className="border rounded px-1 py-0.5"
+              className="border rounded px-1 py-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <option value="all">All</option>
               <option value="whitelist">Whitelist</option>
@@ -524,14 +590,14 @@ function CellEditor({ cell, onUpdate, onRemove, onClose }: CellEditorProps) {
         <button
           type="button"
           onClick={onRemove}
-          className="text-xs text-red-600 hover:text-red-800"
+          className="text-xs text-red-600 hover:text-red-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 rounded"
         >
           Remove assignment
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="text-xs text-gray-600 hover:text-gray-900"
+          className="text-xs text-gray-600 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-1 rounded"
         >
           Close
         </button>
