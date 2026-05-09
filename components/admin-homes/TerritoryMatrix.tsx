@@ -273,11 +273,11 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
 
       {/* Matrix table */}
       {!loading && matrix && matrix.rows.length > 0 && matrix.columns.length > 0 && (
-        <div className="border rounded bg-white overflow-x-auto">
+        <div className="border rounded bg-white overflow-auto max-h-[80vh]">
           <table className="text-sm border-collapse">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-gray-50 border-b sticky top-0 z-20">
               <tr>
-                <th className="text-left p-2 sticky left-0 bg-gray-50 z-10 min-w-[180px]">Agent</th>
+                <th className="text-left p-2 sticky left-0 bg-gray-50 z-30 min-w-[180px]">Agent</th>
                 {matrix.columns.map(col => (
                   <th key={col.geo_id} className="text-left p-2 align-bottom min-w-[80px]">
                     <div className="font-medium leading-tight">{col.geo_name}</div>
@@ -411,7 +411,7 @@ function CellButton({
         type="button"
         onClick={handleClick}
         disabled={!canWrite}
-        className={`w-12 h-7 rounded ${bg} flex items-center justify-center transition-colors disabled:cursor-not-allowed`}
+        className={`w-12 h-10 sm:h-7 rounded ${bg} flex items-center justify-center transition-colors disabled:cursor-not-allowed`}
         title={
           !canWrite
             ? 'You do not have permission to edit this row'
