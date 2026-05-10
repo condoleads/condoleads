@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-05-10T12:28:43.160Z",
+  "check_constraints": [
+    {
+      "conname": "leads_quality_check",
+      "def": "CHECK ((quality = ANY (ARRAY['cold'::text, 'warm'::text, 'hot'::text])))"
+    },
+    {
+      "conname": "leads_stage_check",
+      "def": "CHECK ((stage = ANY (ARRAY['undecided'::text, 'decided'::text])))"
+    },
+    {
+      "conname": "leads_status_axis_check",
+      "def": "CHECK ((status_axis = ANY (ARRAY['active'::text, 'passive'::text, 'closed'::text])))"
+    },
+    {
+      "conname": "leads_status_check",
+      "def": "CHECK ((status = ANY (ARRAY['new'::text, 'contacted'::text, 'qualified'::text, 'closed'::text, 'lost'::text])))"
+    },
+    {
+      "conname": "leads_urgency_check",
+      "def": "CHECK ((urgency = ANY (ARRAY['normal'::text, 'urgent'::text])))"
+    }
+  ],
+  "check_count": 5
+}
