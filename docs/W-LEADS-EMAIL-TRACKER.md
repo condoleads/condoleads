@@ -1,7 +1,7 @@
 # W-LEADS-EMAIL — TRACKER
 
 **Version:** v2 — T0 RECON COMPLETE + T1 DECISION LOCKED
-**Status:** T2 build phase — NOT STARTED
+**Status:** T2 build phase — IN PROGRESS. T2g shipped 2026-05-10 (out-of-order, security priority — commits `d0c6ca3` + `f1bcf66`). Remaining: T2a–T2f schema migrations + T2h cleanup. Next action: T2a `leads` geo columns migration.
 **Date:** 2026-05-10
 **Owner:** Shah (sole dev)
 **Sister tracker:** `docs/W-LAUNCH-TRACKER.md` (row pending update at Tlast close)
@@ -94,7 +94,7 @@ Recon outputs on disk under `recon/`:
 
 All 7 ODs anchored. Scope contract LOCKED. Phase plan T2..T8 + Tlast defined below.
 
-### T2 — Schema migrations (NEXT, NOT STARTED)
+### T2 — Schema migrations (IN PROGRESS — T2g CLOSED 2026-05-10; T2a–T2f and T2h pending)
 
 Single transaction per migration file. Backup snapshots captured by `scripts/apply-*.js` runners before apply. Each phase ships independently with smoke verification before moving to the next.
 
@@ -168,7 +168,7 @@ CREATE TRIGGER trg_lerl_status_only_update BEFORE UPDATE ON lead_email_recipient
 ```
 - File: `supabase/migrations/<stamp>_t2f_lead_email_recipients_log.sql`
 
-**T2g — `resolve_agent_for_context` RPC tenant-leak fix**
+**T2g — `resolve_agent_for_context` RPC tenant-leak fix — ✅ CLOSED 2026-05-10 (commits `d0c6ca3` + `f1bcf66`)**
 - Probe: `pg_get_functiondef('public.resolve_agent_for_context'::regproc)` captured at T0-F
 - Patch P1: JOIN `agents` and filter by `p_tenant_id` (with NULL-tolerant guard)
 - Patch P2: same shape via `agent_geo_buildings → agents`
@@ -381,8 +381,8 @@ Organized by category. F-* IDs are stable; severity rated for T2 prioritization.
 
 ### Cross-tenant leak in `resolve_agent_for_context` RPC (T2g — CRITICAL)
 
-- **F-RESOLVE-AGENT-P1-P2-MISSING-TENANT-FILTER (MAJOR)** — P1 (`agent_listing_assignments`) and P2 (`agent_geo_buildings`) lookups don't filter by tenant. Cross-tenant data leak possible.
-- **F-RESOLVE-AGENT-P8-USER-PROFILES-CROSS-TENANT-LEAK (MAJOR)** — P8 reads `user_profiles.assigned_agent_id` without tenant filter.
+- **F-RESOLVE-AGENT-P1-P2-MISSING-TENANT-FILTER (MAJOR) ✅ CLOSED 2026-05-10 (commits `d0c6ca3` + `f1bcf66`)** — P1 (`agent_listing_assignments`) and P2 (`agent_geo_buildings`) lookups now filter by `a.tenant_id = p_tenant_id`. Cross-tenant data leak vector eliminated. Verified via DB-truth probe: 7 occurrences of `tenant_id = p_tenant_id` in live function body (vs 1 pre-T2g baseline = P10 only).
+- **F-RESOLVE-AGENT-P8-USER-PROFILES-CROSS-TENANT-LEAK (MAJOR) ✅ CLOSED 2026-05-10 (commits `d0c6ca3` + `f1bcf66`)** — P8 now joins via `tenant_users` with explicit `(user_id, tenant_id)` scoping. Cross-tenant agent assignment leak via stale `user_profiles.assigned_agent_id` eliminated.
 
 ### Schema migration scope (T2)
 
@@ -601,13 +601,14 @@ Specific to W-LEADS-EMAIL:
 
 6. Commit `t2a_leads_geo_columns`; push to `origin/main`.
 
-T2a estimate: ~30 minutes including probe-then-patch + smoke. Then T2b (indexes), T2c (lead_origin_route), T2d (CHECK constraints), T2e (vip_requests scope), T2f (audit table), T2g (RPC fix), T2h (createLead.ts delete) — each one ships before the next starts.
+T2a estimate: ~30 minutes including probe-then-patch + smoke. Then T2b (indexes), T2c (lead_origin_route), T2d (CHECK constraints), T2e (vip_requests scope), T2f (audit table), T2h (createLead.ts delete) — each one ships before the next starts. T2g (RPC tenant-leak fix) was prioritized and already shipped 2026-05-10 (commits `d0c6ca3` + `f1bcf66`); see status log v3 entry and findings closures for detail.
 
 ---
 
 ## Status log
 
 - **2026-05-09 v1 SKELETON** — Tracker created. Why-this-exists, scope contract DRAFT, ODs OD-1..OD-7 OPEN, phases T0..Tlast outlined.
+- **2026-05-10 v3 T2g CLOSED (out-of-order, security priority)** — `resolve_agent_for_context` RPC tenant-leak fix shipped (commit `d0c6ca3` initial migration + commit `f1bcf66` followup with verification regex fix). Live function body grew 82 → 105 lines; 7 occurrences of `tenant_id = p_tenant_id` in production vs 1 pre-T2g baseline (P10 preserved tier only). Closes F-RESOLVE-AGENT-P1-P2-MISSING-TENANT-FILTER and F-RESOLVE-AGENT-P8-USER-PROFILES-CROSS-TENANT-LEAK. Followup batch addressed false-positive P10 verification: runner's brittle `.includes(literal)` check replaced with regex `.test()` + `\s+` whitespace tolerance after v1 (multi-line literal) and v2 (single-line literal) substring approaches both failed against the file's actual whitespace. Lessons logged: (a) future apply runners should run verification INSIDE a Node-managed transaction so verification failures roll back the migration rather than leave the DB in a half-applied state; (b) regex matching should be the default for in-place source-code patches — literal-substring matching is fragile against whitespace/CRLF drift on Windows. Next action: resume T2a `leads` geo columns migration; remaining sequence T2a→T2b→T2c→T2d→T2e→T2f→T2h.
 - **2026-05-10 v2 T0 RECON COMPLETE + T1 LOCKED** — All 7 sub-targets closed. 125 findings catalogued. 7 OD anchors locked: OD-1 (c), OD-2 (b), OD-3 (c), OD-4 (c), OD-5 (a), OD-6 (c), OD-7 (b). T2..Tn phase plan defined. Next action: T2a `leads` geo columns migration.
 
 ---
