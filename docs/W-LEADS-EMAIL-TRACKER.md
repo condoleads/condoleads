@@ -1,7 +1,7 @@
 # W-LEADS-EMAIL — TRACKER
 
 **Version:** v2 — T0 RECON COMPLETE + T1 DECISION LOCKED
-**Status:** T2 build phase — IN PROGRESS. T2g shipped 2026-05-10 (out-of-order, security priority — commits `d0c6ca3` + `f1bcf66`). Remaining: T2a–T2f schema migrations + T2h cleanup. Next action: T2a `leads` geo columns migration.
+**Status:** T2 build phase — IN PROGRESS. T2g + T2h shipped 2026-05-10 (T2g commits `d0c6ca3` + `f1bcf66`). Remaining: T2a–T2f schema migrations. Next action: T2a `leads` geo columns migration.
 **Date:** 2026-05-10
 **Owner:** Shah (sole dev)
 **Sister tracker:** `docs/W-LAUNCH-TRACKER.md` (row pending update at Tlast close)
@@ -94,7 +94,7 @@ Recon outputs on disk under `recon/`:
 
 All 7 ODs anchored. Scope contract LOCKED. Phase plan T2..T8 + Tlast defined below.
 
-### T2 — Schema migrations (IN PROGRESS — T2g CLOSED 2026-05-10; T2a–T2f and T2h pending)
+### T2 — Schema migrations (IN PROGRESS — T2g + T2h CLOSED 2026-05-10; T2a–T2f pending)
 
 Single transaction per migration file. Backup snapshots captured by `scripts/apply-*.js` runners before apply. Each phase ships independently with smoke verification before moving to the next.
 
@@ -176,7 +176,7 @@ CREATE TRIGGER trg_lerl_status_only_update BEFORE UPDATE ON lead_email_recipient
 - Smoke: cross-tenant leak tests via savepoint isolation
 - File: `supabase/migrations/<stamp>_t2g_resolve_agent_tenant_filter.sql`
 
-**T2h — Cleanup: delete `app/actions/createLead.ts`**
+**T2h — Cleanup: delete `app/actions/createLead.ts` — ✅ CLOSED 2026-05-10**
 - Per F-CREATELEAD-IS-DEAD-CODE: zero callers, doc comment pre-stages deletion
 - Backup before delete: `Copy-Item .backup_<stamp>` per Rule Zero
 - Smoke: build passes, no import errors
@@ -441,7 +441,7 @@ Organized by category. F-* IDs are stable; severity rated for T2 prioritization.
 
 ### Cleanup / dead code (T2h)
 
-- **F-CREATELEAD-IS-DEAD-CODE (CONFIRMED)** — `app/actions/createLead.ts` zero callers. T2h deletes.
+- **F-CREATELEAD-IS-DEAD-CODE ✅ CLOSED 2026-05-10** — `app/actions/createLead.ts` deleted. Zero callers re-verified in-session before delete (only `createLead`-named function in repo is the local one in `lib/actions/leads.ts` L128, which exports a different symbol).
 - **F-CREATELEAD-HARDCODED-CONDOLEADS-CA-URL** — dead-code defect. Disappears with delete.
 - **F-CREATELEAD-HARDCODED-SLUG-BLACKLIST** — dead-code defect. Disappears with delete.
 
@@ -479,7 +479,7 @@ Organized by category. F-* IDs are stable; severity rated for T2 prioritization.
 | 8 | `app/actions/submitLeadFromForm.ts` | Server-action wrapper | **Clean** ✓ (exemplar) | none |
 | 9 | `lib/actions/leads.ts::getOrCreateLead` | Underlying writer (canonical) | **Clean** ✓ (canonical) | none |
 | – | `app/actions/joinTenant.ts:180` | Direct getOrCreateLead caller | **Clean** ✓ | none |
-| – | `app/actions/createLead.ts::createLeadFromRegistration` | DEAD CODE | n/a | T2h delete |
+| – | `app/actions/createLead.ts::createLeadFromRegistration` | DELETED 2026-05-10 | n/a | T2h CLOSED |
 
 **Form-component shells (UI layer, all routed to writers above):**
 - `WalliamContactForm` (direct page form)
@@ -601,13 +601,14 @@ Specific to W-LEADS-EMAIL:
 
 6. Commit `t2a_leads_geo_columns`; push to `origin/main`.
 
-T2a estimate: ~30 minutes including probe-then-patch + smoke. Then T2b (indexes), T2c (lead_origin_route), T2d (CHECK constraints), T2e (vip_requests scope), T2f (audit table), T2h (createLead.ts delete) — each one ships before the next starts. T2g (RPC tenant-leak fix) was prioritized and already shipped 2026-05-10 (commits `d0c6ca3` + `f1bcf66`); see status log v3 entry and findings closures for detail.
+T2a estimate: ~30 minutes including probe-then-patch + smoke. Then T2b (indexes), T2c (lead_origin_route), T2d (CHECK constraints), T2e (vip_requests scope), T2f (audit table) — each one ships before the next starts. T2g (RPC tenant-leak fix, commits `d0c6ca3` + `f1bcf66`) and T2h (`createLead.ts` delete) were prioritized and already shipped 2026-05-10; see status log v3 + v4 entries and findings closures.
 
 ---
 
 ## Status log
 
 - **2026-05-09 v1 SKELETON** — Tracker created. Why-this-exists, scope contract DRAFT, ODs OD-1..OD-7 OPEN, phases T0..Tlast outlined.
+- **2026-05-10 v4 T2h CLOSED** — `app/actions/createLead.ts` deleted. Zero callers re-verified in-session before delete via repo-wide grep: the only `createLead`-named function in the codebase is the one defined locally in `lib/actions/leads.ts` L128, which is unrelated to this dead-code file's exported `createLeadFromRegistration` symbol (zero matches anywhere). TSC clean post-deletion. Closes F-CREATELEAD-IS-DEAD-CODE. T2 phase progress: 2 of 8 sub-phases shipped (T2g + T2h); remaining T2a (leads geo columns), T2b (indexes), T2c (lead_origin_route), T2d (CHECK constraints), T2e (vip_requests scope), T2f (audit table). Next action: T2a probe + apply.
 - **2026-05-10 v3 T2g CLOSED (out-of-order, security priority)** — `resolve_agent_for_context` RPC tenant-leak fix shipped (commit `d0c6ca3` initial migration + commit `f1bcf66` followup with verification regex fix). Live function body grew 82 → 105 lines; 7 occurrences of `tenant_id = p_tenant_id` in production vs 1 pre-T2g baseline (P10 preserved tier only). Closes F-RESOLVE-AGENT-P1-P2-MISSING-TENANT-FILTER and F-RESOLVE-AGENT-P8-USER-PROFILES-CROSS-TENANT-LEAK. Followup batch addressed false-positive P10 verification: runner's brittle `.includes(literal)` check replaced with regex `.test()` + `\s+` whitespace tolerance after v1 (multi-line literal) and v2 (single-line literal) substring approaches both failed against the file's actual whitespace. Lessons logged: (a) future apply runners should run verification INSIDE a Node-managed transaction so verification failures roll back the migration rather than leave the DB in a half-applied state; (b) regex matching should be the default for in-place source-code patches — literal-substring matching is fragile against whitespace/CRLF drift on Windows. Next action: resume T2a `leads` geo columns migration; remaining sequence T2a→T2b→T2c→T2d→T2e→T2f→T2h.
 - **2026-05-10 v2 T0 RECON COMPLETE + T1 LOCKED** — All 7 sub-targets closed. 125 findings catalogued. 7 OD anchors locked: OD-1 (c), OD-2 (b), OD-3 (c), OD-4 (c), OD-5 (a), OD-6 (c), OD-7 (b). T2..Tn phase plan defined. Next action: T2a `leads` geo columns migration.
 
