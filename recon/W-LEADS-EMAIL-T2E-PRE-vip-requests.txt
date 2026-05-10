@@ -1,0 +1,27 @@
+========================================================================
+T2E PRE-MIGRATION PROBE — vip_requests
+Generated: 2026-05-10T12:36:57.915Z
+========================================================================
+
+-- ROW COUNTS --
+  total rows: 0
+  rows with NULL tenant_id: 0
+  rows with orphaned agent_id (no matching agents row): 0
+  rows backfillable from agent.tenant_id: 0
+
+-- DISTINCT VALUES PER CHECK-CANDIDATE COLUMN --
+
+  status:
+    (no rows)
+
+  request_type:
+    (no rows)
+
+  request_source:
+    (no rows)
+
+-- tenant_id vs lead.tenant_id consistency (where lead_id is set) --
+  vr.tenant_id NULL,     vr.lead_id NULL:    0  (must backfill from agent.tenant_id)
+  vr.tenant_id NULL,     vr.lead_id SET:     0  (can backfill from leads.tenant_id)
+  vr.tenant_id consistent with leads:        0
+  vr.tenant_id MISMATCH with leads:          0  ⚠️ if non-zero, investigate before T2e

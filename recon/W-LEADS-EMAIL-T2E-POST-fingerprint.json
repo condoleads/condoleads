@@ -1,0 +1,144 @@
+{
+  "timestamp": "2026-05-10T12:43:42.361Z",
+  "columns": [
+    {
+      "column_name": "id",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "session_id",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "agent_id",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "lead_id",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "status",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "phone",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "full_name",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "email",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "budget_range",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "timeline",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "buyer_type",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "requirements",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "approval_token",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "created_at",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "responded_at",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "expires_at",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "page_url",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "building_name",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "request_source",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "messages_granted",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "request_type",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "tenant_id",
+      "is_nullable": "NO"
+    }
+  ],
+  "foreign_keys": [
+    {
+      "conname": "vip_requests_agent_id_fkey",
+      "def": "FOREIGN KEY (agent_id) REFERENCES agents(id)"
+    },
+    {
+      "conname": "vip_requests_lead_id_fkey",
+      "def": "FOREIGN KEY (lead_id) REFERENCES leads(id)"
+    },
+    {
+      "conname": "vip_requests_session_id_fkey",
+      "def": "FOREIGN KEY (session_id) REFERENCES chat_sessions(id)"
+    },
+    {
+      "conname": "vip_requests_tenant_id_fkey",
+      "def": "FOREIGN KEY (tenant_id) REFERENCES tenants(id)"
+    }
+  ],
+  "check_constraints": [
+    {
+      "conname": "vip_requests_request_type_check",
+      "def": "CHECK (((request_type)::text = ANY ((ARRAY['plan'::character varying, 'chat'::character varying, 'estimator'::character varying])::text[])))"
+    },
+    {
+      "conname": "vip_requests_status_check",
+      "def": "CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying, 'expired'::character varying, 'cancelled'::character varying])::text[])))"
+    }
+  ],
+  "indexes": [
+    {
+      "indexname": "idx_vip_requests_agent",
+      "indexdef": "CREATE INDEX idx_vip_requests_agent ON public.vip_requests USING btree (agent_id, status)"
+    },
+    {
+      "indexname": "idx_vip_requests_session",
+      "indexdef": "CREATE INDEX idx_vip_requests_session ON public.vip_requests USING btree (session_id)"
+    },
+    {
+      "indexname": "idx_vip_requests_tenant",
+      "indexdef": "CREATE INDEX idx_vip_requests_tenant ON public.vip_requests USING btree (tenant_id)"
+    },
+    {
+      "indexname": "idx_vip_requests_token",
+      "indexdef": "CREATE INDEX idx_vip_requests_token ON public.vip_requests USING btree (approval_token)"
+    },
+    {
+      "indexname": "vip_requests_pkey",
+      "indexdef": "CREATE UNIQUE INDEX vip_requests_pkey ON public.vip_requests USING btree (id)"
+    }
+  ],
+  "row_count": 0
+}
