@@ -1,0 +1,74 @@
+{
+  "timestamp": "2026-05-10T12:11:16.587Z",
+  "indexes": [
+    {
+      "indexname": "idx_leads_agent_id",
+      "indexdef": "CREATE INDEX idx_leads_agent_id ON public.leads USING btree (agent_id)"
+    },
+    {
+      "indexname": "idx_leads_area_id",
+      "indexdef": "CREATE INDEX idx_leads_area_id ON public.leads USING btree (area_id) WHERE (area_id IS NOT NULL)"
+    },
+    {
+      "indexname": "idx_leads_building_id",
+      "indexdef": "CREATE INDEX idx_leads_building_id ON public.leads USING btree (building_id)"
+    },
+    {
+      "indexname": "idx_leads_community_id",
+      "indexdef": "CREATE INDEX idx_leads_community_id ON public.leads USING btree (community_id) WHERE (community_id IS NOT NULL)"
+    },
+    {
+      "indexname": "idx_leads_created_at",
+      "indexdef": "CREATE INDEX idx_leads_created_at ON public.leads USING btree (created_at DESC)"
+    },
+    {
+      "indexname": "idx_leads_follow_up_date",
+      "indexdef": "CREATE INDEX idx_leads_follow_up_date ON public.leads USING btree (follow_up_date)"
+    },
+    {
+      "indexname": "idx_leads_municipality_id",
+      "indexdef": "CREATE INDEX idx_leads_municipality_id ON public.leads USING btree (municipality_id) WHERE (municipality_id IS NOT NULL)"
+    },
+    {
+      "indexname": "idx_leads_neighbourhood_id",
+      "indexdef": "CREATE INDEX idx_leads_neighbourhood_id ON public.leads USING btree (neighbourhood_id) WHERE (neighbourhood_id IS NOT NULL)"
+    },
+    {
+      "indexname": "idx_leads_quality",
+      "indexdef": "CREATE INDEX idx_leads_quality ON public.leads USING btree (quality)"
+    },
+    {
+      "indexname": "idx_leads_status",
+      "indexdef": "CREATE INDEX idx_leads_status ON public.leads USING btree (status)"
+    },
+    {
+      "indexname": "idx_leads_tenant",
+      "indexdef": "CREATE INDEX idx_leads_tenant ON public.leads USING btree (tenant_id)"
+    },
+    {
+      "indexname": "idx_leads_tenant_agent",
+      "indexdef": "CREATE INDEX idx_leads_tenant_agent ON public.leads USING btree (tenant_id, agent_id)"
+    },
+    {
+      "indexname": "idx_leads_user_id",
+      "indexdef": "CREATE INDEX idx_leads_user_id ON public.leads USING btree (user_id)"
+    },
+    {
+      "indexname": "leads_area_manager_id_idx",
+      "indexdef": "CREATE INDEX leads_area_manager_id_idx ON public.leads USING btree (area_manager_id) WHERE (area_manager_id IS NOT NULL)"
+    },
+    {
+      "indexname": "leads_manager_id_idx",
+      "indexdef": "CREATE INDEX leads_manager_id_idx ON public.leads USING btree (manager_id) WHERE (manager_id IS NOT NULL)"
+    },
+    {
+      "indexname": "leads_pkey",
+      "indexdef": "CREATE UNIQUE INDEX leads_pkey ON public.leads USING btree (id)"
+    },
+    {
+      "indexname": "leads_tenant_admin_id_idx",
+      "indexdef": "CREATE INDEX leads_tenant_admin_id_idx ON public.leads USING btree (tenant_admin_id)"
+    }
+  ],
+  "index_count": 17
+}
