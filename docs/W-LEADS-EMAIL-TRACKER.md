@@ -1,172 +1,543 @@
-# W-LEADS-EMAIL Tracker
+# W-LEADS-EMAIL — TRACKER
 
-**Started:** 2026-05-09
+**Version:** v2 — T0 RECON COMPLETE + T1 DECISION LOCKED
+**Status:** T2 build phase — NOT STARTED
+**Date:** 2026-05-10
 **Owner:** Shah (sole dev)
-**Status:** **v1 SKELETON.** Scope contract DRAFT (7 in-scope items + out-of-scope list). 9 open decisions (OD-1..OD-9) pending T1 lock. Phase structure: T0 recon → T1 decision lock → T2..T8 backend build → **T9 Admin UI (WOW stage)** → T10 close. **Next: T0 recon — read-only audit of credit surface + lead routes + public page form coverage + email path + plan delivery + leads schema + tenant→platform routing + existing admin leads surface — feeds T1 decision lock in the same working block.**
-**Sister tracker:** `docs/W-LAUNCH-TRACKER.md` — Section 4 will gain a W-LEADS-EMAIL row at v1 closure.
+**Sister tracker:** `docs/W-LAUNCH-TRACKER.md` (row pending update at Tlast close)
 
 ---
 
 ## Why this exists
 
-Three prior workstreams answered the **routing layer** for leads:
+Prior workstreams (W-HIERARCHY, W-ROLES-DELEGATION, W-TERRITORY) shipped the routing layer: hierarchy chain capture, delegation BCC overlay, territory assignment audit. This workstream covers everything downstream of routing that a launch needs:
 
-- **W-HIERARCHY** (closed 2026-05-03 v17 FINAL) shipped `walkHierarchy()` + the 6-layer BCC fan-out contract via `lib/admin-homes/lead-email-recipients.ts`. 7 lead routes wired through the helper.
-- **W-ROLES-DELEGATION R7** (shipped 2026-05-05 commit `8a686c0`) added the delegation BCC overlay — active delegates' `notification_email` injected at layers 1–4.
-- **W-TERRITORY** (closed 2026-05-09 v21 FINAL) shipped the resolver chain (`resolve_agent_for_context` for routing, `resolve_display_agent_for_context` for display) that determines which agent owns a lead at any context.
+- Credit accounting that's coherent across AI chat, Buyer Plan, Seller Plan, Estimator
+- Public-form lead capture that carries typed origin metadata (not free-text)
+- Recipient contract extension to the 6-layer chain + per-tenant overlay
+- Plan delivery integration (Charlie plan-email creator + F57 enricher)
+- Multitenant cross-tenant leak fixes in `resolve_agent_for_context` RPC
+- New System 2 audit table for email recipient fan-out (`lead_email_log` is System 1 only)
+- End-to-end smoke matrix proving the system holds at multi-tenant scale
 
-Together those three answer "**when a lead arrives, which agent owns it and who gets BCC'd?**". They do **not** answer seven other questions that gate launch readiness:
-
-1. **Credit accounting on lead writes.** Leads may consume / be gated by credits. Today's atomic counters (`increment_chat_session_counter` / `decrement_chat_session_counter`) cover Charlie chat. The interaction with `INSERT INTO leads` has not been audited end-to-end.
-2. **Public form coverage.** Every public-facing geo and property page (Area / Municipality / Community / Neighbourhood / Building / Property) must render the right lead-capture form, posting to the right route, persisting the right context. Coverage has not been verified per page type.
-3. **Origin attribution.** Lead origin (which page type, which geo IDs, which listing/building IDs, which component triggered the post) needs to live on the lead row consistently. Today's coverage is unverified and likely uneven across the 7 lead routes.
-4. **Recipient contract extension.** The 6-layer fan-out covers leaf agent → manager → area_manager → tenant_admin. **Tenant → platform-admin routing** and **manager → tenant-admin overlay** are not in the current contract. Per Shah's spec, both must flow.
-5. **Plan delivery integration.** Buyer Plan / Seller Plan email flows currently exist as a separate path from leads (per the WALLiam brand card). Whether plan signups create leads, whether lead-with-plan-context triggers the plan email, and whether the two paths share state has not been decided or wired.
-6. **End-to-end smoke.** No single harness exercises every entry point × recipient layer × credit/plan combination. Without it, regressions in any of the above cannot be caught before production.
-7. **Admin Leads-Email UI.** The `AdminHomesLeadsClient` (~26.9KB per W-LAUNCH-TRACKER recon) renders leads today, but a comprehensive — and intuitive, premium-feel — admin command center for leads + email + credits + recipient hierarchy + plan attribution + lifecycle does not yet exist. **Backend correctness without an exceptional admin surface is a half-shipped product.**
-
-**Make-or-break framing per Shah:** Leads-Email is the system that converts a public site visitor into a tracked, attributed, credit-accounted, reviewable business event. The platform's revenue path runs through it. Without comprehensive wiring across all 7 axes — including the polished admin UI as the legibility layer — every other workstream's value is degraded.
+Make-or-break for launch. T2 schema migrations are the longest pole.
 
 ---
 
-## Scope contract (DRAFT — to be LOCKED at T1)
+## Scope contract — LOCKED at T1 (2026-05-10)
 
-In scope:
+**In scope:**
+1. Credit-write/read coherence across `tenants` config, `user_credit_overrides`, atomic counter RPCs
+2. Lead INSERT/UPSERT writers (9 surfaces total — 7 API routes + `submitLeadFromForm` server action + `getOrCreateLead` shared helper)
+3. Public form coverage across 6 page types (Area, Municipality, Community, Neighbourhood, Building, Property)
+4. Email recipient resolution + send: 6-layer chain (agent / manager / area_manager / tenant_admin / platform_manager / platform_admin) + per-tenant overlay (`tenants.manager_cc`, `tenants.admin_bcc`)
+5. Plan-delivery integration (Buyer Plan, Seller Plan) with credit accounting
+6. Cross-tenant leak fixes in `resolve_agent_for_context` (P1, P2, P8 tiers)
+7. New `lead_email_recipients_log` audit table for System 2 chain notifications
+8. End-to-end smoke matrix per OD-6 = (c)
 
-1. **Credit gating + accounting on lead INSERT.** Recon current credit state, decide whether leads consume credits, decide where the gate fires (route layer / DB trigger / both). OD-1 locks the policy.
-2. **Lead-capture form coverage on all 6 public page types.** Area, Municipality, Community, Neighbourhood, Building, Property — every page renders the right form variant for its scope, every form posts to the right route, every route writes a lead with the right context fields.
-3. **Origin metadata on every lead row.** Origin scope (page type + geo IDs + listing/building IDs), origin URL, origin component (e.g., `WalliamAgentCard.contact_form` vs `WalliamCTA.buyer_plan_signup`). OD-2 locks the schema shape.
-4. **Email recipient contract extension.** Current 6 layers + tenant→platform-admin layer + manager→tenant-admin overlay. OD-3 locks the layer count and assignment rules.
-5. **Plan delivery integration.** Buyer Plan / Seller Plan email flows audited; OD-4 locks the relationship between leads and plan signups (one creates the other / both / neither).
-6. **Comprehensive end-to-end smoke matrix.** Single test harness exercising every entry-point × recipient-layer × credit/plan combination. Production data never committed (SAVEPOINT-isolated per W-TERRITORY v13 pattern). OD-6 locks the test tier.
-7. **Admin Leads-Email UI — the WOW stage.** Comprehensive, intuitive, premium-feel admin surface that makes the entire system legible: lead lifecycle viewer + email thread per lead + full recipient list with per-recipient delivery status + BCC layer visibility + audit trail + plan attribution + credit balance integration + smart filtering + drill-through to lead origin page + hierarchy explorer + bulk actions. Mobile responsive + WCAG-AA a11y baseline. **Quality bar: best-in-class (HubSpot / Salesforce / Pipedrive comparable).** OD-8 + OD-9 lock the design tier and surface placement.
-
-Out of scope:
-- **System 1 lead routes** (`/admin` / `condoleads.ca`) — never touched, per System 1 isolation rule.
-- **Anonymous lead capture without registered user OR explicit anonymous-form path** — separate workstream; this workstream assumes either authenticated user OR a contact form that captures `tenant_id` + identity at submit time.
-- **Lead → external CRM export** (Salesforce / Pipedrive / HubSpot) — post-launch feature.
-- **SMS notifications** — separate workstream when SMS provider onboards; current scope is email only.
-- **Public-facing lead list** (e.g., user-visible "your inquiries" page) — out of scope for this workstream; the focus here is the admin/agent/manager view.
+**Out of scope (logged for cohesion, deferred to other workstreams):**
+- System 1 lead routes (`/admin`, `condoleads.ca` subdomain path) — System 1 isolation absolute
+- Anonymous lead capture without registered user OR explicit anonymous-form path
+- Lead → external CRM export (Salesforce / Pipedrive / HubSpot)
+- SMS notifications
+- Lead lifecycle UI in `/admin-homes` (already shipped via `AdminHomesLeadsClient`)
+- Admin UI for `user_credit_overrides` (F-NO-ADMIN-CREDIT-UI — separate workstream)
+- 01leads.com platform contact route (`/api/01leads-contact`) — intentional non-tenant
+- Tenant homepage routing generalization (F-ROOT-PAGE-WALLIAM-HARDCODED-ROUTE — new W-TENANT-HOMEPAGE workstream)
+- Development page WALLiam variant (F-DEVELOPMENT-PAGE-RENDERS-SYSTEM-1-AGENTCARD)
+- Tenant lifecycle field consolidation (F-TENANTS-DUAL-LIFECYCLE-FIELDS)
 
 ---
 
-## Open decisions (LOCKED at T1, after T0 recon evidence)
+## Open decisions — ALL LOCKED at T1 (2026-05-10)
 
-**OD-1.** [**Credit gating policy**] Does lead INSERT consume / require / ignore credits?
-- (a) Credits required pre-INSERT — gate at route layer; insufficient credits returns 402 + no lead written.
-- (b) Credits debited post-INSERT — lead always creates; debit fires on email-send confirmation.
-- (c) Credits unrelated — leads are free; credits only gate Charlie chat.
-- (d) Credits scoped per-tenant per-action — tenant pays per-lead; user-level credits track only chat.
-
-**OD-2.** [**Origin metadata shape**] How is origin captured on `leads` rows?
-- (a) Single `origin_url TEXT` column.
-- (b) Multiple typed columns (`origin_scope`, `origin_geo_id`, `origin_listing_id`, `origin_component`).
-- (c) JSONB `origin_context` blob with documented schema.
-- (d) Hybrid — typed columns for indexed queries + JSONB for free-form.
-
-**OD-3.** [**Recipient layer count**] Tenant→platform-admin path adds one layer. Manager→tenant-admin overlay adds another. Total layers becomes:
-- (a) 8 layers — both new paths added as discrete layers.
-- (b) 7 layers — one merged, one discrete.
-- (c) 6 layers — overlay logic merged into existing layers, no new layer slots.
-
-**OD-4.** [**Plan integration direction**] Buyer Plan / Seller Plan vs leads:
-- (a) Plan signup creates a lead (`leads.source = 'buyer_plan_signup' | 'seller_plan_signup'`).
-- (b) Lead with plan context triggers plan email (`leads.requested_plan = 'buyer' | 'seller'`).
-- (c) Both — plan signups create leads AND leads can carry plan context.
-- (d) Neither — plans and leads remain independent paths.
-
-**OD-5.** [**Form variant per page type**] Are all 6 page types running the same lead-capture form, or does each type get a tailored form?
-- (a) One form, one component (`WalliamContactForm` already exists).
-- (b) Per-page-type variants (e.g., property pages have showing-request fields; area pages have generic-inquiry fields).
-- (c) One component with conditional field rendering driven by scope prop.
-
-**OD-6.** [**Smoke test tier**] What does "comprehensive" mean for the test harness?
-- (a) Unit-level: every helper / route / form component tested in isolation.
-- (b) Integration-level: every entry point posts to every route and lands the right rows + audit + recipient list.
-- (c) End-to-end: production-shape SQL state, real BCC fan-out via Resend dry-run, every credit/plan combo, every form/page combo. Single transaction with ROLLBACK per test (W-TERRITORY v13 savepoint-isolation pattern).
-
-**OD-7.** [**Tenant-admin email override**] When a tenant has a custom `notifications` or `support` email configured, do leads-related emails route to the custom address or always to `notifications@condoleads.ca`? Per memory: all WALLiam email currently uses `notifications@condoleads.ca` (verified domain). Tenant override is per-tenant config that may or may not exist.
-- (a) Always `notifications@condoleads.ca` (current behavior, simpler, single domain).
-- (b) Tenant override allowed when verified domain configured.
-- (c) Hybrid — inbound email reply-to is tenant-custom; from address stays verified.
-
-**OD-8.** [**Admin UI design tier**] What's the quality bar for T9?
-- (a) Premium-tier, comparable to HubSpot Sales Hub / Salesforce Lightning / Pipedrive — bold typography, micro-animations, dense-but-elegant layouts, subtle depth + glassmorphism accents, real-time feel, command-bar shortcut UX.
-- (b) Modern-functional — clean, fast, no unnecessary flourish; the same density as `/admin-homes/territory` (T4a-2 pattern).
-- (c) Hybrid — premium-feel for the top-level dashboard + lead detail drawer (the most-used surfaces); functional for filter forms and admin settings.
-
-Per Shah explicit direction at v1 creation: **"this needs to be the best"** — strong steer toward (a). Confirmed at T1 with mock-up review.
-
-**OD-9.** [**Admin UI surface placement**] Where does T9 live in `/admin-homes`?
-- (a) Substantially redesign the existing `AdminHomesLeadsClient` at `/admin-homes/leads` (one-surface approach).
-- (b) Keep the existing leads page as a basic list, add a new dedicated command center at `/admin-homes/leads-email-center` that's the comprehensive surface.
-- (c) Both — the existing page becomes the lightweight "inbox" view; the new surface is the analytics / lifecycle / hierarchy / plan-attribution view. Lead detail drawer opens from either.
+| OD | Question | Anchor | Evidence |
+|---|---|---|---|
+| **OD-1** | Credit gating policy | **(c)** Credits unrelated to leads | T0-A: 4 lead-write routes have zero credit references; 9 credit-touching routes have zero lead INSERTs. Lead INSERT never blocks on credits; credits only gate Charlie chat, plan generation, estimator. |
+| **OD-2** | Origin metadata shape | **(b)** Multiple typed columns | T0-F: `leads` schema confirmed missing `area_id`, `municipality_id`, `community_id`, `neighbourhood_id` columns. Callers pass these to resolver and discard. T2a adds them with FKs + indexes. |
+| **OD-3** | Recipient layer count | **(c)** 6 layers + delegation overlay + per-tenant overlay | T0-D + T0-F: `lib/admin-homes/lead-email-recipients.ts` ships W-HIERARCHY H3.3 + W-ROLES-DELEGATION R7. T0-F additionally surfaced `tenants.manager_cc` + `tenants.admin_bcc` columns — T3a verifies helper consults them. |
+| **OD-4** | Plan integration direction | **(c)** Both directions, already shipped | charlie/plan-email creates lead at plan-ready; charlie/lead F57 enriches via UPSERT. T6 verifies + tightens. |
+| **OD-5** | Form variant per page type | **(a)** One canonical writer pipeline, multiple component shells | T0-C-3: every form shell (WalliamContactForm, ContactSection, ContactModal, AgentContactForm, OfferInquiryModal, UnitHistoryModal, EstimatorResults, HomeEstimatorResults, ListYourUnit, AppointmentForm, EstimatorVipWrapper, RegisterModal-via-joinTenant) ultimately routes to `submitLeadFromForm` or one of 7 API routes. Both writer surfaces verified multitenant-clean. |
+| **OD-6** | Smoke test tier | **(c)** End-to-end | Locked 2026-05-10. Production-shape SQL state, real BCC fan-out via Resend dry-run, every credit/plan/form/page combo. Single-transaction-with-ROLLBACK per test (W-TERRITORY v13 savepoint-isolation pattern). |
+| **OD-7** | Tenant-admin email override | **(b)** Tenant override allowed when verified domain configured | T0-D + T0-F: `tenants.send_from`, `resend_api_key`, `email_from_domain`, `resend_verified_at`, `resend_verification_status` (CHECK pending/verified/failed/revoked) all shipped. `sendTenantEmail` reads them per-tenant. |
 
 ---
 
 ## Phases
 
-### T0 — Recon (NEXT, this working block)
+### T0 — Recon (CLOSED 2026-05-10)
 
-Read-only audit of every existing surface that touches leads or email. **Outputs feed T1 decision lock — every OD answer must come from probe evidence, not memory or inference.** Per Rule Zero — No Guessing.
+All 7 sub-targets closed:
 
-T0 sub-targets:
+| Sub-target | Status | Output |
+|---|---|---|
+| T0-A | CLOSED | Credit surface — 9 routes inventoried, OD-1 anchored |
+| T0-B | CLOSED (Phase 2 + T0-E corrections) | Lead routes — 7 API canonical writers |
+| T0-C | CLOSED (T0-C-2 + T0-C-3 follow-ups) | Form coverage — render matrix locked, OD-5 anchored, `submitLeadFromForm`/`getOrCreateLead` confirmed multitenant-clean |
+| T0-D | CLOSED | Email path inventory — 20 distinct send sites |
+| T0-E | CLOSED | Plan/estimator delivery — 5 file dumps, lead-writer count corrected 5→7 |
+| T0-F | CLOSED | `leads` schema — full column/constraint/FK/index/trigger inventory + RPC body |
+| T0-G | CLOSED | Tenant→platform routing — schema mapping captured |
 
-- **T0-A — Credit surface.** Files: `lib/credits/resolveUserLimits.ts`, `components/credits/CreditSessionContext.tsx`, `app/charlie/hooks/useCharlie.ts`, atomic counter migrations, `user_credit_overrides` table shape, admin UI for credit management. Map: who can increase/decrease credits, what fields/tables drive the resolution, where the admin-side controls live, whether credit logic is referenced anywhere in lead routes.
-- **T0-B — Lead routes inventory.** Find every POST that writes to `leads` (grep on `from('leads').insert` + `INSERT INTO leads` + indirect helpers). For each: entry-point form, scope of context fields captured, walker call, recipients-helper call, credit interaction, audit row writes.
-- **T0-C — Public page form coverage.** For each of Area / Muni / Community / Neighbourhood / Building / Property: which components render lead-capture forms, what props they take, what route they post to, how they're conditionally rendered (tenant gate, isWalliam gate, etc).
-- **T0-D — Email path inventory.** Find every Resend send call (`resend.emails.send`, `sendEmail` helpers, etc). Map each to: trigger event, template, recipient resolution rules (helper-based vs ad hoc), BCC layers, plan-context handling.
-- **T0-E — Plan delivery surface.** Buyer Plan / Seller Plan email flows: where they fire from, what data they carry, what creates them, where the call sites are, how `WalliamCTA.buyer_plan` / `WalliamCTA.seller_plan` button clicks land.
-- **T0-F — `leads` schema.** Current columns, NOT NULL constraints, indexes, audit triggers, foreign keys. Includes any leads-adjacent tables (`lead_ownership_changes`, `leads_email_log` if exists, etc).
-- **T0-G — Tenant→platform-admin routing.** Recon how platform admins receive notifications today (if at all). `tenants` table for `default_agent_id` / platform-admin association columns. `agents` table role values for platform-admin tier. Existing routes that BCC platform admins.
-- **T0-H — Existing admin leads surface (FOR T9 BASELINE).** `AdminHomesLeadsClient.tsx` (~26.9KB per W-LAUNCH recon), `app/admin-homes/leads/page.tsx`, any existing `lead-detail` modal/drawer components, current filter/search/sort UX, current bulk actions. T9 design lock reads against this baseline.
+Recon outputs on disk under `recon/`:
+- `W-LEADS-EMAIL-T0-A-credit-surface.txt` + `T0-A-REPROBE-*.txt`
+- `W-LEADS-EMAIL-T0-B-2-canonical-pattern.txt`
+- `W-LEADS-EMAIL-T0-C-form-coverage.txt`
+- `W-LEADS-EMAIL-T0-C-2-form-render-callsites.txt`
+- `W-LEADS-EMAIL-T0-C-3-action-writer-dumps.txt`
+- `W-LEADS-EMAIL-T0-D-FILE-*.txt` (5 per-file dumps)
+- `W-LEADS-EMAIL-T0-DG-*.txt`
+- `W-LEADS-EMAIL-T0-F-leads-schema.txt`
 
-T0 closure = all 8 sections probed and findings logged in this tracker as v2.
+### T1 — Decision lock (CLOSED 2026-05-10)
 
-### T1 — Decision lock (after T0)
+All 7 ODs anchored. Scope contract LOCKED. Phase plan T2..T8 + Tlast defined below.
 
-Resolve OD-1 through OD-9 with the recon evidence in hand. T1 closure = scope contract LOCKED + locked product model written + phase plan T2..T9 detailed.
+### T2 — Schema migrations (NEXT, NOT STARTED)
 
-### T2..T8 — Backend build phases (after T1)
+Single transaction per migration file. Backup snapshots captured by `scripts/apply-*.js` runners before apply. Each phase ships independently with smoke verification before moving to the next.
 
-Phase structure to be determined at T1 closure based on the dependency graph among OD-1..OD-7 outcomes. Likely shape (subject to T1 lock):
+**T2a — `leads` typed origin columns**
+- ADD COLUMN `area_id uuid NULL FK areas(id)`
+- ADD COLUMN `municipality_id uuid NULL FK municipalities(id)`
+- ADD COLUMN `community_id uuid NULL FK communities(id)`
+- ADD COLUMN `neighbourhood_id uuid NULL FK neighbourhoods(id)`
+- CREATE INDEX on each new column
+- Backfill: existing rows get NULL on new columns
+- File: `supabase/migrations/<stamp>_t2a_leads_geo_columns.sql`
 
-- **T2** — Schema migrations (origin metadata columns / recipient-extension tables / credit-accounting tables if needed). Append-only audit + DENY UPDATE/DELETE triggers per W-TERRITORY T2a pattern.
-- **T3** — Recipient contract extension (helper updates for tenant→platform layer + manager→tenant-admin overlay). Smoke per layer.
-- **T4** — Credit gating (route-layer changes if OD-1 = a or b). Atomic-debit pattern per W-CREDIT-VERIFY D0.
-- **T5** — Form coverage audit + form component updates (per OD-5 outcome). Verifies every public page renders the right form.
-- **T6** — Plan integration wiring (per OD-4 outcome). Buyer/Seller Plan email triggers + lead-context plumbing.
-- **T7** — Smoke matrix harness (per OD-6 tier). SAVEPOINT-isolated, single-transaction-with-ROLLBACK pattern.
-- **T8** — Comprehensive smoke run + regression sweep. Backend declared complete + verified before T9 starts.
+**T2b — `leads` performance indexes**
+- CREATE INDEX `idx_leads_tenant_email ON leads (tenant_id, contact_email)` — fixes F-LEADS-NO-INDEX-ON-DUP-DETECTION-KEY
+- CREATE INDEX `idx_leads_listing_id ON leads (listing_id) WHERE listing_id IS NOT NULL`
+- CREATE INDEX `idx_leads_source ON leads (source)`
+- File: `supabase/migrations/<stamp>_t2b_leads_indexes.sql`
 
-### T9 — Admin Leads-Email UI: the WOW stage (FINAL build phase)
+**T2c — `leads.lead_origin_route` for questionnaire LIKE filter fix**
+- ADD COLUMN `lead_origin_route text NOT NULL DEFAULT 'unknown'`
+- CREATE INDEX on `(tenant_id, lead_origin_route)`
+- Backfill existing rows: derive from `source` text via lookup table
+- File: `supabase/migrations/<stamp>_t2c_lead_origin_route.sql`
 
-**Quality bar: best-in-class. The admin surface that makes the entire backend legible at a glance.** Per Shah explicit direction — "this needs to be the best."
+**T2d — `leads` data-quality CHECK constraints**
+- ADD CHECK `appointment_status IN ('pending', 'confirmed', 'cancelled', 'completed', 'rescheduled')`
+- ADD CHECK `assignment_source IN ('geo', 'admin', 'manual', 'override')`
+- File: `supabase/migrations/<stamp>_t2d_leads_check_constraints.sql`
 
-T9 ships in sub-phases within this working block. Each sub-phase has its own anchored patch script + inline smoke + visual QA gate.
+**T2e — `vip_requests` tenant scoping fix**
+- Backfill `tenant_id` on existing rows: `UPDATE vip_requests SET tenant_id = leads.tenant_id FROM leads WHERE vip_requests.lead_id = leads.id`. For rows with NULL `lead_id`, derive from `agent.tenant_id` via FK chain. Any unbackfillable rows are deleted (after audit).
+- ALTER COLUMN `tenant_id SET NOT NULL`
+- ADD FK `vip_requests_tenant_id_fkey REFERENCES tenants(id)`
+- CREATE INDEX `idx_vip_requests_tenant ON vip_requests (tenant_id)`
+- ADD CHECK on `status IN ('pending', 'approved', 'rejected', 'expired', 'cancelled')`
+- ADD CHECK on `request_type IN ('plan', 'chat', 'estimator')`
+- ADD CHECK on `request_source IN ('chat', 'estimator', 'questionnaire')`
+- File: `supabase/migrations/<stamp>_t2e_vip_requests_tenant_scope.sql`
 
-- **T9-1 — Recon + design lock.** Read against T0-H baseline. Mock layout for the top-level dashboard + lead detail drawer + filter shelf + hierarchy explorer. Lock OD-8 (design tier) + OD-9 (surface placement). Material sourced from current best-of-breed CRM admin surfaces (HubSpot Sales / Salesforce Lightning / Pipedrive Insights / Front).
-- **T9-2 — Top-level dashboard.** Hero stats card (leads today / week / month, conversion rate, by-agent leaderboard, by-origin breakdown, by-plan breakdown, credit balance + burn rate). Real-time feel — leads appear in the recent-activity feed within seconds of INSERT. Clickable everywhere — every stat drills into a filtered lead list.
-- **T9-3 — Lead list view + smart filtering.** Server-side paginated list with client-side filter shelf. Filters cover every dimension: tenant, agent, scope (geo/listing/building), origin component, plan context, time range, status, recipient layer membership, credits used. Filter combinations URL-encoded so links are shareable. Sub-100ms client-side filter response after data lands.
-- **T9-4 — Lead detail drawer.** Slide-in from right, opens in <50ms (no full re-render). Tabs: Overview (lead state + origin metadata + agent assignment), Email Thread (every email triggered, per-recipient delivery status from Resend webhooks, BCC layer visibility toggle), Recipients (full hierarchy explorer — see who got BCC'd at which layer, with toggleable layer visibility and reason-for-inclusion per recipient), Audit Trail (every state change with diff + actor + timestamp), Plan Context (if lead carries plan attribution), Credits (debit history for this lead).
-- **T9-5 — Hierarchy explorer (visual).** Inline tree visualization of the recipient list — leaf agent at center, BCC layers radiating out, delegation overlay shown as accent edges, color-coded per layer. Hover any node → see why they're included (which W-HIERARCHY contract clause). Fold/unfold per layer.
-- **T9-6 — Bulk actions + drill-through.** Multi-select on the list. Bulk: reassign agent (with cascade through W-TERRITORY resolver), mark status, resend email, export filtered set as CSV. Single-row drill-through: "open lead origin" → opens the public page where the lead came from in a new tab, with the form that captured the lead visible.
-- **T9-7 — Mobile responsive + a11y.** Same admin needs to work on phone. List collapses to per-lead cards; drawer becomes full-screen sheet; filter shelf becomes bottom sheet. WCAG-AA baseline matching W-TERRITORY T4c-3 pattern: aria-labels, focus rings, focus traps in drawer + sheets, keyboard nav (j/k for next/prev lead, Enter to open, Esc to close, /, for search).
-- **T9-8 — Inline smoke + visual QA gate.** Comprehensive UI smoke + manual visual review on desktop and mobile before T9 closes. Per the local-smoke-first rule: every sub-phase smoke-tested locally before commit + push.
+**T2f — `lead_email_recipients_log` new audit table**
+```sql
+CREATE TABLE lead_email_recipients_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  lead_id uuid NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  agent_id uuid NULL REFERENCES agents(id),
+  recipient_email text NOT NULL,
+  recipient_layer text NOT NULL CHECK (recipient_layer IN
+    ('agent','manager','area_manager','tenant_admin','platform_manager','platform_admin','tenant_overlay_cc','tenant_overlay_bcc')),
+  direction text NOT NULL CHECK (direction IN ('to','cc','bcc')),
+  subject text NOT NULL,
+  template_key text NOT NULL,
+  resend_message_id text NULL,
+  status text NOT NULL DEFAULT 'queued' CHECK (status IN
+    ('queued','sent','delivered','bounced','failed','complained')),
+  sent_at timestamptz NULL,
+  delivered_at timestamptz NULL,
+  bounced_at timestamptz NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_lerl_tenant_sent ON lead_email_recipients_log (tenant_id, sent_at DESC);
+CREATE INDEX idx_lerl_lead ON lead_email_recipients_log (lead_id);
+CREATE INDEX idx_lerl_recipient ON lead_email_recipients_log (recipient_email);
+CREATE INDEX idx_lerl_resend_msg ON lead_email_recipients_log (resend_message_id) WHERE resend_message_id IS NOT NULL;
+-- Append-only triggers (W-TERRITORY pattern)
+CREATE TRIGGER trg_lerl_no_delete BEFORE DELETE ON lead_email_recipients_log
+  FOR EACH ROW EXECUTE FUNCTION lead_email_recipients_log_no_mutate();
+-- Status updates allowed via webhook (carve-out trigger): only `status`, `delivered_at`, `bounced_at` mutable.
+CREATE TRIGGER trg_lerl_status_only_update BEFORE UPDATE ON lead_email_recipients_log
+  FOR EACH ROW EXECUTE FUNCTION lead_email_recipients_log_status_only();
+```
+- File: `supabase/migrations/<stamp>_t2f_lead_email_recipients_log.sql`
 
-**T9 design principles (locked at v1, refinable at T9-1 design lock):**
+**T2g — `resolve_agent_for_context` RPC tenant-leak fix**
+- Probe: `pg_get_functiondef('public.resolve_agent_for_context'::regproc)` captured at T0-F
+- Patch P1: JOIN `agents` and filter by `p_tenant_id` (with NULL-tolerant guard)
+- Patch P2: same shape via `agent_geo_buildings → agents`
+- Patch P8: same shape via `user_profiles → agents` (or skip P8 entirely if `user_profiles.assigned_agent_id` doesn't carry tenant scope)
+- Smoke: cross-tenant leak tests via savepoint isolation
+- File: `supabase/migrations/<stamp>_t2g_resolve_agent_tenant_filter.sql`
 
-- **Speed feels premium.** Filter response, drawer open, list paginate — everything sub-100ms wherever data is already loaded. Loading states are intentional, not afterthoughts.
-- **Information density without clutter.** Every pixel earns its keep. No empty hero banners. Charts where text would be heavier; text where charts would be lighter.
-- **Visual hierarchy via type and space, not borders.** Modern CRM aesthetic — large readable type for primary info, subdued meta info, generous whitespace, subtle elevation for interactive surfaces.
-- **Real-time feel.** New leads appear in the activity feed without manual refresh (SSE or polling, decided at T9-1). Status changes propagate without a full re-fetch.
-- **Hierarchy made visible.** The recipient layer system is the platform's most invisible-yet-powerful concept. T9-5's hierarchy explorer is the tool that makes it click for users for the first time.
-- **Mobile is not an afterthought.** Tenant admins are often on phones. T9-7 is a co-equal design target, not a second-pass.
-- **Multi-tenant correctness is invisible — but enforced.** Tenant admins see only their tenant; platform admins see all with explicit tenant filter. No tenant ID ever leaks across surfaces.
+**T2h — Cleanup: delete `app/actions/createLead.ts`**
+- Per F-CREATELEAD-IS-DEAD-CODE: zero callers, doc comment pre-stages deletion
+- Backup before delete: `Copy-Item .backup_<stamp>` per Rule Zero
+- Smoke: build passes, no import errors
+- Not a SQL migration — file delete only
 
-### T10 — Close
+**T2 close criteria:** all migrations applied to production, all rollback snapshots saved, smoke 9/9 PASS via the test harness. No regressions in W-HIERARCHY or W-TERRITORY existing smoke suites.
 
-After T2-T8 (backend) + T9 (admin UI) ship + final comprehensive smoke matrix PASS + W-LAUNCH-TRACKER row updated.
+### T3 — Recipient helper extension (NOT STARTED)
+
+**T3a — Verify `tenants.manager_cc` / `tenants.admin_bcc` consultation**
+- Probe: dump `lib/admin-homes/lead-email-recipients.ts` current body
+- Verify it reads `tenants.manager_cc` and `tenants.admin_bcc` and adds them to CC/BCC respectively
+- Patch if not — extend Layer 5/6 with `tenant_overlay_cc`/`tenant_overlay_bcc` semantics
+
+**T3b — Wire `lead_email_recipients_log` writer into `sendTenantEmail`**
+- Every TO/CC/BCC entry of every send call writes one row
+- Capture: `tenant_id`, `lead_id` (from caller context), `recipient_email`, `recipient_layer`, `direction`, `subject`, `template_key`, `resend_message_id` (from Resend response)
+- Status starts `'queued'`, transitions via webhook
+
+**T3c — Resend webhook handler updates `lead_email_recipients_log.status`**
+- File: `app/api/resend/webhook/route.ts` (NEW)
+- Events: `email.sent`, `email.delivered`, `email.bounced`, `email.complained`, `email.failed`
+- Match by `resend_message_id`; update `status`, `delivered_at`, `bounced_at`
+- Append-only constraint allows status carve-out via the `lead_email_recipients_log_status_only` trigger
+
+### T4 — Credit gating (REDUCED scope per OD-1 = c)
+
+OD-1 = (c) means lead INSERT does not gate on credits. T4 collapses to verification:
+
+**T4a — Audit lead-write surfaces for accidental credit gating**
+- 7 API routes + `submitLeadFromForm` + `getOrCreateLead`
+- Confirm none of them returns 402 / blocks on credit balance
+- T0-A already inventoried this; T4a is a final pre-build audit
+
+(No code changes required if audit passes. If it fails, scope expands; current evidence says it passes.)
+
+### T5 — Form coverage audit + UI updates (FIRST UI TOUCH — ping Shah)
+
+**T5a — `WalliamContactForm` props extension**
+- Add: `area_id?`, `municipality_id?`, `community_id?`, `neighbourhood_id?`, `listing_id?` (typed origin)
+- Backward-compatible: existing render sites still work; new props optional
+
+**T5b — Render-site updates per page-render matrix**
+| Page | File | Change |
+|---|---|---|
+| Area | `app/[slug]/AreaPage.tsx` | Pass `area_id` to `WalliamAgentCard` (already passes `area_id` via existing prop chain — verify) |
+| Municipality | `app/[slug]/MunicipalityPage.tsx` | Pass `municipality_id` |
+| Community | `app/[slug]/CommunityPage.tsx` | Pass `community_id` |
+| Building | `app/[slug]/BuildingPage.tsx` | Pass `building_id` to both `WalliamAgentCard` AND `WalliamContactForm` |
+| Property variant 1 | `app/[slug]/PropertyPageContent.tsx` | Pass `listing_id` + `building_id` |
+| Property variant 2 | `app/property/[id]/PropertyPageClient.tsx` | Pass `listing_id` + `building_id` |
+| Property variant 3 | `app/property/[id]/HomePropertyPageClient.tsx` | Same shape |
+| Neighbourhood (Toronto) | `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` | Pass `neighbourhood_id` |
+| Contact page | `app/comprehensive-site/contact/page.tsx` | No origin IDs (page-level inquiry) |
+
+**T5c — `submitLeadFromForm` signature extension**
+- Already accepts `areaId`/`municipalityId`/`communityId`/`listingId`/`buildingId` per the current dump
+- Add: `neighbourhoodId`
+- Forward all to `getOrCreateLead`
+
+**T5d — `getOrCreateLead` writes typed origin to new columns**
+- Map params → INSERT columns: `area_id`, `municipality_id`, `community_id`, `neighbourhood_id`
+- Set `lead_origin_route` based on caller (e.g., `'walliam_contact_building'`, `'walliam_estimator_questionnaire_listing'`)
+
+**T5e — 7 API route writers update**
+- Each route already passes geo IDs to `resolve_agent_for_context`
+- Each route's INSERT payload now writes geo IDs to typed columns instead of discarding them
+- Routes 1-7 in lead writer inventory below
+
+**T5f — `WalliamCTA` double-render audit**
+- Property pages (variants 2 + 3) render `<WalliamCTA>` TWICE (sidebar + bottom)
+- Verify intentional (likely yes — different placements, different `context` strings)
+- If double analytics-fire is happening on mount, dedupe at component level
+
+**T5g — System 1 form components verification**
+- `ContactSection`, `ContactModal`, `AgentContactForm`, `OfferInquiryModal`, `UnitHistoryModal`, `EstimatorResults`, `HomeEstimatorResults`, `ListYourUnit` all already call `submitLeadFromForm` (verified T0-C-3)
+- T5 only needs to ensure they pass through the new origin ID props correctly
+
+**T5h — Neighbourhood-page route generalization (out of W-LEADS-EMAIL scope, log-only)**
+- F-NEIGHBOURHOOD-PAGE-TORONTO-HARDCODED-ROUTE
+- Tracked in `docs/W-LAUNCH-TRACKER.md` for separate workstream
+
+### T6 — Plan integration + multitenant defect fixes
+
+**T6a — F-W-RECOVERY-A15 across 5 routes**
+- Extract `validateSession(supabase, sessionId, userId, tenantId)` helper
+- Helper reads `tenants.source_key` once, compares against `chat_sessions.source` substring
+- Routes:
+  1. `app/api/charlie/lead/route.ts:84`
+  2. `app/api/charlie/plan-email/route.ts:64`
+  3. `app/api/charlie/appointment/route.ts:88`
+  4. `app/api/walliam/estimator/session/route.ts:100`
+  5. `app/api/walliam/estimator/vip-request/route.ts:75`
+- All 5 backed up before patch; smoke validates each
+
+**T6b — F-QUESTIONNAIRE-HARDCODED-WALLIAM-LIKE-FILTER**
+- Replace `LIKE 'walliam_estimator%'` with `lead_origin_route = $1` lookup using T2c column
+- File: `app/api/walliam/estimator/vip-questionnaire/route.ts:~146`
+
+**T6c — Source-string hardcoding in 5 routes**
+- Routes 1, 2, 3, 5, 6 hardcode `source` strings (e.g., `'walliam_charlie'`, `'walliam_contact'`)
+- Refactor: derive `source = `${tenants.source_key}_<route_label>`` at route entry
+- One pass per route, with smoke verification before commit
+
+**T6d — VIP auto-approve fixes**
+- F-VIP-AUTO-APPROVE-ONLY-WRITES-BUYER-PLAN-LIMIT: seller VIP auto-approval grants seller credits, not buyer
+- F-VIP-AUTO-APPROVE-USES-CHAT-LIMIT-FOR-PLAN-REQUESTS: limit selection respects request type
+- File: `app/api/walliam/charlie/vip-request/route.ts`
+
+**T6e — Plan integration verification**
+- charlie/plan-email creator path: confirmed shipped, T6e verifies write path
+- charlie/lead F57 enricher path: confirmed shipped, T6e verifies enrich-not-overwrite semantics
+
+### T7 — Smoke matrix harness (per OD-6 = c)
+
+**Architecture:** Node + pg single-transaction harness with SAVEPOINT/ROLLBACK per test (W-TERRITORY v13 pattern). Statement-timeout disabled via `DISABLE_STATEMENT_TIMEOUT=1` env var.
+
+**T7a — Test infrastructure**
+- File: `scripts/run-w-leads-email-smoke.js`
+- Pattern: single transaction; per-test `SAVEPOINT test_N` / `ROLLBACK TO SAVEPOINT test_N`; final transaction-level `ROLLBACK`
+- Test fixture seeded at transaction start: 2 tenants × 4 agent tiers × 6 page-type contexts × test users
+
+**T7b — Test matrix dimensions**
+- Tenants: WALLiam (existing) + tenant #2 (test fixture)
+- Agent tiers: agent / manager / area_manager / tenant_admin
+- Page types: area / municipality / community / neighbourhood / building / property
+- Lead writers: 9 surfaces (7 API + 2 server-action paths)
+- Form variants per page: as per page-render matrix
+- Origin metadata: typed columns populated correctly
+- Recipient layers: 6 chain + 2 overlay (manager_cc, admin_bcc) = 8 destinations
+
+**T7c — Recipient assertion harness**
+- Every TO/CC/BCC entry from `getLeadEmailRecipients` is asserted against expected set
+- Per-tenant: assert `tenants.manager_cc` lands in CC; `tenants.admin_bcc` lands in BCC
+- Cross-tenant: tenant A request never hits tenant B's recipient list (regression guard for T2g RPC fix)
+
+**T7d — Resend dry-run integration**
+- `sendTenantEmail` flag: `DRY_RUN=1` (env-gated) constructs the message but doesn't fire
+- Assert: subject, html body, from address, recipient list match expected
+- Real Resend API not hit during smoke
+
+**T7e — Audit trail assertion**
+- Every send produces correct row count in `lead_email_recipients_log`
+- Per-recipient: row content matches (`recipient_layer`, `direction`, `template_key`)
+- Status starts `'queued'`; webhook simulation transitions correctly
+
+**T7f — Cross-tenant leak tests (regression guard for T2g)**
+- Tenant A request with listing pinned to tenant A agent → resolves to tenant A agent ✓
+- Tenant B request with same listing → resolves to NULL (tenant restriction) or tenant B fallback agent
+- Same shape for buildings, user-profile-assigned agents
+- Test count: ~30 cross-tenant scenarios
+
+**T7g — Backward-compat tests**
+- Existing `getOrCreateLead` callers without typed origin still work (Option A dup branch silent, etc.)
+- Existing W-HIERARCHY chain notification still fans out correctly
+- W-RECOVERY auth gates still hold
+
+**Estimated test count:** ~150-200 distinct savepoint-isolated cases. Single transaction run; total runtime expected <60 seconds.
+
+### T8 — Comprehensive smoke run + regression sweep
+
+**T8a — Run T7 matrix on production-shape data**
+- Single full run, all assertions PASS
+- Output captured to `recon/W-LEADS-EMAIL-T8-smoke-output.txt`
+
+**T8b — Cross-workstream regression**
+- W-RECOVERY: 6 routes still gated, no Anthropic ungated calls
+- W-HIERARCHY: chain notification still ships, audit on the existing path
+- W-ROLES-DELEGATION: R7 delegation BCC overlay still applies
+- W-TERRITORY: T6 smoke 6/6 PASS, T6-followup-A race harness clean
+
+**T8c — Manual local smoke**
+- `DEV_TENANT_DOMAIN=walliam.ca npm run dev`
+- Each page type: render → submit lead form → verify email landed (Resend dashboard)
+- Verify `lead_email_recipients_log` rows on Supabase Studio
+
+### Tlast — Close
+
+- All T2..T8 phases shipped
+- Smoke matrix 100% PASS
+- `docs/W-LAUNCH-TRACKER.md` Section 4 row updated: W-LEADS-EMAIL CLOSED
+- This tracker → v3 FINAL CLOSED status
+- Memory edit: prior "W-LEADS/EMAIL — Confirmed already shipped with delegation BCC" entry replaced with the comprehensive workstream completion record
+
+---
+
+## Findings catalog (125 total)
+
+Organized by category. F-* IDs are stable; severity rated for T2 prioritization.
+
+### Multitenant Rule Zero defects (T2/T6 fix scope — HIGH priority)
+
+- **F-W-RECOVERY-A15-AUTH-GATE-HARDCODED-WALLIAM-SOURCE** (5 routes) — auth gate compares against literal `'walliam'` in 5 routes. Refactor target: `validateSession(supabase, sessionId, userId, tenantId)` helper using `tenants.source_key`. Locked at T6a.
+- **F-QUESTIONNAIRE-HARDCODED-WALLIAM-LIKE-FILTER** — `LIKE 'walliam_estimator%'` in vip-questionnaire route. Fix at T6b via `lead_origin_route` lookup (depends on T2c).
+- **F-CHARLIE-APPOINTMENT-HARDCODED-SOURCE-STRING** — `source: 'walliam_charlie'` hardcoded. T6c.
+- **F-ESTIMATOR-VIP-REQUEST-MULTITENANT-DEBT** — 6 hardcoded `'walliam'` references. T6c.
+- **F-ESTIMATOR-VIP-APPROVE-MULTITENANT-DEBT** — same. T6c.
+- **F-ESTIMATOR-SESSION-HARDCODED-WALLIAM-AGENT-NAME-FALLBACK** — `let agentName = 'WALLiam'`. Display-only smell. T6c.
+- **F-ESTIMATOR-SESSION-MISSING-TENANT-ID-IN-RESOLVER-CALL** — `resolve_agent_for_context` called without `p_tenant_id`. T6c (caller fix; combines with T2g).
+- **F-IS-WALLIAM-NAMING-MISLEADS-CALLERS** — function bodies tenant-generic; names imply WALLiam. Rename-only. Low. T6c.
+- **F-ROOT-PAGE-WALLIAM-HARDCODED-ROUTE (MAJOR)** — `app/page.tsx` hardcoded WALLiam tenant gate. **OUT OF SCOPE** — logged to `docs/W-LAUNCH-TRACKER.md` as new W-TENANT-HOMEPAGE workstream.
+
+### Cross-tenant leak in `resolve_agent_for_context` RPC (T2g — CRITICAL)
+
+- **F-RESOLVE-AGENT-P1-P2-MISSING-TENANT-FILTER (MAJOR)** — P1 (`agent_listing_assignments`) and P2 (`agent_geo_buildings`) lookups don't filter by tenant. Cross-tenant data leak possible.
+- **F-RESOLVE-AGENT-P8-USER-PROFILES-CROSS-TENANT-LEAK (MAJOR)** — P8 reads `user_profiles.assigned_agent_id` without tenant filter.
+
+### Schema migration scope (T2)
+
+- **F-ORIGIN-GEO-IDS-NOT-PERSISTED** — area_id/muni_id/community_id/neighbourhood_id passed to resolver, discarded. T2a adds typed columns.
+- **F-VIP-REQUEST-LEAD-LOSES-GEO-CONTEXT** — charlie/vip-request INSERT lacks all geo IDs. T2a + T5e fix.
+- **F-ESTIMATOR-VIP-PARTIAL-GEO-CAPTURE** — captures `building_id` only. T2a + T5e fix.
+- **F-APPOINTMENT-LEAD-PARTIAL-GEO-CAPTURE** — community/muni/area passed to resolver, only `geo_name` lands. T2a + T5e fix.
+- **F-LEADS-NO-INDEX-ON-DUP-DETECTION-KEY** — no `(tenant_id, contact_email)` composite index. Sequential scan. T2b.
+- **F-LEADS-NO-INDEX-ON-LISTING-ID** — `idx_leads_building_id` exists; no listing-id sibling. T2b.
+- **F-LEADS-NO-INDEX-ON-SOURCE** — analytics scan. T2b.
+- **F-LEADS-APPOINTMENT-TIME-IS-TEXT** — typed as `text`, not `time`. Defer to T2-followup or post-launch (data-quality, not blocking).
+- **F-LEADS-APPOINTMENT-STATUS-NO-CHECK** — no enum constraint. T2d.
+- **F-LEADS-ASSIGNMENT-SOURCE-NO-CHECK** — no enum constraint. T2d.
+- **F-VIP-REQUESTS-TENANT-ID-NULLABLE (MAJOR)** — `tenant_id NULL`. T2e.
+- **F-VIP-REQUESTS-NO-FK-ON-TENANT-ID** — no referential integrity. T2e.
+- **F-VIP-REQUESTS-NO-CHECK-CONSTRAINTS** — status/request_type/request_source unbounded. T2e.
+- **F-VIP-REQUESTS-NO-TENANT-INDEX** — every per-tenant query scans. T2e.
+- **F-LEAD-EMAIL-LOG-IS-SYSTEM-1-ONLY (CONFIRMED)** — System 2 chain BCC fan-out invisible. T2f introduces `lead_email_recipients_log`.
+- **F-LEAD-EMAIL-LOG-NO-RECIPIENT-COLUMN (CONFIRMED)** — no recipient enumeration in current log. T2f.
+
+### Bug fixes (T6)
+
+- **F-VIP-AUTO-APPROVE-ONLY-WRITES-BUYER-PLAN-LIMIT** — seller VIP auto-approval grants buyer credits. T6d.
+- **F-VIP-AUTO-APPROVE-USES-CHAT-LIMIT-FOR-PLAN-REQUESTS** — wrong limit selected. T6d.
+- **F-LEADS-QUALITY-INCONSISTENT** — `quality` field set inconsistently across routes (some `'cold'`, some `'hot'`). T6 cleanup.
+- **F-LEADS-REFERER-SOURCE-FALLBACK-FRAGILE** — `lib/actions/leads.ts:139-148` referer-based source detection. Low. Document at T6.
+
+### Audit / observability gaps (T2f / T3b / T3c)
+
+- **F-LEAD-OWNERSHIP-CHANGES-NEVER-WRITTEN (CONFIRMED, MAJOR)** — append-only table shipped via W-TERRITORY T2a; zero callers. T3b adds writers from territory reroll/distribute paths.
+- **F-LEAD-EMAIL-LOG-IS-SYSTEM-1-ONLY** — see schema scope above. T2f.
+- **F-LOW-CREDITS-EMAIL-DOES-NOT-LOG** — only `tenant_users.low_credit_email_sent` JSONB flip records "did we attempt". T2f writes recipient log entry on send.
+
+### Architectural observations (no fix scope, T1 awareness)
+
+- **F-WELCOME-IS-MULTITENANT-EXEMPLAR (POSITIVE)** — `app/api/email/welcome/route.ts` is the cleanest tenant-aware route. Pattern model.
+- **F-SUBMITLEADFROMFORM-IS-MULTITENANT-EXEMPLAR (POSITIVE)** — server-action wrapper with `x-tenant-id` resolution. Pattern model.
+- **F-GETORCREATELEAD-IS-CANONICAL-LEAD-WRITER (POSITIVE)** — `lib/actions/leads.ts` is THE pattern for lead writes.
+- **F-TENANTS-SOURCE-KEY-IS-NOT-NULL-AND-UNIQUE (POSITIVE)** — F-W-RECOVERY-A15 fix target well-defined.
+- **F-TENANTS-MANAGER-CC-AND-ADMIN-BCC-EXIST (POSITIVE)** — per-tenant overlay columns shipped. T3a verifies helper consults them.
+- **F-WELCOME-DOES-NOT-USE-RECIPIENT-HELPER** — `email/welcome` bypasses `getLeadEmailRecipients`; recipient resolution route-built. Documented; no fix needed (welcome ≠ lead).
+- **F-WELCOME-MANAGER-CC-USES-PARENT-NOT-WALKER** — same pattern; manager CC via `agent.parent_id`, not walker. Documented.
+- **F-WELCOME-NO-AGENT-NO-ADMIN-SILENT-SKIP** — registration with all-null agent/admin paths sends only user-facing welcome. Documented.
+- **F-LEADS-DUAL-AXIS-STATUS-MODEL** — 4 status-like columns (status / status_axis / stage / urgency). T7b smoke matrix design awareness.
+- **F-LEADS-MUTABLE-NO-APPEND-ONLY** — DB allows DELETE/UPDATE on `leads`. Tracker rule says append-only; not enforced.
+- **F-TENANTS-DUAL-LIFECYCLE-FIELDS** — `is_active boolean` AND `lifecycle_status text` co-exist. Out of scope.
+- **F-USER-CREDIT-OVERRIDES-FK-IS-USER-PROFILES** — vs `tenant_users.user_id → auth.users`. Inconsistency. Documented.
+- **F-TENANT-USERS-MARKETING-CONSENT-EXISTS-BUT-UNUSED (CASL CONCERN)** — schema has consent fields; no code consults them before email send. **T3a/T3b verify consent gate.** Canadian Anti-Spam Law exposure.
+- **F-CONTACT-COMPONENTS-USE-SYSTEM-1-SERVER-ACTION** — DOWNGRADED to "not a defect" (server action is multitenant-clean).
+- **F-HOMEPAGE-RENDERS-SYSTEM-1-CONTACTSECTION** — DOWNGRADED (HomePage not reached on WALLiam).
+- **F-DEVELOPMENT-PAGE-RENDERS-SYSTEM-1-AGENTCARD** — out of scope, logged for separate workstream.
+- **F-NEIGHBOURHOOD-PAGE-TORONTO-HARDCODED-ROUTE** — out of scope, logged for separate workstream.
+- **F-PROPERTY-PAGES-TRIPLE-CLIENT** — 3 property page variants (PropertyPageClient + HomePropertyPageClient + PropertyPageContent). T5b handles each.
+- **F-WALLIAMCTA-DOUBLE-RENDER-ON-PROPERTY-PAGES** — T5f audits intentionality.
+- **F-OPTION-A-DUP-IS-SILENT** — locked behavior per W-HIERARCHY 2026-05-03. Not a defect.
+
+### Cleanup / dead code (T2h)
+
+- **F-CREATELEAD-IS-DEAD-CODE (CONFIRMED)** — `app/actions/createLead.ts` zero callers. T2h deletes.
+- **F-CREATELEAD-HARDCODED-CONDOLEADS-CA-URL** — dead-code defect. Disappears with delete.
+- **F-CREATELEAD-HARDCODED-SLUG-BLACKLIST** — dead-code defect. Disappears with delete.
+
+### Probe defects (lessons learned, no fix scope)
+
+- **F-T0A-PROBE-DEFECT-SIMPLEMATCH-PIPE** — `Select-String -SimpleMatch` with `|` returns false negatives.
+- **F-PROBE-INCLUDED-STALE-BACKUPS** — initial regex `\.backup_\d+` insufficient; corrected to `\.backup|\.backup\d*_|\.backup-|\.debug_|\.predebugremoval_`.
+- **F-PASTE-OVERFLOW-AT-93KB** — paste corruption at 93 KB; per-file dump sentinels are the recovery pattern.
+- **F-T0B-PHASE1-INVENTORY-INCOMPLETE** — initial inventory missed 3 routes; T0-D/T0-E corrected to 7.
+- **F-T0C-PROBE-DEFECT-BACKUP-FILTER-INCOMPLETE** — see above.
+- **F-T0C-PROBE-DEFECT-PAGE-PATHS-WRONG** — paths `app\(walliam)` and `app\area` don't exist; should have used `app\property\[id]` and `app\comprehensive-site`.
+- **F-T0C-PROBE-DEFECT-SELECT-OBJECT-30-TRUNCATION** — fixed-row cap hid files; T0-C-2 removed cap.
+- **F-PLACEHOLDER-VIOLATION-PATH-B-EXAMPLE** (Claude defect, 2026-05-10) — illustrative env-var example rendered in runnable code fence; user pasted, clobbered working value. Lesson: never put placeholder values inside `powershell` fences.
+
+### Out of scope (logged for cohesion)
+
+- **F-NO-ADMIN-CREDIT-UI** — `app/admin-homes/` no credit UI. Real launch blocker; separate workstream.
+- **F-VIP-FLOW-COMPLEXITY** — multiple VIP route variants. Out.
+- **F-CREDIT-CHAT-REFUND-ON-PLAN** — `message_count` decrements on `generate_plan` fire. Analytics relevance.
+- **F-COMPREHENSIVE-SITE-DEFAULT-AGENT-LOOKUP-PATTERN** — tenant-domain fast-path. Out.
+
+---
+
+## Lead writer inventory — FINAL
+
+| # | Writer | Layer | Multitenant status | T6 fix |
+|---|---|---|---|---|
+| 1 | `app/api/walliam/contact/route.ts` | API INSERT | Hardcoded source + auth gate | T6a + T6c |
+| 2 | `app/api/charlie/lead/route.ts` | API F57 UPSERT | Hardcoded source + auth gate | T6a + T6c |
+| 3 | `app/api/charlie/plan-email/route.ts` | API INSERT | Hardcoded source + auth gate | T6a + T6c |
+| 4 | `app/api/walliam/charlie/vip-request/route.ts` | API INSERT | **Clean** ✓ (dynamic source) | none |
+| 5 | `app/api/walliam/estimator/vip-request/route.ts` | API INSERT | Hardcoded source + auth gate | T6a + T6c |
+| 6 | `app/api/charlie/appointment/route.ts` | API INSERT | Hardcoded source + auth gate | T6a + T6c |
+| 7 | `app/api/walliam/estimator/vip-questionnaire/route.ts` | API F57-class UPSERT | Hardcoded LIKE filter | T6b |
+| 8 | `app/actions/submitLeadFromForm.ts` | Server-action wrapper | **Clean** ✓ (exemplar) | none |
+| 9 | `lib/actions/leads.ts::getOrCreateLead` | Underlying writer (canonical) | **Clean** ✓ (canonical) | none |
+| – | `app/actions/joinTenant.ts:180` | Direct getOrCreateLead caller | **Clean** ✓ | none |
+| – | `app/actions/createLead.ts::createLeadFromRegistration` | DEAD CODE | n/a | T2h delete |
+
+**Form-component shells (UI layer, all routed to writers above):**
+- `WalliamContactForm` (direct page form)
+- `WalliamAgentCard` (agent-card embedded form)
+- `ContactSection` (homepage form — System 1 subdomain only)
+- `ContactModal` (sidebar/mobile modal — both System 1 and System 2 paths)
+- `AgentContactForm` (System 1 property page form)
+- `OfferInquiryModal` / `UnitHistoryModal` (property page modals)
+- `EstimatorResults` / `HomeEstimatorResults` (value-result step)
+- `ListYourUnit` (building/area pages — EVALUATION + VISIT submit paths)
+- `AppointmentForm` (Charlie appointment booking)
+- `EstimatorVipWrapper` family (estimator VIP flow)
+- `RegisterModal` → `joinTenant` (registration flow)
+
+---
+
+## Page-render matrix — FINAL
+
+| Page type | Page file | WalliamCTA | WalliamAgentCard | WalliamContactForm | T5b origin IDs to pass |
+|---|---|---|---|---|---|
+| Homepage (root `/`) — WALLiam | `components/HomePageComprehensive(V2).tsx` | NO | NO | NO (uses MobileContactBar→ContactModal) | none |
+| Homepage (root `/`) — System 1 subdomain | `components/HomePage.tsx` | NO | NO | NO (uses ContactSection) | none (System 1) |
+| Area | `app/[slug]/AreaPage.tsx` | ✓ L234 | ✓ L230 | NO | `area_id` |
+| Municipality | `app/[slug]/MunicipalityPage.tsx` | ✓ L227 | ✓ L222 | NO | `municipality_id` |
+| Community | `app/[slug]/CommunityPage.tsx` | ✓ L182 | ✓ L177 | NO | `community_id` |
+| Building | `app/[slug]/BuildingPage.tsx` | ✓ L582 | ✓ L576 | ✓ L584 | `building_id` |
+| Neighbourhood (Toronto only) | `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` | ✓ L256 | ✓ L257 | NO | `neighbourhood_id` |
+| Property variant 1 (slug-routed) | `app/[slug]/PropertyPageContent.tsx` | NO | ✓ L175 | ✓ L199 | `listing_id`, `building_id` |
+| Property variant 2 (id-routed, condo) | `app/property/[id]/PropertyPageClient.tsx` | ✓ L184 + L240 | ✓ L176 | NO | `listing_id`, `building_id` |
+| Property variant 3 (id-routed, home) | `app/property/[id]/HomePropertyPageClient.tsx` | ✓ L177 + L219 | ✓ L170 | NO | `listing_id`, `building_id` |
+| Contact page | `app/comprehensive-site/contact/page.tsx` | NO | NO | ✓ L64 (`source="contact_page"`) | none (page-level inquiry) |
+
+---
+
+## Schema reference (T0-F probe output, 2026-05-10)
+
+**Column counts (current):** `leads` 42, `vip_requests` 22, `lead_email_log` 5, `lead_ownership_changes` 9, `tenant_users` 15, `user_credit_overrides` 12, `platform_admins` 10, `platform_manager_tenants` 4, `tenants` 64.
+
+**Column counts (post-T2):** `leads` 47 (+area_id, municipality_id, community_id, neighbourhood_id, lead_origin_route), `vip_requests` 22 (no add, scope tighten), `lead_email_recipients_log` 14 NEW.
+
+**Critical schema invariants to preserve in T2:**
+- `leads.tenant_id NOT NULL` ✓
+- `leads.agent_id NOT NULL` ✓
+- `tenant_users` composite PK `(user_id, tenant_id)` ✓
+- `tenants.source_key NOT NULL` + UNIQUE ✓ (T6a fix target)
+- `lead_ownership_changes` append-only triggers ✓
+- `leads_updated_at` BEFORE-UPDATE trigger ✓
+- All FK cascade behaviors (tenants ON DELETE CASCADE for tenant-owned tables; ON DELETE SET NULL for agent ownership) ✓
+
+**`resolve_agent_for_context` 10-tier waterfall (T2g target):**
+1. Tenant restriction guard (`tenant_property_access`) ✓
+2. P1: `agent_listing_assignments` ❌ MISSING tenant filter
+3. P2: `agent_geo_buildings` ❌ MISSING tenant filter
+4. P3-P6: `pick_routing_agent(scope, scope_id, tenant_id, listing_id)` ✓
+5. P7: `tenant_users` ✓
+6. P8: `user_profiles` ❌ MISSING tenant filter
+7. P9: `tenants.default_agent_id` ✓
+8. P10: any active agent in tenant ✓
 
 ---
 
@@ -176,41 +547,104 @@ All Rule Zero invariants apply (multitenant at scale, no regressions, comprehens
 
 Specific to W-LEADS-EMAIL:
 
-- **System 1 lead routes are NEVER touched.** All work is System 2 (`/admin-homes`, `app/api/walliam/*`, `app/api/charlie/*`, walliam-tenant-scoped flows).
-- **Email always uses `notifications@condoleads.ca`** (verified Resend domain) per memory — never `walliam.ca`. OD-7 may carve a per-tenant override, but the verified-domain default is the baseline.
-- **Append-only audit on lead writes.** `leads` table inherits the `tenant_id NOT NULL` + `agent_id NOT NULL` constraints. Any new lead-adjacent table follows append-only via DENY UPDATE / DELETE triggers (per W-TERRITORY T2a pattern).
-- **No DELETE on leads from any route.** Deactivation pattern (`status` field or soft-delete column) only.
-- **Origin attribution is required.** Every lead INSERT must carry origin context per OD-2 outcome; route validation rejects writes missing it. Existing leads are backfilled to a known-default origin scope at the migration that lands the columns.
-- **Test scope per OD-6 outcome.** Once locked, every new code path must come with smoke coverage in the chosen tier. Smoke runs locally first (per memory rule — local smoke first, never Vercel preview).
-- **Probe-then-patch pattern (W-TERRITORY v11).** Any production trigger / function modification must be preceded by a read-only probe that captures the exact current source. The probe output is the ground truth; the patch is derived from it.
-- **Per-row-diff via diff helper (W-TERRITORY v14).** Any future write path that ingests a desired-state payload (e.g., bulk recipient overrides per tenant) must use a server-side diff against current active state, not DELETE-all + INSERT-all. Identity key documented per table.
-- **Smoke-via-savepoint-isolation (W-TERRITORY v13).** Smoke tests run in a single transaction with final ROLLBACK; per-test SAVEPOINT + ROLLBACK TO SAVEPOINT prevents drift. Production data is never committed.
-- **T9 quality bar: best-in-class.** Per Shah explicit direction — "this needs to be the best." Visual reviews are first-class gates, not afterthoughts. If a sub-phase ships and it doesn't feel premium on first interaction, it's not done. The bar is set against current best-of-breed CRM admin surfaces; not against the existing internal UI baseline.
-
----
-
-## Findings
-
-(empty — populated during T0 recon and beyond)
-
----
-
-## Status log
-
-- **2026-05-09 v1** — Tracker skeleton created. **Why-this-exists** establishes the make-or-break framing: prior workstreams (W-HIERARCHY, W-ROLES-DELEGATION R7, W-TERRITORY) shipped the routing layer; this workstream covers credit accounting + public form coverage + origin attribution + recipient contract extension + plan delivery integration + end-to-end smoke + **admin Leads-Email UI as the WOW stage**. **Scope contract DRAFT** lists 7 in-scope items + 5 out-of-scope items. **Open decisions** OD-1 (credit gating), OD-2 (origin shape), OD-3 (recipient layer count), OD-4 (plan integration), OD-5 (form variants), OD-6 (smoke tier), OD-7 (tenant email override), OD-8 (UI design tier), OD-9 (UI surface placement). Per Shah explicit direction at v1 creation: T9 quality bar is "best-in-class" — strong steer toward OD-8 (a) premium-tier; confirmed at T1 with mockup review. **Phases**: T0 recon → T1 decision lock → T2..T8 backend build → T9 admin UI WOW stage (8 sub-phases T9-1..T9-8) → T10 close. T0 has 8 sub-targets (T0-A..T0-H, with T0-H added for T9 baseline). **Workflow rules** carry forward all Rule Zero invariants + W-TERRITORY-derived patterns (probe-then-patch, per-row-diff, savepoint smoke isolation, local smoke first) + T9-specific quality bar rule (best-in-class; visual reviews are first-class gates). **Next action: T0 recon, this working block.** Probes feed T1 decision lock. No code changes until T1 closes.
+- System 1 lead routes NEVER touched. All work is System 2.
+- Email always uses per-tenant `tenants.send_from` / `resend_api_key` per OD-7 = (b). WALLiam baseline = `notifications@condoleads.ca`.
+- Append-only audit on `lead_email_recipients_log` (DENY UPDATE/DELETE, with status-only carve-out for webhook).
+- No DELETE on `leads` from any route. Soft-delete via `status` + `status_axis` only.
+- Origin attribution required: every lead INSERT writes typed origin columns per OD-2 = (b).
+- Smoke per OD-6 = (c): production-shape SQL state, savepoint isolation, real BCC fan-out via Resend dry-run, 150-200 distinct test cases.
+- Probe-then-patch (W-TERRITORY v11): every prod trigger/function modification preceded by read-only probe; probe output is ground truth.
+- Per-row-diff via diff helper (W-TERRITORY v14): future bulk-write paths use server-side diff vs DELETE-all + INSERT-all.
+- Smoke-via-savepoint-isolation (W-TERRITORY v13).
+- Local smoke first; never Vercel preview.
+- `DATABASE_URL` sourced from `.env.local` via the matching probe pattern; never pasted in chat.
+- Illustrative env-var values NEVER inside runnable `powershell` code fences (per F-PLACEHOLDER-VIOLATION-PATH-B-EXAMPLE).
 
 ---
 
 ## Next action
 
-**T0 recon, this working block.** Eight probe targets listed above. Each produces a verified-current state output under `recon/W-LEADS-EMAIL-T0-<letter>-<topic>.txt`. Recon order proposed (subject to revision based on findings):
+**T2a — `leads` typed origin columns migration.** First migration in the T2 chain. Steps:
 
-1. **T0-F** (`leads` schema) — quickest probe; sets the data shape that every other recon target reads against.
-2. **T0-B** (lead routes inventory) — finds every code path that writes to leads.
-3. **T0-A** (credit surface) — feeds OD-1.
-4. **T0-D** (email path inventory) + **T0-G** (tenant→platform routing) — feed OD-3 and OD-7.
-5. **T0-E** (plan delivery surface) — feeds OD-4.
-6. **T0-C** (public page form coverage) — feeds OD-5.
-7. **T0-H** (existing admin leads surface) — feeds OD-8 + OD-9 + the T9 design lock.
+1. Probe — capture current `leads` schema fingerprint:
+   ```powershell
+   $line = (Get-Content -LiteralPath ".env.local" | Select-String '^(DATABASE_URL|SUPABASE_DB_URL|POSTGRES_URL|DIRECT_URL)\s*=' | Select-Object -First 1).Line
+   $val = ($line -split '=', 2)[1].Trim().Trim('"').Trim("'")
+   $env:DATABASE_URL = $val
+   node scripts/recon-w-leads-email-t0-f-schema.js
+   ```
+   (Re-runs the T0-F probe; output diff vs current confirms no schema drift since recon.)
 
-T0 closure = all 8 probes complete + findings logged as tracker v2 + OD-1..OD-9 each have at least one evidence-backed candidate answer. T1 decision lock follows in the same working block. **No code changes until T1 closes.** **Build phase order is T2..T8 (backend) → T9 (admin UI) → T10 (close); T9 is explicitly the final build phase before close — the WOW stage is the legibility layer over everything else, not a side-project.**
+2. Verify referenced FK target tables (`areas`, `municipalities`, `communities`, `neighbourhoods`) exist with `id uuid PRIMARY KEY`. Probe via Supabase Studio or extend `scripts/recon-w-leads-email-t0-f-schema.js` to include them.
+
+3. Write migration: `supabase/migrations/<stamp>_t2a_leads_geo_columns.sql`. Migration body:
+   ```sql
+   BEGIN;
+   ALTER TABLE leads ADD COLUMN area_id uuid NULL REFERENCES areas(id);
+   ALTER TABLE leads ADD COLUMN municipality_id uuid NULL REFERENCES municipalities(id);
+   ALTER TABLE leads ADD COLUMN community_id uuid NULL REFERENCES communities(id);
+   ALTER TABLE leads ADD COLUMN neighbourhood_id uuid NULL REFERENCES neighbourhoods(id);
+   CREATE INDEX idx_leads_area_id ON leads (area_id) WHERE area_id IS NOT NULL;
+   CREATE INDEX idx_leads_municipality_id ON leads (municipality_id) WHERE municipality_id IS NOT NULL;
+   CREATE INDEX idx_leads_community_id ON leads (community_id) WHERE community_id IS NOT NULL;
+   CREATE INDEX idx_leads_neighbourhood_id ON leads (neighbourhood_id) WHERE neighbourhood_id IS NOT NULL;
+   COMMIT;
+   ```
+
+4. Apply via runner: `scripts/apply-t2a-leads-geo-columns.js` (W-TERRITORY-style — captures rollback snapshot before apply, verifies post-apply with marker check, reports byte-level diff).
+
+5. Smoke: re-run T0-F probe; confirm 4 new columns + 4 new indexes; confirm 0 row-count drift on existing data.
+
+6. Commit `t2a_leads_geo_columns`; push to `origin/main`.
+
+T2a estimate: ~30 minutes including probe-then-patch + smoke. Then T2b (indexes), T2c (lead_origin_route), T2d (CHECK constraints), T2e (vip_requests scope), T2f (audit table), T2g (RPC fix), T2h (createLead.ts delete) — each one ships before the next starts.
+
+---
+
+## Status log
+
+- **2026-05-09 v1 SKELETON** — Tracker created. Why-this-exists, scope contract DRAFT, ODs OD-1..OD-7 OPEN, phases T0..Tlast outlined.
+- **2026-05-10 v2 T0 RECON COMPLETE + T1 LOCKED** — All 7 sub-targets closed. 125 findings catalogued. 7 OD anchors locked: OD-1 (c), OD-2 (b), OD-3 (c), OD-4 (c), OD-5 (a), OD-6 (c), OD-7 (b). T2..Tn phase plan defined. Next action: T2a `leads` geo columns migration.
+
+---
+
+## Recon outputs (all on disk under `recon/`)
+
+| File | Status |
+|---|---|
+| `W-LEADS-EMAIL-T0-A-credit-surface.txt` (41 KB) | Round 1, defective grep — superseded |
+| `W-LEADS-EMAIL-T0-A-REPROBE-credit-surface.txt` (125 KB) | Pasted in 2 parts, processed |
+| `W-LEADS-EMAIL-T0-A-REPROBE-PART1.txt` (102 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-A-REPROBE-PART2.txt` (22 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-B-2-canonical-pattern.txt` (63 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-C-form-coverage.txt` (~19 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-C-2-form-render-callsites.txt` (~22 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-C-3-action-writer-dumps.txt` (~44 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-DG-email-and-platform.txt` (114 KB) | Split — superseded by per-file dumps |
+| `W-LEADS-EMAIL-T0-DG-PART1.txt` (93 KB) | Pasted with corruption — superseded |
+| `W-LEADS-EMAIL-T0-DG-PART2.txt` (20 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-D-FILE-low-credits.txt` (10 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-D-FILE-charlie-vip-request.txt` (19 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-D-FILE-charlie-vip-approve.txt` (12 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-D-FILE-estimator-vip-request.txt` (18 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-D-FILE-estimator-vip-approve.txt` (12 KB) | Pasted, processed |
+| `W-LEADS-EMAIL-T0-F-leads-schema.txt` (35 KB) | Pasted, processed |
+
+Probe scripts on disk under `scripts/`:
+
+| Script | Purpose |
+|---|---|
+| `scripts/recon-w-leads-email-t0-f-schema.js` | T0-F SQL schema dump (Node + pg) |
+
+T2 build scripts to be written:
+
+| Script | Purpose |
+|---|---|
+| `scripts/apply-t2a-leads-geo-columns.js` | Apply T2a migration with rollback snapshot |
+| `scripts/apply-t2b-leads-indexes.js` | Apply T2b indexes |
+| `scripts/apply-t2c-lead-origin-route.js` | Apply T2c column |
+| `scripts/apply-t2d-leads-check-constraints.js` | Apply T2d CHECKs |
+| `scripts/apply-t2e-vip-requests-tenant-scope.js` | Apply T2e scope tightening |
+| `scripts/apply-t2f-lead-email-recipients-log.js` | Apply T2f audit table |
+| `scripts/apply-t2g-resolve-agent-tenant-filter.js` | Apply T2g RPC fix |
+| `scripts/run-w-leads-email-smoke.js` | T7 smoke harness |
