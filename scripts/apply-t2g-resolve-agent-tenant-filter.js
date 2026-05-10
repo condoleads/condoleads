@@ -148,7 +148,7 @@ async function main() {
   if (!post.body.includes('SELECT default_agent_id INTO v_agent_id FROM tenants')) {
     checks.push('P9 preserved tier missing (tenants.default_agent_id)')
   }
-  if (!post.body.includes("WHERE tenant_id = p_tenant_id AND is_active = true\n    ORDER BY created_at ASC LIMIT 1")) {
+  if (!/WHERE tenant_id = p_tenant_id AND is_active = true\s+ORDER BY created_at ASC LIMIT 1/.test(post.body)) {
     checks.push('P10 preserved tier missing (any active agent fallback)')
   }
 
