@@ -60,3 +60,7 @@ paddle_rollback*.json
 # General timestamped backup files
 *.backup_*
 *.backup
+
+# W-LEADS-EMAIL T3b smoke artifacts
+app/api/t3b-smoke-leads-helper/
+dev-server.log

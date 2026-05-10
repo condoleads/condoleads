@@ -20,6 +20,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
 
 // Track user activity in user_activities table
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
 
     if (recipients) {
       try {
-        await sendTenantEmail({
+        const sendResult = await sendTenantEmail({
           tenantId: tenant_id,
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
@@ -145,6 +146,18 @@ export async function POST(req: NextRequest) {
           subject,
           html,
         })
+        if (lead?.id) {
+          await logEmailRecipients({
+            supabase,
+            tenantId: tenant_id,
+            leadId: lead.id,
+            agentId: agent?.id || null,
+            recipients,
+            subject,
+            templateKey: 'walliam_contact_lead_capture',
+            resendMessageId: sendResult.id,
+          })
+        }
       } catch (err) {
         if (err instanceof TenantEmailNotConfigured) {
           console.warn('[walliam/contact] tenant email not configured:', err.message)

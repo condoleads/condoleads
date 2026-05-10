@@ -24,6 +24,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
 // Create service role client that bypasses RLS
 function createServiceClient() {
@@ -231,7 +232,7 @@ export async function createLead(params: CreateLeadParams) {
     const subject = `✦ New Lead — ${params.contactName} — ${source}`
 
     try {
-      await sendTenantEmail({
+      const sendResult = await sendTenantEmail({
         tenantId: params.tenantId,
         to: recipients.to,
         cc: recipients.cc.length > 0 ? recipients.cc : undefined,
@@ -239,6 +240,18 @@ export async function createLead(params: CreateLeadParams) {
         subject,
         html,
       })
+      if (lead?.id) {
+        await logEmailRecipients({
+          supabase,
+          tenantId: params.tenantId,
+          leadId: lead.id,
+          agentId: resolvedAgentId,
+          recipients,
+          subject,
+          templateKey: 'leads_helper_new_lead_notification',
+          resendMessageId: sendResult.id,
+        })
+      }
     } catch (err) {
       if (err instanceof TenantEmailNotConfigured) {
         console.warn('[leads] tenant email not configured:', err.message)

@@ -19,6 +19,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
 
 function createServiceClient() {
@@ -196,8 +197,9 @@ export async function POST(request: NextRequest) {
     })
 
     // Save lead with full hierarchy chain (per Lead+Email contract)
+    let lead: { id: string } | null = null
     if (userEmail) {
-      const { error: leadError } = await supabase.from('leads').insert({
+      const { data, error: leadError } = await supabase.from('leads').insert({
         agent_id: agent?.id || null,
         user_id: session.user_id || null,
         tenant_id: tenantId,
@@ -212,8 +214,9 @@ export async function POST(request: NextRequest) {
         status: 'new',
         quality: 'hot',
         assignment_source: agent?.id ? 'geo' : 'admin',
-      })
+      }).select('id').single()
       if (leadError) console.error('[walliam/vip-request] lead error:', leadError)
+      lead = data
     }
 
     // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
@@ -231,14 +234,27 @@ export async function POST(request: NextRequest) {
 
     if (recipients) {
       try {
-        await sendTenantEmail({
+        const subject = `VIP Plan Request: ${userName} (${planType === 'seller' ? 'Seller' : 'Buyer'} Plan)`
+        const sendResult = await sendTenantEmail({
           tenantId: tenantId,
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
-          subject: `VIP Plan Request: ${userName} (${planType === 'seller' ? 'Seller' : 'Buyer'} Plan)`,
+          subject,
           html: emailHtml,
         })
+        if (lead?.id) {
+          await logEmailRecipients({
+            supabase,
+            tenantId,
+            leadId: lead.id,
+            agentId: agent?.id || null,
+            recipients,
+            subject,
+            templateKey: 'walliam_charlie_vip_request_lead',
+            resendMessageId: sendResult.id,
+          })
+        }
       } catch (err) {
         if (err instanceof TenantEmailNotConfigured) {
           console.warn('[walliam/vip-request] tenant email not configured:', err.message)

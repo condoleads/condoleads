@@ -21,6 +21,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
     const geoName = geoContext?.geoName || plan?.geoName || null
 
     // Save lead with full hierarchy chain stamped (per Lead+Email contract)
-    await supabase.from('leads').insert({
+    const { data: lead, error: leadError } = await supabase.from('leads').insert({
       agent_id: agent?.id || null,
       user_id: userId,
       contact_name: userName,
@@ -134,7 +135,8 @@ export async function POST(req: NextRequest) {
       status: 'new',
       quality: 'hot',
       tenant_id: tenantId,
-    })
+    }).select('id').single()
+    if (leadError) console.error('[plan-email] lead error:', leadError)
 
     // Track activity
     await trackUserActivity(supabase, userEmail, agent?.id || null, 'contact_form', {
@@ -175,7 +177,7 @@ export async function POST(req: NextRequest) {
 
     if (recipients) {
       try {
-        await sendTenantEmail({
+        const sendResult = await sendTenantEmail({
           tenantId: tenantId || '',
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
@@ -183,6 +185,18 @@ export async function POST(req: NextRequest) {
           subject,
           html,
         })
+        if (lead?.id) {
+          await logEmailRecipients({
+            supabase,
+            tenantId: tenantId || '',
+            leadId: lead.id,
+            agentId: agent?.id || null,
+            recipients,
+            subject,
+            templateKey: 'charlie_plan_email_chain',
+            resendMessageId: sendResult.id,
+          })
+        }
       } catch (err) {
         if (err instanceof TenantEmailNotConfigured) {
           console.warn('[plan-email] tenant email not configured (chain):', err.message)
