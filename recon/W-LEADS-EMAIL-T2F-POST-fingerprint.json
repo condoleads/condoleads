@@ -1,0 +1,154 @@
+{
+  "timestamp": "2026-05-10T14:51:47.194Z",
+  "table_exists": true,
+  "columns": [
+    {
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "column_name": "tenant_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "lead_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "agent_id",
+      "data_type": "uuid",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "column_name": "recipient_email",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "recipient_layer",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "direction",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "subject",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "template_key",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "resend_message_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": "'queued'::text"
+    },
+    {
+      "column_name": "sent_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "column_name": "delivered_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "column_name": "bounced_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    }
+  ],
+  "foreign_keys": [
+    {
+      "conname": "lead_email_recipients_log_agent_id_fkey",
+      "def": "FOREIGN KEY (agent_id) REFERENCES agents(id)"
+    },
+    {
+      "conname": "lead_email_recipients_log_lead_id_fkey",
+      "def": "FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE"
+    },
+    {
+      "conname": "lead_email_recipients_log_tenant_id_fkey",
+      "def": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE"
+    }
+  ],
+  "check_constraints": [
+    {
+      "conname": "lerl_direction_check",
+      "def": "CHECK ((direction = ANY (ARRAY['to'::text, 'cc'::text, 'bcc'::text])))"
+    },
+    {
+      "conname": "lerl_recipient_layer_check",
+      "def": "CHECK ((recipient_layer = ANY (ARRAY['agent'::text, 'manager'::text, 'area_manager'::text, 'tenant_admin'::text, 'platform_manager'::text, 'platform_admin'::text, 'tenant_overlay_cc'::text, 'tenant_overlay_bcc'::text])))"
+    },
+    {
+      "conname": "lerl_status_check",
+      "def": "CHECK ((status = ANY (ARRAY['queued'::text, 'sent'::text, 'delivered'::text, 'bounced'::text, 'failed'::text, 'complained'::text])))"
+    }
+  ],
+  "indexes": [
+    {
+      "indexname": "idx_lerl_lead",
+      "indexdef": "CREATE INDEX idx_lerl_lead ON public.lead_email_recipients_log USING btree (lead_id)"
+    },
+    {
+      "indexname": "idx_lerl_recipient",
+      "indexdef": "CREATE INDEX idx_lerl_recipient ON public.lead_email_recipients_log USING btree (recipient_email)"
+    },
+    {
+      "indexname": "idx_lerl_resend_msg",
+      "indexdef": "CREATE INDEX idx_lerl_resend_msg ON public.lead_email_recipients_log USING btree (resend_message_id) WHERE (resend_message_id IS NOT NULL)"
+    },
+    {
+      "indexname": "idx_lerl_tenant_sent",
+      "indexdef": "CREATE INDEX idx_lerl_tenant_sent ON public.lead_email_recipients_log USING btree (tenant_id, sent_at DESC)"
+    },
+    {
+      "indexname": "lead_email_recipients_log_pkey",
+      "indexdef": "CREATE UNIQUE INDEX lead_email_recipients_log_pkey ON public.lead_email_recipients_log USING btree (id)"
+    }
+  ],
+  "triggers": [
+    {
+      "tgname": "trg_lerl_no_delete"
+    },
+    {
+      "tgname": "trg_lerl_status_only_update"
+    }
+  ]
+}
