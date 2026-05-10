@@ -1,7 +1,7 @@
 # W-LEADS-EMAIL — TRACKER
 
 **Version:** v2 — T0 RECON COMPLETE + T1 DECISION LOCKED
-**Status:** T2 build phase — IN PROGRESS. T2g + T2h shipped 2026-05-10 (T2g commits `d0c6ca3` + `f1bcf66`). Remaining: T2a–T2f schema migrations. Next action: T2a `leads` geo columns migration.
+**Status:** T2 build phase — ✅ CLOSED 2026-05-10. All 8 sub-phases shipped: T2a `b8743a7`, T2b `37b3886`, T2c `ae8454c`, T2d `b74cdd2`, T2e `43ec751`, T2f `8e84040`, T2g `d0c6ca3` + `f1bcf66`, T2h `c826ffd`. Tracker drift discovered + corrected at v5: T2a–T2f shipped 7:54–10:49 AM 2026-05-10 without v3/v4 capturing them. Next phase: T3 — recipient helper extension (BCC fan-out audit logging via lead_email_recipients_log).
 **Date:** 2026-05-10
 **Owner:** Shah (sole dev)
 **Sister tracker:** `docs/W-LAUNCH-TRACKER.md` (row pending update at Tlast close)
@@ -94,11 +94,11 @@ Recon outputs on disk under `recon/`:
 
 All 7 ODs anchored. Scope contract LOCKED. Phase plan T2..T8 + Tlast defined below.
 
-### T2 — Schema migrations (IN PROGRESS — T2g + T2h CLOSED 2026-05-10; T2a–T2f pending)
+### T2 — Schema migrations (✅ CLOSED 2026-05-10 — all 8 sub-phases shipped; see status log v5 for commit chain and findings closures)
 
 Single transaction per migration file. Backup snapshots captured by `scripts/apply-*.js` runners before apply. Each phase ships independently with smoke verification before moving to the next.
 
-**T2a — `leads` typed origin columns**
+**T2a — `leads` typed origin columns — ✅ CLOSED 2026-05-10 (commit `b8743a7`)**
 - ADD COLUMN `area_id uuid NULL FK treb_areas(id)` (T2a-pre verified table name; convention matches `agent_property_access.area_id`)
 - ADD COLUMN `municipality_id uuid NULL FK municipalities(id)`
 - ADD COLUMN `community_id uuid NULL FK communities(id)`
@@ -107,24 +107,24 @@ Single transaction per migration file. Backup snapshots captured by `scripts/app
 - Backfill: existing rows get NULL on new columns
 - File: `supabase/migrations/<stamp>_t2a_leads_geo_columns.sql`
 
-**T2b — `leads` performance indexes**
+**T2b — `leads` performance indexes — ✅ CLOSED 2026-05-10 (commit `37b3886`)**
 - CREATE INDEX `idx_leads_tenant_email ON leads (tenant_id, contact_email)` — fixes F-LEADS-NO-INDEX-ON-DUP-DETECTION-KEY
 - CREATE INDEX `idx_leads_listing_id ON leads (listing_id) WHERE listing_id IS NOT NULL`
 - CREATE INDEX `idx_leads_source ON leads (source)`
 - File: `supabase/migrations/<stamp>_t2b_leads_indexes.sql`
 
-**T2c — `leads.lead_origin_route` for questionnaire LIKE filter fix**
+**T2c — `leads.lead_origin_route` for questionnaire LIKE filter fix — ✅ CLOSED 2026-05-10 (commit `ae8454c`); T6b application-half pending**
 - ADD COLUMN `lead_origin_route text NOT NULL DEFAULT 'unknown'`
 - CREATE INDEX on `(tenant_id, lead_origin_route)`
 - Backfill existing rows: derive from `source` text via lookup table
 - File: `supabase/migrations/<stamp>_t2c_lead_origin_route.sql`
 
-**T2d — `leads` data-quality CHECK constraints**
+**T2d — `leads` data-quality CHECK constraints — ✅ CLOSED 2026-05-10 (commit `b74cdd2`)**
 - ADD CHECK `appointment_status IN ('pending', 'confirmed', 'cancelled', 'completed', 'rescheduled')`
 - ADD CHECK `assignment_source IN ('geo', 'admin', 'manual', 'override')`
 - File: `supabase/migrations/<stamp>_t2d_leads_check_constraints.sql`
 
-**T2e — `vip_requests` tenant scoping fix**
+**T2e — `vip_requests` tenant scoping fix — ✅ CLOSED 2026-05-10 (commit `43ec751`); request_source CHECK still pending as F-VIP-REQUESTS-REQUEST-SOURCE-NO-CHECK**
 - Backfill `tenant_id` on existing rows: `UPDATE vip_requests SET tenant_id = leads.tenant_id FROM leads WHERE vip_requests.lead_id = leads.id`. For rows with NULL `lead_id`, derive from `agent.tenant_id` via FK chain. Any unbackfillable rows are deleted (after audit).
 - ALTER COLUMN `tenant_id SET NOT NULL`
 - ADD FK `vip_requests_tenant_id_fkey REFERENCES tenants(id)`
@@ -134,7 +134,7 @@ Single transaction per migration file. Backup snapshots captured by `scripts/app
 - ADD CHECK on `request_source IN ('chat', 'estimator', 'questionnaire')`
 - File: `supabase/migrations/<stamp>_t2e_vip_requests_tenant_scope.sql`
 
-**T2f — `lead_email_recipients_log` new audit table**
+**T2f — `lead_email_recipients_log` new audit table — ✅ CLOSED 2026-05-10 (commit `8e84040`); T3 wires callers to write rows**
 ```sql
 CREATE TABLE lead_email_recipients_log (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -386,22 +386,22 @@ Organized by category. F-* IDs are stable; severity rated for T2 prioritization.
 
 ### Schema migration scope (T2)
 
-- **F-ORIGIN-GEO-IDS-NOT-PERSISTED** — area_id/muni_id/community_id/neighbourhood_id passed to resolver, discarded. T2a adds typed columns.
+- **F-ORIGIN-GEO-IDS-NOT-PERSISTED ✅ CLOSED 2026-05-10 (T2a, commit `b8743a7`)** — leads.area_id / municipality_id / community_id / neighbourhood_id columns added with FKs to treb_areas / municipalities / communities / neighbourhoods + 4 partial indexes. Schema half complete; caller wiring (T5e) populates them.
 - **F-VIP-REQUEST-LEAD-LOSES-GEO-CONTEXT** — charlie/vip-request INSERT lacks all geo IDs. T2a + T5e fix.
 - **F-ESTIMATOR-VIP-PARTIAL-GEO-CAPTURE** — captures `building_id` only. T2a + T5e fix.
 - **F-APPOINTMENT-LEAD-PARTIAL-GEO-CAPTURE** — community/muni/area passed to resolver, only `geo_name` lands. T2a + T5e fix.
-- **F-LEADS-NO-INDEX-ON-DUP-DETECTION-KEY** — no `(tenant_id, contact_email)` composite index. Sequential scan. T2b.
-- **F-LEADS-NO-INDEX-ON-LISTING-ID** — `idx_leads_building_id` exists; no listing-id sibling. T2b.
-- **F-LEADS-NO-INDEX-ON-SOURCE** — analytics scan. T2b.
+- **F-LEADS-NO-INDEX-ON-DUP-DETECTION-KEY ✅ CLOSED 2026-05-10 (T2b, commit `37b3886`)** — `idx_leads_tenant_email (tenant_id, contact_email)` shipped; getOrCreateLead duplicate-detection now index-scans.
+- **F-LEADS-NO-INDEX-ON-LISTING-ID ✅ CLOSED 2026-05-10 (T2b, commit `37b3886`)** — `idx_leads_listing_id` partial index (WHERE listing_id IS NOT NULL) shipped, sibling to existing `idx_leads_building_id`.
+- **F-LEADS-NO-INDEX-ON-SOURCE ✅ CLOSED 2026-05-10 (T2b, commit `37b3886`)** — `idx_leads_source` shipped; analytics queries now index-scan.
 - **F-LEADS-APPOINTMENT-TIME-IS-TEXT** — typed as `text`, not `time`. Defer to T2-followup or post-launch (data-quality, not blocking).
-- **F-LEADS-APPOINTMENT-STATUS-NO-CHECK** — no enum constraint. T2d.
-- **F-LEADS-ASSIGNMENT-SOURCE-NO-CHECK** — no enum constraint. T2d.
-- **F-VIP-REQUESTS-TENANT-ID-NULLABLE (MAJOR)** — `tenant_id NULL`. T2e.
-- **F-VIP-REQUESTS-NO-FK-ON-TENANT-ID** — no referential integrity. T2e.
+- **F-LEADS-APPOINTMENT-STATUS-NO-CHECK ✅ CLOSED 2026-05-10 (T2d, commit `b74cdd2`)** — `leads_appointment_status_check` constraint shipped: pending / confirmed / cancelled / completed / rescheduled.
+- **F-LEADS-ASSIGNMENT-SOURCE-NO-CHECK ✅ CLOSED 2026-05-10 (T2d, commit `b74cdd2`)** — `leads_assignment_source_check` constraint shipped: geo / admin / manual / override.
+- **F-VIP-REQUESTS-TENANT-ID-NULLABLE (MAJOR) ✅ CLOSED 2026-05-10 (T2e, commit `43ec751`)** — `vip_requests.tenant_id` is now uuid NOT NULL. T2e-pre probe verified 0 existing rows so no backfill was needed.
+- **F-VIP-REQUESTS-NO-FK-ON-TENANT-ID ✅ CLOSED 2026-05-10 (T2e, commit `43ec751`)** — `vip_requests_tenant_id_fkey` FK constraint added.
 - **F-VIP-REQUESTS-NO-CHECK-CONSTRAINTS** — status/request_type/request_source unbounded. T2e.
-- **F-VIP-REQUESTS-NO-TENANT-INDEX** — every per-tenant query scans. T2e.
-- **F-LEAD-EMAIL-LOG-IS-SYSTEM-1-ONLY (CONFIRMED)** — System 2 chain BCC fan-out invisible. T2f introduces `lead_email_recipients_log`.
-- **F-LEAD-EMAIL-LOG-NO-RECIPIENT-COLUMN (CONFIRMED)** — no recipient enumeration in current log. T2f.
+- **F-VIP-REQUESTS-NO-TENANT-INDEX ✅ CLOSED 2026-05-10 (T2e, commit `43ec751`)** — `idx_vip_requests_tenant` shipped.
+- **F-LEAD-EMAIL-LOG-IS-SYSTEM-1-ONLY ✅ CLOSED 2026-05-10 (T2f, commit `8e84040`)** — `lead_email_recipients_log` audit table shipped with append-only semantics (DELETE blocked via trg_lerl_no_delete; UPDATE limited to status / sent_at / delivered_at / bounced_at / resend_message_id via trg_lerl_status_only_update) + 4 indexes (tenant_sent, lead, recipient, resend_msg). Caller wiring at T3.
+- **F-LEAD-EMAIL-LOG-NO-RECIPIENT-COLUMN ✅ CLOSED 2026-05-10 (T2f, commit `8e84040`)** — new `lead_email_recipients_log` table has `recipient_email` per row (one row per layer in the BCC fan-out).
 
 ### Bug fixes (T6)
 
@@ -601,13 +601,14 @@ Specific to W-LEADS-EMAIL:
 
 6. Commit `t2a_leads_geo_columns`; push to `origin/main`.
 
-T2a estimate: ~30 minutes including probe-then-patch + smoke. Then T2b (indexes), T2c (lead_origin_route), T2d (CHECK constraints), T2e (vip_requests scope), T2f (audit table) — each one ships before the next starts. T2g (RPC tenant-leak fix, commits `d0c6ca3` + `f1bcf66`) and T2h (`createLead.ts` delete) were prioritized and already shipped 2026-05-10; see status log v3 + v4 entries and findings closures.
+T2 phase fully closed 2026-05-10. Next phase: **T3 — Recipient helper extension** (wire System 2 BCC fan-out from `lib/admin-homes/lead-email-recipients.ts` walker into `lead_email_recipients_log`, write one row per recipient on every send across the 7 lead routes; depends on T2f schema which is shipped). T2 commit chain captured in status log v5 entry. Per the v5 lesson: every W-LEADS-EMAIL T# substantive commit gets a tracker version bump in the same working block — no more silent shipping that creates drift.
 
 ---
 
 ## Status log
 
 - **2026-05-09 v1 SKELETON** — Tracker created. Why-this-exists, scope contract DRAFT, ODs OD-1..OD-7 OPEN, phases T0..Tlast outlined.
+- **2026-05-10 v5 T2 PHASE CLOSED + T2a–T2f CLOSURES BACKFILLED + v3/v4 STATUS CORRECTIONS** — Discovery this session via deep DB probe (`scripts/probe-t2-reality-check.js`): T2a–T2f had ALREADY been shipped to production between 7:54 AM and 10:49 AM 2026-05-10, after v2 (T1 LOCKED) but before the v3/v4 patches that captured T2g + T2h. The v3 and v4 status lines inherited the stale "T2a–T2f remaining" claim from v2; this entry corrects the record. Actual T2 commit chain: T2a `b8743a7` (4 typed origin geo columns + 4 FKs + 4 partial indexes), T2b `37b3886` (3 perf indexes: tenant_email composite, listing_id partial, source), T2c `ae8454c` (lead_origin_route text NOT NULL DEFAULT 'unknown' + tenant_origin_route index), T2d `b74cdd2` (CHECK on appointment_status + assignment_source), T2e `43ec751` (vip_requests.tenant_id SET NOT NULL + FK + tenant index + status/request_type SET NOT NULL + 2 CHECKs), T2f `8e84040` (CREATE TABLE lead_email_recipients_log + 4 indexes + 2 append-only triggers), T2g `d0c6ca3` + `f1bcf66` (resolve_agent_for_context tenant-leak fix), T2h `c826ffd` (delete app/actions/createLead.ts dead code). DB state confirmed: all 4 geo cols + FKs present, lead_origin_route present (text NOT NULL), both T2d CHECKs present, vip_requests.tenant_id NOT NULL with 2 CHECKs, lead_email_recipients_log table present. Findings closures backfilled: F-ORIGIN-GEO-IDS-NOT-PERSISTED, F-LEADS-NO-INDEX-ON-DUP-DETECTION-KEY, F-LEADS-NO-INDEX-ON-LISTING-ID, F-LEADS-NO-INDEX-ON-SOURCE, F-LEADS-APPOINTMENT-STATUS-NO-CHECK, F-LEADS-ASSIGNMENT-SOURCE-NO-CHECK, F-VIP-REQUESTS-TENANT-ID-NULLABLE, F-VIP-REQUESTS-NO-FK-ON-TENANT-ID, F-VIP-REQUESTS-NO-TENANT-INDEX, F-LEAD-EMAIL-LOG-IS-SYSTEM-1-ONLY, F-LEAD-EMAIL-LOG-NO-RECIPIENT-COLUMN (11 closures). Findings remaining open with caller-wiring or partial-fix annotations: F-VIP-REQUEST-LEAD-LOSES-GEO-CONTEXT, F-ESTIMATOR-VIP-PARTIAL-GEO-CAPTURE, F-APPOINTMENT-LEAD-PARTIAL-GEO-CAPTURE (T5e wires callers to populate geo cols), F-QUESTIONNAIRE-HARDCODED-WALLIAM-LIKE-FILTER (T6b replaces LIKE filter with lead_origin_route lookup), F-VIP-REQUESTS-NO-CHECK-CONSTRAINTS (status + request_type CHECKs shipped; request_source CHECK still pending). T3 (recipient helper extension — wire System 2 BCC fan-out into the new lead_email_recipients_log table) is the actual next phase. Lesson logged: tracker hygiene must run in lockstep with shipped commits. T2a–T2f shipping between v2 and this session without tracker updates created 6 hours of drift, only caught by deep probe in this session. Going forward, every W-LEADS-EMAIL T# substantive commit gets a tracker version bump in the same working block.
 - **2026-05-10 v4 T2h CLOSED** — `app/actions/createLead.ts` deleted. Zero callers re-verified in-session before delete via repo-wide grep: the only `createLead`-named function in the codebase is the one defined locally in `lib/actions/leads.ts` L128, which is unrelated to this dead-code file's exported `createLeadFromRegistration` symbol (zero matches anywhere). TSC clean post-deletion. Closes F-CREATELEAD-IS-DEAD-CODE. T2 phase progress: 2 of 8 sub-phases shipped (T2g + T2h); remaining T2a (leads geo columns), T2b (indexes), T2c (lead_origin_route), T2d (CHECK constraints), T2e (vip_requests scope), T2f (audit table). Next action: T2a probe + apply.
 - **2026-05-10 v3 T2g CLOSED (out-of-order, security priority)** — `resolve_agent_for_context` RPC tenant-leak fix shipped (commit `d0c6ca3` initial migration + commit `f1bcf66` followup with verification regex fix). Live function body grew 82 → 105 lines; 7 occurrences of `tenant_id = p_tenant_id` in production vs 1 pre-T2g baseline (P10 preserved tier only). Closes F-RESOLVE-AGENT-P1-P2-MISSING-TENANT-FILTER and F-RESOLVE-AGENT-P8-USER-PROFILES-CROSS-TENANT-LEAK. Followup batch addressed false-positive P10 verification: runner's brittle `.includes(literal)` check replaced with regex `.test()` + `\s+` whitespace tolerance after v1 (multi-line literal) and v2 (single-line literal) substring approaches both failed against the file's actual whitespace. Lessons logged: (a) future apply runners should run verification INSIDE a Node-managed transaction so verification failures roll back the migration rather than leave the DB in a half-applied state; (b) regex matching should be the default for in-place source-code patches — literal-substring matching is fragile against whitespace/CRLF drift on Windows. Next action: resume T2a `leads` geo columns migration; remaining sequence T2a→T2b→T2c→T2d→T2e→T2f→T2h.
 - **2026-05-10 v2 T0 RECON COMPLETE + T1 LOCKED** — All 7 sub-targets closed. 125 findings catalogued. 7 OD anchors locked: OD-1 (c), OD-2 (b), OD-3 (c), OD-4 (c), OD-5 (a), OD-6 (c), OD-7 (b). T2..Tn phase plan defined. Next action: T2a `leads` geo columns migration.
