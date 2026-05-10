@@ -1,0 +1,164 @@
+========================================================================
+T2A PRE-MIGRATION PROBE — geo FK target tables
+Generated: 2026-05-10T11:51:05.791Z
+========================================================================
+
+-- STEP 1: candidate geo tables in public schema --
+  communities
+  municipalities
+  municipality_neighbourhoods
+  neighbourhoods
+  treb_areas
+
+-- STEP 2: id column shape + PK + row count per candidate --
+
+TABLE: communities
+  id column: uuid, nullable=NO, default=uuid_generate_v4()
+  primary key: PRIMARY KEY (id)
+  row count (estimate): ~1948
+  sample (id, name):
+    f84f91a7-5863-4e2c-ae1b-a022e6634e39 | 02 - Front of Leeds & Seeleys Bay
+    f0c57513-d4b0-480f-85fa-6b148382e46b | 03 - Lansdowne Village
+    c2b6a577-3a3d-481d-aad5-8f83b1f76118 | 04 - The Islands
+
+TABLE: municipalities
+  id column: uuid, nullable=NO, default=uuid_generate_v4()
+  primary key: PRIMARY KEY (id)
+  row count (estimate): ~506
+  sample (id, name):
+    0e5db0d7-c763-4162-910b-0a0260638491 | Addington Highlands
+    c2a0c16f-238e-47ab-a4c3-ec6767703b81 | Adelaide Metcalfe
+    233858a6-6f9b-4aa0-958d-e6994d36d6ee | Adjala-Tosorontio
+
+TABLE: municipality_neighbourhoods
+  id column: uuid, nullable=NO, default=uuid_generate_v4()
+  primary key: PRIMARY KEY (id)
+  row count (estimate): ~34
+
+TABLE: neighbourhoods
+  id column: uuid, nullable=NO, default=uuid_generate_v4()
+  primary key: PRIMARY KEY (id)
+  row count (estimate): ~9
+  sample (id, name):
+    dd0c4b89-8b4b-4e23-a134-028c7084efe3 | Downtown
+    6aa64717-a1fe-4a1f-a279-41c3b86033d1 | East End
+    6ed0ddba-70a9-48ed-a953-35b28704258f | East York
+
+TABLE: treb_areas
+  id column: uuid, nullable=NO, default=uuid_generate_v4()
+  primary key: PRIMARY KEY (id)
+  row count (estimate): ~73
+  sample (id, name):
+    2a2f4875-cfd8-4039-8ac8-c9b008bc73e4 | Algoma
+    7c63c3d5-fae3-4cd6-90b1-df38bde83c29 | Black River-  Matheson
+    dabf219e-f91d-4970-96f6-f19a2870ef9d | Brant
+
+========================================================================
+STEP 3: pick_routing_agent function body (confirms table → scope mapping)
+========================================================================
+CREATE OR REPLACE FUNCTION public.pick_routing_agent(p_scope text, p_scope_id uuid, p_tenant_id uuid, p_listing_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_count int;
+  v_pick_index int;
+  v_agent_id uuid;
+BEGIN
+  IF p_scope_id IS NULL THEN RETURN NULL; END IF;
+
+  SELECT COUNT(*) INTO v_count
+  FROM agent_property_access
+  WHERE scope = p_scope
+    AND is_active = true
+    AND (p_tenant_id IS NULL OR tenant_id = p_tenant_id)
+    AND (
+      (p_scope = 'area' AND area_id = p_scope_id) OR
+      (p_scope = 'municipality' AND municipality_id = p_scope_id) OR
+      (p_scope = 'community' AND community_id = p_scope_id) OR
+      (p_scope = 'neighbourhood' AND neighbourhood_id = p_scope_id)
+    );
+
+  IF v_count = 0 THEN RETURN NULL; END IF;
+
+  IF p_listing_id IS NOT NULL THEN
+    -- Hash-distribute by listing_id for equal-share routing.
+    v_pick_index := abs(hashtext(p_listing_id::text)) % v_count;
+    SELECT agent_id INTO v_agent_id FROM (
+      SELECT agent_id, ROW_NUMBER() OVER (ORDER BY id) - 1 AS rn
+      FROM agent_property_access
+      WHERE scope = p_scope
+        AND is_active = true
+        AND (p_tenant_id IS NULL OR tenant_id = p_tenant_id)
+        AND (
+          (p_scope = 'area' AND area_id = p_scope_id) OR
+          (p_scope = 'municipality' AND municipality_id = p_scope_id) OR
+          (p_scope = 'community' AND community_id = p_scope_id) OR
+          (p_scope = 'neighbourhood' AND neighbourhood_id = p_scope_id)
+        )
+    ) routing
+    WHERE rn = v_pick_index;
+  ELSE
+    -- Page-level routing — return primary.
+    v_agent_id := resolve_geo_primary(p_scope, p_scope_id, p_tenant_id);
+    IF v_agent_id IS NULL THEN
+      -- Defensive fallback: earliest by created_at if no primary marked.
+      SELECT agent_id INTO v_agent_id FROM agent_property_access
+      WHERE scope = p_scope
+        AND is_active = true
+        AND (p_tenant_id IS NULL OR tenant_id = p_tenant_id)
+        AND (
+          (p_scope = 'area' AND area_id = p_scope_id) OR
+          (p_scope = 'municipality' AND municipality_id = p_scope_id) OR
+          (p_scope = 'community' AND community_id = p_scope_id) OR
+          (p_scope = 'neighbourhood' AND neighbourhood_id = p_scope_id)
+        )
+      ORDER BY created_at ASC LIMIT 1;
+    END IF;
+  END IF;
+
+  RETURN v_agent_id;
+END;
+$function$
+
+
+========================================================================
+STEP 4: existing FK references TO each candidate (where else are they used)
+========================================================================
+  communities: referenced by 9 FK(s)
+    adjustments.adjustments_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE
+    agent_property_access.agent_property_access_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id)
+    buildings.buildings_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE SET NULL
+    discovered_buildings.discovered_buildings_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE SET NULL
+    mls_listings.mls_listings_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id)
+    psf_monthly_lease.psf_monthly_lease_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id)
+    psf_monthly_sale.psf_monthly_sale_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id)
+    sync_history.sync_history_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id)
+    tenant_property_access.tenant_property_access_community_id_fkey: FOREIGN KEY (community_id) REFERENCES communities(id)
+  municipalities: referenced by 10 FK(s)
+    adjustments.adjustments_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id) ON DELETE CASCADE
+    agent_property_access.agent_property_access_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id)
+    communities.communities_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id) ON DELETE CASCADE
+    discovered_buildings.discovered_buildings_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id) ON DELETE SET NULL
+    mls_listings.mls_listings_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id)
+    municipality_neighbourhoods.municipality_neighbourhoods_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id) ON DELETE CASCADE
+    psf_monthly_lease.psf_monthly_lease_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id)
+    psf_monthly_sale.psf_monthly_sale_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id)
+    sync_history.sync_history_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id)
+    tenant_property_access.tenant_property_access_municipality_id_fkey: FOREIGN KEY (municipality_id) REFERENCES municipalities(id)
+  municipality_neighbourhoods: (no incoming FK references)
+  neighbourhoods: referenced by 4 FK(s)
+    adjustments.adjustments_neighbourhood_id_fkey: FOREIGN KEY (neighbourhood_id) REFERENCES neighbourhoods(id) ON DELETE CASCADE
+    agent_property_access.agent_property_access_neighbourhood_id_fkey: FOREIGN KEY (neighbourhood_id) REFERENCES neighbourhoods(id)
+    municipality_neighbourhoods.municipality_neighbourhoods_neighbourhood_id_fkey: FOREIGN KEY (neighbourhood_id) REFERENCES neighbourhoods(id) ON DELETE CASCADE
+    tenant_property_access.tenant_property_access_neighbourhood_id_fkey: FOREIGN KEY (neighbourhood_id) REFERENCES neighbourhoods(id)
+  treb_areas: referenced by 9 FK(s)
+    adjustments.adjustments_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id) ON DELETE CASCADE
+    agent_property_access.agent_property_access_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id)
+    discovered_buildings.discovered_buildings_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id) ON DELETE SET NULL
+    mls_listings.mls_listings_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id)
+    municipalities.municipalities_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id) ON DELETE CASCADE
+    neighbourhoods.neighbourhoods_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id)
+    psf_monthly_lease.psf_monthly_lease_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id)
+    psf_monthly_sale.psf_monthly_sale_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id)
+    tenant_property_access.tenant_property_access_area_id_fkey: FOREIGN KEY (area_id) REFERENCES treb_areas(id)

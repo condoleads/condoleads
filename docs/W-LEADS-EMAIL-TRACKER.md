@@ -99,7 +99,7 @@ All 7 ODs anchored. Scope contract LOCKED. Phase plan T2..T8 + Tlast defined bel
 Single transaction per migration file. Backup snapshots captured by `scripts/apply-*.js` runners before apply. Each phase ships independently with smoke verification before moving to the next.
 
 **T2a — `leads` typed origin columns**
-- ADD COLUMN `area_id uuid NULL FK areas(id)`
+- ADD COLUMN `area_id uuid NULL FK treb_areas(id)` (T2a-pre verified table name; convention matches `agent_property_access.area_id`)
 - ADD COLUMN `municipality_id uuid NULL FK municipalities(id)`
 - ADD COLUMN `community_id uuid NULL FK communities(id)`
 - ADD COLUMN `neighbourhood_id uuid NULL FK neighbourhoods(id)`
@@ -575,15 +575,19 @@ Specific to W-LEADS-EMAIL:
    ```
    (Re-runs the T0-F probe; output diff vs current confirms no schema drift since recon.)
 
-2. Verify referenced FK target tables (`areas`, `municipalities`, `communities`, `neighbourhoods`) exist with `id uuid PRIMARY KEY`. Probe via Supabase Studio or extend `scripts/recon-w-leads-email-t0-f-schema.js` to include them.
+2. Verify referenced FK target tables exist with `id uuid PRIMARY KEY`. **CLOSED at T2a-pre probe (2026-05-10):** `treb_areas` (~73 rows), `municipalities` (~506), `communities` (~1948), `neighbourhoods` (~9). All four have `id uuid NOT NULL DEFAULT uuid_generate_v4()` PRIMARY KEY. Probe at `recon/W-LEADS-EMAIL-T2A-PRE-geo-tables.txt`; script at `scripts/recon-w-leads-email-t2a-geo-tables.js`.
 
-3. Write migration: `supabase/migrations/<stamp>_t2a_leads_geo_columns.sql`. Migration body:
+3. Write migration: `supabase/migrations/20260510_t2a_leads_geo_columns.sql`. Migration body:
    ```sql
    BEGIN;
-   ALTER TABLE leads ADD COLUMN area_id uuid NULL REFERENCES areas(id);
-   ALTER TABLE leads ADD COLUMN municipality_id uuid NULL REFERENCES municipalities(id);
-   ALTER TABLE leads ADD COLUMN community_id uuid NULL REFERENCES communities(id);
-   ALTER TABLE leads ADD COLUMN neighbourhood_id uuid NULL REFERENCES neighbourhoods(id);
+   ALTER TABLE leads ADD COLUMN area_id uuid NULL;
+   ALTER TABLE leads ADD COLUMN municipality_id uuid NULL;
+   ALTER TABLE leads ADD COLUMN community_id uuid NULL;
+   ALTER TABLE leads ADD COLUMN neighbourhood_id uuid NULL;
+   ALTER TABLE leads ADD CONSTRAINT leads_area_id_fkey FOREIGN KEY (area_id) REFERENCES treb_areas(id);
+   ALTER TABLE leads ADD CONSTRAINT leads_municipality_id_fkey FOREIGN KEY (municipality_id) REFERENCES municipalities(id);
+   ALTER TABLE leads ADD CONSTRAINT leads_community_id_fkey FOREIGN KEY (community_id) REFERENCES communities(id);
+   ALTER TABLE leads ADD CONSTRAINT leads_neighbourhood_id_fkey FOREIGN KEY (neighbourhood_id) REFERENCES neighbourhoods(id);
    CREATE INDEX idx_leads_area_id ON leads (area_id) WHERE area_id IS NOT NULL;
    CREATE INDEX idx_leads_municipality_id ON leads (municipality_id) WHERE municipality_id IS NOT NULL;
    CREATE INDEX idx_leads_community_id ON leads (community_id) WHERE community_id IS NOT NULL;

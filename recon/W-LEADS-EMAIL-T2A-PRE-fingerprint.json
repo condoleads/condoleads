@@ -1,0 +1,310 @@
+{
+  "timestamp": "2026-05-10T11:56:35.959Z",
+  "columns": [
+    {
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "agent_id",
+      "data_type": "uuid",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "contact_name",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "contact_email",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "contact_phone",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "source",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "source_url",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "building_id",
+      "data_type": "uuid",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "listing_id",
+      "data_type": "uuid",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "message",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "estimated_value_min",
+      "data_type": "numeric",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "estimated_value_max",
+      "data_type": "numeric",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "property_details",
+      "data_type": "jsonb",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "quality",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "status",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "notes",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "last_contact_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "next_followup_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "tags",
+      "data_type": "ARRAY",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "follow_up_date",
+      "data_type": "date",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "intent",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "geo_name",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "budget_max",
+      "data_type": "numeric",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "plan_data",
+      "data_type": "jsonb",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "manager_id",
+      "data_type": "uuid",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "assignment_source",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "override_agent_id",
+      "data_type": "uuid",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "tenant_id",
+      "data_type": "uuid",
+      "is_nullable": "NO"
+    },
+    {
+      "column_name": "appointment_date",
+      "data_type": "date",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "appointment_time",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "appointment_properties",
+      "data_type": "jsonb",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "appointment_status",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "reschedule_token",
+      "data_type": "uuid",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "status_axis",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "stage",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "urgency",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "closed_reason",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "area_manager_id",
+      "data_type": "uuid",
+      "is_nullable": "YES"
+    },
+    {
+      "column_name": "tenant_admin_id",
+      "data_type": "uuid",
+      "is_nullable": "YES"
+    }
+  ],
+  "foreign_keys": [
+    {
+      "conname": "leads_agent_id_fkey",
+      "def": "FOREIGN KEY (agent_id) REFERENCES agents(id)"
+    },
+    {
+      "conname": "leads_area_manager_id_fkey",
+      "def": "FOREIGN KEY (area_manager_id) REFERENCES agents(id) ON DELETE SET NULL"
+    },
+    {
+      "conname": "leads_building_id_fkey",
+      "def": "FOREIGN KEY (building_id) REFERENCES buildings(id)"
+    },
+    {
+      "conname": "leads_listing_id_fkey",
+      "def": "FOREIGN KEY (listing_id) REFERENCES mls_listings(id)"
+    },
+    {
+      "conname": "leads_manager_id_fkey",
+      "def": "FOREIGN KEY (manager_id) REFERENCES agents(id)"
+    },
+    {
+      "conname": "leads_override_agent_id_fkey",
+      "def": "FOREIGN KEY (override_agent_id) REFERENCES agents(id)"
+    },
+    {
+      "conname": "leads_tenant_admin_id_fkey",
+      "def": "FOREIGN KEY (tenant_admin_id) REFERENCES agents(id)"
+    },
+    {
+      "conname": "leads_tenant_id_fkey",
+      "def": "FOREIGN KEY (tenant_id) REFERENCES tenants(id)"
+    },
+    {
+      "conname": "leads_user_id_fkey",
+      "def": "FOREIGN KEY (user_id) REFERENCES auth.users(id)"
+    }
+  ],
+  "indexes": [
+    {
+      "indexname": "idx_leads_agent_id",
+      "indexdef": "CREATE INDEX idx_leads_agent_id ON public.leads USING btree (agent_id)"
+    },
+    {
+      "indexname": "idx_leads_building_id",
+      "indexdef": "CREATE INDEX idx_leads_building_id ON public.leads USING btree (building_id)"
+    },
+    {
+      "indexname": "idx_leads_created_at",
+      "indexdef": "CREATE INDEX idx_leads_created_at ON public.leads USING btree (created_at DESC)"
+    },
+    {
+      "indexname": "idx_leads_follow_up_date",
+      "indexdef": "CREATE INDEX idx_leads_follow_up_date ON public.leads USING btree (follow_up_date)"
+    },
+    {
+      "indexname": "idx_leads_quality",
+      "indexdef": "CREATE INDEX idx_leads_quality ON public.leads USING btree (quality)"
+    },
+    {
+      "indexname": "idx_leads_status",
+      "indexdef": "CREATE INDEX idx_leads_status ON public.leads USING btree (status)"
+    },
+    {
+      "indexname": "idx_leads_tenant",
+      "indexdef": "CREATE INDEX idx_leads_tenant ON public.leads USING btree (tenant_id)"
+    },
+    {
+      "indexname": "idx_leads_tenant_agent",
+      "indexdef": "CREATE INDEX idx_leads_tenant_agent ON public.leads USING btree (tenant_id, agent_id)"
+    },
+    {
+      "indexname": "idx_leads_user_id",
+      "indexdef": "CREATE INDEX idx_leads_user_id ON public.leads USING btree (user_id)"
+    },
+    {
+      "indexname": "leads_area_manager_id_idx",
+      "indexdef": "CREATE INDEX leads_area_manager_id_idx ON public.leads USING btree (area_manager_id) WHERE (area_manager_id IS NOT NULL)"
+    },
+    {
+      "indexname": "leads_manager_id_idx",
+      "indexdef": "CREATE INDEX leads_manager_id_idx ON public.leads USING btree (manager_id) WHERE (manager_id IS NOT NULL)"
+    },
+    {
+      "indexname": "leads_pkey",
+      "indexdef": "CREATE UNIQUE INDEX leads_pkey ON public.leads USING btree (id)"
+    },
+    {
+      "indexname": "leads_tenant_admin_id_idx",
+      "indexdef": "CREATE INDEX leads_tenant_admin_id_idx ON public.leads USING btree (tenant_admin_id)"
+    }
+  ],
+  "column_count": 42,
+  "fk_count": 9,
+  "index_count": 13
+}
