@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 
 function createServiceClient() {
   return createClient(
@@ -41,7 +42,10 @@ export async function POST(request: NextRequest) {
         estimator_vip_auto_approve,
         estimator_ai_enabled,
         anthropic_api_key,
-        source_key
+        source_key,
+        brand_name,
+        name,
+        domain
       `)
       .eq('id', tenantId)
       .single()
@@ -49,6 +53,9 @@ export async function POST(request: NextRequest) {
     if (tenantError || !tenant) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
     }
+
+    const brandName: string = (tenant.brand_name || tenant.name) ?? ''  // T6f-B — multitenant brand-string (empty fallback for unhappy-path safety)
+    const baseUrl: string = buildBaseUrl(tenant.domain)  // T6f-B — multitenant URL fallback
 
     if (!tenant.estimator_nonai_enabled) {
       return NextResponse.json({ error: 'Estimator is not enabled for this tenant' }, { status: 403 })
@@ -83,7 +90,7 @@ export async function POST(request: NextRequest) {
     const agentId = resolvedAgentId || null
 
     // Get agent name for display only
-    let agentName = 'WALLiam'
+    let agentName = brandName
     if (agentId) {
       const { data: agent } = await supabase
         .from('agents')
@@ -188,7 +195,7 @@ export async function POST(request: NextRequest) {
 
     // Low credit warning email at 1 estimate remaining
     if (remaining === 1 && userId) {
-      fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+      fetch(new URL('/api/email/low-credits', baseUrl).toString(), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, creditType: 'estimate', remaining: 1, sessionId: session.id }),
       }).catch(() => {})
