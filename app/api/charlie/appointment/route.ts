@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
     }
     const validSession = _sessionCheck.session
+    const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
     // END T6a auth gate
 
     // Step 1: Resolve agent
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest) {
         contact_name: name,
         contact_email: email,
         contact_phone: phone || null,
-        source: 'walliam_charlie',
+        source: `${sourceKey}_charlie`,
         lead_origin_route: 'charlie',
         intent,
         geo_name: geo_name || null,
@@ -247,7 +248,7 @@ export async function POST(req: NextRequest) {
 
     // Track activity
     await trackUserActivity(supabase, email, agentId, 'building_visit_request', {
-      source: 'walliam_appointment',
+      source: `${sourceKey}_appointment`,
       intent,
       geoName: geo_name || null,
       appointmentDate: appointment_date,

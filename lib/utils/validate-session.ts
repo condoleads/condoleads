@@ -36,7 +36,7 @@ export interface ValidateSessionParams {
 }
 
 export type ValidateSessionResult =
-  | { ok: true; session: Record<string, any> }
+  | { ok: true; session: Record<string, any>; sourceKey: string }
   | { ok: false; status: number; error: string }
 
 export async function validateSession(params: ValidateSessionParams): Promise<ValidateSessionResult> {
@@ -73,5 +73,5 @@ export async function validateSession(params: ValidateSessionParams): Promise<Va
     return { ok: false, status: 401, error: 'Invalid session' }
   }
 
-  return { ok: true, session: session as Record<string, any> }
+  return { ok: true, session: session as Record<string, any>, sourceKey: tenant.source_key }
 }

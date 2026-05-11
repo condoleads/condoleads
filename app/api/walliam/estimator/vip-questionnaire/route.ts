@@ -133,6 +133,17 @@ export async function POST(request: NextRequest) {
     // UPSERT lead — enrichment, not duplicate creation (F57-class fix for estimator flow)
     // The vip-request route already created the original lead row. We update that row
     // with questionnaire detail. If somehow no row exists (defensive), we insert one.
+    // T6c — F-QUESTIONNAIRE-DEFENSIVE-INSERT-HARDCODED-SOURCE: load tenant source_key
+    let sourceKey: string | null = null
+    if (tenantId) {
+      const { data: t6cTenant } = await supabase
+        .from('tenants')
+        .select('source_key')
+        .eq('id', tenantId)
+        .maybeSingle()
+      sourceKey = t6cTenant?.source_key ?? null
+    }
+
     if (userEmail && userId && tenantId) {
       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
 
@@ -179,7 +190,7 @@ export async function POST(request: NextRequest) {
             contact_name: userName || 'WALLiam User',
             contact_email: userEmail,
             contact_phone: vipRequest.phone,
-            source: 'walliam_estimator_questionnaire',
+            source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
             lead_origin_route: 'estimator_questionnaire',
             source_url: vipRequest.page_url,
             building_id: session?.current_page_type === 'building' ? session?.current_page_id : null,
@@ -269,7 +280,7 @@ export async function POST(request: NextRequest) {
     // Track activity
     if (userEmail) {
       await trackUserActivity(supabase, userEmail, agent?.id || null, 'estimator_contact_submitted', {
-        source: 'walliam_estimator_questionnaire',
+        source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
         buyerType: buyerType || null,
         budgetRange: budgetRange || null,
         timeline: timeline || null,

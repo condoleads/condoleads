@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
     }
     const validSession = _sessionCheck.session
+    const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
     // END T6a auth gate
 
     const supabase = createServiceClient()
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
       user_id: userId,
       contact_name: userName,
       contact_email: userEmail,
-      source: 'walliam_charlie',
+      source: `${sourceKey}_charlie`,
       lead_origin_route: 'charlie',
       intent: planType,
       geo_name: geoName,
@@ -143,7 +144,7 @@ export async function POST(req: NextRequest) {
 
     // Track activity
     await trackUserActivity(supabase, userEmail, agent?.id || null, 'contact_form', {
-      source: 'walliam_charlie',
+      source: `${sourceKey}_charlie`,
       planType,
       geoName: geoName || null,
       budgetMax: plan?.budgetMax || null,

@@ -83,6 +83,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
     }
     const validSession = _sessionCheck.session
+    const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
     // END T6a auth gate
 
     // F60: auth email is identity. Pull from auth.users; ignore any form-supplied email.
@@ -169,7 +170,7 @@ export async function POST(req: NextRequest) {
       .select('id')
       .eq('user_id', userId)
       .eq('tenant_id', tenantId || '')
-      .eq('source', 'walliam_charlie')
+      .eq('source', `${sourceKey}_charlie`)
       .eq('intent', intent)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -209,7 +210,7 @@ export async function POST(req: NextRequest) {
           contact_name: name,
           contact_email: authEmail,
           contact_phone: phone || null,
-          source: 'walliam_charlie',
+          source: `${sourceKey}_charlie`,
           lead_origin_route: 'charlie',
           intent,
           geo_name: profile?.geoName || null,

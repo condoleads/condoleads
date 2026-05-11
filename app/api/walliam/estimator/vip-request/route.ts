@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
     if (session.source !== tenant.source_key) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
+    const sourceKey = tenant.source_key  // T6c — for source-field templating
 
     // Check for existing pending request
     const { data: existingRequest } = await supabase
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
         email: userEmail || null,
         page_url: pageUrl,
         building_name: buildingName,
-        request_source: 'walliam_estimator',
+        request_source: `${sourceKey}_estimator`,
         request_type: 'estimator',
         status: isAutoApprove ? 'approved' : 'pending',
         messages_granted: autoApproveMessages,
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest) {
           contact_name: userName || 'WALLiam User',
           contact_email: userEmail,
           contact_phone: phone,
-          source: 'walliam_estimator_vip_request',
+          source: `${sourceKey}_estimator_vip_request`,
           lead_origin_route: 'estimator_vip_request',
           source_url: pageUrl,
           building_id: session.current_page_type === 'building' ? session.current_page_id : null,
@@ -277,7 +278,7 @@ export async function POST(request: NextRequest) {
     // Track activity
     if (userEmail) {
       await trackUserActivity(supabase, userEmail, agent?.id || null, 'estimator_contact_submitted', {
-        source: 'walliam_estimator_vip_request',
+        source: `${sourceKey}_estimator_vip_request`,
         buildingName: buildingName || null,
         phone: phone || null,
         autoApprove: isAutoApprove,
