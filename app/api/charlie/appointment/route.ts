@@ -19,6 +19,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
@@ -211,17 +212,30 @@ export async function POST(req: NextRequest) {
 
     if (recipients) {
       try {
-        await sendTenantEmail({
+        const subject = `📅 New ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${name} — ${formattedDate}`
+        const sendResult = await sendTenantEmail({
           tenantId: tenantId || '',
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
-          subject: `📅 New ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${name} — ${formattedDate}`,
+          subject,
           html: buildAgentNotificationEmail({
             name, email, phone, intent, formattedDate, appointment_time,
             appointment_properties, geo_name,
           }),
         })
+        if (lead?.id) {
+          await logEmailRecipients({
+            supabase,
+            tenantId: tenantId || '',
+            leadId: lead.id,
+            agentId,
+            recipients,
+            subject,
+            templateKey: 'charlie_appointment_chain',
+            resendMessageId: sendResult.id,
+          })
+        }
       } catch (err) {
         // F67 standard try/catch
         if (err instanceof TenantEmailNotConfigured) {

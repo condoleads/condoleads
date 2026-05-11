@@ -29,6 +29,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
@@ -201,6 +202,7 @@ export async function POST(req: NextRequest) {
         console.error('[charlie/lead] enrichment update error:', updateError)
         return NextResponse.json({ error: 'Failed to update lead' }, { status: 500 })
       }
+      leadId = existingLead.id
     } else {
       // Defensive INSERT: plan-email never created a row (shouldn't happen, but don't lose data)
       const { data: newLead, error: insertError } = await supabase
@@ -275,14 +277,27 @@ export async function POST(req: NextRequest) {
 
     if (recipients) {
       try {
-        await sendTenantEmail({
+        const subject = `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead — ${name} — ${profile?.geoName || 'GTA'}`
+        const sendResult = await sendTenantEmail({
           tenantId,
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
-          subject: `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead — ${name} — ${profile?.geoName || 'GTA'}`,
+          subject,
           html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics }),
         })
+        if (leadId) {
+          await logEmailRecipients({
+            supabase,
+            tenantId,
+            leadId,
+            agentId,
+            recipients,
+            subject,
+            templateKey: 'charlie_lead_enrichment_chain',
+            resendMessageId: sendResult.id,
+          })
+        }
       } catch (err) {
         if (err instanceof TenantEmailNotConfigured) {
           console.warn('[charlie/lead] tenant email not configured (chain):', err.message)

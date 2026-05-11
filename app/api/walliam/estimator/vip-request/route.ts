@@ -20,6 +20,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
 
 // Track user activity in user_activities table
@@ -177,8 +178,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Save lead — H3.4: capture full hierarchy chain + tenant_id
+    let lead: { id: string } | null = null
     if (userEmail) {
-      const { error: leadError } = await supabase
+      const { data: leadData, error: leadError } = await supabase
         .from('leads')
         .insert({
           agent_id: agent?.id || null,
@@ -198,7 +200,10 @@ export async function POST(request: NextRequest) {
           quality: 'hot',
           assignment_source: agent?.id ? 'geo' : 'admin',
         })
+        .select('id')
+        .single()
       if (leadError) console.error('[walliam/estimator/vip-request] lead error:', leadError)
+      lead = leadData
     }
 
     // Build approval URLs
@@ -232,14 +237,27 @@ export async function POST(request: NextRequest) {
 
     if (recipients) {
       try {
-        await sendTenantEmail({
+        const subject = `WALLiam Estimator VIP Request: ${phone}`
+        const sendResult = await sendTenantEmail({
           tenantId: tenantId || '',
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
-          subject: `WALLiam Estimator VIP Request: ${phone}`,
+          subject,
           html: emailHtml,
         })
+        if (lead?.id) {
+          await logEmailRecipients({
+            supabase,
+            tenantId: tenantId || '',
+            leadId: lead.id,
+            agentId: agent?.id || null,
+            recipients,
+            subject,
+            templateKey: 'walliam_estimator_vip_request_chain',
+            resendMessageId: sendResult.id,
+          })
+        }
       } catch (err) {
         // F67 standard try/catch
         if (err instanceof TenantEmailNotConfigured) {

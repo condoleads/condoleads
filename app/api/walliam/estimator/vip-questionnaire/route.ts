@@ -20,6 +20,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
 
 // Track user activity in user_activities table
@@ -216,15 +217,42 @@ export async function POST(request: NextRequest) {
     }
 
     if (recipients) {
+      // T3c — vip-questionnaire enriches an existing walliam_estimator% lead;
+      // look it up here for the audit target. Single query, idempotent.
+      let leadIdForAudit: string | null = null
+      if (userId && tenantId) {
+        const { data: latestLead } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('tenant_id', tenantId)
+          .like('source', 'walliam_estimator%')
+          .order('created_at', { ascending: false })
+          .limit(1)
+        leadIdForAudit = latestLead?.[0]?.id || null
+      }
       try {
-        await sendTenantEmail({
+        const subject = `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`
+        const sendResult = await sendTenantEmail({
           tenantId: tenantId || '',
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
-          subject: `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`,
+          subject,
           html: emailHtml,
         })
+        if (leadIdForAudit) {
+          await logEmailRecipients({
+            supabase,
+            tenantId: tenantId || '',
+            leadId: leadIdForAudit,
+            agentId: agent?.id || null,
+            recipients,
+            subject,
+            templateKey: 'walliam_estimator_vip_questionnaire_chain',
+            resendMessageId: sendResult.id,
+          })
+        }
       } catch (err) {
         // F67 standard try/catch
         if (err instanceof TenantEmailNotConfigured) {
