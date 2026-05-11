@@ -21,6 +21,7 @@ import {
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+import { getTenantContext } from '@/lib/utils/tenant-brand'
 
 
 // Track user activity in user_activities table
@@ -64,6 +65,17 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createServiceClient()
+
+    // T6f-C-1 — tenant brand context (tenant_id guaranteed non-null by L62 check)
+    let brandName = ''
+    let sourceKey = 'walliam'  // safe default — replaced when tenant load succeeds
+    const _t6fcCtx = await getTenantContext(supabase, tenant_id)
+    if (_t6fcCtx) {
+      brandName = _t6fcCtx.brandName
+      sourceKey = _t6fcCtx.sourceKey
+    } else {
+      console.warn('[walliam/contact] getTenantContext returned null for tenant_id:', tenant_id)
+    }
 
     // Resolve agent
     const { data: agentId } = await supabase.rpc('resolve_agent_for_context', {
@@ -110,7 +122,7 @@ export async function POST(req: NextRequest) {
       contact_email: email,
       contact_phone: phone || null,
       message: message || null,
-      source: source || 'walliam_contact',
+      source: source || `${sourceKey}_contact`,
       lead_origin_route: 'contact_form',
       building_id: building_id || null,
       listing_id: listing_id || null,
@@ -121,8 +133,8 @@ export async function POST(req: NextRequest) {
     }).select('id').single()
 
     // Build email HTML
-    const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id })
-    const subject = `\u2756 WALLiam Inquiry \u2014 ${name} \u2014 ${geo_name || source || 'WALLiam'}`
+    const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName })
+    const subject = `\u2756 ${brandName} Inquiry \u2014 ${name} \u2014 ${geo_name || source || brandName}`
 
     // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
     let recipients
@@ -172,7 +184,7 @@ export async function POST(req: NextRequest) {
 
     // Track activity
     await trackUserActivity(supabase, email, agent?.id || null, 'contact_form', {
-      source: source || 'walliam_contact',
+      source: source || `${sourceKey}_contact`,
       geoName: geo_name || null,
       buildingId: building_id || null,
       listingId: listing_id || null,
@@ -186,12 +198,12 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id }: any): string {
+function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName }: any): string {
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
-          <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+          <span style="font-weight: 900;">${brandName}</span>
         </div>
         <div style="font-size: 18px; font-weight: 700; color: #fff;">New Inquiry</div>
         ${geo_name ? `<div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${geo_name}</div>` : ''}
