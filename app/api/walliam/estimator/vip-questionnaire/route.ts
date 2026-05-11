@@ -135,17 +135,19 @@ export async function POST(request: NextRequest) {
     // with questionnaire detail. If somehow no row exists (defensive), we insert one.
     // T6c — F-QUESTIONNAIRE-DEFENSIVE-INSERT-HARDCODED-SOURCE: load tenant source_key
     let sourceKey: string | null = null
+    let brandName: string = ''  // T6f-B — multitenant brand-string (empty fallback for unhappy-path safety)
     if (tenantId) {
       const { data: t6cTenant } = await supabase
         .from('tenants')
-        .select('source_key')
+        .select('source_key, brand_name, name')
         .eq('id', tenantId)
         .maybeSingle()
       sourceKey = t6cTenant?.source_key ?? null
+      brandName = (t6cTenant?.brand_name || t6cTenant?.name) ?? ''
     }
 
     if (userEmail && userId && tenantId) {
-      const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
+      const enrichedMessage = `${brandName} Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
 
       // Match the lead row created by vip-request:
       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
@@ -166,7 +168,7 @@ export async function POST(request: NextRequest) {
         const { error: updateLeadError } = await supabase
           .from('leads')
           .update({
-            contact_name: userName || 'WALLiam User',
+            contact_name: userName || `${brandName} User`,
             contact_email: userEmail,
             manager_id: chainManagerId,
             area_manager_id: chainAreaManagerId,
@@ -187,7 +189,7 @@ export async function POST(request: NextRequest) {
             manager_id: chainManagerId,
             area_manager_id: chainAreaManagerId,
             tenant_admin_id: chainTenantAdminId,
-            contact_name: userName || 'WALLiam User',
+            contact_name: userName || `${brandName} User`,
             contact_email: userEmail,
             contact_phone: vipRequest.phone,
             source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
@@ -205,7 +207,8 @@ export async function POST(request: NextRequest) {
 
     // Build the chain notification email
     const emailHtml = buildQuestionnaireEmailHtml({
-      userName: userName || 'WALLiam User',
+      brandName,
+      userName: userName || `${brandName} User`,
       phone: vipRequest.phone,
       email: userEmail,
       buyerTypeDisplay,
@@ -244,7 +247,7 @@ export async function POST(request: NextRequest) {
         leadIdForAudit = latestLead?.[0]?.id || null
       }
       try {
-        const subject = `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`
+        const subject = `📋 ${brandName} Estimator Questionnaire — ${userName || vipRequest.phone}`
         const sendResult = await sendTenantEmail({
           tenantId: tenantId || '',
           to: recipients.to,
@@ -305,11 +308,12 @@ function buildQuestionnaireEmailHtml(data: {
   timelineDisplay: string
   buildingName?: string
   requirements?: string
+  brandName: string
 }): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 22px;">📋 WALLiam Estimator Questionnaire</h1>
+        <h1 style="color: white; margin: 0; font-size: 22px;">📋 ${data.brandName} Estimator Questionnaire</h1>
         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">Additional buyer details submitted</p>
       </div>
       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
@@ -354,7 +358,7 @@ function buildQuestionnaireEmailHtml(data: {
       </div>
       <div style="padding: 16px 24px; background: #1e293b; border-radius: 0 0 12px 12px;">
         <p style="margin: 0; color: rgba(255,255,255,0.6); font-size: 13px;">
-          ✦ WALLiam — Use the approve/deny links from the original VIP email to manage access.
+          ✦ ${data.brandName} — Use the approve/deny links from the original VIP email to manage access.
         </p>
       </div>
     </div>
