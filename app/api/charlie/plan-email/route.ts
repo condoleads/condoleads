@@ -23,8 +23,9 @@ import {
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { validateSession } from '@/lib/utils/validate-session'
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+// T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
 
 
 async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
@@ -70,6 +71,9 @@ export async function POST(req: NextRequest) {
     }
     const validSession = _sessionCheck.session
     const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
+    const brandName = _sessionCheck.brandName  // T6f — for brand-text templating
+    const domain = _sessionCheck.domain        // T6f — for URL templating
+    const BASE_URL = buildBaseUrl(domain)      // T6f — handler-local tenant-aware base URL
     // END T6a auth gate
 
     const supabase = createServiceClient()
@@ -150,8 +154,8 @@ export async function POST(req: NextRequest) {
       budgetMax: plan?.budgetMax || null,
     })
 
-    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [] })
-    const subject = `\u2756 WALLiam ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
+    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL })
+    const subject = `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
     // User-facing plan email — single recipient, not chain
     try {
@@ -237,8 +241,11 @@ function buildRichPlanEmail(data: {
   vipCreditPlansUsed: number
   vipCreditTotal: number
   blocks: any[]
+  brandName: string
+  domain: string
+  baseUrl: string
 }): string {
-  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = data
+  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl } = data
   const isBuyer = planType === 'buyer'
   const topListings = (listings || []).slice(0, 10)
 
@@ -271,7 +278,7 @@ function buildRichPlanEmail(data: {
         parts.push(`<div style="margin:16px 0;">
           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Buildings Found &middot; ${block.label} &middot; ${block.buildings.length}</div>
           ${(block.buildings || []).slice(0, 8).map((b: any) => `
-            <a href="${b.url || BASE_URL}" style="display:block;text-decoration:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6px;">
+            <a href="${b.url || baseUrl}" style="display:block;text-decoration:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
                 ${b.photo ? `<td width="48"><img src="${b.photo}" width="48" height="48" style="border-radius:6px;object-fit:cover;"></td>` : ''}
                 <td style="padding-left:10px;vertical-align:middle;">
@@ -292,7 +299,7 @@ function buildRichPlanEmail(data: {
           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">${title}</div>
           ${(block.data.rankings || []).slice(0, 5).map((r: any) => `
             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
-              <a href="${r.url || BASE_URL}" style="font-size:13px;font-weight:600;color:#1d4ed8;text-decoration:none;">#${r.rank} ${r.entity_name}</a>
+              <a href="${r.url || baseUrl}" style="font-size:13px;font-weight:600;color:#1d4ed8;text-decoration:none;">#${r.rank} ${r.entity_name}</a>
               <span style="font-size:12px;color:#64748b;">${r.median_price ? '$' + Number(r.median_price).toLocaleString('en-CA') : ''}${r.gross_yield ? ' &middot; ' + r.gross_yield.toFixed(1) + '% yield' : ''}</span>
             </div>
           `).join('')}
@@ -482,7 +489,7 @@ function buildRichPlanEmail(data: {
         ${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (${topListings.length})
       </div>
       ${topListings.map((l: any) => {
-        const url = `${BASE_URL}${l._slug || '/' + (l.listing_key || '')}`
+        const url = `${baseUrl}${l._slug || '/' + (l.listing_key || '')}`
         const price = l.list_price || l.close_price || 0
         const address = l.unparsed_address || '&mdash;'
         const beds = l.bedrooms_total
@@ -521,7 +528,7 @@ function buildRichPlanEmail(data: {
         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
         const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
         return `
-          <a href="${BASE_URL}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+          <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
               ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"><div style="background:${c.temperature === 'HOT' ? '#ef4444' : c.temperature === 'WARM' ? '#f59e0b' : '#3b82f6'};color:#fff;font-size:9px;font-weight:700;padding:2px 5px;margin-top:2px;text-align:center;">${c.temperature || 'SOLD'}</div></td>` : ''}
               <td style="padding: 10px 14px; vertical-align: middle;">
@@ -549,7 +556,7 @@ function buildRichPlanEmail(data: {
         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
         const slug = c._slug || (c.listing_key ? '/' + c.listing_key : '')
         return `
-          <a href="${BASE_URL}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+          <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
               ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"></td>` : ''}
               <td style="padding: 10px 14px; vertical-align: middle;">
@@ -603,7 +610,7 @@ function buildRichPlanEmail(data: {
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 16px;">
-          <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+          <span style="font-weight: 900;">${brandName}</span>
         </div>
         <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 8px;">
           ${isBuyer ? '&#127968; Buyer Plan' : '&#128176; Seller Strategy'} &mdash; ${geoName || 'GTA'}
@@ -628,13 +635,13 @@ function buildRichPlanEmail(data: {
         ${disclaimerHtml}
         ${agentHtml}
         <div style="text-align: center; margin: 24px 0 8px;">
-          <a href="${BASE_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
-            &#10022; Open WALLiam
+          <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+            &#10022; Open ${brandName}
           </a>
         </div>
       </div>
       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
-        <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam &middot; walliam.ca</p>
+        <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} &middot; ${domain}</p>
       </div>
     </div>
   `

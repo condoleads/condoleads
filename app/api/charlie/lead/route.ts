@@ -31,8 +31,9 @@ import {
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { validateSession } from '@/lib/utils/validate-session'
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+// T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
 
 function createServiceClient() {
   return createClient(
@@ -84,6 +85,9 @@ export async function POST(req: NextRequest) {
     }
     const validSession = _sessionCheck.session
     const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
+    const brandName = _sessionCheck.brandName  // T6f — for brand-text templating
+    const domain = _sessionCheck.domain        // T6f — for URL templating
+    const BASE_URL = buildBaseUrl(domain)      // T6f — handler-local tenant-aware base URL
     // END T6a auth gate
 
     // F60: auth email is identity. Pull from auth.users; ignore any form-supplied email.
@@ -247,8 +251,8 @@ export async function POST(req: NextRequest) {
       await sendTenantEmail({
         tenantId,
         to: authEmail,
-        subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
-        html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent }),
+        subject: `Your ${brandName} ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+        html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl: BASE_URL }),
       })
     } catch (err) {
       if (err instanceof TenantEmailNotConfigured) {
@@ -282,7 +286,7 @@ export async function POST(req: NextRequest) {
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
           subject,
-          html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics }),
+          html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics, brandName, domain, baseUrl: BASE_URL }),
         })
         if (leadId) {
           await logEmailRecipients({
@@ -325,8 +329,11 @@ function buildUserPlanEmail(data: {
   listings?: any[]
   analytics?: any
   agent?: any
+  brandName: string
+  domain: string
+  baseUrl: string
 }): string {
-  const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent } = data
+  const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl } = data
   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
   const isBuyer = intent === 'buyer'
   const topListings = (listings || []).slice(0, 5)
@@ -352,7 +359,7 @@ function buildUserPlanEmail(data: {
         ${isBuyer ? 'Matched Listings' : 'Comparable Sales'}
       </h3>
       ${topListings.map((l: any) => `
-        <a href="${BASE_URL}/${l._slug || l.listing_key}" style="display: block; text-decoration: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 10px;">
+        <a href="${baseUrl}/${l._slug || l.listing_key}" style="display: block; text-decoration: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
               <div style="font-size: 14px; font-weight: 700; color: #0f172a;">${l.unparsed_address || '—'}</div>
@@ -401,7 +408,7 @@ function buildUserPlanEmail(data: {
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 28px; font-weight: 900; color: #fff; letter-spacing: -0.02em; margin-bottom: 4px;">
-          <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.6);">iam</span>
+          <span style="font-weight: 900;">${brandName}</span>
         </div>
         <div style="font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 20px;">AI Real Estate</div>
         <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 6px;">
@@ -428,15 +435,15 @@ function buildUserPlanEmail(data: {
         ${agentSection}
 
         <div style="text-align: center; margin: 24px 0 8px;">
-          <a href="${BASE_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
-            ✦ Continue on WALLiam
+          <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+            ✦ Continue on ${brandName}
           </a>
         </div>
       </div>
 
       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
         <p style="margin: 0; color: #94a3b8; font-size: 11px;">
-          Sent by WALLiam AI · walliam.ca
+          Sent by ${brandName} AI · ${domain}
         </p>
       </div>
     </div>
@@ -454,8 +461,11 @@ function buildAgentLeadEmail(data: {
   sellerProfile?: any
   listings?: any[]
   analytics?: any
+  brandName: string
+  domain: string
+  baseUrl: string
 }): string {
-  const { name, email, phone, intent, buyerProfile, sellerProfile, listings } = data
+  const { name, email, phone, intent, buyerProfile, sellerProfile, listings, brandName, domain, baseUrl } = data
   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
   const isBuyer = intent === 'buyer'
   const topListings = (listings || []).slice(0, 3)
@@ -464,7 +474,7 @@ function buildAgentLeadEmail(data: {
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 4px;">
-          <span>WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+          <span>${brandName}</span>
         </div>
         <h1 style="color: #fff; margin: 8px 0 0; font-size: 18px; font-weight: 700;">
           New ${isBuyer ? '🏠 Buyer' : '💰 Seller'} Lead
@@ -500,7 +510,7 @@ function buildAgentLeadEmail(data: {
         ${topListings.length > 0 ? `
         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Top Matched Listings</h2>
         ${topListings.map((l: any) => `
-          <a href="${BASE_URL}/${l._slug || l.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
+          <a href="${baseUrl}/${l._slug || l.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
             <div>
               <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${l.unparsed_address || '—'}</div>
               <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${l.bedrooms_total ? `${l.bedrooms_total} bed` : ''}${l.bathrooms_total_integer ? ` · ${l.bathrooms_total_integer} bath` : ''}</div>
@@ -512,10 +522,10 @@ function buildAgentLeadEmail(data: {
       </div>
 
       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
-        <a href="${BASE_URL}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+        <a href="${baseUrl}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
           View in Dashboard
         </a>
-        <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+        <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
       </div>
     </div>
   `

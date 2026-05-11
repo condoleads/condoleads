@@ -36,7 +36,7 @@ export interface ValidateSessionParams {
 }
 
 export type ValidateSessionResult =
-  | { ok: true; session: Record<string, any>; sourceKey: string }
+  | { ok: true; session: Record<string, any>; sourceKey: string; brandName: string; domain: string }
   | { ok: false; status: number; error: string }
 
 export async function validateSession(params: ValidateSessionParams): Promise<ValidateSessionResult> {
@@ -52,7 +52,7 @@ export async function validateSession(params: ValidateSessionParams): Promise<Va
 
   const { data: tenant, error: tenantError } = await supabase
     .from('tenants')
-    .select('source_key')
+    .select('source_key, brand_name, name, domain')
     .eq('id', tenantId)
     .maybeSingle()
 
@@ -73,5 +73,5 @@ export async function validateSession(params: ValidateSessionParams): Promise<Va
     return { ok: false, status: 401, error: 'Invalid session' }
   }
 
-  return { ok: true, session: session as Record<string, any>, sourceKey: tenant.source_key }
+  return { ok: true, session: session as Record<string, any>, sourceKey: tenant.source_key, brandName: (tenant.brand_name || tenant.name) as string, domain: tenant.domain as string }
 }

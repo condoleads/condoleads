@@ -21,8 +21,9 @@ import {
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { validateSession } from '@/lib/utils/validate-session'
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+// T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
 
 
 async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
@@ -88,6 +89,9 @@ export async function POST(req: NextRequest) {
     }
     const validSession = _sessionCheck.session
     const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
+    const brandName = _sessionCheck.brandName  // T6f — for brand-text templating
+    const domain = _sessionCheck.domain        // T6f — for URL templating
+    const BASE_URL = buildBaseUrl(domain)      // T6f — handler-local tenant-aware base URL
     // END T6a auth gate
 
     // Step 1: Resolve agent
@@ -181,6 +185,7 @@ export async function POST(req: NextRequest) {
         html: buildUserConfirmationEmail({
           name, intent, formattedDate, appointment_time,
           appointment_properties, agent, rescheduleUrl,
+          brandName, domain, baseUrl: BASE_URL,
         }),
       })
     } catch (err) {
@@ -220,6 +225,7 @@ export async function POST(req: NextRequest) {
           html: buildAgentNotificationEmail({
             name, email, phone, intent, formattedDate, appointment_time,
             appointment_properties, geo_name,
+            brandName, domain, baseUrl: BASE_URL,
           }),
         })
         if (lead?.id) {
@@ -273,15 +279,18 @@ function buildUserConfirmationEmail(data: {
   appointment_properties?: any[]
   agent?: any
   rescheduleUrl: string
+  brandName: string
+  domain: string
+  baseUrl: string
 }): string {
-  const { name, intent, formattedDate, appointment_time, appointment_properties, agent, rescheduleUrl } = data
+  const { name, intent, formattedDate, appointment_time, appointment_properties, agent, rescheduleUrl, brandName, domain, baseUrl } = data
   const isBuyer = intent === 'buyer'
 
   const propertiesHtml = isBuyer && appointment_properties?.length ? `
     <div style="margin: 20px 0;">
       <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Properties to View</h3>
       ${appointment_properties.map(p => `
-        <a href="${BASE_URL}/${p.slug || p.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; text-decoration: none;">
+        <a href="${baseUrl}/${p.slug || p.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; text-decoration: none;">
           <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${p.address || '—'}</div>
           <div style="font-size: 14px; font-weight: 800; color: #1d4ed8;">$${Number(p.price || 0).toLocaleString('en-CA')}</div>
         </a>
@@ -306,7 +315,7 @@ function buildUserConfirmationEmail(data: {
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px 28px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 4px;">
-          <span>WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+          <span style="font-weight: 900;">${brandName}</span>
         </div>
         <h1 style="color: #fff; font-size: 20px; font-weight: 800; margin: 16px 0 6px;">
           ${isBuyer ? '🏠 Viewing Request Sent' : '📋 Consultation Request Sent'}
@@ -332,7 +341,7 @@ function buildUserConfirmationEmail(data: {
       </div>
 
       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
-        <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+        <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
       </div>
     </div>
   `
@@ -349,14 +358,17 @@ function buildAgentNotificationEmail(data: {
   appointment_time: string
   appointment_properties?: any[]
   geo_name?: string
+  brandName: string
+  domain: string
+  baseUrl: string
 }): string {
-  const { name, email, phone, intent, formattedDate, appointment_time, appointment_properties, geo_name } = data
+  const { name, email, phone, intent, formattedDate, appointment_time, appointment_properties, geo_name, brandName, domain, baseUrl } = data
   const isBuyer = intent === 'buyer'
 
   const propertiesHtml = isBuyer && appointment_properties?.length ? `
     <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 20px 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Properties Requested</h2>
     ${appointment_properties.map(p => `
-      <a href="${BASE_URL}/${p.slug || p.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
+      <a href="${baseUrl}/${p.slug || p.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
         <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${p.address || '—'}</div>
         <div style="font-size: 14px; font-weight: 800; color: #1d4ed8;">$${Number(p.price || 0).toLocaleString('en-CA')}</div>
       </a>
@@ -367,7 +379,7 @@ function buildAgentNotificationEmail(data: {
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
-          <span>WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+          <span style="font-weight: 900;">${brandName}</span>
         </div>
         <h1 style="color: #fff; margin: 0; font-size: 18px; font-weight: 700;">
           📅 New ${isBuyer ? 'Viewing' : 'Consultation'} Request
@@ -393,14 +405,14 @@ function buildAgentNotificationEmail(data: {
         ${propertiesHtml}
 
         <div style="text-align: center; margin-top: 20px;">
-          <a href="${BASE_URL}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+          <a href="${baseUrl}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
             View in Dashboard →
           </a>
         </div>
       </div>
 
       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
-        <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+        <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
       </div>
     </div>
   `
