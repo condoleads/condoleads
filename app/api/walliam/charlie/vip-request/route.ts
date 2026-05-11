@@ -33,7 +33,15 @@ function createServiceClient() {
 export async function POST(request: NextRequest) {
   try {
     const { sessionId, planType } = await request.json()
-    // planType: 'buyer' | 'seller'
+    // planType: 'buyer' | 'seller' | 'chat' | 'estimator'
+
+    // T6d - channel discriminator for VIP auto-approve config + credit-override column
+    // F-VIP-AUTO-APPROVE-USES-CHAT-LIMIT-FOR-PLAN-REQUESTS + F-VIP-AUTO-APPROVE-ONLY-WRITES-BUYER-PLAN-LIMIT
+    const channel: 'chat' | 'buyer_plan' | 'seller_plan' | 'estimator' =
+      planType === 'chat' ? 'chat' :
+      planType === 'estimator' ? 'estimator' :
+      planType === 'seller' ? 'seller_plan' :
+      'buyer_plan'
 
     // W-RECOVERY A1.5 auth gate (part 1) — block requests without sessionId
     if (!sessionId) {
@@ -53,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     const { data: tenantConfig, error: tenantConfigError } = await supabase
       .from('tenants')
-      .select('source_key, name, brand_name, domain, assistant_name, vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, estimator_manual_approve_attempts, estimator_hard_cap')
+      .select('source_key, name, brand_name, domain, assistant_name, vip_auto_approve, plan_vip_auto_approve, estimator_vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, seller_plan_auto_approve_limit, seller_plan_hard_cap, estimator_auto_approve_attempts, estimator_manual_approve_attempts, estimator_hard_cap')
       .eq('id', tenantId)
       .single()
 
@@ -152,9 +160,18 @@ export async function POST(request: NextRequest) {
       chainTenantAdminId = chain.tenant_admin_id
     }
 
-    // Use tenant config for credit decisions
-    const isAutoApprove = tenantConfig.vip_auto_approve === true && (tenantConfig.ai_auto_approve_limit ?? 0) > 0
-    const autoApproveMessages = tenantConfig.ai_auto_approve_limit ?? 0
+    // Use tenant config for credit decisions - channel-aware per T6d
+    const vipToggle =
+      channel === 'chat' ? tenantConfig.vip_auto_approve === true :
+      channel === 'estimator' ? tenantConfig.estimator_vip_auto_approve === true :
+      tenantConfig.plan_vip_auto_approve === true
+    const autoApproveLimit =
+      channel === 'chat' ? (tenantConfig.ai_auto_approve_limit ?? 0) :
+      channel === 'estimator' ? (tenantConfig.estimator_auto_approve_attempts ?? 0) :
+      channel === 'seller_plan' ? (tenantConfig.seller_plan_auto_approve_limit ?? 0) :
+      (tenantConfig.plan_auto_approve_limit ?? 0)
+    const isAutoApprove = vipToggle && autoApproveLimit > 0
+    const autoApproveMessages = autoApproveLimit
 
     // Create VIP request
     const { data: vipRequest, error: insertError } = await supabase
@@ -271,7 +288,8 @@ export async function POST(request: NextRequest) {
     if (isAutoApprove) {
       const currentGranted = session.vip_messages_granted || 0
 
-      await supabase
+      // T6d-3 error capture
+      const { error: sessionUpdateError } = await supabase
         .from('chat_sessions')
         .update({
           status: 'vip',
@@ -280,20 +298,37 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', sessionId)
+      if (sessionUpdateError) {
+        console.error('[walliam/vip-request] chat_sessions update failed:', sessionUpdateError)
+      }
 
       // Write to user_credit_overrides using tenant configured values
       if (session.user_id && tenantId) {
         const currentUsed = (session.buyer_plans_used || 0) + (session.seller_plans_used || 0)
-        const newLimit = Math.min(currentUsed + autoApproveMessages, tenantConfig.plan_hard_cap ?? 10)
-        await supabase.from('user_credit_overrides').upsert({
+        const channelHardCap =
+          channel === 'chat' ? (tenantConfig.ai_hard_cap ?? 10) :
+          channel === 'estimator' ? (tenantConfig.estimator_hard_cap ?? 10) :
+          channel === 'seller_plan' ? (tenantConfig.seller_plan_hard_cap ?? 10) :
+          (tenantConfig.plan_hard_cap ?? 10)
+        const newLimit = Math.min(currentUsed + autoApproveMessages, channelHardCap)
+        const overrideColumn: 'ai_chat_limit' | 'buyer_plan_limit' | 'seller_plan_limit' | 'estimator_limit' =
+          channel === 'chat' ? 'ai_chat_limit' :
+          channel === 'estimator' ? 'estimator_limit' :
+          channel === 'seller_plan' ? 'seller_plan_limit' :
+          'buyer_plan_limit'
+        // T6d-3 error capture
+        const { error: overrideError } = await supabase.from('user_credit_overrides').upsert({
           user_id: session.user_id,
           tenant_id: tenantId,
           granted_by_agent_id: agent?.id || null,
           granted_by_tier: 'auto',
           note: 'Auto-approved — ' + autoApproveMessages + ' credits',
-          buyer_plan_limit: newLimit,
+          [overrideColumn]: newLimit,
           granted_at: new Date().toISOString(),
         }, { onConflict: 'user_id,tenant_id' })
+        if (overrideError) {
+          console.error('[walliam/vip-request] user_credit_overrides upsert failed:', overrideError)
+        }
       }
 
       // User-facing approval email — single recipient, not chain
