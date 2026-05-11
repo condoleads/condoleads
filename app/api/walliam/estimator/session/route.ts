@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
         estimator_hard_cap,
         estimator_vip_auto_approve,
         estimator_ai_enabled,
-        anthropic_api_key
+        anthropic_api_key,
+        source_key
       `)
       .eq('id', tenantId)
       .single()
@@ -97,7 +98,7 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from('chat_sessions')
       .select('*')
-      .eq('source', 'walliam')
+      .eq('source', tenant.source_key)
       .eq('user_id', userId)
       .eq('tenant_id', tenantId)
       .in('status', ['active', 'vip'])
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
           agent_id: agentId,
           user_id: userId,
           tenant_id: tenantId,
-          source: 'walliam',
+          source: tenant.source_key,
           session_token: crypto.randomUUID(),
           status: 'active',
           message_count: 0,

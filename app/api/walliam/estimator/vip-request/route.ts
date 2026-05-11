@@ -76,11 +76,9 @@ export async function POST(request: NextRequest) {
     if (sessionError || !session) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
-    // W-RECOVERY A1.5 auth gate (part 2) — verify session belongs to a registered walliam user
-    if (!session.user_id || session.source !== 'walliam') {
+    if (!session.user_id) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
-    // END W-RECOVERY A1.5 auth gate
 
     const agent = session.agents
     const tenantId = session.tenant_id || null
@@ -88,12 +86,17 @@ export async function POST(request: NextRequest) {
     // Load tenant estimator config (auto-approve lives on tenant, not agent)
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
-      .select('estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
+      .select('source_key, estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
       .eq('id', tenantId)
       .single()
 
     if (tenantError || !tenant) {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+    }
+
+    // T6a — F-W-RECOVERY-A15: tenant-aware auth gate (replaces hardcoded 'walliam' check)
+    if (session.source !== tenant.source_key) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
 
     // Check for existing pending request

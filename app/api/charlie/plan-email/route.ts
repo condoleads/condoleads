@@ -22,6 +22,7 @@ import {
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+import { validateSession } from '@/lib/utils/validate-session'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
@@ -55,19 +56,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    // W-RECOVERY A1.5 auth gate — verify session belongs to userId before any email fires
+    // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
     const _gateSupabase = createServiceClient()
-    const { data: validSession } = await _gateSupabase
-      .from('chat_sessions')
-      .select('id, tenant_id')
-      .eq('id', sessionId)
-      .eq('user_id', userId)
-      .eq('source', 'walliam')
-      .maybeSingle()
-    if (!validSession) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    const _sessionCheck = await validateSession({
+      supabase: _gateSupabase,
+      sessionId,
+      userId,
+      tenantId: req.headers.get('x-tenant-id') || '',
+      selectColumns: 'id, tenant_id',
+    })
+    if (!_sessionCheck.ok) {
+      return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
     }
-    // END W-RECOVERY A1.5 auth gate
+    const validSession = _sessionCheck.session
+    // END T6a auth gate
 
     const supabase = createServiceClient()
 

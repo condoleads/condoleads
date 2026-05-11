@@ -407,7 +407,7 @@ async function tier3_charliePlanEmail() {
 
     const res = await fetch(`${BASE}/api/charlie/plan-email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-tenant-id': TENANT_ID },
       body: JSON.stringify({
         sessionId: fixtures.sessionId,
         userId: fixtures.authUserId,

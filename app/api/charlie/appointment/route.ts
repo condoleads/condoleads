@@ -20,6 +20,7 @@ import {
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+import { validateSession } from '@/lib/utils/validate-session'
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
 
@@ -80,18 +81,13 @@ export async function POST(req: NextRequest) {
     const supabase = createServiceClient()
     const tenantId = req.headers.get('x-tenant-id') || null
 
-    // W-RECOVERY A1.5 auth gate — verify session belongs to userId
-    const { data: validSession } = await supabase
-      .from('chat_sessions')
-      .select('id')
-      .eq('id', sessionId)
-      .eq('user_id', userId)
-      .eq('source', 'walliam')
-      .maybeSingle()
-    if (!validSession) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+    const _sessionCheck = await validateSession({ supabase, sessionId, userId, tenantId })
+    if (!_sessionCheck.ok) {
+      return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
     }
-    // END W-RECOVERY A1.5 auth gate
+    const validSession = _sessionCheck.session
+    // END T6a auth gate
 
     // Step 1: Resolve agent
     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
