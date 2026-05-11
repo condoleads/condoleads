@@ -19,6 +19,7 @@ import {
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 
 
 function createServiceClient() {
@@ -54,15 +55,25 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (findError || !vipRequest) return createHtmlResponse('error', 'Request not found or link has expired.')
-    if (vipRequest.status !== 'pending') return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`)
+
+    // T6f-B-3 — multitenant brand-string + URL load (must precede subsequent createHtmlResponse + helper calls)
+    const tenantId = vipRequest.chat_sessions?.tenant_id ?? null
+    let brandName: string = ''
+    let baseUrl: string = ''
+    if (tenantId) {
+      const { data: brandTenant } = await supabase.from('tenants').select('brand_name, name, domain').eq('id', tenantId).single()
+      brandName = (brandTenant?.brand_name || brandTenant?.name) ?? ''
+      baseUrl = buildBaseUrl(brandTenant?.domain ?? '')
+    }
+
+    if (vipRequest.status !== 'pending') return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`, brandName)
     if (new Date(vipRequest.expires_at) < new Date()) {
       await supabase.from('vip_requests').update({ status: 'expired' }).eq('id', vipRequest.id)
-      return createHtmlResponse('expired', 'This request has expired.')
+      return createHtmlResponse('expired', 'This request has expired.', brandName)
     }
 
     const newStatus = action === 'approve' ? 'approved' : 'denied'
     const agent = vipRequest.agents
-    const tenantId = vipRequest.chat_sessions?.tenant_id
 
     let attemptsToGrant = 3
     if (tenantId) {
@@ -130,7 +141,7 @@ export async function GET(request: NextRequest) {
           if (err instanceof AdminPlatformUnreachable) {
             console.error('[walliam/estimator/vip-approve] admin platform unreachable:', err.message)
             // Fail closed: don't send the email if we can't BCC platform admin
-            return createHtmlResponse('error', 'System notification failed. Approval recorded; please contact support.')
+            return createHtmlResponse('error', 'System notification failed. Approval recorded; please contact support.', brandName)
           }
           throw err
         }
@@ -153,11 +164,13 @@ export async function GET(request: NextRequest) {
             to: vipRequest.email,
             cc: managerEmail ? [managerEmail] : undefined,
             bcc: bccList,
-            subject: 'Your WALLiam Estimator Access is Approved',
+            subject: `Your ${brandName} Estimator Access is Approved`,
             html: buildUserApprovalEmailHtml(
               vipRequest.full_name,
-              agent?.full_name || 'WALLiam',
-              attemptsToGrant
+              agent?.full_name || brandName,
+              attemptsToGrant,
+              brandName,
+              baseUrl
             ),
           })
         } catch (err) {
@@ -172,9 +185,9 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      return createHtmlResponse('approved', `Estimator access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${attemptsToGrant} additional estimate${attemptsToGrant > 1 ? 's' : ''}.`)
+      return createHtmlResponse('approved', `Estimator access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${attemptsToGrant} additional estimate${attemptsToGrant > 1 ? 's' : ''}.`, brandName)
     } else {
-      return createHtmlResponse('denied', `Estimator VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`)
+      return createHtmlResponse('denied', `Estimator VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`, brandName)
     }
 
   } catch (error) {
@@ -183,26 +196,26 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number): string {
+function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, baseUrl: string): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
       </div>
       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
         <div style="text-align: center;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to WALLiam</a>
+          <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to ${brandName}</a>
         </div>
       </div>
     </div>
   `
 }
 
-function createHtmlResponse(status: string, message: string): NextResponse {
+function createHtmlResponse(status: string, message: string, brandName: string = ''): NextResponse {
   const configs: Record<string, { bg: string; icon: string; title: string }> = {
     approved:          { bg: '#10b981', icon: '✅', title: 'Approved' },
     denied:            { bg: '#ef4444', icon: '❌', title: 'Denied' },
@@ -215,7 +228,7 @@ function createHtmlResponse(status: string, message: string): NextResponse {
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>WALLiam Estimator — ${cfg.title}</title>
+  <title>${brandName} Estimator — ${cfg.title}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
