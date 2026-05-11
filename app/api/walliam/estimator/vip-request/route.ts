@@ -21,6 +21,7 @@ import {
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 
 
 // Track user activity in user_activities table
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     // Load tenant estimator config (auto-approve lives on tenant, not agent)
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
-      .select('source_key, estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
+      .select('source_key, brand_name, name, domain, estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
       .eq('id', tenantId)
       .single()
 
@@ -99,6 +100,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
     const sourceKey = tenant.source_key  // T6c — for source-field templating
+    const brandName = tenant.brand_name || tenant.name  // T6f-B-4 — tenant brand for user-facing strings
+    const domain = tenant.domain || ''  // T6f-B-4 — tenant domain for URL building
 
     // Check for existing pending request
     const { data: existingRequest } = await supabase
@@ -163,7 +166,7 @@ export async function POST(request: NextRequest) {
         agent_id: agent?.id || null,
         tenant_id: tenantId,
         phone,
-        full_name: userName || 'WALLiam User',
+        full_name: userName || `${brandName} User`,
         email: userEmail || null,
         page_url: pageUrl,
         building_name: buildingName,
@@ -193,14 +196,14 @@ export async function POST(request: NextRequest) {
           manager_id: chainManagerId,
           area_manager_id: chainAreaManagerId,
           tenant_admin_id: chainTenantAdminId,
-          contact_name: userName || 'WALLiam User',
+          contact_name: userName || `${brandName} User`,
           contact_email: userEmail,
           contact_phone: phone,
           source: `${sourceKey}_estimator_vip_request`,
           lead_origin_route: 'estimator_vip_request',
           source_url: pageUrl,
           building_id: session.current_page_type === 'building' ? session.current_page_id : null,
-          message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
+          message: `${brandName} Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
           status: 'new',
           quality: 'hot',
           assignment_source: agent?.id ? 'geo' : 'admin',
@@ -212,12 +215,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Build approval URLs
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    const baseUrl = buildBaseUrl(domain)
     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
 
     const emailHtml = buildApprovalEmailHtml({
-      fullName: userName || 'WALLiam User',
+      fullName: userName || `${brandName} User`,
       phone,
       email: userEmail,
       buildingName,
@@ -225,6 +228,7 @@ export async function POST(request: NextRequest) {
       approveUrl,
       denyUrl,
       agentName: agent?.full_name || 'Agent',
+      brandName,
     })
 
     // Single email to full chain via helper (replaces F64 dual-send anti-pattern)
@@ -242,7 +246,7 @@ export async function POST(request: NextRequest) {
 
     if (recipients) {
       try {
-        const subject = `WALLiam Estimator VIP Request: ${phone}`
+        const subject = `${brandName} Estimator VIP Request: ${phone}`
         const sendResult = await sendTenantEmail({
           tenantId: tenantId || '',
           to: recipients.to,
@@ -328,8 +332,8 @@ export async function POST(request: NextRequest) {
           await sendTenantEmail({
             tenantId: tenantId || '',
             to: userEmail,
-            subject: 'WALLiam Estimator Access Approved',
-            html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
+            subject: `${brandName} Estimator Access Approved`,
+            html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, domain, baseUrl),
           })
         } catch (err) {
           // F67 standard try/catch
@@ -413,11 +417,12 @@ function buildApprovalEmailHtml(data: {
   approveUrl: string
   denyUrl: string
   agentName: string
+  brandName: string
 }): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
-        <h1 style="color: white; margin: 0; font-size: 22px;">🔔 WALLiam Estimator VIP Request</h1>
+        <h1 style="color: white; margin: 0; font-size: 22px;">🔔 ${data.brandName} Estimator VIP Request</h1>
         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">📊 Estimator</p>
       </div>
       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
@@ -429,7 +434,7 @@ function buildApprovalEmailHtml(data: {
               <a href="tel:${data.phone}" style="color: #2563eb;">${data.phone}</a>
             </td>
           </tr>
-          ${data.fullName && data.fullName !== 'WALLiam User' ? `
+          ${data.fullName && data.fullName !== `${data.brandName} User` ? `
           <tr>
             <td style="padding: 8px 0; color: #6b7280;">Name:</td>
             <td style="padding: 8px 0; color: #1f2937;">${data.fullName}</td>
@@ -464,13 +469,13 @@ function buildApprovalEmailHtml(data: {
   `
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number): string {
+function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, domain: string, baseUrl: string): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
       </div>
       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
@@ -479,9 +484,9 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, attempt
           <strong>${attemptsGranted} additional estimate${attemptsGranted !== 1 ? 's' : ''}</strong> available.
         </p>
         <div style="text-align: center;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}"
+          <a href="${baseUrl}"
              style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
-            ✦ Back to WALLiam
+            ✦ Back to ${brandName}
           </a>
         </div>
       </div>
