@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
       contact_name: userName,
       contact_email: userEmail,
       source: 'walliam_charlie',
+      lead_origin_route: 'charlie',
       intent: planType,
       geo_name: geoName,
       budget_max: plan?.budgetMax || null,

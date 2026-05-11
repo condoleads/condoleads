@@ -193,6 +193,7 @@ export async function POST(request: NextRequest) {
           contact_email: userEmail,
           contact_phone: phone,
           source: 'walliam_estimator_vip_request',
+          lead_origin_route: 'estimator_vip_request',
           source_url: pageUrl,
           building_id: session.current_page_type === 'building' ? session.current_page_id : null,
           message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,

@@ -146,6 +146,25 @@ async function fxCreateChatSession({ userId, agentId, tenantId, source = 'wallia
   return sessionId
 }
 
+// Mirrors lib/utils/lead-origin-route.ts deriveLeadOriginRoute (and the SQL
+// CASE at supabase/migrations/20260510_t2c_lead_origin_route.sql). If the
+// controlled vocabulary changes, update all three sites in lockstep.
+function deriveLeadOriginRoute(source) {
+  if (!source) return 'unknown'
+  if (/_charlie_vip_request$/.test(source)) return 'charlie_vip_request'
+  if (/_estimator_vip_request$/.test(source)) return 'estimator_vip_request'
+  if (/_estimator_questionnaire$/.test(source)) return 'estimator_questionnaire'
+  if (/_estimator/.test(source)) return 'estimator'
+  if (/_charlie$/.test(source)) return 'charlie'
+  if (/_contact$/.test(source)) return 'contact_form'
+  if (source === 'contact_form' || source === 'message_agent' || source === 'building_page') return 'contact_form'
+  if (source === 'estimator') return 'estimator'
+  if (source === 'registration') return 'registration'
+  if (source === 'property_inquiry') return 'property_inquiry'
+  if (source === 'building_visit_request') return 'building_visit'
+  if (source === 'sale_evaluation_request') return 'sale_evaluation'
+  return 'unknown'
+}
 async function fxInsertLead({ tenantId, userId, agentId, contactName, contactEmail, source }) {
   const { data, error } = await supabase.from('leads').insert({
     tenant_id: tenantId,
@@ -154,6 +173,7 @@ async function fxInsertLead({ tenantId, userId, agentId, contactName, contactEma
     contact_name: contactName,
     contact_email: contactEmail,
     source,
+    lead_origin_route: deriveLeadOriginRoute(source),
     status: 'new',
     quality: 'hot',
     assignment_source: agentId ? 'geo' : 'admin',

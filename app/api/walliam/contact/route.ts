@@ -111,6 +111,7 @@ export async function POST(req: NextRequest) {
       contact_phone: phone || null,
       message: message || null,
       source: source || 'walliam_contact',
+      lead_origin_route: 'contact_form',
       building_id: building_id || null,
       listing_id: listing_id || null,
       geo_name: geo_name || null,

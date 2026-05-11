@@ -210,6 +210,7 @@ export async function POST(request: NextRequest) {
         contact_email: userEmail,
         contact_phone: userPhone || null,
         source: `${sourceKey}_charlie_vip_request`,
+        lead_origin_route: 'charlie_vip_request',
         intent: planType || 'buyer',
         status: 'new',
         quality: 'hot',

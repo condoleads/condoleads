@@ -141,6 +141,7 @@ export async function POST(req: NextRequest) {
         contact_email: email,
         contact_phone: phone || null,
         source: 'walliam_charlie',
+        lead_origin_route: 'charlie',
         intent,
         geo_name: geo_name || null,
         manager_id: chainManagerId,

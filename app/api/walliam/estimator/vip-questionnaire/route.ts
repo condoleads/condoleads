@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
         .select('id')
         .eq('user_id', userId)
         .eq('tenant_id', tenantId)
-        .like('source', 'walliam_estimator%')
+        .eq('lead_origin_route', 'estimator_vip_request')
         .order('created_at', { ascending: false })
         .limit(1)
 
@@ -180,6 +180,7 @@ export async function POST(request: NextRequest) {
             contact_email: userEmail,
             contact_phone: vipRequest.phone,
             source: 'walliam_estimator_questionnaire',
+            lead_origin_route: 'estimator_questionnaire',
             source_url: vipRequest.page_url,
             building_id: session?.current_page_type === 'building' ? session?.current_page_id : null,
             message: enrichedMessage,
@@ -226,7 +227,7 @@ export async function POST(request: NextRequest) {
           .select('id')
           .eq('user_id', userId)
           .eq('tenant_id', tenantId)
-          .like('source', 'walliam_estimator%')
+          .eq('lead_origin_route', 'estimator_vip_request')
           .order('created_at', { ascending: false })
           .limit(1)
         leadIdForAudit = latestLead?.[0]?.id || null

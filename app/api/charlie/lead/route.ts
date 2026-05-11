@@ -214,6 +214,7 @@ export async function POST(req: NextRequest) {
           contact_email: authEmail,
           contact_phone: phone || null,
           source: 'walliam_charlie',
+          lead_origin_route: 'charlie',
           intent,
           geo_name: profile?.geoName || null,
           budget_max: buyerProfile?.budgetMax || null,

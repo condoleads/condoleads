@@ -26,6 +26,7 @@ import {
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 
+import { deriveLeadOriginRoute } from '@/lib/utils/lead-origin-route'
 // Create service role client that bypasses RLS
 function createServiceClient() {
   return createServerClient(
@@ -188,6 +189,7 @@ export async function createLead(params: CreateLeadParams) {
       contact_phone: params.contactPhone,
       message: params.message,
       source: source,
+      lead_origin_route: deriveLeadOriginRoute(source),
       assignment_source: resolvedAgentId ? 'geo' : 'admin',
       quality: 'cold',
       status: 'new',
