@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
+import { getTenantContext, buildBaseUrl } from '@/lib/utils/tenant-brand'
 
 
 function createServiceClient() {
@@ -49,8 +50,23 @@ export async function GET(request: NextRequest) {
       return createHtmlResponse('error', 'Request not found or link has expired.')
     }
 
+    // T6f-C-2 — tenant brand context (loaded post-vipRequest non-null check;
+    // brandName/domain/baseUrl available for all subsequent createHtmlResponse + email paths)
+    const brandTenantId = vipRequest.chat_sessions?.tenant_id || null
+    let brandName = ''
+    let domain = ''
+    let baseUrl = ''
+    if (brandTenantId) {
+      const _t6fcCtx = await getTenantContext(supabase, brandTenantId)
+      if (_t6fcCtx) {
+        brandName = _t6fcCtx.brandName
+        domain = _t6fcCtx.domain
+        baseUrl = buildBaseUrl(_t6fcCtx.domain)
+      }
+    }
+
     if (vipRequest.status !== 'pending') {
-      return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`)
+      return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`, brandName)
     }
 
     if (new Date(vipRequest.expires_at) < new Date()) {
@@ -58,7 +74,7 @@ export async function GET(request: NextRequest) {
         .from('vip_requests')
         .update({ status: 'expired' })
         .eq('id', vipRequest.id)
-      return createHtmlResponse('expired', 'This request has expired.')
+      return createHtmlResponse('expired', 'This request has expired.', brandName)
     }
 
     const newStatus = action === 'approve' ? 'approved' : 'denied'
@@ -159,11 +175,14 @@ export async function GET(request: NextRequest) {
           await sendTenantEmail({
             tenantId: tenantId || '',
             to: vipRequest.email,
-            subject: 'Your WALLiam Plan Access is Approved',
+            subject: `Your ${brandName} Plan Access is Approved`,
             html: buildUserApprovalEmailHtml(
               vipRequest.full_name,
-              agent?.full_name || 'WALLiam',
-              plansToGrant
+              agent?.full_name || brandName,
+              plansToGrant,
+              brandName,
+              domain,
+              baseUrl
             ),
           })
         } catch (err) {
@@ -173,12 +192,14 @@ export async function GET(request: NextRequest) {
 
       return createHtmlResponse(
         'approved',
-        `Plan access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${plansToGrant} additional plan${plansToGrant > 1 ? 's' : ''}.`
+        `Plan access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${plansToGrant} additional plan${plansToGrant > 1 ? 's' : ''}.`,
+        brandName
       )
     } else {
       return createHtmlResponse(
         'denied',
-        `VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`
+        `VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`,
+        brandName
       )
     }
 
@@ -188,13 +209,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number): string {
+function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number, brandName: string, domain: string, baseUrl: string): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
         <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
       </div>
       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
@@ -202,14 +223,14 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGr
         </p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
           <strong>${agentName}</strong> has approved your request.
-          You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available on WALLiam.
+          You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available on ${brandName}.
         </p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
           Your agent may also reach out directly to help with your real estate journey.
         </p>
         <div style="text-align: center;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
-            ✦ Back to WALLiam
+          <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+            ✦ Back to ${brandName}
           </a>
         </div>
       </div>
@@ -217,7 +238,7 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGr
   `
 }
 
-function createHtmlResponse(status: string, message: string): NextResponse {
+function createHtmlResponse(status: string, message: string, brandName: string = ''): NextResponse {
   const configs: Record<string, { bg: string; icon: string; title: string }> = {
     approved:          { bg: '#10b981', icon: '&#10003;', title: 'Approved' },
     denied:            { bg: '#ef4444', icon: '&#10007;', title: 'Denied' },
@@ -231,7 +252,7 @@ function createHtmlResponse(status: string, message: string): NextResponse {
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>WALLiam - ${cfg.title}</title>
+  <title>${brandName ? brandName + ' - ' : ''}${cfg.title}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
