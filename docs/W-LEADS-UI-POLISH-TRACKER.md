@@ -1,58 +1,74 @@
 # W-LEADS-UI-POLISH-TRACKER
 
-**Version:** v1 — OPEN — scope locked, L1/L2/L3 phases unstarted
+**Version:** v2 — OPEN — scope expanded from 3-phase rendering polish to 7-phase qualified-leads system
 
 **Started:** 2026-05-12  
 **Owner:** Shah (sole dev)  
-**Status:** OPEN — three UI-only polish phases identified during W-LEADS-EMAIL closure recon. Sized in hours; no schema, RPC, or API route changes anticipated.
+**Status:** OPEN — seven UI/data phases that together produce the working qualified-leads management system. Sized 6-8 hours of focused work; ships in one block today.
 
 ## Why this exists
 
-During W-LEADS-EMAIL closure recon at the leads admin UI (`components/admin-homes/AdminHomesLeadsClient.tsx`), three UX/render gaps surfaced that affect agent usability but are NOT data-plumbing bugs:
+Original v1 scope was three rendering polish items (Source badge, hierarchy chain, activity discoverability) on the existing leads table. After design review the workstream expanded to address the actual goal: a working qualified-leads system where the agent can see one row and immediately know what to do.
 
-1. The categorized `lead_origin_route` column shipped in W-LEADS-EMAIL T2c and wired in T6b is not used by the leads UI at all. Source rendering still uses a `SOURCE_LABELS[lead.source]` dictionary lookup against the raw `source` column at L373-376. Any source string not in the dict shows up as a stripped raw value via the fallback `lead.source?.replace('walliam_', '')`.
+The leads admin UI today is a flat table where every row has equal visual weight. The data needed for triage exists across multiple tables (`leads`, `user_activities`, `user_credit_overrides`, `vip_requests`) but is scattered across the page or hidden behind interactions. To answer "who do I call right now?" the agent has to mentally cross-reference. That's the problem.
 
-2. Only the immediate `manager` is rendered in the hierarchy column at L388-395. The `area_manager_id` and `tenant_admin_id` columns exist on the row (page query uses `select('*')`) but the page join doesn't fetch their names, and the client doesn't render them. A lead handled by a managed agent shows only one level of the chain.
+The expanded scope produces a unified lead view with four signals per lead:
 
-3. The Activity panel exists and works (L455-486 renders engagement score + timeline correctly) but is hidden behind a per-row amber Activity button at L443. Clicking toggles `expandedLead === lead.id + '-activity'` and fetches via `/api/admin-homes/activities`. The discoverability problem: an agent has to click every row to see engagement state — hot/warm leads aren't surfaced at-a-glance.
+1. **Qualification** — agent-set: `unqualified` / `qualified_hot` / `qualified_cold` / `disqualified`
+2. **VIP form status** — yes/no, did they fill the questionnaire (basic profile is always complete since email + phone are mandatory at signup)
+3. **Engagement** — computed: activity count + recency (logic already exists at `calcEngagement` L66-67)
+4. **Credit posture** — computed: usage + blocked state + pending VIP request
 
-These are UI polish items, not schema/route bugs. Bundled as a single short workstream rather than scattered across post-launch tickets.
+Plus inline actions (approve VIP, grant credits, mark qualified) and a detail drawer with the buyer/seller plan content (which the agent already receives in email but cannot see inline today).
 
 ## Scope contract
 
 **In scope:**
 
-- **L1:** lead_origin_route badge swap-in on `AdminHomesLeadsClient` L373-376 (use `deriveLeadOriginRoute(source)` helper from `lib/utils/lead-origin-route.ts` shipped in W-LEADS-EMAIL T6b, plus per-route badge labels and color coding).
-- **L2:** hierarchy chain render extending L388-395 to render area_manager and tenant_admin levels when present. Requires page join extension (add `area_manager:agents!leads_area_manager_id_fkey(...)` and `tenant_admin:agents!leads_tenant_admin_id_fkey(...)` joins in the page query) plus client-side conditional rendering with arrow indicators between levels.
-- **L3:** activity panel discoverability. Two sub-changes: (a) engagement count badge on row (count of activities per lead, fetched in bulk on page load); (b) auto-expand activity panel for leads with hot/warm engagement at top of list.
+- **L1 (qualification system):** `leads.quality` becomes agent-only with values `unqualified` / `qualified_hot` / `qualified_cold` / `disqualified`. Schema migration to expand CHECK constraint and change default to `unqualified`. Backfill existing rows (map `hot` — `qualified_hot`, `cold` — `unqualified`). Remove all code-set `quality` writes (closes F-LEADS-QUALITY-INCONSISTENT from W-LEADS-EMAIL v19: `charlie/plan-email` L144 + `charlie/lead` L229 currently hardcode `'hot'` while DB default is `'cold'`). Replace existing dropdown at L414-417 with inline action buttons.
+- **L2 (source badge swap-in):** Source column at L373-376 uses `deriveLeadOriginRoute(source)` helper from `lib/utils/lead-origin-route.ts` (shipped W-LEADS-EMAIL T6b) with per-route badge labels and colors.
+- **L3 (hierarchy chain render):** Page query at `app/admin-homes/leads/page.tsx` L31-35 extends with `area_manager:agents!leads_area_manager_id_fkey(...)` + `tenant_admin:agents!leads_tenant_admin_id_fkey(...)` joins. Client renders conditional hierarchy chain at L388-395 with arrow indicators between levels.
+- **L4 (engagement inline + activity):** Engagement count badge always visible on row (using existing `calcEngagement` at L66-67). Last 2 activities visible inline beneath each row. Full timeline moves to detail drawer (L7). The amber Activity expand button at L443 is removed.
+- **L5 (credit posture chip):** Page query joins `user_credit_overrides` + `vip_requests` by `lead.user_id`. Compact chip on row showing consumption summary. Prominent "VIP pending" / "blocked at zero credits" badge when applicable.
+- **L6 (inline action buttons):** Three buttons on the lead row — Approve VIP (when pending), Grant credits, Mark qualified (cycles through quality states). Reuses existing routes: `app/api/admin-homes/users/override/route.ts` for credit grants, `app/api/admin-homes/leads/[id]/route.ts` for quality updates.
+- **L7 (lead detail drawer):** Click row — drawer opens with full lead context: complete activity timeline, all emails sent (from `lead_email_recipients_log`), the buyer/seller plan content (already stored in `chat_sessions.plan_data` or `leads.plan_data`, currently only delivered via email), full credit history, hierarchy chain, notes from prior calls.
 
 **Out of scope:**
 
-- Any schema migration (columns already exist).
-- Any new API routes or RPCs.
-- Any change to `/api/admin-homes/activities` endpoint contract.
-- Any change to data sync, lead capture, or email flow (all owned by W-LEADS-EMAIL, now closed at v21).
+- New API routes or RPCs (all reuse existing).
+- Schema changes beyond the `leads.quality` CHECK constraint expansion in L1.
+- New data sync paths (`/api/admin-homes/activities` contract unchanged).
 - Mobile-specific responsive polish (separate workstream if surfaced).
+- The action-queue / grouped-list table redesign (separate W-LEADS-UX-V2 if needed post-launch).
 
 ## Outcomes Desired
 
-- **OD-1:** Source column displays the categorized `lead_origin_route` value with per-route labels and colors. The raw `source` column remains the underlying truth but is no longer the primary display field.
-- **OD-2:** Hierarchy column renders the full known chain (manager — area_manager — tenant_admin) when those rows exist on the lead. Missing levels degrade gracefully (only what exists is shown).
-- **OD-3:** At-a-glance engagement state via a count badge on each row + auto-expand for hot/warm leads. Agent can triage 50+ leads without per-row clicks for the high-priority ones.
+- **OD-1:** Agent can mark a lead as qualified (hot/cold/disqualified) directly from the row in one click. Quality is set only by human action; code never writes `leads.quality`.
+- **OD-2:** Source column displays categorized `lead_origin_route` value with per-route labels and colors. The raw `source` column remains the underlying truth but is no longer the primary display field.
+- **OD-3:** Hierarchy column renders the full known chain (manager — area_manager — tenant_admin) with graceful degradation when levels are missing.
+- **OD-4:** Engagement state visible at-a-glance per row; no per-row click needed for triage. Agent can scan 50 leads and identify hot ones in seconds.
+- **OD-5:** Credit posture visible per row including a prominent badge for pending VIP requests or blocked-at-zero-credits states — the agent sees "this lead needs my action" without leaving the page.
+- **OD-6:** Approve VIP and Grant credits actions executable inline without leaving the leads page.
+- **OD-7:** Full lead context (complete activity timeline + buyer/seller plan + credit history + emails sent) viewable in a drawer without navigation away from the leads list.
 
 ## Phases
 
 | Phase | Title | Status | Estimated size | Notes |
 |---|---|---|---|---|
-| L1 | lead_origin_route badge swap-in | OPEN | 30-45 min | Helper already imported by `lib/actions/leads.ts`; client-side substitution + label/color map. |
-| L2 | hierarchy chain render | OPEN | 1-2 hr | Page join extension (2 new `agents!fk` joins) + client conditional render with arrow indicators. |
-| L3 | activity panel discoverability | OPEN | 1-2 hr | Engagement count fetch (bulk in page server component) + auto-expand logic for top-of-list hot/warm leads. |
-| Lclose | Workstream close + W-LAUNCH-TRACKER row flip | OPEN | 10 min | After L1/L2/L3 ship. Mirrors W-LEADS-EMAIL Tlast pattern. |
+| L1 | Qualification system | OPEN | 60-90 min | Schema migration (CHECK + default + backfill) + code cleanup (remove `quality` writes from `charlie/plan-email` L144 + `charlie/lead` L229) + UI inline buttons replacing L414-417 dropdown. |
+| L2 | Source badge swap-in | OPEN | 30-45 min | Helper already imported by `lib/actions/leads.ts`; client-side L373-376 substitution + label/color map. |
+| L3 | Hierarchy chain render | OPEN | 45-60 min | Page query extension (2 new `agents!fk` joins) + client conditional render at L388-395 with arrow indicators. |
+| L4 | Engagement inline + activity | OPEN | 45-60 min | Surface `calcEngagement` (L66-67) as always-visible badge; inline last 2 activities; remove L443 expand button (full timeline — drawer in L7). |
+| L5 | Credit posture chip | OPEN | 45-60 min | Page query joins `user_credit_overrides` + `vip_requests` by `lead.user_id`. Chip render + blocked-state badge. |
+| L6 | Inline action buttons | OPEN | 45-60 min | Approve VIP + Grant credits + Mark qualified buttons on row. Reuses existing API routes. |
+| L7 | Lead detail drawer | OPEN | 60-90 min | Drawer component with full activity timeline + buyer/seller plan content + credit history + emails sent + notes. Plan content already stored; just needs to be surfaced. |
+| Lclose | Workstream close + W-LAUNCH-TRACKER row flip | OPEN | 10 min | 4-anchor patch on master tracker, same pattern as W-LEADS-EMAIL Tlast. |
 
 ## Phase workflow
 
-Each phase ships independently in sequence: L1 — L2 — L3 — Lclose. Per Rule Zero — Comprehensive: each phase = probe — patch (with timestamped backup) — TSC clean (`npx tsc --noEmit`) — local smoke at `http://localhost:3000/admin-homes/leads` (with `DEV_TENANT_DOMAIN=walliam.ca` in `.env.local`) — git commit — git push to origin/main. Lclose flips this tracker's Section 4 row in `docs/W-LAUNCH-TRACKER.md` to CLOSED with phase ship hashes referenced.
+Each phase ships independently in sequence: L1 — L2 — L3 — L4 — L5 — L6 — L7 — Lclose. Per Rule Zero — Comprehensive: each phase = probe — patch (with timestamped backup) — TSC clean (`npx tsc --noEmit`) — local smoke at `http://localhost:3000/admin-homes/leads` (with `DEV_TENANT_DOMAIN=walliam.ca` in `.env.local`) — git commit — git push to origin/main. Lclose flips this tracker's Section 4 row in `docs/W-LAUNCH-TRACKER.md` to CLOSED with phase ship hashes referenced.
 
 ## Status log
 
-- **2026-05-12 v1** — Tracker created. Scope locked from W-LEADS-EMAIL closure recon at `components/admin-homes/AdminHomesLeadsClient.tsx`. Three UI polish phases identified: L1 (Source badge swap-in at L373-376), L2 (hierarchy chain render at L388-395), L3 (Activity panel discoverability at L443/L455-486). All sized in hours; no schema/RPC/API changes anticipated. Master tracker `docs/W-LAUNCH-TRACKER.md` Section 4 has corresponding OPEN row + v15 status log entry shipped in the same commit.
+- **2026-05-12 v1** — Tracker created with three rendering polish phases (L1 source badge, L2 hierarchy, L3 activity). Scope locked from W-LEADS-EMAIL closure recon at `components/admin-homes/AdminHomesLeadsClient.tsx`. Master tracker `docs/W-LAUNCH-TRACKER.md` Section 4 OPEN row + v15 status log entry shipped in same commit.
+- **2026-05-12 v2** — **Scope expanded after design conversation.** The original three phases (now L2/L3/L4) are necessary but not sufficient — the actual goal is a working qualified-leads management system where the agent sees one row and immediately knows what to do. **Four new phases added:** L1 (qualification system: agent-set `leads.quality` with values `unqualified`/`qualified_hot`/`qualified_cold`/`disqualified`, closes F-LEADS-QUALITY-INCONSISTENT from W-LEADS-EMAIL v19); L5 (credit posture chip: joins `user_credit_overrides` and `vip_requests` to surface consumption + blocked states — credit system lives under user but surfaces inline on the lead row); L6 (inline action buttons: Approve VIP / Grant credits / Mark qualified, all reusing existing API routes); L7 (lead detail drawer: surfaces the buyer/seller plan content the agent already receives in email but cannot see inline today). **Original phases renumbered:** L1 (source badge) — L2; L2 (hierarchy) — L3; L3 (activity) — L4. Total seven phases + Lclose, sized 6-8 hours of focused work. Ships in one block today. No new API routes; only one schema migration (L1 CHECK constraint expansion). Master tracker Section 4 row Open-items column updated to reflect new scope; v16 status log entry added.
