@@ -48,6 +48,8 @@ export default async function AdminHomesLeadsPage() {
           initialActivities={{}}
           initialCreditOverrides={{}}
           initialVipRequests={{}}
+          initialEmailLog={{}}
+          initialNotes={{}}
           agents={[]}
           currentRole={adminUser?.role || 'admin'}
           currentAgentId={adminUser?.agentId || null}
@@ -141,6 +143,47 @@ export default async function AdminHomesLeadsPage() {
     }
   }
 
+  // L7: pre-fetch lead_email_recipients_log + lead_notes for the lead detail drawer.
+  // Multi-tenant safety:
+  //   - lead_email_recipients_log has tenant_id NOT NULL -> direct scope by scopedTenantId when !seeAll.
+  //   - lead_notes has NO tenant_id column -> tenant scoping IMPLICIT via lead_id IN leadIds
+  //     (leadIds was already filtered through the tenant-scoped leads query upstream).
+  const emailLogByLeadId: Record<string, any[]> = {};
+  if (leadIds.length > 0) {
+    let emailQuery = supabase
+      .from('lead_email_recipients_log')
+      .select('id, lead_id, recipient_email, recipient_layer, direction, subject, template_key, status, sent_at, delivered_at, bounced_at, created_at')
+      .in('lead_id', leadIds)
+      .order('sent_at', { ascending: false, nullsFirst: false });
+    if (!seeAll && scopedTenantId) {
+      emailQuery = emailQuery.eq('tenant_id', scopedTenantId);
+    }
+    const { data: emailRows } = await emailQuery;
+    for (const e of (emailRows || [])) {
+      const lid = (e as any).lead_id;
+      if (lid) {
+        if (!emailLogByLeadId[lid]) emailLogByLeadId[lid] = [];
+        emailLogByLeadId[lid].push(e);
+      }
+    }
+  }
+
+  const notesByLeadId: Record<string, any[]> = {};
+  if (leadIds.length > 0) {
+    const { data: noteRows } = await supabase
+      .from('lead_notes')
+      .select('id, lead_id, agent_id, note, created_at, updated_at')
+      .in('lead_id', leadIds)
+      .order('created_at', { ascending: false });
+    for (const n of (noteRows || [])) {
+      const lid = (n as any).lead_id;
+      if (lid) {
+        if (!notesByLeadId[lid]) notesByLeadId[lid] = [];
+        notesByLeadId[lid].push(n);
+      }
+    }
+  }
+
   // Agents for filter dropdown — scoped by role
   let agentsQuery = supabase
     .from('agents')
@@ -167,6 +210,8 @@ export default async function AdminHomesLeadsPage() {
       initialActivities={activitiesByLeadId}
       initialCreditOverrides={creditByUserId}
       initialVipRequests={vipByLeadId}
+      initialEmailLog={emailLogByLeadId}
+      initialNotes={notesByLeadId}
       agents={agents || []}
       currentRole={adminUser?.role || 'admin'}
       currentAgentId={adminUser?.agentId || null}

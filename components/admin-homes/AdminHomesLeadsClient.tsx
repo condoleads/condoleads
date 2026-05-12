@@ -2,13 +2,14 @@
 // WALLiam leads dashboard — v2
 // Upgrades: inline status update, source filter, manager column, engagement score, fixed activity panel
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-origin-route'
 
 interface Lead {
   id: string
   user_id: string | null
   tenant_id: string
+  notes: string | null
   contact_name: string
   contact_email: string
   contact_phone: string
@@ -38,6 +39,8 @@ interface Props {
   initialActivities: Record<string, any[]>
   initialCreditOverrides: Record<string, any>
   initialVipRequests: Record<string, any[]>
+  initialEmailLog: Record<string, any[]>
+  initialNotes: Record<string, any[]>
   agents: Agent[]
   currentRole: 'admin' | 'manager' | 'agent'
   currentAgentId: string | null
@@ -98,7 +101,7 @@ const QUALITY_LABELS: Record<QualityValue, string> = {
   disqualified: 'Disqualified',
 }
 
-export default function AdminHomesLeadsClient({ initialLeads, initialActivities, initialCreditOverrides, initialVipRequests, agents, currentRole, currentAgentId }: Props) {
+export default function AdminHomesLeadsClient({ initialLeads, initialActivities, initialCreditOverrides, initialVipRequests, initialEmailLog, initialNotes, agents, currentRole, currentAgentId }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterAgent, setFilterAgent] = useState('all')
@@ -117,6 +120,17 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [grantFormOpenFor, setGrantFormOpenFor] = useState<string | null>(null)
   const [grantFormValues, setGrantFormValues] = useState<{ aiChatLimit: string; buyerPlanLimit: string; sellerPlanLimit: string; estimatorLimit: string }>({ aiChatLimit: '', buyerPlanLimit: '', sellerPlanLimit: '', estimatorLimit: '' })
   const [granting, setGranting] = useState<string | null>(null)
+  const [drawerOpenForLead, setDrawerOpenForLead] = useState<Lead | null>(null)
+  const [emailLog] = useState<Record<string, any[]>>(initialEmailLog)
+  const [notes] = useState<Record<string, any[]>>(initialNotes)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpenForLead(null)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
 
   const updateLeadStatus = async (leadId: string, field: 'status' | 'quality', value: string) => {
@@ -422,7 +436,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                 <tr><td colSpan={11} className="px-6 py-12 text-center text-gray-400">No leads found</td></tr>
               ) : filteredLeads.map(lead => (
                 <>
-                  <tr key={lead.id} className={`hover:bg-gray-50 ${updatingStatus === lead.id ? 'opacity-60' : ''}`}>
+                  <tr key={lead.id} onClick={(e) => { const t = e.target as HTMLElement; if (t.closest('button, input, select, a, label')) return; setDrawerOpenForLead(lead) }} className={`hover:bg-gray-50 cursor-pointer ${updatingStatus === lead.id ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-3">
                       <input type="checkbox"
                         checked={selectedLeads.has(lead.id)}
@@ -668,6 +682,165 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
           </table>
         </div>
       </div>
+    {/* L7: Lead detail drawer -- right-side slide-out, click-row triggered */}
+    {drawerOpenForLead && (
+      <>
+        <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setDrawerOpenForLead(null)} aria-hidden="true" />
+        <div className="fixed inset-y-0 right-0 w-[480px] bg-white shadow-2xl z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Lead details">
+          <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+            <div className="min-w-0">
+              <div className="text-base font-semibold text-gray-900 truncate">{drawerOpenForLead.contact_name}</div>
+              <div className="text-xs text-gray-500 truncate">{drawerOpenForLead.contact_email}</div>
+            </div>
+            <button onClick={() => setDrawerOpenForLead(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none px-2" aria-label="Close drawer">
+              {'\u00d7'}
+            </button>
+          </div>
+          <div className="p-6 space-y-6">
+            {/* Section: Lead Info */}
+            <section>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Lead Info</h3>
+              <dl className="text-sm grid grid-cols-2 gap-2">
+                <div><dt className="text-xs text-gray-400">Phone</dt><dd className="text-gray-800">{drawerOpenForLead.contact_phone || '\u2014'}</dd></div>
+                <div><dt className="text-xs text-gray-400">Intent</dt><dd className="text-gray-800">{drawerOpenForLead.intent || '\u2014'}</dd></div>
+                <div><dt className="text-xs text-gray-400">Area</dt><dd className="text-gray-800">{drawerOpenForLead.geo_name || '\u2014'}</dd></div>
+                <div><dt className="text-xs text-gray-400">Created</dt><dd className="text-gray-800">{new Date(drawerOpenForLead.created_at).toLocaleString('en-CA')}</dd></div>
+              </dl>
+            </section>
+            {/* Section: Hierarchy */}
+            <section>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Hierarchy</h3>
+              <div className="text-sm space-y-1">
+                {drawerOpenForLead.agents && (<div className="text-gray-800"><span className="text-xs text-gray-400 mr-2">Agent:</span>{drawerOpenForLead.agents.full_name}</div>)}
+                {drawerOpenForLead.manager && (<div className="text-gray-700"><span className="text-xs text-gray-400 mr-2">\u2191 Manager:</span>{drawerOpenForLead.manager.full_name}</div>)}
+                {drawerOpenForLead.area_manager && (<div className="text-gray-600"><span className="text-xs text-gray-400 mr-2">\u2191\u2191 Area Manager:</span>{drawerOpenForLead.area_manager.full_name}</div>)}
+                {drawerOpenForLead.tenant_admin && (<div className="text-gray-500"><span className="text-xs text-gray-400 mr-2">\u2191\u2191\u2191 Tenant Admin:</span>{drawerOpenForLead.tenant_admin.full_name}</div>)}
+                {!drawerOpenForLead.agents && !drawerOpenForLead.manager && !drawerOpenForLead.area_manager && !drawerOpenForLead.tenant_admin && (<div className="text-gray-400">No hierarchy assigned</div>)}
+              </div>
+            </section>
+            {/* Section: Credit Posture */}
+            {drawerOpenForLead.user_id && (() => {
+              const o = creditOverrides[drawerOpenForLead.user_id as string]
+              return (
+                <section>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Credit Posture</h3>
+                  {!o ? <div className="text-sm text-gray-400">No override \u2014 using tenant defaults</div> : (
+                    <div className="text-sm space-y-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><span className="text-xs text-gray-400">Chat:</span> <span className="text-gray-800">{o.ai_chat_limit != null ? o.ai_chat_limit : '(default)'}</span></div>
+                        <div><span className="text-xs text-gray-400">Buyer Plan:</span> <span className="text-gray-800">{o.buyer_plan_limit != null ? o.buyer_plan_limit : '(default)'}</span></div>
+                        <div><span className="text-xs text-gray-400">Seller Plan:</span> <span className="text-gray-800">{o.seller_plan_limit != null ? o.seller_plan_limit : '(default)'}</span></div>
+                        <div><span className="text-xs text-gray-400">Estimator:</span> <span className="text-gray-800">{o.estimator_limit != null ? o.estimator_limit : '(default)'}</span></div>
+                      </div>
+                      {o.granted_by_tier && <div className="text-xs text-gray-400">Granted by tier: {o.granted_by_tier}</div>}
+                      {o.granted_at && <div className="text-xs text-gray-400">At: {new Date(o.granted_at).toLocaleString('en-CA')}</div>}
+                      {o.note && <div className="text-xs text-gray-500 italic mt-1">"{o.note}"</div>}
+                    </div>
+                  )}
+                </section>
+              )
+            })()}
+            {/* Section: VIP Requests */}
+            <section>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">VIP Requests</h3>
+              {(vipRequests[drawerOpenForLead.id] || []).length === 0 ? (
+                <div className="text-sm text-gray-400">No VIP requests</div>
+              ) : (
+                <div className="text-sm space-y-2">
+                  {(vipRequests[drawerOpenForLead.id] || []).map((v: any) => (
+                    <div key={v.id} className="border-l-2 border-gray-200 pl-3 py-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold uppercase text-gray-700">{v.request_type}</span>
+                        <span className={(v.status === 'pending' ? 'bg-amber-100 text-amber-800 ' : v.status === 'approved' ? 'bg-emerald-100 text-emerald-800 ' : 'bg-gray-100 text-gray-600 ') + 'text-xs px-2 py-0.5 rounded-full'}>{v.status}</span>
+                      </div>
+                      <div className="text-xs text-gray-400">Created: {new Date(v.created_at).toLocaleString('en-CA')}{v.expires_at && ' \u00b7 Expires: ' + new Date(v.expires_at).toLocaleString('en-CA')}{v.messages_granted != null && ' \u00b7 Granted: ' + v.messages_granted}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            {/* Section: Plan Content */}
+            {drawerOpenForLead.plan_data && (
+              <section>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Plan Content</h3>
+                <div className="text-sm space-y-1">
+                  {drawerOpenForLead.plan_data.planType && <div><span className="text-xs text-gray-400">Type:</span> <span className="text-gray-800 capitalize">{drawerOpenForLead.plan_data.planType}</span></div>}
+                  {drawerOpenForLead.plan_data.geoName && <div><span className="text-xs text-gray-400">Area:</span> <span className="text-gray-800">{drawerOpenForLead.plan_data.geoName}</span></div>}
+                  {drawerOpenForLead.plan_data.budgetMax != null && (
+                    <div>
+                      <span className="text-xs text-gray-400">Budget:</span>{' '}
+                      <span className="text-gray-800">
+                        {drawerOpenForLead.plan_data.budgetMin != null ? '$' + Number(drawerOpenForLead.plan_data.budgetMin).toLocaleString('en-CA') + ' \u2013 ' : ''}
+                        ${'{'}Number(drawerOpenForLead.plan_data.budgetMax).toLocaleString('en-CA'){'}'}
+                      </span>
+                    </div>
+                  )}
+                  {drawerOpenForLead.plan_data.propertyType && <div><span className="text-xs text-gray-400">Property:</span> <span className="text-gray-800">{drawerOpenForLead.plan_data.propertyType}</span></div>}
+                </div>
+              </section>
+            )}
+            {/* Section: Activity Timeline (full) */}
+            <section>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Activity Timeline ({(activities[drawerOpenForLead.id] || []).length})</h3>
+              {(activities[drawerOpenForLead.id] || []).length === 0 ? (
+                <div className="text-sm text-gray-400">No activity recorded</div>
+              ) : (
+                <div className="text-sm space-y-2 relative pl-4">
+                  <div className="absolute left-1 top-0 bottom-0 w-px bg-gray-200" />
+                  {(activities[drawerOpenForLead.id] || []).slice().reverse().map((a: any) => (
+                    <div key={a.id} className="relative pl-4">
+                      <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-amber-400" style={{ transform: 'translateX(-3px)' }} />
+                      <div className="text-gray-700">{a.activity_type.replace(/_/g, ' ')}</div>
+                      <div className="text-xs text-gray-400">{new Date(a.created_at).toLocaleString('en-CA')}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            {/* Section: Emails Sent */}
+            <section>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Emails Sent ({(emailLog[drawerOpenForLead.id] || []).length})</h3>
+              {(emailLog[drawerOpenForLead.id] || []).length === 0 ? (
+                <div className="text-sm text-gray-400">No emails logged</div>
+              ) : (
+                <div className="text-sm space-y-2">
+                  {(emailLog[drawerOpenForLead.id] || []).map((em: any) => (
+                    <div key={em.id} className="border-l-2 border-blue-200 pl-3 py-1">
+                      <div className="text-gray-700 truncate" title={em.subject}>{em.subject}</div>
+                      <div className="text-xs text-gray-400">{em.direction ? em.direction.toUpperCase() : ''} {em.recipient_email}{em.recipient_layer ? ' \u00b7 ' + em.recipient_layer : ''}</div>
+                      <div className="text-xs text-gray-400">{em.status}{(em.sent_at || em.created_at) ? ' \u00b7 ' + new Date(em.sent_at || em.created_at).toLocaleString('en-CA') : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            {/* Section: Notes (lead_notes table) */}
+            <section>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes ({(notes[drawerOpenForLead.id] || []).length})</h3>
+              {(notes[drawerOpenForLead.id] || []).length === 0 ? (
+                <div className="text-sm text-gray-400">No notes yet</div>
+              ) : (
+                <div className="text-sm space-y-2">
+                  {(notes[drawerOpenForLead.id] || []).map((n: any) => (
+                    <div key={n.id} className="bg-gray-50 rounded p-3">
+                      <div className="text-gray-800 whitespace-pre-wrap">{n.note}</div>
+                      <div className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('en-CA')}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            {/* Section: Legacy leads.notes free-text */}
+            {drawerOpenForLead.notes && (
+              <section>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Admin Notes (legacy free-text)</h3>
+                <div className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-wrap">{drawerOpenForLead.notes}</div>
+              </section>
+            )}
+          </div>
+        </div>
+      </>
+    )}
     </div>
   )
 }
