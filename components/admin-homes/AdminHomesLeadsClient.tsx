@@ -7,6 +7,7 @@ import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-or
 
 interface Lead {
   id: string
+  user_id: string | null
   contact_name: string
   contact_email: string
   contact_phone: string
@@ -34,6 +35,8 @@ interface Agent { id: string; full_name: string; email: string }
 interface Props {
   initialLeads: Lead[]
   initialActivities: Record<string, any[]>
+  initialCreditOverrides: Record<string, any>
+  initialVipRequests: Record<string, any[]>
   agents: Agent[]
   currentRole: 'admin' | 'manager' | 'agent'
   currentAgentId: string | null
@@ -94,7 +97,7 @@ const QUALITY_LABELS: Record<QualityValue, string> = {
   disqualified: 'Disqualified',
 }
 
-export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId }: Props) {
+export default function AdminHomesLeadsClient({ initialLeads, initialActivities, initialCreditOverrides, initialVipRequests, agents, currentRole, currentAgentId }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterAgent, setFilterAgent] = useState('all')
@@ -108,6 +111,8 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
+  const [creditOverrides] = useState<Record<string, any>>(initialCreditOverrides)
+  const [vipRequests] = useState<Record<string, any[]>>(initialVipRequests)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
 
   const updateLeadStatus = async (leadId: string, field: 'status' | 'quality', value: string) => {
@@ -388,6 +393,12 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                             </span>
                           );
                         })()}
+                        {/* L5: VIP pending badge -- excludes expired-but-not-yet-marked-expired rows */}
+                        {(vipRequests[lead.id] || []).some((v: any) => v.status === 'pending' && (!v.expires_at || new Date(v.expires_at) > new Date())) && (
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 animate-pulse" title="VIP request pending approval">
+                            VIP Pending
+                          </span>
+                        )}
                       </div>
                       <a href={`mailto:${lead.contact_email}`} className="text-blue-600 text-xs">{lead.contact_email}</a>
                       {lead.contact_phone && <div className="text-gray-400 text-xs">{lead.contact_phone}</div>}
@@ -464,6 +475,23 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                           )
                         })}
                       </div>
+                      {/* L5: Credit posture chip -- only renders for leads with user_id */}
+                      {lead.user_id && (() => {
+                        const o = creditOverrides[lead.user_id as string]
+                        if (!o) return <div className="mt-1 text-xs text-gray-400">Default credits</div>
+                        const vals = [o.ai_chat_limit, o.buyer_plan_limit, o.seller_plan_limit, o.estimator_limit]
+                        const nonNullVals = vals.filter((v: any) => v != null) as number[]
+                        const allZero = nonNullVals.length > 0 && nonNullVals.every((v) => v === 0)
+                        if (allZero) return <div className="mt-1 text-xs font-semibold text-red-600">Blocked: 0 credits</div>
+                        const labels = [
+                          o.ai_chat_limit != null ? 'Chat:' + o.ai_chat_limit : null,
+                          o.buyer_plan_limit != null ? 'Buyer:' + o.buyer_plan_limit : null,
+                          o.seller_plan_limit != null ? 'Seller:' + o.seller_plan_limit : null,
+                          o.estimator_limit != null ? 'Est:' + o.estimator_limit : null,
+                        ].filter(Boolean) as string[]
+                        if (labels.length === 0) return <div className="mt-1 text-xs text-gray-400">Default credits</div>
+                        return <div className="mt-1 text-xs text-emerald-700">{labels.join(' · ')}</div>
+                      })()}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex gap-2">

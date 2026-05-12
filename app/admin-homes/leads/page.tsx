@@ -46,6 +46,8 @@ export default async function AdminHomesLeadsPage() {
         <AdminHomesLeadsClient
           initialLeads={[]}
           initialActivities={{}}
+          initialCreditOverrides={{}}
+          initialVipRequests={{}}
           agents={[]}
           currentRole={adminUser?.role || 'admin'}
           currentAgentId={adminUser?.agentId || null}
@@ -95,6 +97,50 @@ export default async function AdminHomesLeadsPage() {
     }
   }
 
+  // L5: pre-fetch user_credit_overrides + vip_requests for credit posture chip.
+  // Multi-tenant safety: both tables have tenant_id NOT NULL. Scope by scopedTenantId when !seeAll.
+  // user_credit_overrides keyed by (user_id, tenant_id) -- 1 row per user per tenant. Join by lead.user_id.
+  // vip_requests has direct FK lead_id to leads. Join by lead.id (semantically equivalent to "by lead.user_id" since lead.id is keyed under lead.user_id).
+  const leadUserIds = Array.from(
+    new Set((leads || []).map((l: any) => l.user_id).filter(Boolean))
+  ) as string[];
+  const leadIds = (leads || []).map((l: any) => l.id) as string[];
+
+  const creditByUserId: Record<string, any> = {};
+  if (leadUserIds.length > 0) {
+    let credQuery = supabase
+      .from('user_credit_overrides')
+      .select('user_id, ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit, granted_at, granted_by_tier')
+      .in('user_id', leadUserIds);
+    if (!seeAll && scopedTenantId) {
+      credQuery = credQuery.eq('tenant_id', scopedTenantId);
+    }
+    const { data: creditRows } = await credQuery;
+    for (const c of (creditRows || [])) {
+      const uid = (c as any).user_id;
+      if (uid) creditByUserId[uid] = c;
+    }
+  }
+
+  const vipByLeadId: Record<string, any[]> = {};
+  if (leadIds.length > 0) {
+    let vipQuery = supabase
+      .from('vip_requests')
+      .select('id, lead_id, status, request_type, messages_granted, created_at, expires_at')
+      .in('lead_id', leadIds);
+    if (!seeAll && scopedTenantId) {
+      vipQuery = vipQuery.eq('tenant_id', scopedTenantId);
+    }
+    const { data: vipRows } = await vipQuery;
+    for (const v of (vipRows || [])) {
+      const lid = (v as any).lead_id;
+      if (lid) {
+        if (!vipByLeadId[lid]) vipByLeadId[lid] = [];
+        vipByLeadId[lid].push(v);
+      }
+    }
+  }
+
   // Agents for filter dropdown — scoped by role
   let agentsQuery = supabase
     .from('agents')
@@ -119,6 +165,8 @@ export default async function AdminHomesLeadsPage() {
     <AdminHomesLeadsClient
       initialLeads={leads || []}
       initialActivities={activitiesByLeadId}
+      initialCreditOverrides={creditByUserId}
+      initialVipRequests={vipByLeadId}
       agents={agents || []}
       currentRole={adminUser?.role || 'admin'}
       currentAgentId={adminUser?.agentId || null}
