@@ -45,6 +45,7 @@ export default async function AdminHomesLeadsPage() {
       return (
         <AdminHomesLeadsClient
           initialLeads={[]}
+          initialActivities={{}}
           agents={[]}
           currentRole={adminUser?.role || 'admin'}
           currentAgentId={adminUser?.agentId || null}
@@ -65,6 +66,34 @@ export default async function AdminHomesLeadsPage() {
   // Admin sees all — no filter
 
   const { data: leads } = await query
+
+  // L4: pre-fetch user_activities for inline engagement badge + last-2-activities preview.
+  // Multi-tenant safety: scope by tenant_id when !seeAll (mirrors leads query at line above).
+  // Role scoping is implicit -- only activities for emails of already-role-filtered leads are fetched.
+  const leadEmails = Array.from(
+    new Set((leads || []).map((l: any) => l.contact_email).filter(Boolean))
+  ) as string[];
+  const activitiesByLeadId: Record<string, Array<{ id: string; activity_type: string; activity_data: any; page_url: string | null; created_at: string }>> = {};
+  if (leadEmails.length > 0) {
+    let actQuery = supabase
+      .from('user_activities')
+      .select('id, activity_type, activity_data, page_url, created_at, contact_email')
+      .in('contact_email', leadEmails)
+      .order('created_at', { ascending: true });
+    if (!seeAll && scopedTenantId) {
+      actQuery = actQuery.eq('tenant_id', scopedTenantId);
+    }
+    const { data: allActivities } = await actQuery;
+    const byEmail: Record<string, any[]> = {};
+    for (const a of (allActivities || [])) {
+      const email = (a as any).contact_email;
+      if (!byEmail[email]) byEmail[email] = [];
+      byEmail[email].push(a);
+    }
+    for (const lead of (leads || [])) {
+      activitiesByLeadId[(lead as any).id] = byEmail[(lead as any).contact_email] || [];
+    }
+  }
 
   // Agents for filter dropdown — scoped by role
   let agentsQuery = supabase
@@ -89,6 +118,7 @@ export default async function AdminHomesLeadsPage() {
   return (
     <AdminHomesLeadsClient
       initialLeads={leads || []}
+      initialActivities={activitiesByLeadId}
       agents={agents || []}
       currentRole={adminUser?.role || 'admin'}
       currentAgentId={adminUser?.agentId || null}

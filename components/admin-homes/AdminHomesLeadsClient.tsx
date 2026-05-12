@@ -33,6 +33,7 @@ interface Agent { id: string; full_name: string; email: string }
 
 interface Props {
   initialLeads: Lead[]
+  initialActivities: Record<string, any[]>
   agents: Agent[]
   currentRole: 'admin' | 'manager' | 'agent'
   currentAgentId: string | null
@@ -93,7 +94,7 @@ const QUALITY_LABELS: Record<QualityValue, string> = {
   disqualified: 'Disqualified',
 }
 
-export default function AdminHomesLeadsClient({ initialLeads, agents, currentRole, currentAgentId }: Props) {
+export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterAgent, setFilterAgent] = useState('all')
@@ -106,23 +107,8 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [activities, setActivities] = useState<Record<string, any[]>>({})
-  const [loadingActivities, setLoadingActivities] = useState<string | null>(null)
+  const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
-
-  const fetchActivities = async (leadId: string, email: string) => {
-    if (activities[leadId]) return
-    setLoadingActivities(leadId)
-    try {
-      const res = await fetch(`/api/admin-homes/activities?email=${encodeURIComponent(email)}`)
-      const data = await res.json()
-      setActivities(prev => ({ ...prev, [leadId]: data.activities || [] }))
-    } catch (err) {
-      console.error('Failed to fetch activities:', err)
-    } finally {
-      setLoadingActivities(null)
-    }
-  }
 
   const updateLeadStatus = async (leadId: string, field: 'status' | 'quality', value: string) => {
     setUpdatingStatus(leadId)
@@ -392,7 +378,17 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                       <div className="text-gray-400">{new Date(lead.created_at).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' })}</div>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{lead.contact_name}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">{lead.contact_name}</span>
+                        {(() => {
+                          const eng = calcEngagement(activities[lead.id] || []);
+                          return (
+                            <span className={`text-xs font-semibold ${eng.color}`} title={`Engagement: ${eng.label} (${eng.score})`}>
+                              {eng.label} · {eng.score}
+                            </span>
+                          );
+                        })()}
+                      </div>
                       <a href={`mailto:${lead.contact_email}`} className="text-blue-600 text-xs">{lead.contact_email}</a>
                       {lead.contact_phone && <div className="text-gray-400 text-xs">{lead.contact_phone}</div>}
                     </td>
@@ -480,17 +476,6 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                           </button>
                         )}
                         <button
-                          onClick={() => {
-                            const key = lead.id + '-activity'
-                            const isOpen = expandedLead === key
-                            setExpandedLead(isOpen ? null : key)
-                            if (!isOpen) fetchActivities(lead.id, lead.contact_email)
-                          }}
-                          className="text-xs px-2 py-1 bg-amber-50 text-amber-700 rounded hover:bg-amber-100"
-                        >
-                          {expandedLead === lead.id + '-activity' ? 'Hide' : 'Activity'}
-                        </button>
-                        <button
                           onClick={() => deleteLead(lead.id)}
                           className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100"
                         >
@@ -500,58 +485,22 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                     </td>
                   </tr>
 
-                  {/* Activity timeline */}
-                  {expandedLead === lead.id + '-activity' && (
-                    <tr key={`${lead.id}-activity`}>
-                      <td colSpan={11} className="px-6 py-4 bg-slate-50 border-b">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                            Activity Timeline — {lead.contact_email}
-                          </div>
-                          {activities[lead.id] && (() => {
-                            const eng = calcEngagement(activities[lead.id])
-                            return (
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-400">Engagement Score:</span>
-                                <span className={`text-sm font-bold ${eng.color}`}>{eng.score}</span>
-                                <span className={`text-xs font-semibold ${eng.color}`}>{eng.label}</span>
-                              </div>
-                            )
-                          })()}
+                  {/* L4: Inline activity preview (last 2) -- full timeline moves to L7 drawer */}
+                  {(activities[lead.id] || []).length > 0 && (
+                    <tr key={lead.id + '-activity-preview'}>
+                      <td colSpan={11} className="px-6 py-2 bg-slate-50 border-b">
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                          <span className="font-semibold text-gray-400 uppercase tracking-wider">Recent activity</span>
+                          {(activities[lead.id] || []).slice(-2).reverse().map((a: any) => (
+                            <span key={a.id} className="inline-flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                              <span className="text-gray-700">{a.activity_type.replace(/_/g, ' ')}</span>
+                              <span className="text-gray-400">
+                                {new Date(a.created_at).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </span>
+                          ))}
                         </div>
-                        {loadingActivities === lead.id ? (
-                          <div className="text-sm text-gray-400">Loading...</div>
-                        ) : (activities[lead.id] || []).length === 0 ? (
-                          <div className="text-sm text-gray-400">No activity recorded yet.</div>
-                        ) : (
-                          <div className="relative pl-5">
-                            <div className="absolute left-2 top-0 bottom-0 w-px bg-gray-200" />
-                            {(activities[lead.id] || []).map((a: any) => (
-                              <div key={a.id} className="relative mb-3 pl-4">
-                                <div className="absolute left-0 top-1.5 w-2 h-2 rounded-full bg-amber-400" style={{ transform: 'translateX(-3px)' }} />
-                                <div className="flex items-start gap-3">
-                                  <div className="flex-1">
-                                    <span className="text-xs font-semibold text-gray-700 px-2 py-0.5 bg-white border rounded-full">
-                                      {a.activity_type.replace(/_/g, ' ')}
-                                    </span>
-                                    {a.activity_data && Object.keys(a.activity_data).length > 0 && (
-                                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                                        {Object.entries(a.activity_data).filter(([_, v]) => v).map(([k, v]: any) => (
-                                          <span key={k} className="text-xs text-gray-500">
-                                            <span className="text-gray-400">{k}:</span> {String(v)}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="text-xs text-gray-400 whitespace-nowrap">
-                                    {new Date(a.created_at).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </td>
                     </tr>
                   )}
