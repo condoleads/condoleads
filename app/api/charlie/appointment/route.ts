@@ -151,7 +151,6 @@ export async function POST(req: NextRequest) {
         assignment_source: agentId ? 'geo' : 'admin',
         tenant_id: tenantId,
         status: 'new',
-        quality: 'hot',
         appointment_date,
         appointment_time,
         appointment_properties: appointment_properties || null,

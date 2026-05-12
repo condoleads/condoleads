@@ -71,6 +71,15 @@ function calcEngagement(activities: any[]): { score: number; label: string; colo
   return { score, label: 'Cold', color: 'text-gray-400' }
 }
 
+const QUALITY_VALUES = ['unqualified', 'qualified_hot', 'qualified_cold', 'disqualified'] as const
+type QualityValue = typeof QUALITY_VALUES[number]
+const QUALITY_LABELS: Record<QualityValue, string> = {
+  unqualified: 'Unqualified',
+  qualified_hot: 'Hot',
+  qualified_cold: 'Cold',
+  disqualified: 'Disqualified',
+}
+
 export default function AdminHomesLeadsClient({ initialLeads, agents, currentRole, currentAgentId }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState('')
@@ -151,7 +160,7 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
     newLeads: leads.filter(l => l.status === 'new').length,
     buyers: leads.filter(l => l.intent === 'buyer').length,
     sellers: leads.filter(l => l.intent === 'seller').length,
-    hot: leads.filter(l => l.quality === 'hot').length,
+    qualified_hot: leads.filter(l => l.quality === 'qualified_hot').length,
   }), [leads])
 
   const exportToCSV = () => {
@@ -209,9 +218,10 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
   }[s] || 'bg-gray-100 text-gray-800')
 
   const qualityColor = (q: string) => ({
-    hot: 'bg-red-100 text-red-800',
-    warm: 'bg-orange-100 text-orange-800',
-    cold: 'bg-blue-100 text-blue-800',
+    qualified_hot: 'bg-red-100 text-red-800',
+    qualified_cold: 'bg-blue-100 text-blue-800',
+    unqualified: 'bg-gray-100 text-gray-700',
+    disqualified: 'bg-zinc-100 text-zinc-500',
   }[q] || 'bg-gray-100 text-gray-800')
 
   const intentColor = (i: string) => ({
@@ -234,7 +244,7 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
           { label: 'New', value: stats.newLeads, color: 'text-blue-600' },
           { label: 'Buyers', value: stats.buyers, color: 'text-indigo-600' },
           { label: 'Sellers', value: stats.sellers, color: 'text-emerald-600' },
-          { label: 'Hot', value: stats.hot, color: 'text-red-600' },
+          { label: 'Hot Leads', value: stats.qualified_hot, color: 'text-red-600' },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-lg shadow p-5">
             <div className="text-sm text-gray-500">{s.label}</div>
@@ -294,9 +304,10 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
             <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Quality</label>
             <select value={filterQuality} onChange={e => setFilterQuality(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
               <option value="all">All</option>
-              <option value="hot">Hot</option>
-              <option value="warm">Warm</option>
-              <option value="cold">Cold</option>
+              <option value="unqualified">Unqualified</option>
+              <option value="qualified_hot">Hot</option>
+              <option value="qualified_cold">Cold</option>
+              <option value="disqualified">Disqualified</option>
             </select>
           </div>
         </div>
@@ -408,18 +419,24 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                         <option value="closed">Closed</option>
                       </select>
                     </td>
-                    {/* Inline quality update */}
+                    {/* Inline quality action buttons -- L1 ships 4 state buttons */}
                     <td className="px-4 py-3">
-                      <select
-                        value={lead.quality}
-                        onChange={e => updateLeadStatus(lead.id, 'quality', e.target.value)}
-                        disabled={updatingStatus === lead.id}
-                        className={`text-xs px-2 py-1 rounded-full font-semibold border-0 cursor-pointer ${qualityColor(lead.quality)}`}
-                      >
-                        <option value="hot">Hot</option>
-                        <option value="warm">Warm</option>
-                        <option value="cold">Cold</option>
-                      </select>
+                      <div className="flex gap-1 flex-wrap">
+                        {QUALITY_VALUES.map(q => {
+                          const isActive = lead.quality === q
+                          return (
+                            <button
+                              key={q}
+                              onClick={() => updateLeadStatus(lead.id, 'quality', q)}
+                              disabled={updatingStatus === lead.id}
+                              className={`text-xs px-2 py-1 rounded-full font-semibold transition-colors ${isActive ? qualityColor(q) : 'bg-white text-gray-400 border border-gray-200 hover:bg-gray-50'} ${updatingStatus === lead.id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                              title={QUALITY_LABELS[q]}
+                            >
+                              {QUALITY_LABELS[q]}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex gap-2">

@@ -128,7 +128,6 @@ export async function POST(req: NextRequest) {
       listing_id: listing_id || null,
       geo_name: geo_name || null,
       status: 'new',
-      quality: 'hot',
       assignment_source: agent ? 'geo' : 'admin',
     }).select('id').single()
 

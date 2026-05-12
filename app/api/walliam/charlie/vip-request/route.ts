@@ -230,7 +230,6 @@ export async function POST(request: NextRequest) {
         lead_origin_route: 'charlie_vip_request',
         intent: planType || 'buyer',
         status: 'new',
-        quality: 'hot',
         assignment_source: agent?.id ? 'geo' : 'admin',
       }).select('id').single()
       if (leadError) console.error('[walliam/vip-request] lead error:', leadError)

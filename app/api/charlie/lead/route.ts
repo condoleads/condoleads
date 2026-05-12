@@ -226,7 +226,6 @@ export async function POST(req: NextRequest) {
           assignment_source: agentId ? 'geo' : 'admin',
           tenant_id: tenantId || null,
           status: 'new',
-          quality: 'hot',
         })
         .select('id')
         .single()

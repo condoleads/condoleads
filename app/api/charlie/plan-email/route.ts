@@ -145,7 +145,6 @@ export async function POST(req: NextRequest) {
       tenant_admin_id: chainTenantAdminId,
       assignment_source: agent ? 'geo' : 'admin',
       status: 'new',
-      quality: 'hot',
       tenant_id: tenantId,
     }).select('id').single()
     if (leadError) console.error('[plan-email] lead error:', leadError)

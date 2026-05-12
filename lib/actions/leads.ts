@@ -191,7 +191,6 @@ export async function createLead(params: CreateLeadParams) {
       source: source,
       lead_origin_route: deriveLeadOriginRoute(source),
       assignment_source: resolvedAgentId ? 'geo' : 'admin',
-      quality: 'cold',
       status: 'new',
       created_at: new Date().toISOString()
     })

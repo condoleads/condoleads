@@ -198,7 +198,6 @@ export async function POST(request: NextRequest) {
             building_id: session?.current_page_type === 'building' ? session?.current_page_id : null,
             message: enrichedMessage,
             status: 'new',
-            quality: 'hot',
             assignment_source: agent?.id ? 'geo' : 'admin',
           })
         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadError)
