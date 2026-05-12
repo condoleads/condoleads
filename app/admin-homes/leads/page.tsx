@@ -126,7 +126,7 @@ export default async function AdminHomesLeadsPage() {
   if (leadIds.length > 0) {
     let vipQuery = supabase
       .from('vip_requests')
-      .select('id, lead_id, status, request_type, messages_granted, created_at, expires_at')
+      .select('id, lead_id, status, request_type, messages_granted, created_at, expires_at, approval_token')
       .in('lead_id', leadIds);
     if (!seeAll && scopedTenantId) {
       vipQuery = vipQuery.eq('tenant_id', scopedTenantId);

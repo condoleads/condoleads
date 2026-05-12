@@ -8,6 +8,7 @@ import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-or
 interface Lead {
   id: string
   user_id: string | null
+  tenant_id: string
   contact_name: string
   contact_email: string
   contact_phone: string
@@ -111,8 +112,11 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
-  const [creditOverrides] = useState<Record<string, any>>(initialCreditOverrides)
-  const [vipRequests] = useState<Record<string, any[]>>(initialVipRequests)
+  const [creditOverrides, setCreditOverrides] = useState<Record<string, any>>(initialCreditOverrides)
+  const [vipRequests, setVipRequests] = useState<Record<string, any[]>>(initialVipRequests)
+  const [grantFormOpenFor, setGrantFormOpenFor] = useState<string | null>(null)
+  const [grantFormValues, setGrantFormValues] = useState<{ aiChatLimit: string; buyerPlanLimit: string; sellerPlanLimit: string; estimatorLimit: string }>({ aiChatLimit: '', buyerPlanLimit: '', sellerPlanLimit: '', estimatorLimit: '' })
+  const [granting, setGranting] = useState<string | null>(null)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
 
   const updateLeadStatus = async (leadId: string, field: 'status' | 'quality', value: string) => {
@@ -130,6 +134,58 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
       console.error('Failed to update lead:', err)
     } finally {
       setUpdatingStatus(null)
+    }
+  }
+
+  const handleOpenGrantForm = (lead: Lead) => {
+    if (!lead.user_id) return
+    const existing = creditOverrides[lead.user_id as string]
+    setGrantFormValues({
+      aiChatLimit: existing?.ai_chat_limit != null ? String(existing.ai_chat_limit) : '',
+      buyerPlanLimit: existing?.buyer_plan_limit != null ? String(existing.buyer_plan_limit) : '',
+      sellerPlanLimit: existing?.seller_plan_limit != null ? String(existing.seller_plan_limit) : '',
+      estimatorLimit: existing?.estimator_limit != null ? String(existing.estimator_limit) : '',
+    })
+    setGrantFormOpenFor(lead.id)
+  }
+
+  const handleSubmitGrant = async (lead: Lead) => {
+    if (!lead.user_id) return
+    setGranting(lead.id)
+    try {
+      const parseField = (s: string): number | null => {
+        const t = s.trim()
+        if (t === '') return null
+        const n = parseInt(t, 10)
+        return isNaN(n) ? null : n
+      }
+      const body = {
+        userId: lead.user_id,
+        tenantId: lead.tenant_id,
+        agentId: currentAgentId,
+        agentTier: currentRole,
+        note: 'Granted from leads page',
+        aiChatLimit: parseField(grantFormValues.aiChatLimit),
+        buyerPlanLimit: parseField(grantFormValues.buyerPlanLimit),
+        sellerPlanLimit: parseField(grantFormValues.sellerPlanLimit),
+        estimatorLimit: parseField(grantFormValues.estimatorLimit),
+      }
+      const res = await fetch('/api/admin-homes/users/override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (res.ok && data.override) {
+        setCreditOverrides(prev => ({ ...prev, [lead.user_id as string]: data.override }))
+        setGrantFormOpenFor(null)
+      } else {
+        alert('Grant failed: ' + (data?.error || res.statusText))
+      }
+    } catch (err: any) {
+      alert('Grant failed: ' + (err?.message || 'network error'))
+    } finally {
+      setGranting(null)
     }
   }
 
@@ -399,6 +455,18 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                             VIP Pending
                           </span>
                         )}
+                        {/* L6: Approve VIP link button -- opens existing token-based approve route */}
+                        {(() => {
+                          const pendingVip = (vipRequests[lead.id] || []).find((v: any) => v.status === 'pending' && (!v.expires_at || new Date(v.expires_at) > new Date()) && v.approval_token)
+                          if (!pendingVip) return null
+                          const baseRoute = pendingVip.request_type === 'estimator' ? 'estimator/vip-approve' : 'charlie/vip-approve'
+                          const url = '/api/walliam/' + baseRoute + '?token=' + pendingVip.approval_token + '&action=approve'
+                          return (
+                            <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-600 text-white hover:bg-emerald-700" title="Approve VIP request (opens approval page in new tab)">
+                              Approve VIP
+                            </a>
+                          )
+                        })()}
                       </div>
                       <a href={`mailto:${lead.contact_email}`} className="text-blue-600 text-xs">{lead.contact_email}</a>
                       {lead.contact_phone && <div className="text-gray-400 text-xs">{lead.contact_phone}</div>}
@@ -492,6 +560,30 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                         if (labels.length === 0) return <div className="mt-1 text-xs text-gray-400">Default credits</div>
                         return <div className="mt-1 text-xs text-emerald-700">{labels.join(' · ')}</div>
                       })()}
+                      {/* L6: Grant credits inline button + form -- POSTs to /api/admin-homes/users/override */}
+                      {lead.user_id && (grantFormOpenFor === lead.id ? (
+                        <div className="mt-2 p-2 border border-emerald-200 bg-emerald-50 rounded space-y-1">
+                          <div className="text-xs font-semibold text-emerald-700">Grant credits (clamped to tenant hard caps)</div>
+                          <div className="grid grid-cols-2 gap-1">
+                            <input type="number" placeholder="Chat" value={grantFormValues.aiChatLimit} onChange={e => setGrantFormValues((v: any) => ({...v, aiChatLimit: e.target.value}))} className="text-xs px-2 py-1 rounded border border-gray-200" />
+                            <input type="number" placeholder="Buyer Plan" value={grantFormValues.buyerPlanLimit} onChange={e => setGrantFormValues((v: any) => ({...v, buyerPlanLimit: e.target.value}))} className="text-xs px-2 py-1 rounded border border-gray-200" />
+                            <input type="number" placeholder="Seller Plan" value={grantFormValues.sellerPlanLimit} onChange={e => setGrantFormValues((v: any) => ({...v, sellerPlanLimit: e.target.value}))} className="text-xs px-2 py-1 rounded border border-gray-200" />
+                            <input type="number" placeholder="Estimator" value={grantFormValues.estimatorLimit} onChange={e => setGrantFormValues((v: any) => ({...v, estimatorLimit: e.target.value}))} className="text-xs px-2 py-1 rounded border border-gray-200" />
+                          </div>
+                          <div className="flex gap-1">
+                            <button onClick={() => handleSubmitGrant(lead)} disabled={granting === lead.id} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+                              {granting === lead.id ? 'Saving...' : 'Save'}
+                            </button>
+                            <button onClick={() => setGrantFormOpenFor(null)} disabled={granting === lead.id} className="text-xs px-2 py-1 rounded bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-50">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => handleOpenGrantForm(lead)} className="mt-1 text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+                          + Grant credits
+                        </button>
+                      ))}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex gap-2">
