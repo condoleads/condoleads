@@ -3,6 +3,7 @@
 // Upgrades: inline status update, source filter, manager column, engagement score, fixed activity panel
 'use client'
 import { useState, useMemo } from 'react'
+import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-origin-route'
 
 interface Lead {
   id: string
@@ -33,24 +34,32 @@ interface Props {
   currentAgentId: string | null
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  walliam_charlie: 'Charlie',
-  walliam_contact: 'Contact',
-  walliam_agent_card: 'Agent Card',
-  walliam_charlie_vip_request: 'Charlie VIP',
-  walliam_estimator_vip_request: 'Estimator VIP',
-  walliam_estimator_questionnaire: 'Estimator Q',
-  walliam_appointment: 'Appointment',
+const ROUTE_LABELS: Record<LeadOriginRoute, string> = {
+  charlie: 'Charlie',
+  charlie_vip_request: 'Charlie VIP',
+  estimator: 'Estimator',
+  estimator_questionnaire: 'Estimator Q',
+  estimator_vip_request: 'Estimator VIP',
+  contact_form: 'Contact',
+  registration: 'Registration',
+  property_inquiry: 'Property',
+  building_visit: 'Building Visit',
+  sale_evaluation: 'Sale Eval',
+  unknown: 'Unknown',
 }
 
-const SOURCE_COLORS: Record<string, string> = {
-  walliam_charlie: 'bg-purple-100 text-purple-700',
-  walliam_contact: 'bg-blue-100 text-blue-700',
-  walliam_agent_card: 'bg-cyan-100 text-cyan-700',
-  walliam_charlie_vip_request: 'bg-violet-100 text-violet-700',
-  walliam_estimator_vip_request: 'bg-amber-100 text-amber-700',
-  walliam_estimator_questionnaire: 'bg-orange-100 text-orange-700',
-  walliam_appointment: 'bg-green-100 text-green-700',
+const ROUTE_COLORS: Record<LeadOriginRoute, string> = {
+  charlie: 'bg-purple-100 text-purple-700',
+  charlie_vip_request: 'bg-violet-100 text-violet-700',
+  estimator: 'bg-amber-50 text-amber-600',
+  estimator_questionnaire: 'bg-orange-100 text-orange-700',
+  estimator_vip_request: 'bg-amber-100 text-amber-700',
+  contact_form: 'bg-blue-100 text-blue-700',
+  registration: 'bg-emerald-100 text-emerald-700',
+  property_inquiry: 'bg-cyan-100 text-cyan-700',
+  building_visit: 'bg-teal-100 text-teal-700',
+  sale_evaluation: 'bg-pink-100 text-pink-700',
+  unknown: 'bg-slate-100 text-slate-600',
 }
 
 const ACTIVITY_SCORES: Record<string, number> = {
@@ -144,7 +153,7 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
     if (filterStatus !== 'all') f = f.filter(l => l.status === filterStatus)
     if (filterQuality !== 'all') f = f.filter(l => l.quality === filterQuality)
     if (filterIntent !== 'all') f = f.filter(l => l.intent === filterIntent)
-    if (filterSource !== 'all') f = f.filter(l => l.source === filterSource)
+    if (filterSource !== 'all') f = f.filter(l => deriveLeadOriginRoute(l.source) === filterSource)
     f.sort((a, b) => {
       let cmp = 0
       if (sortBy === 'date') cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -270,7 +279,7 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
             <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Source</label>
             <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
               <option value="all">All Sources</option>
-              {Object.entries(SOURCE_LABELS).map(([k, v]) => (
+              {Object.entries(ROUTE_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
             </select>
@@ -382,8 +391,8 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                       {lead.contact_phone && <div className="text-gray-400 text-xs">{lead.contact_phone}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SOURCE_COLORS[lead.source] || 'bg-slate-100 text-slate-600'}`}>
-                        {SOURCE_LABELS[lead.source] || lead.source?.replace('walliam_', '') || '—'}
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROUTE_COLORS[deriveLeadOriginRoute(lead.source)]}`}>
+                        {ROUTE_LABELS[deriveLeadOriginRoute(lead.source)]}
                       </span>
                     </td>
                     <td className="px-4 py-3">
