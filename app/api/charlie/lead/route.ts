@@ -9,7 +9,7 @@
 //   row with form-submitted follow-up details (name correction, phone, message).
 //
 //   - F53: walkHierarchy replaces direct parent_id query — full chain capture
-//   - F57: INSERT → UPSERT keyed on (user_id, session_id, intent).
+//   - F57: INSERT → UPSERT keyed on (user_id, tenant_id, source, intent).
 //          Defensive INSERT only if no matching plan-email row found.
 //   - F60: server-authoritative auth email — uses auth.users.email regardless of
 //          form-supplied email; form's email field is informational only.

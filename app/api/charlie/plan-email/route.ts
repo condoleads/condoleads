@@ -28,15 +28,19 @@ import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 // T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
 
 
-async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+async function trackUserActivity(supabase: any, tenantId: string | null, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
   try {
-    await supabase.from('user_activities').insert({
+    const { error } = await supabase.from('user_activities').insert({
+      tenant_id: tenantId,
       contact_email: contactEmail,
       agent_id: agentId || null,
       activity_type: activityType,
       activity_data: activityData || {},
       page_url: pageUrl || '',
     })
+    if (error) {
+      console.error('[trackUserActivity] insert error:', error)
+    }
   } catch (err) {
     console.error('[trackUserActivity] error:', err)
   }
@@ -147,7 +151,7 @@ export async function POST(req: NextRequest) {
     if (leadError) console.error('[plan-email] lead error:', leadError)
 
     // Track activity
-    await trackUserActivity(supabase, userEmail, agent?.id || null, 'contact_form', {
+    await trackUserActivity(supabase, tenantId, userEmail, agent?.id || null, 'plan_generated', {
       source: `${sourceKey}_charlie`,
       planType,
       geoName: geoName || null,
