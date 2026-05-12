@@ -32,7 +32,9 @@ export default async function AdminHomesLeadsPage() {
     .select(`
       *,
       agents!leads_agent_id_fkey ( id, full_name, email ),
-      manager:agents!leads_manager_id_fkey ( id, full_name, email )
+      manager:agents!leads_manager_id_fkey ( id, full_name, email ),
+      area_manager:agents!leads_area_manager_id_fkey ( id, full_name, email ),
+      tenant_admin:agents!leads_tenant_admin_id_fkey ( id, full_name, email )
     `)
     .order('created_at', { ascending: false })
     .limit(10000)

@@ -19,10 +19,14 @@ interface Lead {
   quality: string
   agent_id: string | null
   manager_id: string | null
+  area_manager_id: string | null
+  tenant_admin_id: string | null
   assignment_source: string | null
   created_at: string
   agents?: { id: string; full_name: string; email: string }
   manager?: { id: string; full_name: string; email: string }
+  area_manager?: { id: string; full_name: string; email: string }
+  tenant_admin?: { id: string; full_name: string; email: string }
 }
 
 interface Agent { id: string; full_name: string; email: string }
@@ -173,7 +177,7 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
   }), [leads])
 
   const exportToCSV = () => {
-    const headers = ['Date', 'Name', 'Email', 'Phone', 'Source', 'Intent', 'Area', 'Budget', 'Agent', 'Manager', 'Status', 'Quality']
+    const headers = ['Date', 'Name', 'Email', 'Phone', 'Source', 'Intent', 'Area', 'Budget', 'Agent', 'Manager', 'Area Manager', 'Tenant Admin', 'Status', 'Quality']
     const rows = filteredLeads.map(l => [
       new Date(l.created_at).toLocaleDateString('en-CA'),
       l.contact_name || '',
@@ -185,6 +189,8 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
       l.budget_max ? `$${Number(l.budget_max).toLocaleString('en-CA')}` : '',
       l.agents?.full_name || '',
       l.manager?.full_name || '',
+      l.area_manager?.full_name || '',
+      l.tenant_admin?.full_name || '',
       l.status || '',
       l.quality || '',
     ])
@@ -359,7 +365,7 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                     className="h-4 w-4 rounded border-gray-300"
                   />
                 </th>
-                {['Date', 'Contact', 'Source', 'Intent', 'Area', 'Agent', 'Manager', 'Status', 'Quality', 'Actions'].map(h => (
+                {['Date', 'Contact', 'Source', 'Intent', 'Area', 'Agent', 'Hierarchy', 'Status', 'Quality', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -407,10 +413,26 @@ export default function AdminHomesLeadsClient({ initialLeads, agents, currentRol
                       <div className="text-xs font-medium text-gray-900">{lead.agents?.full_name || '—'}</div>
                     </td>
                     <td className="px-4 py-3">
-                      {lead.manager ? (
-                        <div className="text-xs text-gray-500">
-                          <span className="text-gray-400 mr-1">↑</span>
-                          {lead.manager.full_name}
+                      {(lead.manager || lead.area_manager || lead.tenant_admin) ? (
+                        <div className="text-xs text-gray-500 space-y-0.5">
+                          {lead.manager && (
+                            <div title="Manager">
+                              <span className="text-gray-400 mr-1">↑</span>
+                              {lead.manager.full_name}
+                            </div>
+                          )}
+                          {lead.area_manager && (
+                            <div title="Area Manager">
+                              <span className="text-gray-400 mr-1">↑↑</span>
+                              {lead.area_manager.full_name}
+                            </div>
+                          )}
+                          {lead.tenant_admin && (
+                            <div title="Tenant Admin">
+                              <span className="text-gray-400 mr-1">↑↑↑</span>
+                              {lead.tenant_admin.full_name}
+                            </div>
+                          )}
                         </div>
                       ) : <span className="text-gray-300 text-xs">—</span>}
                     </td>
