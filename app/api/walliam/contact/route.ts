@@ -11,6 +11,7 @@
 //   - F67 try/catch standard (was already partially correct on this route — now uniform across both branches)
 
 import { NextRequest, NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
@@ -111,6 +112,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // W3c: capture source URL from referer for both leads.source_url + email render
+    const pageUrl = headers().get('referer') || null
+
     // Save lead with full hierarchy chain (per Lead+Email contract)
     const { data: lead } = await supabase.from('leads').insert({
       agent_id: agent?.id || null,
@@ -123,6 +127,7 @@ export async function POST(req: NextRequest) {
       contact_phone: phone || null,
       message: message || null,
       source: source || `${sourceKey}_contact`,
+      source_url: pageUrl,
       lead_origin_route: 'contact_form',
       building_id: building_id || null,
       listing_id: listing_id || null,
@@ -132,7 +137,7 @@ export async function POST(req: NextRequest) {
     }).select('id').single()
 
     // Build email HTML
-    const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName })
+    const html = buildContactEmail({ name, email, phone, message, source, sourceUrl: pageUrl, geo_name, building_id, listing_id, brandName })
     const subject = `\u2756 ${brandName} Inquiry \u2014 ${name} \u2014 ${geo_name || source || brandName}`
 
     // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
@@ -197,7 +202,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName }: any): string {
+function buildContactEmail({ name, email, phone, message, source, sourceUrl, geo_name, building_id, listing_id, brandName }: any): string {
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">

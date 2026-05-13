@@ -10,6 +10,7 @@
 //   - F67 try/catch standard for sendTenantEmail errors
 
 import { NextRequest, NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
@@ -132,6 +133,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // W3c: capture source URL from referer for both leads.source_url + email render
+    const pageUrl = headers().get('referer') || null
+
     // Step 3: Save lead with full hierarchy chain
     const { data: lead, error: leadError } = await supabase
       .from('leads')
@@ -142,6 +146,7 @@ export async function POST(req: NextRequest) {
         contact_email: email,
         contact_phone: phone || null,
         source: `${sourceKey}_charlie`,
+        source_url: pageUrl,
         lead_origin_route: 'charlie',
         intent,
         geo_name: geo_name || null,
@@ -185,6 +190,7 @@ export async function POST(req: NextRequest) {
           name, intent, formattedDate, appointment_time,
           appointment_properties, agent, rescheduleUrl,
           brandName, domain, baseUrl: BASE_URL,
+          sourceUrl: pageUrl,
         }),
       })
     } catch (err) {
@@ -225,6 +231,7 @@ export async function POST(req: NextRequest) {
             name, email, phone, intent, formattedDate, appointment_time,
             appointment_properties, geo_name,
             brandName, domain, baseUrl: BASE_URL,
+            sourceUrl: pageUrl,
           }),
         })
         if (lead?.id) {
@@ -281,8 +288,9 @@ function buildUserConfirmationEmail(data: {
   brandName: string
   domain: string
   baseUrl: string
+  sourceUrl?: string | null
 }): string {
-  const { name, intent, formattedDate, appointment_time, appointment_properties, agent, rescheduleUrl, brandName, domain, baseUrl } = data
+  const { name, intent, formattedDate, appointment_time, appointment_properties, agent, rescheduleUrl, brandName, domain, baseUrl, sourceUrl } = data
   const isBuyer = intent === 'buyer'
 
   const propertiesHtml = isBuyer && appointment_properties?.length ? `
@@ -360,8 +368,9 @@ function buildAgentNotificationEmail(data: {
   brandName: string
   domain: string
   baseUrl: string
+  sourceUrl?: string | null
 }): string {
-  const { name, email, phone, intent, formattedDate, appointment_time, appointment_properties, geo_name, brandName, domain, baseUrl } = data
+  const { name, email, phone, intent, formattedDate, appointment_time, appointment_properties, geo_name, brandName, domain, baseUrl, sourceUrl } = data
   const isBuyer = intent === 'buyer'
 
   const propertiesHtml = isBuyer && appointment_properties?.length ? `

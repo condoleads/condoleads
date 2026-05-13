@@ -20,6 +20,7 @@
 //          AdminPlatformUnreachable / unexpected).
 
 import { NextRequest, NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
@@ -164,6 +165,9 @@ export async function POST(req: NextRequest) {
       generatedAt: new Date().toISOString(),
     }
 
+    // W3c: capture source URL from referer for both leads.source_url + email render
+    const pageUrl = headers().get('referer') || null
+
     // F57: UPSERT into existing plan-email lead row, not new INSERT.
     // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
     // in the rare case multiple plan-email rows exist for same user+intent.
@@ -215,6 +219,7 @@ export async function POST(req: NextRequest) {
           contact_email: authEmail,
           contact_phone: phone || null,
           source: `${sourceKey}_charlie`,
+          source_url: pageUrl,
           lead_origin_route: 'charlie',
           intent,
           geo_name: profile?.geoName || null,
@@ -251,7 +256,7 @@ export async function POST(req: NextRequest) {
         tenantId,
         to: authEmail,
         subject: `Your ${brandName} ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
-        html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl: BASE_URL }),
+        html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl }),
       })
     } catch (err) {
       if (err instanceof TenantEmailNotConfigured) {
@@ -285,7 +290,7 @@ export async function POST(req: NextRequest) {
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
           subject,
-          html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics, brandName, domain, baseUrl: BASE_URL }),
+          html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics, brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl }),
         })
         if (leadId) {
           await logEmailRecipients({
@@ -331,8 +336,9 @@ function buildUserPlanEmail(data: {
   brandName: string
   domain: string
   baseUrl: string
+  sourceUrl?: string | null
 }): string {
-  const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl } = data
+  const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl, sourceUrl } = data
   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
   const isBuyer = intent === 'buyer'
   const topListings = (listings || []).slice(0, 5)
@@ -463,8 +469,9 @@ function buildAgentLeadEmail(data: {
   brandName: string
   domain: string
   baseUrl: string
+  sourceUrl?: string | null
 }): string {
-  const { name, email, phone, intent, buyerProfile, sellerProfile, listings, brandName, domain, baseUrl } = data
+  const { name, email, phone, intent, buyerProfile, sellerProfile, listings, brandName, domain, baseUrl, sourceUrl } = data
   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
   const isBuyer = intent === 'buyer'
   const topListings = (listings || []).slice(0, 3)

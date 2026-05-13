@@ -10,6 +10,7 @@
 //   - F67 try/catch standard
 
 import { NextRequest, NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
@@ -201,6 +202,9 @@ export async function POST(request: NextRequest) {
     const approveUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=approve`
     const denyUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=deny`
 
+    // W3c: capture source URL from referer for both leads.source_url + email render
+    const pageUrl = headers().get('referer') || null
+
     const emailHtml = buildAgentEmailHtml({
       userName,
       userEmail,
@@ -208,6 +212,7 @@ export async function POST(request: NextRequest) {
       planType: planType || 'buyer',
       approveUrl,
       denyUrl,
+      sourceUrl: pageUrl,
       agentName: agent?.full_name || 'Agent',
       brandName,
       tenantDomain,
@@ -227,6 +232,7 @@ export async function POST(request: NextRequest) {
         contact_email: userEmail,
         contact_phone: userPhone || null,
         source: `${sourceKey}_charlie_vip_request`,
+        source_url: pageUrl,
         lead_origin_route: 'charlie_vip_request',
         intent: planType || 'buyer',
         status: 'new',
@@ -337,7 +343,14 @@ export async function POST(request: NextRequest) {
             tenantId: tenantId,
             to: userEmail,
             subject: `Your ${brandName} Plan Access is Approved`,
-            html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, tenantDomain),
+            html: buildUserApprovalEmailHtml({
+              userName,
+              agentName: agent?.full_name || brandName,
+              plansGranted: autoApproveMessages,
+              brandName,
+              tenantDomain,
+              sourceUrl: pageUrl,
+            }),
           })
         } catch (err) {
           if (err instanceof TenantEmailNotConfigured) {
@@ -424,6 +437,7 @@ function buildAgentEmailHtml(data: {
   agentName: string
   brandName: string
   tenantDomain: string
+  sourceUrl?: string | null
 }): string {
   const planLabel = data.planType === 'seller' ? '💰 Seller Plan' : '🏠 Buyer Plan'
 
@@ -477,7 +491,15 @@ function buildAgentEmailHtml(data: {
   `
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number, brandName: string, tenantDomain: string): string {
+function buildUserApprovalEmailHtml(data: {
+  userName: string
+  agentName: string
+  plansGranted: number
+  brandName: string
+  tenantDomain: string
+  sourceUrl?: string | null
+}): string {
+  const { userName, agentName, plansGranted, brandName, tenantDomain, sourceUrl } = data
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">

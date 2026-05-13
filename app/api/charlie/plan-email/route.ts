@@ -12,6 +12,7 @@
 //   - F67 try/catch standard
 
 import { NextRequest, NextResponse } from 'next/server'
+import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
@@ -128,6 +129,9 @@ export async function POST(req: NextRequest) {
 
     const geoName = geoContext?.geoName || plan?.geoName || null
 
+    // W3c: capture source URL from referer for both leads.source_url + email render
+    const pageUrl = headers().get('referer') || null
+
     // Save lead with full hierarchy chain stamped (per Lead+Email contract)
     const { data: lead, error: leadError } = await supabase.from('leads').insert({
       agent_id: agent?.id || null,
@@ -135,6 +139,7 @@ export async function POST(req: NextRequest) {
       contact_name: userName,
       contact_email: userEmail,
       source: `${sourceKey}_charlie`,
+      source_url: pageUrl,
       lead_origin_route: 'charlie',
       intent: planType,
       geo_name: geoName,
@@ -157,7 +162,7 @@ export async function POST(req: NextRequest) {
       budgetMax: plan?.budgetMax || null,
     })
 
-    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL })
+    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl })
     const subject = `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
     // User-facing plan email — single recipient, not chain
@@ -247,8 +252,9 @@ function buildRichPlanEmail(data: {
   brandName: string
   domain: string
   baseUrl: string
+  sourceUrl?: string | null
 }): string {
-  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl } = data
+  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl, sourceUrl } = data
   const isBuyer = planType === 'buyer'
   const topListings = (listings || []).slice(0, 10)
 
