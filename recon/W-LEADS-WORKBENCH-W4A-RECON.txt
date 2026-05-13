@@ -1,0 +1,823 @@
+
+==================== lib\admin-homes\scope.ts ====================
+
+L   1: // lib/admin-homes/scope.ts
+L   2: //
+L   3: // W-LEADS-WORKBENCH W2.5 (2026-05-13).
+L   4: //
+L   5: // Role-aware query predicate helpers for admin-homes surfaces.
+L   6: //
+L   7: // Extracts the inline scoping pattern from app/admin-homes/leads/page.tsx
+L   8: // (L70-78 tenant gate + L62-67 role gate) into a single canonical helper so
+L   9: // the W4 workbench page and future consumers share the same logic.
+L  10: //
+L  11: // MULTITENANT CONTRACT (Rule Zero #1):
+L  12: //   Every helper enforces tenant_id scoping when !isCrossTenantView.
+L  13: //   No caller should bypass. seeAll = platform_admin + no tenant_id + no host.
+L  14: //
+L  15: // PURE FUNCTION CONTRACT:
+L  16: //   No I/O. No DB hits. No async. No throws.
+L  17: //   Consumes pre-fetched AdminHomesUser from resolveAdminHomesUser.
+L  18: //
+L  19: // 7-ROLE SURFACE (locked W1-VERIFIED Probe 1 + W2-SHIPPED):
+L  20: //   platform_admin     -> platform_admins.tier='admin' (cardinality 1)
+L  21: //   platform_assistant -> platform_admins.tier='manager' (legacy DB name)
+L  22: //   tenant_admin       -> agents.role='tenant_admin' OR 'admin' (legacy)
+L  23: //   tenant_manager     -> tenant_manager_assignments junction (W2-B shipped)
+L  24: //   area_manager       -> agents.role='area_manager'
+L  25: //   manager            -> agents.role='manager'
+L  26: //   agent              -> agents.role='agent'
+L  27: 
+L  28: import type { AdminHomesUser } from '@/lib/admin-homes/auth'
+L  29: 
+L  30: // ---------------------------------------------------------------------------
+L  31: // Role + tier constants (7-role surface documentation)
+L  32: // ---------------------------------------------------------------------------
+L  33: 
+L  34: export const TENANT_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'admin'] as const
+L  35: export type TenantRole = typeof TENANT_ROLES[number]
+L  36: 
+L  37: export const PLATFORM_TIERS = ['admin', 'manager'] as const
+L  38: export type PlatformTierName = typeof PLATFORM_TIERS[number]
+L  39: 
+L  40: // Full 7-role surface for documentation. Actual storage is split across
+L  41: // platform_admins.tier (2 values), agents.role CHECK (5 values), and
+L  42: // tenant_manager_assignments junction (1 implicit role).
+L  43: export const PRINCIPAL_TIERS = [
+L  44:   'platform_admin',
+L  45:   'platform_assistant',
+L  46:   'tenant_manager',
+L  47:   'tenant_admin',
+L  48:   'area_manager',
+L  49:   'manager',
+L  50:   'agent',
+L  51: ] as const
+L  52: export type PrincipalTier = typeof PRINCIPAL_TIERS[number]
+L  53: 
+L  54: // ---------------------------------------------------------------------------
+L  55: // Scope predicates
+L  56: // ---------------------------------------------------------------------------
+L  57: 
+L  58: /**
+L  59:  * Cross-tenant view: a platform admin without a selected tenant AND without
+L  60:  * a host-resolved tenant sees data across all tenants. Otherwise scoped.
+L  61:  */
+L  62: export function isCrossTenantView(
+L  63:   user: AdminHomesUser,
+L  64:   hostTenantId: string | null
+L  65: ): boolean {
+L  66:   return user.isPlatformAdmin === true && !user.tenantId && !hostTenantId
+L  67: }
+L  68: 
+L  69: /**
+L  70:  * Returns the tenant_id the user is currently scoped to, or null on
+L  71:  * cross-tenant view. Precedence: user.tenantId > hostTenantId.
+L  72:  */
+L  73: export function getScopedTenantId(
+L  74:   user: AdminHomesUser,
+L  75:   hostTenantId: string | null
+L  76: ): string | null {
+L  77:   if (isCrossTenantView(user, hostTenantId)) return null
+L  78:   return user.tenantId ?? hostTenantId
+L  79: }
+L  80: 
+L  81: // ---------------------------------------------------------------------------
+L  82: // Supabase query builders (generic over T to preserve type chaining)
+L  83: // ---------------------------------------------------------------------------
+L  84: 
+L  85: interface ScopableQuery<T> {
+L  86:   eq: (col: string, val: any) => T
+L  87:   in: (col: string, vals: any[]) => T
+L  88: }
+L  89: 
+L  90: /**
+L  91:  * Apply tenant + role scoping to a leads query.
+L  92:  *
+L  93:  *   Cross-tenant view  -> no filter (platform admin sees all)
+L  94:  *   Otherwise          -> .eq('tenant_id', scopedTenantId), then role gate:
+L  95:  *                           manager -> .in('agent_id', [own + managedAgentIds])
+L  96:  *                           agent   -> .eq('agent_id', own)
+L  97:  *                           admin   -> no further filter (all leads in tenant)
+L  98:  *
+L  99:  * Mirrors the existing pattern in app/admin-homes/leads/page.tsx verbatim.
+L 100:  */
+L 101: export function scopeLeadsQuery<T extends ScopableQuery<T>>(
+L 102:   query: T,
+L 103:   user: AdminHomesUser,
+L 104:   hostTenantId: string | null
+L 105: ): T {
+L 106:   const seeAll = isCrossTenantView(user, hostTenantId)
+L 107:   const scopedTenantId = getScopedTenantId(user, hostTenantId)
+L 108: 
+L 109:   if (!seeAll && scopedTenantId) {
+L 110:     query = query.eq('tenant_id', scopedTenantId)
+L 111:   }
+L 112: 
+L 113:   if (user.role === 'manager' && user.agentId) {
+L 114:     query = query.in('agent_id', [user.agentId, ...user.managedAgentIds])
+L 115:   } else if (user.role === 'agent' && user.agentId) {
+L 116:     query = query.eq('agent_id', user.agentId)
+L 117:   }
+L 118: 
+L 119:   return query
+L 120: }
+L 121: 
+L 122: /**
+L 123:  * Apply tenant + role scoping to an agents query (keyed by agents.id instead
+L 124:  * of leads.agent_id). Same predicates, different column.
+L 125:  */
+L 126: export function scopeAgentsByRole<T extends ScopableQuery<T>>(
+L 127:   query: T,
+L 128:   user: AdminHomesUser,
+L 129:   hostTenantId: string | null
+L 130: ): T {
+L 131:   const seeAll = isCrossTenantView(user, hostTenantId)
+L 132:   const scopedTenantId = getScopedTenantId(user, hostTenantId)
+L 133: 
+L 134:   if (!seeAll && scopedTenantId) {
+L 135:     query = query.eq('tenant_id', scopedTenantId)
+L 136:   }
+L 137: 
+L 138:   if (user.role === 'manager' && user.agentId) {
+L 139:     query = query.in('id', [user.agentId, ...user.managedAgentIds])
+L 140:   } else if (user.role === 'agent' && user.agentId) {
+L 141:     query = query.eq('id', user.agentId)
+L 142:   }
+L 143: 
+L 144:   return query
+L 145: }
+
+==================== lib\admin-homes\permissions.ts ====================
+
+L   1: // lib/admin-homes/permissions.ts
+L   2: //
+L   3: // W-ROLES-DELEGATION/R3.1 â€” pure permission decision function.
+L   4: //
+L   5: // Single source of truth for who-can-do-what across admin-homes.
+L   6: // Replaces the 14 ad-hoc enforcement branches in lib/admin-homes/api-auth.ts.
+L   7: //
+L   8: // PURE FUNCTION CONTRACT
+L   9: //   - No I/O. No DB queries. No async. No throws.
+L  10: //   - Caller passes a pre-fetched ActorPermissionContext.
+L  11: //   - R3.2 extends resolveAdminHomesUser() to populate that context in one
+L  12: //     auth-time roundtrip (own role + active delegations + managed subtree).
+L  13: //
+L  14: // MULTITENANT CONTRACT (Rule Zero #1)
+L  15: //   - Every decision factors tenant_id.
+L  16: //   - No hardcoded tenant references. No 'walliam' literals.
+L  17: //   - No per-tenant if/else branches. Same code, every tenant.
+L  18: //
+L  19: // BRANCH COVERAGE â€” every branch in api-auth.ts maps to a cell here.
+L  20: //   B1   not logged in                              â†’ 401 by route handler before can() (or UNAUTHORIZED below)
+L  21: //   B2   not platform admin                         â†’ can(*, 'platform.write', ...) blocks non-Mgr/Admin Platform
+L  22: //   B4   tenantId mismatch                          â†’ cross-tenant gate in evaluateTenantScoped
+L  23: //   B5   role not in allowedRoles[]                 â†’ folded into per-action cells (no generic role gate)
+L  24: //   B6   agent target site_type !== 'comprehensive' â†’ 404 by route handler before can() (System 1 isolation)
+L  25: //   B7   B4 for agent target                        â†’ folded
+L  26: //   B8   write + role='agent'                       â†’ 'agent.write' denies tier 1
+L  27: //   B9   write + role='manager' + outside scope     â†’ 'agent.write' for manager checks managedAgentIds
+L  28: //   B10  requireAdmin + role !== 'admin'            â†’ 'agent.adminMutate' requires tenant_admin tier
+L  29: //   B11  lead missing                               â†’ 404 by route handler before can()
+L  30: //   B12  B4 for lead target                         â†’ folded
+L  31: //   B13  manager + lead.agent_id outside scope      â†’ 'lead.read'/'lead.write' for manager
+L  32: //   B14  agent + lead.agent_id !== self             â†’ 'lead.read'/'lead.write' for agent
+L  33: //
+L  34: // PRINCIPAL LADDER (locked spec)
+L  35: //   Tier 1: Agent             â€” agents.role = 'agent'
+L  36: //   Tier 2: Manager           â€” agents.role = 'manager'
+L  37: //   Tier 3: Area Manager      â€” agents.role = 'area_manager'
+L  38: //   Tier 4: Tenant Admin      â€” agents.role IN ('tenant_admin', 'admin')
+L  39: //   Tier 5: Manager Platform  â€” platform_admins.tier = 'manager'
+L  40: //   Tier 6: Admin Platform    â€” platform_admins.tier = 'admin' (cardinality 1)
+L  41: //
+L  42: // DELEGATION OVERLAY (universal, join-table â€” agent_delegations)
+L  43: //   For every action EXCEPT 'delegation.grant', any active delegator's
+L  44: //   authority counts as the actor's. 'delegation.grant' considers only the
+L  45: //   actor's OWN authority (no support-of-support â€” defence-in-depth alongside
+L  46: //   the DB $sos$ trigger from R2.2).
+L  47: //
+L  48: // SELF-PROTECTION
+L  49: //   - 'agent.promote' / 'agent.demote' / 'agent.reassignParent' on self â†’ 403.
+L  50: //   - Cardinality invariants (sole tenant_admin, sole admin) live in R4
+L  51: //     transition state machine. can() answers "is this MOVE allowed by
+L  52: //     your authority", not "would the resulting STATE be valid".
+L  53: //
+L  54: // AREA MANAGER SUBTREE NOTE
+L  55: //   p.managedAgentIds is direct children for managers, FULL SUBTREE for
+L  56: //   area_managers. R3.2 owns populating this correctly.
+L  57: 
+L  58: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L  59: // Type surface (exported)
+L  60: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L  61: 
+L  62: export type DbRole = 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'admin'
+L  63: 
+L  64: export type PlatformTier = 'admin' | 'manager'
+L  65: 
+L  66: export type PermAction =
+L  67:   | 'agent.read'
+L  68:   | 'agent.write'
+L  69:   | 'agent.promote'
+L  70:   | 'agent.demote'
+L  71:   | 'agent.reassignParent'
+L  72:   | 'agent.adminMutate'
+L  73:   | 'lead.read'
+L  74:   | 'lead.write'
+L  75:   | 'tenant.read'
+L  76:   | 'tenant.write'
+L  77:   | 'delegation.grant'
+L  78:   | 'delegation.revoke'
+L  79:   | 'platform.read'
+L  80:   | 'platform.write'
+L  81: 
+L  82: export type TargetSpec =
+L  83:   | { kind: 'agent'; agentId: string; tenantId: string; parentId: string | null; roleDb: DbRole }
+L  84:   | { kind: 'lead'; leadId: string; tenantId: string; agentId: string | null }
+L  85:   | { kind: 'tenant'; tenantId: string }
+L  86:   | { kind: 'delegation'; delegatorId: string; delegateId: string; tenantId: string }
+L  87:   | { kind: 'platform' }
+L  88: 
+L  89: export interface DelegatorRef {
+L  90:   delegatorId: string
+L  91:   delegatorRoleDb: DbRole
+L  92:   delegatorTenantId: string
+L  93:   // Direct children for managers; full subtree for area_managers.
+L  94:   delegatorManagedAgentIds: string[]
+L  95: }
+L  96: 
+L  97: export interface ActorPermissionContext {
+L  98:   // Null when caller is a pure platform admin with no agents row.
+L  99:   agentId: string | null
+L 100:   tenantId: string | null
+L 101:   roleDb: DbRole | null
+L 102:   platformTier: PlatformTier | null
+L 103:   // Direct children for managers; full subtree for area_managers.
+L 104:   managedAgentIds: string[]
+L 105:   activeDelegators: DelegatorRef[]
+L 106: }
+L 107: 
+L 108: export type CanResult =
+L 109:   | { ok: true }
+L 110:   | { ok: false; status: 401 | 403; reason: string }
+L 111: 
+L 112: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 113: // Internal: canned results (immutable)
+L 114: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 115: 
+L 116: const OK: CanResult = { ok: true }
+L 117: const UNAUTHORIZED: CanResult = { ok: false, status: 401, reason: 'Unauthorized' }
+L 118: const FORBIDDEN_CROSS_TENANT: CanResult = { ok: false, status: 403, reason: 'Forbidden â€” cross-tenant access blocked' }
+L 119: const FORBIDDEN_SCOPE: CanResult = { ok: false, status: 403, reason: 'Forbidden â€” outside scope' }
+L 120: const FORBIDDEN_ROLE: CanResult = { ok: false, status: 403, reason: 'Forbidden â€” role not permitted' }
+L 121: const FORBIDDEN_SELF: CanResult = { ok: false, status: 403, reason: 'Forbidden â€” cannot perform this action on self' }
+L 122: const FORBIDDEN_PLATFORM: CanResult = { ok: false, status: 403, reason: 'Forbidden â€” platform admin only' }
+L 123: const FORBIDDEN_NOT_YOUR_LEAD: CanResult = { ok: false, status: 403, reason: 'Forbidden â€” not your lead' }
+L 124: const FORBIDDEN_SOS: CanResult = { ok: false, status: 403, reason: 'Forbidden â€” delegates cannot grant further delegations' }
+L 125: 
+L 126: // Tier 4 (tenant admin) accepts both 'tenant_admin' and 'admin' DB values.
+L 127: // Legacy: agents.role='admin' was used pre-R2 for the tenant-admin-equivalent
+L 128: // role. R2.1 CHECK keeps 'admin' valid; can() treats both equivalently.
+L 129: function isTenantAdminTier(role: DbRole | null): boolean {
+L 130:   return role === 'tenant_admin' || role === 'admin'
+L 131: }
+L 132: 
+L 133: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 134: // Public entry point
+L 135: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 136: 
+L 137: export function can(
+L 138:   actor: ActorPermissionContext,
+L 139:   action: PermAction,
+L 140:   target: TargetSpec
+L 141: ): CanResult {
+L 142:   // Auth gate â€” must have at least an agent row OR a platform_admins row.
+L 143:   if (!actor.agentId && !actor.platformTier) {
+L 144:     return UNAUTHORIZED
+L 145:   }
+L 146: 
+L 147:   // Self-protection: role/parent changes on the actor's own agent row are
+L 148:   // always blocked, regardless of authority source. Applies before delegation
+L 149:   // overlay so it cannot be bypassed via delegation.
+L 150:   if (
+L 151:     target.kind === 'agent' &&
+L 152:     actor.agentId !== null &&
+L 153:     target.agentId === actor.agentId &&
+L 154:     (action === 'agent.promote' ||
+L 155:       action === 'agent.demote' ||
+L 156:       action === 'agent.reassignParent')
+L 157:   ) {
+L 158:     return FORBIDDEN_SELF
+L 159:   }
+L 160: 
+L 161:   // Defence-in-depth: 'delegation.grant' requires the actor to hold their own
+L 162:   // authority. Pure delegates (no own role/tier) cannot grant. DB layer also
+L 163:   // enforces this via the $sos$ trigger from R2.2.
+L 164:   if (action === 'delegation.grant' && !actor.roleDb && !actor.platformTier) {
+L 165:     return FORBIDDEN_SOS
+L 166:   }
+L 167: 
+L 168:   // Build effective principal list: actor's own authority + active delegators'
+L 169:   // authority. For 'delegation.grant', exclude delegators (no SOS).
+L 170:   const principals: EffectivePrincipal[] = [
+L 171:     {
+L 172:       agentId: actor.agentId,
+L 173:       tenantId: actor.tenantId,
+L 174:       roleDb: actor.roleDb,
+L 175:       platformTier: actor.platformTier,
+L 176:       managedAgentIds: actor.managedAgentIds,
+L 177:       isDelegate: false,
+L 178:     },
+L 179:     ...actor.activeDelegators.map<EffectivePrincipal>((d) => ({
+L 180:       agentId: d.delegatorId,
+L 181:       tenantId: d.delegatorTenantId,
+L 182:       roleDb: d.delegatorRoleDb,
+L 183:       platformTier: null,
+L 184:       managedAgentIds: d.delegatorManagedAgentIds,
+L 185:       isDelegate: true,
+L 186:     })),
+L 187:   ]
+L 188: 
+L 189:   const candidates = action === 'delegation.grant'
+L 190:     ? principals.filter((p) => !p.isDelegate)
+L 191:     : principals
+L 192: 
+L 193:   // First permitting principal wins. If none permit, return last denial.
+L 194:   let lastDenial: CanResult = FORBIDDEN_SCOPE
+L 195:   for (const p of candidates) {
+L 196:     const result = evaluateCell(p, action, target)
+L 197:     if (result.ok) return result
+L 198:     lastDenial = result
+L 199:   }
+L 200:   return lastDenial
+L 201: }
+L 202: 
+L 203: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 204: // Internal: principal Ã— action Ã— target evaluation
+L 205: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 206: 
+L 207: interface EffectivePrincipal {
+L 208:   agentId: string | null
+L 209:   tenantId: string | null
+L 210:   roleDb: DbRole | null
+L 211:   platformTier: PlatformTier | null
+L 212:   managedAgentIds: string[]
+L 213:   isDelegate: boolean
+L 214: }
+L 215: 
+L 216: function evaluateCell(
+L 217:   p: EffectivePrincipal,
+L 218:   action: PermAction,
+L 219:   target: TargetSpec
+L 220: ): CanResult {
+L 221:   // Tier 6: Admin Platform â€” anything goes (self-protection already checked upstream).
+L 222:   if (p.platformTier === 'admin') {
+L 223:     return OK
+L 224:   }
+L 225: 
+L 226:   // Tier 5: Manager Platform â€” full authority across overseen tenants.
+L 227:   // Cannot platform.write (no peer-promotion; no touching Admin Platform).
+L 228:   // All other actions: OK across all tenants, including promote/demote of
+L 229:   // tenant_admin which is Mgr Platform+ exclusive per locked spec.
+L 230:   if (p.platformTier === 'manager') {
+L 231:     if (action === 'platform.write') return FORBIDDEN_PLATFORM
+L 232:     return OK
+L 233:   }
+L 234: 
+L 235:   // No platform tier â†’ tenant-scoped principal.
+L 236:   if (action === 'platform.read' || action === 'platform.write') {
+L 237:     return FORBIDDEN_PLATFORM
+L 238:   }
+L 239: 
+L 240:   return evaluateTenantScoped(p, action, target, /*platformOverride=*/ false)
+L 241: }
+L 242: 
+L 243: function evaluateTenantScoped(
+L 244:   p: EffectivePrincipal,
+L 245:   action: PermAction,
+L 246:   target: TargetSpec,
+L 247:   platformOverride: boolean
+L 248: ): CanResult {
+L 249:   // Cross-tenant gate (B4 / B7 / B12). Manager Platform skips via override.
+L 250:   if (!platformOverride) {
+L 251:     const targetTenantId = extractTargetTenantId(target)
+L 252:     if (targetTenantId !== null) {
+L 253:       if (!p.tenantId || p.tenantId !== targetTenantId) {
+L 254:         return FORBIDDEN_CROSS_TENANT
+L 255:       }
+L 256:     }
+L 257:   }
+L 258: 
+L 259:   switch (target.kind) {
+L 260:     case 'agent':
+L 261:       return evaluateAgentTarget(p, action, target)
+L 262:     case 'lead':
+L 263:       return evaluateLeadTarget(p, action, target)
+L 264:     case 'tenant':
+L 265:       return evaluateTenantTarget(p, action)
+L 266:     case 'delegation':
+L 267:       return evaluateDelegationTarget(p, action, target)
+L 268:     case 'platform':
+L 269:       // Reached only if a non-platform principal somehow asks for a platform
+L 270:       // target â€” already blocked upstream. Defensive.
+L 271:       return FORBIDDEN_PLATFORM
+L 272:   }
+L 273: }
+L 274: 
+L 275: function extractTargetTenantId(target: TargetSpec): string | null {
+L 276:   switch (target.kind) {
+L 277:     case 'agent':
+L 278:     case 'lead':
+L 279:     case 'tenant':
+L 280:     case 'delegation':
+L 281:       return target.tenantId
+L 282:     case 'platform':
+L 283:       return null
+L 284:   }
+L 285: }
+L 286: 
+L 287: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 288: // Agent target
+L 289: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 290: 
+L 291: function evaluateAgentTarget(
+L 292:   p: EffectivePrincipal,
+L 293:   action: PermAction,
+L 294:   target: Extract<TargetSpec, { kind: 'agent' }>
+L 295: ): CanResult {
+L 296:   switch (action) {
+L 297:     case 'agent.read':
+L 298:       // Any tenant-resident principal reads agents in their tenant.
+L 299:       // Cross-tenant already blocked upstream.
+L 300:       return OK
+L 301: 
+L 302:     case 'agent.write':
+L 303:       // B8: tier 1 (agent) cannot write.
+L 304:       if (p.roleDb === 'agent') return FORBIDDEN_ROLE
+L 305:       // B9: tier 2 (manager) writes within scope (self + direct children).
+L 306:       // Tier 3 (area_manager) writes within full subtree (managedAgentIds
+L 307:       // populated transitively for area_managers by R3.2).
+L 308:       if (p.roleDb === 'manager' || p.roleDb === 'area_manager') {
+L 309:         if (isInManagerScope(p, target)) return OK
+L 310:         return FORBIDDEN_SCOPE
+L 311:       }
+L 312:       // Tier 4 (tenant admin): any agent in tenant.
+L 313:       if (isTenantAdminTier(p.roleDb)) return OK
+L 314:       return FORBIDDEN_ROLE
+L 315: 
+L 316:     case 'agent.adminMutate':
+L 317:       // B10: tier 4+ only.
+L 318:       if (isTenantAdminTier(p.roleDb)) return OK
+L 319:       return FORBIDDEN_ROLE
+L 320: 
+L 321:     case 'agent.promote':
+L 322:     case 'agent.demote':
+L 323:     case 'agent.reassignParent':
+L 324:       return evaluateRoleChange(p, target)
+L 325: 
+L 326:     default:
+L 327:       return FORBIDDEN_ROLE
+L 328:   }
+L 329: }
+L 330: 
+L 331: function isInManagerScope(
+L 332:   p: EffectivePrincipal,
+L 333:   target: Extract<TargetSpec, { kind: 'agent' }>
+L 334: ): boolean {
+L 335:   if (p.agentId === null) return false
+L 336:   return (
+L 337:     target.agentId === p.agentId ||
+L 338:     target.parentId === p.agentId ||
+L 339:     p.managedAgentIds.includes(target.agentId)
+L 340:   )
+L 341: }
+L 342: 
+L 343: // Role change matrix (locked spec):
+L 344: //   Admin Platform   â†’ any direction (handled upstream as OK).
+L 345: //   Manager Platform â†’ a â†” m â†” am â†” ta within overseen tenants (handled via
+L 346: //                       virtual tenant_admin; can also act on tenant_admin
+L 347: //                       targets, which tenant_admin cannot).
+L 348: //   Tenant Admin     â†’ a â†” m â†” am within tenant. Cannot touch tenant_admin
+L 349: //                       targets (Mgr Platform+ only).
+L 350: //   Area Manager     â†’ a â†” m within own subtree.
+L 351: //   Manager / Agent  â†’ none.
+L 352: //
+L 353: // NOTE: This evaluates whether the actor has authority to act on this TARGET.
+L 354: // It does not validate the resulting NEW role â€” R4 transition state machine
+L 355: // owns "new role within actor's authority" + cardinality invariants.
+L 356: function evaluateRoleChange(
+L 357:   p: EffectivePrincipal,
+L 358:   target: Extract<TargetSpec, { kind: 'agent' }>
+L 359: ): CanResult {
+L 360:   // Admin/Manager Platform handled in evaluateCell upstream.
+L 361: 
+L 362:   if (isTenantAdminTier(p.roleDb)) {
+L 363:     // Tenant Admin: cannot act on tenant_admin/admin targets.
+L 364:     if (isTenantAdminTier(target.roleDb)) return FORBIDDEN_ROLE
+L 365:     return OK
+L 366:   }
+L 367: 
+L 368:   if (p.roleDb === 'area_manager') {
+L 369:     if (target.roleDb !== 'agent' && target.roleDb !== 'manager') {
+L 370:       return FORBIDDEN_ROLE
+L 371:     }
+L 372:     if (!isInManagerScope(p, target)) return FORBIDDEN_SCOPE
+L 373:     return OK
+L 374:   }
+L 375: 
+L 376:   return FORBIDDEN_ROLE
+L 377: }
+L 378: 
+L 379: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 380: // Lead target
+L 381: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 382: 
+L 383: function evaluateLeadTarget(
+L 384:   p: EffectivePrincipal,
+L 385:   action: PermAction,
+L 386:   target: Extract<TargetSpec, { kind: 'lead' }>
+L 387: ): CanResult {
+L 388:   if (action !== 'lead.read' && action !== 'lead.write') {
+L 389:     return FORBIDDEN_ROLE
+L 390:   }
+L 391: 
+L 392:   // B14: agent â€” only own leads.
+L 393:   if (p.roleDb === 'agent') {
+L 394:     if (p.agentId !== null && target.agentId === p.agentId) return OK
+L 395:     return FORBIDDEN_NOT_YOUR_LEAD
+L 396:   }
+L 397: 
+L 398:   // B13: manager â€” own leads + direct children's leads.
+L 399:   // area_manager â€” own leads + full subtree's leads (managedAgentIds is
+L 400:   // transitive for area_managers per R3.2 contract).
+L 401:   if (p.roleDb === 'manager' || p.roleDb === 'area_manager') {
+L 402:     if (target.agentId === null) return FORBIDDEN_SCOPE
+L 403:     if (p.agentId !== null && target.agentId === p.agentId) return OK
+L 404:     if (p.managedAgentIds.includes(target.agentId)) return OK
+L 405:     return FORBIDDEN_SCOPE
+L 406:   }
+L 407: 
+L 408:   // Tenant Admin: any lead in tenant.
+L 409:   if (isTenantAdminTier(p.roleDb)) return OK
+L 410: 
+L 411:   return FORBIDDEN_ROLE
+L 412: }
+L 413: 
+L 414: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 415: // Tenant target
+L 416: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 417: 
+L 418: function evaluateTenantTarget(p: EffectivePrincipal, action: PermAction): CanResult {
+L 419:   if (action === 'tenant.read') {
+L 420:     // Any tenant-resident principal reads own tenant config.
+L 421:     // Cross-tenant already blocked upstream.
+L 422:     if (p.tenantId !== null || p.platformTier !== null) return OK
+L 423:     return UNAUTHORIZED
+L 424:   }
+L 425: 
+L 426:   if (action === 'tenant.write') {
+L 427:     // Only tier 4+ mutates tenant config.
+L 428:     if (isTenantAdminTier(p.roleDb)) return OK
+L 429:     return FORBIDDEN_ROLE
+L 430:   }
+L 431: 
+L 432:   return FORBIDDEN_ROLE
+L 433: }
+L 434: 
+L 435: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 436: // Delegation target
+L 437: // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 438: 
+L 439: function evaluateDelegationTarget(
+L 440:   p: EffectivePrincipal,
+L 441:   action: PermAction,
+L 442:   target: Extract<TargetSpec, { kind: 'delegation' }>
+L 443: ): CanResult {
+L 444:   if (action === 'delegation.grant') {
+L 445:     // Delegation is personal: only the principal whose authority is being
+L 446:     // delegated may grant. Admin Platform handled upstream as OK.
+L 447:     if (p.agentId === null) return FORBIDDEN_ROLE
+L 448:     if (p.agentId !== target.delegatorId) return FORBIDDEN_SCOPE
+L 449:     return OK
+L 450:   }
+L 451: 
+L 452:   if (action === 'delegation.revoke') {
+L 453:     // Revoke: original delegator OR tenant_admin tier within tenant.
+L 454:     // (Manager Platform / Admin Platform handled upstream.)
+L 455:     if (p.agentId !== null && p.agentId === target.delegatorId) return OK
+L 456:     if (isTenantAdminTier(p.roleDb)) return OK
+L 457:     return FORBIDDEN_SCOPE
+L 458:   }
+L 459: 
+L 460:   return FORBIDDEN_ROLE
+L 461: }
+
+==================== app\api\admin-homes\leads\[id]\route.ts ====================
+
+L   1: // app/api/admin-homes/leads/[id]/route.ts
+L   2: // Phase 3.4+: auth + tenant-check on every mutation via shared api-auth helper.
+L   3: 
+L   4: import { NextRequest, NextResponse } from 'next/server'
+L   5: import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+L   6: import { createServiceClient } from '@/lib/admin-homes/service-client'
+L   7: import { can } from '@/lib/admin-homes/permissions'
+L   8: 
+L   9: export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+L  10:   try {
+L  11:     const user = await resolveAdminHomesUser()
+L  12:     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+L  13:     const supabase = createServiceClient()
+L  14:     const { data: target } = await supabase
+L  15:       .from('leads')
+L  16:       .select('id, tenant_id, agent_id')
+L  17:       .eq('id', params.id)
+L  18:       .maybeSingle()
+L  19:     if (!target) {
+L  20:       return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+L  21:     }
+L  22:     const decision = can(user.permissions, 'lead.write', {
+L  23:       kind: 'lead',
+L  24:       leadId: target.id,
+L  25:       tenantId: target.tenant_id,
+L  26:       agentId: target.agent_id,
+L  27:     })
+L  28:     if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+L  29: 
+L  30:     const { status, quality } = await request.json()
+L  31:     const update: any = { updated_at: new Date().toISOString() }
+L  32:     if (status) update.status = status
+L  33:     if (quality) update.quality = quality
+L  34: 
+L  35:     const { error } = await supabase.from('leads').update(update).eq('id', params.id)
+L  36:     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+L  37:     return NextResponse.json({ success: true })
+L  38:   } catch (error) {
+L  39:     console.error('[admin-homes/leads PATCH] error:', error)
+L  40:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+L  41:   }
+L  42: }
+L  43: 
+L  44: export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+L  45:   try {
+L  46:     const user = await resolveAdminHomesUser()
+L  47:     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+L  48:     const supabase = createServiceClient()
+L  49:     const { data: target } = await supabase
+L  50:       .from('leads')
+L  51:       .select('id, tenant_id, agent_id')
+L  52:       .eq('id', params.id)
+L  53:       .maybeSingle()
+L  54:     if (!target) {
+L  55:       return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+L  56:     }
+L  57:     const decision = can(user.permissions, 'lead.write', {
+L  58:       kind: 'lead',
+L  59:       leadId: target.id,
+L  60:       tenantId: target.tenant_id,
+L  61:       agentId: target.agent_id,
+L  62:     })
+L  63:     if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+L  64: 
+L  65:     // DELETE additionally restricted: no agent destructive deletes (legacy compliance policy preserved).
+L  66:     if (!user.isPlatformAdmin && user.permissions.roleDb === 'agent') {
+L  67:       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+L  68:     }
+L  69: 
+L  70:     const { error } = await supabase.from('leads').delete().eq('id', params.id)
+L  71:     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+L  72:     return NextResponse.json({ success: true })
+L  73:   } catch (error) {
+L  74:     console.error('[admin-homes/leads DELETE] error:', error)
+L  75:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+L  76:   }
+L  77: }
+
+==================== app\admin-homes\leads\page.tsx ====================
+
+L   1: // app/admin-homes/leads/page.tsx
+L   2: import { createClient } from '@supabase/supabase-js'
+L   3: import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+L   4: import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
+L   5: import AdminHomesLeadsClient from '@/components/admin-homes/AdminHomesLeadsClient'
+L   6: 
+L   7: function createServiceClient() {
+L   8:   return createClient(
+L   9:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+L  10:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+L  11:     { auth: { autoRefreshToken: false, persistSession: false } }
+L  12:   )
+L  13: }
+L  14: 
+L  15: export const metadata = { title: 'Leads â€” Admin' }
+L  16: 
+L  17: export default async function AdminHomesLeadsPage() {
+L  18:   const supabase = createServiceClient()
+L  19:   const tenantId = await getCurrentTenantId()
+L  20:   const adminUser = await resolveAdminHomesUser()
+L  21: 
+L  22:   // Phase 3.4+: tenant scoping
+L  23:   // Tenant Admin / staff: filter by their own tenant
+L  24:   // Platform Admin with no selected tenant: see all leads
+L  25:   // Platform Admin with host-resolved tenant: filter by that
+L  26:   const seeAll = adminUser?.isPlatformAdmin === true && !adminUser.tenantId && !tenantId
+L  27:   const scopedTenantId = adminUser?.tenantId ?? tenantId
+L  28: 
+L  29:   // Build query based on role
+L  30:   let query = supabase
+L  31:     .from('leads')
+L  32:     .select(`
+L  33:       *,
+L  34:       agents!leads_agent_id_fkey ( id, full_name, email ),
+L  35:       manager:agents!leads_manager_id_fkey ( id, full_name, email )
+L  36: ,
+L  37:       area_manager:agents!leads_area_manager_id_fkey ( id, full_name, email ),
+L  38:       tenant_admin:agents!leads_tenant_admin_id_fkey ( id, full_name, email )
+L  39:     `)
+L  40:     .order('created_at', { ascending: false })
+L  41:     .limit(10000)
+L  42: 
+L  43:   if (!seeAll) {
+L  44:     if (!scopedTenantId) {
+L  45:       // Authenticated but no tenant context â€” return empty
+L  46:       return (
+L  47:         <AdminHomesLeadsClient
+L  48:           initialLeads={[]}
+L  49:           initialActivities={{}}
+L  50:           agents={[]}
+L  51:           currentRole={adminUser?.role || 'admin'}
+L  52:           currentAgentId={adminUser?.agentId || null}
+L  53:         />
+L  54:       )
+L  55:     }
+L  56:     query = query.eq('tenant_id', scopedTenantId)
+L  57:   }
+L  58: 
+L  59:   if (adminUser?.role === 'manager' && adminUser.agentId) {
+L  60:     // Manager sees own leads + all managed agents' leads
+L  61:     const agentIds = [adminUser.agentId, ...adminUser.managedAgentIds]
+L  62:     query = query.in('agent_id', agentIds)
+L  63:   } else if (adminUser?.role === 'agent' && adminUser.agentId) {
+L  64:     // Agent sees only their own leads
+L  65:     query = query.eq('agent_id', adminUser.agentId)
+L  66:   }
+L  67:   // Admin sees all â€” no filter
+L  68: 
+L  69:   const { data: leads } = await query
+L  70: 
+L  71:   // L4: pre-fetch user_activities for inline engagement badge + last-2-activities preview.
+L  72:   // Multi-tenant safety: scope by tenant_id when !seeAll (mirrors leads query at line above).
+L  73:   // Role scoping is implicit -- only activities for emails of already-role-filtered leads are fetched.
+L  74:   const leadEmails = Array.from(
+L  75:     new Set((leads || []).map((l: any) => l.contact_email).filter(Boolean))
+L  76:   ) as string[];
+L  77:   const activitiesByLeadId: Record<string, Array<{ id: string; activity_type: string; activity_data: any; page_url: string | null; created_at: string }>> = {};
+L  78:   if (leadEmails.length > 0) {
+L  79:     let actQuery = supabase
+L  80:       .from('user_activities')
+L  81:       .select('id, activity_type, activity_data, page_url, created_at, contact_email')
+L  82:       .in('contact_email', leadEmails)
+L  83:       .order('created_at', { ascending: true });
+L  84:     if (!seeAll && scopedTenantId) {
+L  85:       actQuery = actQuery.eq('tenant_id', scopedTenantId);
+L  86:     }
+L  87:     const { data: allActivities } = await actQuery;
+L  88:     const byEmail: Record<string, any[]> = {};
+L  89:     for (const a of (allActivities || [])) {
+L  90:       const email = (a as any).contact_email;
+L  91:       if (!byEmail[email]) byEmail[email] = [];
+L  92:       byEmail[email].push(a);
+L  93:     }
+L  94:     for (const lead of (leads || [])) {
+L  95:       activitiesByLeadId[(lead as any).id] = byEmail[(lead as any).contact_email] || [];
+L  96:     }
+L  97:   }
+L  98: 
+L  99:   // Agents for filter dropdown â€” scoped by role
+L 100:   let agentsQuery = supabase
+L 101:     .from('agents')
+L 102:     .select('id, full_name, email')
+L 103:     .eq('site_type', 'comprehensive')
+L 104:     .order('full_name')
+L 105: 
+L 106:   if (!seeAll && scopedTenantId) {
+L 107:     agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
+L 108:   }
+L 109: 
+L 110:   if (adminUser?.role === 'manager' && adminUser.agentId) {
+L 111:     // Manager only sees themselves + their managed agents in filter
+L 112:     agentsQuery = agentsQuery.in('id', [adminUser.agentId, ...adminUser.managedAgentIds])
+L 113:   } else if (adminUser?.role === 'agent' && adminUser.agentId) {
+L 114:     agentsQuery = agentsQuery.eq('id', adminUser.agentId)
+L 115:   }
+L 116: 
+L 117:   const { data: agents } = await agentsQuery
+L 118: 
+L 119:   return (
+L 120:     <AdminHomesLeadsClient
+L 121:       initialLeads={leads || []}
+L 122:       initialActivities={activitiesByLeadId}
+L 123:       agents={agents || []}
+L 124:       currentRole={adminUser?.role || 'admin'}
+L 125:       currentAgentId={adminUser?.agentId || null}
+L 126:     />
+L 127:   )
+L 128: }

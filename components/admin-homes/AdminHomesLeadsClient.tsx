@@ -4,6 +4,7 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
 import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-origin-route'
+import { useRouter } from 'next/navigation'
 
 interface Lead {
   id: string
@@ -112,6 +113,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [deleting, setDeleting] = useState(false)
   const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+  const router = useRouter()
 
   const updateLeadStatus = async (leadId: string, field: 'status' | 'quality', value: string) => {
     setUpdatingStatus(leadId)
@@ -364,7 +366,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                 <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">No leads found</td></tr>
               ) : filteredLeads.map(lead => (
                 <>
-                  <tr key={lead.id} className={`hover:bg-gray-50 ${updatingStatus === lead.id ? 'opacity-60' : ''}`}>
+                  <tr key={lead.id} onClick={(e) => { const t = e.target as HTMLElement; if (t.closest('button, input, select, a, label')) return; router.push('/admin-homes/leads/' + lead.id) }} className={`hover:bg-gray-50 cursor-pointer ${updatingStatus === lead.id ? 'opacity-60' : ''}`}>
                     <td className="px-4 py-3">
                       <input type="checkbox"
                         checked={selectedLeads.has(lead.id)}
