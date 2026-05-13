@@ -219,6 +219,7 @@ function buildContactEmail({ name, email, phone, message, source, sourceUrl, geo
           ${phone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${phone}" style="color: #1d4ed8;">${phone}</a></td></tr>` : ''}
           ${source ? `<tr><td style="color: #64748b;">Source</td><td style="color: #64748b;">${source}</td></tr>` : ''}
           ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+          ${sourceUrl ? `<tr><td style="color: #64748b; vertical-align: top;">Source URL</td><td style="color: #1d4ed8;"><a href="${sourceUrl}" style="color: #1d4ed8; text-decoration: none;">${sourceUrl}</a></td></tr>` : ''}
         </table>
         <div style="margin-top: 20px; text-align: center;">
           <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">

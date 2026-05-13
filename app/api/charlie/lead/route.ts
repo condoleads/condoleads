@@ -450,6 +450,7 @@ function buildUserPlanEmail(data: {
         <p style="margin: 0; color: #94a3b8; font-size: 11px;">
           Sent by ${brandName} AI · ${domain}
         </p>
+        ${sourceUrl ? `<p style="margin: 4px 0 0; color: #cbd5e1; font-size: 10px;">Source: <a href="${sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${sourceUrl}</a></p>` : ''}
       </div>
     </div>
   `
@@ -532,6 +533,7 @@ function buildAgentLeadEmail(data: {
           View in Dashboard
         </a>
         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+        ${sourceUrl ? `<p style="margin: 4px 0 0; color: #cbd5e1; font-size: 10px;">Source: <a href="${sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${sourceUrl}</a></p>` : ''}
       </div>
     </div>
   `

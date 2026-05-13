@@ -349,6 +349,7 @@ function buildUserConfirmationEmail(data: {
 
       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+        ${sourceUrl ? `<p style="margin: 4px 0 0; color: #cbd5e1; font-size: 10px;">Source: <a href="${sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${sourceUrl}</a></p>` : ''}
       </div>
     </div>
   `
@@ -421,6 +422,7 @@ function buildAgentNotificationEmail(data: {
 
       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+        ${sourceUrl ? `<p style="margin: 4px 0 0; color: #cbd5e1; font-size: 10px;">Source: <a href="${sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${sourceUrl}</a></p>` : ''}
       </div>
     </div>
   `

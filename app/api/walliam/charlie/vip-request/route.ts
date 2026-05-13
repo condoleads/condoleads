@@ -486,6 +486,7 @@ function buildAgentEmailHtml(data: {
         <p style="margin: 20px 0 0; font-size: 11px; color: #94a3b8;">
           Manage all requests at ${data.tenantDomain}/admin-homes/leads
         </p>
+        ${data.sourceUrl ? `<p style="margin: 4px 0 0; font-size: 10px; color: #cbd5e1;">Source: <a href="${data.sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${data.sourceUrl}</a></p>` : ''}
       </div>
     </div>
   `
@@ -523,6 +524,7 @@ function buildUserApprovalEmailHtml(data: {
             ✦ Back to ${brandName}
           </a>
         </div>
+        ${sourceUrl ? `<p style="margin: 24px 0 0; text-align: center; color: #cbd5e1; font-size: 10px;">Source: <a href="${sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${sourceUrl}</a></p>` : ''}
       </div>
     </div>
   `
