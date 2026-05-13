@@ -1,0 +1,635 @@
+
+==================== HOME (12485 bytes) ====================
+==================== app\property\[id]\HomePropertyPageClient.tsx ====================
+
+L   1: 'use client'
+L   2: 
+L   3: import { useState } from 'react'
+L   4: import { useAuth } from '@/components/auth/AuthContext'
+L   5: import PropertyGallery from '@/components/property/PropertyGallery'
+L   6: import PropertyHeader from '@/components/property/PropertyHeader'
+L   7: import HomePropertyDetails from '@/components/property/HomePropertyDetails'
+L   8: import PropertyDescription from '@/components/property/PropertyDescription'
+L   9: import PriceHistory from '@/components/property/PriceHistory'
+L  10: import RoomDimensions from '@/components/property/RoomDimensions'
+L  11: import UnitHistory from '@/components/property/UnitHistory'
+L  12: import GatedContent from '@/components/property/GatedContent'
+L  13: import SimilarListings from '@/components/property/SimilarListings'
+L  14: import { AgentCard } from '@/components/AgentCard'
+L  15: import HomePropertyEstimateCTA from '@/components/property/HomePropertyEstimateCTA'
+L  16: import HomePropertyInfo from '@/components/property/HomePropertyInfo'
+L  17: import AgentContactForm from '@/components/property/AgentContactForm'
+L  18: import PropertyStickyBar from '@/components/property/PropertyStickyBar'
+L  19: import OfferInquiryModal from '@/components/property/OfferInquiryModal'
+L  20: import ExitIntentPopup from '@/components/property/ExitIntentPopup'
+L  21: import HomeEstimatorBuyerModal from '@/app/estimator/components/HomeEstimatorBuyerModal'
+L  22: import Breadcrumb from '@/components/Breadcrumb'
+L  23: import HomePropertySEO from '@/components/property/HomePropertySEO'
+L  24: import WalliamCTA from '@/components/WalliamCTA'
+L  25: import CharliePageContext from '@/components/CharliePageContext'
+L  26: import WalliamAgentCard from '@/components/WalliamAgentCard'
+L  27: import WalliamContactForm from '@/components/WalliamContactForm'
+L  28: import AppointmentForm from '@/app/charlie/components/AppointmentForm'
+L  29: 
+L  30: interface HomePropertyPageClientProps {
+L  31:   listing: any
+L  32:   largePhotos: any[]
+L  33:   rooms: any[]
+L  34:   addressHistory: any[]
+L  35:   similarListings: any[]
+L  36:   availableNearby: any[]
+L  37:   isSale: boolean
+L  38:   status: 'Active' | 'Closed'
+L  39:   isClosed: boolean
+L  40:   agent?: any
+L  41:   community?: { id: string; name: string; slug: string } | null
+L  42:   municipality?: { id: string; name: string; slug: string } | null
+L  43:   area?: { id: string; name: string; slug: string } | null
+L  44:   isWalliam?: boolean
+L  45:   walliamTenantId?: string | null
+L  46: }
+L  47: 
+L  48: export default function HomePropertyPageClient({
+L  49:   listing,
+L  50:   largePhotos,
+L  51:   rooms,
+L  52:   addressHistory,
+L  53:   similarListings,
+L  54:   availableNearby,
+L  55:   isSale,
+L  56:   status,
+L  57:   isClosed,
+L  58:   agent,
+L  59:   community,
+L  60:   municipality,
+L  61:   area,
+L  62:   isWalliam = false,
+L  63:   walliamTenantId = null,
+L  64: }: HomePropertyPageClientProps) {
+L  65:   const { user } = useAuth()
+L  66:   const shouldGate = isClosed && !user
+L  67:   const shouldGateMLSData = !user
+L  68: 
+L  69:   const [showEstimatorModal, setShowEstimatorModal] = useState(false)
+L  70:   const [showOfferModal, setShowOfferModal] = useState(false)
+L  71:   const [showBooking, setShowBooking] = useState(false)
+L  72: 
+L  73:   // Extract short address for display (e.g., "22 Hopecrest Crescent")
+L  74:   const shortAddress = listing.unparsed_address
+L  75:     ? listing.unparsed_address.split(',')[0].trim()
+L  76:     : 'Property'
+L  77: 
+L  78:   return (
+L  79:     <>
+L  80:       {isWalliam && <div className="h-16 bg-[#060b18]" />}
+L  81:       <PropertyGallery
+L  82:         photos={largePhotos}
+L  83:         listingId={listing.id}
+L  84:         shouldBlur={shouldGate}
+L  85:         buildingId=""
+L  86:         maxPhotos={shouldGate ? 2 : undefined}
+L  87:       />
+L  88: 
+L  89:       <div className="max-w-7xl mx-auto pb-16">
+L  90:         <div className="px-4">
+L  91:           <Breadcrumb items={[
+L  92:             ...(area ? [{ label: area.name, href: `/${area.slug}` }] : []),
+L  93:             ...(municipality ? [{ label: municipality.name, href: `/${municipality.slug}` }] : []),
+L  94:             ...(community ? [{ label: community.name, href: `/${community.slug}` }] : []),
+L  95:             { label: shortAddress }
+L  96:           ]} />
+L  97:         </div>
+L  98: 
+L  99:         <PropertyHeader
+L 100:           listing={listing}
+L 101:           status={status}
+L 102:           isSale={isSale}
+L 103:           shouldBlur={shouldGate}
+L 104:           buildingId=""
+L 105:           isHome={true}
+L 106:           onEstimateClick={() => setShowEstimatorModal(true)}
+L 107:           onOfferClick={() => setShowOfferModal(true)}
+L 108:         />
+L 109: 
+L 110:         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
+L 111:           {/* LEFT COLUMN - Main Content */}
+L 112:           <div className="lg:col-span-2 space-y-8">
+L 113:             <PropertyDescription description={listing.public_remarks} />
+L 114: 
+L 115:             <GatedContent shouldGate={shouldGate} sectionName="Property Details" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
+L 116:               <HomePropertyDetails listing={listing} />
+L 117:             </GatedContent>
+L 118: 
+L 119:             {rooms && rooms.length > 0 && (
+L 120:               <GatedContent shouldGate={shouldGate} sectionName="Room Dimensions" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
+L 121:                 <RoomDimensions rooms={rooms} />
+L 122:               </GatedContent>
+L 123:             )}
+L 124: 
+L 125:             {addressHistory && addressHistory.length > 0 && (
+L 126:               <GatedContent shouldGate={shouldGateMLSData} sectionName="Transaction History" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
+L 127:                 <UnitHistory
+L 128:                     history={addressHistory}
+L 129:                     unitNumber={shortAddress}
+L 130:                     buildingSlug=""
+L 131:                     isHome={true}
+L 132:                   />
+L 133:               </GatedContent>
+L 134:             )}
+L 135: 
+L 136:             {isClosed && (
+L 137:               <GatedContent shouldGate={shouldGateMLSData} sectionName="Price History" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
+L 138:                 <PriceHistory
+L 139:                   listPrice={listing.list_price}
+L 140:                   closePrice={listing.close_price}
+L 141:                   listingDate={listing.listing_contract_date}
+L 142:                   closeDate={listing.close_date}
+L 143:                   daysOnMarket={listing.days_on_market}
+L 144:                 />
+L 145:               </GatedContent>
+L 146:             )}
+L 147: 
+L 148:             <SimilarListings
+L 149:                listings={similarListings}
+L 150:                 title="Recently Sold Nearby"
+L 151:                 agentId={agent?.id}
+L 152:                 isHome={true}
+L 153:               />
+L 154: 
+L 155:             {availableNearby && availableNearby.length > 0 && (
+L 156:               <div>
+L 157:                 <h2 className="text-2xl font-bold mb-4">
+L 158:                   Available {isSale ? 'For Sale' : 'For Lease'} Nearby
+L 159:                 </h2>
+L 160:                 <SimilarListings listings={availableNearby} agentId={agent?.id} isHome={true} />
+L 161:               </div>
+L 162:             )}
+L 163:           </div>
+L 164: 
+L 165:           {/* RIGHT COLUMN - Sticky Sidebar */}
+L 166:           <div className="lg:col-span-1">
+L 167:             <div className="sticky top-24 space-y-6">
+L 168:               {isWalliam && walliamTenantId ? (
+L 169:                 <>
+L 170:                   <WalliamAgentCard
+L 171:                     listing_id={listing.id}
+L 172:                     community_id={community?.id || null}
+L 173:                     municipality_id={municipality?.id || null}
+L 174:                     area_id={area?.id || null}
+L 175:                     tenant_id={walliamTenantId}
+L 176:                   />
+L 177:                   <WalliamCTA context={listing.unparsed_address} />
+L 178:                   <CharliePageContext listing_id={listing.id} community_id={community?.id || null} municipality_id={municipality?.id || null} area_id={area?.id || null} />
+L 179:                   <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
+L 180:                     <button onClick={() => setShowBooking(b => !b)} style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+L 181:                       <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>ðŸ“… Book a Visit</span>
+L 182:                       <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', transform: showBooking ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>â€º</span>
+L 183:                     </button>
+L 184:                     {showBooking && (
+L 185:                       <div style={{ padding: '0 20px 20px' }}>
+L 186:                         <AppointmentForm
+L 187:                           type="buyer"
+L 188:                           listings={[listing]}
+L 189:                           userId={user?.id || null}
+L 190:                           sessionId={null}
+L 191:                           geoContext={null}
+L 192:                           agent={null}
+L 193:                           onBooked={() => setShowBooking(false)}
+L 194:                         />
+L 195:                       </div>
+L 196:                     )}
+L 197:                   </div>
+L 198:                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
+L 199:                     <HomePropertyEstimateCTA
+L 200:                       listing={listing}
+L 201:                       isSale={isSale}
+L 202:                       agentId={walliamTenantId}
+L 203:                     />
+L 204:                   </GatedContent>
+L 205:                   <HomePropertyInfo listing={listing} />
+L 206:                 </>
+L 207:               ) : agent ? (
+L 208:                 <>
+L 209:                   <AgentCard
+L 210:                     agent={agent}
+L 211:                     source="property_inquiry"
+L 212:                     listingId={listing.id}
+L 213:                     listingAddress={listing.unparsed_address || ''}
+L 214:                     buildingId=""
+L 215:                     buildingName={shortAddress}
+L 216:                     buildingAddress={listing.unparsed_address || ''}
+L 217:                     unitNumber=""
+L 218:                   />
+L 219:                   <WalliamCTA context={listing.unparsed_address} />
+L 220:                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
+L 221:                     <HomePropertyEstimateCTA
+L 222:                       listing={listing}
+L 223:                       isSale={isSale}
+L 224:                       agentId={agent.id}
+L 225:                     />
+L 226:                   </GatedContent>
+L 227:                   <HomePropertyInfo listing={listing} />
+L 228:                   <AgentContactForm
+L 229:                     listing={{ ...listing, buildings: null }}
+L 230:                     status={status}
+L 231:                     isSale={isSale}
+L 232:                     agent={agent}
+L 233:                     isHome={true}
+L 234:                   />
+L 235:                 </>
+L 236:               ) : null}
+L 237:             </div>
+L 238:           </div>
+L 239:         </div>
+L 240:       </div>
+L 241: 
+L 242:       {/* Sticky Bottom Bar */}
+L 243:       <PropertyStickyBar
+L 244:         listing={{ ...listing, building_id: listing.building_id || '' }}
+L 245:         buildingName={shortAddress}
+L 246:         isHome={true}
+L 247:         isSale={isSale}
+L 248:         onEstimateClick={() => setShowEstimatorModal(true)}
+L 249:         onOfferClick={() => setShowOfferModal(true)}
+L 250:       />
+L 251: 
+L 252:       {/* Home Estimator Modal */}
+L 253:       {showEstimatorModal && (
+L 254:         <HomeEstimatorBuyerModal
+L 255:           isOpen={showEstimatorModal}
+L 256:           onClose={() => setShowEstimatorModal(false)}
+L 257:           listing={listing}
+L 258:           agentId={agent?.id || ''}
+L 259:           tenantId={walliamTenantId || undefined}
+L 260:           type={isSale ? 'sale' : 'rent'}
+L 261:           exactSqft={listing.building_area_total || null}
+L 262:         />
+L 263:       )}
+L 264: 
+L 265:       {/* Offer Inquiry Modal */}
+L 266:       {showOfferModal && agent && (
+L 267:         <OfferInquiryModal
+L 268:           isOpen={showOfferModal}
+L 269:           onClose={() => setShowOfferModal(false)}
+L 270:           listing={listing}
+L 271:           buildingName={shortAddress}
+L 272:           isSale={isSale}
+L 273:           agent={agent}
+L 274:         />
+L 275:       )}
+L 276: 
+L 277:       {/* Exit Intent Popup */}
+L 278:       <ExitIntentPopup
+L 279:         unitNumber=""
+L 280:         buildingName={shortAddress}
+L 281:         isSale={isSale}
+L 282:         onEstimateClick={() => setShowEstimatorModal(true)}
+L 283:       />
+L 284: 
+L 285:       {/* SEO Content */}
+L 286:       <HomePropertySEO
+L 287:         listing={listing}
+L 288:         community={community || null}
+L 289:         municipality={municipality || null}
+L 290:         area={area || null}
+L 291:         isSale={isSale}
+L 292:         isClosed={isClosed}
+L 293:       />
+L 294:     </>
+L 295:   )
+L 296: }
+L 297: 
+
+==================== CONDO (14842 bytes) ====================
+==================== app\property\[id]\PropertyPageClient.tsx ====================
+
+L   1: 'use client'
+L   2: 
+L   3: import { useState } from 'react'
+L   4: import { useAuth } from '@/components/auth/AuthContext'
+L   5: import PropertyGallery from '@/components/property/PropertyGallery'
+L   6: import PropertyHeader from '@/components/property/PropertyHeader'
+L   7: import PropertyDetails from '@/components/property/PropertyDetails'
+L   8: import PropertyDescription from '@/components/property/PropertyDescription'
+L   9: import PriceHistory from '@/components/property/PriceHistory'
+L  10: import RoomDimensions from '@/components/property/RoomDimensions'
+L  11: import UnitHistory from '@/components/property/UnitHistory'
+L  12: import PropertyAmenities from '@/components/property/PropertyAmenities'
+L  13: import GatedContent from '@/components/property/GatedContent'
+L  14: import SimilarListings from '@/components/property/SimilarListings'
+L  15: import { AgentCard } from '@/components/AgentCard'
+L  16: import PropertyEstimateCTA from '@/components/property/PropertyEstimateCTA'
+L  17: import BuildingInfo from '@/components/property/BuildingInfo'
+L  18: import AgentContactForm from '@/components/property/AgentContactForm'
+L  19: import PropertyStickyBar from '@/components/property/PropertyStickyBar'
+L  20: import OfferInquiryModal from '@/components/property/OfferInquiryModal'
+L  21: import ExitIntentPopup from '@/components/property/ExitIntentPopup'
+L  22: import EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'
+L  23: import Breadcrumb from '@/components/Breadcrumb'
+L  24: import PropertySEO from '@/components/property/PropertySEO'
+L  25: import InvestmentAnalysis from '@/components/property/InvestmentAnalysis'
+L  26: import type { InvestmentData } from '@/lib/market/get-listing-investment-data'
+L  27: import WalliamCTA from '@/components/WalliamCTA'
+L  28: import CharliePageContext from '@/components/CharliePageContext'
+L  29: import WalliamAgentCard from '@/components/WalliamAgentCard'
+L  30: import WalliamContactForm from '@/components/WalliamContactForm'
+L  31: import AppointmentForm from '@/app/charlie/components/AppointmentForm'
+L  32: 
+L  33: interface PropertyPageClientProps {
+L  34:   listing: any
+L  35:   largePhotos: any[]
+L  36:   rooms: any[]
+L  37:   unitHistory: any[]
+L  38:   amenities: any[]
+L  39:   feeIncludes: any[]
+L  40:   similarListings: any[]
+L  41:   availableListings: any[]
+L  42:   isSale: boolean
+L  43:   status: 'Active' | 'Closed'
+L  44:   isClosed: boolean
+L  45:   agent?: any
+L  46:   building?: any
+L  47:   development?: { id: string; name: string; slug: string } | null
+L  48:   investmentData?: InvestmentData
+L  49:   isWalliam?: boolean
+L  50:   walliamTenantId?: string | null
+L  51: }
+L  52: 
+L  53: export default function PropertyPageClient({
+L  54:   listing,
+L  55:   largePhotos,
+L  56:   rooms,
+L  57:   unitHistory,
+L  58:   amenities,
+L  59:   feeIncludes,
+L  60:   similarListings,
+L  61:   availableListings,
+L  62:   isSale,
+L  63:   status,
+L  64:   isClosed,
+L  65:   agent,
+L  66:   building,
+L  67:   development,
+L  68:   investmentData,
+L  69:   isWalliam = false,
+L  70:   walliamTenantId = null,
+L  71: }: PropertyPageClientProps) {
+L  72:   const { user } = useAuth()
+L  73:   const shouldGate = isClosed && !user
+L  74:   const shouldGateMLSData = !user  // MLS requirement: always gate history & estimates
+L  75:   
+L  76:   // Modal state for sticky bar CTAs
+L  77:   const [showEstimatorModal, setShowEstimatorModal] = useState(false)
+L  78:   const [showOfferModal, setShowOfferModal] = useState(false)
+L  79:   const [showBooking, setShowBooking] = useState(false)
+L  80: 
+L  81:   return (
+L  82:     <>
+L  83:       {isWalliam && <div className="h-16 bg-[#060b18]" />}
+L  84:       <PropertyGallery
+L  85:         photos={largePhotos}
+L  86:         listingId={listing.id}
+L  87:         shouldBlur={shouldGate}
+L  88:           buildingId={listing.building_id}
+L  89:         maxPhotos={shouldGate ? 2 : undefined}
+L  90:       />
+L  91: 
+L  92:       <div className="max-w-7xl mx-auto pb-16">
+L  93:           <div className="px-4">
+L  94:             <Breadcrumb items={[
+L  95:               ...(development ? [{ label: development.name, href: `/${development.slug}` }] : []),
+L  96:               ...(building ? [{ label: building.building_name, href: `/${building.slug}` }] : []),
+L  97:               { label: `Unit ${listing.unit_number || 'N/A'}` }
+L  98:             ]} />
+L  99:           </div>
+L 100:           <PropertyHeader
+L 101:           listing={listing}
+L 102:           status={status}
+L 103:           isSale={isSale}
+L 104:           shouldBlur={shouldGate}
+L 105:           buildingId={listing.building_id}
+L 106:           onEstimateClick={() => setShowEstimatorModal(true)}
+L 107:           onOfferClick={() => setShowOfferModal(true)}
+L 108:         />
+L 109: 
+L 110:         <div className="grid lg:grid-cols-3 gap-8 mt-8 px-4">
+L 111:           {/* LEFT COLUMN - Main Content */}
+L 112:           <div className="lg:col-span-2 space-y-8">
+L 113:             <PropertyDescription description={listing.public_remarks} />
+L 114: 
+L 115:             {/* Investment Analysis - Shows ROI, price context */}
+L 116:             {investmentData && isSale && (
+L 117:               <InvestmentAnalysis
+L 118:                data={investmentData}
+L 119:                listPrice={listing.list_price}
+L 120:                buildingName={building?.building_name || 'Building'}
+L 121:                isSale={isSale}
+L 122:                />
+L 123:             )}
+L 124: 
+L 125:             <GatedContent shouldGate={shouldGate} sectionName="Property Details" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+L 126:               <PropertyDetails listing={listing} />
+L 127:             </GatedContent>
+L 128: 
+L 129:             <PropertyAmenities amenities={amenities} feeIncludes={feeIncludes} />
+L 130: 
+L 131:             {rooms && rooms.length > 0 && (
+L 132:             <GatedContent shouldGate={shouldGate} sectionName="Room Dimensions" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+L 133:                 <RoomDimensions rooms={rooms} />
+L 134:               </GatedContent>
+L 135:             )}
+L 136: 
+L 137:             {unitHistory && unitHistory.length > 0 && (
+L 138:             <GatedContent shouldGate={shouldGateMLSData} sectionName="Transaction History" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+L 139:                 <UnitHistory
+L 140:                   history={unitHistory}
+L 141:                   unitNumber={listing.unit_number || 'N/A'}
+L 142:                   buildingSlug={building?.slug || ''}
+L 143:                 />
+L 144:               </GatedContent>
+L 145:             )}
+L 146: 
+L 147:             {isClosed && (
+L 148:             <GatedContent shouldGate={shouldGateMLSData} sectionName="Price History" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+L 149:                 <PriceHistory
+L 150:                   listPrice={listing.list_price}
+L 151:                   closePrice={listing.close_price}
+L 152:                   listingDate={listing.listing_contract_date}
+L 153:                   closeDate={listing.close_date}
+L 154:                   daysOnMarket={listing.days_on_market}
+L 155:                 />
+L 156:               </GatedContent>
+L 157:             )}
+L 158: 
+L 159:             <SimilarListings listings={similarListings || []} agentId={agent?.id} />
+L 160: 
+L 161:             {availableListings && availableListings.length > 0 && (
+L 162:               <div>
+L 163:                 <h2 className="text-2xl font-bold mb-4">
+L 164:                   Available {isSale ? 'For Sale' : 'For Lease'} in This Building
+L 165:                 </h2>
+L 166:                 <SimilarListings listings={availableListings} agentId={agent?.id} />
+L 167:               </div>
+L 168:             )}
+L 169:           </div>
+L 170: 
+L 171:           {/* RIGHT COLUMN - Sticky Sidebar */}
+L 172:           <div className="lg:col-span-1">
+L 173:             <div className="sticky top-24 space-y-6">
+L 174:               {isWalliam && walliamTenantId ? (
+L 175:                 <>
+L 176:                   <WalliamAgentCard
+L 177:                     listing_id={listing.id}
+L 178:                     building_id={listing.building_id}
+L 179:                     community_id={listing.community_id || null}
+L 180:                     municipality_id={listing.municipality_id || null}
+L 181:                     tenant_id={walliamTenantId}
+L 182:                     hideCTA={true}
+L 183:                   />
+L 184:                   <WalliamCTA context={building?.building_name} />
+L 185:                   <CharliePageContext listing_id={listing.id} building_id={listing.building_id} community_id={listing.community_id || null} municipality_id={listing.municipality_id || null} />
+L 186:                   <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
+L 187:                     <button
+L 188:                       onClick={() => setShowBooking(b => !b)}
+L 189:                       style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+L 190:                     >
+L 191:                       <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>ðŸ“… Book a Visit</span>
+L 192:                       <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', transform: showBooking ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>â€º</span>
+L 193:                     </button>
+L 194:                     {showBooking && (
+L 195:                       <div style={{ padding: '0 20px 20px' }}>
+L 196:                         <AppointmentForm
+L 197:                           type="buyer"
+L 198:                           listings={[listing]}
+L 199:                           userId={user?.id || null}
+L 200:                           sessionId={null}
+L 201:                           geoContext={null}
+L 202:                           agent={null}
+L 203:                           onBooked={() => setShowBooking(false)}
+L 204:                         />
+L 205:                       </div>
+L 206:                     )}
+L 207:                   </div>
+L 208:                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+L 209:                     <PropertyEstimateCTA
+L 210:                       listing={{ ...listing, buildings: building }}
+L 211:                       status={status}
+L 212:                       isSale={isSale}
+L 213:                       buildingName={building?.building_name || ''}
+L 214:                       buildingAddress={building?.canonical_address || ''}
+L 215:                       buildingSlug={building?.slug || ''}
+L 216:                       agentId={walliamTenantId}
+L 217:                     />
+L 218:                   </GatedContent>
+L 219:                   <BuildingInfo
+L 220:                     buildingName={building?.building_name || 'N/A'}
+L 221:                     address={building?.canonical_address || listing.unparsed_address || 'N/A'}
+L 222:                     yearBuilt={listing.year_built}
+L 223:                     totalUnits={null}
+L 224:                     parkingType={listing.parking_features}
+L 225:                     petPolicy={listing.pet_allowed}
+L 226:                   />
+L 227:                 </>
+L 228:               ) : agent ? (
+L 229:                 <>
+L 230:                   <AgentCard
+L 231:                     agent={agent}
+L 232:                     source="property_inquiry"
+L 233:                     listingId={listing.id}
+L 234:                     listingAddress={listing.unparsed_address || ''}
+L 235:                     buildingId={listing.building_id}
+L 236:                     buildingName={building?.building_name || ''}
+L 237:                     buildingAddress={building?.canonical_address || ''}
+L 238:                     unitNumber={listing.unit_number || ''}
+L 239:                   />
+L 240:                   <WalliamCTA context={building?.building_name} />
+L 241:                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
+L 242:                     <PropertyEstimateCTA
+L 243:                       listing={{ ...listing, buildings: building }}
+L 244:                       status={status}
+L 245:                       isSale={isSale}
+L 246:                       buildingName={building?.building_name || ''}
+L 247:                       buildingAddress={building?.canonical_address || ''}
+L 248:                       buildingSlug={building?.slug || ''}
+L 249:                       agentId={agent.id}
+L 250:                     />
+L 251:                   </GatedContent>
+L 252:                   <BuildingInfo
+L 253:                     buildingName={building?.building_name || 'N/A'}
+L 254:                     address={building?.canonical_address || listing.unparsed_address || 'N/A'}
+L 255:                     yearBuilt={listing.year_built}
+L 256:                     totalUnits={null}
+L 257:                     parkingType={listing.parking_features}
+L 258:                     petPolicy={listing.pet_allowed}
+L 259:                   />
+L 260:                   <AgentContactForm
+L 261:                     listing={{ ...listing, buildings: building }}
+L 262:                     status={status}
+L 263:                     isSale={isSale}
+L 264:                     agent={agent}
+L 265:                   />
+L 266:                 </>
+L 267:               ) : null}
+L 268:             </div>
+L 269:           </div>
+L 270:         </div>
+L 271:       </div>
+L 272:       
+L 273:       {/* Sticky Bottom Bar */}
+L 274:       <PropertyStickyBar
+L 275:         listing={listing}
+L 276:         buildingName={building?.building_name || ''}
+L 277:         isSale={isSale}
+L 278:         onEstimateClick={() => setShowEstimatorModal(true)}
+L 279:         onOfferClick={() => setShowOfferModal(true)}
+L 280:       />
+L 281:       
+L 282:       {/* Estimator Modal */}
+L 283:       {showEstimatorModal && (
+L 284:         <EstimatorBuyerModal
+L 285:           isOpen={showEstimatorModal}
+L 286:           onClose={() => setShowEstimatorModal(false)}
+L 287:           listing={listing}
+L 288:           buildingId={listing.building_id}
+L 289:           buildingSlug={building?.slug || ''}
+L 290:           buildingName={building?.building_name || ''}
+L 291:           buildingAddress={building?.canonical_address || ''}
+L 292:           agentId={agent?.id || ''}
+L 293:           tenantId={walliamTenantId || undefined}
+L 294:           type={isSale ? 'sale' : 'lease'}
+L 295:           exactSqft={listing.building_area_total || null}
+L 296:         />
+L 297:       )}
+L 298:       
+L 299:       {/* Offer Inquiry Modal */}
+L 300:       {showOfferModal && agent && (
+L 301:         <OfferInquiryModal
+L 302:           isOpen={showOfferModal}
+L 303:           onClose={() => setShowOfferModal(false)}
+L 304:           listing={listing}
+L 305:           buildingName={building?.building_name || ''}
+L 306:           isSale={isSale}
+L 307:           agent={agent}
+L 308:         />
+L 309:       )}
+L 310:       
+L 311:       {/* Exit Intent Popup - Desktop Only */}
+L 312:       <ExitIntentPopup
+L 313:         unitNumber={listing.unit_number || ''}
+L 314:         buildingName={building?.building_name || ''}
+L 315:         isSale={isSale}
+L 316:         onEstimateClick={() => setShowEstimatorModal(true)}
+L 317:       />
+L 318: 
+L 319:       {/* SEO Content */}
+L 320:       <PropertySEO
+L 321:         listing={listing}
+L 322:         building={building}
+L 323:         development={development}
+L 324:         isSale={isSale}
+L 325:         isClosed={isClosed}
+L 326:       />
+L 327:     </>
+L 328:   )
+L 329: }
+L 330: 
