@@ -1,0 +1,318 @@
+W-LEADS-EMAIL T6c recon — source-string hardcoding survey
+Generated: 2026-05-11T12:59:03.254Z
+Repo root: C:\Condoleads\project
+
+Purpose: enumerate every hardcoded `walliam`/`WALLiam` literal in the
+7 T6c candidate routes, and identify whether `sourceKey` is already in
+scope (from a T6a tenant SELECT, a helper return, or otherwise).
+
+Sections per file:
+  A. /walliam/i case-insensitive line hits
+  B. sourceKey / tenant.source_key declarations & reads
+  C. source-field assignments / .eq("source", ...) filters / request_source / source_url
+
+==============================================================================
+FILE: app/api/charlie/lead/route.ts
+==============================================================================
+
+  bytes: 26272, lines: 521, line-endings: LF
+
+  --- A. /walliam/i hits ---
+  L   2: // WALLiam Charlie lead capture — form-submission enrichment writer
+  L  35: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  L 163:     // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+  L 172:       .eq('source', 'walliam_charlie')
+  L 212:           source: 'walliam_charlie',
+  L 249:         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+  L 431:             ✦ Continue on WALLiam
+  L 438:           Sent by WALLiam AI · walliam.ca
+  L 517:         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+
+  --- B. sourceKey / tenant.source_key hits ---
+  (none)
+
+  --- C. source-field assignments / filters ---
+  L 172:       .eq('source', 'walliam_charlie')
+  L 212:           source: 'walliam_charlie',
+
+
+==============================================================================
+FILE: app/api/charlie/plan-email/route.ts
+==============================================================================
+
+  bytes: 42016, lines: 640, line-endings: CRLF
+
+  --- A. /walliam/i hits ---
+  L  27: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  L 128:       source: 'walliam_charlie',
+  L 146:       source: 'walliam_charlie',
+  L 153:     const subject = `\u2756 WALLiam ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
+  L 631:             &#10022; Open WALLiam
+  L 636:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam &middot; walliam.ca</p>
+
+  --- B. sourceKey / tenant.source_key hits ---
+  (none)
+
+  --- C. source-field assignments / filters ---
+  L 128:       source: 'walliam_charlie',
+  L 146:       source: 'walliam_charlie',
+
+
+==============================================================================
+FILE: app/api/charlie/appointment/route.ts
+==============================================================================
+
+  bytes: 18425, lines: 406, line-endings: LF
+
+  --- A. /walliam/i hits ---
+  L   2: // WALLiam Charlie appointment booking
+  L  25: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  L 139:         source: 'walliam_charlie',
+  L 250:       source: 'walliam_appointment',
+  L 334:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+  L 402:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+
+  --- B. sourceKey / tenant.source_key hits ---
+  (none)
+
+  --- C. source-field assignments / filters ---
+  L 139:         source: 'walliam_charlie',
+  L 250:       source: 'walliam_appointment',
+
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-request/route.ts
+==============================================================================
+
+  bytes: 18391, lines: 489, line-endings: LF
+
+  --- A. /walliam/i hits ---
+  L   1: ﻿// app/api/walliam/estimator/vip-request/route.ts
+  L   2: // WALLiam estimator VIP request — adapted from app/api/chat/vip-request/route.ts
+  L  97:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate (replaces hardcoded 'walliam' check)
+  L 165:         full_name: userName || 'WALLiam User',
+  L 169:         request_source: 'walliam_estimator',
+  L 179:       console.error('[walliam/estimator/vip-request] insert error:', insertError)
+  L 195:           contact_name: userName || 'WALLiam User',
+  L 198:           source: 'walliam_estimator_vip_request',
+  L 202:           message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
+  L 209:       if (leadError) console.error('[walliam/estimator/vip-request] lead error:', leadError)
+  L 214:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  L 215:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+  L 216:     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+  L 219:       fullName: userName || 'WALLiam User',
+  L 235:         console.error('[walliam/estimator/vip-request] admin platform unreachable:', err.message)
+  L 244:         const subject = `WALLiam Estimator VIP Request: ${phone}`
+  L 261:             templateKey: 'walliam_estimator_vip_request_chain',
+  L 268:           console.warn('[walliam/estimator/vip-request] tenant email not configured:', err.message)
+  L 270:           console.error('[walliam/estimator/vip-request] resend send failed:', err.message)
+  L 272:           console.error('[walliam/estimator/vip-request] unexpected email error:', err)
+  L 280:         source: 'walliam_estimator_vip_request',
+  L 330:             subject: 'WALLiam Estimator Access Approved',
+  L 331:             html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
+  L 336:             console.warn('[walliam/estimator/vip-request] tenant email not configured (user approval):', err.message)
+  L 338:             console.error('[walliam/estimator/vip-request] resend send failed (user approval):', err.message)
+  L 340:             console.error('[walliam/estimator/vip-request] unexpected user approval email error:', err)
+  L 362:     console.error('[walliam/estimator/vip-request] error:', error)
+  L 368: // questionnaireCompleted always true — WALLiam has no questionnaire
+  L 401:     console.error('[walliam/estimator/vip-request] GET error:', error)
+  L 419:         <h1 style="color: white; margin: 0; font-size: 22px;">🔔 WALLiam Estimator VIP Request</h1>
+  L 431:           ${data.fullName && data.fullName !== 'WALLiam User' ? `
+  L 472:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+  L 481:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}"
+  L 483:             ✦ Back to WALLiam
+
+  --- B. sourceKey / tenant.source_key hits ---
+  L  98:     if (session.source !== tenant.source_key) {
+
+  --- C. source-field assignments / filters ---
+  L 169:         request_source: 'walliam_estimator',
+  L 198:           source: 'walliam_estimator_vip_request',
+  L 280:         source: 'walliam_estimator_vip_request',
+
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-approve/route.ts
+==============================================================================
+
+  bytes: 11656, lines: 246, line-endings: CRLF
+
+  --- A. /walliam/i hits ---
+  L   1: // app/api/walliam/estimator/vip-approve/route.ts
+  L   2: // Token-based approve/deny for WALLiam estimator VIP requests
+  L   7: //   - WALLiam dark theme HTML response
+  L 131:             console.error('[walliam/estimator/vip-approve] admin platform unreachable:', err.message)
+  L 156:             subject: 'Your WALLiam Estimator Access is Approved',
+  L 159:               agent?.full_name || 'WALLiam',
+  L 166:             console.warn('[walliam/estimator/vip-approve] tenant email not configured:', err.message)
+  L 168:             console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
+  L 170:             console.error('[walliam/estimator/vip-approve] unexpected email error:', err)
+  L 181:     console.error('[walliam/estimator/vip-approve] error:', error)
+  L 192:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+  L 198:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to WALLiam</a>
+  L 218:   <title>WALLiam Estimator — ${cfg.title}</title>
+
+  --- B. sourceKey / tenant.source_key hits ---
+  (none)
+
+  --- C. source-field assignments / filters ---
+  (none)
+
+
+==============================================================================
+FILE: app/api/walliam/estimator/session/route.ts
+==============================================================================
+
+  bytes: 8031, lines: 223, line-endings: CRLF
+
+  --- A. /walliam/i hits ---
+  L   1: ﻿// app/api/walliam/estimator/session/route.ts
+  L   2: // Initializes or retrieves a WALLiam estimator session
+  L  86:     let agentName = 'WALLiam'
+  L 133:         console.error('[walliam/estimator/session] create error:', createError)
+  L 148:     const questionnaireCompleted = true // WALLiam has no questionnaire — users are registered
+  L 191:       fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+  L 219:     console.error('[walliam/estimator/session] error:', error)
+
+  --- B. sourceKey / tenant.source_key hits ---
+  L 101:       .eq('source', tenant.source_key)
+  L 119:           source: tenant.source_key,
+
+  --- C. source-field assignments / filters ---
+  L 101:       .eq('source', tenant.source_key)
+
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+
+  bytes: 14316, lines: 351, line-endings: LF
+
+  --- A. /walliam/i hits ---
+  L   1: // app/api/walliam/estimator/vip-questionnaire/route.ts
+  L 137:       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
+  L 140:       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+  L 141:       // (vip-request writes source='walliam_estimator_vip_request')
+  L 158:             contact_name: userName || 'WALLiam User',
+  L 167:         if (updateLeadError) console.error('[walliam/estimator/vip-questionnaire] lead update error:', updateLeadError)
+  L 179:             contact_name: userName || 'WALLiam User',
+  L 182:             source: 'walliam_estimator_questionnaire',
+  L 191:         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadError)
+  L 197:       userName: userName || 'WALLiam User',
+  L 213:         console.error('[walliam/estimator/vip-questionnaire] admin platform unreachable:', err.message)
+  L 221:       // T3c — vip-questionnaire enriches an existing walliam_estimator% lead;
+  L 236:         const subject = `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`
+  L 253:             templateKey: 'walliam_estimator_vip_questionnaire_chain',
+  L 260:           console.warn('[walliam/estimator/vip-questionnaire] tenant email not configured:', err.message)
+  L 262:           console.error('[walliam/estimator/vip-questionnaire] resend send failed:', err.message)
+  L 264:           console.error('[walliam/estimator/vip-questionnaire] unexpected email error:', err)
+  L 272:         source: 'walliam_estimator_questionnaire',
+  L 283:     console.error('[walliam/estimator/vip-questionnaire] error:', error)
+  L 301:         <h1 style="color: white; margin: 0; font-size: 22px;">📋 WALLiam Estimator Questionnaire</h1>
+  L 346:           ✦ WALLiam — Use the approve/deny links from the original VIP email to manage access.
+
+  --- B. sourceKey / tenant.source_key hits ---
+  (none)
+
+  --- C. source-field assignments / filters ---
+  L 182:             source: 'walliam_estimator_questionnaire',
+  L 272:         source: 'walliam_estimator_questionnaire',
+
+
+==============================================================================
+HELPER FULL DUMP: lib/utils/validate-session.ts
+==============================================================================
+
+  bytes: 2659, lines: 78, line-endings: LF
+
+  L   1: /**
+  L   2:  * Tenant-aware session validation gate.
+  L   3:  *
+  L   4:  * Replaces the hardcoded `.eq('source', 'walliam')` pattern across the
+  L   5:  * auth-gate sites in W-LEADS-EMAIL T6a target routes:
+  L   6:  *   - app/api/charlie/lead/route.ts
+  L   7:  *   - app/api/charlie/plan-email/route.ts
+  L   8:  *   - app/api/charlie/appointment/route.ts
+  L   9:  *
+  L  10:  * For routes where the session is already loaded (estimator/vip-request) or
+  L  11:  * where source is used for non-gate operations (estimator/session), this
+  L  12:  * helper is NOT used; those routes inline `tenant.source_key` access via
+  L  13:  * their existing tenant SELECT.
+  L  14:  *
+  L  15:  * Implementation:
+  L  16:  *   1. Verify sessionId, userId, tenantId all non-empty -> 401 if any missing
+  L  17:  *   2. Load `tenants.source_key` for tenantId
+  L  18:  *   3. Load `chat_sessions` WHERE id=sessionId AND user_id=userId AND
+  L  19:  *      tenant_id=tenantId AND source=source_key
+  L  20:  *   4. Any failure -> 401 'Invalid session'
+  L  21:  *   5. Success -> return the loaded session row
+  L  22:  *
+  L  23:  * Multitenant safety: the chat_sessions query enforces both tenant_id and
+  L  24:  * source filters. A forged x-tenant-id header that doesn't match the
+  L  25:  * session's actual tenant_id will not match (returns no row -> 401).
+  L  26:  */
+  L  27: 
+  L  28: import type { SupabaseClient } from '@supabase/supabase-js'
+  L  29: 
+  L  30: export interface ValidateSessionParams {
+  L  31:   supabase: SupabaseClient
+  L  32:   sessionId: string | null | undefined
+  L  33:   userId: string | null | undefined
+  L  34:   tenantId: string | null | undefined
+  L  35:   selectColumns?: string // default 'id'
+  L  36: }
+  L  37: 
+  L  38: export type ValidateSessionResult =
+  L  39:   | { ok: true; session: Record<string, any> }
+  L  40:   | { ok: false; status: number; error: string }
+  L  41: 
+  L  42: export async function validateSession(params: ValidateSessionParams): Promise<ValidateSessionResult> {
+  L  43:   const { supabase } = params
+  L  44:   const sessionId = params.sessionId
+  L  45:   const userId = params.userId
+  L  46:   const tenantId = params.tenantId
+  L  47:   const selectColumns = params.selectColumns ?? 'id'
+  L  48: 
+  L  49:   if (!sessionId || !userId || !tenantId) {
+  L  50:     return { ok: false, status: 401, error: 'Invalid session' }
+  L  51:   }
+  L  52: 
+  L  53:   const { data: tenant, error: tenantError } = await supabase
+  L  54:     .from('tenants')
+  L  55:     .select('source_key')
+  L  56:     .eq('id', tenantId)
+  L  57:     .maybeSingle()
+  L  58: 
+  L  59:   if (tenantError || !tenant?.source_key) {
+  L  60:     return { ok: false, status: 401, error: 'Invalid session' }
+  L  61:   }
+  L  62: 
+  L  63:   const { data: session, error: sessionError } = await supabase
+  L  64:     .from('chat_sessions')
+  L  65:     .select(selectColumns)
+  L  66:     .eq('id', sessionId)
+  L  67:     .eq('user_id', userId)
+  L  68:     .eq('tenant_id', tenantId)
+  L  69:     .eq('source', tenant.source_key)
+  L  70:     .maybeSingle()
+  L  71: 
+  L  72:   if (sessionError || !session) {
+  L  73:     return { ok: false, status: 401, error: 'Invalid session' }
+  L  74:   }
+  L  75: 
+  L  76:   return { ok: true, session: session as Record<string, any> }
+  L  77: }
+  L  78: 
+
+==============================================================================
+SUMMARY — files surveyed
+==============================================================================
+
+
+Use this report to decide for each route:
+  - Does it already have `sourceKey` in scope? (Section B hits)
+  - What hardcoded literals need to become `${sourceKey}_...` templates? (Section A + C)
+  - Does it need a new tenant SELECT, or can it reuse an existing one?
+
+Helper-dump tells us whether `validateSession` returns sourceKey today,
+or whether we extend it to do so (cleaner for Shape A routes).

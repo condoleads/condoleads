@@ -1,0 +1,133 @@
+
+===== components\admin-homes\AdminHomesLeadsClient.tsx L1-L94 (imports + Props type) =====
+L1: // components/admin-homes/AdminHomesLeadsClient.tsx
+L2: // WALLiam leads dashboard â€” v2
+L3: // Upgrades: inline status update, source filter, manager column, engagement score, fixed activity panel
+L4: 'use client'
+L5: import { useState, useMemo, useEffect } from 'react'
+L6: import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-origin-route'
+L7: 
+L8: interface Lead {
+L9:   id: string
+L10:   user_id: string | null
+L11:   tenant_id: string
+L12:   notes: string | null
+L13:   contact_name: string
+L14:   contact_email: string
+L15:   contact_phone: string
+L16:   source: string
+L17:   intent: string | null
+L18:   geo_name: string | null
+L19:   budget_max: number | null
+L20:   plan_data: any | null
+L21:   status: string
+L22:   quality: string
+L23:   agent_id: string | null
+L24:   manager_id: string | null
+L25:   area_manager_id: string | null
+L26:   tenant_admin_id: string | null
+L27:   assignment_source: string | null
+L28:   created_at: string
+L29:   agents?: { id: string; full_name: string; email: string }
+L30:   manager?: { id: string; full_name: string; email: string }
+L31:   area_manager?: { id: string; full_name: string; email: string }
+L32:   tenant_admin?: { id: string; full_name: string; email: string }
+L33: }
+L34: 
+L35: interface Agent { id: string; full_name: string; email: string }
+L36: 
+L37: interface Props {
+L38:   initialLeads: Lead[]
+L39:   initialActivities: Record<string, any[]>
+L40:   initialCreditOverrides: Record<string, any>
+L41:   initialVipRequests: Record<string, any[]>
+L42:   initialEmailLog: Record<string, any[]>
+L43:   initialNotes: Record<string, any[]>
+L44:   agents: Agent[]
+L45:   currentRole: 'admin' | 'manager' | 'agent'
+L46:   currentAgentId: string | null
+L47: }
+L48: 
+L49: const ROUTE_LABELS: Record<LeadOriginRoute, string> = {
+L50:   charlie: 'Charlie',
+L51:   charlie_vip_request: 'Charlie VIP',
+L52:   estimator: 'Estimator',
+L53:   estimator_questionnaire: 'Estimator Q',
+L54:   estimator_vip_request: 'Estimator VIP',
+L55:   contact_form: 'Contact',
+L56:   registration: 'Registration',
+L57:   property_inquiry: 'Property',
+L58:   building_visit: 'Building Visit',
+L59:   sale_evaluation: 'Sale Eval',
+L60:   unknown: 'Unknown',
+L61: }
+L62: 
+L63: const ROUTE_COLORS: Record<LeadOriginRoute, string> = {
+L64:   charlie: 'bg-purple-100 text-purple-700',
+L65:   charlie_vip_request: 'bg-violet-100 text-violet-700',
+L66:   estimator: 'bg-amber-50 text-amber-600',
+L67:   estimator_questionnaire: 'bg-orange-100 text-orange-700',
+L68:   estimator_vip_request: 'bg-amber-100 text-amber-700',
+L69:   contact_form: 'bg-blue-100 text-blue-700',
+L70:   registration: 'bg-emerald-100 text-emerald-700',
+L71:   property_inquiry: 'bg-cyan-100 text-cyan-700',
+L72:   building_visit: 'bg-teal-100 text-teal-700',
+L73:   sale_evaluation: 'bg-pink-100 text-pink-700',
+L74:   unknown: 'bg-slate-100 text-slate-600',
+L75: }
+L76: 
+L77: const ACTIVITY_SCORES: Record<string, number> = {
+L78:   registration: 10,
+L79:   estimator_used: 20,
+L80:   estimator_contact_submitted: 30,
+L81:   contact_form: 15,
+L82:   building_visit_request: 25,
+L83:   viewed_sold_listings: 15,
+L84:   viewed_transaction_history: 10,
+L85: }
+L86: 
+L87: function calcEngagement(activities: any[]): { score: number; label: string; color: string } {
+L88:   const score = Math.min(activities.reduce((s, a) => s + (ACTIVITY_SCORES[a.activity_type] || 0), 0), 100)
+L89:   if (score >= 75) return { score, label: 'Hot', color: 'text-red-600' }
+L90:   if (score >= 50) return { score, label: 'Warm', color: 'text-orange-500' }
+L91:   if (score >= 25) return { score, label: 'Active', color: 'text-yellow-600' }
+L92:   return { score, label: 'Cold', color: 'text-gray-400' }
+L93: }
+L94: 
+
+===== components\admin-homes\AdminHomesLeadsClient.tsx L131-L165 (useEffect end + handleOpenGrantForm) =====
+L131:     window.addEventListener('keydown', handler)
+L132:     return () => window.removeEventListener('keydown', handler)
+L133:   }, [])
+L134:   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+L135: 
+L136:   const updateLeadStatus = async (leadId: string, field: 'status' | 'quality', value: string) => {
+L137:     setUpdatingStatus(leadId)
+L138:     try {
+L139:       const res = await fetch(`/api/admin-homes/leads/${leadId}`, {
+L140:         method: 'PATCH',
+L141:         headers: { 'Content-Type': 'application/json' },
+L142:         body: JSON.stringify({ [field]: value }),
+L143:       })
+L144:       if (res.ok) {
+L145:         setLeads(prev => prev.map(l => l.id === leadId ? { ...l, [field]: value } : l))
+L146:       }
+L147:     } catch (err) {
+L148:       console.error('Failed to update lead:', err)
+L149:     } finally {
+L150:       setUpdatingStatus(null)
+L151:     }
+L152:   }
+L153: 
+L154:   const handleOpenGrantForm = (lead: Lead) => {
+L155:     if (!lead.user_id) return
+L156:     const existing = creditOverrides[lead.user_id as string]
+L157:     setGrantFormValues({
+L158:       aiChatLimit: existing?.ai_chat_limit != null ? String(existing.ai_chat_limit) : '',
+L159:       buyerPlanLimit: existing?.buyer_plan_limit != null ? String(existing.buyer_plan_limit) : '',
+L160:       sellerPlanLimit: existing?.seller_plan_limit != null ? String(existing.seller_plan_limit) : '',
+L161:       estimatorLimit: existing?.estimator_limit != null ? String(existing.estimator_limit) : '',
+L162:     })
+L163:     setGrantFormOpenFor(lead.id)
+L164:   }
+L165: 

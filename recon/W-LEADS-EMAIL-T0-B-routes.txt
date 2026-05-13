@@ -1,0 +1,183 @@
+﻿
+
+=== A. Files touching the 'leads' table (.from(...leads...)) ===
+  app\admin\agents\page.tsx
+  app\admin\leads\page.tsx
+  app\admin\page.tsx
+  app\admin-homes\agents\page.tsx
+  app\admin-homes\leads\page.tsx
+  app\admin-homes\tenants\page.tsx
+  app\api\admin\leads\bulk-delete\route.ts
+  app\api\admin\leads\[id]\route.ts
+  app\api\admin-homes\agents\tree-data\route.ts
+  app\api\admin-homes\leads\[id]\route.ts
+  app\api\charlie\appointment\route.ts
+  app\api\charlie\lead\route.ts
+  app\api\charlie\plan-email\route.ts
+  app\api\chat\vip-approve\route.ts
+  app\api\chat\vip-questionnaire\route.ts
+  app\api\chat\vip-request\route.ts
+  app\api\chat\vip-upgrade\route.ts
+  app\api\walliam\charlie\vip-request\route.ts
+  app\api\walliam\contact\route.ts
+  app\api\walliam\estimator\vip-questionnaire\route.ts
+  app\api\walliam\estimator\vip-request\route.ts
+  app\charlie\lib\charlie-plan.ts
+  app\dashboard\leads\[id]\page.tsx
+  lib\actions\buildings.ts
+  lib\actions\lead-management.ts
+  lib\actions\leads.ts
+  lib\actions\user-activity.ts
+  lib\email\sendActivityEmail.ts
+  lib\hierarchy\agent-tree.ts
+
+=== B. Files importing lead-email-recipients helper ===
+  app\api\charlie\appointment\route.ts
+  app\api\charlie\lead\route.ts
+  app\api\charlie\plan-email\route.ts
+  app\api\walliam\charlie\vip-request\route.ts
+  app\api\walliam\contact\route.ts
+  app\api\walliam\estimator\vip-approve\route.ts
+  app\api\walliam\estimator\vip-questionnaire\route.ts
+  app\api\walliam\estimator\vip-request\route.ts
+  lib\actions\leads.ts
+  lib\admin-homes\lead-email-recipients.ts
+
+=== C. Files calling walkHierarchy ===
+  app\api\charlie\appointment\route.ts
+  app\api\charlie\lead\route.ts
+  app\api\charlie\plan-email\route.ts
+  app\api\walliam\charlie\vip-request\route.ts
+  app\api\walliam\contact\route.ts
+  app\api\walliam\estimator\vip-questionnaire\route.ts
+  app\api\walliam\estimator\vip-request\route.ts
+  lib\actions\leads.ts
+  lib\admin-homes\hierarchy.ts
+  lib\admin-homes\lead-email-recipients.ts
+
+=== D. Files writing to lead_ownership_changes ===
+  (no matches)
+
+=== E. Files writing to lead_email_log ===
+  lib\email\sendActivityEmail.ts
+
+=== F. Resend send call sites ===
+  app\api\01leads-contact\route.ts
+  app\api\chat\vip-approve\route.ts
+  app\api\chat\vip-questionnaire\route.ts
+  app\api\chat\vip-request\route.ts
+  app\api\paddle\webhook\route.ts
+  lib\email\resend.ts
+  lib\email\sendActivityEmail.ts
+  lib\email\sendTenantEmail.ts
+
+=== G. Files referencing createLead helpers ===
+  app\actions\createLead.ts
+  app\actions\joinTenant.ts
+  app\actions\submitLeadFromForm.ts
+  app\api\walliam\estimator\vip-questionnaire\route.ts
+  lib\actions\leads.ts
+  lib\actions\user-activity.ts
+  components\auth\RegisterModal.tsx
+
+=== H. Files referencing plan_data or buyer/seller plan ===
+  app\admin-homes\settings\SettingsClient.tsx
+  app\admin-homes\users\page.tsx
+  app\admin-homes\users\UsersClient.tsx
+  app\api\admin-homes\tenants\[id]\route.ts
+  app\api\admin-homes\users\override\route.ts
+  app\api\charlie\lead\route.ts
+  app\api\charlie\plan-email\route.ts
+  app\api\charlie\route.ts
+  app\api\walliam\charlie\session\route.ts
+  app\api\walliam\charlie\vip-approve\route.ts
+  app\api\walliam\charlie\vip-request\route.ts
+  app\charlie\components\CharlieOverlay.tsx
+  app\charlie\components\PlanDocument.tsx
+  app\charlie\hooks\useCharlie.ts
+  lib\credits\resolveUserLimits.ts
+  components\admin-homes\AddTenantModal.tsx
+  components\admin-homes\AdminHomesLeadsClient.tsx
+  components\admin-homes\EditTenantModal.tsx
+  components\auth\AuthStatus.tsx
+  components\auth\VIPAIAccess.tsx
+  components\credits\CreditSessionContext.tsx
+
+=== I. Files referencing 'leads' table or lead-related work (broad sweep) ===
+  app\actions\createLead.ts
+  app\actions\joinTenant.ts
+  app\actions\submitLeadFromForm.ts
+  app\admin\agents\page.tsx
+  app\admin\leads\page.tsx
+  app\admin\page.tsx
+  app\admin-homes\agents\page.tsx
+  app\admin-homes\leads\page.tsx
+  app\admin-homes\tenants\page.tsx
+  app\api\admin\leads\bulk-delete\route.ts
+  app\api\admin\leads\[id]\route.ts
+  app\api\admin-homes\activities\route.ts
+  app\api\admin-homes\agents\tree-data\route.ts
+  app\api\admin-homes\leads\[id]\route.ts
+  app\api\charlie\appointment\route.ts
+  app\api\charlie\lead\route.ts
+  app\api\charlie\plan-email\route.ts
+  app\api\chat\vip-approve\route.ts
+  app\api\chat\vip-questionnaire\route.ts
+  app\api\chat\vip-request\route.ts
+  app\api\chat\vip-upgrade\route.ts
+  app\api\email\welcome\route.ts
+  app\api\walliam\assign-user-agent\route.ts
+  app\api\walliam\charlie\vip-approve\route.ts
+  app\api\walliam\charlie\vip-request\route.ts
+  app\api\walliam\contact\route.ts
+  app\api\walliam\estimator\vip-approve\route.ts
+  app\api\walliam\estimator\vip-questionnaire\route.ts
+  app\api\walliam\estimator\vip-request\route.ts
+  app\charlie\lib\charlie-plan.ts
+  app\dashboard\buildings\page.tsx
+  app\dashboard\leads\[id]\page.tsx
+  app\dashboard\leads\page.tsx
+  app\dashboard\page.tsx
+  app\og\route.tsx
+  app\zerooneleads\components\FAQ.tsx
+  app\zerooneleads\components\Footer.tsx
+  app\zerooneleads\components\FooterCTA.tsx
+  app\zerooneleads\components\Hero.tsx
+  app\zerooneleads\components\Nav.tsx
+  app\zerooneleads\components\Problem.tsx
+  app\zerooneleads\components\Solution.tsx
+  app\zerooneleads\terms-of-service\page.tsx
+  app\page.tsx
+  lib\actions\buildings.ts
+  lib\actions\lead-management.ts
+  lib\actions\leads.ts
+  lib\actions\user-activity.ts
+  lib\admin-homes\permissions.ts
+  lib\email\activityEmailTemplate.ts
+  lib\email\sendActivityEmail.ts
+  lib\hierarchy\agent-tree.ts
+  components\admin\AdminDashboardClient.tsx
+  components\admin\AdminLayoutClient.tsx
+  components\admin\AdminLeadsClient.tsx
+  components\admin\AgentsManagementClient.tsx
+  components\admin\EditAgentModal.tsx
+  components\admin-homes\AdminHomesLeadsClient.tsx
+  components\admin-homes\AdminHomesSidebar.tsx
+  components\admin-homes\AgentDetailDrawer.tsx
+  components\admin-homes\AgentNodeCard.tsx
+  components\admin-homes\AgentsManagementClient.tsx
+  components\admin-homes\EditAgentModal.tsx
+  components\admin-homes\TenantsClient.tsx
+  components\dashboard\BuildingsClient.tsx
+  components\dashboard\DashboardLayout.tsx
+  components\dashboard\LeadDetailClient.tsx
+  components\dashboard\LeadsTable.tsx
+  components\dashboard\RecentLeads.tsx
+  components\dashboard\StatsCards.tsx
+  components\landing\BeforeAfter.tsx
+  components\landing\CommunityApplication.tsx
+  components\landing\DemoEmbed.tsx
+  components\landing\EstimatorDemo.tsx
+  components\landing\FeatureCards.tsx
+  components\landing\HeroSection.tsx
+  components\landing\PreviewGenerator.tsx

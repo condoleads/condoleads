@@ -1,0 +1,282 @@
+W-LEADS-EMAIL T6f-C fresh recon probe (read-only)
+Scope: walliam/charlie/vip-approve + walliam/contact
+Generated: 2026-05-11T19:34:13.525Z
+
+=== FILE: app/api/walliam/charlie/vip-approve/route.ts ===
+
+  bytes: 11615
+  lines: 296
+  line endings: LF
+  BOM: no
+
+  --- SECTION A: Imports (first 30 lines) ---
+  L   1: // app/api/walliam/charlie/vip-approve/route.ts
+  L   2: // Token-based approve/deny for WALLiam VIP plan requests
+  L   3: // Adapted from app/api/chat/vip-approve/route.ts — System 1 never touched
+  L   4: 
+  L   5: import { NextRequest, NextResponse } from 'next/server'
+  L   6: import { createClient } from '@supabase/supabase-js'
+  L   7: import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
+  L   8: 
+  L   9: 
+  L  10: function createServiceClient() {
+  L  11:   return createClient(
+  L  12:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  L  13:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  L  14:     { auth: { autoRefreshToken: false, persistSession: false } }
+  L  15:   )
+  L  16: }
+  L  17: 
+  L  18: export async function GET(request: NextRequest) {
+  L  19:   try {
+  L  20:     const { searchParams } = new URL(request.url)
+  L  21:     const token = searchParams.get('token')
+  L  22:     const action = searchParams.get('action')
+  L  23: 
+  L  24:     if (!token || !action) {
+  L  25:       return createHtmlResponse('error', 'Invalid request. Missing token or action.')
+  L  26:     }
+  L  27: 
+  L  28:     if (!['approve', 'deny'].includes(action)) {
+  L  29:       return createHtmlResponse('error', 'Invalid action.')
+  L  30:     }
+
+  --- SECTION B: Every /walliam/i hit (uncapped) ---
+  L   1: // app/api/walliam/charlie/vip-approve/route.ts
+  L   2: // Token-based approve/deny for WALLiam VIP plan requests
+  L 162:             subject: 'Your WALLiam Plan Access is Approved',
+  L 165:               agent?.full_name || 'WALLiam',
+  L 170:           console.error('[walliam/vip-approve] user email error:', err)
+  L 186:     console.error('[walliam/vip-approve] error:', error)
+  L 197:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+  L 205:           You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available on WALLiam.
+  L 211:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+  L 212:             ✦ Back to WALLiam
+  L 234:   <title>WALLiam - ${cfg.title}</title>
+  TOTAL: 11 hits
+
+  --- SECTION C: BASE_URL / baseUrl identifier references (complete) ---
+  TOTAL: 0 refs
+
+  --- SECTION D: NEXT_PUBLIC_APP_URL references ---
+  L 211:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+  TOTAL: 1 refs
+
+  --- SECTION E: Tenant SELECT blocks (.from('tenants') with ±5 line context) ---
+  -- tenants SELECT #1 at L71 --
+  L  69:       if (sessionTenantId) {
+  L  70:         const { data: tenantRow } = await supabase
+  L  71:           .from('tenants')
+  L  72:           .select('plan_manual_approve_limit')
+  L  73:           .eq('id', sessionTenantId)
+  L  74:           .single()
+  L  75:         if (tenantRow?.plan_manual_approve_limit != null) {
+  L  76:           plansToGrant = tenantRow.plan_manual_approve_limit
+  L  77:         }
+
+  -- tenants SELECT #2 at L113 --
+  L 111:       if (userId && tenantId) {
+  L 112:         const { data: tenantCfg } = await supabase
+  L 113:           .from('tenants')
+  L 114:           .select('plan_hard_cap, seller_plan_hard_cap, ai_hard_cap, estimator_hard_cap, ai_manual_approve_limit, plan_manual_approve_limit, estimator_manual_approve_attempts')
+  L 115:           .eq('id', tenantId)
+  L 116:           .single()
+  L 117:         const planType = vipRequest.buyer_type || 'buyer'
+  L 118:         const requestType = vipRequest.request_type || 'plan'
+  L 119:         const hardCap = requestType === 'chat'
+
+  TOTAL: 2 tenant SELECT blocks
+
+  --- SECTION F: validateSession call sites + destructure (±5 line context) ---
+  TOTAL: 0 validateSession call sites
+
+  --- SECTION G: Helper function signatures (function name(...) at column 0) ---
+  -- helper #1 at L10 --
+  L  10: function createServiceClient() {
+  L  11:   return createClient(
+  L  12:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  L  13:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  L  14:     { auth: { autoRefreshToken: false, persistSession: false } }
+  L  15:   )
+  L  16: }
+  L  17: 
+  L  18: export async function GET(request: NextRequest) {
+  L  19:   try {
+  L  20:     const { searchParams } = new URL(request.url)
+  L  21:     const token = searchParams.get('token')
+  L  22:     const action = searchParams.get('action')
+  L  23: 
+  L  24:     if (!token || !action) {
+  L  25:       return createHtmlResponse('error', 'Invalid request. Missing token or action.')
+
+  -- helper #2 at L191 --
+  L 191: function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number): string {
+  L 192:   return `
+  L 193:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L 194:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+  L 195:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  L 196:         <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
+  L 197:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+  L 198:       </div>
+  L 199:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+  L 200:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+  L 201:           Hi ${userName || 'there'},
+  L 202:         </p>
+  L 203:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+  L 204:           <strong>${agentName}</strong> has approved your request.
+  L 205:           You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available on WALLiam.
+  L 206:         </p>
+
+  -- helper #3 at L220 --
+  L 220: function createHtmlResponse(status: string, message: string): NextResponse {
+  L 221:   const configs: Record<string, { bg: string; icon: string; title: string }> = {
+  L 222:     approved:          { bg: '#10b981', icon: '&#10003;', title: 'Approved' },
+  L 223:     denied:            { bg: '#ef4444', icon: '&#10007;', title: 'Denied' },
+  L 224:     error:             { bg: '#ef4444', icon: '&#9888;', title: 'Error' },
+  L 225:     expired:           { bg: '#f59e0b', icon: '&#8987;', title: 'Expired' },
+  L 226:     already_processed: { bg: '#64748b', icon: '&#8505;', title: 'Already Processed' },
+  L 227:   }
+  L 228: 
+  L 229:   const cfg = configs[status] || configs.error
+  L 230: 
+  L 231:   const html = `<!DOCTYPE html>
+  L 232: <html>
+  L 233: <head>
+  L 234:   <title>WALLiam - ${cfg.title}</title>
+  L 235:   <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  TOTAL: 3 function declarations
+
+  --- SECTION H: POST handler opening (10 lines after export async function POST) ---
+  --- SECTION I: T6c-leftover (source: source || 'walliam_contact' literals) ---
+  TOTAL: 0 walliam_contact literals
+
+=== END FILE: app/api/walliam/charlie/vip-approve/route.ts ===
+
+=== FILE: app/api/walliam/contact/route.ts ===
+
+  bytes: 8599
+  lines: 215
+  line endings: LF
+  BOM: no
+
+  --- SECTION A: Imports (first 30 lines) ---
+  L   1: // app/api/walliam/contact/route.ts
+  L   2: // WALLiam contact form lead capture
+  L   3: // Used by: building pages, property pages, geo pages
+  L   4: // Resolves agent via resolve_agent_for_context
+  L   5: //
+  L   6: // W-HIERARCHY H3.8 (2026-05-03):
+  L   7: //   - getLeadEmailRecipients enforces 6-layer chain (was: inline manager-CC + hardcoded ADMIN_EMAIL)
+  L   8: //   - tenant_admin_id captured into lead insert payload (F58)
+  L   9: //   - F47 hardcoded ADMIN_EMAIL constant removed
+  L  10: //   - F66 walker call shape standardized via helper
+  L  11: //   - F67 try/catch standard (was already partially correct on this route — now uniform across both branches)
+  L  12: 
+  L  13: import { NextRequest, NextResponse } from 'next/server'
+  L  14: import { createClient } from '@supabase/supabase-js'
+  L  15: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L  16: import {
+  L  17:   sendTenantEmail,
+  L  18:   TenantEmailNotConfigured,
+  L  19:   TenantEmailFailed,
+  L  20:   getLeadEmailRecipients,
+  L  21:   AdminPlatformUnreachable,
+  L  22: } from '@/lib/admin-homes/lead-email-recipients'
+  L  23: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L  24: 
+  L  25: 
+  L  26: // Track user activity in user_activities table
+  L  27: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L  28:   try {
+  L  29:     await supabase.from('user_activities').insert({
+  L  30:       contact_email: contactEmail,
+
+  --- SECTION B: Every /walliam/i hit (uncapped) ---
+  L   1: // app/api/walliam/contact/route.ts
+  L   2: // WALLiam contact form lead capture
+  L 113:       source: source || 'walliam_contact',
+  L 125:     const subject = `\u2756 WALLiam Inquiry \u2014 ${name} \u2014 ${geo_name || source || 'WALLiam'}`
+  L 133:         console.error('[walliam/contact] admin platform unreachable:', err.message)
+  L 158:             templateKey: 'walliam_contact_lead_capture',
+  L 164:           console.warn('[walliam/contact] tenant email not configured:', err.message)
+  L 166:           console.error('[walliam/contact] resend send failed:', err.message)
+  L 168:           console.error('[walliam/contact] unexpected email error:', err)
+  L 175:       source: source || 'walliam_contact',
+  L 184:     console.error('[walliam/contact] error:', error)
+  TOTAL: 11 hits
+
+  --- SECTION C: BASE_URL / baseUrl identifier references (complete) ---
+  TOTAL: 0 refs
+
+  --- SECTION D: NEXT_PUBLIC_APP_URL references ---
+  TOTAL: 0 refs
+
+  --- SECTION E: Tenant SELECT blocks (.from('tenants') with ±5 line context) ---
+  TOTAL: 0 tenant SELECT blocks
+
+  --- SECTION F: validateSession call sites + destructure (±5 line context) ---
+  TOTAL: 0 validateSession call sites
+
+  --- SECTION G: Helper function signatures (function name(...) at column 0) ---
+  -- helper #1 at L40 --
+  L  40: function createServiceClient() {
+  L  41:   return createClient(
+  L  42:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  L  43:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  L  44:     { auth: { autoRefreshToken: false, persistSession: false } }
+  L  45:   )
+  L  46: }
+  L  47: 
+  L  48: export async function POST(req: NextRequest) {
+  L  49:   try {
+  L  50:     const {
+  L  51:       name, email, phone, message,
+  L  52:       source,
+  L  53:       building_id, listing_id,
+  L  54:       community_id, municipality_id, area_id,
+  L  55:       geo_name, tenant_id,
+
+  -- helper #2 at L189 --
+  L 189: function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id }: any): string {
+  L 190:   return `
+  L 191:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+  L 192:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+  L 193:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
+  L 194:           <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+  L 195:         </div>
+  L 196:         <div style="font-size: 18px; font-weight: 700; color: #fff;">New Inquiry</div>
+  L 197:         ${geo_name ? `<div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${geo_name}</div>` : ''}
+  L 198:       </div>
+  L 199:       <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+  L 200:         <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+  L 201:           <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${name}</td></tr>
+  L 202:           <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${email}" style="color: #1d4ed8;">${email}</a></td></tr>
+  L 203:           ${phone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${phone}" style="color: #1d4ed8;">${phone}</a></td></tr>` : ''}
+  L 204:           ${source ? `<tr><td style="color: #64748b;">Source</td><td style="color: #64748b;">${source}</td></tr>` : ''}
+
+  TOTAL: 2 function declarations
+
+  --- SECTION H: POST handler opening (10 lines after export async function POST) ---
+  -- POST handler @ L48 --
+  L  48: export async function POST(req: NextRequest) {
+  L  49:   try {
+  L  50:     const {
+  L  51:       name, email, phone, message,
+  L  52:       source,
+  L  53:       building_id, listing_id,
+  L  54:       community_id, municipality_id, area_id,
+  L  55:       geo_name, tenant_id,
+  L  56:     } = await req.json()
+  L  57: 
+  L  58:     if (!name || !email) {
+  L  59:       return NextResponse.json({ error: 'Name and email required' }, { status: 400 })
+  L  60:     }
+
+  --- SECTION I: T6c-leftover (source: source || 'walliam_contact' literals) ---
+  L 113:       source: source || 'walliam_contact',
+  L 158:             templateKey: 'walliam_contact_lead_capture',
+  L 175:       source: source || 'walliam_contact',
+  TOTAL: 3 walliam_contact literals
+
+=== END FILE: app/api/walliam/contact/route.ts ===

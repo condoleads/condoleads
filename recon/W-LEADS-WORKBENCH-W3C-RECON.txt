@@ -1,0 +1,195 @@
+=== W3c RECON 2026-05-13T15:17:24.247Z ===
+
+--- PHASE 1: lib/actions/leads.ts ---
+Path: lib/actions/leads.ts (15301 bytes)
+
+buildLeadEmail line hits:
+  L223: const html = buildLeadEmail({
+  L274: function buildLeadEmail(params: {
+
+source_url / referer hits in file:
+  L53: sourceUrl?: string
+  L157: // ─── Source detection from referer if not explicit ─────────────────────────
+  L159: const referer = headersList.get('referer') || ''
+  L163: if (referer.includes('/estimator')) {
+  L165: } else if (referer.includes('/register')) {
+  L183: source_url: params.sourceUrl || null,
+
+buildLeadEmail body (60-line window from declaration):
+  L274: function buildLeadEmail(params: {
+  L275:   contactName: string
+  L276:   contactEmail: string
+  L277:   contactPhone?: string
+  L278:   message?: string
+  L279:   source: string
+  L280:   buildingName?: string
+  L281:   buildingAddress?: string
+  L282:   unitNumber?: string
+  L283: }): string {
+  L284:   const { contactName, contactEmail, contactPhone, message, source, buildingName, buildingAddress, unitNumber } = params
+  L285:   const propertyLine = buildingName || buildingAddress
+  L286:     ? `${buildingName || ''}${buildingAddress ? ' — ' + buildingAddress : ''}${unitNumber ? ' #' + unitNumber : ''}`
+  L287:     : null
+  L288: 
+  L289:   return `
+  L290:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+  L291:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+  L292:         <div style="font-size: 18px; font-weight: 700; color: #fff;">New Lead</div>
+  L293:         <div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${source}</div>
+  L294:       </div>
+  L295:       <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+  L296:         <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+  L297:           <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${contactName}</td></tr>
+  L298:           <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${contactEmail}" style="color: #1d4ed8;">${contactEmail}</a></td></tr>
+  L299:           ${contactPhone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${contactPhone}" style="color: #1d4ed8;">${contactPhone}</a></td></tr>` : ''}
+  L300:           ${propertyLine ? `<tr><td style="color: #64748b;">Property</td><td style="color: #0f172a;">${propertyLine}</td></tr>` : ''}
+  L301:           ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+  L302:         </table>
+  L303:         <div style="margin-top: 20px; text-align: center;">
+  L304:           <a href="mailto:${contactEmail}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+  L305:             Reply to ${contactName}
+  L306:           </a>
+  L307:         </div>
+  L308:       </div>
+  L309:     </div>
+  L310:   `
+  L311: }
+  L312: 
+  L313: // ─── Untouched read/update helpers ───────────────────────────────────────────
+  L314: 
+  L315: export async function updateLeadStatus(leadId: string, status: string, notes?: string) {
+  L316:   const supabase = createServiceClient()
+  L317: 
+  L318:   const updateData: any = {
+  L319:     status,
+  L320:     updated_at: new Date().toISOString()
+  L321:   }
+  L322:   if (notes) updateData.notes = notes
+  L323: 
+  L324:   const { error } = await supabase
+  L325:     .from('leads')
+  L326:     .update(updateData)
+  L327:     .eq('id', leadId)
+  L328: 
+  L329:   if (error) {
+  L330:     console.error('Error updating lead status:', error)
+  L331:     return { success: false, error: error.message }
+  L332:   }
+  L333:   return { success: true }
+  L334: }
+
+buildLeadEmail callsites across app/ + lib/:
+  lib/actions/leads.ts:L223: const html = buildLeadEmail({
+  lib/actions/leads.ts:L274: function buildLeadEmail(params: {
+
+--- PHASE 2: 8 inline builders in 5 routes ---
+
+Builder: buildContactEmail  (expected in app/api/walliam/contact)
+  In app/api/walliam/contact/route.ts (9080 bytes):
+    L135: const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName })
+    L200: function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName }: any): string {
+
+Builder: buildUserConfirmationEmail  (expected in app/api/charlie/appointment)
+  In app/api/charlie/appointment/route.ts (19252 bytes):
+    L184: html: buildUserConfirmationEmail({
+    L273: function buildUserConfirmationEmail(data: {
+
+Builder: buildAgentNotificationEmail  (expected in app/api/charlie/appointment)
+  In app/api/charlie/appointment/route.ts (19252 bytes):
+    L224: html: buildAgentNotificationEmail({
+    L351: function buildAgentNotificationEmail(data: {
+
+Builder: buildUserPlanEmail  (expected in app/api/charlie/lead)
+  In app/api/charlie/lead/route.ts (27052 bytes):
+    L254: html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl: BASE_URL }),
+    L323: function buildUserPlanEmail(data: {
+
+Builder: buildAgentLeadEmail  (expected in app/api/charlie/lead)
+  In app/api/charlie/lead/route.ts (27052 bytes):
+    L288: html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics, brandName, domain, baseUrl: BASE_URL }),
+    L454: function buildAgentLeadEmail(data: {
+
+Builder: buildRichPlanEmail  (expected in app/api/charlie/plan-email)
+  In app/api/charlie/plan-email/route.ts (42668 bytes):
+    L160: const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL })
+    L232: function buildRichPlanEmail(data: {
+
+Builder: emailHtml  (expected in app/api/walliam/charlie/vip-request)
+  In app/api/walliam/charlie/vip-request/route.ts (21236 bytes):
+    L204: const emailHtml = buildAgentEmailHtml({
+    L261: html: emailHtml,
+
+Builder: buildUserApprovalEmailHtml  (expected in app/api/walliam/charlie/vip-request)
+  In app/api/walliam/charlie/vip-request/route.ts (21236 bytes):
+    L340: html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, tenantDomain),
+    L480: function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number, brandName: string, tenantDomain: string): string {
+
+--- PHASE 3: 3 estimator routes (F-W3C-ESTIMATOR-3-ROUTES-UNAUDITED) ---
+
+Route: app/api/walliam/estimator/vip-request
+  app/api/walliam/estimator/vip-request/route.ts (18864 bytes)
+    email hits (resend|sendEmail|emailHtml|Resend|buildLeadEmail|@resend):
+      L221: const emailHtml = buildApprovalEmailHtml({
+      L255: html: emailHtml,
+      L266: resendMessageId: sendResult.id,
+      L274: console.error('[walliam/estimator/vip-request] resend send failed:', err.message)
+      L342: console.error('[walliam/estimator/vip-request] resend send failed (user approval):', err.message)
+    source_url / referer hits:
+      L204: source_url: pageUrl,
+    leads-table / leads-insert hits:
+      L191: .from('leads')
+
+Route: app/api/walliam/estimator/vip-approve
+  app/api/walliam/estimator/vip-approve/route.ts (12350 bytes)
+    email hits (resend|sendEmail|emailHtml|Resend|buildLeadEmail|@resend):
+      L181: console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
+    source_url / referer hits:
+      (none)
+    leads-table / leads-insert hits:
+      (no leads-table hits)
+
+Route: app/api/walliam/estimator/vip-questionnaire
+  app/api/walliam/estimator/vip-questionnaire/route.ts (15055 bytes)
+    email hits (resend|sendEmail|emailHtml|Resend|buildLeadEmail|@resend):
+      L208: const emailHtml = buildQuestionnaireEmailHtml({
+      L256: html: emailHtml,
+      L267: resendMessageId: sendResult.id,
+      L275: console.error('[walliam/estimator/vip-questionnaire] resend send failed:', err.message)
+    source_url / referer hits:
+      L197: source_url: vipRequest.page_url,
+    leads-table / leads-insert hits:
+      L8: //   - Lead UPSERT instead of INSERT — questionnaire enriches existing vip-request lead
+      L156: .from('leads')
+      L169: .from('leads')
+      L183: const { error: insertLeadError } = await supabase
+      L184: .from('leads')
+      L203: if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadError)
+      L239: .from('leads')
+
+--- PHASE 4: source_url corpus-wide ---
+Total source_url hits: 10 across 204 .ts files
+  app/actions/joinTenant.ts:L189: sourceUrl: params.registrationUrl,
+  app/actions/submitLeadFromForm.ts:L37: sourceUrl?: string
+  app/actions/submitLeadFromForm.ts:L70: sourceUrl: params.sourceUrl,
+  app/api/chat/vip-questionnaire/route.ts:L211: source_url: vipRequest.page_url,
+  app/api/chat/vip-request/route.ts:L226: source_url: pageUrl,
+  app/api/t3b-smoke-leads-helper/route.ts:L38: sourceUrl: body.sourceUrl,
+  app/api/walliam/estimator/vip-questionnaire/route.ts:L197: source_url: vipRequest.page_url,
+  app/api/walliam/estimator/vip-request/route.ts:L204: source_url: pageUrl,
+  lib/actions/leads.ts:L53: sourceUrl?: string
+  lib/actions/leads.ts:L183: source_url: params.sourceUrl || null,
+
+--- PHASE 5: referer captures ---
+  app/api/walliam/contact/route.ts:L191: }, req.headers.get('referer') || '')
+  lib/actions/leads.ts:L157: // ─── Source detection from referer if not explicit ─────────────────────────
+  lib/actions/leads.ts:L159: const referer = headersList.get('referer') || ''
+  lib/actions/leads.ts:L163: if (referer.includes('/estimator')) {
+  lib/actions/leads.ts:L165: } else if (referer.includes('/register')) {
+  lib/actions/user-activity.ts:L85: const referer = headersList.get('referer') || params.pageUrl || ''
+  lib/actions/user-activity.ts:L111: page_url: referer,
+
+--- PHASE 6: leads.source_url in generated types ---
+  (none of the candidate type files exist)
+
+=== RECON COMPLETE ===
+Output: recon/W-LEADS-WORKBENCH-W3C-RECON.txt

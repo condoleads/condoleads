@@ -1,0 +1,672 @@
+W-LEADS-EMAIL T6f user-facing brand-context + enclosing-function recon
+Generated: 2026-05-11T14:12:12.373Z
+
+==============================================================================
+FILE: app/api/charlie/lead/route.ts
+==============================================================================
+  total lines: 522, user-facing /walliam/i hits: 5
+
+  --- L35 [enclosing fn: (module-level)] (window L31..L40) ---
+     L  31: } from '@/lib/admin-homes/lead-email-recipients'
+     L  32: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+     L  33: import { validateSession } from '@/lib/utils/validate-session'
+     L  34: 
+  >> L  35: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+     L  36: 
+     L  37: function createServiceClient() {
+     L  38:   return createClient(
+     L  39:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+     L  40:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+
+  --- L250 [enclosing fn: (module-level)] (window L246..L255) ---
+     L 246:     try {
+     L 247:       await sendTenantEmail({
+     L 248:         tenantId,
+     L 249:         to: authEmail,
+  >> L 250:         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+     L 251:         html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent }),
+     L 252:       })
+     L 253:     } catch (err) {
+     L 254:       if (err instanceof TenantEmailNotConfigured) {
+     L 255:         console.warn('[charlie/lead] tenant email not configured (user):', err.message)
+
+  --- L432 [enclosing fn: topListings] (window L428..L437) ---
+     L 428:         ${agentSection}
+     L 429: 
+     L 430:         <div style="text-align: center; margin: 24px 0 8px;">
+     L 431:           <a href="${BASE_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+  >> L 432:             ✦ Continue on WALLiam
+     L 433:           </a>
+     L 434:         </div>
+     L 435:       </div>
+     L 436: 
+     L 437:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+
+  --- L439 [enclosing fn: topListings] (window L435..L444) ---
+     L 435:       </div>
+     L 436: 
+     L 437:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+     L 438:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">
+  >> L 439:           Sent by WALLiam AI · walliam.ca
+     L 440:         </p>
+     L 441:       </div>
+     L 442:     </div>
+     L 443:   `
+     L 444: }
+
+  --- L518 [enclosing fn: topListings] (window L514..L522) ---
+     L 514:       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+     L 515:         <a href="${BASE_URL}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+     L 516:           View in Dashboard
+     L 517:         </a>
+  >> L 518:         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+     L 519:       </div>
+     L 520:     </div>
+     L 521:   `
+     L 522: }
+
+==============================================================================
+FILE: app/api/charlie/plan-email/route.ts
+==============================================================================
+  total lines: 641, user-facing /walliam/i hits: 4
+
+  --- L27 [enclosing fn: (module-level)] (window L23..L32) ---
+     L  23: } from '@/lib/admin-homes/lead-email-recipients'
+     L  24: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+     L  25: import { validateSession } from '@/lib/utils/validate-session'
+     L  26: 
+  >> L  27: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+     L  28: 
+     L  29: 
+     L  30: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+     L  31:   try {
+     L  32:     await supabase.from('user_activities').insert({
+
+  --- L154 [enclosing fn: (module-level)] (window L150..L159) ---
+     L 150:       budgetMax: plan?.budgetMax || null,
+     L 151:     })
+     L 152: 
+     L 153:     const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [] })
+  >> L 154:     const subject = `\u2756 WALLiam ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
+     L 155: 
+     L 156:     // User-facing plan email — single recipient, not chain
+     L 157:     try {
+     L 158:       await sendTenantEmail({ tenantId: tenantId || '', to: userEmail, subject, html })
+     L 159:     } catch (err) {
+
+  --- L632 [enclosing fn: addr] (window L628..L637) ---
+     L 628:         ${disclaimerHtml}
+     L 629:         ${agentHtml}
+     L 630:         <div style="text-align: center; margin: 24px 0 8px;">
+     L 631:           <a href="${BASE_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+  >> L 632:             &#10022; Open WALLiam
+     L 633:           </a>
+     L 634:         </div>
+     L 635:       </div>
+     L 636:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+     L 637:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam &middot; walliam.ca</p>
+
+  --- L637 [enclosing fn: addr] (window L633..L641) ---
+     L 633:           </a>
+     L 634:         </div>
+     L 635:       </div>
+     L 636:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+  >> L 637:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam &middot; walliam.ca</p>
+     L 638:       </div>
+     L 639:     </div>
+     L 640:   `
+     L 641: }
+
+==============================================================================
+FILE: app/api/charlie/appointment/route.ts
+==============================================================================
+  total lines: 407, user-facing /walliam/i hits: 3
+
+  --- L25 [enclosing fn: (module-level)] (window L21..L30) ---
+     L  21: } from '@/lib/admin-homes/lead-email-recipients'
+     L  22: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+     L  23: import { validateSession } from '@/lib/utils/validate-session'
+     L  24: 
+  >> L  25: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+     L  26: 
+     L  27: 
+     L  28: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+     L  29:   try {
+     L  30:     await supabase.from('user_activities').insert({
+
+  --- L335 [enclosing fn: (module-level)] (window L331..L340) ---
+     L 331:         </div>
+     L 332:       </div>
+     L 333: 
+     L 334:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+  >> L 335:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+     L 336:       </div>
+     L 337:     </div>
+     L 338:   `
+     L 339: }
+     L 340: 
+
+  --- L403 [enclosing fn: (module-level)] (window L399..L407) ---
+     L 399:         </div>
+     L 400:       </div>
+     L 401: 
+     L 402:       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+  >> L 403:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+     L 404:       </div>
+     L 405:     </div>
+     L 406:   `
+     L 407: }
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-request/route.ts
+==============================================================================
+  total lines: 490, user-facing /walliam/i hits: 15
+
+  --- L166 [enclosing fn: (module-level)] (window L162..L171) ---
+     L 162:         session_id: sessionId,
+     L 163:         agent_id: agent?.id || null,
+     L 164:         tenant_id: tenantId,
+     L 165:         phone,
+  >> L 166:         full_name: userName || 'WALLiam User',
+     L 167:         email: userEmail || null,
+     L 168:         page_url: pageUrl,
+     L 169:         building_name: buildingName,
+     L 170:         request_source: `${sourceKey}_estimator`,
+     L 171:         request_type: 'estimator',
+
+  --- L196 [enclosing fn: (module-level)] (window L192..L201) ---
+     L 192:           tenant_id: tenantId,
+     L 193:           manager_id: chainManagerId,
+     L 194:           area_manager_id: chainAreaManagerId,
+     L 195:           tenant_admin_id: chainTenantAdminId,
+  >> L 196:           contact_name: userName || 'WALLiam User',
+     L 197:           contact_email: userEmail,
+     L 198:           contact_phone: phone,
+     L 199:           source: `${sourceKey}_estimator_vip_request`,
+     L 200:           lead_origin_route: 'estimator_vip_request',
+     L 201:           source_url: pageUrl,
+
+  --- L203 [enclosing fn: (module-level)] (window L199..L208) ---
+     L 199:           source: `${sourceKey}_estimator_vip_request`,
+     L 200:           lead_origin_route: 'estimator_vip_request',
+     L 201:           source_url: pageUrl,
+     L 202:           building_id: session.current_page_type === 'building' ? session.current_page_id : null,
+  >> L 203:           message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
+     L 204:           status: 'new',
+     L 205:           quality: 'hot',
+     L 206:           assignment_source: agent?.id ? 'geo' : 'admin',
+     L 207:         })
+     L 208:         .select('id')
+
+  --- L215 [enclosing fn: (module-level)] (window L211..L220) ---
+     L 211:       lead = leadData
+     L 212:     }
+     L 213: 
+     L 214:     // Build approval URLs
+  >> L 215:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+     L 216:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+     L 217:     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+     L 218: 
+     L 219:     const emailHtml = buildApprovalEmailHtml({
+     L 220:       fullName: userName || 'WALLiam User',
+
+  --- L216 [enclosing fn: (module-level)] (window L212..L221) ---
+     L 212:     }
+     L 213: 
+     L 214:     // Build approval URLs
+     L 215:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  >> L 216:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+     L 217:     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+     L 218: 
+     L 219:     const emailHtml = buildApprovalEmailHtml({
+     L 220:       fullName: userName || 'WALLiam User',
+     L 221:       phone,
+
+  --- L217 [enclosing fn: (module-level)] (window L213..L222) ---
+     L 213: 
+     L 214:     // Build approval URLs
+     L 215:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+     L 216:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+  >> L 217:     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+     L 218: 
+     L 219:     const emailHtml = buildApprovalEmailHtml({
+     L 220:       fullName: userName || 'WALLiam User',
+     L 221:       phone,
+     L 222:       email: userEmail,
+
+  --- L220 [enclosing fn: (module-level)] (window L216..L225) ---
+     L 216:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+     L 217:     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+     L 218: 
+     L 219:     const emailHtml = buildApprovalEmailHtml({
+  >> L 220:       fullName: userName || 'WALLiam User',
+     L 221:       phone,
+     L 222:       email: userEmail,
+     L 223:       buildingName,
+     L 224:       pageUrl,
+     L 225:       approveUrl,
+
+  --- L245 [enclosing fn: (module-level)] (window L241..L250) ---
+     L 241:     }
+     L 242: 
+     L 243:     if (recipients) {
+     L 244:       try {
+  >> L 245:         const subject = `WALLiam Estimator VIP Request: ${phone}`
+     L 246:         const sendResult = await sendTenantEmail({
+     L 247:           tenantId: tenantId || '',
+     L 248:           to: recipients.to,
+     L 249:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+     L 250:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+
+  --- L331 [enclosing fn: (module-level)] (window L327..L336) ---
+     L 327:         try {
+     L 328:           await sendTenantEmail({
+     L 329:             tenantId: tenantId || '',
+     L 330:             to: userEmail,
+  >> L 331:             subject: 'WALLiam Estimator Access Approved',
+     L 332:             html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
+     L 333:           })
+     L 334:         } catch (err) {
+     L 335:           // F67 standard try/catch
+     L 336:           if (err instanceof TenantEmailNotConfigured) {
+
+  --- L332 [enclosing fn: (module-level)] (window L328..L337) ---
+     L 328:           await sendTenantEmail({
+     L 329:             tenantId: tenantId || '',
+     L 330:             to: userEmail,
+     L 331:             subject: 'WALLiam Estimator Access Approved',
+  >> L 332:             html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
+     L 333:           })
+     L 334:         } catch (err) {
+     L 335:           // F67 standard try/catch
+     L 336:           if (err instanceof TenantEmailNotConfigured) {
+     L 337:             console.warn('[walliam/estimator/vip-request] tenant email not configured (user approval):', err.message)
+
+  --- L420 [enclosing fn: (module-level)] (window L416..L425) ---
+     L 416: }): string {
+     L 417:   return `
+     L 418:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+     L 419:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  >> L 420:         <h1 style="color: white; margin: 0; font-size: 22px;">🔔 WALLiam Estimator VIP Request</h1>
+     L 421:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">📊 Estimator</p>
+     L 422:       </div>
+     L 423:       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+     L 424:         <h2 style="margin-top: 0; color: #1f2937; font-size: 16px;">Contact Information</h2>
+     L 425:         <table style="width: 100%; border-collapse: collapse;">
+
+  --- L432 [enclosing fn: (module-level)] (window L428..L437) ---
+     L 428:             <td style="padding: 8px 0; font-weight: 600;">
+     L 429:               <a href="tel:${data.phone}" style="color: #2563eb;">${data.phone}</a>
+     L 430:             </td>
+     L 431:           </tr>
+  >> L 432:           ${data.fullName && data.fullName !== 'WALLiam User' ? `
+     L 433:           <tr>
+     L 434:             <td style="padding: 8px 0; color: #6b7280;">Name:</td>
+     L 435:             <td style="padding: 8px 0; color: #1f2937;">${data.fullName}</td>
+     L 436:           </tr>` : ''}
+     L 437:           ${data.email ? `
+
+  --- L473 [enclosing fn: (module-level)] (window L469..L478) ---
+     L 469:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+     L 470:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+     L 471:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+     L 472:         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
+  >> L 473:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+     L 474:       </div>
+     L 475:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+     L 476:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+     L 477:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+     L 478:           <strong>${agentName}</strong> has approved your estimator access. You now have
+
+  --- L482 [enclosing fn: (module-level)] (window L478..L487) ---
+     L 478:           <strong>${agentName}</strong> has approved your estimator access. You now have
+     L 479:           <strong>${attemptsGranted} additional estimate${attemptsGranted !== 1 ? 's' : ''}</strong> available.
+     L 480:         </p>
+     L 481:         <div style="text-align: center;">
+  >> L 482:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}"
+     L 483:              style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+     L 484:             ✦ Back to WALLiam
+     L 485:           </a>
+     L 486:         </div>
+     L 487:       </div>
+
+  --- L484 [enclosing fn: (module-level)] (window L480..L489) ---
+     L 480:         </p>
+     L 481:         <div style="text-align: center;">
+     L 482:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}"
+     L 483:              style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+  >> L 484:             ✦ Back to WALLiam
+     L 485:           </a>
+     L 486:         </div>
+     L 487:       </div>
+     L 488:     </div>
+     L 489:   `
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-approve/route.ts
+==============================================================================
+  total lines: 246, user-facing /walliam/i hits: 5
+
+  --- L156 [enclosing fn: (module-level)] (window L152..L161) ---
+     L 152:             tenantId: tenantId || '',
+     L 153:             to: vipRequest.email,
+     L 154:             cc: managerEmail ? [managerEmail] : undefined,
+     L 155:             bcc: bccList,
+  >> L 156:             subject: 'Your WALLiam Estimator Access is Approved',
+     L 157:             html: buildUserApprovalEmailHtml(
+     L 158:               vipRequest.full_name,
+     L 159:               agent?.full_name || 'WALLiam',
+     L 160:               attemptsToGrant
+     L 161:             ),
+
+  --- L159 [enclosing fn: (module-level)] (window L155..L164) ---
+     L 155:             bcc: bccList,
+     L 156:             subject: 'Your WALLiam Estimator Access is Approved',
+     L 157:             html: buildUserApprovalEmailHtml(
+     L 158:               vipRequest.full_name,
+  >> L 159:               agent?.full_name || 'WALLiam',
+     L 160:               attemptsToGrant
+     L 161:             ),
+     L 162:           })
+     L 163:         } catch (err) {
+     L 164:           // F67 standard try/catch pattern
+
+  --- L192 [enclosing fn: (module-level)] (window L188..L197) ---
+     L 188:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+     L 189:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+     L 190:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+     L 191:         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
+  >> L 192:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+     L 193:       </div>
+     L 194:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+     L 195:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+     L 196:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
+     L 197:         <div style="text-align: center;">
+
+  --- L198 [enclosing fn: (module-level)] (window L194..L203) ---
+     L 194:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+     L 195:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+     L 196:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
+     L 197:         <div style="text-align: center;">
+  >> L 198:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to WALLiam</a>
+     L 199:         </div>
+     L 200:       </div>
+     L 201:     </div>
+     L 202:   `
+     L 203: }
+
+  --- L218 [enclosing fn: (module-level)] (window L214..L223) ---
+     L 214: 
+     L 215:   const html = `<!DOCTYPE html>
+     L 216: <html>
+     L 217: <head>
+  >> L 218:   <title>WALLiam Estimator — ${cfg.title}</title>
+     L 219:   <meta name="viewport" content="width=device-width, initial-scale=1">
+     L 220:   <style>
+     L 221:     * { margin: 0; padding: 0; box-sizing: border-box; }
+     L 222:     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+     L 223:     .card { background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; max-width: 400px; width: 100%; overflow: hidden; }
+
+==============================================================================
+FILE: app/api/walliam/estimator/session/route.ts
+==============================================================================
+  total lines: 223, user-facing /walliam/i hits: 3
+
+  --- L86 [enclosing fn: (module-level)] (window L82..L91) ---
+     L  82:     })
+     L  83:     const agentId = resolvedAgentId || null
+     L  84: 
+     L  85:     // Get agent name for display only
+  >> L  86:     let agentName = 'WALLiam'
+     L  87:     if (agentId) {
+     L  88:       const { data: agent } = await supabase
+     L  89:         .from('agents')
+     L  90:         .select('full_name')
+     L  91:         .eq('id', agentId)
+
+  --- L148 [enclosing fn: (module-level)] (window L144..L153) ---
+     L 144:       .order('created_at', { ascending: false })
+     L 145:       .limit(1)
+     L 146:       .single()
+     L 147: 
+  >> L 148:     const questionnaireCompleted = true // WALLiam has no questionnaire — users are registered
+     L 149:     const vipRequestStatus = vipRequest?.status || 'idle'
+     L 150:     const vipRequestId = vipRequest?.id || null
+     L 151: 
+     L 152:     // Step 6: Calculate usage and allowance from tenant config
+     L 153:     const freePlans = tenant.estimator_free_attempts ?? 1
+
+  --- L191 [enclosing fn: (module-level)] (window L187..L196) ---
+     L 187: 
+     L 188: 
+     L 189:     // Low credit warning email at 1 estimate remaining
+     L 190:     if (remaining === 1 && userId) {
+  >> L 191:       fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+     L 192:         method: 'POST', headers: { 'Content-Type': 'application/json' },
+     L 193:         body: JSON.stringify({ userId, creditType: 'estimate', remaining: 1, sessionId: session.id }),
+     L 194:       }).catch(() => {})
+     L 195:     }
+     L 196: 
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+  total lines: 362, user-facing /walliam/i hits: 7
+
+  --- L148 [enclosing fn: (module-level)] (window L144..L153) ---
+     L 144:       sourceKey = t6cTenant?.source_key ?? null
+     L 145:     }
+     L 146: 
+     L 147:     if (userEmail && userId && tenantId) {
+  >> L 148:       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
+     L 149: 
+     L 150:       // Match the lead row created by vip-request:
+     L 151:       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+     L 152:       // (vip-request writes source='walliam_estimator_vip_request')
+     L 153:       const { data: existingLeads } = await supabase
+
+  --- L169 [enclosing fn: (module-level)] (window L165..L174) ---
+     L 165:         // UPDATE: enrich the existing row with questionnaire detail
+     L 166:         const { error: updateLeadError } = await supabase
+     L 167:           .from('leads')
+     L 168:           .update({
+  >> L 169:             contact_name: userName || 'WALLiam User',
+     L 170:             contact_email: userEmail,
+     L 171:             manager_id: chainManagerId,
+     L 172:             area_manager_id: chainAreaManagerId,
+     L 173:             tenant_admin_id: chainTenantAdminId,
+     L 174:             message: enrichedMessage,
+
+  --- L190 [enclosing fn: (module-level)] (window L186..L195) ---
+     L 186:             tenant_id: tenantId,
+     L 187:             manager_id: chainManagerId,
+     L 188:             area_manager_id: chainAreaManagerId,
+     L 189:             tenant_admin_id: chainTenantAdminId,
+  >> L 190:             contact_name: userName || 'WALLiam User',
+     L 191:             contact_email: userEmail,
+     L 192:             contact_phone: vipRequest.phone,
+     L 193:             source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
+     L 194:             lead_origin_route: 'estimator_questionnaire',
+     L 195:             source_url: vipRequest.page_url,
+
+  --- L208 [enclosing fn: (module-level)] (window L204..L213) ---
+     L 204:     }
+     L 205: 
+     L 206:     // Build the chain notification email
+     L 207:     const emailHtml = buildQuestionnaireEmailHtml({
+  >> L 208:       userName: userName || 'WALLiam User',
+     L 209:       phone: vipRequest.phone,
+     L 210:       email: userEmail,
+     L 211:       buyerTypeDisplay,
+     L 212:       budgetDisplay,
+     L 213:       timelineDisplay,
+
+  --- L247 [enclosing fn: (module-level)] (window L243..L252) ---
+     L 243:           .limit(1)
+     L 244:         leadIdForAudit = latestLead?.[0]?.id || null
+     L 245:       }
+     L 246:       try {
+  >> L 247:         const subject = `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`
+     L 248:         const sendResult = await sendTenantEmail({
+     L 249:           tenantId: tenantId || '',
+     L 250:           to: recipients.to,
+     L 251:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+     L 252:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+
+  --- L312 [enclosing fn: (module-level)] (window L308..L317) ---
+     L 308: }): string {
+     L 309:   return `
+     L 310:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+     L 311:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  >> L 312:         <h1 style="color: white; margin: 0; font-size: 22px;">📋 WALLiam Estimator Questionnaire</h1>
+     L 313:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">Additional buyer details submitted</p>
+     L 314:       </div>
+     L 315:       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+     L 316:         <h2 style="margin-top: 0; color: #1f2937; font-size: 16px;">Contact</h2>
+     L 317:         <table style="width: 100%; border-collapse: collapse;">
+
+  --- L357 [enclosing fn: (module-level)] (window L353..L362) ---
+     L 353:         </table>
+     L 354:       </div>
+     L 355:       <div style="padding: 16px 24px; background: #1e293b; border-radius: 0 0 12px 12px;">
+     L 356:         <p style="margin: 0; color: rgba(255,255,255,0.6); font-size: 13px;">
+  >> L 357:           ✦ WALLiam — Use the approve/deny links from the original VIP email to manage access.
+     L 358:         </p>
+     L 359:       </div>
+     L 360:     </div>
+     L 361:   `
+     L 362: }
+
+==============================================================================
+FILE: app/api/walliam/charlie/vip-approve/route.ts
+==============================================================================
+  total lines: 296, user-facing /walliam/i hits: 7
+
+  --- L162 [enclosing fn: (module-level)] (window L158..L167) ---
+     L 158:         try {
+     L 159:           await sendTenantEmail({
+     L 160:             tenantId: tenantId || '',
+     L 161:             to: vipRequest.email,
+  >> L 162:             subject: 'Your WALLiam Plan Access is Approved',
+     L 163:             html: buildUserApprovalEmailHtml(
+     L 164:               vipRequest.full_name,
+     L 165:               agent?.full_name || 'WALLiam',
+     L 166:               plansToGrant
+     L 167:             ),
+
+  --- L165 [enclosing fn: (module-level)] (window L161..L170) ---
+     L 161:             to: vipRequest.email,
+     L 162:             subject: 'Your WALLiam Plan Access is Approved',
+     L 163:             html: buildUserApprovalEmailHtml(
+     L 164:               vipRequest.full_name,
+  >> L 165:               agent?.full_name || 'WALLiam',
+     L 166:               plansToGrant
+     L 167:             ),
+     L 168:           })
+     L 169:         } catch (err) {
+     L 170:           console.error('[walliam/vip-approve] user email error:', err)
+
+  --- L197 [enclosing fn: planUsed] (window L193..L202) ---
+     L 193:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+     L 194:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+     L 195:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+     L 196:         <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
+  >> L 197:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+     L 198:       </div>
+     L 199:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+     L 200:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+     L 201:           Hi ${userName || 'there'},
+     L 202:         </p>
+
+  --- L205 [enclosing fn: planUsed] (window L201..L210) ---
+     L 201:           Hi ${userName || 'there'},
+     L 202:         </p>
+     L 203:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+     L 204:           <strong>${agentName}</strong> has approved your request.
+  >> L 205:           You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available on WALLiam.
+     L 206:         </p>
+     L 207:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+     L 208:           Your agent may also reach out directly to help with your real estate journey.
+     L 209:         </p>
+     L 210:         <div style="text-align: center;">
+
+  --- L211 [enclosing fn: planUsed] (window L207..L216) ---
+     L 207:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+     L 208:           Your agent may also reach out directly to help with your real estate journey.
+     L 209:         </p>
+     L 210:         <div style="text-align: center;">
+  >> L 211:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+     L 212:             ✦ Back to WALLiam
+     L 213:           </a>
+     L 214:         </div>
+     L 215:       </div>
+     L 216:     </div>
+
+  --- L212 [enclosing fn: planUsed] (window L208..L217) ---
+     L 208:           Your agent may also reach out directly to help with your real estate journey.
+     L 209:         </p>
+     L 210:         <div style="text-align: center;">
+     L 211:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+  >> L 212:             ✦ Back to WALLiam
+     L 213:           </a>
+     L 214:         </div>
+     L 215:       </div>
+     L 216:     </div>
+     L 217:   `
+
+  --- L234 [enclosing fn: planUsed] (window L230..L239) ---
+     L 230: 
+     L 231:   const html = `<!DOCTYPE html>
+     L 232: <html>
+     L 233: <head>
+  >> L 234:   <title>WALLiam - ${cfg.title}</title>
+     L 235:   <meta name="viewport" content="width=device-width, initial-scale=1">
+     L 236:   <style>
+     L 237:     * { margin: 0; padding: 0; box-sizing: border-box; }
+     L 238:     body {
+     L 239:       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+==============================================================================
+FILE: app/api/walliam/contact/route.ts
+==============================================================================
+  total lines: 215, user-facing /walliam/i hits: 3
+
+  --- L113 [enclosing fn: (module-level)] (window L109..L118) ---
+     L 109:       contact_name: name,
+     L 110:       contact_email: email,
+     L 111:       contact_phone: phone || null,
+     L 112:       message: message || null,
+  >> L 113:       source: source || 'walliam_contact',
+     L 114:       lead_origin_route: 'contact_form',
+     L 115:       building_id: building_id || null,
+     L 116:       listing_id: listing_id || null,
+     L 117:       geo_name: geo_name || null,
+     L 118:       status: 'new',
+
+  --- L125 [enclosing fn: (module-level)] (window L121..L130) ---
+     L 121:     }).select('id').single()
+     L 122: 
+     L 123:     // Build email HTML
+     L 124:     const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id })
+  >> L 125:     const subject = `\u2756 WALLiam Inquiry \u2014 ${name} \u2014 ${geo_name || source || 'WALLiam'}`
+     L 126: 
+     L 127:     // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
+     L 128:     let recipients
+     L 129:     try {
+     L 130:       recipients = await getLeadEmailRecipients(tenant_id, agent?.id || null, supabase)
+
+  --- L175 [enclosing fn: (module-level)] (window L171..L180) ---
+     L 171:     }
+     L 172: 
+     L 173:     // Track activity
+     L 174:     await trackUserActivity(supabase, email, agent?.id || null, 'contact_form', {
+  >> L 175:       source: source || 'walliam_contact',
+     L 176:       geoName: geo_name || null,
+     L 177:       buildingId: building_id || null,
+     L 178:       listingId: listing_id || null,
+     L 179:       message: message || null,
+     L 180:     }, req.headers.get('referer') || '')
+
+==============================================================================
+TOTAL user-facing hits across 9 files: 52
+==============================================================================

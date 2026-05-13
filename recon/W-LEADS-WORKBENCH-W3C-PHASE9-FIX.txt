@@ -1,0 +1,1066 @@
+=== W3c PHASE 9-FIX 2026-05-13T16:06:05.469Z ===
+
+--- buildContactEmail :: app/api/walliam/contact/route.ts ---
+  L200: function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName }: any): string {
+  L201:   return `
+  L202:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+  L203:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+  L204:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
+  L205:           <span style="font-weight: 900;">${brandName}</span>
+  L206:         </div>
+  L207:         <div style="font-size: 18px; font-weight: 700; color: #fff;">New Inquiry</div>
+  L208:         ${geo_name ? `<div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${geo_name}</div>` : ''}
+  L209:       </div>
+  L210:       <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+  L211:         <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+  L212:           <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${name}</td></tr>
+  L213:           <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${email}" style="color: #1d4ed8;">${email}</a></td></tr>
+  L214:           ${phone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${phone}" style="color: #1d4ed8;">${phone}</a></td></tr>` : ''}
+  L215:           ${source ? `<tr><td style="color: #64748b;">Source</td><td style="color: #64748b;">${source}</td></tr>` : ''}
+  L216:           ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+  L217:         </table>
+  L218:         <div style="margin-top: 20px; text-align: center;">
+  L219:           <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+  L220:             Reply to ${name}
+  L221:           </a>
+  L222:         </div>
+  L223:       </div>
+  L224:     </div>
+  L225:   `
+  L226: }
+  (function spans L200-L226, 27 lines)
+
+--- buildUserConfirmationEmail :: app/api/charlie/appointment/route.ts ---
+  L273: function buildUserConfirmationEmail(data: {
+  L274:   name: string
+  L275:   intent: string
+  L276:   formattedDate: string
+  L277:   appointment_time: string
+  L278:   appointment_properties?: any[]
+  L279:   agent?: any
+  L280:   rescheduleUrl: string
+  L281:   brandName: string
+  L282:   domain: string
+  L283:   baseUrl: string
+  L284: }): string {
+  L285:   const { name, intent, formattedDate, appointment_time, appointment_properties, agent, rescheduleUrl, brandName, domain, baseUrl } = data
+  L286:   const isBuyer = intent === 'buyer'
+  L287: 
+  L288:   const propertiesHtml = isBuyer && appointment_properties?.length ? `
+  L289:     <div style="margin: 20px 0;">
+  L290:       <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Properties to View</h3>
+  L291:       ${appointment_properties.map(p => `
+  L292:         <a href="${baseUrl}/${p.slug || p.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; text-decoration: none;">
+  L293:           <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${p.address || '—'}</div>
+  L294:           <div style="font-size: 14px; font-weight: 800; color: #1d4ed8;">$${Number(p.price || 0).toLocaleString('en-CA')}</div>
+  L295:         </a>
+  L296:       `).join('')}
+  L297:     </div>
+  L298:   ` : ''
+  L299: 
+  L300:   const agentHtml = agent ? `
+  L301:     <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+  L302:       <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">Your Agent</div>
+  L303:       ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; margin-bottom: 8px;">` : ''}
+  L304:       <div style="font-size: 15px; font-weight: 700; color: #fff;">${agent.full_name}</div>
+  L305:       ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
+  L306:       <div style="margin-top: 12px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+  L307:         ${agent.email ? `<a href="mailto:${agent.email}" style="padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
+  L308:         ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
+  L309:       </div>
+  L310:     </div>
+  L311:   ` : ''
+  L312: 
+  L313:   return `
+  L314:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+  L315:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+  L316:         <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 4px;">
+  L317:           <span style="font-weight: 900;">${brandName}</span>
+  L318:         </div>
+  L319:         <h1 style="color: #fff; font-size: 20px; font-weight: 800; margin: 16px 0 6px;">
+  L320:           ${isBuyer ? '🏠 Viewing Request Sent' : '📋 Consultation Request Sent'}
+  L321:         </h1>
+  L322:         <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 14px;">Hi ${name} — your request has been sent to your agent.</p>
+  L323:       </div>
+  L324: 
+  L325:       <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
+  L326:         <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 16px; margin-bottom: 20px; text-align: center;">
+  L327:           <div style="font-size: 13px; font-weight: 700; color: #15803d; margin-bottom: 4px;">📅 ${formattedDate}</div>
+  L328:           <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${appointment_time}</div>
+  L329:           <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Your agent will confirm shortly</div>
+  L330:         </div>
+  L331: 
+  L332:         ${propertiesHtml}
+  L333:         ${agentHtml}
+  L334: 
+  L335:         <div style="text-align: center; margin-top: 20px;">
+  L336:           <a href="${rescheduleUrl}" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #374151; text-decoration: none; border-radius: 8px; font-size: 13px; font-weight: 600;">
+  L337:             🔄 Need to Reschedule?
+  L338:           </a>
+  L339:         </div>
+  L340:       </div>
+  L341: 
+  L342:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+  L343:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+  L344:       </div>
+  L345:     </div>
+  L346:   `
+  L347: }
+  (function spans L273-L347, 75 lines)
+
+--- buildAgentNotificationEmail :: app/api/charlie/appointment/route.ts ---
+  L351: function buildAgentNotificationEmail(data: {
+  L352:   name: string
+  L353:   email: string
+  L354:   phone?: string
+  L355:   intent: string
+  L356:   formattedDate: string
+  L357:   appointment_time: string
+  L358:   appointment_properties?: any[]
+  L359:   geo_name?: string
+  L360:   brandName: string
+  L361:   domain: string
+  L362:   baseUrl: string
+  L363: }): string {
+  L364:   const { name, email, phone, intent, formattedDate, appointment_time, appointment_properties, geo_name, brandName, domain, baseUrl } = data
+  L365:   const isBuyer = intent === 'buyer'
+  L366: 
+  L367:   const propertiesHtml = isBuyer && appointment_properties?.length ? `
+  L368:     <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 20px 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Properties Requested</h2>
+  L369:     ${appointment_properties.map(p => `
+  L370:       <a href="${baseUrl}/${p.slug || p.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
+  L371:         <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${p.address || '—'}</div>
+  L372:         <div style="font-size: 14px; font-weight: 800; color: #1d4ed8;">$${Number(p.price || 0).toLocaleString('en-CA')}</div>
+  L373:       </a>
+  L374:     `).join('')}
+  L375:   ` : ''
+  L376: 
+  L377:   return `
+  L378:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+  L379:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L380:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
+  L381:           <span style="font-weight: 900;">${brandName}</span>
+  L382:         </div>
+  L383:         <h1 style="color: #fff; margin: 0; font-size: 18px; font-weight: 700;">
+  L384:           📅 New ${isBuyer ? 'Viewing' : 'Consultation'} Request
+  L385:         </h1>
+  L386:         <p style="color: rgba(255,255,255,0.4); margin: 4px 0 0; font-size: 12px;">via Charlie AI · ${new Date().toLocaleDateString('en-CA')}</p>
+  L387:       </div>
+  L388: 
+  L389:       <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-top: none;">
+  L390:         <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 16px;">
+  L391:           <div style="font-size: 20px; font-weight: 800; color: #0f172a;">${formattedDate}</div>
+  L392:           <div style="font-size: 16px; font-weight: 700; color: #1d4ed8; margin-top: 2px;">${appointment_time}</div>
+  L393:         </div>
+  L394: 
+  L395:         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Contact</h2>
+  L396:         <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px;">
+  L397:           <tr><td style="padding: 5px 0; color: #64748b; width: 80px;">Name</td><td style="padding: 5px 0; font-weight: 700; color: #0f172a;">${name}</td></tr>
+  L398:           <tr><td style="padding: 5px 0; color: #64748b;">Email</td><td style="padding: 5px 0;"><a href="mailto:${email}" style="color: #2563eb;">${email}</a></td></tr>
+  L399:           ${phone ? `<tr><td style="padding: 5px 0; color: #64748b;">Phone</td><td style="padding: 5px 0;"><a href="tel:${phone}" style="color: #2563eb;">${phone}</a></td></tr>` : ''}
+  L400:           ${geo_name ? `<tr><td style="padding: 5px 0; color: #64748b;">Area</td><td style="padding: 5px 0; color: #0f172a;">${geo_name}</td></tr>` : ''}
+  L401:           <tr><td style="padding: 5px 0; color: #64748b;">Intent</td><td style="padding: 5px 0; color: #0f172a;">${isBuyer ? 'Buyer — Property Viewing' : 'Seller — CMA Consultation'}</td></tr>
+  L402:         </table>
+  L403: 
+  L404:         ${propertiesHtml}
+  L405: 
+  L406:         <div style="text-align: center; margin-top: 20px;">
+  L407:           <a href="${baseUrl}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+  L408:             View in Dashboard →
+  L409:           </a>
+  L410:         </div>
+  L411:       </div>
+  L412: 
+  L413:       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+  L414:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+  L415:       </div>
+  L416:     </div>
+  L417:   `
+  L418: }
+  (function spans L351-L418, 68 lines)
+
+--- buildUserPlanEmail :: app/api/charlie/lead/route.ts ---
+  L323: function buildUserPlanEmail(data: {
+  L324:   name: string
+  L325:   intent: string
+  L326:   buyerProfile?: any
+  L327:   sellerProfile?: any
+  L328:   listings?: any[]
+  L329:   analytics?: any
+  L330:   agent?: any
+  L331:   brandName: string
+  L332:   domain: string
+  L333:   baseUrl: string
+  L334: }): string {
+  L335:   const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl } = data
+  L336:   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+  L337:   const isBuyer = intent === 'buyer'
+  L338:   const topListings = (listings || []).slice(0, 5)
+  L339: 
+  L340:   const marketCards = analytics ? `
+  L341:     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0;">
+  L342:       ${[
+  L343:         { label: 'Median PSF', value: analytics.median_psf ? `$${Number(analytics.median_psf).toLocaleString('en-CA', { maximumFractionDigits: 0 })}` : '—' },
+  L344:         { label: 'Avg Days on Market', value: analytics.closed_avg_dom_90 ? `${analytics.closed_avg_dom_90}d` : '—' },
+  L345:         { label: 'Sale / List', value: analytics.sale_to_list_ratio ? `${analytics.sale_to_list_ratio}%` : '—' },
+  L346:       ].map(m => `
+  L347:         <div style="background: #f1f5f9; border-radius: 10px; padding: 14px; text-align: center;">
+  L348:           <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">${m.label}</div>
+  L349:           <div style="font-size: 20px; font-weight: 800; color: #0f172a;">${m.value}</div>
+  L350:         </div>
+  L351:       `).join('')}
+  L352:     </div>
+  L353:   ` : ''
+  L354: 
+  L355:   const listingCards = topListings.length > 0 ? `
+  L356:     <div style="margin: 20px 0;">
+  L357:       <h3 style="font-size: 14px; font-weight: 700; color: #0f172a; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.08em;">
+  L358:         ${isBuyer ? 'Matched Listings' : 'Comparable Sales'}
+  L359:       </h3>
+  L360:       ${topListings.map((l: any) => `
+  L361:         <a href="${baseUrl}/${l._slug || l.listing_key}" style="display: block; text-decoration: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 10px;">
+  L362:           <div style="display: flex; justify-content: space-between; align-items: center;">
+  L363:             <div>
+  L364:               <div style="font-size: 14px; font-weight: 700; color: #0f172a;">${l.unparsed_address || '—'}</div>
+  L365:               <div style="font-size: 12px; color: #64748b; margin-top: 2px;">${l.bedrooms_total ? `${l.bedrooms_total} bed` : ''} ${l.bathrooms_total_integer ? `· ${l.bathrooms_total_integer} bath` : ''}</div>
+  L366:             </div>
+  L367:             <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(l.list_price || l.close_price || 0).toLocaleString('en-CA')}</div>
+  L368:           </div>
+  L369:         </a>
+  L370:       `).join('')}
+  L371:     </div>
+  L372:   ` : ''
+  L373: 
+  L374:   const profileSection = isBuyer ? `
+  L375:     <div style="background: #f1f5f9; border-radius: 10px; padding: 16px; margin: 16px 0;">
+  L376:       <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Your Buyer Profile</h3>
+  L377:       ${buyerProfile?.budgetMax ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Budget:</strong> $${Number(buyerProfile.budgetMin || 0).toLocaleString('en-CA')} – $${Number(buyerProfile.budgetMax).toLocaleString('en-CA')}</p>` : ''}
+  L378:       ${buyerProfile?.propertyType ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Property Type:</strong> ${buyerProfile.propertyType}</p>` : ''}
+  L379:       ${buyerProfile?.bedrooms ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Bedrooms:</strong> ${buyerProfile.bedrooms}+</p>` : ''}
+  L380:       ${buyerProfile?.timeline ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Timeline:</strong> ${buyerProfile.timeline}</p>` : ''}
+  L381:     </div>
+  L382:   ` : `
+  L383:     <div style="background: #f1f5f9; border-radius: 10px; padding: 16px; margin: 16px 0;">
+  L384:       <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Your Seller Profile</h3>
+  L385:       ${sellerProfile?.propertyType ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Property Type:</strong> ${sellerProfile.propertyType}</p>` : ''}
+  L386:       ${sellerProfile?.estimatedValueMin ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Estimated Value:</strong> $${Number(sellerProfile.estimatedValueMin).toLocaleString('en-CA')} – $${Number(sellerProfile.estimatedValueMax).toLocaleString('en-CA')}</p>` : ''}
+  L387:       ${sellerProfile?.timeline ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Timeline:</strong> ${sellerProfile.timeline}</p>` : ''}
+  L388:       ${sellerProfile?.goal ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Goal:</strong> ${sellerProfile.goal}</p>` : ''}
+  L389:     </div>
+  L390:   `
+  L391: 
+  L392:   const agentSection = agent ? `
+  L393:     <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+  L394:       <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">Your Agent</div>
+  L395:       ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.15); margin-bottom: 10px;">` : ''}
+  L396:       <div style="font-size: 16px; font-weight: 700; color: #fff;">${agent.full_name}</div>
+  L397:       ${agent.title ? `<div style="font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.title}</div>` : ''}
+  L398:       ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
+  L399:       <div style="margin-top: 14px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+  L400:         ${agent.email ? `<a href="mailto:${agent.email}" style="display: inline-block; padding: 8px 18px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
+  L401:         ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="display: inline-block; padding: 8px 18px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
+  L402:       </div>
+  L403:     </div>
+  L404:   ` : ''
+  L405: 
+  L406:   return `
+  L407:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+  L408:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+  L409:         <div style="font-size: 28px; font-weight: 900; color: #fff; letter-spacing: -0.02em; margin-bottom: 4px;">
+  L410:           <span style="font-weight: 900;">${brandName}</span>
+  L411:         </div>
+  L412:         <div style="font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 20px;">AI Real Estate</div>
+  L413:         <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 6px;">
+  L414:           Your ${isBuyer ? 'Buyer' : 'Seller'} Plan is Ready
+  L415:         </h1>
+  L416:         <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 14px;">
+  L417:           Hi ${name} — here's your personalized plan for ${profile?.geoName || 'the GTA'}.
+  L418:         </p>
+  L419:       </div>
+  L420: 
+  L421:       <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
+  L422: 
+  L423:         ${analytics ? `
+  L424:         <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.08em;">
+  L425:           Market Intelligence · ${profile?.geoName || ''}
+  L426:         </h3>
+  L427:         ${marketCards}
+  L428:         ` : ''}
+  L429: 
+  L430:         ${profileSection}
+  L431: 
+  L432:         ${listingCards}
+  L433: 
+  L434:         ${agentSection}
+  L435: 
+  L436:         <div style="text-align: center; margin: 24px 0 8px;">
+  L437:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+  L438:             ✦ Continue on ${brandName}
+  L439:           </a>
+  L440:         </div>
+  L441:       </div>
+  L442: 
+  L443:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+  L444:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">
+  L445:           Sent by ${brandName} AI · ${domain}
+  L446:         </p>
+  L447:       </div>
+  L448:     </div>
+  L449:   `
+  L450: }
+  (function spans L323-L450, 128 lines)
+
+--- buildAgentLeadEmail :: app/api/charlie/lead/route.ts ---
+  L454: function buildAgentLeadEmail(data: {
+  L455:   name: string
+  L456:   email: string
+  L457:   phone?: string
+  L458:   intent: string
+  L459:   buyerProfile?: any
+  L460:   sellerProfile?: any
+  L461:   listings?: any[]
+  L462:   analytics?: any
+  L463:   brandName: string
+  L464:   domain: string
+  L465:   baseUrl: string
+  L466: }): string {
+  L467:   const { name, email, phone, intent, buyerProfile, sellerProfile, listings, brandName, domain, baseUrl } = data
+  L468:   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+  L469:   const isBuyer = intent === 'buyer'
+  L470:   const topListings = (listings || []).slice(0, 3)
+  L471: 
+  L472:   return `
+  L473:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+  L474:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L475:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 4px;">
+  L476:           <span>${brandName}</span>
+  L477:         </div>
+  L478:         <h1 style="color: #fff; margin: 8px 0 0; font-size: 18px; font-weight: 700;">
+  L479:           New ${isBuyer ? '🏠 Buyer' : '💰 Seller'} Lead
+  L480:         </h1>
+  L481:         <p style="color: rgba(255,255,255,0.4); margin: 4px 0 0; font-size: 12px;">via Charlie AI · ${new Date().toLocaleDateString('en-CA')}</p>
+  L482:       </div>
+  L483: 
+  L484:       <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-top: none;">
+  L485:         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Contact</h2>
+  L486:         <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px;">
+  L487:           <tr><td style="padding: 5px 0; color: #64748b; width: 80px;">Name</td><td style="padding: 5px 0; font-weight: 700; color: #0f172a;">${name}</td></tr>
+  L488:           <tr><td style="padding: 5px 0; color: #64748b;">Email</td><td style="padding: 5px 0;"><a href="mailto:${email}" style="color: #2563eb;">${email}</a></td></tr>
+  L489:           ${phone ? `<tr><td style="padding: 5px 0; color: #64748b;">Phone</td><td style="padding: 5px 0;"><a href="tel:${phone}" style="color: #2563eb;">${phone}</a></td></tr>` : ''}
+  L490:           <tr><td style="padding: 5px 0; color: #64748b;">Area</td><td style="padding: 5px 0; color: #0f172a;">${profile?.geoName || '—'}</td></tr>
+  L491:           <tr><td style="padding: 5px 0; color: #64748b;">Intent</td><td style="padding: 5px 0; color: #0f172a;">${isBuyer ? 'Buyer' : 'Seller'}</td></tr>
+  L492:         </table>
+  L493: 
+  L494:         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Plan Summary</h2>
+  L495:         <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 13px;">
+  L496:           ${isBuyer ? `
+  L497:             ${buyerProfile?.budgetMax ? `<p style="margin: 4px 0; color: #374151;"><strong>Budget:</strong> $${Number(buyerProfile.budgetMin || 0).toLocaleString('en-CA')} – $${Number(buyerProfile.budgetMax).toLocaleString('en-CA')}</p>` : ''}
+  L498:             ${buyerProfile?.propertyType ? `<p style="margin: 4px 0; color: #374151;"><strong>Type:</strong> ${buyerProfile.propertyType}</p>` : ''}
+  L499:             ${buyerProfile?.bedrooms ? `<p style="margin: 4px 0; color: #374151;"><strong>Bedrooms:</strong> ${buyerProfile.bedrooms}+</p>` : ''}
+  L500:             ${buyerProfile?.timeline ? `<p style="margin: 4px 0; color: #374151;"><strong>Timeline:</strong> ${buyerProfile.timeline}</p>` : ''}
+  L501:           ` : `
+  L502:             ${sellerProfile?.propertyType ? `<p style="margin: 4px 0; color: #374151;"><strong>Type:</strong> ${sellerProfile.propertyType}</p>` : ''}
+  L503:             ${sellerProfile?.estimatedValueMin ? `<p style="margin: 4px 0; color: #374151;"><strong>Est. Value:</strong> $${Number(sellerProfile.estimatedValueMin).toLocaleString('en-CA')} – $${Number(sellerProfile.estimatedValueMax).toLocaleString('en-CA')}</p>` : ''}
+  L504:             ${sellerProfile?.timeline ? `<p style="margin: 4px 0; color: #374151;"><strong>Timeline:</strong> ${sellerProfile.timeline}</p>` : ''}
+  L505:             ${sellerProfile?.goal ? `<p style="margin: 4px 0; color: #374151;"><strong>Goal:</strong> ${sellerProfile.goal}</p>` : ''}
+  L506:           `}
+  L507:         </div>
+  L508: 
+  L509:         ${topListings.length > 0 ? `
+  L510:         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Top Matched Listings</h2>
+  L511:         ${topListings.map((l: any) => `
+  L512:           <a href="${baseUrl}/${l._slug || l.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
+  L513:             <div>
+  L514:               <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${l.unparsed_address || '—'}</div>
+  L515:               <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${l.bedrooms_total ? `${l.bedrooms_total} bed` : ''}${l.bathrooms_total_integer ? ` · ${l.bathrooms_total_integer} bath` : ''}</div>
+  L516:             </div>
+  L517:             <div style="font-size: 15px; font-weight: 800; color: #1d4ed8;">$${Number(l.list_price || 0).toLocaleString('en-CA')}</div>
+  L518:           </a>
+  L519:         `).join('')}
+  L520:         ` : ''}
+  L521:       </div>
+  L522: 
+  L523:       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+  L524:         <a href="${baseUrl}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+  L525:           View in Dashboard
+  L526:         </a>
+  L527:         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+  L528:       </div>
+  L529:     </div>
+  L530:   `
+  L531: }
+  (function spans L454-L531, 78 lines)
+
+--- buildRichPlanEmail :: app/api/charlie/plan-email/route.ts ---
+  L232: function buildRichPlanEmail(data: {
+  L233:   userName: string
+  L234:   userEmail: string
+  L235:   planType: string
+  L236:   plan: any
+  L237:   analytics: any
+  L238:   listings: any[]
+  L239:   agent: any
+  L240:   geoName: string | null
+  L241:   comparables: any[]
+  L242:   sellerEstimate: any | null
+  L243:   vipCreditUsed: boolean
+  L244:   vipCreditPlansUsed: number
+  L245:   vipCreditTotal: number
+  L246:   blocks: any[]
+  L247:   brandName: string
+  L248:   domain: string
+  L249:   baseUrl: string
+  L250: }): string {
+  L251:   const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl } = data
+  L252:   const isBuyer = planType === 'buyer'
+  L253:   const topListings = (listings || []).slice(0, 10)
+  L254: 
+  L255:   const stl = analytics?.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio) : null
+  L256:   const dom = analytics?.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90) : null
+  L257:   const conditionLabel = !stl || !dom ? 'Insufficient Data'
+  L258:     : stl >= 99 && dom <= 20 ? "Strong Seller's Market"
+  L259:     : stl >= 97 && dom <= 40 ? "Seller's Market"
+  L260:     : stl < 95 || dom > 70 ? "Buyer's Market"
+  L261:     : 'Balanced Market'
+  L262:   const conditionColor = !stl || !dom ? '#94a3b8'
+  L263:     : stl >= 97 ? '#10b981'
+  L264:     : stl < 95 || (dom && dom > 70) ? '#ef4444'
+  L265:     : '#f59e0b'
+  L266: 
+  L267:   const blocksHtml = (blocks || []).length > 0 ? (() => {
+  L268:     const parts: string[] = []
+  L269:     for (const block of (blocks || [])) {
+  L270:       if (block.type === 'analytics') {
+  L271:         parts.push(`<div style="margin:16px 0;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+  L272:           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Market Intelligence &middot; ${block.geoName}</div>
+  L273:           <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+  L274:             <tr><td style="color:#64748b;width:160px;">Avg DOM</td><td style="font-weight:700;color:#0f172a;">${block.data?.closed_avg_dom_90 ? block.data.closed_avg_dom_90 + 'd' : '&mdash;'}</td></tr>
+  L275:             <tr><td style="color:#64748b;">Sale/List</td><td style="font-weight:700;color:#0f172a;">${block.data?.sale_to_list_ratio ? block.data.sale_to_list_ratio + '%' : '&mdash;'}</td></tr>
+  L276:             <tr><td style="color:#64748b;">Active</td><td style="font-weight:700;color:#0f172a;">${block.data?.active_count || '&mdash;'}</td></tr>
+  L277:           </table>
+  L278:         </div>`)
+  L279:       }
+  L280:       if (block.type === 'buildings') {
+  L281:         parts.push(`<div style="margin:16px 0;">
+  L282:           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Buildings Found &middot; ${block.label} &middot; ${block.buildings.length}</div>
+  L283:           ${(block.buildings || []).slice(0, 8).map((b: any) => `
+  L284:             <a href="${b.url || baseUrl}" style="display:block;text-decoration:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6px;">
+  L285:               <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+  L286:                 ${b.photo ? `<td width="48"><img src="${b.photo}" width="48" height="48" style="border-radius:6px;object-fit:cover;"></td>` : ''}
+  L287:                 <td style="padding-left:10px;vertical-align:middle;">
+  L288:                   <div style="font-size:13px;font-weight:700;color:#0f172a;">${b.buildingName}</div>
+  L289:                   <div style="font-size:12px;color:#64748b;">${b.medianPrice ? '$' + Number(b.medianPrice).toLocaleString('en-CA') : ''}${b.medianPsf ? ' &middot; $' + b.medianPsf + '/sqft' : ''}</div>
+  L290:                 </td>
+  L291:                 <td style="text-align:right;vertical-align:middle;">
+  L292:                   ${b.activeCount > 0 ? `<span style="background:#10b981;color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;">${b.activeCount} active</span>` : ''}
+  L293:                 </td>
+  L294:               </tr></table>
+  L295:             </a>
+  L296:           `).join('')}
+  L297:         </div>`)
+  L298:       }
+  L299:       if (block.type === 'rankings' && block.data?.rankings?.length > 0) {
+  L300:         const title = (block.data.ranking_type || block.rankType || '').split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  L301:         parts.push(`<div style="margin:16px 0;">
+  L302:           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">${title}</div>
+  L303:           ${(block.data.rankings || []).slice(0, 5).map((r: any) => `
+  L304:             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
+  L305:               <a href="${r.url || baseUrl}" style="font-size:13px;font-weight:600;color:#1d4ed8;text-decoration:none;">#${r.rank} ${r.entity_name}</a>
+  L306:               <span style="font-size:12px;color:#64748b;">${r.median_price ? '$' + Number(r.median_price).toLocaleString('en-CA') : ''}${r.gross_yield ? ' &middot; ' + r.gross_yield.toFixed(1) + '% yield' : ''}</span>
+  L307:             </div>
+  L308:           `).join('')}
+  L309:         </div>`)
+  L310:       }
+  L311:       if (block.type === 'priceTrends' && block.data?.current_median_sale) {
+  L312:         parts.push(`<div style="margin:16px 0;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+  L313:           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Price Trends</div>
+  L314:           <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+  L315:             <tr><td style="color:#64748b;width:160px;">Median Price</td><td style="font-weight:700;color:#1d4ed8;">$${Number(block.data.current_median_sale).toLocaleString('en-CA')}</td></tr>
+  L316:             ${block.data.current_avg_psf ? `<tr><td style="color:#64748b;">Avg PSF</td><td style="font-weight:700;color:#0f172a;">$${Number(block.data.current_avg_psf).toLocaleString('en-CA')}/sqft</td></tr>` : ''}
+  L317:             ${block.data.psf_trend_pct != null ? `<tr><td style="color:#64748b;">PSF Trend</td><td style="font-weight:700;color:${block.data.psf_trend_pct >= 0 ? '#10b981' : '#ef4444'};">${block.data.psf_trend_pct > 0 ? '+' : ''}${block.data.psf_trend_pct.toFixed(1)}%</td></tr>` : ''}
+  L318:           </table>
+  L319:         </div>`)
+  L320:       }
+  L321:     }
+  L322:     return parts.length > 0 ? `<div style="margin:20px 0;"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;">Your Research</div>${parts.join('')}</div>` : ''
+  L323:   })() : ''
+  L324: 
+  L325:   const conditionHtml = `
+  L326:     <div style="margin: 0 0 16px;">
+  L327:       <span style="display: inline-flex; align-items: center; gap: 8px; background: ${conditionColor}18; border: 1px solid ${conditionColor}40; border-radius: 100px; padding: 5px 14px;">
+  L328:         <span style="width: 7px; height: 7px; border-radius: 50%; background: ${conditionColor}; display: inline-block;"></span>
+  L329:         <span style="font-size: 12px; font-weight: 700; color: ${conditionColor};">${conditionLabel}</span>
+  L330:       </span>
+  L331:     </div>
+  L332:   `
+  L333: 
+  L334:   const marketHtml = analytics ? `
+  L335:     <div style="margin: 20px 0;">
+  L336:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Market Intelligence &middot; ${geoName || ''}</div>
+  L337:       <table width="100%" cellpadding="0" cellspacing="8" border="0" style="margin-bottom: 8px;">
+  L338:         <tr>
+  L339:           ${[
+  L340:             { label: 'Avg Days on Market', value: analytics.closed_avg_dom_90 ? `${analytics.closed_avg_dom_90}d` : '&mdash;' },
+  L341:             { label: 'Sale / List Ratio', value: analytics.sale_to_list_ratio ? `${analytics.sale_to_list_ratio}%` : '&mdash;' },
+  L342:             { label: 'Active Listings', value: analytics.active_count ? `${Number(analytics.active_count).toLocaleString()}` : '&mdash;' },
+  L343:           ].map(m => `
+  L344:             <td width="33%" style="padding: 0 4px;">
+  L345:               <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+  L346:                 <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">${m.label}</div>
+  L347:                 <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${m.value}</div>
+  L348:               </div>
+  L349:             </td>
+  L350:           `).join('')}
+  L351:         </tr>
+  L352:       </table>
+  L353:       <table width="100%" cellpadding="0" cellspacing="8" border="0">
+  L354:         <tr>
+  L355:           ${[
+  L356:             { label: 'Sold (90d)', value: analytics.closed_sale_count_90 ? `${Number(analytics.closed_sale_count_90).toLocaleString()}` : '&mdash;' },
+  L357:             { label: 'Absorption Rate', value: analytics.absorption_rate_pct ? `${analytics.absorption_rate_pct}%` : '&mdash;' },
+  L358:             { label: 'Median PSF', value: analytics.median_psf ? `$${Number(analytics.median_psf).toLocaleString('en-CA', { maximumFractionDigits: 0 })}` : '&mdash;' },
+  L359:           ].map(m => `
+  L360:             <td width="33%" style="padding: 0 4px;">
+  L361:               <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+  L362:                 <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">${m.label}</div>
+  L363:                 <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${m.value}</div>
+  L364:               </div>
+  L365:             </td>
+  L366:           `).join('')}
+  L367:         </tr>
+  L368:       </table>
+  L369:     </div>
+  L370:     ${analytics.subtype_breakdown && Object.keys(analytics.subtype_breakdown).length > 0 ? `
+  L371:     <div style="margin: 16px 0;">
+  L372:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Price by Home Type</div>
+  L373:       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
+  L374:         <tr style="background: #f8fafc;">
+  L375:           <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Type</td>
+  L376:           <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: center;">DOM</td>
+  L377:           <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: center;">STL</td>
+  L378:           <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: right;">Median</td>
+  L379:         </tr>
+  L380:         ${Object.entries(analytics.subtype_breakdown).map(([subtype, d]: [string, any]) => `
+  L381:         <tr style="border-top: 1px solid #f1f5f9;">
+  L382:           <td style="padding: 9px 10px; font-size: 13px; font-weight: 600; color: #0f172a;">${subtype}</td>
+  L383:           <td style="padding: 9px 10px; font-size: 12px; color: #64748b; text-align: center;">${d.avg_dom ? `${Math.round(d.avg_dom)}d` : '&mdash;'}</td>
+  L384:           <td style="padding: 9px 10px; font-size: 12px; color: #64748b; text-align: center;">${d.sale_to_list ? `${d.sale_to_list}%` : '&mdash;'}</td>
+  L385:           <td style="padding: 9px 10px; font-size: 14px; font-weight: 800; color: #1d4ed8; text-align: right;">${d.median_price ? `$${Number(d.median_price).toLocaleString('en-CA')}` : '&mdash;'}</td>
+  L386:         </tr>
+  L387:         `).join('')}
+  L388:       </table>
+  L389:     </div>
+  L390:     ` : ''}
+  L391:   ` : ''
+  L392: 
+  L393:   const offerIntelHtml = analytics ? `
+  L394:     <div style="margin: 16px 0;">
+  L395:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Offer Intelligence</div>
+  L396:       <table width="100%" cellpadding="0" cellspacing="4" border="0"><tr>
+  L397:         <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+  L398:           <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Offer At</div>
+  L399:           <div style="font-size: 18px; font-weight: 800; color: #1d4ed8;">${analytics.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio).toFixed(1) + '%' : '&mdash;'}</div>
+  L400:           <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">of asking</div>
+  L401:         </div></td>
+  L402:         <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+  L403:           <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Avg Concession</div>
+  L404:           <div style="font-size: 18px; font-weight: 800; color: #10b981;">${analytics.avg_concession_pct ? Number(analytics.avg_concession_pct).toFixed(1) + '%' : '&mdash;'}</div>
+  L405:           <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">below asking</div>
+  L406:         </div></td>
+  L407:         <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+  L408:           <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Decide In</div>
+  L409:           <div style="font-size: 18px; font-weight: 800; color: #f59e0b;">${analytics.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90).toFixed(0) + 'd' : '&mdash;'}</div>
+  L410:           <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">avg DOM</div>
+  L411:         </div></td>
+  L412:       </tr></table>
+  L413:     </div>
+  L414:   ` : ''
+  L415: 
+  L416:   const seasonal = analytics?.insight_seasonal
+  L417:   const bestMonths = (seasonal?.best_months || []) as number[]
+  L418:   const worstMonths = (seasonal?.worst_months || []) as number[]
+  L419:   const currentMonth = seasonal?.current_month as number | undefined
+  L420:   const bestTimeHtml = seasonal ? `
+  L421:     <div style="margin: 16px 0;">
+  L422:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Best Time to Buy</div>
+  L423:       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;">
+  L424:         <div style="font-size: 13px; color: #1e293b; line-height: 1.7;">
+  L425:           Best months: <strong style="color: #10b981;">${bestMonths.map((m: number) => MONTHS_ARR[m-1]).join(', ')}</strong> &nbsp;&middot;&nbsp;
+  L426:           Avoid: <strong style="color: #ef4444;">${worstMonths.map((m: number) => MONTHS_ARR[m-1]).join(', ')}</strong>
+  L427:           ${currentMonth ? `<br>Currently <strong>${MONTHS_ARR[currentMonth-1]}</strong> &mdash; ranked #${seasonal.current_month_rank} of 12 for buyer power.` : ''}
+  L428:         </div>
+  L429:       </div>
+  L430:     </div>
+  L431:   ` : ''
+  L432: 
+  L433:   const summaryHtml = plan?.summary ? `
+  L434:     <div style="background: linear-gradient(135deg, #eff6ff, #f0fdf4); border: 1px solid #bfdbfe; border-radius: 10px; padding: 18px; margin: 16px 0;">
+  L435:       <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">&#10022; Your ${isBuyer ? 'Buyer' : 'Seller'} Strategy</div>
+  L436:       <p style="margin: 0; font-size: 14px; line-height: 1.7; color: #1e293b;">${plan.summary}</p>
+  L437:     </div>
+  L438:   ` : ''
+  L439: 
+  L440:   const profileHtml = isBuyer ? `
+  L441:     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+  L442:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Buyer Profile</div>
+  L443:       <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px;">
+  L444:         ${plan?.budgetMax ? `<tr><td style="color: #64748b; width: 130px;">Budget</td><td style="font-weight: 700; color: #0f172a;">$${Number(plan.budgetMin || 0).toLocaleString('en-CA')} &mdash; $${Number(plan.budgetMax).toLocaleString('en-CA')}</td></tr>` : ''}
+  L445:         ${plan?.propertyType ? `<tr><td style="color: #64748b;">Property Type</td><td style="font-weight: 600; color: #0f172a;">${plan.propertyType}</td></tr>` : ''}
+  L446:         ${plan?.bedrooms ? `<tr><td style="color: #64748b;">Bedrooms</td><td style="font-weight: 600; color: #0f172a;">${plan.bedrooms}+</td></tr>` : ''}
+  L447:         ${plan?.timeline ? `<tr><td style="color: #64748b;">Timeline</td><td style="font-weight: 600; color: #0f172a;">${plan.timeline}</td></tr>` : ''}
+  L448:       </table>
+  L449:     </div>
+  L450:   ` : `
+  L451:     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+  L452:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Seller Profile</div>
+  L453:       <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px;">
+  L454:         ${plan?.propertyType ? `<tr><td style="color: #64748b; width: 130px;">Property Type</td><td style="font-weight: 600; color: #0f172a;">${plan.propertyType}</td></tr>` : ''}
+  L455:         ${plan?.estimatedValueMin ? `<tr><td style="color: #64748b;">Est. Value</td><td style="font-weight: 700; color: #059669;">$${Number(plan.estimatedValueMin).toLocaleString('en-CA')} &mdash; $${Number(plan.estimatedValueMax).toLocaleString('en-CA')}</td></tr>` : ''}
+  L456:         ${plan?.timeline ? `<tr><td style="color: #64748b;">Timeline</td><td style="font-weight: 600; color: #0f172a;">${plan.timeline}</td></tr>` : ''}
+  L457:         ${plan?.goal ? `<tr><td style="color: #64748b;">Goal</td><td style="font-weight: 600; color: #0f172a;">${plan.goal}</td></tr>` : ''}
+  L458:       </table>
+  L459:     </div>
+  L460:   `
+  L461: 
+  L462:   const planCardHtml = `
+  L463:     <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; margin: 20px 0;">
+  L464:       <div style="margin-bottom: 12px;">
+  L465:         <div style="font-size: 16px; font-weight: 800; color: #fff;">${isBuyer ? '&#127968; Your Buyer Plan' : '&#128176; Your Seller Strategy'}</div>
+  L466:         <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px;">${geoName || 'GTA'} &middot; ${new Date().toLocaleDateString('en-CA')}</div>
+  L467:       </div>
+  L468:       <div style="margin-bottom: 14px;">
+  L469:         <span style="display: inline-flex; align-items: center; gap: 6px; background: ${conditionColor}18; border: 1px solid ${conditionColor}40; border-radius: 100px; padding: 4px 12px;">
+  L470:           <span style="width: 6px; height: 6px; border-radius: 50%; background: ${conditionColor}; display: inline-block;"></span>
+  L471:           <span style="font-size: 11px; font-weight: 700; color: ${conditionColor};">${conditionLabel}</span>
+  L472:         </span>
+  L473:       </div>
+  L474:       <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Your Profile</div>
+  L475:       ${isBuyer && plan?.budgetMax ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Budget</span><span style="font-size:13px;font-weight:700;color:#3b82f6;">$${Number(plan.budgetMin||0).toLocaleString('en-CA')} &mdash; $${Number(plan.budgetMax).toLocaleString('en-CA')}</span></div>` : ''}
+  L476:       ${plan?.propertyType ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Property Type</span><span style="font-size:13px;font-weight:700;color:#fff;">${plan.propertyType}</span></div>` : ''}
+  L477:       ${plan?.timeline ? `<div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Timeline</span><span style="font-size:13px;font-weight:700;color:#fff;">${plan.timeline}</span></div>` : ''}
+  L478:       <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 12px 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Market Snapshot</div>
+  L479:       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Avg Days on Market</span><span style="font-size:13px;font-weight:700;color:#6366f1;">${analytics?.closed_avg_dom_90 ? analytics.closed_avg_dom_90 + 'd' : '&mdash;'}</span></div>
+  L480:       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Sale-to-List Ratio</span><span style="font-size:13px;font-weight:700;color:#10b981;">${analytics?.sale_to_list_ratio ? analytics.sale_to_list_ratio + '%' : '&mdash;'}</span></div>
+  L481:       <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Active Listings</span><span style="font-size:13px;font-weight:700;color:#fff;">${analytics?.active_count || '&mdash;'}</span></div>
+  L482:       ${topListings.length > 0 ? `
+  L483:       <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 12px 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Top Matches (${topListings.length})</div>
+  L484:       ${topListings.map((l) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><div><div style="font-size:12px;font-weight:700;color:#fff;">$${Number(l.list_price||0).toLocaleString('en-CA')}</div><div style="font-size:11px;color:rgba(255,255,255,0.35);">${(l.unparsed_address||'').split(',')[0]}</div></div><div style="font-size:11px;color:rgba(255,255,255,0.3);">${l.bedrooms_total||''} bed &middot; ${l.bathrooms_total_integer||''} bath</div></div>`).join('')}
+  L485:       ` : ''}
+  L486:     </div>
+  L487:   `
+  L488: 
+  L489:   const listingsHtml = topListings.length > 0 ? `
+  L490:     <div style="margin: 20px 0;">
+  L491:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">
+  L492:         ${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (${topListings.length})
+  L493:       </div>
+  L494:       ${topListings.map((l: any) => {
+  L495:         const url = `${baseUrl}${l._slug || '/' + (l.listing_key || '')}`
+  L496:         const price = l.list_price || l.close_price || 0
+  L497:         const address = l.unparsed_address || '&mdash;'
+  L498:         const beds = l.bedrooms_total
+  L499:         const baths = l.bathrooms_total_integer
+  L500:         const subtype = l.property_subtype || ''
+  L501:         const photo = (l.media && l.media[0]?.media_url) || ''
+  L502:         return `
+  L503:           <a href="${url}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+  L504:             <table width="100%" cellpadding="0" cellspacing="0" border="0">
+  L505:               <tr>
+  L506:                 ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" alt="" width="80" height="72" style="display: block; width: 80px; height: 72px;"></td>` : ''}
+  L507:                 <td style="padding: 10px 14px; vertical-align: middle;">
+  L508:                   <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${address}</div>
+  L509:                   <div style="font-size: 12px; color: #64748b; margin-top: 3px;">
+  L510:                     ${[beds ? `${beds} bed` : '', baths ? `${baths} bath` : '', subtype].filter(Boolean).join(' &middot; ')}
+  L511:                   </div>
+  L512:                 </td>
+  L513:                 <td style="padding: 10px 14px; text-align: right; white-space: nowrap; vertical-align: middle;">
+  L514:                   <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(price).toLocaleString('en-CA')}</div>
+  L515:                   <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">View &rarr;</div>
+  L516:                 </td>
+  L517:               </tr>
+  L518:             </table>
+  L519:           </a>
+  L520:         `
+  L521:       }).join('')}
+  L522:     </div>
+  L523:   ` : ''
+  L524: 
+  L525:   const sellerComps = sellerEstimate?.comparables || comparables || []
+  L526:   const comparableSoldHtml = sellerComps.length > 0 ? `
+  L527:     <div style="margin: 20px 0;">
+  L528:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Comparable Sold (${sellerComps.length})</div>
+  L529:       ${sellerComps.map((c: any) => {
+  L530:         const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
+  L531:         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+  L532:         const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+  L533:         return `
+  L534:           <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+  L535:             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+  L536:               ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"><div style="background:${c.temperature === 'HOT' ? '#ef4444' : c.temperature === 'WARM' ? '#f59e0b' : '#3b82f6'};color:#fff;font-size:9px;font-weight:700;padding:2px 5px;margin-top:2px;text-align:center;">${c.temperature || 'SOLD'}</div></td>` : ''}
+  L537:               <td style="padding: 10px 14px; vertical-align: middle;">
+  L538:                 <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${(c.unparsedAddress || c.unparsed_address || '').split(',')[0]}</div>
+  L539:                 <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : '', c.sqft ? c.sqft + ' sqft' : '', c.daysOnMarket ? c.daysOnMarket + 'd DOM' : ''].filter(Boolean).join(' &middot; ')}</div>
+  L540:                 ${c.matchQuality ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${c.matchQuality}</div>` : ''}
+  L541:               </td>
+  L542:               <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+  L543:                 <div style="font-size: 16px; font-weight: 800; color: #059669;">$${Number(price).toLocaleString('en-CA')}</div>
+  L544:                 <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Sold &rarr;</div>
+  L545:               </td>
+  L546:             </tr></table>
+  L547:           </a>
+  L548:         `
+  L549:       }).join('')}
+  L550:     </div>
+  L551:   ` : ''
+  L552: 
+  L553:   const competingHtml = sellerEstimate?.competingListings && sellerEstimate.competingListings.length > 0 ? `
+  L554:     <div style="margin: 20px 0;">
+  L555:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Competing For Sale (${sellerEstimate.competingListings.length})</div>
+  L556:       ${sellerEstimate.competingListings.slice(0, 10).map((c: any) => {
+  L557:         const price = c.list_price || 0
+  L558:         const addr = (c.unparsed_address || '').split(',')[0]
+  L559:         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+  L560:         const slug = c._slug || (c.listing_key ? '/' + c.listing_key : '')
+  L561:         return `
+  L562:           <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+  L563:             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+  L564:               ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"></td>` : ''}
+  L565:               <td style="padding: 10px 14px; vertical-align: middle;">
+  L566:                 <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${addr}</div>
+  L567:                 <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : ''].filter(Boolean).join(' &middot; ')}</div>
+  L568:               </td>
+  L569:               <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+  L570:                 <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(price).toLocaleString('en-CA')}</div>
+  L571:                 <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">For Sale &rarr;</div>
+  L572:               </td>
+  L573:             </tr></table>
+  L574:           </a>
+  L575:         `
+  L576:       }).join('')}
+  L577:     </div>
+  L578:   ` : ''
+  L579: 
+  L580:   const vipHtml = vipCreditUsed ? `
+  L581:     <div style="background: linear-gradient(135deg, #1e1b4b, #312e81); border: 1px solid rgba(99,102,241,0.3); border-radius: 10px; padding: 14px 18px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between;">
+  L582:       <div>
+  L583:         <div style="font-size: 12px; font-weight: 700; color: #a5b4fc;">&#10022; VIP Access Credit Used</div>
+  L584:         <div style="font-size: 11px; color: rgba(165,180,252,0.6); margin-top: 3px;">${vipCreditPlansUsed} of ${vipCreditTotal} plans used</div>
+  L585:       </div>
+  L586:       <div style="font-size: 11px; color: rgba(165,180,252,0.5);">Request more from your agent</div>
+  L587:     </div>
+  L588:   ` : ''
+  L589: 
+  L590:   const disclaimerHtml = `
+  L591:     <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px; margin: 16px 0;">
+  L592:       <p style="margin: 0; font-size: 11px; color: #92400e; line-height: 1.6;">
+  L593:         <strong style="color: #d97706;">&#9888; AI Disclaimer:</strong> This plan is generated by artificial intelligence using market data and algorithms. It is intended for informational purposes only and does not constitute professional real estate, legal, or financial advice. All information should be independently verified with a licensed real estate agent before making any decisions.
+  L594:       </p>
+  L595:     </div>
+  L596:   `
+  L597: 
+  L598:   const agentHtml = agent ? `
+  L599:     <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+  L600:       <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">Your Agent</div>
+  L601:       ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.15); margin-bottom: 8px;">` : ''}
+  L602:       <div style="font-size: 15px; font-weight: 700; color: #fff;">${agent.full_name}</div>
+  L603:       ${agent.title ? `<div style="font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.title}</div>` : ''}
+  L604:       ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
+  L605:       <div style="margin-top: 12px;">
+  L606:         ${agent.email ? `<a href="mailto:${agent.email}" style="display: inline-block; margin: 4px; padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
+  L607:         ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="display: inline-block; margin: 4px; padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
+  L608:       </div>
+  L609:     </div>
+  L610:   ` : ''
+  L611: 
+  L612:   return `
+  L613:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+  L614:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+  L615:         <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 16px;">
+  L616:           <span style="font-weight: 900;">${brandName}</span>
+  L617:         </div>
+  L618:         <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 8px;">
+  L619:           ${isBuyer ? '&#127968; Buyer Plan' : '&#128176; Seller Strategy'} &mdash; ${geoName || 'GTA'}
+  L620:         </h1>
+  L621:         <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 14px;">
+  L622:           Prepared for ${userName} &middot; ${new Date().toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+  L623:         </p>
+  L624:       </div>
+  L625:       <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
+  L626:         ${conditionHtml}
+  L627:         ${marketHtml}
+  L628:         ${offerIntelHtml}
+  L629:         ${bestTimeHtml}
+  L630:         ${summaryHtml}
+  L631:         ${blocksHtml}
+  L632:         ${planCardHtml}
+  L633:         ${profileHtml}
+  L634:         ${listingsHtml}
+  L635:         ${comparableSoldHtml}
+  L636:         ${competingHtml}
+  L637:         ${vipHtml}
+  L638:         ${disclaimerHtml}
+  L639:         ${agentHtml}
+  L640:         <div style="text-align: center; margin: 24px 0 8px;">
+  L641:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+  L642:             &#10022; Open ${brandName}
+  L643:           </a>
+  L644:         </div>
+  L645:       </div>
+  L646:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+  L647:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} &middot; ${domain}</p>
+  L648:       </div>
+  L649:     </div>
+  L650:   `
+  L651: }
+  (function spans L232-L651, 420 lines)
+
+--- buildAgentEmailHtml :: app/api/walliam/charlie/vip-request/route.ts ---
+  L417: function buildAgentEmailHtml(data: {
+  L418:   userName: string
+  L419:   userEmail: string
+  L420:   userPhone: string
+  L421:   planType: string
+  L422:   approveUrl: string
+  L423:   denyUrl: string
+  L424:   agentName: string
+  L425:   brandName: string
+  L426:   tenantDomain: string
+  L427: }): string {
+  L428:   const planLabel = data.planType === 'seller' ? '💰 Seller Plan' : '🏠 Buyer Plan'
+  L429: 
+  L430:   return `
+  L431:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L432:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L433:         <div style="font-size: 32px; margin-bottom: 8px;">✦</div>
+  L434:         <h1 style="color: white; margin: 0; font-size: 22px;">New VIP Plan Request</h1>
+  L435:         <p style="color: rgba(255,255,255,0.5); margin: 6px 0 0; font-size: 13px;">${data.brandName} · ${planLabel}</p>
+  L436:       </div>
+  L437: 
+  L438:       <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0;">
+  L439:         <h2 style="margin: 0 0 16px; color: #1e293b; font-size: 16px;">Contact</h2>
+  L440:         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+  L441:           <tr>
+  L442:             <td style="padding: 6px 0; color: #64748b; width: 80px;">Name</td>
+  L443:             <td style="padding: 6px 0; color: #1e293b; font-weight: 600;">${data.userName}</td>
+  L444:           </tr>
+  L445:           ${data.userEmail ? `
+  L446:           <tr>
+  L447:             <td style="padding: 6px 0; color: #64748b;">Email</td>
+  L448:             <td style="padding: 6px 0;"><a href="mailto:${data.userEmail}" style="color: #2563eb;">${data.userEmail}</a></td>
+  L449:           </tr>` : ''}
+  L450:           ${data.userPhone ? `
+  L451:           <tr>
+  L452:             <td style="padding: 6px 0; color: #64748b;">Phone</td>
+  L453:             <td style="padding: 6px 0;"><a href="tel:${data.userPhone}" style="color: #2563eb;">${data.userPhone}</a></td>
+  L454:           </tr>` : ''}
+  L455:           <tr>
+  L456:             <td style="padding: 6px 0; color: #64748b;">Plan</td>
+  L457:             <td style="padding: 6px 0; color: #1e293b;">${planLabel}</td>
+  L458:           </tr>
+  L459:         </table>
+  L460:       </div>
+  L461: 
+  L462:       <div style="padding: 24px; text-align: center; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+  L463:         <p style="margin: 0 0 20px; color: #64748b; font-size: 14px;">
+  L464:           Approve to grant this user additional ${data.brandName} plan credits.
+  L465:         </p>
+  L466:         <a href="${data.approveUrl}" style="display: inline-block; padding: 12px 28px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px; font-size: 14px;">
+  L467:           ✅ Approve
+  L468:         </a>
+  L469:         <a href="${data.denyUrl}" style="display: inline-block; padding: 12px 28px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
+  L470:           ❌ Deny
+  L471:         </a>
+  L472:         <p style="margin: 20px 0 0; font-size: 11px; color: #94a3b8;">
+  L473:           Manage all requests at ${data.tenantDomain}/admin-homes/leads
+  L474:         </p>
+  L475:       </div>
+  L476:     </div>
+  L477:   `
+  L478: }
+  (function spans L417-L478, 62 lines)
+
+--- buildUserApprovalEmailHtml :: app/api/walliam/charlie/vip-request/route.ts ---
+  L480: function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number, brandName: string, tenantDomain: string): string {
+  L481:   return `
+  L482:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L483:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+  L484:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  L485:         <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
+  L486:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
+  L487:       </div>
+  L488:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+  L489:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+  L490:           Hi ${userName},
+  L491:         </p>
+  L492:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+  L493:           <strong>${agentName}</strong> has approved your request for additional ${brandName} plan credits.
+  L494:           You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available.
+  L495:         </p>
+  L496:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+  L497:           Head back to ${brandName} to generate your personalized real estate plan. Your agent may also reach out directly.
+  L498:         </p>
+  L499:         <div style="text-align: center;">
+  L500:           <a href="${process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+  L501:             ✦ Back to ${brandName}
+  L502:           </a>
+  L503:         </div>
+  L504:       </div>
+  L505:     </div>
+  L506:   `
+  L507: }
+  (function spans L480-L507, 28 lines)
+
+--- buildApprovalEmailHtml :: app/api/walliam/estimator/vip-request/route.ts ---
+  L410: function buildApprovalEmailHtml(data: {
+  L411:   fullName: string
+  L412:   phone: string
+  L413:   email?: string
+  L414:   buildingName?: string
+  L415:   pageUrl?: string
+  L416:   approveUrl: string
+  L417:   denyUrl: string
+  L418:   agentName: string
+  L419:   brandName: string
+  L420: }): string {
+  L421:   return `
+  L422:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L423:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L424:         <h1 style="color: white; margin: 0; font-size: 22px;">🔔 ${data.brandName} Estimator VIP Request</h1>
+  L425:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">📊 Estimator</p>
+  L426:       </div>
+  L427:       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+  L428:         <h2 style="margin-top: 0; color: #1f2937; font-size: 16px;">Contact Information</h2>
+  L429:         <table style="width: 100%; border-collapse: collapse;">
+  L430:           <tr>
+  L431:             <td style="padding: 8px 0; color: #6b7280; width: 100px;">Phone:</td>
+  L432:             <td style="padding: 8px 0; font-weight: 600;">
+  L433:               <a href="tel:${data.phone}" style="color: #2563eb;">${data.phone}</a>
+  L434:             </td>
+  L435:           </tr>
+  L436:           ${data.fullName && data.fullName !== `${data.brandName} User` ? `
+  L437:           <tr>
+  L438:             <td style="padding: 8px 0; color: #6b7280;">Name:</td>
+  L439:             <td style="padding: 8px 0; color: #1f2937;">${data.fullName}</td>
+  L440:           </tr>` : ''}
+  L441:           ${data.email ? `
+  L442:           <tr>
+  L443:             <td style="padding: 8px 0; color: #6b7280;">Email:</td>
+  L444:             <td style="padding: 8px 0;">
+  L445:               <a href="mailto:${data.email}" style="color: #2563eb;">${data.email}</a>
+  L446:             </td>
+  L447:           </tr>` : ''}
+  L448:           ${data.buildingName ? `
+  L449:           <tr>
+  L450:             <td style="padding: 8px 0; color: #6b7280;">Building:</td>
+  L451:             <td style="padding: 8px 0; color: #1f2937;">${data.buildingName}</td>
+  L452:           </tr>` : ''}
+  L453:         </table>
+  L454:       </div>
+  L455:       <div style="padding: 24px; text-align: center; background: white; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+  L456:         <p style="margin: 0 0 20px; color: #6b7280; font-size: 14px;">
+  L457:           Approve to grant this visitor additional estimator access.
+  L458:         </p>
+  L459:         <a href="${data.approveUrl}" style="display: inline-block; padding: 14px 32px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px;">
+  L460:           ✅ Approve
+  L461:         </a>
+  L462:         <a href="${data.denyUrl}" style="display: inline-block; padding: 14px 32px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
+  L463:           ❌ Deny
+  L464:         </a>
+  L465:         <p style="margin: 20px 0 0; font-size: 12px; color: #9ca3af;">Expires in 24 hours.</p>
+  L466:       </div>
+  L467:     </div>
+  L468:   `
+  L469: }
+  (function spans L410-L469, 60 lines)
+
+--- buildUserApprovalEmailHtml :: app/api/walliam/estimator/vip-approve/route.ts ---
+  L199: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, baseUrl: string): string {
+  L200:   return `
+  L201:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L202:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+  L203:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  L204:         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
+  L205:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
+  L206:       </div>
+  L207:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+  L208:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+  L209:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
+  L210:         <div style="text-align: center;">
+  L211:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to ${brandName}</a>
+  L212:         </div>
+  L213:       </div>
+  L214:     </div>
+  L215:   `
+  L216: }
+  (function spans L199-L216, 18 lines)
+
+--- buildQuestionnaireEmailHtml :: app/api/walliam/estimator/vip-questionnaire/route.ts ---
+  L301: function buildQuestionnaireEmailHtml(data: {
+  L302:   userName: string
+  L303:   phone: string
+  L304:   email?: string
+  L305:   buyerTypeDisplay: string
+  L306:   budgetDisplay: string
+  L307:   timelineDisplay: string
+  L308:   buildingName?: string
+  L309:   requirements?: string
+  L310:   brandName: string
+  L311: }): string {
+  L312:   return `
+  L313:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L314:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L315:         <h1 style="color: white; margin: 0; font-size: 22px;">📋 ${data.brandName} Estimator Questionnaire</h1>
+  L316:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">Additional buyer details submitted</p>
+  L317:       </div>
+  L318:       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+  L319:         <h2 style="margin-top: 0; color: #1f2937; font-size: 16px;">Contact</h2>
+  L320:         <table style="width: 100%; border-collapse: collapse;">
+  L321:           <tr>
+  L322:             <td style="padding: 8px 0; color: #6b7280; width: 120px;">Name:</td>
+  L323:             <td style="padding: 8px 0; color: #1f2937; font-weight: 600;">${data.userName}</td>
+  L324:           </tr>
+  L325:           <tr>
+  L326:             <td style="padding: 8px 0; color: #6b7280;">Phone:</td>
+  L327:             <td style="padding: 8px 0;"><a href="tel:${data.phone}" style="color: #2563eb;">${data.phone}</a></td>
+  L328:           </tr>
+  L329:           ${data.email ? `<tr>
+  L330:             <td style="padding: 8px 0; color: #6b7280;">Email:</td>
+  L331:             <td style="padding: 8px 0;"><a href="mailto:${data.email}" style="color: #2563eb;">${data.email}</a></td>
+  L332:           </tr>` : ''}
+  L333:         </table>
+  L334:         <h2 style="margin-top: 24px; color: #1f2937; font-size: 16px;">Requirements</h2>
+  L335:         <table style="width: 100%; border-collapse: collapse;">
+  L336:           <tr>
+  L337:             <td style="padding: 8px 0; color: #6b7280; width: 120px;">Type:</td>
+  L338:             <td style="padding: 8px 0; color: #1f2937; font-weight: 600;">${data.buyerTypeDisplay}</td>
+  L339:           </tr>
+  L340:           <tr>
+  L341:             <td style="padding: 8px 0; color: #6b7280;">Budget:</td>
+  L342:             <td style="padding: 8px 0; color: #1f2937;">${data.budgetDisplay}</td>
+  L343:           </tr>
+  L344:           <tr>
+  L345:             <td style="padding: 8px 0; color: #6b7280;">Timeline:</td>
+  L346:             <td style="padding: 8px 0; color: #1f2937;">${data.timelineDisplay}</td>
+  L347:           </tr>
+  L348:           ${data.buildingName ? `<tr>
+  L349:             <td style="padding: 8px 0; color: #6b7280;">Building:</td>
+  L350:             <td style="padding: 8px 0; color: #1f2937;">${data.buildingName}</td>
+  L351:           </tr>` : ''}
+  L352:           ${data.requirements ? `<tr>
+  L353:             <td style="padding: 8px 0; color: #6b7280; vertical-align: top;">Notes:</td>
+  L354:             <td style="padding: 8px 0; color: #1f2937;">${data.requirements}</td>
+  L355:           </tr>` : ''}
+  L356:         </table>
+  L357:       </div>
+  L358:       <div style="padding: 16px 24px; background: #1e293b; border-radius: 0 0 12px 12px;">
+  L359:         <p style="margin: 0; color: rgba(255,255,255,0.6); font-size: 13px;">
+  L360:           ✦ ${data.brandName} — Use the approve/deny links from the original VIP email to manage access.
+  L361:         </p>
+  L362:       </div>
+  L363:     </div>
+  L364:   `
+  L365: }
+  (function spans L301-L365, 65 lines)
+
+=== PHASE 9-FIX COMPLETE ===
+Output: recon/W-LEADS-WORKBENCH-W3C-PHASE9-FIX.txt

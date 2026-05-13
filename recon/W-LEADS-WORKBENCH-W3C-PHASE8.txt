@@ -1,0 +1,640 @@
+=== W3c PHASE 8 RECON 2026-05-13T15:27:35.470Z ===
+
+--- Q1: buildApprovalEmailHtml body — does it render pageUrl? ---
+app/api/walliam/estimator/vip-request/route.ts L410 to L530
+  L410: function buildApprovalEmailHtml(data: {
+  L411:   fullName: string
+  L412:   phone: string
+  L413:   email?: string
+  L414:   buildingName?: string
+  L415:   pageUrl?: string
+  L416:   approveUrl: string
+  L417:   denyUrl: string
+  L418:   agentName: string
+  L419:   brandName: string
+  L420: }): string {
+  L421:   return `
+  L422:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L423:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L424:         <h1 style="color: white; margin: 0; font-size: 22px;">🔔 ${data.brandName} Estimator VIP Request</h1>
+  L425:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">📊 Estimator</p>
+  L426:       </div>
+  L427:       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+  L428:         <h2 style="margin-top: 0; color: #1f2937; font-size: 16px;">Contact Information</h2>
+  L429:         <table style="width: 100%; border-collapse: collapse;">
+  L430:           <tr>
+  L431:             <td style="padding: 8px 0; color: #6b7280; width: 100px;">Phone:</td>
+  L432:             <td style="padding: 8px 0; font-weight: 600;">
+  L433:               <a href="tel:${data.phone}" style="color: #2563eb;">${data.phone}</a>
+  L434:             </td>
+  L435:           </tr>
+  L436:           ${data.fullName && data.fullName !== `${data.brandName} User` ? `
+  L437:           <tr>
+  L438:             <td style="padding: 8px 0; color: #6b7280;">Name:</td>
+  L439:             <td style="padding: 8px 0; color: #1f2937;">${data.fullName}</td>
+  L440:           </tr>` : ''}
+  L441:           ${data.email ? `
+  L442:           <tr>
+  L443:             <td style="padding: 8px 0; color: #6b7280;">Email:</td>
+  L444:             <td style="padding: 8px 0;">
+  L445:               <a href="mailto:${data.email}" style="color: #2563eb;">${data.email}</a>
+  L446:             </td>
+  L447:           </tr>` : ''}
+  L448:           ${data.buildingName ? `
+  L449:           <tr>
+  L450:             <td style="padding: 8px 0; color: #6b7280;">Building:</td>
+  L451:             <td style="padding: 8px 0; color: #1f2937;">${data.buildingName}</td>
+  L452:           </tr>` : ''}
+  L453:         </table>
+  L454:       </div>
+  L455:       <div style="padding: 24px; text-align: center; background: white; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+  L456:         <p style="margin: 0 0 20px; color: #6b7280; font-size: 14px;">
+  L457:           Approve to grant this visitor additional estimator access.
+  L458:         </p>
+  L459:         <a href="${data.approveUrl}" style="display: inline-block; padding: 14px 32px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px;">
+  L460:           ✅ Approve
+  L461:         </a>
+  L462:         <a href="${data.denyUrl}" style="display: inline-block; padding: 14px 32px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
+  L463:           ❌ Deny
+  L464:         </a>
+  L465:         <p style="margin: 20px 0 0; font-size: 12px; color: #9ca3af;">Expires in 24 hours.</p>
+  L466:       </div>
+  L467:     </div>
+  L468:   `
+  L469: }
+  L470: 
+  L471: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, domain: string, baseUrl: string): string {
+  L472:   return `
+  L473:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L474:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+  L475:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  L476:         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
+  L477:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
+  L478:       </div>
+  L479:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+  L480:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+  L481:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+  L482:           <strong>${agentName}</strong> has approved your estimator access. You now have
+  L483:           <strong>${attemptsGranted} additional estimate${attemptsGranted !== 1 ? 's' : ''}</strong> available.
+  L484:         </p>
+  L485:         <div style="text-align: center;">
+  L486:           <a href="${baseUrl}"
+  L487:              style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+  L488:             ✦ Back to ${brandName}
+  L489:           </a>
+  L490:         </div>
+  L491:       </div>
+  L492:     </div>
+  L493:   `
+  L494: }
+
+--- Q2: walliam/charlie/vip-request — leads vs vip_requests inserts ---
+  scan for .from(...) tables:
+    L63: table=tenants :: .from('tenants')
+    L84: table=chat_sessions :: .from('chat_sessions')
+    L115: table=vip_requests :: .from('vip_requests')
+    L137: table=user_profiles :: .from('user_profiles')
+    L178: table=vip_requests :: .from('vip_requests')
+    L219: table=leads :: const { data, error: leadError } = await supabase.from('leads').insert({
+    L292: table=chat_sessions :: .from('chat_sessions')
+    L319: table=user_credit_overrides :: const { error: overrideError } = await supabase.from('user_credit_overrides').upsert({
+    L396: table=vip_requests :: .from('vip_requests')
+
+  --- leads insert context (if any) ---
+  1 .from('leads') hit(s) at lines: 219
+
+  --- context around L219 (15 before / 25 after) ---
+    L204:     const emailHtml = buildAgentEmailHtml({
+    L205:       userName,
+    L206:       userEmail,
+    L207:       userPhone,
+    L208:       planType: planType || 'buyer',
+    L209:       approveUrl,
+    L210:       denyUrl,
+    L211:       agentName: agent?.full_name || 'Agent',
+    L212:       brandName,
+    L213:       tenantDomain,
+    L214:     })
+    L215: 
+    L216:     // Save lead with full hierarchy chain (per Lead+Email contract)
+    L217:     let lead: { id: string } | null = null
+    L218:     if (userEmail) {
+ >> L219:       const { data, error: leadError } = await supabase.from('leads').insert({
+    L220:         agent_id: agent?.id || null,
+    L221:         user_id: session.user_id || null,
+    L222:         tenant_id: tenantId,
+    L223:         manager_id: chainManagerId,
+    L224:         area_manager_id: chainAreaManagerId,
+    L225:         tenant_admin_id: chainTenantAdminId,
+    L226:         contact_name: userName,
+    L227:         contact_email: userEmail,
+    L228:         contact_phone: userPhone || null,
+    L229:         source: `${sourceKey}_charlie_vip_request`,
+    L230:         lead_origin_route: 'charlie_vip_request',
+    L231:         intent: planType || 'buyer',
+    L232:         status: 'new',
+    L233:         assignment_source: agent?.id ? 'geo' : 'admin',
+    L234:       }).select('id').single()
+    L235:       if (leadError) console.error('[walliam/vip-request] lead error:', leadError)
+    L236:       lead = data
+    L237:     }
+    L238: 
+    L239:     // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
+    L240:     let recipients
+    L241:     try {
+    L242:       recipients = await getLeadEmailRecipients(tenantId, agent?.id || null, supabase)
+    L243:     } catch (err) {
+    L244:       if (err instanceof AdminPlatformUnreachable) {
+
+  --- vip_requests insert context ---
+  3 .from('vip_requests') hit(s) at lines: 115, 178, 396
+
+  --- context around L115 (15 before / 25 after) ---
+    L100:     if (!session.user_id) {
+    L101:       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    L102:     }
+    L103:     // END W-RECOVERY A1.5 auth gate
+    L104: 
+    L105:     const agent = session.agents
+    L106: 
+    L107:     // D2c — tenant-boundary check: session must belong to the tenant in the header
+    L108:     if (session.tenant_id && session.tenant_id !== tenantId) {
+    L109:       console.error('[walliam/vip-request] tenant mismatch: session.tenant_id=' + session.tenant_id + ' header tenantId=' + tenantId)
+    L110:       return NextResponse.json({ error: 'Tenant mismatch' }, { status: 403 })
+    L111:     }
+    L112: 
+    L113:     // Check for existing pending request
+    L114:     const { data: existingRequest } = await supabase
+ >> L115:       .from('vip_requests')
+    L116:       .select('id, status')
+    L117:       .eq('session_id', sessionId)
+    L118:       .eq('status', 'pending')
+    L119:       .single()
+    L120: 
+    L121:     if (existingRequest) {
+    L122:       return NextResponse.json({
+    L123:         success: true,
+    L124:         requestId: existingRequest.id,
+    L125:         status: 'pending',
+    L126:         message: 'Request already pending'
+    L127:       })
+    L128:     }
+    L129: 
+    L130:     // Get user contact info from user_profiles — already registered, no form needed
+    L131:     let userName = `${brandName} User`
+    L132:     let userEmail = ''
+    L133:     let userPhone = ''
+    L134: 
+    L135:     if (session.user_id) {
+    L136:       const { data: profile } = await supabase
+    L137:         .from('user_profiles')
+    L138:         .select('full_name, phone')
+    L139:         .eq('id', session.user_id)
+    L140:         .single()
+
+  --- context around L178 (15 before / 25 after) ---
+    L163:     // Use tenant config for credit decisions - channel-aware per T6d
+    L164:     const vipToggle =
+    L165:       channel === 'chat' ? tenantConfig.vip_auto_approve === true :
+    L166:       channel === 'estimator' ? tenantConfig.estimator_vip_auto_approve === true :
+    L167:       tenantConfig.plan_vip_auto_approve === true
+    L168:     const autoApproveLimit =
+    L169:       channel === 'chat' ? (tenantConfig.ai_auto_approve_limit ?? 0) :
+    L170:       channel === 'estimator' ? (tenantConfig.estimator_auto_approve_attempts ?? 0) :
+    L171:       channel === 'seller_plan' ? (tenantConfig.seller_plan_auto_approve_limit ?? 0) :
+    L172:       (tenantConfig.plan_auto_approve_limit ?? 0)
+    L173:     const isAutoApprove = vipToggle && autoApproveLimit > 0
+    L174:     const autoApproveMessages = autoApproveLimit
+    L175: 
+    L176:     // Create VIP request
+    L177:     const { data: vipRequest, error: insertError } = await supabase
+ >> L178:       .from('vip_requests')
+    L179:       .insert({
+    L180:         session_id: sessionId,
+    L181:         agent_id: agent?.id || null,
+    L182:         tenant_id: tenantId,
+    L183:         phone: userPhone || 'Not provided',
+    L184:         full_name: userName,
+    L185:         email: userEmail || null,
+    L186:         request_source: `${sourceKey}_charlie`,
+    L187:         request_type: planType === 'chat' ? 'chat' : planType === 'estimator' ? 'estimator' : 'plan',
+    L188:         status: isAutoApprove ? 'approved' : 'pending',
+    L189:         messages_granted: isAutoApprove ? autoApproveMessages : 0,
+    L190:         responded_at: isAutoApprove ? new Date().toISOString() : null,
+    L191:       })
+    L192:       .select()
+    L193:       .single()
+    L194: 
+    L195:     if (insertError || !vipRequest) {
+    L196:       console.error('[walliam/vip-request] insert error:', insertError)
+    L197:       return NextResponse.json({ error: 'Failed to create request' }, { status: 500 })
+    L198:     }
+    L199: 
+    L200:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`
+    L201:     const approveUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=approve`
+    L202:     const denyUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=deny`
+    L203: 
+
+  --- context around L396 (15 before / 25 after) ---
+    L381:     if (!requestId) {
+    L382:       return NextResponse.json({ error: 'Request ID required' }, { status: 400 })
+    L383:     }
+    L384: 
+    L385:     const tenantId = request.headers.get('x-tenant-id')
+    L386:     if (!tenantId) {
+    L387:       return NextResponse.json(
+    L388:         { error: 'Tenant required (missing x-tenant-id header)' },
+    L389:         { status: 400 }
+    L390:       )
+    L391:     }
+    L392: 
+    L393:     const supabase = createServiceClient()
+    L394: 
+    L395:     const { data: vipRequest } = await supabase
+ >> L396:       .from('vip_requests')
+    L397:       .select('status, responded_at, messages_granted')
+    L398:       .eq('id', requestId)
+    L399:       .eq('tenant_id', tenantId)
+    L400:       .single()
+    L401: 
+    L402:     if (!vipRequest) {
+    L403:       return NextResponse.json({ error: 'Request not found' }, { status: 404 })
+    L404:     }
+    L405: 
+    L406:     return NextResponse.json({
+    L407:       status: vipRequest.status,
+    L408:       respondedAt: vipRequest.responded_at,
+    L409:       messagesGranted: vipRequest.messages_granted || 0,
+    L410:     })
+    L411: 
+    L412:   } catch (error) {
+    L413:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    L414:   }
+    L415: }
+    L416: 
+    L417: function buildAgentEmailHtml(data: {
+    L418:   userName: string
+    L419:   userEmail: string
+    L420:   userPhone: string
+    L421:   planType: string
+
+--- Q3a: charlie/appointment leads insert ---
+  1 .from('leads') hit(s) at lines: 137
+
+  --- context around L137 (15 before / 25 after) ---
+    L122:         .single()
+    L123: 
+    L124:       if (agentData) {
+    L125:         agent = agentData
+    L126: 
+    L127:         // Replace direct parent_id query with full hierarchy walk
+    L128:         const chain = await walkHierarchy(agentData.id, supabase)
+    L129:         chainManagerId = chain.manager_id
+    L130:         chainAreaManagerId = chain.area_manager_id
+    L131:         chainTenantAdminId = chain.tenant_admin_id
+    L132:       }
+    L133:     }
+    L134: 
+    L135:     // Step 3: Save lead with full hierarchy chain
+    L136:     const { data: lead, error: leadError } = await supabase
+ >> L137:       .from('leads')
+    L138:       .insert({
+    L139:         agent_id: agentId,
+    L140:         user_id: userId || null,
+    L141:         contact_name: name,
+    L142:         contact_email: email,
+    L143:         contact_phone: phone || null,
+    L144:         source: `${sourceKey}_charlie`,
+    L145:         lead_origin_route: 'charlie',
+    L146:         intent,
+    L147:         geo_name: geo_name || null,
+    L148:         manager_id: chainManagerId,
+    L149:         area_manager_id: chainAreaManagerId,
+    L150:         tenant_admin_id: chainTenantAdminId,
+    L151:         assignment_source: agentId ? 'geo' : 'admin',
+    L152:         tenant_id: tenantId,
+    L153:         status: 'new',
+    L154:         appointment_date,
+    L155:         appointment_time,
+    L156:         appointment_properties: appointment_properties || null,
+    L157:         appointment_status: 'pending',
+    L158:       })
+    L159:       .select('id, reschedule_token')
+    L160:       .single()
+    L161: 
+    L162:     if (leadError || !lead) {
+
+--- Q3b: charlie/lead leads insert ---
+  3 .from('leads') hit(s) at lines: 173, 188, 210
+
+  --- context around L173 (15 before / 25 after) ---
+    L158:         listingKey: l.listing_key,
+    L159:         address: l.unparsed_address,
+    L160:         price: l.list_price,
+    L161:         bedrooms: l.bedrooms_total,
+    L162:         slug: l._slug || null,
+    L163:       })),
+    L164:       generatedAt: new Date().toISOString(),
+    L165:     }
+    L166: 
+    L167:     // F57: UPSERT into existing plan-email lead row, not new INSERT.
+    L168:     // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+    L169:     // in the rare case multiple plan-email rows exist for same user+intent.
+    L170:     let leadId: string | null = null
+    L171: 
+    L172:     const { data: existingLeads } = await supabase
+ >> L173:       .from('leads')
+    L174:       .select('id')
+    L175:       .eq('user_id', userId)
+    L176:       .eq('tenant_id', tenantId || '')
+    L177:       .eq('source', `${sourceKey}_charlie`)
+    L178:       .eq('intent', intent)
+    L179:       .order('created_at', { ascending: false })
+    L180:       .limit(1)
+    L181: 
+    L182:     const existingLead = existingLeads?.[0]
+    L183: 
+    L184:     if (existingLead) {
+    L185:       // UPDATE: enrich the existing plan-email row with form-supplied detail
+    L186:       leadId = existingLead.id
+    L187:       const { error: updateError } = await supabase
+    L188:         .from('leads')
+    L189:         .update({
+    L190:           contact_name: name,           // form-supplied; can legitimately differ from auth name
+    L191:           contact_email: authEmail,     // F60: auth-authoritative
+    L192:           contact_phone: phone || null, // form-supplied
+    L193:           plan_data: planData,
+    L194:           manager_id: chainManagerId,
+    L195:           area_manager_id: chainAreaManagerId,
+    L196:           tenant_admin_id: chainTenantAdminId,
+    L197:           assignment_source: agentId ? 'geo' : 'admin',
+    L198:           updated_at: new Date().toISOString(),
+
+  --- context around L188 (15 before / 25 after) ---
+    L173:       .from('leads')
+    L174:       .select('id')
+    L175:       .eq('user_id', userId)
+    L176:       .eq('tenant_id', tenantId || '')
+    L177:       .eq('source', `${sourceKey}_charlie`)
+    L178:       .eq('intent', intent)
+    L179:       .order('created_at', { ascending: false })
+    L180:       .limit(1)
+    L181: 
+    L182:     const existingLead = existingLeads?.[0]
+    L183: 
+    L184:     if (existingLead) {
+    L185:       // UPDATE: enrich the existing plan-email row with form-supplied detail
+    L186:       leadId = existingLead.id
+    L187:       const { error: updateError } = await supabase
+ >> L188:         .from('leads')
+    L189:         .update({
+    L190:           contact_name: name,           // form-supplied; can legitimately differ from auth name
+    L191:           contact_email: authEmail,     // F60: auth-authoritative
+    L192:           contact_phone: phone || null, // form-supplied
+    L193:           plan_data: planData,
+    L194:           manager_id: chainManagerId,
+    L195:           area_manager_id: chainAreaManagerId,
+    L196:           tenant_admin_id: chainTenantAdminId,
+    L197:           assignment_source: agentId ? 'geo' : 'admin',
+    L198:           updated_at: new Date().toISOString(),
+    L199:         })
+    L200:         .eq('id', existingLead.id)
+    L201: 
+    L202:       if (updateError) {
+    L203:         console.error('[charlie/lead] enrichment update error:', updateError)
+    L204:         return NextResponse.json({ error: 'Failed to update lead' }, { status: 500 })
+    L205:       }
+    L206:       leadId = existingLead.id
+    L207:     } else {
+    L208:       // Defensive INSERT: plan-email never created a row (shouldn't happen, but don't lose data)
+    L209:       const { data: newLead, error: insertError } = await supabase
+    L210:         .from('leads')
+    L211:         .insert({
+    L212:           agent_id: agentId,
+    L213:           user_id: userId,
+
+  --- context around L210 (15 before / 25 after) ---
+    L195:           area_manager_id: chainAreaManagerId,
+    L196:           tenant_admin_id: chainTenantAdminId,
+    L197:           assignment_source: agentId ? 'geo' : 'admin',
+    L198:           updated_at: new Date().toISOString(),
+    L199:         })
+    L200:         .eq('id', existingLead.id)
+    L201: 
+    L202:       if (updateError) {
+    L203:         console.error('[charlie/lead] enrichment update error:', updateError)
+    L204:         return NextResponse.json({ error: 'Failed to update lead' }, { status: 500 })
+    L205:       }
+    L206:       leadId = existingLead.id
+    L207:     } else {
+    L208:       // Defensive INSERT: plan-email never created a row (shouldn't happen, but don't lose data)
+    L209:       const { data: newLead, error: insertError } = await supabase
+ >> L210:         .from('leads')
+    L211:         .insert({
+    L212:           agent_id: agentId,
+    L213:           user_id: userId,
+    L214:           contact_name: name,
+    L215:           contact_email: authEmail,
+    L216:           contact_phone: phone || null,
+    L217:           source: `${sourceKey}_charlie`,
+    L218:           lead_origin_route: 'charlie',
+    L219:           intent,
+    L220:           geo_name: profile?.geoName || null,
+    L221:           budget_max: buyerProfile?.budgetMax || null,
+    L222:           plan_data: planData,
+    L223:           manager_id: chainManagerId,
+    L224:           area_manager_id: chainAreaManagerId,
+    L225:           tenant_admin_id: chainTenantAdminId,
+    L226:           assignment_source: agentId ? 'geo' : 'admin',
+    L227:           tenant_id: tenantId || null,
+    L228:           status: 'new',
+    L229:         })
+    L230:         .select('id')
+    L231:         .single()
+    L232: 
+    L233:       if (insertError || !newLead) {
+    L234:         console.error('[charlie/lead] defensive insert error:', insertError)
+    L235:         return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 })
+
+--- Q3c: charlie/plan-email leads insert ---
+  1 .from('leads') hit(s) at lines: 132
+
+  --- context around L132 (15 before / 25 after) ---
+    L117: 
+    L118:         if (agentData) {
+    L119:           agent = agentData
+    L120:           // Walker captures full chain (manager + area_manager + tenant_admin)
+    L121:           const chain = await walkHierarchy(agentData.id, supabase)
+    L122:           chainManagerId = chain.manager_id
+    L123:           chainAreaManagerId = chain.area_manager_id
+    L124:           chainTenantAdminId = chain.tenant_admin_id
+    L125:         }
+    L126:       }
+    L127:     }
+    L128: 
+    L129:     const geoName = geoContext?.geoName || plan?.geoName || null
+    L130: 
+    L131:     // Save lead with full hierarchy chain stamped (per Lead+Email contract)
+ >> L132:     const { data: lead, error: leadError } = await supabase.from('leads').insert({
+    L133:       agent_id: agent?.id || null,
+    L134:       user_id: userId,
+    L135:       contact_name: userName,
+    L136:       contact_email: userEmail,
+    L137:       source: `${sourceKey}_charlie`,
+    L138:       lead_origin_route: 'charlie',
+    L139:       intent: planType,
+    L140:       geo_name: geoName,
+    L141:       budget_max: plan?.budgetMax || null,
+    L142:       plan_data: { planType, plan, analytics, topListings: (listings || []).slice(0, 5) },
+    L143:       manager_id: chainManagerId,
+    L144:       area_manager_id: chainAreaManagerId,
+    L145:       tenant_admin_id: chainTenantAdminId,
+    L146:       assignment_source: agent ? 'geo' : 'admin',
+    L147:       status: 'new',
+    L148:       tenant_id: tenantId,
+    L149:     }).select('id').single()
+    L150:     if (leadError) console.error('[plan-email] lead error:', leadError)
+    L151: 
+    L152:     // Track activity
+    L153:     await trackUserActivity(supabase, tenantId, userEmail, agent?.id || null, 'plan_generated', {
+    L154:       source: `${sourceKey}_charlie`,
+    L155:       planType,
+    L156:       geoName: geoName || null,
+    L157:       budgetMax: plan?.budgetMax || null,
+
+--- Q3d (bonus): walliam/contact leads insert ---
+  1 .from('leads') hit(s) at lines: 115
+
+  --- context around L115 (15 before / 25 after) ---
+    L100:         .from('agents')
+    L101:         .select('id, full_name, email, notification_email, parent_id')
+    L102:         .eq('id', agentId)
+    L103:         .single()
+    L104: 
+    L105:       if (agentData) {
+    L106:         agent = agentData
+    L107:         const chain = await walkHierarchy(agentData.id, supabase)
+    L108:         chainManagerId = chain.manager_id
+    L109:         chainAreaManagerId = chain.area_manager_id
+    L110:         chainTenantAdminId = chain.tenant_admin_id
+    L111:       }
+    L112:     }
+    L113: 
+    L114:     // Save lead with full hierarchy chain (per Lead+Email contract)
+ >> L115:     const { data: lead } = await supabase.from('leads').insert({
+    L116:       agent_id: agent?.id || null,
+    L117:       manager_id: chainManagerId,
+    L118:       area_manager_id: chainAreaManagerId,
+    L119:       tenant_admin_id: chainTenantAdminId,
+    L120:       tenant_id,
+    L121:       contact_name: name,
+    L122:       contact_email: email,
+    L123:       contact_phone: phone || null,
+    L124:       message: message || null,
+    L125:       source: source || `${sourceKey}_contact`,
+    L126:       lead_origin_route: 'contact_form',
+    L127:       building_id: building_id || null,
+    L128:       listing_id: listing_id || null,
+    L129:       geo_name: geo_name || null,
+    L130:       status: 'new',
+    L131:       assignment_source: agent ? 'geo' : 'admin',
+    L132:     }).select('id').single()
+    L133: 
+    L134:     // Build email HTML
+    L135:     const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName })
+    L136:     const subject = `\u2756 ${brandName} Inquiry \u2014 ${name} \u2014 ${geo_name || source || brandName}`
+    L137: 
+    L138:     // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
+    L139:     let recipients
+    L140:     try {
+
+--- Q4: lib/actions/leads.ts L155 to L240 (wrapper around source_url write + buildLeadEmail call) ---
+  L155:   }
+  L156: 
+  L157:   // ─── Source detection from referer if not explicit ─────────────────────────
+  L158:   const headersList = headers()
+  L159:   const referer = headersList.get('referer') || ''
+  L160: 
+  L161:   let source = params.source
+  L162:   if (!source) {
+  L163:     if (referer.includes('/estimator')) {
+  L164:       source = 'estimator'
+  L165:     } else if (referer.includes('/register')) {
+  L166:       source = 'registration'
+  L167:     } else {
+  L168:       source = 'contact_form'
+  L169:     }
+  L170:   }
+  L171: 
+  L172:   // ─── Insert lead row with full hierarchy chain (Lead+Email contract) ───────
+  L173:   const { data: lead, error } = await supabase
+  L174:     .from('leads')
+  L175:     .insert({
+  L176:       tenant_id: params.tenantId,
+  L177:       agent_id: resolvedAgentId,
+  L178:       manager_id: chainManagerId,
+  L179:       area_manager_id: chainAreaManagerId,
+  L180:       tenant_admin_id: chainTenantAdminId,
+  L181:       building_id: params.buildingId || null,
+  L182:       listing_id: params.listingId || null,
+  L183:       source_url: params.sourceUrl || null,
+  L184:       estimated_value_min: params.estimatedValueMin || null,
+  L185:       estimated_value_max: params.estimatedValueMax || null,
+  L186:       property_details: params.propertyDetails || null,
+  L187:       contact_name: params.contactName,
+  L188:       contact_email: params.contactEmail,
+  L189:       contact_phone: params.contactPhone,
+  L190:       message: params.message,
+  L191:       source: source,
+  L192:       lead_origin_route: deriveLeadOriginRoute(source),
+  L193:       assignment_source: resolvedAgentId ? 'geo' : 'admin',
+  L194:       status: 'new',
+  L195:       created_at: new Date().toISOString()
+  L196:     })
+  L197:     .select()
+  L198:     .single()
+  L199: 
+  L200:   if (error) {
+  L201:     console.error('[leads] Insert error:', error)
+  L202:     return { success: false, error: error.message }
+  L203:   }
+  L204: 
+  L205:   console.log('[leads] Lead created:', lead.id)
+  L206: 
+  L207:   // ─── Chain notification: single helper-driven send (F67 try/catch) ─────────
+  L208:   // Replaces the prior 3-step loop (agent → manager → admin) with one send
+  L209:   // that hits the full 6-layer chain via the recipients helper.
+  L210:   let recipients
+  L211:   try {
+  L212:     recipients = await getLeadEmailRecipients(params.tenantId, resolvedAgentId, supabase)
+  L213:   } catch (err) {
+  L214:     if (err instanceof AdminPlatformUnreachable) {
+  L215:       console.error('[leads] admin platform unreachable:', err.message)
+  L216:       recipients = null
+  L217:     } else {
+  L218:       throw err
+  L219:     }
+  L220:   }
+  L221: 
+  L222:   if (recipients) {
+  L223:     const html = buildLeadEmail({
+  L224:       contactName: params.contactName,
+  L225:       contactEmail: params.contactEmail,
+  L226:       contactPhone: params.contactPhone,
+  L227:       message: params.message,
+  L228:       source,
+  L229:       buildingName: params.propertyDetails?.buildingName,
+  L230:       buildingAddress: params.propertyDetails?.buildingAddress,
+  L231:       unitNumber: params.propertyDetails?.unitNumber,
+  L232:     })
+  L233:     const subject = `✦ New Lead — ${params.contactName} — ${source}`
+  L234: 
+  L235:     try {
+  L236:       const sendResult = await sendTenantEmail({
+  L237:         tenantId: params.tenantId,
+  L238:         to: recipients.to,
+  L239:         cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+  L240:         bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+
+=== PHASE 8 COMPLETE ===
+Output: recon/W-LEADS-WORKBENCH-W3C-PHASE8.txt

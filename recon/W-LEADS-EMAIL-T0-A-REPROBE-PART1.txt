@@ -1,0 +1,1957 @@
+﻿
+
+========================================================================
+FILE: app\api\walliam\tenant-config\route.ts
+========================================================================
+Size: 1127 bytes
+
+// app/api/walliam/tenant-config/route.ts
+// Returns tenant credit config for anonymous users (unregistered view)
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
+
+export async function GET(request: NextRequest) {
+  const tenantId = request.headers.get('x-tenant-id')
+  if (!tenantId) return NextResponse.json({ error: 'Tenant ID required' }, { status: 400 })
+
+  const supabase = createServiceClient()
+  const { data: tenant } = await supabase
+    .from('tenants')
+    .select('ai_free_messages, estimator_free_attempts, plan_free_attempts')
+    .eq('id', tenantId)
+    .single()
+
+  if (!tenant) return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+
+  return NextResponse.json({
+    chatFree:  tenant.ai_free_messages ?? 1,
+    estFree:   tenant.estimator_free_attempts ?? 1,
+    planFree:  tenant.plan_free_attempts ?? 1,
+  })
+}
+
+========================================================================
+FILE: app\api\walliam\charlie\session\route.ts
+========================================================================
+Size: 13910 bytes
+
+export const maxDuration = 60
+
+// app/api/walliam/charlie/session/route.ts
+// Initializes or retrieves a WALLiam Charlie session for a user
+// Resolves agent via resolve_agent_for_context() â€” NOT getAgentFromHost
+// Tracks buyer_plans_used and seller_plans_used (not message_count)
+// Adapted from app/api/chat/session/route.ts â€” System 1 never touched
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const {
+      userId,          // nullable â€” anonymous users can still get a session
+      listing_id,
+      building_id,
+      community_id,
+      municipality_id,
+      area_id,
+      read_only,       // if true, never create a session â€” just read credits
+      existingSessionId, // optional â€” claim this anonymous session on registration
+    } = await request.json()
+
+    console.log("[session] route hit, userId:", userId)
+    const tenantId = request.headers.get('x-tenant-id') || null
+    const supabase = createServiceClient()
+
+    // D2b â€” F9 fix: tenant-required guard
+    if (!tenantId) {
+      return NextResponse.json(
+        { error: 'Tenant required (missing x-tenant-id header)' },
+        { status: 400 }
+      )
+    }
+
+    // D2b â€” F8 fix: fetch source_key from tenant config (replaces hardcoded 'walliam')
+    const { data: sourceTenant, error: sourceErr } = await supabase
+      .from('tenants')
+      .select('source_key')
+      .eq('id', tenantId)
+      .single()
+    if (sourceErr || !sourceTenant?.source_key) {
+      console.error('[session] tenant source_key fetch failed:', sourceErr)
+      return NextResponse.json(
+        { error: 'Invalid tenant' },
+        { status: 400 }
+      )
+    }
+    const sourceKey = sourceTenant.source_key
+
+    // Step 1: Resolve agent via priority chain
+    console.log("[session] calling rpc")
+    const { data: resolvedAgentId, error: resolveError } = await supabase
+      .rpc('resolve_agent_for_context', {
+        p_listing_id: listing_id || null,
+        p_building_id: building_id || null,
+        p_neighbourhood_id: null,
+        p_community_id: community_id || null,
+        p_municipality_id: municipality_id || null,
+        p_area_id: area_id || null,
+        p_user_id: userId || null,
+        p_tenant_id: tenantId || null,
+      })
+
+    if (resolveError) {
+      console.error('[charlie/session] resolve_agent_for_context error:', resolveError)
+    }
+
+    console.log("[session] rpc result:", resolvedAgentId, resolveError)
+    // Fall back to tenant default_agent_id if RPC returns null
+    let agentId = resolvedAgentId || null
+    if (!agentId && tenantId) {
+      const { data: tenantDefault } = await supabase.from('tenants').select('default_agent_id').eq('id', tenantId).single()
+      if (tenantDefault?.default_agent_id) agentId = tenantDefault.default_agent_id
+    }
+
+    // Step 2: Get config from tenant (primary) or agent (fallback)
+    let agentConfig = {
+      ai_free_messages: 5,
+      ai_auto_approve_limit: 2,
+      ai_manual_approve_limit: 3,
+      ai_hard_cap: 25,
+      vip_auto_approve: false,
+      full_name: 'WALLiam',
+      plan_free_attempts: 1,
+      plan_hard_cap: 10,
+      plan_manual_approve_limit: 3,
+      plan_mode: 'shared',
+      seller_plan_free_attempts: 1,
+      seller_plan_hard_cap: 10,
+      estimator_free_attempts: 1,
+      estimator_hard_cap: 10,
+      assistant_name: 'Charlie',
+    }
+
+    if (tenantId) {
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve, plan_free_attempts, plan_hard_cap, plan_mode, plan_manual_approve_limit, seller_plan_free_attempts, seller_plan_hard_cap, estimator_free_attempts, estimator_hard_cap, assistant_name`)
+        .eq('id', tenantId)
+        .single()
+      if (tenant) {
+        agentConfig = {
+          ai_free_messages: tenant.ai_free_messages ?? 5,
+          ai_auto_approve_limit: tenant.ai_auto_approve_limit ?? 2,
+          ai_manual_approve_limit: tenant.ai_manual_approve_limit ?? 3,
+          ai_hard_cap: tenant.ai_hard_cap ?? 25,
+          vip_auto_approve: tenant.vip_auto_approve ?? false,
+          full_name: tenant.name,
+          plan_free_attempts: tenant.plan_free_attempts ?? 1,
+          plan_hard_cap: tenant.plan_hard_cap ?? 10,
+          plan_manual_approve_limit: tenant.plan_manual_approve_limit ?? 3,
+          plan_mode: tenant.plan_mode ?? 'shared',
+          seller_plan_free_attempts: tenant.seller_plan_free_attempts ?? 1,
+          seller_plan_hard_cap: tenant.seller_plan_hard_cap ?? 10,
+          estimator_free_attempts: tenant.estimator_free_attempts ?? 1,
+          estimator_hard_cap: tenant.estimator_hard_cap ?? 10,
+          assistant_name: tenant.assistant_name ?? 'Charlie',
+        }
+      }
+    } else if (agentId) {
+      const { data: agent } = await supabase
+        .from('agents')
+        .select(`full_name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve`)
+        .eq('id', agentId)
+        .single()
+      if (agent) {
+        agentConfig = {
+          ai_free_messages: agent.ai_free_messages ?? 5,
+          ai_auto_approve_limit: agent.ai_auto_approve_limit ?? 2,
+          ai_manual_approve_limit: agent.ai_manual_approve_limit ?? 3,
+          ai_hard_cap: agent.ai_hard_cap ?? 25,
+          vip_auto_approve: agent.vip_auto_approve ?? false,
+          full_name: agent.full_name,
+          plan_free_attempts: 1,
+          plan_hard_cap: 10,
+          plan_manual_approve_limit: 3,
+          plan_mode: 'shared',
+          seller_plan_free_attempts: 1,
+          seller_plan_hard_cap: 10,
+          estimator_free_attempts: 1,
+          estimator_hard_cap: 10,
+          assistant_name: 'Charlie',
+        }
+      }
+    }
+
+    // D2b â€” F10 fix: removed dead `if (agentId && !tenantId)` block.
+    // Unreachable since tenant guard at top of handler returns 400 when tenantId is null.
+
+    // Claim anonymous session on registration â€” if caller just registered and is carrying
+    // an existing anonymous sessionId, link it to the user so state (plans, messages, etc.) persists.
+    let session = null
+    if (userId && existingSessionId && tenantId) {
+      const { data: claimed } = await supabase
+        .from('chat_sessions')
+        .update({ user_id: userId })
+        .eq('id', existingSessionId)
+        .eq('tenant_id', tenantId)
+        .is('user_id', null)
+        .select('*')
+        .maybeSingle()
+      if (claimed) session = claimed
+    }
+
+    // Step 3: Find existing active WALLiam session
+    // Match on: agent_id + user_id (if logged in) OR session with same context (anonymous)
+
+    if (userId && !session) {
+      const { data: existing } = await supabase
+        .from('chat_sessions')
+        .select('*')
+        .eq('source', sourceKey)
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .in('status', ['active', 'vip'])
+        .order('last_activity_at', { ascending: false })
+        .limit(1)
+        .single()
+
+      session = existing || null
+    }
+
+    // Step 4: Create new session if none exists.
+    // W-RECOVERY P0-1: skip create for read_only OR anonymous (!userId).
+    // Anonymous callers get the same default-shaped response as read_only
+    // â€” no DB row created. Bleed cause: prior code inserted rows with
+    // user_id=null on every anonymous page load (51 such rows Apr 28â†’May 2).
+    if (!session && (read_only || !userId)) {
+      // Read-only mode â€” return defaults without creating a session
+      return NextResponse.json({
+        sessionId: null,
+        totalAllowed: (agentConfig as any).plan_free_attempts ?? 1,
+        buyerPlansUsed: 0,
+        sellerPlansUsed: 0,
+        buyerAllowed: true,
+        sellerAllowed: true,
+        freePlans: (agentConfig as any).plan_free_attempts ?? 1,
+        vipRequestStatus: 'none',
+        vipRequestId: null,
+        vipAutoApprove: agentConfig.vip_auto_approve,
+        isRegistered: !!userId,
+        messageCount: 0,
+        chatFreeMessages: agentConfig.ai_free_messages ?? 5,
+        chatHardCap: agentConfig.ai_hard_cap ?? 25,
+        estimatorCount: 0,
+        estimatorFreeAttempts: (agentConfig as any).estimator_free_attempts ?? 1,
+        estimatorHardCap: (agentConfig as any).estimator_hard_cap ?? 10,
+        planMode: (agentConfig as any).plan_mode ?? 'shared',
+        sellerPlanFreeAttempts: (agentConfig as any).seller_plan_free_attempts ?? 1,
+        status: 'active',
+      })
+    }
+    if (!session && userId) {
+      // W-RECOVERY P0-1 defense-in-depth: only create if userId is set.
+      // Anonymous case is already handled by the branch above; this guard
+      // prevents regression if someone restructures the conditions later.
+      const { data: newSession, error: createError } = await supabase
+        .from('chat_sessions')
+        .insert({
+          agent_id: agentId,
+          user_id: userId || null,
+          source: sourceKey,
+          session_token: crypto.randomUUID(),
+          tenant_id: tenantId,
+          status: 'active',
+          message_count: 0,
+          buyer_plans_used: 0,
+          seller_plans_used: 0,
+          total_ai_usage: 0,
+          manual_approvals_count: 0,
+          current_page_type: building_id ? 'building' : listing_id ? 'listing' : null,
+          current_page_id: building_id || listing_id || null,
+        })
+        .select()
+        .single()
+
+      if (createError || !newSession) {
+        console.error('[charlie/session] create error:', createError)
+        return NextResponse.json({ error: 'Failed to create session' }, { status: 500 })
+      }
+
+      session = newSession
+    }
+
+    // Step 5: Check VIP request status for this session
+    const { data: vipRequest } = await supabase
+      .from('vip_requests')
+      .select('id, status, messages_granted')
+      .eq('session_id', session.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    const vipRequestStatus = vipRequest?.status || 'idle'
+    const vipRequestId = vipRequest?.id || null
+
+    // Step 6: Calculate plan allowance â€” check user_credit_overrides first
+    const manualApprovalsCount = session.manual_approvals_count || 0
+    const isVip = session.status === 'vip'
+    // Fetch user-level override if user is registered
+    let userOverride: any = null
+    if (userId && tenantId) {
+      const { data: ov } = await supabase
+        .from('user_credit_overrides')
+        .select('ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit')
+        .eq('user_id', userId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      userOverride = ov
+    }
+    // Resolve totalAllowed: override takes precedence over tenant tiers
+    let totalAllowed: number
+    const planHardCap = (agentConfig as any).plan_hard_cap ?? 10
+    if (userOverride?.buyer_plan_limit != null) {
+      totalAllowed = Math.min(userOverride.buyer_plan_limit, planHardCap)
+    } else {
+      totalAllowed = (agentConfig as any).plan_free_attempts ?? 1
+      if (isVip) {
+        totalAllowed += agentConfig.ai_auto_approve_limit ?? 0
+        totalAllowed += (agentConfig.ai_manual_approve_limit ?? 3) * manualApprovalsCount
+      }
+      totalAllowed = Math.min(totalAllowed, planHardCap)
+    }
+    // Resolve chat limit
+    const chatFreeMessages = userOverride?.ai_chat_limit != null
+      ? Math.min(userOverride.ai_chat_limit, agentConfig.ai_hard_cap ?? 25)
+      : (agentConfig.ai_free_messages ?? 1)
+    // Resolve estimator limit
+    const estimatorFreeAttempts = userOverride?.estimator_limit != null
+      ? Math.min(userOverride.estimator_limit, (agentConfig as any).estimator_hard_cap ?? 10)
+      : ((agentConfig as any).estimator_free_attempts ?? 2)
+
+    const buyerPlansUsed = session.buyer_plans_used || 0
+    const sellerPlansUsed = session.seller_plans_used || 0
+
+    const buyerAllowed = totalAllowed - buyerPlansUsed > 0
+    const sellerAllowed = totalAllowed - sellerPlansUsed > 0
+
+    return NextResponse.json({
+      sessionId: session.id,
+      resolvedAgentId: agentId,
+      agentName: agentConfig.full_name,
+      assistantName: (agentConfig as any).assistant_name ?? 'Charlie',
+      status: session.status,
+      // Plan usage
+      buyerPlansUsed,
+      sellerPlansUsed,
+      totalAllowed,
+      buyerAllowed,
+      sellerAllowed,
+      freePlans: (agentConfig as any).plan_free_attempts ?? 1,
+      // VIP
+      vipRequestStatus,
+      vipRequestId,
+      vipAutoApprove: agentConfig.vip_auto_approve,
+      // Registration status
+      isRegistered: !!userId,
+      // Chat credits
+      messageCount: session.message_count || 0,
+      chatFreeMessages: chatFreeMessages,
+      chatHardCap: agentConfig.ai_hard_cap,
+      // Estimator credits
+      estimatorCount: session.estimator_count || 0,
+      estimatorFreeAttempts: estimatorFreeAttempts,
+      estimatorHardCap: (agentConfig as any).estimator_hard_cap ?? 10,
+      // Plan mode
+      planMode: (agentConfig as any).plan_mode || 'shared',
+      sellerPlanFreeAttempts: (agentConfig as any).seller_plan_free_attempts ?? 1,
+    })
+
+  } catch (error) {
+    console.error('[charlie/session] error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+========================================================================
+FILE: app\api\charlie\plan-email\route.ts
+========================================================================
+Size: 41287 bytes
+
+export const maxDuration = 60
+
+// app/api/charlie/plan-email/route.ts
+// Sends rich plan email to user + agent + manager + admin BCC
+// Called client-side from useCharlie after generate_plan tool completes
+//
+// W-HIERARCHY H3.8 (2026-05-03):
+//   - getLeadEmailRecipients enforces 6-layer chain (was: inline conditional with hardcoded ADMIN_EMAIL)
+//   - tenant_admin_id captured into lead insert payload (F58)
+//   - F47 hardcoded ADMIN_EMAIL constant removed
+//   - F66 walker call shape standardized via helper
+//   - F67 try/catch standard
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
+
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+
+
+async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  try {
+    await supabase.from('user_activities').insert({
+      contact_email: contactEmail,
+      agent_id: agentId || null,
+      activity_type: activityType,
+      activity_data: activityData || {},
+      page_url: pageUrl || '',
+    })
+  } catch (err) {
+    console.error('[trackUserActivity] error:', err)
+  }
+}
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
+
+    if (!sessionId || !userId || !planType) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    // W-RECOVERY A1.5 auth gate — verify session belongs to userId before any email fires
+    const _gateSupabase = createServiceClient()
+    const { data: validSession } = await _gateSupabase
+      .from('chat_sessions')
+      .select('id, tenant_id')
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .eq('source', 'walliam')
+      .maybeSingle()
+    if (!validSession) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+    // END W-RECOVERY A1.5 auth gate
+
+    const supabase = createServiceClient()
+
+    const { data: authData } = await supabase.auth.admin.getUserById(userId)
+    const userEmail = authData?.user?.email
+    if (!userEmail) return NextResponse.json({ error: 'User email not found' }, { status: 404 })
+
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('full_name')
+      .eq('id', userId)
+      .single()
+    const userName = profile?.full_name || 'there'
+
+    let agent: any = null
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
+    let tenantId: string | null = null
+
+    if (sessionId) {
+      const { data: session } = await supabase
+        .from('chat_sessions')
+        .select('agent_id, tenant_id')
+        .eq('id', sessionId)
+        .single()
+
+      tenantId = session?.tenant_id || null
+
+      if (session?.agent_id) {
+        const { data: agentData } = await supabase
+          .from('agents')
+          .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id')
+          .eq('id', session.agent_id)
+          .single()
+
+        if (agentData) {
+          agent = agentData
+          // Walker captures full chain (manager + area_manager + tenant_admin)
+          const chain = await walkHierarchy(agentData.id, supabase)
+          chainManagerId = chain.manager_id
+          chainAreaManagerId = chain.area_manager_id
+          chainTenantAdminId = chain.tenant_admin_id
+        }
+      }
+    }
+
+    const geoName = geoContext?.geoName || plan?.geoName || null
+
+    // Save lead with full hierarchy chain stamped (per Lead+Email contract)
+    await supabase.from('leads').insert({
+      agent_id: agent?.id || null,
+      user_id: userId,
+      contact_name: userName,
+      contact_email: userEmail,
+      source: 'walliam_charlie',
+      intent: planType,
+      geo_name: geoName,
+      budget_max: plan?.budgetMax || null,
+      plan_data: { planType, plan, analytics, topListings: (listings || []).slice(0, 5) },
+      manager_id: chainManagerId,
+      area_manager_id: chainAreaManagerId,
+      tenant_admin_id: chainTenantAdminId,
+      assignment_source: agent ? 'geo' : 'admin',
+      status: 'new',
+      quality: 'hot',
+      tenant_id: tenantId,
+    })
+
+    // Track activity
+    await trackUserActivity(supabase, userEmail, agent?.id || null, 'contact_form', {
+      source: 'walliam_charlie',
+      planType,
+      geoName: geoName || null,
+      budgetMax: plan?.budgetMax || null,
+    })
+
+    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [] })
+    const subject = `\u2756 WALLiam ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
+
+    // User-facing plan email — single recipient, not chain
+    try {
+      await sendTenantEmail({ tenantId: tenantId || '', to: userEmail, subject, html })
+    } catch (err) {
+      if (err instanceof TenantEmailNotConfigured) {
+        console.warn('[plan-email] tenant email not configured (user):', err.message)
+      } else if (err instanceof TenantEmailFailed) {
+        console.error('[plan-email] resend send failed (user):', err.message)
+      } else {
+        console.error('[plan-email] unexpected user email error:', err)
+      }
+    }
+
+    // Chain notification — single helper-driven send (replaces inline conditional ADMIN_EMAIL)
+    let recipients
+    try {
+      recipients = await getLeadEmailRecipients(tenantId || '', agent?.id || null, supabase)
+    } catch (err) {
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[plan-email] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
+    }
+
+    if (recipients) {
+      try {
+        await sendTenantEmail({
+          tenantId: tenantId || '',
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+          subject,
+          html,
+        })
+      } catch (err) {
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[plan-email] tenant email not configured (chain):', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[plan-email] resend send failed (chain):', err.message)
+        } else {
+          console.error('[plan-email] unexpected chain email error:', err)
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true })
+
+  } catch (error) {
+    console.error('[charlie/plan-email] error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+const MONTHS_ARR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function buildRichPlanEmail(data: {
+  userName: string
+  userEmail: string
+  planType: string
+  plan: any
+  analytics: any
+  listings: any[]
+  agent: any
+  geoName: string | null
+  comparables: any[]
+  sellerEstimate: any | null
+  vipCreditUsed: boolean
+  vipCreditPlansUsed: number
+  vipCreditTotal: number
+  blocks: any[]
+}): string {
+  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = data
+  const isBuyer = planType === 'buyer'
+  const topListings = (listings || []).slice(0, 10)
+
+  const stl = analytics?.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio) : null
+  const dom = analytics?.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90) : null
+  const conditionLabel = !stl || !dom ? 'Insufficient Data'
+    : stl >= 99 && dom <= 20 ? "Strong Seller's Market"
+    : stl >= 97 && dom <= 40 ? "Seller's Market"
+    : stl < 95 || dom > 70 ? "Buyer's Market"
+    : 'Balanced Market'
+  const conditionColor = !stl || !dom ? '#94a3b8'
+    : stl >= 97 ? '#10b981'
+    : stl < 95 || (dom && dom > 70) ? '#ef4444'
+    : '#f59e0b'
+
+  const blocksHtml = (blocks || []).length > 0 ? (() => {
+    const parts: string[] = []
+    for (const block of (blocks || [])) {
+      if (block.type === 'analytics') {
+        parts.push(`<div style="margin:16px 0;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Market Intelligence &middot; ${block.geoName}</div>
+          <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+            <tr><td style="color:#64748b;width:160px;">Avg DOM</td><td style="font-weight:700;color:#0f172a;">${block.data?.closed_avg_dom_90 ? block.data.closed_avg_dom_90 + 'd' : '&mdash;'}</td></tr>
+            <tr><td style="color:#64748b;">Sale/List</td><td style="font-weight:700;color:#0f172a;">${block.data?.sale_to_list_ratio ? block.data.sale_to_list_ratio + '%' : '&mdash;'}</td></tr>
+            <tr><td style="color:#64748b;">Active</td><td style="font-weight:700;color:#0f172a;">${block.data?.active_count || '&mdash;'}</td></tr>
+          </table>
+        </div>`)
+      }
+      if (block.type === 'buildings') {
+        parts.push(`<div style="margin:16px 0;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Buildings Found &middot; ${block.label} &middot; ${block.buildings.length}</div>
+          ${(block.buildings || []).slice(0, 8).map((b: any) => `
+            <a href="${b.url || BASE_URL}" style="display:block;text-decoration:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                ${b.photo ? `<td width="48"><img src="${b.photo}" width="48" height="48" style="border-radius:6px;object-fit:cover;"></td>` : ''}
+                <td style="padding-left:10px;vertical-align:middle;">
+                  <div style="font-size:13px;font-weight:700;color:#0f172a;">${b.buildingName}</div>
+                  <div style="font-size:12px;color:#64748b;">${b.medianPrice ? '$' + Number(b.medianPrice).toLocaleString('en-CA') : ''}${b.medianPsf ? ' &middot; $' + b.medianPsf + '/sqft' : ''}</div>
+                </td>
+                <td style="text-align:right;vertical-align:middle;">
+                  ${b.activeCount > 0 ? `<span style="background:#10b981;color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;">${b.activeCount} active</span>` : ''}
+                </td>
+              </tr></table>
+            </a>
+          `).join('')}
+        </div>`)
+      }
+      if (block.type === 'rankings' && block.data?.rankings?.length > 0) {
+        const title = (block.data.ranking_type || block.rankType || '').split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+        parts.push(`<div style="margin:16px 0;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">${title}</div>
+          ${(block.data.rankings || []).slice(0, 5).map((r: any) => `
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
+              <a href="${r.url || BASE_URL}" style="font-size:13px;font-weight:600;color:#1d4ed8;text-decoration:none;">#${r.rank} ${r.entity_name}</a>
+              <span style="font-size:12px;color:#64748b;">${r.median_price ? '$' + Number(r.median_price).toLocaleString('en-CA') : ''}${r.gross_yield ? ' &middot; ' + r.gross_yield.toFixed(1) + '% yield' : ''}</span>
+            </div>
+          `).join('')}
+        </div>`)
+      }
+      if (block.type === 'priceTrends' && block.data?.current_median_sale) {
+        parts.push(`<div style="margin:16px 0;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+          <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Price Trends</div>
+          <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+            <tr><td style="color:#64748b;width:160px;">Median Price</td><td style="font-weight:700;color:#1d4ed8;">$${Number(block.data.current_median_sale).toLocaleString('en-CA')}</td></tr>
+            ${block.data.current_avg_psf ? `<tr><td style="color:#64748b;">Avg PSF</td><td style="font-weight:700;color:#0f172a;">$${Number(block.data.current_avg_psf).toLocaleString('en-CA')}/sqft</td></tr>` : ''}
+            ${block.data.psf_trend_pct != null ? `<tr><td style="color:#64748b;">PSF Trend</td><td style="font-weight:700;color:${block.data.psf_trend_pct >= 0 ? '#10b981' : '#ef4444'};">${block.data.psf_trend_pct > 0 ? '+' : ''}${block.data.psf_trend_pct.toFixed(1)}%</td></tr>` : ''}
+          </table>
+        </div>`)
+      }
+    }
+    return parts.length > 0 ? `<div style="margin:20px 0;"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;">Your Research</div>${parts.join('')}</div>` : ''
+  })() : ''
+
+  const conditionHtml = `
+    <div style="margin: 0 0 16px;">
+      <span style="display: inline-flex; align-items: center; gap: 8px; background: ${conditionColor}18; border: 1px solid ${conditionColor}40; border-radius: 100px; padding: 5px 14px;">
+        <span style="width: 7px; height: 7px; border-radius: 50%; background: ${conditionColor}; display: inline-block;"></span>
+        <span style="font-size: 12px; font-weight: 700; color: ${conditionColor};">${conditionLabel}</span>
+      </span>
+    </div>
+  `
+
+  const marketHtml = analytics ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Market Intelligence &middot; ${geoName || ''}</div>
+      <table width="100%" cellpadding="0" cellspacing="8" border="0" style="margin-bottom: 8px;">
+        <tr>
+          ${[
+            { label: 'Avg Days on Market', value: analytics.closed_avg_dom_90 ? `${analytics.closed_avg_dom_90}d` : '&mdash;' },
+            { label: 'Sale / List Ratio', value: analytics.sale_to_list_ratio ? `${analytics.sale_to_list_ratio}%` : '&mdash;' },
+            { label: 'Active Listings', value: analytics.active_count ? `${Number(analytics.active_count).toLocaleString()}` : '&mdash;' },
+          ].map(m => `
+            <td width="33%" style="padding: 0 4px;">
+              <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">${m.label}</div>
+                <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${m.value}</div>
+              </div>
+            </td>
+          `).join('')}
+        </tr>
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="8" border="0">
+        <tr>
+          ${[
+            { label: 'Sold (90d)', value: analytics.closed_sale_count_90 ? `${Number(analytics.closed_sale_count_90).toLocaleString()}` : '&mdash;' },
+            { label: 'Absorption Rate', value: analytics.absorption_rate_pct ? `${analytics.absorption_rate_pct}%` : '&mdash;' },
+            { label: 'Median PSF', value: analytics.median_psf ? `$${Number(analytics.median_psf).toLocaleString('en-CA', { maximumFractionDigits: 0 })}` : '&mdash;' },
+          ].map(m => `
+            <td width="33%" style="padding: 0 4px;">
+              <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+                <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">${m.label}</div>
+                <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${m.value}</div>
+              </div>
+            </td>
+          `).join('')}
+        </tr>
+      </table>
+    </div>
+    ${analytics.subtype_breakdown && Object.keys(analytics.subtype_breakdown).length > 0 ? `
+    <div style="margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Price by Home Type</div>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
+        <tr style="background: #f8fafc;">
+          <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Type</td>
+          <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: center;">DOM</td>
+          <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: center;">STL</td>
+          <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: right;">Median</td>
+        </tr>
+        ${Object.entries(analytics.subtype_breakdown).map(([subtype, d]: [string, any]) => `
+        <tr style="border-top: 1px solid #f1f5f9;">
+          <td style="padding: 9px 10px; font-size: 13px; font-weight: 600; color: #0f172a;">${subtype}</td>
+          <td style="padding: 9px 10px; font-size: 12px; color: #64748b; text-align: center;">${d.avg_dom ? `${Math.round(d.avg_dom)}d` : '&mdash;'}</td>
+          <td style="padding: 9px 10px; font-size: 12px; color: #64748b; text-align: center;">${d.sale_to_list ? `${d.sale_to_list}%` : '&mdash;'}</td>
+          <td style="padding: 9px 10px; font-size: 14px; font-weight: 800; color: #1d4ed8; text-align: right;">${d.median_price ? `$${Number(d.median_price).toLocaleString('en-CA')}` : '&mdash;'}</td>
+        </tr>
+        `).join('')}
+      </table>
+    </div>
+    ` : ''}
+  ` : ''
+
+  const offerIntelHtml = analytics ? `
+    <div style="margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Offer Intelligence</div>
+      <table width="100%" cellpadding="0" cellspacing="4" border="0"><tr>
+        <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+          <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Offer At</div>
+          <div style="font-size: 18px; font-weight: 800; color: #1d4ed8;">${analytics.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio).toFixed(1) + '%' : '&mdash;'}</div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">of asking</div>
+        </div></td>
+        <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+          <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Avg Concession</div>
+          <div style="font-size: 18px; font-weight: 800; color: #10b981;">${analytics.avg_concession_pct ? Number(analytics.avg_concession_pct).toFixed(1) + '%' : '&mdash;'}</div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">below asking</div>
+        </div></td>
+        <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+          <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Decide In</div>
+          <div style="font-size: 18px; font-weight: 800; color: #f59e0b;">${analytics.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90).toFixed(0) + 'd' : '&mdash;'}</div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">avg DOM</div>
+        </div></td>
+      </tr></table>
+    </div>
+  ` : ''
+
+  const seasonal = analytics?.insight_seasonal
+  const bestMonths = (seasonal?.best_months || []) as number[]
+  const worstMonths = (seasonal?.worst_months || []) as number[]
+  const currentMonth = seasonal?.current_month as number | undefined
+  const bestTimeHtml = seasonal ? `
+    <div style="margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Best Time to Buy</div>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;">
+        <div style="font-size: 13px; color: #1e293b; line-height: 1.7;">
+          Best months: <strong style="color: #10b981;">${bestMonths.map((m: number) => MONTHS_ARR[m-1]).join(', ')}</strong> &nbsp;&middot;&nbsp;
+          Avoid: <strong style="color: #ef4444;">${worstMonths.map((m: number) => MONTHS_ARR[m-1]).join(', ')}</strong>
+          ${currentMonth ? `<br>Currently <strong>${MONTHS_ARR[currentMonth-1]}</strong> &mdash; ranked #${seasonal.current_month_rank} of 12 for buyer power.` : ''}
+        </div>
+      </div>
+    </div>
+  ` : ''
+
+  const summaryHtml = plan?.summary ? `
+    <div style="background: linear-gradient(135deg, #eff6ff, #f0fdf4); border: 1px solid #bfdbfe; border-radius: 10px; padding: 18px; margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">&#10022; Your ${isBuyer ? 'Buyer' : 'Seller'} Strategy</div>
+      <p style="margin: 0; font-size: 14px; line-height: 1.7; color: #1e293b;">${plan.summary}</p>
+    </div>
+  ` : ''
+
+  const profileHtml = isBuyer ? `
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Buyer Profile</div>
+      <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px;">
+        ${plan?.budgetMax ? `<tr><td style="color: #64748b; width: 130px;">Budget</td><td style="font-weight: 700; color: #0f172a;">$${Number(plan.budgetMin || 0).toLocaleString('en-CA')} &mdash; $${Number(plan.budgetMax).toLocaleString('en-CA')}</td></tr>` : ''}
+        ${plan?.propertyType ? `<tr><td style="color: #64748b;">Property Type</td><td style="font-weight: 600; color: #0f172a;">${plan.propertyType}</td></tr>` : ''}
+        ${plan?.bedrooms ? `<tr><td style="color: #64748b;">Bedrooms</td><td style="font-weight: 600; color: #0f172a;">${plan.bedrooms}+</td></tr>` : ''}
+        ${plan?.timeline ? `<tr><td style="color: #64748b;">Timeline</td><td style="font-weight: 600; color: #0f172a;">${plan.timeline}</td></tr>` : ''}
+      </table>
+    </div>
+  ` : `
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Seller Profile</div>
+      <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px;">
+        ${plan?.propertyType ? `<tr><td style="color: #64748b; width: 130px;">Property Type</td><td style="font-weight: 600; color: #0f172a;">${plan.propertyType}</td></tr>` : ''}
+        ${plan?.estimatedValueMin ? `<tr><td style="color: #64748b;">Est. Value</td><td style="font-weight: 700; color: #059669;">$${Number(plan.estimatedValueMin).toLocaleString('en-CA')} &mdash; $${Number(plan.estimatedValueMax).toLocaleString('en-CA')}</td></tr>` : ''}
+        ${plan?.timeline ? `<tr><td style="color: #64748b;">Timeline</td><td style="font-weight: 600; color: #0f172a;">${plan.timeline}</td></tr>` : ''}
+        ${plan?.goal ? `<tr><td style="color: #64748b;">Goal</td><td style="font-weight: 600; color: #0f172a;">${plan.goal}</td></tr>` : ''}
+      </table>
+    </div>
+  `
+
+  const planCardHtml = `
+    <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; margin: 20px 0;">
+      <div style="margin-bottom: 12px;">
+        <div style="font-size: 16px; font-weight: 800; color: #fff;">${isBuyer ? '&#127968; Your Buyer Plan' : '&#128176; Your Seller Strategy'}</div>
+        <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px;">${geoName || 'GTA'} &middot; ${new Date().toLocaleDateString('en-CA')}</div>
+      </div>
+      <div style="margin-bottom: 14px;">
+        <span style="display: inline-flex; align-items: center; gap: 6px; background: ${conditionColor}18; border: 1px solid ${conditionColor}40; border-radius: 100px; padding: 4px 12px;">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: ${conditionColor}; display: inline-block;"></span>
+          <span style="font-size: 11px; font-weight: 700; color: ${conditionColor};">${conditionLabel}</span>
+        </span>
+      </div>
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Your Profile</div>
+      ${isBuyer && plan?.budgetMax ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Budget</span><span style="font-size:13px;font-weight:700;color:#3b82f6;">$${Number(plan.budgetMin||0).toLocaleString('en-CA')} &mdash; $${Number(plan.budgetMax).toLocaleString('en-CA')}</span></div>` : ''}
+      ${plan?.propertyType ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Property Type</span><span style="font-size:13px;font-weight:700;color:#fff;">${plan.propertyType}</span></div>` : ''}
+      ${plan?.timeline ? `<div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Timeline</span><span style="font-size:13px;font-weight:700;color:#fff;">${plan.timeline}</span></div>` : ''}
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 12px 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Market Snapshot</div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Avg Days on Market</span><span style="font-size:13px;font-weight:700;color:#6366f1;">${analytics?.closed_avg_dom_90 ? analytics.closed_avg_dom_90 + 'd' : '&mdash;'}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Sale-to-List Ratio</span><span style="font-size:13px;font-weight:700;color:#10b981;">${analytics?.sale_to_list_ratio ? analytics.sale_to_list_ratio + '%' : '&mdash;'}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Active Listings</span><span style="font-size:13px;font-weight:700;color:#fff;">${analytics?.active_count || '&mdash;'}</span></div>
+      ${topListings.length > 0 ? `
+      <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 12px 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Top Matches (${topListings.length})</div>
+      ${topListings.map((l) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><div><div style="font-size:12px;font-weight:700;color:#fff;">$${Number(l.list_price||0).toLocaleString('en-CA')}</div><div style="font-size:11px;color:rgba(255,255,255,0.35);">${(l.unparsed_address||'').split(',')[0]}</div></div><div style="font-size:11px;color:rgba(255,255,255,0.3);">${l.bedrooms_total||''} bed &middot; ${l.bathrooms_total_integer||''} bath</div></div>`).join('')}
+      ` : ''}
+    </div>
+  `
+
+  const listingsHtml = topListings.length > 0 ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">
+        ${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (${topListings.length})
+      </div>
+      ${topListings.map((l: any) => {
+        const url = `${BASE_URL}${l._slug || '/' + (l.listing_key || '')}`
+        const price = l.list_price || l.close_price || 0
+        const address = l.unparsed_address || '&mdash;'
+        const beds = l.bedrooms_total
+        const baths = l.bathrooms_total_integer
+        const subtype = l.property_subtype || ''
+        const photo = (l.media && l.media[0]?.media_url) || ''
+        return `
+          <a href="${url}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" alt="" width="80" height="72" style="display: block; width: 80px; height: 72px;"></td>` : ''}
+                <td style="padding: 10px 14px; vertical-align: middle;">
+                  <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${address}</div>
+                  <div style="font-size: 12px; color: #64748b; margin-top: 3px;">
+                    ${[beds ? `${beds} bed` : '', baths ? `${baths} bath` : '', subtype].filter(Boolean).join(' &middot; ')}
+                  </div>
+                </td>
+                <td style="padding: 10px 14px; text-align: right; white-space: nowrap; vertical-align: middle;">
+                  <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(price).toLocaleString('en-CA')}</div>
+                  <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">View &rarr;</div>
+                </td>
+              </tr>
+            </table>
+          </a>
+        `
+      }).join('')}
+    </div>
+  ` : ''
+
+  const sellerComps = sellerEstimate?.comparables || comparables || []
+  const comparableSoldHtml = sellerComps.length > 0 ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Comparable Sold (${sellerComps.length})</div>
+      ${sellerComps.map((c: any) => {
+        const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
+        const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+        const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+        return `
+          <a href="${BASE_URL}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+              ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"><div style="background:${c.temperature === 'HOT' ? '#ef4444' : c.temperature === 'WARM' ? '#f59e0b' : '#3b82f6'};color:#fff;font-size:9px;font-weight:700;padding:2px 5px;margin-top:2px;text-align:center;">${c.temperature || 'SOLD'}</div></td>` : ''}
+              <td style="padding: 10px 14px; vertical-align: middle;">
+                <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${(c.unparsedAddress || c.unparsed_address || '').split(',')[0]}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : '', c.sqft ? c.sqft + ' sqft' : '', c.daysOnMarket ? c.daysOnMarket + 'd DOM' : ''].filter(Boolean).join(' &middot; ')}</div>
+                ${c.matchQuality ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${c.matchQuality}</div>` : ''}
+              </td>
+              <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+                <div style="font-size: 16px; font-weight: 800; color: #059669;">$${Number(price).toLocaleString('en-CA')}</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Sold &rarr;</div>
+              </td>
+            </tr></table>
+          </a>
+        `
+      }).join('')}
+    </div>
+  ` : ''
+
+  const competingHtml = sellerEstimate?.competingListings && sellerEstimate.competingListings.length > 0 ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Competing For Sale (${sellerEstimate.competingListings.length})</div>
+      ${sellerEstimate.competingListings.slice(0, 10).map((c: any) => {
+        const price = c.list_price || 0
+        const addr = (c.unparsed_address || '').split(',')[0]
+        const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+        const slug = c._slug || (c.listing_key ? '/' + c.listing_key : '')
+        return `
+          <a href="${BASE_URL}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+              ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"></td>` : ''}
+              <td style="padding: 10px 14px; vertical-align: middle;">
+                <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${addr}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : ''].filter(Boolean).join(' &middot; ')}</div>
+              </td>
+              <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+                <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(price).toLocaleString('en-CA')}</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">For Sale &rarr;</div>
+              </td>
+            </tr></table>
+          </a>
+        `
+      }).join('')}
+    </div>
+  ` : ''
+
+  const vipHtml = vipCreditUsed ? `
+    <div style="background: linear-gradient(135deg, #1e1b4b, #312e81); border: 1px solid rgba(99,102,241,0.3); border-radius: 10px; padding: 14px 18px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between;">
+      <div>
+        <div style="font-size: 12px; font-weight: 700; color: #a5b4fc;">&#10022; VIP Access Credit Used</div>
+        <div style="font-size: 11px; color: rgba(165,180,252,0.6); margin-top: 3px;">${vipCreditPlansUsed} of ${vipCreditTotal} plans used</div>
+      </div>
+      <div style="font-size: 11px; color: rgba(165,180,252,0.5);">Request more from your agent</div>
+    </div>
+  ` : ''
+
+  const disclaimerHtml = `
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px; margin: 16px 0;">
+      <p style="margin: 0; font-size: 11px; color: #92400e; line-height: 1.6;">
+        <strong style="color: #d97706;">&#9888; AI Disclaimer:</strong> This plan is generated by artificial intelligence using market data and algorithms. It is intended for informational purposes only and does not constitute professional real estate, legal, or financial advice. All information should be independently verified with a licensed real estate agent before making any decisions.
+      </p>
+    </div>
+  `
+
+  const agentHtml = agent ? `
+    <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+      <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">Your Agent</div>
+      ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.15); margin-bottom: 8px;">` : ''}
+      <div style="font-size: 15px; font-weight: 700; color: #fff;">${agent.full_name}</div>
+      ${agent.title ? `<div style="font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.title}</div>` : ''}
+      ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
+      <div style="margin-top: 12px;">
+        ${agent.email ? `<a href="mailto:${agent.email}" style="display: inline-block; margin: 4px; padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
+        ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="display: inline-block; margin: 4px; padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
+      </div>
+    </div>
+  ` : ''
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+        <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 16px;">
+          <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+        </div>
+        <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 8px;">
+          ${isBuyer ? '&#127968; Buyer Plan' : '&#128176; Seller Strategy'} &mdash; ${geoName || 'GTA'}
+        </h1>
+        <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 14px;">
+          Prepared for ${userName} &middot; ${new Date().toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
+      <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
+        ${conditionHtml}
+        ${marketHtml}
+        ${offerIntelHtml}
+        ${bestTimeHtml}
+        ${summaryHtml}
+        ${blocksHtml}
+        ${planCardHtml}
+        ${profileHtml}
+        ${listingsHtml}
+        ${comparableSoldHtml}
+        ${competingHtml}
+        ${vipHtml}
+        ${disclaimerHtml}
+        ${agentHtml}
+        <div style="text-align: center; margin: 24px 0 8px;">
+          <a href="${BASE_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+            &#10022; Open WALLiam
+          </a>
+        </div>
+      </div>
+      <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+        <p style="margin: 0; color: #94a3b8; font-size: 11px;">WALLiam &middot; walliam.ca</p>
+      </div>
+    </div>
+  `
+}
+
+========================================================================
+FILE: app\api\charlie\route.ts
+========================================================================
+Size: 45755 bytes
+
+// app/api/charlie/route.ts
+import { NextRequest } from 'next/server'
+import Anthropic from '@anthropic-ai/sdk'
+import { createClient } from '@supabase/supabase-js'
+import { generatePropertySlug, generateHomePropertySlug } from '@/lib/utils/slugs'
+import { CHARLIE_TOOLS } from '@/app/charlie/lib/charlie-tools'
+import { buildCharlieSystemPrompt } from '@/app/charlie/lib/charlie-prompts'
+
+export const maxDuration = 60 // seconds
+
+function createAnthropicClient(apiKey: string) {
+  return new Anthropic({ apiKey })
+}
+
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
+
+export async function POST(req: NextRequest) {
+  const { messages, sessionId, userId, geoContext } = await req.json()
+  const tenantId = req.headers.get('x-tenant-id') || null
+  console.log('[CHARLIE] request received, sessionId:', sessionId, 'userId:', userId)
+
+  const supabase = createServiceClient()
+
+  // W-RECOVERY A1.1 auth gate — shape check (block bots and unauthenticated requests)
+  if (!sessionId || !tenantId || !userId) {
+    return new Response(
+      JSON.stringify({ error: 'Authentication required', missing: { sessionId: !sessionId, tenantId: !tenantId, userId: !userId } }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  // Session DB validation moved below tenant config fetch — see Edit 3
+  // END W-RECOVERY A1.1 auth gate (shape check)
+
+  // W-RECOVERY Chunk 6 — capture forensic context for logging
+  const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || null
+  const userAgent = req.headers.get('user-agent') || null
+  const lastUserMessage = Array.isArray(messages) && messages.length > 0 ? messages[messages.length - 1] : null
+  const userMessageContent = lastUserMessage?.role === 'user'
+    ? (typeof lastUserMessage.content === 'string' ? lastUserMessage.content : JSON.stringify(lastUserMessage.content))
+    : ''
+  const pageContextSnapshot = geoContext || null
+  // END W-RECOVERY Chunk 6 capture
+
+  // Log the user message NOW (before any Anthropic call) — guarantees we have the prompt even if the stream errors
+  if (userMessageContent) {
+    await supabase.from('chat_messages_v2').insert({
+      session_id: sessionId,
+      tenant_id: tenantId,
+      user_id: userId,
+      role: 'user',
+      content: userMessageContent,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      page_context: pageContextSnapshot,
+    })
+  }
+
+  // D2a — fetch tenant config once at request entry, propagate through route
+  if (!tenantId) {
+    return new Response(
+      JSON.stringify({ error: 'Tenant required (missing x-tenant-id header)' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  const { data: tenantConfig, error: tenantErr } = await supabase
+    .from('tenants')
+    .select('source_key, domain, name, assistant_name, anthropic_api_key')
+    .eq('id', tenantId)
+    .single()
+  if (tenantErr || !tenantConfig) {
+    console.error('[CHARLIE] tenant config fetch failed:', tenantErr)
+    return new Response(
+      JSON.stringify({ error: 'Invalid tenant' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  // F36 — strict tenant-key requirement, no env fallback
+  if (!tenantConfig.anthropic_api_key) {
+    console.error('[CHARLIE] tenant has no anthropic_api_key configured:', tenantId)
+    return new Response(
+      JSON.stringify({ error: 'AI not configured for this tenant' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+  const sourceKey = tenantConfig.source_key
+  const tenantDomain = tenantConfig.domain
+  const brandName = tenantConfig.name
+  const assistantName = tenantConfig.assistant_name || 'Charlie'
+  const anthropic = createAnthropicClient(tenantConfig.anthropic_api_key)
+
+  // D2a — session DB validation (uses sourceKey from tenant config, not hardcoded 'walliam')
+  const { data: validSession } = await supabase
+    .from('chat_sessions')
+    .select('id')
+    .eq('id', sessionId)
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .eq('source', sourceKey)
+    .maybeSingle()
+  if (!validSession) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid session' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    )
+  }
+
+  // Resolve agent + session from WALLiam session (NOT getAgentFromHost)
+  let agentId: string | null = null
+  let agentName = 'your agent'
+  let brokerageName: string | null = null
+  let sessionData: any = null
+
+  if (sessionId) {
+    const { data: session } = await supabase
+      .from('chat_sessions')
+      .select(`
+        id, agent_id, user_id, status, source,
+        message_count, buyer_plans_used, seller_plans_used,
+        vip_messages_granted, manual_approvals_count
+      `)
+      .eq('id', sessionId)
+      .eq('source', sourceKey)
+      .single()
+
+    if (session) {
+      sessionData = session
+      agentId = session.agent_id
+
+      if (agentId) {
+        const { data: agent } = await supabase
+          .from('agents')
+          .select('full_name, brokerage_name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap')
+          .eq('id', agentId)
+          .single()
+
+        if (agent) {
+          agentName = agent.full_name || 'your agent'
+          brokerageName = agent.brokerage_name || null
+          sessionData.agentConfig = agent
+        }
+      }
+    }
+  }
+
+  const geoReminder = geoContext ? `
+
+CURRENT GEO CONTEXT - use these EXACT values in ALL tool calls:
+geoType: ${geoContext.geoType}
+geoId: ${geoContext.geoId}
+geoName: ${geoContext.geoName}
+NEVER truncate the geoId.` : ''
+
+  // Pre-load building intelligence if on a building page
+  let buildingContext = ''
+  if (geoContext?.building_id) {
+    try {
+      const buildingIntel = await executeTool('get_building_intelligence', { building_id: geoContext.building_id }, agentId, geoContext)
+      if (buildingIntel && !buildingIntel.error) {
+        const b = buildingIntel.building
+        const s = buildingIntel.stats
+        buildingContext = `
+
+CURRENT BUILDING CONTEXT (pre-loaded — use this data directly):
+Building: ${b?.building_name} at ${b?.canonical_address}
+Total Units: ${b?.total_units || 'N/A'} | Year Built: ${b?.year_built || 'N/A'}
+Active For Sale: ${s?.active_for_sale} | Sold Last 90 Days: ${s?.sold_last_90}
+Median Sale Price: ${s?.median_sale_price?.toLocaleString() || 'N/A'} | Avg DOM: ${s?.avg_dom || 'N/A'} days
+Avg Concession: ${s?.avg_concession_pct || 0}% below asking
+Recent Sales: ${(buildingIntel.recent_sales || []).map((s: any) => `Unit ${s.unit_number}: ${s.bedrooms_total}BR sold ${s.close_price?.toLocaleString()} (${s.days_on_market} DOM)`).join(', ')}
+Active Listings: ${(buildingIntel.active_listings || []).map((l: any) => `Unit ${l.unit_number}: ${l.bedrooms_total}BR at ${l.list_price?.toLocaleString()}`).join(', ') || 'None'}
+
+  Building URL: https://walliam.ca/${b?.slug}
+Use this data to answer building-specific questions immediately without calling get_building_intelligence again.`
+      }
+    } catch (e) {
+      console.error('[CHARLIE] building pre-load error:', e)
+    }
+  }
+
+
+  // Pre-load geo analytics if on a geo page (municipality/community/area)
+  let geoAnalyticsContext = ''
+  const geoPreloadId = geoContext?.municipality_id || geoContext?.community_id || geoContext?.area_id
+  const geoPreloadType = geoContext?.municipality_id ? 'municipality' : geoContext?.community_id ? 'community' : geoContext?.area_id ? 'area' : null
+  if (geoPreloadId && geoPreloadType && !geoContext?.building_id) {
+    try {
+      const { createClient: _sc } = await import('@supabase/supabase-js')
+      const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+      const { data: geoA } = await _db
+        .from('geo_analytics')
+        .select('median_sale_price, avg_psf, closed_avg_dom_90, absorption_rate_pct, months_of_inventory, pct_sold_over_ask, avg_concession_pct, bedroom_breakdown, sale_to_list_ratio, active_count, closed_sale_count_90')
+        .eq('geo_type', geoPreloadType)
+        .eq('geo_id', geoPreloadId)
+        .eq('period_type', 'rolling_12mo')
+        .maybeSingle()
+      if (geoA) {
+        const absorption = geoA.absorption_rate_pct || 0
+        const marketCondition = absorption > 60 ? "Seller's Market" : absorption < 40 ? "Buyer's Market" : "Balanced Market"
+        const moi = geoA.months_of_inventory || 0
+        const urgency = moi < 2 ? 'High' : moi < 4 ? 'Medium' : 'Low'
+        const overAsk = geoA.pct_sold_over_ask || 0
+        const underAsk = (100 - overAsk - (geoA.sale_to_list_ratio || 0))
+        const negotiation = overAsk > 50 ? 'Over Ask' : moi > 4 ? 'Under Ask' : 'At Ask'
+        let bedroomText = ''
+        if (geoA.bedroom_breakdown) {
+          try {
+            const bd = typeof geoA.bedroom_breakdown === 'string' ? JSON.parse(geoA.bedroom_breakdown) : geoA.bedroom_breakdown
+            bedroomText = Object.entries(bd).map(([k,v]: any) => `${k}BR: $${v?.median_price?.toLocaleString() || 'N/A'}`).join(', ')
+          } catch {}
+        }
+        geoAnalyticsContext = `
+
+CURRENT GEO ANALYTICS (pre-loaded — use this data directly, do not call get_market_analytics again):
+Market Condition: ${marketCondition} | Urgency: ${urgency} | Negotiation: ${negotiation}
+Median Sale Price: $${geoA.median_sale_price?.toLocaleString() || "N/A"} | Avg PSF: $${geoA.avg_psf?.toLocaleString() || "N/A"}
+Avg DOM: ${geoA.closed_avg_dom_90 || "N/A"} days | Months of Inventory: ${moi}
+Avg Concession: ${geoA.avg_concession_pct || 0}% below asking | Active Listings: ${geoA.active_count || 0}
+${bedroomText ? `Price by Bedrooms: ${bedroomText}` : ""}
+Use these exact numbers when answering market questions.`
+      }
+    } catch (e) {
+      console.error('[CHARLIE] geo pre-load error:', e)
+    }
+  }
+  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName, assistantName) + geoReminder + buildingContext + geoAnalyticsContext
+
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      console.log('[CHARLIE] stream started, messages:', JSON.stringify(messages?.slice(-1)))
+      const send = (data: object) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+
+      // ── CHAT GATING ────────────────────────────────────────────────
+      if (sessionData && tenantId) {
+        const { data: tenantCfg } = await supabase.from('tenants').select('ai_free_messages, ai_hard_cap, vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit').eq('id', tenantId).single()
+        if (tenantCfg) {
+          const msgUsed = sessionData.message_count || 0
+          const isVip = sessionData.status === 'vip'
+            // Check user-level credit override for chat
+            const { data: userChatOverride } = sessionData.user_id
+              ? await supabase.from('user_credit_overrides').select('ai_chat_limit').eq('user_id', sessionData.user_id).eq('tenant_id', tenantId).maybeSingle()
+              : { data: null }
+            let chatAllowed: number
+            if (userChatOverride?.ai_chat_limit != null) {
+              chatAllowed = Math.min(userChatOverride.ai_chat_limit, tenantCfg.ai_hard_cap ?? 25)
+            } else {
+              chatAllowed = tenantCfg.ai_free_messages ?? 5
+              if (isVip) {
+                chatAllowed += (tenantCfg.ai_auto_approve_limit ?? 0)
+                chatAllowed += (tenantCfg.ai_manual_approve_limit ?? 0) * (sessionData.manual_approvals_count || 0)
+              }
+              chatAllowed = Math.min(chatAllowed, tenantCfg.ai_hard_cap ?? 25)
+            }
+          if (msgUsed >= chatAllowed) {
+            send({ type: 'gate', reason: 'chat_limit' })
+            send({ type: 'done' })
+            controller.close()
+            return
+          }
+          // Atomic increment — D0 fix retiring F5 race condition
+          const { data: newMsgCount, error: incErr } = await supabase.rpc('increment_chat_session_counter', {
+            p_session_id: sessionId,
+            p_counter: 'message_count',
+          })
+          if (incErr) {
+            console.error('[CHARLIE] message_count increment failed:', incErr)
+            send({ type: 'error', message: 'counter increment failed' })
+            send({ type: 'done' })
+            controller.close()
+            return
+          }
+          // Store pending chat credit event for post-stream — uses RPC return value, not stale read
+          ;(sessionData as any)._pendingChatEvent = { messageCount: newMsgCount, chatFreeMessages: chatAllowed }
+          // Low credit warning email at 1 remaining
+          const remaining = chatAllowed - (msgUsed + 1)
+          if (remaining === 1 && sessionData.user_id) {
+            fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: sessionData.user_id, creditType: 'chat', remaining: 1, sessionId }),
+            }).catch(() => {})
+          }
+        }
+      }
+      // ── END CHAT GATING ─────────────────────────────────────────────
+
+      // ── PRE-STREAM PLAN GATE ──────────────────────────────
+      // Gate fires BEFORE streaming — AI never starts if credits exhausted
+      if (sessionData && tenantId) {
+        const effectiveUserId = userId || sessionData?.user_id || null
+        if (effectiveUserId) {
+          const { data: planCfg } = await supabase.from('tenants').select('plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, plan_vip_auto_approve, plan_mode').eq('id', tenantId).single()
+          if (planCfg) {
+            const plansUsed = (sessionData.buyer_plans_used || 0) + (sessionData.seller_plans_used || 0)
+            const { data: userPlanOverride } = await supabase.from('user_credit_overrides').select('buyer_plan_limit').eq('user_id', effectiveUserId).eq('tenant_id', tenantId).maybeSingle()
+            const planHardCap = planCfg.plan_hard_cap ?? 10
+            let preCachedTotal: number
+            if (userPlanOverride?.buyer_plan_limit != null) {
+              preCachedTotal = Math.min(userPlanOverride.buyer_plan_limit, planHardCap)
+            } else {
+              const isVipPre = sessionData.status === 'vip'
+              const manualCountPre = sessionData.manual_approvals_count || 0
+              preCachedTotal = planCfg.plan_free_attempts ?? 1
+              if (isVipPre) {
+                preCachedTotal += planCfg.plan_auto_approve_limit ?? 0
+                preCachedTotal += (planCfg.plan_manual_approve_limit ?? 3) * manualCountPre
+              }
+              preCachedTotal = Math.min(preCachedTotal, planHardCap)
+            }
+            if (plansUsed >= preCachedTotal && !(planCfg as any).plan_vip_auto_approve) {
+              send({ type: 'gate', reason: 'vip_required', planType: undefined })
+              send({ type: 'done' })
+              controller.close()
+              return
+            }
+            ;(sessionData as any)._cachedTotalAllowed = preCachedTotal
+            ;(sessionData as any)._cachedPlansUsed = plansUsed
+          }
+        }
+      }
+      // ── END PRE-STREAM PLAN GATE ──────────────────────────
+
+      try {
+        let currentMessages = [...messages]
+        let continueLoop = true
+
+        while (continueLoop) {
+          const response = await anthropic.messages.create({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1024,
+            system: systemPrompt,
+            tools: CHARLIE_TOOLS as any,
+            messages: currentMessages,
+            stream: false,
+          })
+
+          // W-RECOVERY Chunk 6 — log this Anthropic call (one row per messages.create = one billable charge)
+          try {
+            const _logTextParts: string[] = []
+            const _logToolNames: string[] = []
+            for (const _b of response.content) {
+              if (_b.type === 'text') _logTextParts.push(_b.text)
+              else if (_b.type === 'tool_use') _logToolNames.push(_b.name)
+            }
+            const _logContent = _logTextParts.join('').trim() || (_logToolNames.length ? '[tool_use: ' + _logToolNames.join(', ') + ']' : '[empty]')
+            await supabase.from('chat_messages_v2').insert({
+              session_id: sessionId,
+              tenant_id: tenantId,
+              user_id: userId,
+              role: 'assistant',
+              content: _logContent,
+              tokens_in: response.usage?.input_tokens ?? null,
+              tokens_out: response.usage?.output_tokens ?? null,
+              model: 'claude-sonnet-4-6',
+              ip_address: ipAddress,
+              user_agent: userAgent,
+              page_context: pageContextSnapshot,
+            })
+          } catch (_logErr) {
+            console.error('[CHARLIE] message log error:', _logErr)
+          }
+          // END W-RECOVERY Chunk 6 log
+
+          // Collect text + tool uses
+          let textContent = ''
+          const toolUses: any[] = []
+
+          for (const block of response.content) {
+            if (block.type === 'text') {
+              textContent += block.text
+            } else if (block.type === 'tool_use') {
+              toolUses.push(block)
+            }
+          }
+
+          // Stream text word by word
+          if (textContent) {
+            const words = textContent.split(' ')
+            for (const word of words) {
+              send({ type: 'text', content: word + ' ' })
+              await new Promise(r => setTimeout(r, 18))
+            }
+          }
+
+          // Handle tool calls
+          if (toolUses.length > 0) {
+            const toolResults = []
+
+            for (const tool of toolUses) {
+              // ── PLAN GATING ──────────────────────────────────────────────
+              if (tool.name === 'generate_plan') {
+                const planType = tool.input?.type as 'buyer' | 'seller' | undefined
+
+                // Anonymous user — must register first
+                const effectiveUserId = userId || sessionData?.user_id || null
+                if (!effectiveUserId) {
+                  send({ type: 'gate', reason: 'register' })
+                  send({ type: 'done' })
+                  controller.close()
+                  return
+                }
+
+                // Check plan usage against limits
+                if (sessionData) {
+
+                  // Load plan config from tenant
+                    let cfg: any = { plan_free_attempts: 1, plan_auto_approve_limit: 0, plan_manual_approve_limit: 3, plan_hard_cap: 10, plan_vip_auto_approve: false, plan_mode: 'shared', seller_plan_free_attempts: 1, seller_plan_hard_cap: 10 }
+                  if (tenantId) {
+                      const { data: tenantCfg } = await supabase.from('tenants').select('plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, plan_vip_auto_approve, plan_mode, seller_plan_free_attempts, seller_plan_hard_cap').eq('id', tenantId).single()
+                    if (tenantCfg) cfg = tenantCfg
+                  }
+                  const planMode = cfg?.plan_mode || 'shared'
+                  const isVip = sessionData.status === 'vip'
+                  const manualApprovalsCount = sessionData.manual_approvals_count || 0
+
+                  // Determine limit based on plan_mode
+                  let freePlans: number
+                  let plansUsed: number
+                  if (planMode === 'independent') {
+                    freePlans = planType === 'seller' ? (cfg?.seller_plan_free_attempts ?? 1) : (cfg?.plan_free_attempts ?? 1)
+                    plansUsed = planType === 'seller' ? (sessionData.seller_plans_used || 0) : (sessionData.buyer_plans_used || 0)
+                  } else {
+                    // Shared pool
+                    freePlans = cfg?.plan_free_attempts ?? 1
+                    plansUsed = (sessionData.buyer_plans_used || 0) + (sessionData.seller_plans_used || 0)
+                  }
+                    // Check user-level credit override for plans
+                    const { data: userPlanOverride } = sessionData.user_id
+                      ? await supabase.from('user_credit_overrides').select('buyer_plan_limit, seller_plan_limit').eq('user_id', sessionData.user_id).eq('tenant_id', tenantId).maybeSingle()
+                      : { data: null }
+                    const planHardCap = planType === 'seller' ? (cfg?.seller_plan_hard_cap ?? 10) : (cfg?.plan_hard_cap ?? 10)
+                    const planOverrideValue = planType === 'seller' ? userPlanOverride?.seller_plan_limit : userPlanOverride?.buyer_plan_limit
+                    let totalAllowed: number
+                    if (planOverrideValue != null) {
+                      totalAllowed = Math.min(planOverrideValue, planHardCap)
+                    } else {
+                      totalAllowed = freePlans
+                      if (isVip) {
+                        totalAllowed += cfg?.plan_auto_approve_limit ?? 0
+                        totalAllowed += (cfg?.plan_manual_approve_limit ?? 3) * manualApprovalsCount
+                      }
+                      totalAllowed = Math.min(totalAllowed, planHardCap)
+                    }
+
+                  // Gate already checked pre-stream — use cached values
+                  const cachedTotal = (sessionData as any)._cachedTotalAllowed ?? totalAllowed
+                  const cachedUsed = (sessionData as any)._cachedPlansUsed ?? plansUsed
+                  if (cachedUsed >= cachedTotal && !(cfg as any).vip_auto_approve) {
+                    send({ type: 'gate', reason: 'vip_required', planType })
+                    send({ type: 'done' })
+                    controller.close()
+                    return
+                  }
+
+                  // Atomic increment — D0 fix retiring F5 race condition
+                  const planCounterCol = planType === 'seller' ? 'seller_plans_used' : 'buyer_plans_used'
+                  ;(sessionData as any)._planGeneratedThisTurn = true
+                  const { error: planIncErr } = await supabase.rpc('increment_chat_session_counter', {
+                    p_session_id: sessionId,
+                    p_counter: planCounterCol,
+                  })
+                  if (planIncErr) {
+                    console.error('[CHARLIE] plan counter increment failed:', planIncErr)
+                    send({ type: 'error', message: 'plan counter increment failed' })
+                    send({ type: 'done' })
+                    controller.close()
+                    return
+                  }
+
+                  // Notify frontend — registered user used a VIP credit
+
+                  // Low credit warning email — fire when 1 plan remaining
+                  const plansRemaining = totalAllowed - (plansUsed + 1)
+                  if (plansRemaining === 1 && sessionData?.user_id) {
+                    fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        userId: sessionData.user_id,
+                        creditType: 'plan',
+                        remaining: 1,
+                        sessionId,
+                      }),
+                    }).catch(err => console.error('[charlie] low credit email error:', err))
+                  }
+                  // vip_credit_used fires AFTER done — stored for post-stream
+                  ;(sessionData as any)._pendingVipEvent = { plansUsed: cachedUsed + 1, totalAllowed: cachedTotal, planType }
+                  // Send plan email notification to user
+                }
+              }
+              // ── END PLAN GATING ──────────────────────────────────────────
+
+              const result = await executeTool(tool.name, tool.input, agentId, geoContext)
+              send({ type: 'tool_result', tool: tool.name, data: result })
+              toolResults.push({
+                type: 'tool_result' as const,
+                tool_use_id: tool.id,
+                content: JSON.stringify(result),
+              })
+            }
+
+            currentMessages = [
+              ...currentMessages,
+              { role: 'assistant', content: response.content },
+              { role: 'user', content: toolResults },
+            ]
+          } else {
+            continueLoop = false
+          }
+
+          if (response.stop_reason === 'end_turn' && toolUses.length === 0) {
+            continueLoop = false
+          }
+        }
+
+        // Update session activity
+        if (sessionId) {
+          await supabase
+            .from('chat_sessions')
+            .update({ last_activity_at: new Date().toISOString() })
+            .eq('id', sessionId)
+        }
+
+        // Fire vip_credit_used AFTER full plan completion
+        send({ type: 'done' })
+        if ((sessionData as any)?._pendingChatEvent) {
+          const cevt = (sessionData as any)._pendingChatEvent
+          if ((sessionData as any)?._planGeneratedThisTurn) {
+            // Atomic decrement — refund the chat credit because a plan was generated this turn
+            const { error: decErr } = await supabase.rpc('decrement_chat_session_counter', {
+              p_session_id: sessionId,
+              p_counter: 'message_count',
+            })
+            if (decErr) console.error('[CHARLIE] message_count decrement failed:', decErr)
+          } else {
+            send({ type: 'chat_credit_used', messageCount: cevt.messageCount, chatFreeMessages: cevt.chatFreeMessages })
+          }
+        }
+        if ((sessionData as any)?._pendingVipEvent) {
+          const evt = (sessionData as any)._pendingVipEvent
+          send({ type: 'vip_credit_used', plansUsed: evt.plansUsed, totalAllowed: evt.totalAllowed, planType: evt.planType })
+        }
+        controller.close()
+      } catch (err: any) {
+        send({ type: 'error', message: err.message })
+        controller.close()
+      }
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    }
+  })
+}
+
+async function executeTool(name: string, input: any, agentId: string | null, geoContext?: any): Promise<any> {
+  const supabase = createServiceClient()
+
+  if (name === 'resolve_geo') {
+    const { data: muni } = await supabase
+      .from('municipalities')
+      .select('id, name, slug, area_id')
+      .ilike('name', `%${input.query}%`)
+      .limit(1)
+      .single()
+    if (muni) return { geoType: 'municipality', geoId: muni.id, geoName: muni.name, slug: muni.slug }
+
+    const { data: comm } = await supabase
+      .from('communities')
+      .select('id, name, slug, municipality_id')
+      .ilike('name', `%${input.query}%`)
+      .limit(1)
+      .single()
+    if (comm) return { geoType: 'community', geoId: comm.id, geoName: comm.name, slug: comm.slug }
+
+    const { data: area } = await supabase
+      .from('treb_areas')
+      .select('id, name, slug')
+      .ilike('name', `%${input.query}%`)
+      .limit(1)
+      .single()
+    if (area) return { geoType: 'area', geoId: area.id, geoName: area.name, slug: area.slug }
+
+    return { error: 'Location not found', query: input.query }
+  }
+
+  if (name === 'get_market_analytics') {
+    const { data } = await supabase
+      .from('geo_analytics')
+      .select('median_psf, avg_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, months_of_inventory, active_count, closed_sale_count_90, median_lease_price, gross_rental_yield_pct, psf_trend_pct, dom_trend_pct, bedroom_breakdown, subtype_breakdown, price_trend_monthly, insight_seasonal, avg_concession_pct, pct_sold_over_ask, pct_sold_under_ask, pct_sold_at_ask, median_sale_price, avg_sale_price, p25_sale_price, p75_sale_price, stale_listing_pct, new_listings_7d')
+      .eq('geo_type', input.geoType)
+      .eq('geo_id', input.geoId)
+      .eq('track', input.track)
+      .eq('period_type', 'rolling_12mo')
+      .maybeSingle()
+    // Compute derived insights from raw analytics
+    let computed: any = {}
+    if (data) {
+      // Market condition
+      const absorption = data.absorption_rate_pct || 0
+      computed.market_condition = absorption > 60 ? "Seller's Market" : absorption < 40 ? "Buyer's Market" : "Balanced Market"
+
+      // Negotiation signal
+      const overAsk = data.pct_sold_over_ask || 0
+      const underAsk = data.pct_sold_under_ask || 0
+      computed.negotiation_signal = overAsk > underAsk ? 'Over Ask' : underAsk > overAsk ? 'Under Ask' : 'At Ask'
+
+      // Urgency
+      const moi = data.months_of_inventory || 99
+      computed.urgency = moi < 2 ? 'High' : moi < 4 ? 'Medium' : 'Low'
+
+      // Bedroom pricing from bedroom_breakdown JSONB
+      if (data.bedroom_breakdown) {
+        try {
+          const bd = typeof data.bedroom_breakdown === 'string' ? JSON.parse(data.bedroom_breakdown) : data.bedroom_breakdown
+          computed.bedroom_pricing = bd
+        } catch {}
+      }
+    }
+    return { analytics: data, computed, geoType: input.geoType, geoId: input.geoId, track: input.track }
+  }
+
+  if (name === 'search_listings') {
+    console.log('[CHARLIE search_listings]', JSON.stringify(input))
+    const params = new URLSearchParams()
+    params.set('geoType', input.geoType)
+    params.set('geoId', input.geoId)
+    params.set('tab', input.status === 'for-lease' ? 'for-lease' : 'for-sale')
+    params.set('page', '1')
+    params.set('pageSize', String(input.limit || 10))
+    if (input.propertyCategory && input.propertyCategory !== 'all') params.set('propertyCategory', input.propertyCategory)
+    if (input.minPrice) params.set('minPrice', String(input.minPrice))
+    if (input.maxPrice) params.set('maxPrice', String(input.maxPrice))
+    if (input.beds && input.beds > 0) params.set('beds', String(input.beds))
+    if (input.baths && input.baths > 0) params.set('baths', String(input.baths))
+    if (input.sort) params.set('sort', input.sort)
+    if (input.propertySubtype) params.set('propertySubtype', input.propertySubtype)
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const res = await fetch(`${baseUrl}/api/geo-listings?${params.toString()}`)
+    const data = await res.json()
+    const cat = input.propertyCategory === 'condo' ? 'Condos' : input.propertyCategory === 'homes' ? 'Homes' : 'Listings'
+    const sortLabel = input.sort === 'price_asc' ? '(Lowest Priced)' : ''
+    const geoName = geoContext ? geoContext.geoName : ''
+    const CONDO_TYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment', 'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']
+    const listingsWithSlugs = (data.listings || []).map((l: any) => {
+      const isHome = l.property_type === 'Residential Freehold' || (!CONDO_TYPES.includes(l.property_subtype) && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].includes(l.property_subtype))
+      const slug = isHome ? generateHomePropertySlug(l) : generatePropertySlug(l)
+      return { ...l, _slug: slug, _isHome: isHome }
+    })
+    return { listings: listingsWithSlugs, total: data.total || 0, label: (cat + ' in ' + geoName + ' ' + sortLabel).trim() }
+  }
+
+  if (name === 'get_building_intelligence') {
+    // Resolve building_id from slug if needed
+    let buildingId = input.building_id
+    if (!buildingId && input.building_slug) {
+      const { data: b } = await supabase.from('buildings').select('id').eq('slug', input.building_slug).single()
+      buildingId = b?.id
+    }
+    if (!buildingId) return { error: 'Building not found' }
+
+    // Get building details
+    const { data: building } = await supabase
+      .from('buildings')
+      .select('id, building_name, canonical_address, total_units, year_built, slug')
+      .eq('id', buildingId)
+      .single()
+
+    // Get recent sold listings (last 90 days)
+    const { data: recentSales } = await supabase
+      .from('mls_listings')
+      .select('unit_number, close_price, close_date, bedrooms_total, living_area_range, days_on_market, list_price')
+      .eq('building_id', buildingId)
+      .eq('standard_status', 'Closed')
+      .eq('transaction_type', 'For Sale')
+      .gte('close_date', new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+      .order('close_date', { ascending: false })
+      .limit(5)
+
+    // Get active listings
+    const { data: activeListings } = await supabase
+      .from('mls_listings')
+      .select('unit_number, list_price, bedrooms_total, living_area_range, days_on_market')
+      .eq('building_id', buildingId)
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .eq('transaction_type', 'For Sale')
+      .order('list_price', { ascending: true })
+      .limit(5)
+
+    // Compute building stats from recent sales
+    const sales = recentSales || []
+    const prices = sales.map((s: any) => s.close_price).filter(Boolean)
+    const concessions = sales.map((s: any) => s.close_price && s.list_price ? ((s.list_price - s.close_price) / s.list_price * 100) : null).filter((v: any): v is number => v !== null)
+    const doms = sales.map((s: any) => s.days_on_market).filter(Boolean)
+
+    const stats = {
+      sold_last_90: sales.length,
+      median_sale_price: prices.length ? Math.round(prices.sort((a: number, b: number) => a - b)[Math.floor(prices.length / 2)]) : null,
+      avg_sale_price: prices.length ? Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length) : null,
+      avg_dom: doms.length ? Math.round(doms.reduce((a: number, b: number) => a + b, 0) / doms.length) : null,
+      avg_concession_pct: concessions.length ? Math.round(concessions.reduce((a: number, b: number) => a + b, 0) / concessions.length * 10) / 10 : null,
+      active_for_sale: (activeListings || []).length,
+    }
+
+    return {
+      building,
+      stats,
+      recent_sales: sales,
+      active_listings: activeListings || [],
+    }
+  }
+
+  if (name === 'generate_plan') {
+    return {
+      type: input.type,
+      geoName: input.geoName,
+      budgetMin: input.budgetMin || null,
+      budgetMax: input.budgetMax || null,
+      propertyType: input.propertyType || null,
+      bedrooms: input.bedrooms || null,
+      timeline: input.timeline || null,
+      goal: input.goal || null,
+      estimatedValueMin: input.estimatedValueMin || null,
+      estimatedValueMax: input.estimatedValueMax || null,
+        summary: input.summary || null,
+      planReady: true,
+    }
+  }
+
+  if (name === 'get_comparables') {
+    const params = new URLSearchParams()
+    params.set('geoType', input.geoType)
+    params.set('geoId', input.geoId)
+    params.set('tab', 'sold')
+    params.set('page', '1')
+    params.set('pageSize', '6')
+    if (input.propertyCategory) params.set('propertyCategory', input.propertyCategory)
+    if (input.minPrice) params.set('minPrice', String(input.minPrice))
+    if (input.maxPrice) params.set('maxPrice', String(input.maxPrice))
+
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const res = await fetch(`${baseUrl}/api/geo-listings?${params.toString()}`)
+    const data = await res.json()
+    const CONDO_TYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment', 'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']
+    const listingsWithSlugs = (data.listings || []).map((l: any) => {
+      const isHome = l.property_type === 'Residential Freehold' || (!CONDO_TYPES.includes(l.property_subtype) && ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'].includes(l.property_subtype))
+      const slug = isHome ? generateHomePropertySlug(l) : generatePropertySlug(l)
+      return { ...l, _slug: slug, _isHome: isHome }
+    })
+    return { listings: listingsWithSlugs, total: data.total || 0 }
+  }
+
+
+  if (name === 'search_buildings') {
+    const { geoType, geoId, sort = 'active_count', limit = 5 } = input
+    const baseUrl = 'https://walliam.ca'
+    let communityIds: string[] = []
+    if (geoType === 'municipality') {
+      const { data: comms } = await supabase.from('communities').select('id').eq('municipality_id', geoId)
+      communityIds = (comms || []).map((c: any) => c.id)
+    } else if (geoType === 'community') {
+      communityIds = [geoId]
+    }
+    if (communityIds.length === 0) return { buildings: [] }
+    const { data: buildings } = await supabase
+      .from('buildings')
+      .select('id, building_name, slug, canonical_address, year_built, total_units, cover_photo_url')
+      .in('community_id', communityIds)
+      .limit(500)
+    const bIds = (buildings || []).map((b: any) => b.id)
+    if (bIds.length === 0) return { buildings: [] }
+    const { data: analytics } = await supabase
+      .from('geo_analytics')
+      .select('geo_id, active_count, median_sale_price, avg_psf, median_maint_fee, gross_rental_yield_pct, closed_sale_count_90')
+      .eq('geo_type', 'building')
+      .eq('period_type', 'rolling_12mo')
+      .eq('track', 'condo')
+      .in('geo_id', bIds)
+      .limit(1000)
+    const aMap: any = {}
+    for (const a of (analytics || [])) aMap[a.geo_id] = a
+    let results = (buildings || []).map((b: any) => ({ ...b, url: baseUrl + '/' + b.slug, ...(aMap[b.id] || {}) }))
+    if (sort === 'price_asc') results.sort((a: any, b: any) => (a.median_sale_price || Infinity) - (b.median_sale_price || Infinity))
+    else if (sort === 'price_desc') results.sort((a: any, b: any) => (b.median_sale_price || 0) - (a.median_sale_price || 0))
+    else if (sort === 'maintenance_asc') results.sort((a: any, b: any) => (a.median_maint_fee || Infinity) - (b.median_maint_fee || Infinity))
+    else results.sort((a: any, b: any) => (b.active_count || 0) - (a.active_count || 0))
+    return { buildings: results.slice(0, limit) }
+  }
+
+  if (name === 'compare_geo') {
+    const { geoIds, geoType, track = 'condo' } = input
+    if (!geoIds || !Array.isArray(geoIds)) return { error: 'geoIds array required' }
+    const baseUrl = 'https://walliam.ca'
+    const comparisons = await Promise.all(geoIds.map(async (id: string) => {
+      const { data: analytics } = await supabase
+        .from('geo_analytics')
+        .select('median_sale_price, avg_psf, psf_trend_pct, active_count, months_of_inventory, sale_to_list_ratio, pct_sold_over_ask, avg_concession_pct, closed_avg_dom_90, gross_rental_yield_pct, median_maint_fee, absorption_rate_pct, bedroom_breakdown')
+        .eq('geo_type', geoType)
+        .eq('geo_id', id)
+        .eq('period_type', 'rolling_12mo')
+        .eq('track', track)
+        .single()
+      let geoName = '', geoSlug = ''
+      if (geoType === 'municipality') {
+        const { data: m } = await supabase.from('municipalities').select('name, slug').eq('id', id).single()
+        geoName = m?.name || ''; geoSlug = m?.slug || ''
+      } else if (geoType === 'community') {
+        const { data: cm } = await supabase.from('communities').select('name, slug').eq('id', id).single()
+        geoName = cm?.name || ''; geoSlug = cm?.slug || ''
+      }
+      return { geoId: id, name: geoName, slug: geoSlug, url: baseUrl + '/' + geoSlug, analytics: analytics || null }
+    }))
+    return { comparisons, track }
+  }
+
+  if (name === 'get_price_trends') {
+    const { geoType, geoId, track = 'condo' } = input
+    const { data: analytics } = await supabase
+      .from('geo_analytics')
+      .select('price_trend_monthly, dom_trend_monthly, volume_trend_monthly, lease_trend_monthly, median_sale_price, avg_psf, psf_trend_pct, insight_seasonal, median_lease_price')
+      .eq('geo_type', geoType)
+      .eq('geo_id', geoId)
+      .eq('period_type', 'rolling_12mo')
+      .eq('track', track)
+      .single()
+    if (!analytics) return { error: 'No price trend data available for this area' }
+    return {
+      price_trend_monthly: analytics.price_trend_monthly,
+      dom_trend_monthly: analytics.dom_trend_monthly,
+      volume_trend_monthly: analytics.volume_trend_monthly,
+      lease_trend_monthly: analytics.lease_trend_monthly,
+      current_median_sale: analytics.median_sale_price,
+      current_avg_psf: analytics.avg_psf,
+      psf_trend_pct: analytics.psf_trend_pct,
+      current_median_lease: analytics.median_lease_price,
+      insight_seasonal: analytics.insight_seasonal,
+    }
+  }
+
+  if (name === 'get_investment_rankings') {
+    const { parentGeoType, parentGeoId, track = 'condo', rankingType = 'best_yield' } = input
+    const baseUrl = 'https://walliam.ca'
+    const { data } = await supabase
+      .from('geo_rankings')
+      .select('ranking_type, ranked_entity, results')
+      .eq('parent_geo_type', parentGeoType)
+      .eq('parent_geo_id', parentGeoId)
+      .eq('track', track)
+      .eq('ranking_type', rankingType)
+      .limit(5)
+    if (!data || data.length === 0) return { rankings: [], ranking_type: rankingType }
+    const results = (data[0]?.results || []).map((r: any) => ({ ...r, url: baseUrl + '/' + r.entity_slug }))
+    return { ranking_type: rankingType, track, ranked_entity: data[0]?.ranked_entity, rankings: results }
+  }
+
+  if (name === 'get_inventory_rankings') {
+    const { parentGeoType, parentGeoId, track = 'condo' } = input
+    const baseUrl = 'https://walliam.ca'
+    const { data } = await supabase
+      .from('geo_rankings')
+      .select('ranking_type, ranked_entity, results')
+      .eq('parent_geo_type', parentGeoType)
+      .eq('parent_geo_id', parentGeoId)
+      .eq('track', track)
+      .in('ranking_type', ['fastest_selling', 'slowest_moving', 'highest_price_reduction', 'best_concession_opportunity'])
+      .limit(20)
+    if (!data || data.length === 0) return { rankings: {} }
+    const grouped: any = {}
+    for (const row of data) {
+      grouped[row.ranking_type] = (row.results || []).map((r: any) => ({ ...r, url: baseUrl + '/' + r.entity_slug }))
+    }
+    return { rankings: grouped, track }
+  }
+
+  if (name === 'get_seasonal_trends') {
+    const { geoType, geoId, track = 'condo' } = input
+    const { data: analytics } = await supabase
+      .from('geo_analytics')
+      .select('insight_seasonal, insight_value_migration, insight_demand_mismatch, insight_reentry, insight_concession_matrix, median_sale_price, active_count, months_of_inventory, new_listings_7d')
+      .eq('geo_type', geoType)
+      .eq('geo_id', geoId)
+      .eq('period_type', 'rolling_12mo')
+      .eq('track', track)
+      .single()
+    if (!analytics) return { error: 'No seasonal data available for this area' }
+    return {
+      insight_seasonal: analytics.insight_seasonal,
+      insight_value_migration: analytics.insight_value_migration,
+      insight_demand_mismatch: analytics.insight_demand_mismatch,
+      insight_reentry: analytics.insight_reentry,
+      insight_concession_matrix: analytics.insight_concession_matrix,
+      context: { median_sale_price: analytics.median_sale_price, active_count: analytics.active_count, months_of_inventory: analytics.months_of_inventory, new_listings_7d: analytics.new_listings_7d }
+    }
+  }
+
+  if (name === 'get_building_directory') {
+    const { geoType, geoId, limit = 20 } = input
+    const baseUrl = 'https://walliam.ca'
+    let communityIds: string[] = []
+    if (geoType === 'municipality') {
+      const { data: comms } = await supabase.from('communities').select('id').eq('municipality_id', geoId)
+      communityIds = (comms || []).map((c: any) => c.id)
+    } else if (geoType === 'community') {
+      communityIds = [geoId]
+    }
+    if (communityIds.length === 0) return { buildings: [] }
+    const { data: buildings } = await supabase
+      .from('buildings')
+      .select('id, building_name, slug, canonical_address, year_built, total_units')
+      .in('community_id', communityIds)
+      .order('building_name')
+      .limit(limit)
+    return { buildings: (buildings || []).map((b: any) => ({ ...b, url: baseUrl + '/' + b.slug })) }
+  }
+
+  return { error: 'Unknown tool' }
+}
+
+

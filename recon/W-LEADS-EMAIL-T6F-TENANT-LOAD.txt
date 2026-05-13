@@ -1,0 +1,413 @@
+W-LEADS-EMAIL T6f tenant-load + BASE_URL recon
+Generated: 2026-05-11T14:02:41.388Z
+
+==============================================================================
+HELPER: lib/utils/validate-session.ts (will need extension to return brandName + domain)
+==============================================================================
+  L1-78 (full file):
+    L   1: /**
+    L   2:  * Tenant-aware session validation gate.
+    L   3:  *
+    L   4:  * Replaces the hardcoded `.eq('source', 'walliam')` pattern across the
+    L   5:  * auth-gate sites in W-LEADS-EMAIL T6a target routes:
+    L   6:  *   - app/api/charlie/lead/route.ts
+    L   7:  *   - app/api/charlie/plan-email/route.ts
+    L   8:  *   - app/api/charlie/appointment/route.ts
+    L   9:  *
+    L  10:  * For routes where the session is already loaded (estimator/vip-request) or
+    L  11:  * where source is used for non-gate operations (estimator/session), this
+    L  12:  * helper is NOT used; those routes inline `tenant.source_key` access via
+    L  13:  * their existing tenant SELECT.
+    L  14:  *
+    L  15:  * Implementation:
+    L  16:  *   1. Verify sessionId, userId, tenantId all non-empty -> 401 if any missing
+    L  17:  *   2. Load `tenants.source_key` for tenantId
+    L  18:  *   3. Load `chat_sessions` WHERE id=sessionId AND user_id=userId AND
+    L  19:  *      tenant_id=tenantId AND source=source_key
+    L  20:  *   4. Any failure -> 401 'Invalid session'
+    L  21:  *   5. Success -> return the loaded session row
+    L  22:  *
+    L  23:  * Multitenant safety: the chat_sessions query enforces both tenant_id and
+    L  24:  * source filters. A forged x-tenant-id header that doesn't match the
+    L  25:  * session's actual tenant_id will not match (returns no row -> 401).
+    L  26:  */
+    L  27: 
+    L  28: import type { SupabaseClient } from '@supabase/supabase-js'
+    L  29: 
+    L  30: export interface ValidateSessionParams {
+    L  31:   supabase: SupabaseClient
+    L  32:   sessionId: string | null | undefined
+    L  33:   userId: string | null | undefined
+    L  34:   tenantId: string | null | undefined
+    L  35:   selectColumns?: string // default 'id'
+    L  36: }
+    L  37: 
+    L  38: export type ValidateSessionResult =
+    L  39:   | { ok: true; session: Record<string, any>; sourceKey: string }
+    L  40:   | { ok: false; status: number; error: string }
+    L  41: 
+    L  42: export async function validateSession(params: ValidateSessionParams): Promise<ValidateSessionResult> {
+    L  43:   const { supabase } = params
+    L  44:   const sessionId = params.sessionId
+    L  45:   const userId = params.userId
+    L  46:   const tenantId = params.tenantId
+    L  47:   const selectColumns = params.selectColumns ?? 'id'
+    L  48: 
+    L  49:   if (!sessionId || !userId || !tenantId) {
+    L  50:     return { ok: false, status: 401, error: 'Invalid session' }
+    L  51:   }
+    L  52: 
+    L  53:   const { data: tenant, error: tenantError } = await supabase
+    L  54:     .from('tenants')
+    L  55:     .select('source_key')
+    L  56:     .eq('id', tenantId)
+    L  57:     .maybeSingle()
+    L  58: 
+    L  59:   if (tenantError || !tenant?.source_key) {
+    L  60:     return { ok: false, status: 401, error: 'Invalid session' }
+    L  61:   }
+    L  62: 
+    L  63:   const { data: session, error: sessionError } = await supabase
+    L  64:     .from('chat_sessions')
+    L  65:     .select(selectColumns)
+    L  66:     .eq('id', sessionId)
+    L  67:     .eq('user_id', userId)
+    L  68:     .eq('tenant_id', tenantId)
+    L  69:     .eq('source', tenant.source_key)
+    L  70:     .maybeSingle()
+    L  71: 
+    L  72:   if (sessionError || !session) {
+    L  73:     return { ok: false, status: 401, error: 'Invalid session' }
+    L  74:   }
+    L  75: 
+    L  76:   return { ok: true, session: session as Record<string, any>, sourceKey: tenant.source_key }
+    L  77: }
+    L  78: 
+
+==============================================================================
+FILE: app/api/charlie/lead/route.ts
+==============================================================================
+  total lines: 522
+
+  --- A. .from("tenants") matches: (none) ---
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: L35 ---
+
+  context for L35 (L34..L38):
+    L  34: 
+    L  35: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L  36: 
+    L  37: function createServiceClient() {
+    L  38:   return createClient(
+
+  --- C. _sessionCheck.session destructure context (Shape A) ---
+
+  context for L85 (L82..L90):
+    L  82:     if (!_sessionCheck.ok) {
+    L  83:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+    L  84:     }
+    L  85:     const validSession = _sessionCheck.session
+    L  86:     const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
+    L  87:     // END T6a auth gate
+    L  88: 
+    L  89:     // F60: auth email is identity. Pull from auth.users; ignore any form-supplied email.
+    L  90:     const { data: authData } = await supabase.auth.admin.getUserById(userId)
+
+==============================================================================
+FILE: app/api/charlie/plan-email/route.ts
+==============================================================================
+  total lines: 641
+
+  --- A. .from("tenants") matches: (none) ---
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: L27 ---
+
+  context for L27 (L26..L30):
+    L  26: 
+    L  27: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L  28: 
+    L  29: 
+    L  30: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+
+  --- C. _sessionCheck.session destructure context (Shape A) ---
+
+  context for L71 (L68..L76):
+    L  68:     if (!_sessionCheck.ok) {
+    L  69:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+    L  70:     }
+    L  71:     const validSession = _sessionCheck.session
+    L  72:     const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
+    L  73:     // END T6a auth gate
+    L  74: 
+    L  75:     const supabase = createServiceClient()
+    L  76: 
+
+==============================================================================
+FILE: app/api/charlie/appointment/route.ts
+==============================================================================
+  total lines: 407
+
+  --- A. .from("tenants") matches: (none) ---
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: L25 ---
+
+  context for L25 (L24..L28):
+    L  24: 
+    L  25: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L  26: 
+    L  27: 
+    L  28: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+
+  --- C. _sessionCheck.session destructure context (Shape A) ---
+
+  context for L89 (L86..L94):
+    L  86:     if (!_sessionCheck.ok) {
+    L  87:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+    L  88:     }
+    L  89:     const validSession = _sessionCheck.session
+    L  90:     const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
+    L  91:     // END T6a auth gate
+    L  92: 
+    L  93:     // Step 1: Resolve agent
+    L  94:     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-request/route.ts
+==============================================================================
+  total lines: 490
+
+  --- A. .from("tenants") matches: L88 ---
+
+  context for L88 (L86..L100):
+    L  86:     // Load tenant estimator config (auto-approve lives on tenant, not agent)
+    L  87:     const { data: tenant, error: tenantError } = await supabase
+    L  88:       .from('tenants')
+    L  89:       .select('source_key, estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
+    L  90:       .eq('id', tenantId)
+    L  91:       .single()
+    L  92: 
+    L  93:     if (tenantError || !tenant) {
+    L  94:       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+    L  95:     }
+    L  96: 
+    L  97:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate (replaces hardcoded 'walliam' check)
+    L  98:     if (session.source !== tenant.source_key) {
+    L  99:       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    L 100:     }
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: L215, L482 ---
+
+  context for L215 (L214..L218):
+    L 214:     // Build approval URLs
+    L 215:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L 216:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+    L 217:     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+    L 218: 
+
+  context for L482 (L481..L485):
+    L 481:         <div style="text-align: center;">
+    L 482:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}"
+    L 483:              style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+    L 484:             ✦ Back to WALLiam
+    L 485:           </a>
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-approve/route.ts
+==============================================================================
+  total lines: 246
+
+  --- A. .from("tenants") matches: L69, L102 ---
+
+  context for L69 (L67..L81):
+    L  67:     let attemptsToGrant = 3
+    L  68:     if (tenantId) {
+    L  69:       const { data: tenantCfg } = await supabase.from('tenants').select('estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
+    L  70:       if (tenantCfg?.estimator_manual_approve_attempts != null) attemptsToGrant = tenantCfg.estimator_manual_approve_attempts
+    L  71:     }
+    L  72: 
+    L  73:     await supabase
+    L  74:       .from('vip_requests')
+    L  75:       .update({
+    L  76:         status: newStatus,
+    L  77:         responded_at: new Date().toISOString(),
+    L  78:         messages_granted: action === 'approve' ? attemptsToGrant : 0,
+    L  79:       })
+    L  80:       .eq('id', vipRequest.id)
+    L  81: 
+
+  context for L102 (L100..L114):
+    L 100:       const userId = vipRequest.chat_sessions?.user_id
+    L 101:       if (userId && tenantId) {
+    L 102:         const { data: tCfg } = await supabase.from('tenants').select('estimator_hard_cap').eq('id', tenantId).single()
+    L 103:         const { data: existingOverride } = await supabase.from('user_credit_overrides').select('estimator_limit').eq('user_id', userId).eq('tenant_id', tenantId).maybeSingle()
+    L 104:         const currentLimit = existingOverride?.estimator_limit ?? 0
+    L 105:         const newLimit = Math.min(currentLimit + attemptsToGrant, tCfg?.estimator_hard_cap ?? 50)
+    L 106:         await supabase.from('user_credit_overrides').upsert({
+    L 107:           user_id: userId,
+    L 108:           tenant_id: tenantId,
+    L 109:           granted_by_agent_id: vipRequest.agent_id || null,
+    L 110:           granted_by_tier: 'manager',
+    L 111:           note: 'Email approval — ' + attemptsToGrant + ' estimator credits granted',
+    L 112:           estimator_limit: newLimit,
+    L 113:           granted_at: new Date().toISOString(),
+    L 114:         }, { onConflict: 'user_id,tenant_id' })
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: L198 ---
+
+  context for L198 (L197..L201):
+    L 197:         <div style="text-align: center;">
+    L 198:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to WALLiam</a>
+    L 199:         </div>
+    L 200:       </div>
+    L 201:     </div>
+
+==============================================================================
+FILE: app/api/walliam/estimator/session/route.ts
+==============================================================================
+  total lines: 223
+
+  --- A. .from("tenants") matches: L34 ---
+
+  context for L34 (L32..L46):
+    L  32:     // Step 1: Load tenant estimator config
+    L  33:     const { data: tenant, error: tenantError } = await supabase
+    L  34:       .from('tenants')
+    L  35:       .select(`
+    L  36:         estimator_nonai_enabled,
+    L  37:         estimator_free_attempts,
+    L  38:         estimator_auto_approve_attempts,
+    L  39:         estimator_manual_approve_attempts,
+    L  40:         estimator_hard_cap,
+    L  41:         estimator_vip_auto_approve,
+    L  42:         estimator_ai_enabled,
+    L  43:         anthropic_api_key,
+    L  44:         source_key
+    L  45:       `)
+    L  46:       .eq('id', tenantId)
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: L191 ---
+
+  context for L191 (L190..L194):
+    L 190:     if (remaining === 1 && userId) {
+    L 191:       fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+    L 192:         method: 'POST', headers: { 'Content-Type': 'application/json' },
+    L 193:         body: JSON.stringify({ userId, creditType: 'estimate', remaining: 1, sessionId: session.id }),
+    L 194:       }).catch(() => {})
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+  total lines: 362
+
+  --- A. .from("tenants") matches: L140 ---
+
+  context for L140 (L138..L152):
+    L 138:     if (tenantId) {
+    L 139:       const { data: t6cTenant } = await supabase
+    L 140:         .from('tenants')
+    L 141:         .select('source_key')
+    L 142:         .eq('id', tenantId)
+    L 143:         .maybeSingle()
+    L 144:       sourceKey = t6cTenant?.source_key ?? null
+    L 145:     }
+    L 146: 
+    L 147:     if (userEmail && userId && tenantId) {
+    L 148:       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
+    L 149: 
+    L 150:       // Match the lead row created by vip-request:
+    L 151:       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+    L 152:       // (vip-request writes source='walliam_estimator_vip_request')
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: (none) ---
+
+==============================================================================
+FILE: app/api/walliam/charlie/vip-request/route.ts
+==============================================================================
+  total lines: 473
+
+  --- A. .from("tenants") matches: L55 ---
+
+  context for L55 (L53..L67):
+    L  53: 
+    L  54:     const { data: tenantConfig, error: tenantConfigError } = await supabase
+    L  55:       .from('tenants')
+    L  56:       .select('source_key, name, brand_name, domain, assistant_name, vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, estimator_manual_approve_attempts, estimator_hard_cap')
+    L  57:       .eq('id', tenantId)
+    L  58:       .single()
+    L  59: 
+    L  60:     if (tenantConfigError || !tenantConfig?.source_key) {
+    L  61:       console.error('[walliam/vip-request] tenant config fetch failed:', tenantConfigError)
+    L  62:       return NextResponse.json({ error: 'Invalid tenant' }, { status: 400 })
+    L  63:     }
+    L  64: 
+    L  65:     const sourceKey = tenantConfig.source_key
+    L  66:     const brandName = (tenantConfig.brand_name || tenantConfig.name || '').trim()
+    L  67:     const tenantDomain = (tenantConfig.domain || '').trim()
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: L183 ---
+
+  context for L183 (L182..L186):
+    L 182: 
+    L 183:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`
+    L 184:     const approveUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=approve`
+    L 185:     const denyUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=deny`
+    L 186: 
+
+==============================================================================
+FILE: app/api/walliam/charlie/vip-approve/route.ts
+==============================================================================
+  total lines: 296
+
+  --- A. .from("tenants") matches: L71, L113 ---
+
+  context for L71 (L69..L83):
+    L  69:       if (sessionTenantId) {
+    L  70:         const { data: tenantRow } = await supabase
+    L  71:           .from('tenants')
+    L  72:           .select('plan_manual_approve_limit')
+    L  73:           .eq('id', sessionTenantId)
+    L  74:           .single()
+    L  75:         if (tenantRow?.plan_manual_approve_limit != null) {
+    L  76:           plansToGrant = tenantRow.plan_manual_approve_limit
+    L  77:         }
+    L  78:       }
+    L  79: 
+    L  80:     // Update VIP request
+    L  81:     await supabase
+    L  82:       .from('vip_requests')
+    L  83:       .update({
+
+  context for L113 (L111..L125):
+    L 111:       if (userId && tenantId) {
+    L 112:         const { data: tenantCfg } = await supabase
+    L 113:           .from('tenants')
+    L 114:           .select('plan_hard_cap, seller_plan_hard_cap, ai_hard_cap, estimator_hard_cap, ai_manual_approve_limit, plan_manual_approve_limit, estimator_manual_approve_attempts')
+    L 115:           .eq('id', tenantId)
+    L 116:           .single()
+    L 117:         const planType = vipRequest.buyer_type || 'buyer'
+    L 118:         const requestType = vipRequest.request_type || 'plan'
+    L 119:         const hardCap = requestType === 'chat'
+    L 120:           ? (tenantCfg?.ai_hard_cap ?? 25)
+    L 121:           : requestType === 'estimator'
+    L 122:           ? (tenantCfg?.estimator_hard_cap ?? 10)
+    L 123:           : planType === 'seller'
+    L 124:           ? (tenantCfg?.seller_plan_hard_cap ?? 10)
+    L 125:           : (tenantCfg?.plan_hard_cap ?? 10)
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: L211 ---
+
+  context for L211 (L210..L214):
+    L 210:         <div style="text-align: center;">
+    L 211:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+    L 212:             ✦ Back to WALLiam
+    L 213:           </a>
+    L 214:         </div>
+
+==============================================================================
+FILE: app/api/walliam/contact/route.ts
+==============================================================================
+  total lines: 215
+
+  --- A. .from("tenants") matches: (none) ---
+
+  --- B. BASE_URL / baseUrl / inline-NEXT_PUBLIC_APP_URL matches: (none) ---

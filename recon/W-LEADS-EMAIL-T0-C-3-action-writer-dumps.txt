@@ -1,0 +1,1254 @@
+﻿
+=== FILE START === app\actions\submitLeadFromForm.ts === SIZE 2804 BYTES ===
+'use server'
+
+/**
+ * submitLeadFromForm
+ *
+ * Client-callable server action for all public form submissions.
+ *
+ * Architectural role:
+ *   - Single entry point for client components that submit leads (8 components: contact forms,
+ *     estimator results, modals, etc).
+ *   - Reads `x-tenant-id` from request headers (set by middleware) and resolves tenant_id
+ *     server-side. Client components NEVER pass tenantId — they cannot be trusted to.
+ *   - Delegates to `getOrCreateLead` from `lib/actions/leads`, which has a strict contract
+ *     requiring tenantId. This wrapper is the bridge.
+ *
+ * Why this exists (W-TENANT-AUTH Phase 3):
+ *   - Multi-tenant requires every lead to be scoped to a tenant.
+ *   - Server-to-server callers (Charlie plan-email, walliam/contact, vip-request) already
+ *     read x-tenant-id directly and pass tenantId explicitly to getOrCreateLead.
+ *   - Client components can't access headers(). This wrapper is their tenant-resolution
+ *     boundary — same pattern, just with a server-action hop.
+ *   - When tenant-2 onboards, every form on tenant-2's domain works automatically because
+ *     middleware sets the right x-tenant-id; no per-component changes needed.
+ */
+
+import { headers } from 'next/headers'
+import { getOrCreateLead } from '@/lib/actions/leads'
+
+interface SubmitLeadFromFormParams {
+  agentId?: string
+  buildingId?: string
+  contactName: string
+  contactEmail: string
+  contactPhone?: string
+  message?: string
+  source?: string
+  sourceUrl?: string
+  listingId?: string
+  communityId?: string
+  municipalityId?: string
+  areaId?: string
+  userId?: string
+  estimatedValueMin?: number
+  estimatedValueMax?: number
+  propertyDetails?: any
+  forceNew?: boolean
+}
+
+export async function submitLeadFromForm(params: SubmitLeadFromFormParams) {
+  const headersList = headers()
+  const tenantId = headersList.get('x-tenant-id')
+
+  if (!tenantId) {
+    console.error('[submitLeadFromForm] x-tenant-id header missing — middleware should set this on every request')
+    return {
+      success: false,
+      error: 'Tenant context unavailable. Please refresh and try again.'
+    }
+  }
+
+  return await getOrCreateLead({
+    tenantId,
+    agentId: params.agentId,
+    buildingId: params.buildingId,
+    contactName: params.contactName,
+    contactEmail: params.contactEmail,
+    contactPhone: params.contactPhone,
+    message: params.message,
+    source: params.source,
+    sourceUrl: params.sourceUrl,
+    listingId: params.listingId,
+    communityId: params.communityId,
+    municipalityId: params.municipalityId,
+    areaId: params.areaId,
+    userId: params.userId,
+    estimatedValueMin: params.estimatedValueMin,
+    estimatedValueMax: params.estimatedValueMax,
+    propertyDetails: params.propertyDetails,
+    forceNew: params.forceNew,
+  })
+}
+=== FILE END === app\actions\submitLeadFromForm.ts ===
+
+=== FILE START === app\actions\submitActivityFromForm.ts === SIZE 1553 BYTES ===
+'use server'
+
+/**
+ * submitActivityFromForm
+ *
+ * Client-callable server action for activity tracking from public-facing components.
+ *
+ * Architectural role (W-TENANT-AUTH File 7c):
+ *   - Single entry point for client components that track user activity (form
+ *     submissions, page-view events, engagement signals, etc.).
+ *   - Reads x-tenant-id from request headers (set by middleware) and resolves
+ *     tenantId server-side. Client components NEVER pass tenantId.
+ *   - Delegates to `trackActivity` which has a strict contract requiring tenantId.
+ *
+ * Same pattern as `submitLeadFromForm` — request-scoped tenant resolution at the
+ * server boundary, never trusted from the client.
+ */
+
+import { headers } from 'next/headers'
+import { trackActivity, type ActivityType } from '@/lib/actions/user-activity'
+
+interface SubmitActivityFromFormParams {
+  contactEmail: string
+  agentId?: string
+  activityType: ActivityType
+  activityData?: any
+  pageUrl?: string
+}
+
+export async function submitActivityFromForm(params: SubmitActivityFromFormParams) {
+  const headersList = headers()
+  const tenantId = headersList.get('x-tenant-id')
+
+  if (!tenantId) {
+    console.error('[submitActivityFromForm] x-tenant-id header missing')
+    return {
+      success: false,
+      error: 'Tenant context unavailable.'
+    }
+  }
+
+  return await trackActivity({
+    tenantId,
+    contactEmail: params.contactEmail,
+    agentId: params.agentId,
+    activityType: params.activityType,
+    activityData: params.activityData,
+    pageUrl: params.pageUrl,
+  })
+}
+=== FILE END === app\actions\submitActivityFromForm.ts ===
+
+=== FILE START === app\actions\createLead.ts === SIZE 9824 BYTES ===
+'use server'
+
+/**
+ * createLeadFromRegistration
+ *
+ * Server action invoked from registration flows.
+ *
+ * Architectural role (W-TENANT-AUTH Phase 3):
+ *   - Reads `x-tenant-id` from request headers (set by middleware).
+ *   - Resolves a building/development from the URL slug if no buildingId was passed
+ *     (preserves `extractBuildingFromUrl` logic — independent of agent resolution).
+ *   - Delegates lead creation to `getOrCreateLead`, which:
+ *       - Performs duplicate detection on (contact_email, tenant_id).
+ *       - Resolves agent via `resolve_agent_for_context(tenant_id, ...)` RPC.
+ *       - Writes tenant_id to the leads row.
+ *
+ * Removed in Phase 3: `resolveAgentFromHost(supabase, host)` — System 1 host-based agent
+ * resolution. System 1 isolation preserved (System 1 routes still have their own host
+ * resolver, untouched). Single caller is RegisterModal (System 2). After File 9 lands
+ * (RegisterModal rewrite to call joinTenant), this function becomes dead code; deletion
+ * deferred to post-W-TENANT-AUTH cleanup ticket.
+ */
+
+import { createClient } from '@/lib/supabase/server'
+import { getOrCreateLead } from '@/lib/actions/leads'
+import { trackActivity } from '@/lib/actions/user-activity'
+import { headers } from 'next/headers'
+
+interface CreateLeadFromRegistrationParams {
+  userId: string
+  fullName: string
+  email: string
+  phone?: string
+  registrationSource: string
+  registrationUrl?: string
+  buildingId?: string
+  buildingName?: string
+  buildingAddress?: string
+  listingId?: string
+  listingAddress?: string
+  unitNumber?: string
+  message?: string
+  estimatedValueMin?: number
+  estimatedValueMax?: number
+  propertyDetails?: any
+}
+
+export async function createLeadFromRegistration(params: CreateLeadFromRegistrationParams) {
+  try {
+    const headersList = headers()
+    const tenantId = headersList.get('x-tenant-id')
+
+    if (!tenantId) {
+      console.error('[createLeadFromRegistration] x-tenant-id missing')
+      return { success: false, error: 'Tenant context unavailable' }
+    }
+
+    const supabase = createClient()
+
+    // Source mapping (preserved verbatim from prior version)
+    const sourceMap: Record<string, string> = {
+      'home_page': 'registration',
+      'listing_card': 'property_inquiry',
+      'estimator': 'estimator',
+      'building_page': 'contact_form',
+      'contact_form': 'contact_form',
+      'message_agent': 'contact_form',
+      'sale_offer': 'sale_evaluation_request',
+      'building_visit': 'building_visit_request',
+      'property_inquiry': 'property_inquiry'
+    }
+
+    const leadSource = sourceMap[params.registrationSource] || 'registration'
+
+    // Building resolution: if no buildingId was passed, try to derive from URL.
+    let finalBuildingId = params.buildingId
+    let finalBuildingName = params.buildingName
+    let finalBuildingAddress = params.buildingAddress
+
+    if (!finalBuildingId && params.registrationUrl) {
+      const buildingInfo = await extractBuildingFromUrl(supabase, params.registrationUrl)
+      if (buildingInfo) {
+        finalBuildingId = buildingInfo.id || undefined
+        if (!finalBuildingName) finalBuildingName = buildingInfo.building_name
+        if (!finalBuildingAddress) finalBuildingAddress = buildingInfo.canonical_address
+      }
+    }
+
+    // Enrich missing building info if we have buildingId but missing name/address
+    if (finalBuildingId && (!finalBuildingName || !finalBuildingAddress)) {
+      const { data: buildingData } = await supabase
+        .from('buildings')
+        .select('building_name, canonical_address')
+        .eq('id', finalBuildingId)
+        .single()
+      if (buildingData) {
+        if (!finalBuildingName) finalBuildingName = buildingData.building_name
+        if (!finalBuildingAddress) finalBuildingAddress = buildingData.canonical_address
+      }
+    }
+
+    // Enrich unit number from listing if missing
+    if (params.listingId && !params.unitNumber) {
+      const { data: listingData } = await supabase
+        .from('mls_listings')
+        .select('unit_number')
+        .eq('id', params.listingId)
+        .single()
+      if (listingData?.unit_number) {
+        params.unitNumber = listingData.unit_number
+      }
+    }
+
+    const sourceUrl = params.registrationUrl || undefined
+
+    // Form-submission sources always force a new lead row (preserved behavior)
+    const formSubmissionSources = [
+      'contact_form',
+      'listing_card',
+      'building_page',
+      'message_agent',
+      'sale_offer',
+      'building_visit',
+      'property_inquiry',
+      'home_page'
+    ]
+    const shouldForceNewLead = formSubmissionSources.includes(params.registrationSource)
+
+    // Track the activity for analytics (best-effort; non-fatal). Tenant-scoped.
+    try {
+      await trackActivity({
+        tenantId,
+        contactEmail: params.email,
+        activityType: leadSource as any,
+        activityData: {
+          buildingId: finalBuildingId,
+          buildingName: finalBuildingName,
+          listingId: params.listingId,
+          source: params.registrationSource,
+        },
+      })
+    } catch (err) {
+      console.error('[createLeadFromRegistration] trackActivity error (non-fatal):', err)
+    }
+
+    // Delegate to tenant-aware lead creation.
+    // No agentId passed — getOrCreateLead resolves it via resolve_agent_for_context(tenant_id, ...).
+    const result = await getOrCreateLead({
+      tenantId,
+      userId: params.userId,
+      contactName: params.fullName,
+      contactEmail: params.email,
+      contactPhone: params.phone,
+      source: leadSource,
+      sourceUrl: sourceUrl,
+      buildingId: finalBuildingId,
+      listingId: params.listingId,
+      message: params.message,
+      estimatedValueMin: params.estimatedValueMin,
+      estimatedValueMax: params.estimatedValueMax,
+      propertyDetails: {
+        ...(params.propertyDetails || {}),
+        buildingName: finalBuildingName,
+        buildingAddress: finalBuildingAddress,
+        unitNumber: params.unitNumber,
+        listingAddress: params.listingAddress,
+      },
+      forceNew: shouldForceNewLead,
+    })
+
+    if (!result.success) {
+      return { success: false, error: result.error }
+    }
+
+    return { success: true, leadId: result.lead?.id }
+
+  } catch (error: any) {
+    console.error('[createLeadFromRegistration] error:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * extractBuildingFromUrl
+ *
+ * Resolve a building or development from a URL slug.
+ * Preserved verbatim from the pre-W-TENANT-AUTH version — agent-resolution-independent.
+ */
+async function extractBuildingFromUrl(
+  supabase: any,
+  registrationUrl: string
+): Promise<{ id: string; building_name: string; canonical_address: string } | null> {
+  try {
+    const url = new URL(registrationUrl, 'https://condoleads.ca')
+    const pathSegments = url.pathname.split('/').filter(s => s)
+    const slug = pathSegments[0]
+
+    if (!slug || ['estimator', 'dashboard', 'login', 'admin', 'property', 'team'].includes(slug)) {
+      return null
+    }
+
+    const { data: exactBuildingMatch } = await supabase
+      .from('buildings')
+      .select('id, building_name, canonical_address')
+      .eq('slug', slug)
+      .single()
+
+    if (exactBuildingMatch) {
+      return exactBuildingMatch
+    }
+
+    const { data: exactDevMatch } = await supabase
+      .from('developments')
+      .select('id, name, slug')
+      .eq('slug', slug)
+      .single()
+
+    if (exactDevMatch) {
+      const { data: devBuildings } = await supabase
+        .from('buildings')
+        .select('id, building_name, canonical_address')
+        .eq('development_id', exactDevMatch.id)
+        .order('building_name')
+
+      if (devBuildings && devBuildings.length > 0) {
+        const allAddresses = devBuildings.map((b: any) => b.canonical_address).join(' & ')
+        return {
+          id: devBuildings[0].id,
+          building_name: exactDevMatch.name,
+          canonical_address: allAddresses,
+        }
+      }
+      return {
+        id: '',
+        building_name: exactDevMatch.name,
+        canonical_address: '',
+      }
+    }
+
+    const slugParts = slug.split('-')
+    for (let i = Math.min(slugParts.length, 6); i >= 2; i--) {
+      const partialSlug = slugParts.slice(0, i).join('-')
+
+      const { data: partialBuildingMatches } = await supabase
+        .from('buildings')
+        .select('id, building_name, canonical_address, slug')
+        .ilike('slug', `${partialSlug}%`)
+        .limit(5)
+
+      if (partialBuildingMatches && partialBuildingMatches.length > 0) {
+        if (partialBuildingMatches.length === 1) {
+          return partialBuildingMatches[0]
+        }
+        for (const building of partialBuildingMatches) {
+          if (slug.includes(building.slug.split('-').slice(0, 4).join('-'))) {
+            return building
+          }
+        }
+        return partialBuildingMatches[0]
+      }
+
+      const { data: partialDevMatches } = await supabase
+        .from('developments')
+        .select('id, name, slug')
+        .ilike('slug', `${partialSlug}%`)
+        .limit(3)
+
+      if (partialDevMatches && partialDevMatches.length > 0) {
+        const dev = partialDevMatches[0]
+        const { data: devBuilding } = await supabase
+          .from('buildings')
+          .select('id, building_name, canonical_address')
+          .eq('development_id', dev.id)
+          .limit(1)
+          .single()
+
+        if (devBuilding) {
+          return {
+            id: devBuilding.id,
+            building_name: dev.name,
+            canonical_address: devBuilding.canonical_address,
+          }
+        }
+        return {
+          id: '',
+          building_name: dev.name,
+          canonical_address: '',
+        }
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('Error extracting building from URL:', error)
+    return null
+  }
+}
+=== FILE END === app\actions\createLead.ts ===
+
+=== FILE START === lib\actions\leads.ts === SIZE 14763 BYTES ===
+'use server'
+// lib/actions/leads.ts
+// Tenant-aware lead creation with full Lead+Email contract compliance (W-HIERARCHY H3.9).
+//
+// W-HIERARCHY H3.9 (2026-05-03):
+//   - walkHierarchy captures full chain (manager_id, area_manager_id, tenant_admin_id) — was: single parent_id query
+//   - Insert payload now includes manager_id, area_manager_id, tenant_admin_id (was: agent_id only)
+//   - Email fan-out replaced: was 3 sequential sendActivityEmail calls (agent → manager → admin loop with receive_*_emails flags),
+//     now single getLeadEmailRecipients + sendTenantEmail with TO/CC/BCC (open chain, no suppression per Q1)
+//   - F67 try/catch standard: TenantEmailNotConfigured warn, TenantEmailFailed error, AdminPlatformUnreachable soft-fail
+//   - F51 (W-TENANT-AUTH coordination) retired
+//
+// Option A (locked 2026-05-03): dup-branch in getOrCreateLead stays silent.
+// When a lead already exists for (contact_email, tenant_id), updated_at is bumped, no email fires.
+// Re-engagement signaling is out of W-HIERARCHY scope; future lead-lifecycle work can revisit.
+
+import { createClient as createServerClient } from '@supabase/supabase-js'
+import { headers } from 'next/headers'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
+
+// Create service role client that bypasses RLS
+function createServiceClient() {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  )
+}
+
+interface CreateLeadParams {
+  tenantId: string                  // REQUIRED — every lead is scoped to a tenant
+  agentId?: string                  // Optional — if missing, resolved via resolve_agent_for_context
+  buildingId?: string
+  contactName: string
+  contactEmail: string
+  contactPhone?: string
+  message?: string
+  source?: string
+  sourceUrl?: string
+  listingId?: string
+  communityId?: string
+  municipalityId?: string
+  areaId?: string
+  userId?: string
+  estimatedValueMin?: number
+  estimatedValueMax?: number
+  propertyDetails?: any
+}
+
+// Resolve agent via RPC scoped to tenant.
+// Returns null if no agent matches the context (lead routes to admin in that case).
+async function resolveAgentForLead(
+  supabase: ReturnType<typeof createServiceClient>,
+  params: CreateLeadParams
+): Promise<string | null> {
+  if (params.agentId) return params.agentId
+
+  const { data: agentId, error } = await supabase.rpc('resolve_agent_for_context', {
+    p_listing_id: params.listingId || null,
+    p_building_id: params.buildingId || null,
+    p_neighbourhood_id: null,
+    p_community_id: params.communityId || null,
+    p_municipality_id: params.municipalityId || null,
+    p_area_id: params.areaId || null,
+    p_user_id: params.userId || null,
+    p_tenant_id: params.tenantId,
+  })
+
+  if (error) {
+    console.error('[leads] resolve_agent_for_context RPC error:', error)
+    return null
+  }
+  return (agentId as string) || null
+}
+
+// Smart lead handler — prevents duplicates, scoped per tenant.
+// Duplicate detection key: (contact_email, tenant_id).
+// Same email can legitimately be a lead on multiple tenants.
+//
+// Option A: dup branch is silent. Bumps updated_at, no email.
+export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: boolean }) {
+  if (!params.tenantId) {
+    return { success: false, error: 'tenantId is required' }
+  }
+
+  const supabase = createServiceClient()
+
+  // Force new on form submissions
+  if (params.forceNew) {
+    console.log('[leads] Force creating new lead:', params.contactEmail, 'tenant:', params.tenantId)
+    return await createLead(params)
+  }
+
+  // Per-tenant duplicate check
+  const { data: existingLead, error: searchError } = await supabase
+    .from('leads')
+    .select('id, contact_email, agent_id, tenant_id')
+    .eq('contact_email', params.contactEmail)
+    .eq('tenant_id', params.tenantId)
+    .maybeSingle()
+
+  if (existingLead && !searchError) {
+    // Option A: silent re-engagement bump. No email fires on dup.
+    console.log('[leads] Lead exists for tenant — bumping updated_at (Option A: silent):', existingLead.id)
+    await supabase
+      .from('leads')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', existingLead.id)
+    return { success: true, lead: existingLead, isNew: false }
+  }
+
+  console.log('[leads] Creating new lead for:', params.contactEmail, 'tenant:', params.tenantId)
+  return await createLead(params)
+}
+
+export async function createLead(params: CreateLeadParams) {
+  console.log('[leads] CREATE LEAD:', { tenantId: params.tenantId, email: params.contactEmail })
+
+  if (!params.tenantId) {
+    return { success: false, error: 'tenantId is required' }
+  }
+
+  const supabase = createServiceClient()
+
+  // ─── Resolve agent (tenant-scoped RPC) ─────────────────────────────────────
+  const resolvedAgentId = await resolveAgentForLead(supabase, params)
+  if (!resolvedAgentId) {
+    console.warn('[leads] No agent resolved for tenant', params.tenantId, '— lead will route to admin only')
+  }
+
+  // ─── Walker: capture full hierarchy chain ──────────────────────────────────
+  let chainManagerId: string | null = null
+  let chainAreaManagerId: string | null = null
+  let chainTenantAdminId: string | null = null
+
+  if (resolvedAgentId) {
+    const chain = await walkHierarchy(resolvedAgentId, supabase)
+    chainManagerId = chain.manager_id
+    chainAreaManagerId = chain.area_manager_id
+    chainTenantAdminId = chain.tenant_admin_id
+  }
+
+  // ─── Source detection from referer if not explicit ─────────────────────────
+  const headersList = headers()
+  const referer = headersList.get('referer') || ''
+
+  let source = params.source
+  if (!source) {
+    if (referer.includes('/estimator')) {
+      source = 'estimator'
+    } else if (referer.includes('/register')) {
+      source = 'registration'
+    } else {
+      source = 'contact_form'
+    }
+  }
+
+  // ─── Insert lead row with full hierarchy chain (Lead+Email contract) ───────
+  const { data: lead, error } = await supabase
+    .from('leads')
+    .insert({
+      tenant_id: params.tenantId,
+      agent_id: resolvedAgentId,
+      manager_id: chainManagerId,
+      area_manager_id: chainAreaManagerId,
+      tenant_admin_id: chainTenantAdminId,
+      building_id: params.buildingId || null,
+      listing_id: params.listingId || null,
+      source_url: params.sourceUrl || null,
+      estimated_value_min: params.estimatedValueMin || null,
+      estimated_value_max: params.estimatedValueMax || null,
+      property_details: params.propertyDetails || null,
+      contact_name: params.contactName,
+      contact_email: params.contactEmail,
+      contact_phone: params.contactPhone,
+      message: params.message,
+      source: source,
+      assignment_source: resolvedAgentId ? 'geo' : 'admin',
+      quality: 'cold',
+      status: 'new',
+      created_at: new Date().toISOString()
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('[leads] Insert error:', error)
+    return { success: false, error: error.message }
+  }
+
+  console.log('[leads] Lead created:', lead.id)
+
+  // ─── Chain notification: single helper-driven send (F67 try/catch) ─────────
+  // Replaces the prior 3-step loop (agent → manager → admin) with one send
+  // that hits the full 6-layer chain via the recipients helper.
+  let recipients
+  try {
+    recipients = await getLeadEmailRecipients(params.tenantId, resolvedAgentId, supabase)
+  } catch (err) {
+    if (err instanceof AdminPlatformUnreachable) {
+      console.error('[leads] admin platform unreachable:', err.message)
+      recipients = null
+    } else {
+      throw err
+    }
+  }
+
+  if (recipients) {
+    const html = buildLeadEmail({
+      contactName: params.contactName,
+      contactEmail: params.contactEmail,
+      contactPhone: params.contactPhone,
+      message: params.message,
+      source,
+      buildingName: params.propertyDetails?.buildingName,
+      buildingAddress: params.propertyDetails?.buildingAddress,
+      unitNumber: params.propertyDetails?.unitNumber,
+    })
+    const subject = `✦ New Lead — ${params.contactName} — ${source}`
+
+    try {
+      await sendTenantEmail({
+        tenantId: params.tenantId,
+        to: recipients.to,
+        cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+        bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+        subject,
+        html,
+      })
+    } catch (err) {
+      if (err instanceof TenantEmailNotConfigured) {
+        console.warn('[leads] tenant email not configured:', err.message)
+      } else if (err instanceof TenantEmailFailed) {
+        console.error('[leads] resend send failed:', err.message)
+      } else {
+        console.error('[leads] unexpected email error:', err)
+      }
+    }
+  }
+
+  return { success: true, lead }
+}
+
+// ─── Email body ──────────────────────────────────────────────────────────────
+// Mirrors the visual shape used by walliam/contact for consistency across all
+// chain notifications. No agent-specific branding here — the helper resolves
+// recipients per tenant; this template is content-only.
+function buildLeadEmail(params: {
+  contactName: string
+  contactEmail: string
+  contactPhone?: string
+  message?: string
+  source: string
+  buildingName?: string
+  buildingAddress?: string
+  unitNumber?: string
+}): string {
+  const { contactName, contactEmail, contactPhone, message, source, buildingName, buildingAddress, unitNumber } = params
+  const propertyLine = buildingName || buildingAddress
+    ? `${buildingName || ''}${buildingAddress ? ' — ' + buildingAddress : ''}${unitNumber ? ' #' + unitNumber : ''}`
+    : null
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">New Lead</div>
+        <div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${source}</div>
+      </div>
+      <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+        <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+          <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${contactName}</td></tr>
+          <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${contactEmail}" style="color: #1d4ed8;">${contactEmail}</a></td></tr>
+          ${contactPhone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${contactPhone}" style="color: #1d4ed8;">${contactPhone}</a></td></tr>` : ''}
+          ${propertyLine ? `<tr><td style="color: #64748b;">Property</td><td style="color: #0f172a;">${propertyLine}</td></tr>` : ''}
+          ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+        </table>
+        <div style="margin-top: 20px; text-align: center;">
+          <a href="mailto:${contactEmail}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+            Reply to ${contactName}
+          </a>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// ─── Untouched read/update helpers ───────────────────────────────────────────
+
+export async function updateLeadStatus(leadId: string, status: string, notes?: string) {
+  const supabase = createServiceClient()
+
+  const updateData: any = {
+    status,
+    updated_at: new Date().toISOString()
+  }
+  if (notes) updateData.notes = notes
+
+  const { error } = await supabase
+    .from('leads')
+    .update(updateData)
+    .eq('id', leadId)
+
+  if (error) {
+    console.error('Error updating lead status:', error)
+    return { success: false, error: error.message }
+  }
+  return { success: true }
+}
+
+export async function getAgentLeads(agentId: string) {
+  const supabase = createServiceClient()
+
+  const { data: leads, error } = await supabase
+    .from('leads')
+    .select(`
+      *,
+      buildings (
+        id,
+        building_name,
+        canonical_address
+      ),
+      mls_listings (
+        id,
+        unit_number,
+        unparsed_address
+      )
+    `)
+    .eq('agent_id', agentId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching leads:', error)
+    return { success: false, leads: [], error: error.message }
+  }
+  return { success: true, leads: leads || [] }
+}
+
+export async function getAllLeadsForAdmin() {
+  const supabase = createServiceClient()
+
+  const { data: leads, error } = await supabase
+    .from('leads')
+    .select(`
+      *,
+      buildings (
+        id,
+        building_name,
+        canonical_address
+      ),
+      mls_listings (
+        id,
+        unit_number,
+        unparsed_address
+      ),
+      agents!leads_agent_id_fkey (
+          id,
+          full_name,
+          email,
+          subdomain,
+          parent_id
+        )
+    `)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching all leads for admin:', error)
+    return { success: false, leads: [], error: error.message }
+  }
+
+  const parentIds = [...new Set(leads?.filter(l => l.agents?.parent_id).map(l => l.agents.parent_id))]
+
+  let parentMap: Record<string, string> = {}
+  if (parentIds.length > 0) {
+    const { data: parents } = await supabase
+      .from('agents')
+      .select('id, full_name')
+      .in('id', parentIds)
+
+    if (parents) {
+      parentMap = parents.reduce((acc, p) => ({ ...acc, [p.id]: p.full_name }), {})
+    }
+  }
+
+  const leadsWithParent = leads?.map(lead => ({
+    ...lead,
+    agents: lead.agents ? {
+      ...lead.agents,
+      parent: lead.agents.parent_id ? { full_name: parentMap[lead.agents.parent_id] } : null
+    } : null
+  }))
+
+  return { success: true, leads: leadsWithParent || [] }
+}
+
+=== FILE END === lib\actions\leads.ts ===
+
+========================================================================
+T0-C-3 BONUS: app/page.tsx imports + JSX (verify HomePage render)
+========================================================================
+=== FILE START === app\page.tsx === SIZE 13403 BYTES ===
+import { headers } from 'next/headers';
+import { notFound } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { getAgentFromHost, isCustomDomain } from '@/lib/utils/agent-detection';
+import { HomePage } from '@/components/HomePage';
+
+
+import LandingHeader from '@/components/landing/LandingHeader'
+import HeroSection from '@/components/landing/HeroSection'
+import EstimatorDemo from '@/components/landing/EstimatorDemo'
+import PipelineFlow from '@/components/landing/PipelineFlow'
+import BeforeAfter from '@/components/landing/BeforeAfter'
+import PreviewGenerator from '@/components/landing/PreviewGenerator'
+import FeatureCards from '@/components/landing/FeatureCards'
+import DemoEmbed from '@/components/landing/DemoEmbed'
+import CommunityApplication from '@/components/landing/CommunityApplication'
+
+import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+import { HomePageComprehensive } from '@/components/HomePageComprehensive'
+import { HomePageComprehensiveV2 } from '@/components/HomePageComprehensiveV2'
+import ZeroOneLeadsPage from './zerooneleads/page'
+
+// Force dynamic rendering - no caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+export default async function RootPage() {
+  const headersList = headers();
+  const host = headersList.get('host') || '';
+
+  // 01leads.com — serve marketing site
+  const cleanHost = host.replace(/^www\./, '')
+  if (cleanHost === '01leads.com') {
+    return <ZeroOneLeadsPage />
+  }
+  
+  // Check custom domain first
+  let agent = null;
+  if (isCustomDomain(host)) {
+    agent = await getAgentFromHost(host);    
+  }
+  
+  const subdomain = extractSubdomain(host);
+  
+  // WALLiam tenant check — show WALLiam homepage
+  const walliamTenantId = await getWalliamTenantId()
+  if (walliamTenantId) {
+    const { createClient: _sc } = await import('@supabase/supabase-js')
+    const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+    const [agentResult, tenantResult] = await Promise.all([
+      _db.from('agents').select('*').eq('id', 'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe').single(),
+      _db.from('tenants').select('homepage_layout').eq('id', walliamTenantId).single(),
+    ])
+    const walliamAgent = agentResult.data
+    const layout = tenantResult.data?.homepage_layout ?? 'v1'
+    if (walliamAgent) {
+      const agentProps = { ...walliamAgent, is_active: true }
+      return layout === 'v2'
+        ? <HomePageComprehensiveV2 agent={agentProps} />
+        : <HomePageComprehensive agent={agentProps} />
+    }
+  }
+
+    // If no subdomain AND no custom domain agent, show new landing page
+  if (!subdomain && !agent) {
+    return (
+      <>
+        <LandingHeader />
+        <main className="pt-16">
+          <HeroSection />
+          <EstimatorDemo />
+          <PipelineFlow />
+          <BeforeAfter />
+          <PreviewGenerator />
+          <FeatureCards />
+          <DemoEmbed />
+          <CommunityApplication />
+        </main>
+      </>
+    );
+  }
+  
+  const supabase = createClient();
+  
+
+  // Fetch agent by subdomain (if not already found via custom domain)
+  if (!agent && subdomain) {
+    const { data: subdomainAgent, error: agentError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('subdomain', subdomain)
+      .eq('is_active', true)
+      .single();    
+  
+    agent = subdomainAgent;
+  }
+  
+  if (!agent) notFound();
+
+  // Check if this is a manager site (team site)
+  const isTeamSite = agent.can_create_children === true;
+  let teamAgents: any[] = [];
+  let allAgentIds: string[] = [agent.id];
+
+  if (isTeamSite) {
+    // Get all agents under this manager
+    const { data: childAgents } = await supabase
+      .from('agents')
+      .select('id, full_name, slug, email, cell_phone, profile_photo_url, bio, title')
+      .eq('parent_id', agent.id)
+      .eq('is_active', true);
+    
+    teamAgents = childAgents || [];
+    allAgentIds = [agent.id, ...teamAgents.map(a => a.id)];  
+  }
+
+  // Fetch buildings for all relevant agents (team or solo)
+  const { data: agentBuildings } = await supabase
+    .from('agent_buildings')
+    .select(`
+      is_featured,
+      agent_id,
+      buildings (
+          id,
+          building_name,
+          slug,
+          canonical_address,
+          street_number,
+          street_name,
+          city_district,
+          development_id,
+          cover_photo_url,
+          gallery_photos
+        ),
+      agents (
+        id,
+        full_name,
+        slug,
+        profile_photo_url
+      )
+    `)
+    .in('agent_id', allAgentIds)
+    .order('is_featured', { ascending: false });
+
+  // Fetch agent's assigned developments
+  const { data: agentDevelopments } = await supabase
+    .from('development_agents')
+    .select(`
+      agent_id,
+      developments (
+          id,
+          name,
+          slug,
+          cover_photo_url,
+          gallery_photos
+        ),
+        agents (
+        id,
+        full_name,
+        slug,
+        profile_photo_url
+      )
+    `)
+    .in('agent_id', allAgentIds);
+
+  // Get buildings from assigned developments
+  const developmentIds = (agentDevelopments || [])
+    .map((ad: any) => ad.developments?.id)
+    .filter(Boolean);
+
+  let developmentBuildings: any[] = [];
+  if (developmentIds.length > 0) {
+    const { data: devBuildings } = await supabase
+        .from('buildings')
+        .select('id, building_name, slug, canonical_address, street_number, street_name, city_district, development_id, cover_photo_url, gallery_photos')
+        .in('development_id', developmentIds);
+    developmentBuildings = devBuildings || [];
+  }
+
+  // Combine direct and development buildings, avoiding duplicates
+  const directBuildingIds = new Set((agentBuildings || []).map((ab: any) => ab.buildings?.id));
+  const combinedBuildings = [
+    ...(agentBuildings || []).map((ab: any) => ({ 
+      ...ab.buildings, 
+      is_featured: ab.is_featured, 
+      fromDevelopment: false,
+      assigned_agent: ab.agents || null
+    })),
+    ...developmentBuildings
+      .filter((b: any) => !directBuildingIds.has(b.id))
+      .map((b: any) => ({ ...b, is_featured: false, fromDevelopment: true }))
+  ];
+
+
+  // ============================================
+  // OPTIMIZED: Batch all queries instead of N+1
+  // ============================================
+  
+  // Get ALL building IDs for batch queries
+  const allBuildingIds = combinedBuildings.map(b => b.id).filter(Boolean);
+  
+
+// Query 1: Get ACTIVE listings only (for counting For Sale/For Lease on cards)
+  const { data: allListings } = await supabase.rpc('get_agent_active_listings', { p_agent_id: agent.id });
+
+
+  // ============================================
+  // Process data in memory (no more DB queries!)
+  // ============================================
+
+  // Group listings by building_id
+  const listingsByBuilding = new Map<string, any[]>();
+  (allListings || []).forEach((listing: any) => {
+    const existing = listingsByBuilding.get(listing.building_id) || [];
+    existing.push(listing);
+    listingsByBuilding.set(listing.building_id, existing);
+  });
+
+  
+  // Build final buildings array with counts and photos
+  const buildingsWithCounts = combinedBuildings.map((building) => {
+    const buildingListings = listingsByBuilding.get(building.id) || [];
+    
+    const forSale = buildingListings.filter(
+      l => l.transaction_type === 'For Sale' && l.standard_status === 'Active'
+    ).length;
+    
+    const forLease = buildingListings.filter(
+      l => l.transaction_type === 'For Lease' && l.standard_status === 'Active'
+    ).length;
+
+// Use admin-set cover photo
+    const photoUrl = building.cover_photo_url;
+
+    return {
+      ...building,
+      forSale,
+      forLease,
+      isFeatured: building.is_featured,
+      fromDevelopment: building.fromDevelopment,
+      photoUrl: photoUrl || null,
+      galleryPhotos: building.gallery_photos || [],
+      assigned_agent: building.assigned_agent || null
+    };
+  });
+
+
+
+  return (
+    <>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.__AGENT_DATA__ = ${JSON.stringify({
+            full_name: agent.full_name,
+            email: agent.email,
+            phone: agent.cell_phone,
+            brokerage_name: agent.brokerage_name,
+            brokerage_address: agent.brokerage_address,
+            title: agent.title,
+            siteName: agent.site_title || (agent.custom_domain 
+              ? agent.custom_domain.replace(/\.(ca|com|net|org)$/, '').split('.').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+              : agent.subdomain.charAt(0).toUpperCase() + agent.subdomain.slice(1)),
+            siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+            ogImageUrl: agent.og_image_url
+          })};`
+        }}
+      />
+      <HomePage
+          agent={{...agent, profile_photo_url: agent.profile_photo_url?.startsWith('data:') ? undefined : agent.profile_photo_url}}
+        buildings={buildingsWithCounts.filter((b: any) => !b.fromDevelopment)}
+        isTeamSite={isTeamSite}
+        teamAgents={teamAgents}
+        developments={(agentDevelopments || []).map((ad: any) => {
+          const devBuildings = developmentBuildings.filter((b: any) => b.development_id === ad.developments?.id);
+          const devBuildingsWithCounts = buildingsWithCounts.filter((b: any) => b.development_id === ad.developments?.id);
+          const buildingWithPhoto = devBuildingsWithCounts.find((b: any) => b.photoUrl);
+          const addresses = devBuildings.map((b: any) => b.canonical_address).join(' & ');
+          const forSale = devBuildingsWithCounts.reduce((sum: number, b: any) => sum + (b.forSale || 0), 0);
+          const forLease = devBuildingsWithCounts.reduce((sum: number, b: any) => sum + (b.forLease || 0), 0);
+          return {
+              id: ad.developments?.id,
+              name: ad.developments?.name,
+              slug: ad.developments?.slug,
+              buildingCount: devBuildings.length,
+              photoUrl: ad.developments?.cover_photo_url || buildingWithPhoto?.photoUrl || null,
+              galleryPhotos: ad.developments?.gallery_photos || [],
+              addresses: addresses,
+              forSale: forSale,
+              forLease: forLease,
+              assigned_agent: ad.agents || null
+            };
+        }).filter((d: any) => d.id)}
+      />
+    </>
+  );
+}
+
+function extractSubdomain(host: string) {
+  // Production: extract subdomain from condoleads.ca
+  if (host.endsWith('.condoleads.ca') || host === 'condoleads.ca') {
+    const parts = host.split('.');
+    // condoleads.ca = no subdomain (2 parts)
+    // mary.condoleads.ca = subdomain 'mary' (3 parts)
+    if (parts.length === 2) {
+      return null; // Root domain, no subdomain
+    }
+    if (parts.length >= 3 && parts[1] === 'condoleads') {
+        const potentialSubdomain = parts[0];
+        // Filter out 'www' - it's not a real subdomain
+        if (potentialSubdomain === 'www') {
+          return null;
+        }
+        return potentialSubdomain; // Return subdomain
+      }
+  }
+
+  // Development: use DEV_SUBDOMAIN environment variable
+  if (host.includes('localhost') || host.includes('vercel.app')) {
+    return process.env.DEV_SUBDOMAIN || null;
+  }
+
+  return null;
+}
+
+// Generate metadata dynamically based on agent
+export async function generateMetadata() {
+  const headersList = headers();
+  const host = headersList.get('host') || '';
+  
+  // Check custom domain first
+  let agent = null;
+  const supabase = createClient();
+  
+  if (isCustomDomain(host)) {
+    const cleanDomain = host.replace(/^www\./, '');
+    const { data } = await supabase
+      .from('agents')
+      .select('full_name, bio, site_title, site_tagline, og_image_url, custom_domain')
+      .eq('custom_domain', cleanDomain)
+      .eq('is_active', true)
+      .single();
+    agent = data;
+  }
+  
+  const subdomain = extractSubdomain(host);
+  
+  if (!subdomain && !agent) {
+    return {
+      title: 'CondoLeads - Get Your AI-Powered Condo Leads Funnel Today',
+      description: 'Stop sharing leads with competitors. Get your branded website with AI estimates that turn curious buyers into exclusive clients.'
+    };
+  }
+  
+  // Fetch by subdomain if not found via custom domain
+  if (!agent && subdomain) {
+    const { data } = await supabase
+      .from('agents')
+      .select('full_name, bio, site_title, site_tagline, og_image_url, custom_domain')
+      .eq('subdomain', subdomain)
+      .eq('is_active', true)
+      .single();
+    agent = data;
+  }
+  
+  if (!agent) {
+    return { title: 'Agent Not Found' };
+  }
+  
+  const siteTitle = agent.site_title || agent.full_name;
+  const tagline = agent.site_tagline || 'Toronto Condo Specialist';
+  const description = agent.bio || `Find luxury Toronto condos with ${agent.full_name}. Exclusive access to premium buildings.`;
+  
+  return {
+    title: `${siteTitle} - ${tagline}`,
+    description: description,
+    openGraph: {
+      title: `${siteTitle} - ${tagline}`,
+      description: description,
+      type: 'website',
+      images: agent.og_image_url ? [{ url: agent.og_image_url, width: 1200, height: 630 }] : [],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${siteTitle} - ${tagline}`,
+      description: description,
+      images: agent.og_image_url ? [agent.og_image_url] : [],
+    },
+  };
+}
+=== FILE END === app\page.tsx ===
+
+========================================================================
+T0-C-3 BONUS 2: <AgentCard / <MobileContactBar render callsites
+========================================================================
+
+FILE: C:\Condoleads\project\components\HomePage.tsx (1 hits)
+  L140: <MobileContactBar
+
+FILE: C:\Condoleads\project\components\HomePageComprehensive.tsx (1 hits)
+  L70: <MobileContactBar agent={agent as any} />
+
+FILE: C:\Condoleads\project\app\[slug]\DevelopmentPage.tsx (1 hits)
+  L329: {agent && <AgentCard agent={agent} source="building_page" buildingId={buildings[0]?.id} buildingName={development.name} buildingAddress={addresses} />}

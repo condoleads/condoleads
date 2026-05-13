@@ -1,0 +1,1436 @@
+﻿
+
+========================================================================
+FILE: app\api\walliam\contact\route.ts
+========================================================================
+Size: 8109 bytes
+
+// app/api/walliam/contact/route.ts
+// WALLiam contact form lead capture
+// Used by: building pages, property pages, geo pages
+// Resolves agent via resolve_agent_for_context
+//
+// W-HIERARCHY H3.8 (2026-05-03):
+//   - getLeadEmailRecipients enforces 6-layer chain (was: inline manager-CC + hardcoded ADMIN_EMAIL)
+//   - tenant_admin_id captured into lead insert payload (F58)
+//   - F47 hardcoded ADMIN_EMAIL constant removed
+//   - F66 walker call shape standardized via helper
+//   - F67 try/catch standard (was already partially correct on this route â€” now uniform across both branches)
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
+
+
+// Track user activity in user_activities table
+async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  try {
+    await supabase.from('user_activities').insert({
+      contact_email: contactEmail,
+      agent_id: agentId || null,
+      activity_type: activityType,
+      activity_data: activityData || {},
+      page_url: pageUrl || '',
+    })
+  } catch (err) {
+    console.error('[trackUserActivity] error:', err)
+  }
+}
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const {
+      name, email, phone, message,
+      source,
+      building_id, listing_id,
+      community_id, municipality_id, area_id,
+      geo_name, tenant_id,
+    } = await req.json()
+
+    if (!name || !email) {
+      return NextResponse.json({ error: 'Name and email required' }, { status: 400 })
+    }
+
+    if (!tenant_id) {
+      return NextResponse.json({ error: 'tenant_id required' }, { status: 400 })
+    }
+
+    const supabase = createServiceClient()
+
+    // Resolve agent
+    const { data: agentId } = await supabase.rpc('resolve_agent_for_context', {
+      p_listing_id: listing_id || null,
+      p_building_id: building_id || null,
+      p_neighbourhood_id: null,
+      p_community_id: community_id || null,
+      p_municipality_id: municipality_id || null,
+      p_area_id: area_id || null,
+      p_user_id: null,
+      p_tenant_id: tenant_id,
+    })
+
+    // Get agent details + walk hierarchy
+    let agent: any = null
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
+
+    if (agentId) {
+      const { data: agentData } = await supabase
+        .from('agents')
+        .select('id, full_name, email, notification_email, parent_id')
+        .eq('id', agentId)
+        .single()
+
+      if (agentData) {
+        agent = agentData
+        const chain = await walkHierarchy(agentData.id, supabase)
+        chainManagerId = chain.manager_id
+        chainAreaManagerId = chain.area_manager_id
+        chainTenantAdminId = chain.tenant_admin_id
+      }
+    }
+
+    // Save lead with full hierarchy chain (per Lead+Email contract)
+    const { data: lead } = await supabase.from('leads').insert({
+      agent_id: agent?.id || null,
+      manager_id: chainManagerId,
+      area_manager_id: chainAreaManagerId,
+      tenant_admin_id: chainTenantAdminId,
+      tenant_id,
+      contact_name: name,
+      contact_email: email,
+      contact_phone: phone || null,
+      message: message || null,
+      source: source || 'walliam_contact',
+      building_id: building_id || null,
+      listing_id: listing_id || null,
+      geo_name: geo_name || null,
+      status: 'new',
+      quality: 'hot',
+      assignment_source: agent ? 'geo' : 'admin',
+    }).select('id').single()
+
+    // Build email HTML
+    const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id })
+    const subject = `\u2756 WALLiam Inquiry \u2014 ${name} \u2014 ${geo_name || source || 'WALLiam'}`
+
+    // Chain notification â€” single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
+    let recipients
+    try {
+      recipients = await getLeadEmailRecipients(tenant_id, agent?.id || null, supabase)
+    } catch (err) {
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[walliam/contact] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
+    }
+
+    if (recipients) {
+      try {
+        await sendTenantEmail({
+          tenantId: tenant_id,
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+          subject,
+          html,
+        })
+      } catch (err) {
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[walliam/contact] tenant email not configured:', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[walliam/contact] resend send failed:', err.message)
+        } else {
+          console.error('[walliam/contact] unexpected email error:', err)
+        }
+      }
+    }
+
+    // Track activity
+    await trackUserActivity(supabase, email, agent?.id || null, 'contact_form', {
+      source: source || 'walliam_contact',
+      geoName: geo_name || null,
+      buildingId: building_id || null,
+      listingId: listing_id || null,
+      message: message || null,
+    }, req.headers.get('referer') || '')
+
+    return NextResponse.json({ success: true, leadId: lead?.id })
+  } catch (error) {
+    console.error('[walliam/contact] error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id }: any): string {
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+        <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
+          <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+        </div>
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">New Inquiry</div>
+        ${geo_name ? `<div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${geo_name}</div>` : ''}
+      </div>
+      <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+        <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+          <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${name}</td></tr>
+          <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${email}" style="color: #1d4ed8;">${email}</a></td></tr>
+          ${phone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${phone}" style="color: #1d4ed8;">${phone}</a></td></tr>` : ''}
+          ${source ? `<tr><td style="color: #64748b;">Source</td><td style="color: #64748b;">${source}</td></tr>` : ''}
+          ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+        </table>
+        <div style="margin-top: 20px; text-align: center;">
+          <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+            Reply to ${name}
+          </a>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+========================================================================
+FILE: app\api\charlie\lead\route.ts
+========================================================================
+Size: 26001 bytes
+
+// app/api/charlie/lead/route.ts
+// WALLiam Charlie lead capture — form-submission enrichment writer
+// Resolves agent via resolve_agent_for_context() — NOT getAgentFromHost
+//
+// W-HIERARCHY H3.4b (2026-05-03): comprehensive refactor.
+//
+//   ROLE CHANGE: This route was the lead CREATOR. Now it's the lead ENRICHER.
+//   Plan-email creates the lead at plan-generation time. This route updates that
+//   row with form-submitted follow-up details (name correction, phone, message).
+//
+//   - F53: walkHierarchy replaces direct parent_id query — full chain capture
+//   - F57: INSERT → UPSERT keyed on (user_id, session_id, intent).
+//          Defensive INSERT only if no matching plan-email row found.
+//   - F60: server-authoritative auth email — uses auth.users.email regardless of
+//          form-supplied email; form's email field is informational only.
+//          Name + phone from form (those can legitimately differ from registration).
+//   - F58 piece: tenant_admin_id captured into lead payload.
+//   - F47: helper replaces hardcoded ADMIN_EMAIL constant.
+//   - F67: standard try/catch (TenantEmailNotConfigured / TenantEmailFailed /
+//          AdminPlatformUnreachable / unexpected).
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
+
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const tenantId = req.headers.get('x-tenant-id') || ''
+    const {
+      // Contact info — name + phone come from form. email IGNORED (F60).
+      name,
+      phone,
+      // Plan context (for chain notification email content)
+      intent,         // 'buyer' | 'seller'
+      buyerProfile,
+      sellerProfile,
+      listings,
+      analytics,
+      // Agent resolution context (for defensive insert path only)
+      sessionId,
+      userId,
+      listing_id,
+      building_id,
+      community_id,
+      municipality_id,
+      area_id,
+    } = body
+
+    // W-RECOVERY A1.5 auth gate — block forged lead submissions
+    if (!sessionId || !userId) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    if (!name || !intent) {
+      return NextResponse.json({ error: 'name and intent are required' }, { status: 400 })
+    }
+
+    const supabase = createServiceClient()
+
+    // W-RECOVERY A1.5 auth gate — verify session belongs to userId
+    const { data: validSession } = await supabase
+      .from('chat_sessions')
+      .select('id')
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .eq('source', 'walliam')
+      .maybeSingle()
+    if (!validSession) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+    // END W-RECOVERY A1.5 auth gate
+
+    // F60: auth email is identity. Pull from auth.users; ignore any form-supplied email.
+    const { data: authData } = await supabase.auth.admin.getUserById(userId)
+    const authEmail = authData?.user?.email
+    if (!authEmail) {
+      return NextResponse.json({ error: 'User email not found' }, { status: 404 })
+    }
+
+    // Step 1: Resolve agent (still needed for defensive insert path + chain recipients)
+    const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
+      p_listing_id: listing_id || null,
+      p_building_id: building_id || null,
+      p_neighbourhood_id: null,
+      p_community_id: community_id || null,
+      p_municipality_id: municipality_id || null,
+      p_area_id: area_id || null,
+      p_user_id: userId || null,
+      p_tenant_id: tenantId || null,
+    })
+
+    const agentId = resolvedAgentId || null
+
+    // Step 2: Get agent details + walk hierarchy chain
+    let agent: any = null
+    let chainManagerId: string | null = null
+    let chainAreaManagerId: string | null = null
+    let chainTenantAdminId: string | null = null
+
+    if (agentId) {
+      const { data: agentData } = await supabase
+        .from('agents')
+        .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id')
+        .eq('id', agentId)
+        .single()
+
+      if (agentData) {
+        agent = agentData
+        const chain = await walkHierarchy(agentData.id, supabase)
+        chainManagerId = chain.manager_id
+        chainAreaManagerId = chain.area_manager_id
+        chainTenantAdminId = chain.tenant_admin_id
+      }
+    }
+
+    // Build plan_data for storage on the lead row
+    const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+    const planData = {
+      intent,
+      geoName: profile?.geoName || null,
+      geoType: profile?.geoType || null,
+      geoId: profile?.geoId || null,
+      ...(intent === 'buyer' ? {
+        budgetMin: buyerProfile?.budgetMin || null,
+        budgetMax: buyerProfile?.budgetMax || null,
+        propertyType: buyerProfile?.propertyType || null,
+        bedrooms: buyerProfile?.bedrooms || null,
+        timeline: buyerProfile?.timeline || null,
+      } : {
+        propertyType: sellerProfile?.propertyType || null,
+        estimatedValueMin: sellerProfile?.estimatedValueMin || null,
+        estimatedValueMax: sellerProfile?.estimatedValueMax || null,
+        timeline: sellerProfile?.timeline || null,
+        goal: sellerProfile?.goal || null,
+      }),
+      analytics: analytics || null,
+      topListings: (listings || []).slice(0, 5).map((l: any) => ({
+        listingKey: l.listing_key,
+        address: l.unparsed_address,
+        price: l.list_price,
+        bedrooms: l.bedrooms_total,
+        slug: l._slug || null,
+      })),
+      generatedAt: new Date().toISOString(),
+    }
+
+    // F57: UPSERT into existing plan-email lead row, not new INSERT.
+    // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+    // in the rare case multiple plan-email rows exist for same user+intent.
+    let leadId: string | null = null
+
+    const { data: existingLeads } = await supabase
+      .from('leads')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('tenant_id', tenantId || '')
+      .eq('source', 'walliam_charlie')
+      .eq('intent', intent)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    const existingLead = existingLeads?.[0]
+
+    if (existingLead) {
+      // UPDATE: enrich the existing plan-email row with form-supplied detail
+      leadId = existingLead.id
+      const { error: updateError } = await supabase
+        .from('leads')
+        .update({
+          contact_name: name,           // form-supplied; can legitimately differ from auth name
+          contact_email: authEmail,     // F60: auth-authoritative
+          contact_phone: phone || null, // form-supplied
+          plan_data: planData,
+          manager_id: chainManagerId,
+          area_manager_id: chainAreaManagerId,
+          tenant_admin_id: chainTenantAdminId,
+          assignment_source: agentId ? 'geo' : 'admin',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existingLead.id)
+
+      if (updateError) {
+        console.error('[charlie/lead] enrichment update error:', updateError)
+        return NextResponse.json({ error: 'Failed to update lead' }, { status: 500 })
+      }
+    } else {
+      // Defensive INSERT: plan-email never created a row (shouldn't happen, but don't lose data)
+      const { data: newLead, error: insertError } = await supabase
+        .from('leads')
+        .insert({
+          agent_id: agentId,
+          user_id: userId,
+          contact_name: name,
+          contact_email: authEmail,
+          contact_phone: phone || null,
+          source: 'walliam_charlie',
+          intent,
+          geo_name: profile?.geoName || null,
+          budget_max: buyerProfile?.budgetMax || null,
+          plan_data: planData,
+          manager_id: chainManagerId,
+          area_manager_id: chainAreaManagerId,
+          tenant_admin_id: chainTenantAdminId,
+          assignment_source: agentId ? 'geo' : 'admin',
+          tenant_id: tenantId || null,
+          status: 'new',
+          quality: 'hot',
+        })
+        .select('id')
+        .single()
+
+      if (insertError || !newLead) {
+        console.error('[charlie/lead] defensive insert error:', insertError)
+        return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 })
+      }
+      leadId = newLead.id
+    }
+
+    // Link lead to session
+    if (sessionId && leadId) {
+      await supabase
+        .from('chat_sessions')
+        .update({ lead_id: leadId, last_activity_at: new Date().toISOString() })
+        .eq('id', sessionId)
+    }
+
+    // Step: Send rich plan email → USER (single recipient, not chain)
+    try {
+      await sendTenantEmail({
+        tenantId,
+        to: authEmail,
+        subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+        html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent }),
+      })
+    } catch (err) {
+      if (err instanceof TenantEmailNotConfigured) {
+        console.warn('[charlie/lead] tenant email not configured (user):', err.message)
+      } else if (err instanceof TenantEmailFailed) {
+        console.error('[charlie/lead] resend send failed (user):', err.message)
+      } else {
+        console.error('[charlie/lead] unexpected user email error:', err)
+      }
+    }
+
+    // Step: Chain notification — single helper-driven send (replaces inline manager-CC + ADMIN_EMAIL)
+    let recipients
+    try {
+      recipients = await getLeadEmailRecipients(tenantId, agentId, supabase)
+    } catch (err) {
+      if (err instanceof AdminPlatformUnreachable) {
+        console.error('[charlie/lead] admin platform unreachable:', err.message)
+        recipients = null
+      } else {
+        throw err
+      }
+    }
+
+    if (recipients) {
+      try {
+        await sendTenantEmail({
+          tenantId,
+          to: recipients.to,
+          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+          subject: `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead — ${name} — ${profile?.geoName || 'GTA'}`,
+          html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics }),
+        })
+      } catch (err) {
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[charlie/lead] tenant email not configured (chain):', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[charlie/lead] resend send failed (chain):', err.message)
+        } else {
+          console.error('[charlie/lead] unexpected chain email error:', err)
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, leadId })
+
+  } catch (error) {
+    console.error('[charlie/lead] error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// ─── Rich plan email → user ────────────────────────────────────────────────
+
+function buildUserPlanEmail(data: {
+  name: string
+  intent: string
+  buyerProfile?: any
+  sellerProfile?: any
+  listings?: any[]
+  analytics?: any
+  agent?: any
+}): string {
+  const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent } = data
+  const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+  const isBuyer = intent === 'buyer'
+  const topListings = (listings || []).slice(0, 5)
+
+  const marketCards = analytics ? `
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0;">
+      ${[
+        { label: 'Median PSF', value: analytics.median_psf ? `$${Number(analytics.median_psf).toLocaleString('en-CA', { maximumFractionDigits: 0 })}` : '—' },
+        { label: 'Avg Days on Market', value: analytics.closed_avg_dom_90 ? `${analytics.closed_avg_dom_90}d` : '—' },
+        { label: 'Sale / List', value: analytics.sale_to_list_ratio ? `${analytics.sale_to_list_ratio}%` : '—' },
+      ].map(m => `
+        <div style="background: #f1f5f9; border-radius: 10px; padding: 14px; text-align: center;">
+          <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">${m.label}</div>
+          <div style="font-size: 20px; font-weight: 800; color: #0f172a;">${m.value}</div>
+        </div>
+      `).join('')}
+    </div>
+  ` : ''
+
+  const listingCards = topListings.length > 0 ? `
+    <div style="margin: 20px 0;">
+      <h3 style="font-size: 14px; font-weight: 700; color: #0f172a; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.08em;">
+        ${isBuyer ? 'Matched Listings' : 'Comparable Sales'}
+      </h3>
+      ${topListings.map((l: any) => `
+        <a href="${BASE_URL}/${l._slug || l.listing_key}" style="display: block; text-decoration: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-size: 14px; font-weight: 700; color: #0f172a;">${l.unparsed_address || '—'}</div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 2px;">${l.bedrooms_total ? `${l.bedrooms_total} bed` : ''} ${l.bathrooms_total_integer ? `· ${l.bathrooms_total_integer} bath` : ''}</div>
+            </div>
+            <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(l.list_price || l.close_price || 0).toLocaleString('en-CA')}</div>
+          </div>
+        </a>
+      `).join('')}
+    </div>
+  ` : ''
+
+  const profileSection = isBuyer ? `
+    <div style="background: #f1f5f9; border-radius: 10px; padding: 16px; margin: 16px 0;">
+      <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Your Buyer Profile</h3>
+      ${buyerProfile?.budgetMax ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Budget:</strong> $${Number(buyerProfile.budgetMin || 0).toLocaleString('en-CA')} – $${Number(buyerProfile.budgetMax).toLocaleString('en-CA')}</p>` : ''}
+      ${buyerProfile?.propertyType ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Property Type:</strong> ${buyerProfile.propertyType}</p>` : ''}
+      ${buyerProfile?.bedrooms ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Bedrooms:</strong> ${buyerProfile.bedrooms}+</p>` : ''}
+      ${buyerProfile?.timeline ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Timeline:</strong> ${buyerProfile.timeline}</p>` : ''}
+    </div>
+  ` : `
+    <div style="background: #f1f5f9; border-radius: 10px; padding: 16px; margin: 16px 0;">
+      <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Your Seller Profile</h3>
+      ${sellerProfile?.propertyType ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Property Type:</strong> ${sellerProfile.propertyType}</p>` : ''}
+      ${sellerProfile?.estimatedValueMin ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Estimated Value:</strong> $${Number(sellerProfile.estimatedValueMin).toLocaleString('en-CA')} – $${Number(sellerProfile.estimatedValueMax).toLocaleString('en-CA')}</p>` : ''}
+      ${sellerProfile?.timeline ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Timeline:</strong> ${sellerProfile.timeline}</p>` : ''}
+      ${sellerProfile?.goal ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Goal:</strong> ${sellerProfile.goal}</p>` : ''}
+    </div>
+  `
+
+  const agentSection = agent ? `
+    <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+      <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">Your Agent</div>
+      ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.15); margin-bottom: 10px;">` : ''}
+      <div style="font-size: 16px; font-weight: 700; color: #fff;">${agent.full_name}</div>
+      ${agent.title ? `<div style="font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.title}</div>` : ''}
+      ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
+      <div style="margin-top: 14px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+        ${agent.email ? `<a href="mailto:${agent.email}" style="display: inline-block; padding: 8px 18px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
+        ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="display: inline-block; padding: 8px 18px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
+      </div>
+    </div>
+  ` : ''
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+        <div style="font-size: 28px; font-weight: 900; color: #fff; letter-spacing: -0.02em; margin-bottom: 4px;">
+          <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.6);">iam</span>
+        </div>
+        <div style="font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 20px;">AI Real Estate</div>
+        <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 6px;">
+          Your ${isBuyer ? 'Buyer' : 'Seller'} Plan is Ready
+        </h1>
+        <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 14px;">
+          Hi ${name} — here's your personalized plan for ${profile?.geoName || 'the GTA'}.
+        </p>
+      </div>
+
+      <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
+
+        ${analytics ? `
+        <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.08em;">
+          Market Intelligence · ${profile?.geoName || ''}
+        </h3>
+        ${marketCards}
+        ` : ''}
+
+        ${profileSection}
+
+        ${listingCards}
+
+        ${agentSection}
+
+        <div style="text-align: center; margin: 24px 0 8px;">
+          <a href="${BASE_URL}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+            ✦ Continue on WALLiam
+          </a>
+        </div>
+      </div>
+
+      <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+        <p style="margin: 0; color: #94a3b8; font-size: 11px;">
+          Sent by WALLiam AI · walliam.ca
+        </p>
+      </div>
+    </div>
+  `
+}
+
+// ─── Lead brief email → agent / chain ─────────────────────────────────────
+
+function buildAgentLeadEmail(data: {
+  name: string
+  email: string
+  phone?: string
+  intent: string
+  buyerProfile?: any
+  sellerProfile?: any
+  listings?: any[]
+  analytics?: any
+}): string {
+  const { name, email, phone, intent, buyerProfile, sellerProfile, listings } = data
+  const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+  const isBuyer = intent === 'buyer'
+  const topListings = (listings || []).slice(0, 3)
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+        <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 4px;">
+          <span>WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+        </div>
+        <h1 style="color: #fff; margin: 8px 0 0; font-size: 18px; font-weight: 700;">
+          New ${isBuyer ? '🏠 Buyer' : '💰 Seller'} Lead
+        </h1>
+        <p style="color: rgba(255,255,255,0.4); margin: 4px 0 0; font-size: 12px;">via Charlie AI · ${new Date().toLocaleDateString('en-CA')}</p>
+      </div>
+
+      <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-top: none;">
+        <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Contact</h2>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px;">
+          <tr><td style="padding: 5px 0; color: #64748b; width: 80px;">Name</td><td style="padding: 5px 0; font-weight: 700; color: #0f172a;">${name}</td></tr>
+          <tr><td style="padding: 5px 0; color: #64748b;">Email</td><td style="padding: 5px 0;"><a href="mailto:${email}" style="color: #2563eb;">${email}</a></td></tr>
+          ${phone ? `<tr><td style="padding: 5px 0; color: #64748b;">Phone</td><td style="padding: 5px 0;"><a href="tel:${phone}" style="color: #2563eb;">${phone}</a></td></tr>` : ''}
+          <tr><td style="padding: 5px 0; color: #64748b;">Area</td><td style="padding: 5px 0; color: #0f172a;">${profile?.geoName || '—'}</td></tr>
+          <tr><td style="padding: 5px 0; color: #64748b;">Intent</td><td style="padding: 5px 0; color: #0f172a;">${isBuyer ? 'Buyer' : 'Seller'}</td></tr>
+        </table>
+
+        <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Plan Summary</h2>
+        <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 13px;">
+          ${isBuyer ? `
+            ${buyerProfile?.budgetMax ? `<p style="margin: 4px 0; color: #374151;"><strong>Budget:</strong> $${Number(buyerProfile.budgetMin || 0).toLocaleString('en-CA')} – $${Number(buyerProfile.budgetMax).toLocaleString('en-CA')}</p>` : ''}
+            ${buyerProfile?.propertyType ? `<p style="margin: 4px 0; color: #374151;"><strong>Type:</strong> ${buyerProfile.propertyType}</p>` : ''}
+            ${buyerProfile?.bedrooms ? `<p style="margin: 4px 0; color: #374151;"><strong>Bedrooms:</strong> ${buyerProfile.bedrooms}+</p>` : ''}
+            ${buyerProfile?.timeline ? `<p style="margin: 4px 0; color: #374151;"><strong>Timeline:</strong> ${buyerProfile.timeline}</p>` : ''}
+          ` : `
+            ${sellerProfile?.propertyType ? `<p style="margin: 4px 0; color: #374151;"><strong>Type:</strong> ${sellerProfile.propertyType}</p>` : ''}
+            ${sellerProfile?.estimatedValueMin ? `<p style="margin: 4px 0; color: #374151;"><strong>Est. Value:</strong> $${Number(sellerProfile.estimatedValueMin).toLocaleString('en-CA')} – $${Number(sellerProfile.estimatedValueMax).toLocaleString('en-CA')}</p>` : ''}
+            ${sellerProfile?.timeline ? `<p style="margin: 4px 0; color: #374151;"><strong>Timeline:</strong> ${sellerProfile.timeline}</p>` : ''}
+            ${sellerProfile?.goal ? `<p style="margin: 4px 0; color: #374151;"><strong>Goal:</strong> ${sellerProfile.goal}</p>` : ''}
+          `}
+        </div>
+
+        ${topListings.length > 0 ? `
+        <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Top Matched Listings</h2>
+        ${topListings.map((l: any) => `
+          <a href="${BASE_URL}/${l._slug || l.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
+            <div>
+              <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${l.unparsed_address || '—'}</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${l.bedrooms_total ? `${l.bedrooms_total} bed` : ''}${l.bathrooms_total_integer ? ` · ${l.bathrooms_total_integer} bath` : ''}</div>
+            </div>
+            <div style="font-size: 15px; font-weight: 800; color: #1d4ed8;">$${Number(l.list_price || 0).toLocaleString('en-CA')}</div>
+          </a>
+        `).join('')}
+        ` : ''}
+      </div>
+
+      <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+        <a href="${BASE_URL}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+          View in Dashboard
+        </a>
+        <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+      </div>
+    </div>
+  `
+}
+
+========================================================================
+FILE: lib\actions\leads.ts
+========================================================================
+Size: 14763 bytes
+
+'use server'
+// lib/actions/leads.ts
+// Tenant-aware lead creation with full Lead+Email contract compliance (W-HIERARCHY H3.9).
+//
+// W-HIERARCHY H3.9 (2026-05-03):
+//   - walkHierarchy captures full chain (manager_id, area_manager_id, tenant_admin_id) â€” was: single parent_id query
+//   - Insert payload now includes manager_id, area_manager_id, tenant_admin_id (was: agent_id only)
+//   - Email fan-out replaced: was 3 sequential sendActivityEmail calls (agent â†’ manager â†’ admin loop with receive_*_emails flags),
+//     now single getLeadEmailRecipients + sendTenantEmail with TO/CC/BCC (open chain, no suppression per Q1)
+//   - F67 try/catch standard: TenantEmailNotConfigured warn, TenantEmailFailed error, AdminPlatformUnreachable soft-fail
+//   - F51 (W-TENANT-AUTH coordination) retired
+//
+// Option A (locked 2026-05-03): dup-branch in getOrCreateLead stays silent.
+// When a lead already exists for (contact_email, tenant_id), updated_at is bumped, no email fires.
+// Re-engagement signaling is out of W-HIERARCHY scope; future lead-lifecycle work can revisit.
+
+import { createClient as createServerClient } from '@supabase/supabase-js'
+import { headers } from 'next/headers'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+  getLeadEmailRecipients,
+  AdminPlatformUnreachable,
+} from '@/lib/admin-homes/lead-email-recipients'
+
+// Create service role client that bypasses RLS
+function createServiceClient() {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  )
+}
+
+interface CreateLeadParams {
+  tenantId: string                  // REQUIRED â€” every lead is scoped to a tenant
+  agentId?: string                  // Optional â€” if missing, resolved via resolve_agent_for_context
+  buildingId?: string
+  contactName: string
+  contactEmail: string
+  contactPhone?: string
+  message?: string
+  source?: string
+  sourceUrl?: string
+  listingId?: string
+  communityId?: string
+  municipalityId?: string
+  areaId?: string
+  userId?: string
+  estimatedValueMin?: number
+  estimatedValueMax?: number
+  propertyDetails?: any
+}
+
+// Resolve agent via RPC scoped to tenant.
+// Returns null if no agent matches the context (lead routes to admin in that case).
+async function resolveAgentForLead(
+  supabase: ReturnType<typeof createServiceClient>,
+  params: CreateLeadParams
+): Promise<string | null> {
+  if (params.agentId) return params.agentId
+
+  const { data: agentId, error } = await supabase.rpc('resolve_agent_for_context', {
+    p_listing_id: params.listingId || null,
+    p_building_id: params.buildingId || null,
+    p_neighbourhood_id: null,
+    p_community_id: params.communityId || null,
+    p_municipality_id: params.municipalityId || null,
+    p_area_id: params.areaId || null,
+    p_user_id: params.userId || null,
+    p_tenant_id: params.tenantId,
+  })
+
+  if (error) {
+    console.error('[leads] resolve_agent_for_context RPC error:', error)
+    return null
+  }
+  return (agentId as string) || null
+}
+
+// Smart lead handler â€” prevents duplicates, scoped per tenant.
+// Duplicate detection key: (contact_email, tenant_id).
+// Same email can legitimately be a lead on multiple tenants.
+//
+// Option A: dup branch is silent. Bumps updated_at, no email.
+export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: boolean }) {
+  if (!params.tenantId) {
+    return { success: false, error: 'tenantId is required' }
+  }
+
+  const supabase = createServiceClient()
+
+  // Force new on form submissions
+  if (params.forceNew) {
+    console.log('[leads] Force creating new lead:', params.contactEmail, 'tenant:', params.tenantId)
+    return await createLead(params)
+  }
+
+  // Per-tenant duplicate check
+  const { data: existingLead, error: searchError } = await supabase
+    .from('leads')
+    .select('id, contact_email, agent_id, tenant_id')
+    .eq('contact_email', params.contactEmail)
+    .eq('tenant_id', params.tenantId)
+    .maybeSingle()
+
+  if (existingLead && !searchError) {
+    // Option A: silent re-engagement bump. No email fires on dup.
+    console.log('[leads] Lead exists for tenant â€” bumping updated_at (Option A: silent):', existingLead.id)
+    await supabase
+      .from('leads')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', existingLead.id)
+    return { success: true, lead: existingLead, isNew: false }
+  }
+
+  console.log('[leads] Creating new lead for:', params.contactEmail, 'tenant:', params.tenantId)
+  return await createLead(params)
+}
+
+export async function createLead(params: CreateLeadParams) {
+  console.log('[leads] CREATE LEAD:', { tenantId: params.tenantId, email: params.contactEmail })
+
+  if (!params.tenantId) {
+    return { success: false, error: 'tenantId is required' }
+  }
+
+  const supabase = createServiceClient()
+
+  // â”€â”€â”€ Resolve agent (tenant-scoped RPC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const resolvedAgentId = await resolveAgentForLead(supabase, params)
+  if (!resolvedAgentId) {
+    console.warn('[leads] No agent resolved for tenant', params.tenantId, 'â€” lead will route to admin only')
+  }
+
+  // â”€â”€â”€ Walker: capture full hierarchy chain â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  let chainManagerId: string | null = null
+  let chainAreaManagerId: string | null = null
+  let chainTenantAdminId: string | null = null
+
+  if (resolvedAgentId) {
+    const chain = await walkHierarchy(resolvedAgentId, supabase)
+    chainManagerId = chain.manager_id
+    chainAreaManagerId = chain.area_manager_id
+    chainTenantAdminId = chain.tenant_admin_id
+  }
+
+  // â”€â”€â”€ Source detection from referer if not explicit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const headersList = headers()
+  const referer = headersList.get('referer') || ''
+
+  let source = params.source
+  if (!source) {
+    if (referer.includes('/estimator')) {
+      source = 'estimator'
+    } else if (referer.includes('/register')) {
+      source = 'registration'
+    } else {
+      source = 'contact_form'
+    }
+  }
+
+  // â”€â”€â”€ Insert lead row with full hierarchy chain (Lead+Email contract) â”€â”€â”€â”€â”€â”€â”€
+  const { data: lead, error } = await supabase
+    .from('leads')
+    .insert({
+      tenant_id: params.tenantId,
+      agent_id: resolvedAgentId,
+      manager_id: chainManagerId,
+      area_manager_id: chainAreaManagerId,
+      tenant_admin_id: chainTenantAdminId,
+      building_id: params.buildingId || null,
+      listing_id: params.listingId || null,
+      source_url: params.sourceUrl || null,
+      estimated_value_min: params.estimatedValueMin || null,
+      estimated_value_max: params.estimatedValueMax || null,
+      property_details: params.propertyDetails || null,
+      contact_name: params.contactName,
+      contact_email: params.contactEmail,
+      contact_phone: params.contactPhone,
+      message: params.message,
+      source: source,
+      assignment_source: resolvedAgentId ? 'geo' : 'admin',
+      quality: 'cold',
+      status: 'new',
+      created_at: new Date().toISOString()
+    })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('[leads] Insert error:', error)
+    return { success: false, error: error.message }
+  }
+
+  console.log('[leads] Lead created:', lead.id)
+
+  // â”€â”€â”€ Chain notification: single helper-driven send (F67 try/catch) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Replaces the prior 3-step loop (agent â†’ manager â†’ admin) with one send
+  // that hits the full 6-layer chain via the recipients helper.
+  let recipients
+  try {
+    recipients = await getLeadEmailRecipients(params.tenantId, resolvedAgentId, supabase)
+  } catch (err) {
+    if (err instanceof AdminPlatformUnreachable) {
+      console.error('[leads] admin platform unreachable:', err.message)
+      recipients = null
+    } else {
+      throw err
+    }
+  }
+
+  if (recipients) {
+    const html = buildLeadEmail({
+      contactName: params.contactName,
+      contactEmail: params.contactEmail,
+      contactPhone: params.contactPhone,
+      message: params.message,
+      source,
+      buildingName: params.propertyDetails?.buildingName,
+      buildingAddress: params.propertyDetails?.buildingAddress,
+      unitNumber: params.propertyDetails?.unitNumber,
+    })
+    const subject = `âœ¦ New Lead â€” ${params.contactName} â€” ${source}`
+
+    try {
+      await sendTenantEmail({
+        tenantId: params.tenantId,
+        to: recipients.to,
+        cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+        bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+        subject,
+        html,
+      })
+    } catch (err) {
+      if (err instanceof TenantEmailNotConfigured) {
+        console.warn('[leads] tenant email not configured:', err.message)
+      } else if (err instanceof TenantEmailFailed) {
+        console.error('[leads] resend send failed:', err.message)
+      } else {
+        console.error('[leads] unexpected email error:', err)
+      }
+    }
+  }
+
+  return { success: true, lead }
+}
+
+// â”€â”€â”€ Email body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Mirrors the visual shape used by walliam/contact for consistency across all
+// chain notifications. No agent-specific branding here â€” the helper resolves
+// recipients per tenant; this template is content-only.
+function buildLeadEmail(params: {
+  contactName: string
+  contactEmail: string
+  contactPhone?: string
+  message?: string
+  source: string
+  buildingName?: string
+  buildingAddress?: string
+  unitNumber?: string
+}): string {
+  const { contactName, contactEmail, contactPhone, message, source, buildingName, buildingAddress, unitNumber } = params
+  const propertyLine = buildingName || buildingAddress
+    ? `${buildingName || ''}${buildingAddress ? ' â€” ' + buildingAddress : ''}${unitNumber ? ' #' + unitNumber : ''}`
+    : null
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">New Lead</div>
+        <div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${source}</div>
+      </div>
+      <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+        <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+          <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${contactName}</td></tr>
+          <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${contactEmail}" style="color: #1d4ed8;">${contactEmail}</a></td></tr>
+          ${contactPhone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${contactPhone}" style="color: #1d4ed8;">${contactPhone}</a></td></tr>` : ''}
+          ${propertyLine ? `<tr><td style="color: #64748b;">Property</td><td style="color: #0f172a;">${propertyLine}</td></tr>` : ''}
+          ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+        </table>
+        <div style="margin-top: 20px; text-align: center;">
+          <a href="mailto:${contactEmail}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+            Reply to ${contactName}
+          </a>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// â”€â”€â”€ Untouched read/update helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export async function updateLeadStatus(leadId: string, status: string, notes?: string) {
+  const supabase = createServiceClient()
+
+  const updateData: any = {
+    status,
+    updated_at: new Date().toISOString()
+  }
+  if (notes) updateData.notes = notes
+
+  const { error } = await supabase
+    .from('leads')
+    .update(updateData)
+    .eq('id', leadId)
+
+  if (error) {
+    console.error('Error updating lead status:', error)
+    return { success: false, error: error.message }
+  }
+  return { success: true }
+}
+
+export async function getAgentLeads(agentId: string) {
+  const supabase = createServiceClient()
+
+  const { data: leads, error } = await supabase
+    .from('leads')
+    .select(`
+      *,
+      buildings (
+        id,
+        building_name,
+        canonical_address
+      ),
+      mls_listings (
+        id,
+        unit_number,
+        unparsed_address
+      )
+    `)
+    .eq('agent_id', agentId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching leads:', error)
+    return { success: false, leads: [], error: error.message }
+  }
+  return { success: true, leads: leads || [] }
+}
+
+export async function getAllLeadsForAdmin() {
+  const supabase = createServiceClient()
+
+  const { data: leads, error } = await supabase
+    .from('leads')
+    .select(`
+      *,
+      buildings (
+        id,
+        building_name,
+        canonical_address
+      ),
+      mls_listings (
+        id,
+        unit_number,
+        unparsed_address
+      ),
+      agents!leads_agent_id_fkey (
+          id,
+          full_name,
+          email,
+          subdomain,
+          parent_id
+        )
+    `)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching all leads for admin:', error)
+    return { success: false, leads: [], error: error.message }
+  }
+
+  const parentIds = [...new Set(leads?.filter(l => l.agents?.parent_id).map(l => l.agents.parent_id))]
+
+  let parentMap: Record<string, string> = {}
+  if (parentIds.length > 0) {
+    const { data: parents } = await supabase
+      .from('agents')
+      .select('id, full_name')
+      .in('id', parentIds)
+
+    if (parents) {
+      parentMap = parents.reduce((acc, p) => ({ ...acc, [p.id]: p.full_name }), {})
+    }
+  }
+
+  const leadsWithParent = leads?.map(lead => ({
+    ...lead,
+    agents: lead.agents ? {
+      ...lead.agents,
+      parent: lead.agents.parent_id ? { full_name: parentMap[lead.agents.parent_id] } : null
+    } : null
+  }))
+
+  return { success: true, leads: leadsWithParent || [] }
+}
+
+
+========================================================================
+FILE: lib\admin-homes\lead-email-recipients.ts
+========================================================================
+Size: 11569 bytes
+
+// lib/admin-homes/lead-email-recipients.ts
+// W-HIERARCHY H3.3 â€” single source of truth for lead email fan-out recipients.
+//
+// Returns the 6-layer recipient chain for any lead-triggering email:
+//   Layer 1: assigned agent              -> TO
+//   Layer 2: manager (walker)            -> CC
+//   Layer 3: area_manager (walker)       -> BCC
+//   Layer 4: tenant_admin (walker)       -> BCC
+//   Layer 5: Manager Platform (per tenant assignment) -> BCC
+//   Layer 6: Admin Platform              -> BCC (UNCONDITIONAL â€” F40/F59/F65 lesson)
+//
+// Layer 6 is unconditional. If for any reason Layer 6 cannot resolve, this throws.
+// Better to alarm loudly than silently lose admin BCC.
+//
+// Layer 1 fallback: if agentId is null, agent layer is empty and Admin Platform
+// is promoted to TO so the email is never address-less.
+//
+// Delegation overlay (Support / Supervisor / Assistant) will be added by
+// W-ROLES-DELEGATION sister tracker as additive extension â€” same return shape,
+// just more BCC entries when active delegations exist for any layer's principal.
+
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+
+// Re-export the email send helper's error types so consuming routes have one import surface.
+export {
+  sendTenantEmail,
+  TenantEmailNotConfigured,
+  TenantEmailFailed,
+} from '@/lib/email/sendTenantEmail'
+export type {
+  SendTenantEmailParams,
+  SendTenantEmailResult,
+} from '@/lib/email/sendTenantEmail'
+
+export interface LeadEmailRecipients {
+  to: string[]
+  cc: string[]
+  bcc: string[]
+  /** Diagnostic: which layers were resolved, for logging/debugging. */
+  resolved: {
+    agent: string | null
+    manager: string | null
+    area_manager: string | null
+    tenant_admin: string | null
+    manager_platforms: string[]
+    admin_platforms: string[]
+    /** W-ROLES-DELEGATION R7 â€” active delegates of each layer-1â€“4 principal. */
+    agent_delegates: string[]
+    manager_delegates: string[]
+    area_manager_delegates: string[]
+    tenant_admin_delegates: string[]
+  }
+}
+
+export class AdminPlatformUnreachable extends Error {
+  constructor(detail: string) {
+    super(`Admin Platform layer-6 BCC could not be resolved â€” ${detail}. This is a system alarm.`)
+    this.name = 'AdminPlatformUnreachable'
+  }
+}
+
+interface AgentEmailRow {
+  id: string
+  email: string | null
+  notification_email: string | null
+}
+
+/**
+ * Resolve the 6-layer recipient chain for a lead email.
+ *
+ * @param tenantId - The tenant the lead belongs to. Required.
+ * @param agentId  - The assigned agent. Pass null when no agent is resolved
+ *                   (in that case Admin Platform is promoted to TO).
+ * @param supabase - A Supabase service-role client.
+ *
+ * @throws AdminPlatformUnreachable if no active Admin Platform with email exists.
+ *         Layer 6 is unconditional; the system fails closed rather than dropping it.
+ */
+export async function getLeadEmailRecipients(
+  tenantId: string,
+  agentId: string | null,
+  supabase: SupabaseClient
+): Promise<LeadEmailRecipients> {
+  const resolved: LeadEmailRecipients['resolved'] = {
+    agent: null,
+    manager: null,
+    area_manager: null,
+    tenant_admin: null,
+    manager_platforms: [],
+    admin_platforms: [],
+    agent_delegates: [],
+    manager_delegates: [],
+    area_manager_delegates: [],
+    tenant_admin_delegates: [],
+  }
+
+  let agentEmail: string | null = null
+  let managerEmail: string | null = null
+  let areaManagerEmail: string | null = null
+  let tenantAdminEmail: string | null = null
+
+  // â”€â”€â”€ Layer 1: assigned agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  if (agentId) {
+    const { data } = await supabase
+      .from('agents')
+      .select('id, email, notification_email')
+      .eq('id', agentId)
+      .maybeSingle()
+    const row = data as AgentEmailRow | null
+    if (row) {
+      agentEmail = row.notification_email || row.email || null
+      resolved.agent = agentEmail
+    }
+  }
+
+  // â”€â”€â”€ Layers 2â€“4: walker (manager / area_manager / tenant_admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // R7: walker hoisted to outer scope so the delegation overlay block below
+  // can reuse the chain without a second walkHierarchy round-trip.
+  const chain = agentId ? await walkHierarchy(agentId, supabase) : null
+  if (chain) {
+    // Resolve emails for any walker-classified ancestor in one query
+    const idsToResolve = [
+      chain.manager_id,
+      chain.area_manager_id,
+      chain.tenant_admin_id,
+    ].filter((x): x is string => !!x)
+
+    if (idsToResolve.length > 0) {
+      const { data } = await supabase
+        .from('agents')
+        .select('id, email, notification_email')
+        .in('id', idsToResolve)
+      const rows = (data || []) as AgentEmailRow[]
+      const byId = new Map(rows.map(r => [r.id, r.notification_email || r.email || null]))
+
+      if (chain.manager_id) {
+        managerEmail = byId.get(chain.manager_id) || null
+        resolved.manager = managerEmail
+      }
+      if (chain.area_manager_id) {
+        areaManagerEmail = byId.get(chain.area_manager_id) || null
+        resolved.area_manager = areaManagerEmail
+      }
+      if (chain.tenant_admin_id) {
+        tenantAdminEmail = byId.get(chain.tenant_admin_id) || null
+        resolved.tenant_admin = tenantAdminEmail
+      }
+    }
+  }
+
+  // â”€â”€â”€ Layers 1â€“4 delegation overlay (W-ROLES-DELEGATION R7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // For each populated principal at layers 1â€“4, fetch active delegates and add
+  // their notification_email to BCC. Single batched query; in-memory map keyed
+  // by delegator. Layers 5â€“6 are platform_admins (different table); their
+  // delegation overlay would require a parallel mechanism â€” out of R7 scope.
+  const principalAgentIds: string[] = [
+    agentId,
+    chain?.manager_id ?? null,
+    chain?.area_manager_id ?? null,
+    chain?.tenant_admin_id ?? null,
+  ].filter((x): x is string => !!x)
+
+  const delegateEmailsByDelegator = new Map<string, string[]>()
+  if (principalAgentIds.length > 0) {
+    const { data: delegationRows } = await supabase
+      .from('agent_delegations')
+      .select('delegator_id, delegate_id')
+      .in('delegator_id', principalAgentIds)
+      .eq('tenant_id', tenantId)
+      .is('revoked_at', null)
+
+    const delegateIds = (delegationRows || [])
+      .map(r => (r as { delegator_id: string; delegate_id: string }).delegate_id)
+
+    if (delegateIds.length > 0) {
+      const { data: delegateAgentRows } = await supabase
+        .from('agents')
+        .select('id, email, notification_email')
+        .in('id', delegateIds)
+
+      const emailByDelegateId = new Map<string, string | null>()
+      for (const r of (delegateAgentRows || []) as AgentEmailRow[]) {
+        emailByDelegateId.set(r.id, r.notification_email || r.email || null)
+      }
+
+      for (const d of (delegationRows || []) as Array<{ delegator_id: string; delegate_id: string }>) {
+        const email = emailByDelegateId.get(d.delegate_id)
+        if (email) {
+          const arr = delegateEmailsByDelegator.get(d.delegator_id) || []
+          arr.push(email)
+          delegateEmailsByDelegator.set(d.delegator_id, arr)
+        }
+      }
+
+      // Populate diagnostic resolved.* fields
+      if (agentId) resolved.agent_delegates = delegateEmailsByDelegator.get(agentId) || []
+      if (chain?.manager_id) resolved.manager_delegates = delegateEmailsByDelegator.get(chain.manager_id) || []
+      if (chain?.area_manager_id) resolved.area_manager_delegates = delegateEmailsByDelegator.get(chain.area_manager_id) || []
+      if (chain?.tenant_admin_id) resolved.tenant_admin_delegates = delegateEmailsByDelegator.get(chain.tenant_admin_id) || []
+    }
+  }
+
+  // â”€â”€â”€ Layer 5: Manager Platforms assigned to this tenant â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Two-step query (cleaner than nested-join type inference):
+  //   1. Find platform_admin_ids assigned to this tenant
+  //   2. Read those rows from platform_admins, filter active + tier='manager'
+  const { data: assignmentRows } = await supabase
+    .from('platform_manager_tenants')
+    .select('platform_admin_id')
+    .eq('tenant_id', tenantId)
+
+  const assignedAdminIds = (assignmentRows || []).map(r => (r as { platform_admin_id: string }).platform_admin_id)
+  const managerPlatformEmails: string[] = []
+
+  if (assignedAdminIds.length > 0) {
+    const { data: managerPlatformRows } = await supabase
+      .from('platform_admins')
+      .select('id, email, is_active, tier')
+      .in('id', assignedAdminIds)
+      .eq('tier', 'manager')
+      .eq('is_active', true)
+
+    for (const row of (managerPlatformRows || []) as Array<{ id: string; email: string | null; is_active: boolean; tier: string }>) {
+      if (row.email) {
+        managerPlatformEmails.push(row.email)
+        resolved.manager_platforms.push(row.email)
+      }
+    }
+  }
+
+  // â”€â”€â”€ Layer 6: Admin Platform â€” UNCONDITIONAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const { data: adminPlatformRows, error: adminError } = await supabase
+    .from('platform_admins')
+    .select('id, email, is_active, tier')
+    .eq('tier', 'admin')
+    .eq('is_active', true)
+
+  if (adminError) {
+    throw new AdminPlatformUnreachable(`db error: ${adminError.message}`)
+  }
+  const adminPlatformEmails: string[] = []
+  for (const row of (adminPlatformRows || []) as Array<{ id: string; email: string | null; is_active: boolean; tier: string }>) {
+    if (row.email) {
+      adminPlatformEmails.push(row.email)
+      resolved.admin_platforms.push(row.email)
+    }
+  }
+  if (adminPlatformEmails.length === 0) {
+    throw new AdminPlatformUnreachable('no active Admin Platform with email')
+  }
+
+  // â”€â”€â”€ Assemble TO / CC / BCC â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const to: string[] = []
+  const cc: string[] = []
+  const bcc: string[] = []
+
+  // Layer 1 â†’ TO. Fallback: if no agent, promote Admin Platform to TO (single recipient
+  // to ensure the email is never address-less).
+  if (agentEmail) {
+    to.push(agentEmail)
+  } else {
+    // No agent assigned â€” surface Admin Platform as TO so the message is delivered.
+    // Admin Platform is also still in BCC below; routes/inboxes can dedupe.
+    to.push(adminPlatformEmails[0])
+  }
+
+  // Layer 2 â†’ CC
+  if (managerEmail) cc.push(managerEmail)
+
+  // Layer 3 â†’ BCC
+  if (areaManagerEmail) bcc.push(areaManagerEmail)
+  // Layer 4 â†’ BCC
+  if (tenantAdminEmail) bcc.push(tenantAdminEmail)
+  // Layers 1â€“4 delegate overlay â†’ BCC (W-ROLES-DELEGATION R7)
+  for (const emails of delegateEmailsByDelegator.values()) {
+    for (const e of emails) bcc.push(e)
+  }
+  // Layer 5 â†’ BCC
+  for (const e of managerPlatformEmails) bcc.push(e)
+  // Layer 6 â†’ BCC (unconditional)
+  for (const e of adminPlatformEmails) bcc.push(e)
+
+  // De-dupe each list (an email shouldn't appear twice in the same field)
+  return {
+    to: dedupe(to),
+    cc: dedupe(cc),
+    bcc: dedupe(bcc),
+    resolved,
+  }
+}
+
+function dedupe(arr: string[]): string[] {
+  return Array.from(new Set(arr.filter(Boolean)))
+}

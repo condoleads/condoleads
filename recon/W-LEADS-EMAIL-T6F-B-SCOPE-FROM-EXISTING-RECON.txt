@@ -1,0 +1,683 @@
+=== T6f-B SCOPE EXTRACTION FROM EXISTING T6f-A RECON ===
+Generated: 2026-05-11T17:00:09.439Z
+
+Target routes (4):
+  - app/api/walliam/estimator/vip-request/route.ts
+  - app/api/walliam/estimator/vip-approve/route.ts
+  - app/api/walliam/estimator/session/route.ts
+  - app/api/walliam/estimator/vip-questionnaire/route.ts
+
+Source recon files scanned (6):
+  - recon/W-LEADS-EMAIL-T6F-ANCHOR-PREP.txt
+  - recon/W-LEADS-EMAIL-T6F-BRAND-CONTEXT.txt
+  - recon/W-LEADS-EMAIL-T6F-FUNCTION-MAP.txt
+  - recon/W-LEADS-EMAIL-T6F-RECON.txt
+  - recon/W-LEADS-EMAIL-T6F-RESIDUAL.txt
+  - recon/W-LEADS-EMAIL-T6F-TENANT-LOAD.txt
+
+Context window: 20 lines after each hit.
+
+========================================================================
+FILE: recon/W-LEADS-EMAIL-T6F-ANCHOR-PREP.txt (3 hits)
+========================================================================
+
+--- HIT [app/api/walliam/estimator/vip-request/route.ts] @ L318 ---
+FILE: app/api/walliam/estimator/vip-request/route.ts
+==============================================================================
+
+  --- A. Helper definitions ---
+
+    HELPER: buildApprovalEmailHtml (decl at L407)
+      L 407: function buildApprovalEmailHtml(data: {
+      L 408:   fullName: string
+      L 409:   phone: string
+      L 410:   email?: string
+      L 411:   buildingName?: string
+      L 412:   pageUrl?: string
+      L 413:   approveUrl: string
+      L 414:   denyUrl: string
+      L 415:   agentName: string
+      L 416: }): string {
+      L 417:   return `
+      L 418:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      L 419:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+      L 420:         <h1 style="color: white; margin: 0; font-size: 22px;">🔔 WALLiam Estimator VIP Request</h1>
+      L 421:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">📊 Estimator</p>
+
+--- HIT [app/api/walliam/estimator/vip-approve/route.ts] @ L436 ---
+FILE: app/api/walliam/estimator/vip-approve/route.ts
+==============================================================================
+
+  --- A. Helper definitions ---
+
+    HELPER: buildUserApprovalEmailHtml (decl at L186)
+      L 186: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number): string {
+      L 187:   return `
+      L 188:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      L 189:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+      L 190:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+      L 191:         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
+      L 192:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+      L 193:       </div>
+      L 194:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+      L 195:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+      L 196:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
+      L 197:         <div style="text-align: center;">
+      L 198:           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to WALLiam</a>
+      L 199:         </div>
+      L 200:       </div>
+
+--- HIT [app/api/walliam/estimator/vip-questionnaire/route.ts] @ L700 ---
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+
+  --- A. Helper definitions ---
+
+    HELPER: buildQuestionnaireEmailHtml (decl at L299)
+      L 299: function buildQuestionnaireEmailHtml(data: {
+      L 300:   userName: string
+      L 301:   phone: string
+      L 302:   email?: string
+      L 303:   buyerTypeDisplay: string
+      L 304:   budgetDisplay: string
+      L 305:   timelineDisplay: string
+      L 306:   buildingName?: string
+      L 307:   requirements?: string
+      L 308: }): string {
+      L 309:   return `
+      L 310:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      L 311:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+      L 312:         <h1 style="color: white; margin: 0; font-size: 22px;">📋 WALLiam Estimator Questionnaire</h1>
+      L 313:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">Additional buyer details submitted</p>
+
+
+========================================================================
+FILE: recon/W-LEADS-EMAIL-T6F-BRAND-CONTEXT.txt (4 hits)
+========================================================================
+
+--- HIT [app/api/walliam/estimator/vip-request/route.ts] @ L161 ---
+FILE: app/api/walliam/estimator/vip-request/route.ts
+==============================================================================
+  total lines: 490, user-facing /walliam/i hits: 15
+
+  --- L166 [enclosing fn: (module-level)] (window L162..L171) ---
+     L 162:         session_id: sessionId,
+     L 163:         agent_id: agent?.id || null,
+     L 164:         tenant_id: tenantId,
+     L 165:         phone,
+  >> L 166:         full_name: userName || 'WALLiam User',
+     L 167:         email: userEmail || null,
+     L 168:         page_url: pageUrl,
+     L 169:         building_name: buildingName,
+     L 170:         request_source: `${sourceKey}_estimator`,
+     L 171:         request_type: 'estimator',
+
+  --- L196 [enclosing fn: (module-level)] (window L192..L201) ---
+     L 192:           tenant_id: tenantId,
+     L 193:           manager_id: chainManagerId,
+     L 194:           area_manager_id: chainAreaManagerId,
+     L 195:           tenant_admin_id: chainTenantAdminId,
+
+--- HIT [app/api/walliam/estimator/vip-approve/route.ts] @ L346 ---
+FILE: app/api/walliam/estimator/vip-approve/route.ts
+==============================================================================
+  total lines: 246, user-facing /walliam/i hits: 5
+
+  --- L156 [enclosing fn: (module-level)] (window L152..L161) ---
+     L 152:             tenantId: tenantId || '',
+     L 153:             to: vipRequest.email,
+     L 154:             cc: managerEmail ? [managerEmail] : undefined,
+     L 155:             bcc: bccList,
+  >> L 156:             subject: 'Your WALLiam Estimator Access is Approved',
+     L 157:             html: buildUserApprovalEmailHtml(
+     L 158:               vipRequest.full_name,
+     L 159:               agent?.full_name || 'WALLiam',
+     L 160:               attemptsToGrant
+     L 161:             ),
+
+  --- L159 [enclosing fn: (module-level)] (window L155..L164) ---
+     L 155:             bcc: bccList,
+     L 156:             subject: 'Your WALLiam Estimator Access is Approved',
+     L 157:             html: buildUserApprovalEmailHtml(
+     L 158:               vipRequest.full_name,
+
+--- HIT [app/api/walliam/estimator/session/route.ts] @ L411 ---
+FILE: app/api/walliam/estimator/session/route.ts
+==============================================================================
+  total lines: 223, user-facing /walliam/i hits: 3
+
+  --- L86 [enclosing fn: (module-level)] (window L82..L91) ---
+     L  82:     })
+     L  83:     const agentId = resolvedAgentId || null
+     L  84: 
+     L  85:     // Get agent name for display only
+  >> L  86:     let agentName = 'WALLiam'
+     L  87:     if (agentId) {
+     L  88:       const { data: agent } = await supabase
+     L  89:         .from('agents')
+     L  90:         .select('full_name')
+     L  91:         .eq('id', agentId)
+
+  --- L148 [enclosing fn: (module-level)] (window L144..L153) ---
+     L 144:       .order('created_at', { ascending: false })
+     L 145:       .limit(1)
+     L 146:       .single()
+     L 147: 
+
+--- HIT [app/api/walliam/estimator/vip-questionnaire/route.ts] @ L452 ---
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+  total lines: 362, user-facing /walliam/i hits: 7
+
+  --- L148 [enclosing fn: (module-level)] (window L144..L153) ---
+     L 144:       sourceKey = t6cTenant?.source_key ?? null
+     L 145:     }
+     L 146: 
+     L 147:     if (userEmail && userId && tenantId) {
+  >> L 148:       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
+     L 149: 
+     L 150:       // Match the lead row created by vip-request:
+     L 151:       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+     L 152:       // (vip-request writes source='walliam_estimator_vip_request')
+     L 153:       const { data: existingLeads } = await supabase
+
+  --- L169 [enclosing fn: (module-level)] (window L165..L174) ---
+     L 165:         // UPDATE: enrich the existing row with questionnaire detail
+     L 166:         const { error: updateLeadError } = await supabase
+     L 167:           .from('leads')
+     L 168:           .update({
+
+
+========================================================================
+FILE: recon/W-LEADS-EMAIL-T6F-FUNCTION-MAP.txt (4 hits)
+========================================================================
+
+--- HIT [app/api/walliam/estimator/vip-request/route.ts] @ L69 ---
+FILE: app/api/walliam/estimator/vip-request/route.ts
+==============================================================================
+
+  Module-level declarations (6):
+    L  27..L  39  trackUserActivity
+      signature: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+    L  40..L  46  createServiceClient
+      signature: function createServiceClient() {
+    L  48..L 366  POST
+      signature: export async function POST(request: NextRequest) {
+    L 370..L 405  GET
+      signature: export async function GET(request: NextRequest) {
+    L 407..L 416  buildApprovalEmailHtml
+      signature: function buildApprovalEmailHtml(data: {
+    L 467..L 490  buildUserApprovalEmailHtml
+      signature: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number): string {
+
+  Hit  ->  enclosing module-level fn:
+    L 166  ->  POST
+    L 196  ->  POST
+    L 203  ->  POST
+
+--- HIT [app/api/walliam/estimator/vip-approve/route.ts] @ L104 ---
+FILE: app/api/walliam/estimator/vip-approve/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  24..L  30  createServiceClient
+      signature: function createServiceClient() {
+    L  32..L 184  GET
+      signature: export async function GET(request: NextRequest) {
+    L 186..L 203  buildUserApprovalEmailHtml
+      signature: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number): string {
+    L 205..L 246  createHtmlResponse
+      signature: function createHtmlResponse(status: string, message: string): NextResponse {
+
+  Hit  ->  enclosing module-level fn:
+    L 156  ->  GET
+    L 159  ->  GET
+    L 192  ->  buildUserApprovalEmailHtml
+    L 198  ->  buildUserApprovalEmailHtml
+    L 218  ->  createHtmlResponse
+
+==============================================================================
+
+--- HIT [app/api/walliam/estimator/session/route.ts] @ L125 ---
+FILE: app/api/walliam/estimator/session/route.ts
+==============================================================================
+
+  Module-level declarations (2):
+    L   9..L  15  createServiceClient
+      signature: function createServiceClient() {
+    L  17..L 222  POST
+      signature: export async function POST(request: NextRequest) {
+
+  Hit  ->  enclosing module-level fn:
+    L  86  ->  POST
+    L 148  ->  POST
+    L 191  ->  POST
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  27..L  39  trackUserActivity
+      signature: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+
+--- HIT [app/api/walliam/estimator/vip-questionnaire/route.ts] @ L140 ---
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  27..L  39  trackUserActivity
+      signature: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+    L  40..L  46  createServiceClient
+      signature: function createServiceClient() {
+    L  48..L  48  POST
+      signature: export async function POST(request: NextRequest) {
+    L 299..L 308  buildQuestionnaireEmailHtml
+      signature: function buildQuestionnaireEmailHtml(data: {
+
+  Hit  ->  enclosing module-level fn:
+    L 148  ->  (module-level / outside any fn)
+    L 169  ->  (module-level / outside any fn)
+    L 190  ->  (module-level / outside any fn)
+    L 208  ->  (module-level / outside any fn)
+    L 247  ->  (module-level / outside any fn)
+    L 312  ->  (module-level / outside any fn)
+    L 357  ->  (module-level / outside any fn)
+
+
+========================================================================
+FILE: recon/W-LEADS-EMAIL-T6F-RECON.txt (12 hits)
+========================================================================
+
+--- HIT [app/api/walliam/estimator/vip-request/route.ts] @ L87 ---
+  app/api/walliam/estimator/vip-request/route.ts                      2            ·            1            8            ·           15            1            ·            4      31
+  app/api/walliam/estimator/vip-approve/route.ts                      1            ·            1            5            ·            6            ·            ·            ·      13
+  app/api/walliam/estimator/session/route.ts                          1            1            ·            2            ·            3            ·            ·            ·       7
+  app/api/walliam/estimator/vip-questionnaire/route.ts                ·            ·            ·            4            ·           10            4            2            3      21
+  app/api/walliam/charlie/vip-request/route.ts                        ·            ·            ·            1            ·           16            1            ·            ·      18
+  app/api/walliam/charlie/vip-approve/route.ts                        1            ·            1            6            ·            3            ·            ·            ·      11
+  app/api/walliam/contact/route.ts                                    ·            ·            1            1            ·            6            3            ·            ·      11
+  app/api/email/welcome/route.ts                                      ·            ·            ·            ·            ·            ·            ·            ·            ·       0
+  app/api/email/low-credits/route.ts                                  ·            ·            ·            ·            ·            ·            ·            ·            ·       0
+
+
+-- full hit list per file (only files with hits) --
+
+  app/api/charlie/lead/route.ts (7 hits)
+    L   2 [brand-text          ] // WALLiam Charlie lead capture — form-submission enrichment writer
+    L  35 [URL                 ] const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L 164 [source-id           ]     // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+    L 250 [brand-text          ]         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+    L 432 [brand-text          ]             ✦ Continue on WALLiam
+    L 439 [domain              ]           Sent by WALLiam AI · walliam.ca
+    L 518 [domain              ]         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+
+--- HIT [app/api/walliam/estimator/vip-approve/route.ts] @ L88 ---
+  app/api/walliam/estimator/vip-approve/route.ts                      1            ·            1            5            ·            6            ·            ·            ·      13
+  app/api/walliam/estimator/session/route.ts                          1            1            ·            2            ·            3            ·            ·            ·       7
+  app/api/walliam/estimator/vip-questionnaire/route.ts                ·            ·            ·            4            ·           10            4            2            3      21
+  app/api/walliam/charlie/vip-request/route.ts                        ·            ·            ·            1            ·           16            1            ·            ·      18
+  app/api/walliam/charlie/vip-approve/route.ts                        1            ·            1            6            ·            3            ·            ·            ·      11
+  app/api/walliam/contact/route.ts                                    ·            ·            1            1            ·            6            3            ·            ·      11
+  app/api/email/welcome/route.ts                                      ·            ·            ·            ·            ·            ·            ·            ·            ·       0
+  app/api/email/low-credits/route.ts                                  ·            ·            ·            ·            ·            ·            ·            ·            ·       0
+
+
+-- full hit list per file (only files with hits) --
+
+  app/api/charlie/lead/route.ts (7 hits)
+    L   2 [brand-text          ] // WALLiam Charlie lead capture — form-submission enrichment writer
+    L  35 [URL                 ] const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L 164 [source-id           ]     // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+    L 250 [brand-text          ]         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+    L 432 [brand-text          ]             ✦ Continue on WALLiam
+    L 439 [domain              ]           Sent by WALLiam AI · walliam.ca
+    L 518 [domain              ]         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+
+
+--- HIT [app/api/walliam/estimator/session/route.ts] @ L89 ---
+  app/api/walliam/estimator/session/route.ts                          1            1            ·            2            ·            3            ·            ·            ·       7
+  app/api/walliam/estimator/vip-questionnaire/route.ts                ·            ·            ·            4            ·           10            4            2            3      21
+  app/api/walliam/charlie/vip-request/route.ts                        ·            ·            ·            1            ·           16            1            ·            ·      18
+  app/api/walliam/charlie/vip-approve/route.ts                        1            ·            1            6            ·            3            ·            ·            ·      11
+  app/api/walliam/contact/route.ts                                    ·            ·            1            1            ·            6            3            ·            ·      11
+  app/api/email/welcome/route.ts                                      ·            ·            ·            ·            ·            ·            ·            ·            ·       0
+  app/api/email/low-credits/route.ts                                  ·            ·            ·            ·            ·            ·            ·            ·            ·       0
+
+
+-- full hit list per file (only files with hits) --
+
+  app/api/charlie/lead/route.ts (7 hits)
+    L   2 [brand-text          ] // WALLiam Charlie lead capture — form-submission enrichment writer
+    L  35 [URL                 ] const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L 164 [source-id           ]     // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+    L 250 [brand-text          ]         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+    L 432 [brand-text          ]             ✦ Continue on WALLiam
+    L 439 [domain              ]           Sent by WALLiam AI · walliam.ca
+    L 518 [domain              ]         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+
+  app/api/charlie/plan-email/route.ts (4 hits)
+
+--- HIT [app/api/walliam/estimator/vip-questionnaire/route.ts] @ L90 ---
+  app/api/walliam/estimator/vip-questionnaire/route.ts                ·            ·            ·            4            ·           10            4            2            3      21
+  app/api/walliam/charlie/vip-request/route.ts                        ·            ·            ·            1            ·           16            1            ·            ·      18
+  app/api/walliam/charlie/vip-approve/route.ts                        1            ·            1            6            ·            3            ·            ·            ·      11
+  app/api/walliam/contact/route.ts                                    ·            ·            1            1            ·            6            3            ·            ·      11
+  app/api/email/welcome/route.ts                                      ·            ·            ·            ·            ·            ·            ·            ·            ·       0
+  app/api/email/low-credits/route.ts                                  ·            ·            ·            ·            ·            ·            ·            ·            ·       0
+
+
+-- full hit list per file (only files with hits) --
+
+  app/api/charlie/lead/route.ts (7 hits)
+    L   2 [brand-text          ] // WALLiam Charlie lead capture — form-submission enrichment writer
+    L  35 [URL                 ] const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L 164 [source-id           ]     // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+    L 250 [brand-text          ]         subject: `Your WALLiam ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+    L 432 [brand-text          ]             ✦ Continue on WALLiam
+    L 439 [domain              ]           Sent by WALLiam AI · walliam.ca
+    L 518 [domain              ]         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">WALLiam · walliam.ca</p>
+
+  app/api/charlie/plan-email/route.ts (4 hits)
+    L  27 [URL                 ] const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+
+--- HIT [app/api/walliam/estimator/vip-request/route.ts] @ L121 ---
+  app/api/walliam/estimator/vip-request/route.ts (31 hits)
+    L   1 [other               ] ﻿// app/api/walliam/estimator/vip-request/route.ts
+    L   2 [brand-text          ] // WALLiam estimator VIP request — adapted from app/api/chat/vip-request/route.ts
+    L  97 [other               ]     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate (replaces hardcoded 'walliam' check)
+    L 166 [user-fallback       ]         full_name: userName || 'WALLiam User',
+    L 180 [other               ]       console.error('[walliam/estimator/vip-request] insert error:', insertError)
+    L 196 [user-fallback       ]           contact_name: userName || 'WALLiam User',
+    L 203 [brand-text          ]           message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
+    L 210 [other               ]       if (leadError) console.error('[walliam/estimator/vip-request] lead error:', leadError)
+    L 215 [URL                 ]     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L 216 [other               ]     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+    L 217 [other               ]     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+    L 220 [user-fallback       ]       fullName: userName || 'WALLiam User',
+    L 236 [other               ]         console.error('[walliam/estimator/vip-request] admin platform unreachable:', err.message)
+    L 245 [brand-text          ]         const subject = `WALLiam Estimator VIP Request: ${phone}`
+    L 262 [source-id           ]             templateKey: 'walliam_estimator_vip_request_chain',
+    L 269 [other               ]           console.warn('[walliam/estimator/vip-request] tenant email not configured:', err.message)
+    L 271 [other               ]           console.error('[walliam/estimator/vip-request] resend send failed:', err.message)
+    L 273 [other               ]           console.error('[walliam/estimator/vip-request] unexpected email error:', err)
+    L 331 [brand-text          ]             subject: 'WALLiam Estimator Access Approved',
+    L 332 [brand-name          ]             html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
+
+--- HIT [app/api/walliam/estimator/vip-request/route.ts] @ L122 ---
+    L   1 [other               ] ﻿// app/api/walliam/estimator/vip-request/route.ts
+    L   2 [brand-text          ] // WALLiam estimator VIP request — adapted from app/api/chat/vip-request/route.ts
+    L  97 [other               ]     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate (replaces hardcoded 'walliam' check)
+    L 166 [user-fallback       ]         full_name: userName || 'WALLiam User',
+    L 180 [other               ]       console.error('[walliam/estimator/vip-request] insert error:', insertError)
+    L 196 [user-fallback       ]           contact_name: userName || 'WALLiam User',
+    L 203 [brand-text          ]           message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
+    L 210 [other               ]       if (leadError) console.error('[walliam/estimator/vip-request] lead error:', leadError)
+    L 215 [URL                 ]     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+    L 216 [other               ]     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+    L 217 [other               ]     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+    L 220 [user-fallback       ]       fullName: userName || 'WALLiam User',
+    L 236 [other               ]         console.error('[walliam/estimator/vip-request] admin platform unreachable:', err.message)
+    L 245 [brand-text          ]         const subject = `WALLiam Estimator VIP Request: ${phone}`
+    L 262 [source-id           ]             templateKey: 'walliam_estimator_vip_request_chain',
+    L 269 [other               ]           console.warn('[walliam/estimator/vip-request] tenant email not configured:', err.message)
+    L 271 [other               ]           console.error('[walliam/estimator/vip-request] resend send failed:', err.message)
+    L 273 [other               ]           console.error('[walliam/estimator/vip-request] unexpected email error:', err)
+    L 331 [brand-text          ]             subject: 'WALLiam Estimator Access Approved',
+    L 332 [brand-name          ]             html: buildUserApprovalEmailHtml(userName, agent?.full_name || 'WALLiam', autoApproveMessages),
+    L 337 [other               ]             console.warn('[walliam/estimator/vip-request] tenant email not configured (user approval):', err.message)
+
+--- HIT [app/api/walliam/estimator/vip-approve/route.ts] @ L154 ---
+  app/api/walliam/estimator/vip-approve/route.ts (13 hits)
+    L   1 [other               ] // app/api/walliam/estimator/vip-approve/route.ts
+    L   2 [brand-text          ] // Token-based approve/deny for WALLiam estimator VIP requests
+    L   7 [brand-text          ] //   - WALLiam dark theme HTML response
+    L 131 [other               ]             console.error('[walliam/estimator/vip-approve] admin platform unreachable:', err.message)
+    L 156 [brand-text          ]             subject: 'Your WALLiam Estimator Access is Approved',
+    L 159 [brand-name          ]               agent?.full_name || 'WALLiam',
+    L 166 [other               ]             console.warn('[walliam/estimator/vip-approve] tenant email not configured:', err.message)
+    L 168 [other               ]             console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
+    L 170 [other               ]             console.error('[walliam/estimator/vip-approve] unexpected email error:', err)
+    L 181 [other               ]     console.error('[walliam/estimator/vip-approve] error:', error)
+    L 192 [brand-text          ]         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+    L 198 [URL                 ]           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px...
+    L 218 [brand-text          ]   <title>WALLiam Estimator — ${cfg.title}</title>
+
+  app/api/walliam/estimator/session/route.ts (7 hits)
+    L   1 [other               ] ﻿// app/api/walliam/estimator/session/route.ts
+    L   2 [brand-text          ] // Initializes or retrieves a WALLiam estimator session
+    L  86 [agent-fallback      ]     let agentName = 'WALLiam'
+    L 133 [other               ]         console.error('[walliam/estimator/session] create error:', createError)
+    L 148 [brand-text          ]     const questionnaireCompleted = true // WALLiam has no questionnaire — users are registered
+
+--- HIT [app/api/walliam/estimator/vip-approve/route.ts] @ L155 ---
+    L   1 [other               ] // app/api/walliam/estimator/vip-approve/route.ts
+    L   2 [brand-text          ] // Token-based approve/deny for WALLiam estimator VIP requests
+    L   7 [brand-text          ] //   - WALLiam dark theme HTML response
+    L 131 [other               ]             console.error('[walliam/estimator/vip-approve] admin platform unreachable:', err.message)
+    L 156 [brand-text          ]             subject: 'Your WALLiam Estimator Access is Approved',
+    L 159 [brand-name          ]               agent?.full_name || 'WALLiam',
+    L 166 [other               ]             console.warn('[walliam/estimator/vip-approve] tenant email not configured:', err.message)
+    L 168 [other               ]             console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
+    L 170 [other               ]             console.error('[walliam/estimator/vip-approve] unexpected email error:', err)
+    L 181 [other               ]     console.error('[walliam/estimator/vip-approve] error:', error)
+    L 192 [brand-text          ]         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">WALLiam AI Real Estate</p>
+    L 198 [URL                 ]           <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'}" style="display: inline-block; padding: 14px 32px...
+    L 218 [brand-text          ]   <title>WALLiam Estimator — ${cfg.title}</title>
+
+  app/api/walliam/estimator/session/route.ts (7 hits)
+    L   1 [other               ] ﻿// app/api/walliam/estimator/session/route.ts
+    L   2 [brand-text          ] // Initializes or retrieves a WALLiam estimator session
+    L  86 [agent-fallback      ]     let agentName = 'WALLiam'
+    L 133 [other               ]         console.error('[walliam/estimator/session] create error:', createError)
+    L 148 [brand-text          ]     const questionnaireCompleted = true // WALLiam has no questionnaire — users are registered
+    L 191 [URL                 ]       fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+
+--- HIT [app/api/walliam/estimator/session/route.ts] @ L169 ---
+  app/api/walliam/estimator/session/route.ts (7 hits)
+    L   1 [other               ] ﻿// app/api/walliam/estimator/session/route.ts
+    L   2 [brand-text          ] // Initializes or retrieves a WALLiam estimator session
+    L  86 [agent-fallback      ]     let agentName = 'WALLiam'
+    L 133 [other               ]         console.error('[walliam/estimator/session] create error:', createError)
+    L 148 [brand-text          ]     const questionnaireCompleted = true // WALLiam has no questionnaire — users are registered
+    L 191 [URL                 ]       fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+    L 219 [other               ]     console.error('[walliam/estimator/session] error:', error)
+
+  app/api/walliam/estimator/vip-questionnaire/route.ts (21 hits)
+    L   1 [other               ] // app/api/walliam/estimator/vip-questionnaire/route.ts
+    L 148 [brand-text          ]       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${t...
+    L 151 [other               ]       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+    L 152 [source-id           ]       // (vip-request writes source='walliam_estimator_vip_request')
+    L 169 [user-fallback       ]             contact_name: userName || 'WALLiam User',
+    L 178 [other               ]         if (updateLeadError) console.error('[walliam/estimator/vip-questionnaire] lead update error:', updateLeadError)
+    L 190 [user-fallback       ]             contact_name: userName || 'WALLiam User',
+    L 193 [source-id,templated ]             source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
+    L 202 [other               ]         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadEr...
+    L 208 [user-fallback       ]       userName: userName || 'WALLiam User',
+    L 224 [other               ]         console.error('[walliam/estimator/vip-questionnaire] admin platform unreachable:', err.message)
+
+--- HIT [app/api/walliam/estimator/session/route.ts] @ L170 ---
+    L   1 [other               ] ﻿// app/api/walliam/estimator/session/route.ts
+    L   2 [brand-text          ] // Initializes or retrieves a WALLiam estimator session
+    L  86 [agent-fallback      ]     let agentName = 'WALLiam'
+    L 133 [other               ]         console.error('[walliam/estimator/session] create error:', createError)
+    L 148 [brand-text          ]     const questionnaireCompleted = true // WALLiam has no questionnaire — users are registered
+    L 191 [URL                 ]       fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+    L 219 [other               ]     console.error('[walliam/estimator/session] error:', error)
+
+  app/api/walliam/estimator/vip-questionnaire/route.ts (21 hits)
+    L   1 [other               ] // app/api/walliam/estimator/vip-questionnaire/route.ts
+    L 148 [brand-text          ]       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${t...
+    L 151 [other               ]       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+    L 152 [source-id           ]       // (vip-request writes source='walliam_estimator_vip_request')
+    L 169 [user-fallback       ]             contact_name: userName || 'WALLiam User',
+    L 178 [other               ]         if (updateLeadError) console.error('[walliam/estimator/vip-questionnaire] lead update error:', updateLeadError)
+    L 190 [user-fallback       ]             contact_name: userName || 'WALLiam User',
+    L 193 [source-id,templated ]             source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
+    L 202 [other               ]         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadEr...
+    L 208 [user-fallback       ]       userName: userName || 'WALLiam User',
+    L 224 [other               ]         console.error('[walliam/estimator/vip-questionnaire] admin platform unreachable:', err.message)
+    L 232 [other               ]       // T3c — vip-questionnaire enriches an existing walliam_estimator% lead;
+
+--- HIT [app/api/walliam/estimator/vip-questionnaire/route.ts] @ L178 ---
+  app/api/walliam/estimator/vip-questionnaire/route.ts (21 hits)
+    L   1 [other               ] // app/api/walliam/estimator/vip-questionnaire/route.ts
+    L 148 [brand-text          ]       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${t...
+    L 151 [other               ]       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+    L 152 [source-id           ]       // (vip-request writes source='walliam_estimator_vip_request')
+    L 169 [user-fallback       ]             contact_name: userName || 'WALLiam User',
+    L 178 [other               ]         if (updateLeadError) console.error('[walliam/estimator/vip-questionnaire] lead update error:', updateLeadError)
+    L 190 [user-fallback       ]             contact_name: userName || 'WALLiam User',
+    L 193 [source-id,templated ]             source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
+    L 202 [other               ]         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadEr...
+    L 208 [user-fallback       ]       userName: userName || 'WALLiam User',
+    L 224 [other               ]         console.error('[walliam/estimator/vip-questionnaire] admin platform unreachable:', err.message)
+    L 232 [other               ]       // T3c — vip-questionnaire enriches an existing walliam_estimator% lead;
+    L 247 [brand-text          ]         const subject = `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`
+    L 264 [source-id           ]             templateKey: 'walliam_estimator_vip_questionnaire_chain',
+    L 271 [other               ]           console.warn('[walliam/estimator/vip-questionnaire] tenant email not configured:', err.message)
+    L 273 [other               ]           console.error('[walliam/estimator/vip-questionnaire] resend send failed:', err.message)
+    L 275 [other               ]           console.error('[walliam/estimator/vip-questionnaire] unexpected email error:', err)
+    L 283 [source-id,templated ]         source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
+    L 294 [other               ]     console.error('[walliam/estimator/vip-questionnaire] error:', error)
+    L 312 [brand-text          ]         <h1 style="color: white; margin: 0; font-size: 22px;">📋 WALLiam Estimator Questionnaire</h1>
+
+--- HIT [app/api/walliam/estimator/vip-questionnaire/route.ts] @ L179 ---
+    L   1 [other               ] // app/api/walliam/estimator/vip-questionnaire/route.ts
+    L 148 [brand-text          ]       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${t...
+    L 151 [other               ]       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+    L 152 [source-id           ]       // (vip-request writes source='walliam_estimator_vip_request')
+    L 169 [user-fallback       ]             contact_name: userName || 'WALLiam User',
+    L 178 [other               ]         if (updateLeadError) console.error('[walliam/estimator/vip-questionnaire] lead update error:', updateLeadError)
+    L 190 [user-fallback       ]             contact_name: userName || 'WALLiam User',
+    L 193 [source-id,templated ]             source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
+    L 202 [other               ]         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadEr...
+    L 208 [user-fallback       ]       userName: userName || 'WALLiam User',
+    L 224 [other               ]         console.error('[walliam/estimator/vip-questionnaire] admin platform unreachable:', err.message)
+    L 232 [other               ]       // T3c — vip-questionnaire enriches an existing walliam_estimator% lead;
+    L 247 [brand-text          ]         const subject = `📋 WALLiam Estimator Questionnaire — ${userName || vipRequest.phone}`
+    L 264 [source-id           ]             templateKey: 'walliam_estimator_vip_questionnaire_chain',
+    L 271 [other               ]           console.warn('[walliam/estimator/vip-questionnaire] tenant email not configured:', err.message)
+    L 273 [other               ]           console.error('[walliam/estimator/vip-questionnaire] resend send failed:', err.message)
+    L 275 [other               ]           console.error('[walliam/estimator/vip-questionnaire] unexpected email error:', err)
+    L 283 [source-id,templated ]         source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
+    L 294 [other               ]     console.error('[walliam/estimator/vip-questionnaire] error:', error)
+    L 312 [brand-text          ]         <h1 style="color: white; margin: 0; font-size: 22px;">📋 WALLiam Estimator Questionnaire</h1>
+    L 357 [brand-text          ]           ✦ WALLiam — Use the approve/deny links from the original VIP email to manage access.
+
+
+========================================================================
+FILE: recon/W-LEADS-EMAIL-T6F-TENANT-LOAD.txt (4 hits)
+========================================================================
+
+--- HIT [app/api/walliam/estimator/vip-request/route.ts] @ L175 ---
+FILE: app/api/walliam/estimator/vip-request/route.ts
+==============================================================================
+  total lines: 490
+
+  --- A. .from("tenants") matches: L88 ---
+
+  context for L88 (L86..L100):
+    L  86:     // Load tenant estimator config (auto-approve lives on tenant, not agent)
+    L  87:     const { data: tenant, error: tenantError } = await supabase
+    L  88:       .from('tenants')
+    L  89:       .select('source_key, estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
+    L  90:       .eq('id', tenantId)
+    L  91:       .single()
+    L  92: 
+    L  93:     if (tenantError || !tenant) {
+    L  94:       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+    L  95:     }
+    L  96: 
+    L  97:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate (replaces hardcoded 'walliam' check)
+    L  98:     if (session.source !== tenant.source_key) {
+    L  99:       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+
+--- HIT [app/api/walliam/estimator/vip-approve/route.ts] @ L215 ---
+FILE: app/api/walliam/estimator/vip-approve/route.ts
+==============================================================================
+  total lines: 246
+
+  --- A. .from("tenants") matches: L69, L102 ---
+
+  context for L69 (L67..L81):
+    L  67:     let attemptsToGrant = 3
+    L  68:     if (tenantId) {
+    L  69:       const { data: tenantCfg } = await supabase.from('tenants').select('estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
+    L  70:       if (tenantCfg?.estimator_manual_approve_attempts != null) attemptsToGrant = tenantCfg.estimator_manual_approve_attempts
+    L  71:     }
+    L  72: 
+    L  73:     await supabase
+    L  74:       .from('vip_requests')
+    L  75:       .update({
+    L  76:         status: newStatus,
+    L  77:         responded_at: new Date().toISOString(),
+    L  78:         messages_granted: action === 'approve' ? attemptsToGrant : 0,
+    L  79:       })
+    L  80:       .eq('id', vipRequest.id)
+
+--- HIT [app/api/walliam/estimator/session/route.ts] @ L265 ---
+FILE: app/api/walliam/estimator/session/route.ts
+==============================================================================
+  total lines: 223
+
+  --- A. .from("tenants") matches: L34 ---
+
+  context for L34 (L32..L46):
+    L  32:     // Step 1: Load tenant estimator config
+    L  33:     const { data: tenant, error: tenantError } = await supabase
+    L  34:       .from('tenants')
+    L  35:       .select(`
+    L  36:         estimator_nonai_enabled,
+    L  37:         estimator_free_attempts,
+    L  38:         estimator_auto_approve_attempts,
+    L  39:         estimator_manual_approve_attempts,
+    L  40:         estimator_hard_cap,
+    L  41:         estimator_vip_auto_approve,
+    L  42:         estimator_ai_enabled,
+    L  43:         anthropic_api_key,
+    L  44:         source_key
+    L  45:       `)
+
+--- HIT [app/api/walliam/estimator/vip-questionnaire/route.ts] @ L298 ---
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+  total lines: 362
+
+  --- A. .from("tenants") matches: L140 ---
+
+  context for L140 (L138..L152):
+    L 138:     if (tenantId) {
+    L 139:       const { data: t6cTenant } = await supabase
+    L 140:         .from('tenants')
+    L 141:         .select('source_key')
+    L 142:         .eq('id', tenantId)
+    L 143:         .maybeSingle()
+    L 144:       sourceKey = t6cTenant?.source_key ?? null
+    L 145:     }
+    L 146: 
+    L 147:     if (userEmail && userId && tenantId) {
+    L 148:       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
+    L 149: 
+    L 150:       // Match the lead row created by vip-request:
+    L 151:       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+
+
+=== SUMMARY ===
+Total hits: 27
+
+Per-file:
+  recon/W-LEADS-EMAIL-T6F-ANCHOR-PREP.txt: 3
+  recon/W-LEADS-EMAIL-T6F-BRAND-CONTEXT.txt: 4
+  recon/W-LEADS-EMAIL-T6F-FUNCTION-MAP.txt: 4
+  recon/W-LEADS-EMAIL-T6F-RECON.txt: 12
+  recon/W-LEADS-EMAIL-T6F-RESIDUAL.txt: 0
+  recon/W-LEADS-EMAIL-T6F-TENANT-LOAD.txt: 4
+
+Per-route:
+  app/api/walliam/estimator/vip-request/route.ts: 7
+  app/api/walliam/estimator/vip-approve/route.ts: 7
+  app/api/walliam/estimator/session/route.ts: 6
+  app/api/walliam/estimator/vip-questionnaire/route.ts: 7
+
+NOTE: dense coverage. Existing recon likely sufficient for T6f-B wire patch design.

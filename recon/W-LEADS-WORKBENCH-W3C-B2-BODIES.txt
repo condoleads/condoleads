@@ -1,0 +1,273 @@
+=== W3c-B2 BUILDER HEAD+TAIL (v2.1 — state machine + fallback, head 5 + tail 12) ===
+Generated: 2026-05-13T17:46:02.803Z
+HEAD assumption: be9076c (W3c-B ship commit)
+Purpose: HEAD = destructure / body opener context | TAIL = insertion point context
+
+=== buildContactEmail (app/api/walliam/contact/route.ts) — decl L205, body { L205, body } L231 (27 lines, LE=LF) ===
+--- HEAD (decl L205 through L209) ---
+L205: function buildContactEmail({ name, email, phone, message, source, sourceUrl, geo_name, building_id, listing_id, brandName }: any): string {
+L206:   return `
+L207:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+L208:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+L209:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
+... [10 lines elided] ...
+--- TAIL (L220 through close L231) ---
+L220:           ${source ? `<tr><td style="color: #64748b;">Source</td><td style="color: #64748b;">${source}</td></tr>` : ''}
+L221:           ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+L222:         </table>
+L223:         <div style="margin-top: 20px; text-align: center;">
+L224:           <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+L225:             Reply to ${name}
+L226:           </a>
+L227:         </div>
+L228:       </div>
+L229:     </div>
+L230:   `
+L231: }
+
+=== buildUserConfirmationEmail (app/api/charlie/appointment/route.ts) — decl L280, body { L292, body } L355 (76 lines, LE=LF) ===
+--- HEAD (decl L280 through L296) ---
+L280: function buildUserConfirmationEmail(data: {
+L281:   name: string
+L282:   intent: string
+L283:   formattedDate: string
+L284:   appointment_time: string
+L285:   appointment_properties?: any[]
+L286:   agent?: any
+L287:   rescheduleUrl: string
+L288:   brandName: string
+L289:   domain: string
+L290:   baseUrl: string
+L291:   sourceUrl?: string | null
+L292: }): string {
+L293:   const { name, intent, formattedDate, appointment_time, appointment_properties, agent, rescheduleUrl, brandName, domain, baseUrl, sourceUrl } = data
+L294:   const isBuyer = intent === 'buyer'
+L295: 
+L296:   const propertiesHtml = isBuyer && appointment_properties?.length ? `
+... [47 lines elided] ...
+--- TAIL (L344 through close L355) ---
+L344:           <a href="${rescheduleUrl}" style="display: inline-block; padding: 10px 24px; background: #f1f5f9; color: #374151; text-decoration: none; border-radius: 8px; font-size: 13px; font-weight: 600;">
+L345:             🔄 Need to Reschedule?
+L346:           </a>
+L347:         </div>
+L348:       </div>
+L349: 
+L350:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+L351:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+L352:       </div>
+L353:     </div>
+L354:   `
+L355: }
+
+=== buildAgentNotificationEmail (app/api/charlie/appointment/route.ts) — decl L359, body { L372, body } L427 (69 lines, LE=LF) ===
+--- HEAD (decl L359 through L376) ---
+L359: function buildAgentNotificationEmail(data: {
+L360:   name: string
+L361:   email: string
+L362:   phone?: string
+L363:   intent: string
+L364:   formattedDate: string
+L365:   appointment_time: string
+L366:   appointment_properties?: any[]
+L367:   geo_name?: string
+L368:   brandName: string
+L369:   domain: string
+L370:   baseUrl: string
+L371:   sourceUrl?: string | null
+L372: }): string {
+L373:   const { name, email, phone, intent, formattedDate, appointment_time, appointment_properties, geo_name, brandName, domain, baseUrl, sourceUrl } = data
+L374:   const isBuyer = intent === 'buyer'
+L375: 
+L376:   const propertiesHtml = isBuyer && appointment_properties?.length ? `
+... [39 lines elided] ...
+--- TAIL (L416 through close L427) ---
+L416:           <a href="${baseUrl}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+L417:             View in Dashboard →
+L418:           </a>
+L419:         </div>
+L420:       </div>
+L421: 
+L422:       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+L423:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+L424:       </div>
+L425:     </div>
+L426:   `
+L427: }
+
+=== buildUserPlanEmail (app/api/charlie/lead/route.ts) — decl L328, body { L340, body } L456 (129 lines, LE=LF) ===
+--- HEAD (decl L328 through L344) ---
+L328: function buildUserPlanEmail(data: {
+L329:   name: string
+L330:   intent: string
+L331:   buyerProfile?: any
+L332:   sellerProfile?: any
+L333:   listings?: any[]
+L334:   analytics?: any
+L335:   agent?: any
+L336:   brandName: string
+L337:   domain: string
+L338:   baseUrl: string
+L339:   sourceUrl?: string | null
+L340: }): string {
+L341:   const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl, sourceUrl } = data
+L342:   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+L343:   const isBuyer = intent === 'buyer'
+L344:   const topListings = (listings || []).slice(0, 5)
+... [100 lines elided] ...
+--- TAIL (L445 through close L456) ---
+L445:           </a>
+L446:         </div>
+L447:       </div>
+L448: 
+L449:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+L450:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">
+L451:           Sent by ${brandName} AI · ${domain}
+L452:         </p>
+L453:       </div>
+L454:     </div>
+L455:   `
+L456: }
+
+=== buildAgentLeadEmail (app/api/charlie/lead/route.ts) — decl L460, body { L473, body } L538 (79 lines, LE=LF) ===
+--- HEAD (decl L460 through L477) ---
+L460: function buildAgentLeadEmail(data: {
+L461:   name: string
+L462:   email: string
+L463:   phone?: string
+L464:   intent: string
+L465:   buyerProfile?: any
+L466:   sellerProfile?: any
+L467:   listings?: any[]
+L468:   analytics?: any
+L469:   brandName: string
+L470:   domain: string
+L471:   baseUrl: string
+L472:   sourceUrl?: string | null
+L473: }): string {
+L474:   const { name, email, phone, intent, buyerProfile, sellerProfile, listings, brandName, domain, baseUrl, sourceUrl } = data
+L475:   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+L476:   const isBuyer = intent === 'buyer'
+L477:   const topListings = (listings || []).slice(0, 3)
+... [49 lines elided] ...
+--- TAIL (L527 through close L538) ---
+L527:         ` : ''}
+L528:       </div>
+L529: 
+L530:       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+L531:         <a href="${baseUrl}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+L532:           View in Dashboard
+L533:         </a>
+L534:         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+L535:       </div>
+L536:     </div>
+L537:   `
+L538: }
+
+=== buildRichPlanEmail (app/api/charlie/plan-email/route.ts) — decl L237, body { L256, body } L657 (421 lines, LE=CRLF) ===
+--- HEAD (decl L237 through L260) ---
+L237: function buildRichPlanEmail(data: {
+L238:   userName: string
+L239:   userEmail: string
+L240:   planType: string
+L241:   plan: any
+L242:   analytics: any
+L243:   listings: any[]
+L244:   agent: any
+L245:   geoName: string | null
+L246:   comparables: any[]
+L247:   sellerEstimate: any | null
+L248:   vipCreditUsed: boolean
+L249:   vipCreditPlansUsed: number
+L250:   vipCreditTotal: number
+L251:   blocks: any[]
+L252:   brandName: string
+L253:   domain: string
+L254:   baseUrl: string
+L255:   sourceUrl?: string | null
+L256: }): string {
+L257:   const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl, sourceUrl } = data
+L258:   const isBuyer = planType === 'buyer'
+L259:   const topListings = (listings || []).slice(0, 10)
+L260: 
+... [385 lines elided] ...
+--- TAIL (L646 through close L657) ---
+L646:         <div style="text-align: center; margin: 24px 0 8px;">
+L647:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+L648:             &#10022; Open ${brandName}
+L649:           </a>
+L650:         </div>
+L651:       </div>
+L652:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+L653:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} &middot; ${domain}</p>
+L654:       </div>
+L655:     </div>
+L656:   `
+L657: }
+
+=== buildAgentEmailHtml (app/api/walliam/charlie/vip-request/route.ts) — decl L430, body { L441, body } L492 (63 lines, LE=CRLF) ===
+--- HEAD (decl L430 through L445) ---
+L430: function buildAgentEmailHtml(data: {
+L431:   userName: string
+L432:   userEmail: string
+L433:   userPhone: string
+L434:   planType: string
+L435:   approveUrl: string
+L436:   denyUrl: string
+L437:   agentName: string
+L438:   brandName: string
+L439:   tenantDomain: string
+L440:   sourceUrl?: string | null
+L441: }): string {
+L442:   const planLabel = data.planType === 'seller' ? '💰 Seller Plan' : '🏠 Buyer Plan'
+L443: 
+L444:   return `
+L445:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+... [35 lines elided] ...
+--- TAIL (L481 through close L492) ---
+L481:           ✅ Approve
+L482:         </a>
+L483:         <a href="${data.denyUrl}" style="display: inline-block; padding: 12px 28px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
+L484:           ❌ Deny
+L485:         </a>
+L486:         <p style="margin: 20px 0 0; font-size: 11px; color: #94a3b8;">
+L487:           Manage all requests at ${data.tenantDomain}/admin-homes/leads
+L488:         </p>
+L489:       </div>
+L490:     </div>
+L491:   `
+L492: }
+
+=== buildUserApprovalEmailHtml (app/api/walliam/charlie/vip-request/route.ts) — decl L494, body { L501, body } L529 (36 lines, LE=CRLF [FALLBACK]) ===
+--- HEAD (decl L494 through L505) ---
+L494: function buildUserApprovalEmailHtml(data: {
+L495:   userName: string
+L496:   agentName: string
+L497:   plansGranted: number
+L498:   brandName: string
+L499:   tenantDomain: string
+L500:   sourceUrl?: string | null
+L501: }): string {
+L502:   const { userName, agentName, plansGranted, brandName, tenantDomain, sourceUrl } = data
+L503:   return `
+L504:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+L505:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+... [12 lines elided] ...
+--- TAIL (L518 through close L529) ---
+L518:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+L519:           Head back to ${brandName} to generate your personalized real estate plan. Your agent may also reach out directly.
+L520:         </p>
+L521:         <div style="text-align: center;">
+L522:           <a href="${process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+L523:             ✦ Back to ${brandName}
+L524:           </a>
+L525:         </div>
+L526:       </div>
+L527:     </div>
+L528:   `
+L529: }
+
+=== SUMMARY ===
+Targets:    8
+OK:         8
+Fallbacks:  1
+Errors:     0

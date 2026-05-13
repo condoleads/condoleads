@@ -1,0 +1,518 @@
+W-LEADS-EMAIL T6c context windows
+Generated: 2026-05-11T13:03:20.077Z
+
+
+==============================================================================
+SHAPE A: app/api/charlie/lead/route.ts — validateSession call sites
+==============================================================================
+
+  line-endings: LF, lines: 521
+
+  --- hit at L33, window L29..L43 ---
+  L  29:   getLeadEmailRecipients,
+  L  30:   AdminPlatformUnreachable,
+  L  31: } from '@/lib/admin-homes/lead-email-recipients'
+  L  32: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L  33: import { validateSession } from '@/lib/utils/validate-session'
+  L  34: 
+  L  35: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  L  36: 
+  L  37: function createServiceClient() {
+  L  38:   return createClient(
+  L  39:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  L  40:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  L  41:     { auth: { autoRefreshToken: false, persistSession: false } }
+  L  42:   )
+  L  43: }
+
+  --- hit at L80, window L76..L90 ---
+  L  76:     }
+  L  77: 
+  L  78:     const supabase = createServiceClient()
+  L  79: 
+  L  80:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+  L  81:     const _sessionCheck = await validateSession({ supabase, sessionId, userId, tenantId })
+  L  82:     if (!_sessionCheck.ok) {
+  L  83:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+  L  84:     }
+  L  85:     const validSession = _sessionCheck.session
+  L  86:     // END T6a auth gate
+  L  87: 
+  L  88:     // F60: auth email is identity. Pull from auth.users; ignore any form-supplied email.
+  L  89:     const { data: authData } = await supabase.auth.admin.getUserById(userId)
+  L  90:     const authEmail = authData?.user?.email
+
+  --- hit at L81, window L77..L91 ---
+  L  77: 
+  L  78:     const supabase = createServiceClient()
+  L  79: 
+  L  80:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+  L  81:     const _sessionCheck = await validateSession({ supabase, sessionId, userId, tenantId })
+  L  82:     if (!_sessionCheck.ok) {
+  L  83:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+  L  84:     }
+  L  85:     const validSession = _sessionCheck.session
+  L  86:     // END T6a auth gate
+  L  87: 
+  L  88:     // F60: auth email is identity. Pull from auth.users; ignore any form-supplied email.
+  L  89:     const { data: authData } = await supabase.auth.admin.getUserById(userId)
+  L  90:     const authEmail = authData?.user?.email
+  L  91:     if (!authEmail) {
+
+==============================================================================
+SHAPE A: app/api/charlie/plan-email/route.ts — validateSession call sites
+==============================================================================
+
+  line-endings: CRLF, lines: 640
+
+  --- hit at L25, window L21..L35 ---
+  L  21:   getLeadEmailRecipients,
+  L  22:   AdminPlatformUnreachable,
+  L  23: } from '@/lib/admin-homes/lead-email-recipients'
+  L  24: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L  25: import { validateSession } from '@/lib/utils/validate-session'
+  L  26: 
+  L  27: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  L  28: 
+  L  29: 
+  L  30: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L  31:   try {
+  L  32:     await supabase.from('user_activities').insert({
+  L  33:       contact_email: contactEmail,
+  L  34:       agent_id: agentId || null,
+  L  35:       activity_type: activityType,
+
+  --- hit at L59, window L55..L69 ---
+  L  55:     if (!sessionId || !userId || !planType) {
+  L  56:       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+  L  57:     }
+  L  58: 
+  L  59:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+  L  60:     const _gateSupabase = createServiceClient()
+  L  61:     const _sessionCheck = await validateSession({
+  L  62:       supabase: _gateSupabase,
+  L  63:       sessionId,
+  L  64:       userId,
+  L  65:       tenantId: req.headers.get('x-tenant-id') || '',
+  L  66:       selectColumns: 'id, tenant_id',
+  L  67:     })
+  L  68:     if (!_sessionCheck.ok) {
+  L  69:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+
+  --- hit at L61, window L57..L71 ---
+  L  57:     }
+  L  58: 
+  L  59:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+  L  60:     const _gateSupabase = createServiceClient()
+  L  61:     const _sessionCheck = await validateSession({
+  L  62:       supabase: _gateSupabase,
+  L  63:       sessionId,
+  L  64:       userId,
+  L  65:       tenantId: req.headers.get('x-tenant-id') || '',
+  L  66:       selectColumns: 'id, tenant_id',
+  L  67:     })
+  L  68:     if (!_sessionCheck.ok) {
+  L  69:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+  L  70:     }
+  L  71:     const validSession = _sessionCheck.session
+
+==============================================================================
+SHAPE A: app/api/charlie/appointment/route.ts — validateSession call sites
+==============================================================================
+
+  line-endings: LF, lines: 406
+
+  --- hit at L23, window L19..L33 ---
+  L  19:   getLeadEmailRecipients,
+  L  20:   AdminPlatformUnreachable,
+  L  21: } from '@/lib/admin-homes/lead-email-recipients'
+  L  22: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L  23: import { validateSession } from '@/lib/utils/validate-session'
+  L  24: 
+  L  25: const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  L  26: 
+  L  27: 
+  L  28: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L  29:   try {
+  L  30:     await supabase.from('user_activities').insert({
+  L  31:       contact_email: contactEmail,
+  L  32:       agent_id: agentId || null,
+  L  33:       activity_type: activityType,
+
+  --- hit at L84, window L80..L94 ---
+  L  80: 
+  L  81:     const supabase = createServiceClient()
+  L  82:     const tenantId = req.headers.get('x-tenant-id') || null
+  L  83: 
+  L  84:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+  L  85:     const _sessionCheck = await validateSession({ supabase, sessionId, userId, tenantId })
+  L  86:     if (!_sessionCheck.ok) {
+  L  87:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+  L  88:     }
+  L  89:     const validSession = _sessionCheck.session
+  L  90:     // END T6a auth gate
+  L  91: 
+  L  92:     // Step 1: Resolve agent
+  L  93:     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
+  L  94:       p_listing_id: null,
+
+  --- hit at L85, window L81..L95 ---
+  L  81:     const supabase = createServiceClient()
+  L  82:     const tenantId = req.headers.get('x-tenant-id') || null
+  L  83: 
+  L  84:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+  L  85:     const _sessionCheck = await validateSession({ supabase, sessionId, userId, tenantId })
+  L  86:     if (!_sessionCheck.ok) {
+  L  87:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+  L  88:     }
+  L  89:     const validSession = _sessionCheck.session
+  L  90:     // END T6a auth gate
+  L  91: 
+  L  92:     // Step 1: Resolve agent
+  L  93:     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
+  L  94:       p_listing_id: null,
+  L  95:       p_building_id: null,
+
+==============================================================================
+app/api/walliam/estimator/vip-request/route.ts — 3 explicit windows
+==============================================================================
+
+  line-endings: LF, lines: 489
+
+  --- window L70..L130 (tenant load region + T6a source_key check) ---
+  L  70:           id, full_name, email, notification_email, parent_id
+  L  71:         )
+  L  72:       `)
+  L  73:       .eq('id', sessionId)
+  L  74:       .single()
+  L  75: 
+  L  76:     if (sessionError || !session) {
+  L  77:       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+  L  78:     }
+  L  79:     if (!session.user_id) {
+  L  80:       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+  L  81:     }
+  L  82: 
+  L  83:     const agent = session.agents
+  L  84:     const tenantId = session.tenant_id || null
+  L  85: 
+  L  86:     // Load tenant estimator config (auto-approve lives on tenant, not agent)
+  L  87:     const { data: tenant, error: tenantError } = await supabase
+  L  88:       .from('tenants')
+  L  89:       .select('source_key, estimator_vip_auto_approve, estimator_auto_approve_attempts, estimator_manual_approve_attempts')
+  L  90:       .eq('id', tenantId)
+  L  91:       .single()
+  L  92: 
+  L  93:     if (tenantError || !tenant) {
+  L  94:       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+  L  95:     }
+  L  96: 
+  L  97:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate (replaces hardcoded 'walliam' check)
+  L  98:     if (session.source !== tenant.source_key) {
+  L  99:       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+  L 100:     }
+  L 101: 
+  L 102:     // Check for existing pending request
+  L 103:     const { data: existingRequest } = await supabase
+  L 104:       .from('vip_requests')
+  L 105:       .select('id, status')
+  L 106:       .eq('session_id', sessionId)
+  L 107:       .eq('status', 'pending')
+  L 108:       .single()
+  L 109: 
+  L 110:     if (existingRequest) {
+  L 111:       return NextResponse.json({
+  L 112:         success: true,
+  L 113:         requestId: existingRequest.id,
+  L 114:         status: 'pending',
+  L 115:         message: 'Request already pending'
+  L 116:       })
+  L 117:     }
+  L 118: 
+  L 119:     // Get user data from user_profiles + auth.users
+  L 120:     let userEmail = ''
+  L 121:     let userName = ''
+  L 122:     let userPhone = ''
+  L 123: 
+  L 124:     if (session.user_id) {
+  L 125:       const { data: profile } = await supabase
+  L 126:         .from('user_profiles')
+  L 127:         .select('full_name, phone')
+  L 128:         .eq('id', session.user_id)
+  L 129:         .single()
+  L 130:       if (profile) {
+
+  --- window L155..L215 (vip_request INSERT + lead INSERT region: L169, L198) ---
+  L 155:     const isAutoApprove = tenant.estimator_vip_auto_approve === true && autoApproveMessages > 0
+  L 156: 
+  L 157:     // Create VIP request
+  L 158:     const { data: vipRequest, error: insertError } = await supabase
+  L 159:       .from('vip_requests')
+  L 160:       .insert({
+  L 161:         session_id: sessionId,
+  L 162:         agent_id: agent?.id || null,
+  L 163:         tenant_id: tenantId,
+  L 164:         phone,
+  L 165:         full_name: userName || 'WALLiam User',
+  L 166:         email: userEmail || null,
+  L 167:         page_url: pageUrl,
+  L 168:         building_name: buildingName,
+  L 169:         request_source: 'walliam_estimator',
+  L 170:         request_type: 'estimator',
+  L 171:         status: isAutoApprove ? 'approved' : 'pending',
+  L 172:         messages_granted: autoApproveMessages,
+  L 173:         responded_at: isAutoApprove ? new Date().toISOString() : null,
+  L 174:       })
+  L 175:       .select()
+  L 176:       .single()
+  L 177: 
+  L 178:     if (insertError || !vipRequest) {
+  L 179:       console.error('[walliam/estimator/vip-request] insert error:', insertError)
+  L 180:       return NextResponse.json({ error: 'Failed to create request' }, { status: 500 })
+  L 181:     }
+  L 182: 
+  L 183:     // Save lead — H3.4: capture full hierarchy chain + tenant_id
+  L 184:     let lead: { id: string } | null = null
+  L 185:     if (userEmail) {
+  L 186:       const { data: leadData, error: leadError } = await supabase
+  L 187:         .from('leads')
+  L 188:         .insert({
+  L 189:           agent_id: agent?.id || null,
+  L 190:           user_id: session.user_id,
+  L 191:           tenant_id: tenantId,
+  L 192:           manager_id: chainManagerId,
+  L 193:           area_manager_id: chainAreaManagerId,
+  L 194:           tenant_admin_id: chainTenantAdminId,
+  L 195:           contact_name: userName || 'WALLiam User',
+  L 196:           contact_email: userEmail,
+  L 197:           contact_phone: phone,
+  L 198:           source: 'walliam_estimator_vip_request',
+  L 199:           lead_origin_route: 'estimator_vip_request',
+  L 200:           source_url: pageUrl,
+  L 201:           building_id: session.current_page_type === 'building' ? session.current_page_id : null,
+  L 202:           message: `WALLiam Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
+  L 203:           status: 'new',
+  L 204:           quality: 'hot',
+  L 205:           assignment_source: agent?.id ? 'geo' : 'admin',
+  L 206:         })
+  L 207:         .select('id')
+  L 208:         .single()
+  L 209:       if (leadError) console.error('[walliam/estimator/vip-request] lead error:', leadError)
+  L 210:       lead = leadData
+  L 211:     }
+  L 212: 
+  L 213:     // Build approval URLs
+  L 214:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca'
+  L 215:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+
+  --- window L260..L295 (user_activities INSERT region: L280) ---
+  L 260:             subject,
+  L 261:             templateKey: 'walliam_estimator_vip_request_chain',
+  L 262:             resendMessageId: sendResult.id,
+  L 263:           })
+  L 264:         }
+  L 265:       } catch (err) {
+  L 266:         // F67 standard try/catch
+  L 267:         if (err instanceof TenantEmailNotConfigured) {
+  L 268:           console.warn('[walliam/estimator/vip-request] tenant email not configured:', err.message)
+  L 269:         } else if (err instanceof TenantEmailFailed) {
+  L 270:           console.error('[walliam/estimator/vip-request] resend send failed:', err.message)
+  L 271:         } else {
+  L 272:           console.error('[walliam/estimator/vip-request] unexpected email error:', err)
+  L 273:         }
+  L 274:       }
+  L 275:     }
+  L 276: 
+  L 277:     // Track activity
+  L 278:     if (userEmail) {
+  L 279:       await trackUserActivity(supabase, userEmail, agent?.id || null, 'estimator_contact_submitted', {
+  L 280:         source: 'walliam_estimator_vip_request',
+  L 281:         buildingName: buildingName || null,
+  L 282:         phone: phone || null,
+  L 283:         autoApprove: isAutoApprove,
+  L 284:       }, pageUrl || '')
+  L 285:     }
+  L 286: 
+  L 287:     // Auto-approve: update session + write credit override + send user email
+  L 288:     if (isAutoApprove) {
+  L 289:       const currentGranted = session.vip_messages_granted || 0
+  L 290: 
+  L 291:       await supabase
+  L 292:         .from('chat_sessions')
+  L 293:         .update({
+  L 294:           status: 'vip',
+  L 295:           vip_accepted_at: new Date().toISOString(),
+
+==============================================================================
+app/api/walliam/estimator/vip-questionnaire/route.ts — 3 explicit windows
+==============================================================================
+
+  line-endings: LF, lines: 351
+
+  --- window L1..L60 (imports + POST handler top — insertion point for new tenant SELECT) ---
+  L   1: // app/api/walliam/estimator/vip-questionnaire/route.ts
+  L   2: // Adapted from app/api/chat/vip-questionnaire/route.ts — System 1 never touched
+  L   3: //
+  L   4: // W-HIERARCHY H3.5 (2026-05-03):
+  L   5: //   - walkHierarchy added (was: NO walker — F48 piece)
+  L   6: //   - getLeadEmailRecipients enforces 6-layer chain on agent notification
+  L   7: //   - Two-email anti-pattern collapsed to single send (F64 fully retired with H3.4)
+  L   8: //   - Lead UPSERT instead of INSERT — questionnaire enriches existing vip-request lead
+  L   9: //     instead of creating duplicate row (F57-class fix for estimator flow)
+  L  10: //   - Lead row stamped with full hierarchy chain on enrichment write
+  L  11: //   - F67 try/catch standard
+  L  12: 
+  L  13: import { NextRequest, NextResponse } from 'next/server'
+  L  14: import { createClient } from '@supabase/supabase-js'
+  L  15: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L  16: import {
+  L  17:   sendTenantEmail,
+  L  18:   TenantEmailNotConfigured,
+  L  19:   TenantEmailFailed,
+  L  20:   getLeadEmailRecipients,
+  L  21:   AdminPlatformUnreachable,
+  L  22: } from '@/lib/admin-homes/lead-email-recipients'
+  L  23: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L  24: 
+  L  25: 
+  L  26: // Track user activity in user_activities table
+  L  27: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L  28:   try {
+  L  29:     await supabase.from('user_activities').insert({
+  L  30:       contact_email: contactEmail,
+  L  31:       agent_id: agentId || null,
+  L  32:       activity_type: activityType,
+  L  33:       activity_data: activityData || {},
+  L  34:       page_url: pageUrl || '',
+  L  35:     })
+  L  36:   } catch (err) {
+  L  37:     console.error('[trackUserActivity] error:', err)
+  L  38:   }
+  L  39: }
+  L  40: function createServiceClient() {
+  L  41:   return createClient(
+  L  42:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  L  43:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  L  44:     { auth: { autoRefreshToken: false, persistSession: false } }
+  L  45:   )
+  L  46: }
+  L  47: 
+  L  48: export async function POST(request: NextRequest) {
+  L  49:   try {
+  L  50:     const { requestId, fullName, email, budgetRange, timeline, buyerType, requirements } = await request.json()
+  L  51: 
+  L  52:     if (!requestId) {
+  L  53:       return NextResponse.json({ error: 'Request ID required' }, { status: 400 })
+  L  54:     }
+  L  55: 
+  L  56:     const supabase = createServiceClient()
+  L  57: 
+  L  58:     // Get VIP request with session + agent
+  L  59:     const { data: vipRequest, error: fetchError } = await supabase
+  L  60:       .from('vip_requests')
+
+  --- window L125..L200 (lead UPDATE + defensive INSERT region: L182) ---
+  L 125:       buyer: 'Buyer',
+  L 126:       renter: 'Renter',
+  L 127:       seller: 'Seller',
+  L 128:       investor: 'Investor',
+  L 129:     }
+  L 130:     const timelineDisplay = timeline ? (timelineMap[timeline] || timeline) : 'Not specified'
+  L 131:     const buyerTypeDisplay = buyerType ? (buyerTypeMap[buyerType] || buyerType) : 'Not specified'
+  L 132: 
+  L 133:     // UPSERT lead — enrichment, not duplicate creation (F57-class fix for estimator flow)
+  L 134:     // The vip-request route already created the original lead row. We update that row
+  L 135:     // with questionnaire detail. If somehow no row exists (defensive), we insert one.
+  L 136:     if (userEmail && userId && tenantId) {
+  L 137:       const enrichedMessage = `WALLiam Estimator Questionnaire — ${buyerTypeDisplay} | Budget: ${budgetDisplay} | Timeline: ${timelineDisplay}${requirements ? ` | Notes: ${requirements}` : ''}`
+  L 138: 
+  L 139:       // Match the lead row created by vip-request:
+  L 140:       //   user_id + tenant_id + source LIKE 'walliam_estimator%'
+  L 141:       // (vip-request writes source='walliam_estimator_vip_request')
+  L 142:       const { data: existingLeads } = await supabase
+  L 143:         .from('leads')
+  L 144:         .select('id')
+  L 145:         .eq('user_id', userId)
+  L 146:         .eq('tenant_id', tenantId)
+  L 147:         .eq('lead_origin_route', 'estimator_vip_request')
+  L 148:         .order('created_at', { ascending: false })
+  L 149:         .limit(1)
+  L 150: 
+  L 151:       const existingLead = existingLeads?.[0]
+  L 152: 
+  L 153:       if (existingLead) {
+  L 154:         // UPDATE: enrich the existing row with questionnaire detail
+  L 155:         const { error: updateLeadError } = await supabase
+  L 156:           .from('leads')
+  L 157:           .update({
+  L 158:             contact_name: userName || 'WALLiam User',
+  L 159:             contact_email: userEmail,
+  L 160:             manager_id: chainManagerId,
+  L 161:             area_manager_id: chainAreaManagerId,
+  L 162:             tenant_admin_id: chainTenantAdminId,
+  L 163:             message: enrichedMessage,
+  L 164:             updated_at: new Date().toISOString(),
+  L 165:           })
+  L 166:           .eq('id', existingLead.id)
+  L 167:         if (updateLeadError) console.error('[walliam/estimator/vip-questionnaire] lead update error:', updateLeadError)
+  L 168:       } else {
+  L 169:         // Defensive INSERT: vip-request didn't leave a row (shouldn't happen, but don't lose data)
+  L 170:         const { error: insertLeadError } = await supabase
+  L 171:           .from('leads')
+  L 172:           .insert({
+  L 173:             agent_id: agent?.id || null,
+  L 174:             user_id: userId,
+  L 175:             tenant_id: tenantId,
+  L 176:             manager_id: chainManagerId,
+  L 177:             area_manager_id: chainAreaManagerId,
+  L 178:             tenant_admin_id: chainTenantAdminId,
+  L 179:             contact_name: userName || 'WALLiam User',
+  L 180:             contact_email: userEmail,
+  L 181:             contact_phone: vipRequest.phone,
+  L 182:             source: 'walliam_estimator_questionnaire',
+  L 183:             lead_origin_route: 'estimator_questionnaire',
+  L 184:             source_url: vipRequest.page_url,
+  L 185:             building_id: session?.current_page_type === 'building' ? session?.current_page_id : null,
+  L 186:             message: enrichedMessage,
+  L 187:             status: 'new',
+  L 188:             quality: 'hot',
+  L 189:             assignment_source: agent?.id ? 'geo' : 'admin',
+  L 190:           })
+  L 191:         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadError)
+  L 192:       }
+  L 193:     }
+  L 194: 
+  L 195:     // Build the chain notification email
+  L 196:     const emailHtml = buildQuestionnaireEmailHtml({
+  L 197:       userName: userName || 'WALLiam User',
+  L 198:       phone: vipRequest.phone,
+  L 199:       email: userEmail,
+  L 200:       buyerTypeDisplay,
+
+  --- window L260..L285 (user_activities INSERT region: L272) ---
+  L 260:           console.warn('[walliam/estimator/vip-questionnaire] tenant email not configured:', err.message)
+  L 261:         } else if (err instanceof TenantEmailFailed) {
+  L 262:           console.error('[walliam/estimator/vip-questionnaire] resend send failed:', err.message)
+  L 263:         } else {
+  L 264:           console.error('[walliam/estimator/vip-questionnaire] unexpected email error:', err)
+  L 265:         }
+  L 266:       }
+  L 267:     }
+  L 268: 
+  L 269:     // Track activity
+  L 270:     if (userEmail) {
+  L 271:       await trackUserActivity(supabase, userEmail, agent?.id || null, 'estimator_contact_submitted', {
+  L 272:         source: 'walliam_estimator_questionnaire',
+  L 273:         buyerType: buyerType || null,
+  L 274:         budgetRange: budgetRange || null,
+  L 275:         timeline: timeline || null,
+  L 276:         buildingName: vipRequest.building_name || null,
+  L 277:       }, vipRequest.page_url || '')
+  L 278:     }
+  L 279: 
+  L 280:     return NextResponse.json({ success: true, message: 'Questionnaire submitted successfully' })
+  L 281: 
+  L 282:   } catch (error) {
+  L 283:     console.error('[walliam/estimator/vip-questionnaire] error:', error)
+  L 284:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  L 285:   }

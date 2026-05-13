@@ -1,0 +1,210 @@
+===== app/api/walliam/estimator/vip-request/route.ts =====
+lines: 494, LE: LF
+headers import: NO
+referer capture: NO
+leads from() at: L191
+--- leads context L191-L206 ---
+  L191:         .from('leads')
+  L192:         .insert({
+  L193:           agent_id: agent?.id || null,
+  L194:           user_id: session.user_id,
+  L195:           tenant_id: tenantId,
+  L196:           manager_id: chainManagerId,
+  L197:           area_manager_id: chainAreaManagerId,
+  L198:           tenant_admin_id: chainTenantAdminId,
+  L199:           contact_name: userName || `${brandName} User`,
+  L200:           contact_email: userEmail,
+  L201:           contact_phone: phone,
+  L202:           source: `${sourceKey}_estimator_vip_request`,
+  L203:           lead_origin_route: 'estimator_vip_request',
+  L204:           source_url: pageUrl,
+  L205:           building_id: session.current_page_type === 'building' ? session.current_page_id : null,
+  L206:           message: `${brandName} Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
+source_url: in INSERT at: L204 :: source_url: pageUrl,
+named builders: buildApprovalEmailHtml@L410, buildUserApprovalEmailHtml@L471
+--- buildApprovalEmailHtml decl L410, body L420-L469 (60 lines) ---
+  sig.sourceUrl: false | sig.pageUrl: true | sig.page_url: false
+  body.${sourceUrl: false | body.${pageUrl: false | body.${data.sourceUrl: false | body.${data.pageUrl: false
+  HEAD (L410-L413):
+    L410: function buildApprovalEmailHtml(data: {
+    L411:   fullName: string
+    L412:   phone: string
+    L413:   email?: string
+    L414:   buildingName?: string
+    ... [42 elided] ...
+  TAIL (L457-L469):
+    L457:           Approve to grant this visitor additional estimator access.
+    L458:         </p>
+    L459:         <a href="${data.approveUrl}" style="display: inline-block; padding: 14px 32px; background: #10b981; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-right: 12px;">
+    L460:           ✅ Approve
+    L461:         </a>
+    L462:         <a href="${data.denyUrl}" style="display: inline-block; padding: 14px 32px; background: #ef4444; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
+    L463:           ❌ Deny
+    L464:         </a>
+    L465:         <p style="margin: 20px 0 0; font-size: 12px; color: #9ca3af;">Expires in 24 hours.</p>
+    L466:       </div>
+    L467:     </div>
+    L468:   `
+    L469: }
+--- buildUserApprovalEmailHtml decl L471, body L471-L494 (24 lines) ---
+  sig.sourceUrl: false | sig.pageUrl: false | sig.page_url: false
+  body.${sourceUrl: false | body.${pageUrl: false | body.${data.sourceUrl: false | body.${data.pageUrl: false
+  HEAD (L471-L474):
+    L471: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, domain: string, baseUrl: string): string {
+    L472:   return `
+    L473:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    L474:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+    L475:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+    ... [6 elided] ...
+  TAIL (L482-L494):
+    L482:           <strong>${agentName}</strong> has approved your estimator access. You now have
+    L483:           <strong>${attemptsGranted} additional estimate${attemptsGranted !== 1 ? 's' : ''}</strong> available.
+    L484:         </p>
+    L485:         <div style="text-align: center;">
+    L486:           <a href="${baseUrl}"
+    L487:              style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+    L488:             ✦ Back to ${brandName}
+    L489:           </a>
+    L490:         </div>
+    L491:       </div>
+    L492:     </div>
+    L493:   `
+    L494: }
+resend send blocks: NONE
+inline `html: \`` (not from named builder): NONE
+
+===== app/api/walliam/estimator/vip-questionnaire/route.ts =====
+lines: 365, LE: LF
+headers import: NO
+referer capture: NO
+leads from() at: L156,L169,L184,L239
+--- leads context L156-L171 ---
+  L156:         .from('leads')
+  L157:         .select('id')
+  L158:         .eq('user_id', userId)
+  L159:         .eq('tenant_id', tenantId)
+  L160:         .eq('lead_origin_route', 'estimator_vip_request')
+  L161:         .order('created_at', { ascending: false })
+  L162:         .limit(1)
+  L163: 
+  L164:       const existingLead = existingLeads?.[0]
+  L165: 
+  L166:       if (existingLead) {
+  L167:         // UPDATE: enrich the existing row with questionnaire detail
+  L168:         const { error: updateLeadError } = await supabase
+  L169:           .from('leads')
+  L170:           .update({
+  L171:             contact_name: userName || `${brandName} User`,
+--- leads context L169-L184 ---
+  L169:           .from('leads')
+  L170:           .update({
+  L171:             contact_name: userName || `${brandName} User`,
+  L172:             contact_email: userEmail,
+  L173:             manager_id: chainManagerId,
+  L174:             area_manager_id: chainAreaManagerId,
+  L175:             tenant_admin_id: chainTenantAdminId,
+  L176:             message: enrichedMessage,
+  L177:             updated_at: new Date().toISOString(),
+  L178:           })
+  L179:           .eq('id', existingLead.id)
+  L180:         if (updateLeadError) console.error('[walliam/estimator/vip-questionnaire] lead update error:', updateLeadError)
+  L181:       } else {
+  L182:         // Defensive INSERT: vip-request didn't leave a row (shouldn't happen, but don't lose data)
+  L183:         const { error: insertLeadError } = await supabase
+  L184:           .from('leads')
+--- leads context L184-L199 ---
+  L184:           .from('leads')
+  L185:           .insert({
+  L186:             agent_id: agent?.id || null,
+  L187:             user_id: userId,
+  L188:             tenant_id: tenantId,
+  L189:             manager_id: chainManagerId,
+  L190:             area_manager_id: chainAreaManagerId,
+  L191:             tenant_admin_id: chainTenantAdminId,
+  L192:             contact_name: userName || `${brandName} User`,
+  L193:             contact_email: userEmail,
+  L194:             contact_phone: vipRequest.phone,
+  L195:             source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
+  L196:             lead_origin_route: 'estimator_questionnaire',
+  L197:             source_url: vipRequest.page_url,
+  L198:             building_id: session?.current_page_type === 'building' ? session?.current_page_id : null,
+  L199:             message: enrichedMessage,
+--- leads context L239-L254 ---
+  L239:           .from('leads')
+  L240:           .select('id')
+  L241:           .eq('user_id', userId)
+  L242:           .eq('tenant_id', tenantId)
+  L243:           .eq('lead_origin_route', 'estimator_vip_request')
+  L244:           .order('created_at', { ascending: false })
+  L245:           .limit(1)
+  L246:         leadIdForAudit = latestLead?.[0]?.id || null
+  L247:       }
+  L248:       try {
+  L249:         const subject = `📋 ${brandName} Estimator Questionnaire — ${userName || vipRequest.phone}`
+  L250:         const sendResult = await sendTenantEmail({
+  L251:           tenantId: tenantId || '',
+  L252:           to: recipients.to,
+  L253:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+  L254:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+source_url: in INSERT at: L197 :: source_url: vipRequest.page_url,
+named builders: buildQuestionnaireEmailHtml@L301
+--- buildQuestionnaireEmailHtml decl L301, body L311-L365 (65 lines) ---
+  sig.sourceUrl: false | sig.pageUrl: false | sig.page_url: false
+  body.${sourceUrl: false | body.${pageUrl: false | body.${data.sourceUrl: false | body.${data.pageUrl: false
+  HEAD (L301-L304):
+    L301: function buildQuestionnaireEmailHtml(data: {
+    L302:   userName: string
+    L303:   phone: string
+    L304:   email?: string
+    L305:   buyerTypeDisplay: string
+    ... [47 elided] ...
+  TAIL (L353-L365):
+    L353:             <td style="padding: 8px 0; color: #6b7280; vertical-align: top;">Notes:</td>
+    L354:             <td style="padding: 8px 0; color: #1f2937;">${data.requirements}</td>
+    L355:           </tr>` : ''}
+    L356:         </table>
+    L357:       </div>
+    L358:       <div style="padding: 16px 24px; background: #1e293b; border-radius: 0 0 12px 12px;">
+    L359:         <p style="margin: 0; color: rgba(255,255,255,0.6); font-size: 13px;">
+    L360:           ✦ ${data.brandName} — Use the approve/deny links from the original VIP email to manage access.
+    L361:         </p>
+    L362:       </div>
+    L363:     </div>
+    L364:   `
+    L365: }
+resend send blocks: NONE
+inline `html: \`` (not from named builder): NONE
+
+===== app/api/walliam/estimator/vip-approve/route.ts =====
+lines: 259, LE: CRLF
+headers import: NO
+referer capture: NO
+leads from() at: NONE
+source_url: in INSERT at: NONE
+named builders: buildUserApprovalEmailHtml@L199
+--- buildUserApprovalEmailHtml decl L199, body L199-L216 (18 lines) ---
+  sig.sourceUrl: false | sig.pageUrl: false | sig.page_url: false
+  body.${sourceUrl: false | body.${pageUrl: false | body.${data.sourceUrl: false | body.${data.pageUrl: false
+  HEAD (L199-L202):
+    L199: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, baseUrl: string): string {
+    L200:   return `
+    L201:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    L202:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+    L203:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  TAIL (L204-L216):
+    L204:         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
+    L205:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
+    L206:       </div>
+    L207:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+    L208:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+    L209:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
+    L210:         <div style="text-align: center;">
+    L211:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to ${brandName}</a>
+    L212:         </div>
+    L213:       </div>
+    L214:     </div>
+    L215:   `
+    L216: }
+resend send blocks: NONE
+inline `html: \`` (not from named builder): NONE
+

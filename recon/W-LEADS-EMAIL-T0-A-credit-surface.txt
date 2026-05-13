@@ -1,0 +1,975 @@
+﻿
+
+========================================================================
+FILE: lib\credits\resolveUserLimits.ts
+========================================================================
+Size: 3244 bytes
+
+export interface TenantCreditConfig {
+  // AI Chat
+  ai_free_messages: number
+  ai_auto_approve_limit: number
+  ai_manual_approve_limit: number
+  ai_hard_cap: number
+  // Buyer Plans
+  plan_free_attempts: number
+  plan_auto_approve_limit: number
+  plan_manual_approve_limit: number
+  plan_hard_cap: number
+  // Seller Plans
+  seller_plan_free_attempts: number
+  seller_plan_auto_approve_limit: number
+  seller_plan_manual_approve_limit: number
+  seller_plan_hard_cap: number
+  // Estimator
+  estimator_free_attempts: number
+  estimator_auto_approve_attempts: number
+  estimator_manual_approve_attempts: number
+  estimator_hard_cap: number
+}
+
+export interface UserCreditOverride {
+  ai_chat_limit: number | null
+  buyer_plan_limit: number | null
+  seller_plan_limit: number | null
+  estimator_limit: number | null
+}
+
+export interface ResolvedLimits {
+  ai_chat_total_allowed: number
+  buyer_plan_total_allowed: number
+  seller_plan_total_allowed: number
+  estimator_total_allowed: number
+  has_override: boolean
+  override_pools: {
+    chat: boolean
+    buyer: boolean
+    seller: boolean
+    estimator: boolean
+  }
+}
+
+/**
+ * Resolves effective credit limits for a specific user.
+ *
+ * If user_credit_overrides row exists for this user:
+ *   - Non-null pool value → use it, capped at tenant hard_cap
+ *   - Null pool value → fall back to tenant config for that pool
+ *
+ * If no override row exists:
+ *   - All pools use tenant config (existing behaviour, unchanged)
+ */
+export function resolveUserLimits(
+  tenant: TenantCreditConfig,
+  override: UserCreditOverride | null
+): ResolvedLimits {
+  const tenantChatTotal =
+    tenant.ai_free_messages +
+    tenant.ai_auto_approve_limit +
+    tenant.ai_manual_approve_limit
+
+  const tenantBuyerTotal =
+    tenant.plan_free_attempts +
+    tenant.plan_auto_approve_limit +
+    tenant.plan_manual_approve_limit
+
+  const tenantSellerTotal =
+    tenant.seller_plan_free_attempts +
+    tenant.seller_plan_auto_approve_limit +
+    tenant.seller_plan_manual_approve_limit
+
+  const tenantEstimatorTotal =
+    tenant.estimator_free_attempts +
+    tenant.estimator_auto_approve_attempts +
+    tenant.estimator_manual_approve_attempts
+
+  const chatOverride      = override?.ai_chat_limit      ?? null
+  const buyerOverride     = override?.buyer_plan_limit    ?? null
+  const sellerOverride    = override?.seller_plan_limit   ?? null
+  const estimatorOverride = override?.estimator_limit     ?? null
+
+  return {
+    ai_chat_total_allowed: chatOverride !== null
+      ? Math.min(chatOverride, tenant.ai_hard_cap)
+      : tenantChatTotal,
+
+    buyer_plan_total_allowed: buyerOverride !== null
+      ? Math.min(buyerOverride, tenant.plan_hard_cap)
+      : tenantBuyerTotal,
+
+    seller_plan_total_allowed: sellerOverride !== null
+      ? Math.min(sellerOverride, tenant.seller_plan_hard_cap)
+      : tenantSellerTotal,
+
+    estimator_total_allowed: estimatorOverride !== null
+      ? Math.min(estimatorOverride, tenant.estimator_hard_cap)
+      : tenantEstimatorTotal,
+
+    has_override: override !== null,
+    override_pools: {
+      chat:      chatOverride !== null,
+      buyer:     buyerOverride !== null,
+      seller:    sellerOverride !== null,
+      estimator: estimatorOverride !== null,
+    },
+  }
+}
+
+========================================================================
+FILE: components\credits\CreditSessionContext.tsx
+========================================================================
+Size: 10824 bytes
+
+// components/credits/CreditSessionContext.tsx
+'use client'
+
+import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react'
+import { usePathname } from 'next/navigation'
+import { useAuth } from '@/components/auth/AuthContext'
+import { useTenantId } from '@/hooks/useTenantId'
+
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export interface CreditSessionState {
+  // Identity
+  sessionId: string | null
+  userId: string | null
+  tenantId: string | null
+  isRegistered: boolean
+
+  // Tenant-configured assistant name (dynamic per tenant; fallback only if API response missing)
+  assistantName: string
+
+  // Chat credit state
+  messageCount: number
+  chatFreeMessages: number
+  chatHardCap: number
+
+  // Plan credit state
+  buyerPlansUsed: number
+  sellerPlansUsed: number
+  totalAllowed: number
+  planMode: 'shared' | 'independent'
+  sellerPlanFreeAttempts: number
+
+  // Estimator credit state
+  estimatorCount: number
+  estimatorFreeAttempts: number
+  estimatorHardCap: number
+
+  // VIP / status
+  status: string
+  vipRequestStatus: string
+  vipAutoApprove: boolean
+
+  // Loading flag â€” true until first fetch resolves (or we determine no fetch is needed)
+  loading: boolean
+}
+
+interface CreditSessionContextValue {
+  state: CreditSessionState
+  /** Bump message_count locally after a successful chat call. */
+  incrementMessageCount: () => void
+  /** Bump plans_used locally after a successful plan generation. */
+  incrementPlansUsed: (planType: 'buyer' | 'seller') => void
+  /** Re-fetch session from server (e.g. after registration completes). */
+  refresh: (pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }) => Promise<void>
+  /** Reset to defaults (e.g. on sign-out). */
+  clear: () => void
+}
+
+// â”€â”€â”€ Defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Safety floors used only if API response is malformed. Tenant-agnostic.
+
+const DEFAULT_STATE: CreditSessionState = {
+  sessionId: null,
+  userId: null,
+  tenantId: null,
+  isRegistered: false,
+  assistantName: 'Assistant',
+  messageCount: 0,
+  chatFreeMessages: 0,
+  chatHardCap: 25,
+  buyerPlansUsed: 0,
+  sellerPlansUsed: 0,
+  totalAllowed: 1,
+  planMode: 'shared',
+  sellerPlanFreeAttempts: 1,
+  estimatorCount: 0,
+  estimatorFreeAttempts: 0,
+  estimatorHardCap: 10,
+  status: 'active',
+  vipRequestStatus: 'none',
+  vipAutoApprove: false,
+  loading: true,
+}
+
+// â”€â”€â”€ Context â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const CreditSessionContext = createContext<CreditSessionContextValue | null>(null)
+
+// â”€â”€â”€ Pathname guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Routes where the provider is inert (mirrors ConditionalLayout's isCharlieVisible).
+// These are platform-level routes that never consume credits, regardless of tenant.
+
+function isInertRoute(pathname: string | null): boolean {
+  if (!pathname) return true
+  if (pathname.startsWith('/admin')) return true
+  if (pathname.startsWith('/dashboard')) return true
+  if (pathname === '/login') return true
+  return false
+}
+
+// â”€â”€â”€ Provider â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export function CreditSessionProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth()
+  const tenantId = useTenantId()
+  const pathname = usePathname()
+
+  const [state, setState] = useState<CreditSessionState>(DEFAULT_STATE)
+
+  // Track which (userId, tenantId) tuple was last fetched. Prevents duplicate
+  // fetches in StrictMode dev double-mount and across re-renders.
+  const lastFetchKey = useRef<string | null>(null)
+
+  // â”€â”€â”€ Anonymous defaults loader â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // For anonymous users on a tenant page, pull tenant config so pills show
+  // "X free" before registration. Cheap, separate from /session.
+
+  const loadAnonymousDefaults = useCallback(async (tid: string) => {
+    try {
+      const res = await fetch('/api/walliam/tenant-config', {
+        headers: { 'x-tenant-id': tid },
+      })
+      if (!res.ok) return
+      const cfg = await res.json()
+      setState(prev => ({
+        ...prev,
+        tenantId: tid,
+        userId: null,
+        sessionId: null,
+        isRegistered: false,
+        chatFreeMessages: cfg.chatFree ?? 0,
+        estimatorFreeAttempts: cfg.estFree ?? 0,
+        totalAllowed: cfg.planFree ?? 1,
+        loading: false,
+      }))
+    } catch {
+      // Network error â€” leave loading state, components render with defaults
+      setState(prev => ({ ...prev, tenantId: tid, loading: false }))
+    }
+  }, [])
+
+  // â”€â”€â”€ Session loader â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // For registered users: single POST to the session route.
+  // The route handles claim-existing-anonymous + create-if-none.
+
+  const loadSession = useCallback(async (uid: string, tid: string, pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }) => {
+    try {
+      const res = await fetch('/api/walliam/charlie/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tid },
+        body: JSON.stringify({
+          userId: uid,
+          listing_id: pageContext?.listing_id || null,
+          building_id: pageContext?.building_id || null,
+          community_id: pageContext?.community_id || null,
+          municipality_id: pageContext?.municipality_id || null,
+          area_id: pageContext?.area_id || null,
+          existingSessionId: null,
+        }),
+      })
+      if (!res.ok) {
+        setState(prev => ({ ...prev, loading: false }))
+        return
+      }
+      const data = await res.json()
+      setState({
+        sessionId: data.sessionId ?? null,
+        userId: uid,
+        tenantId: tid,
+        isRegistered: !!data.isRegistered,
+        assistantName: data.assistantName || 'Assistant',
+        messageCount: data.messageCount ?? 0,
+        chatFreeMessages: data.chatFreeMessages ?? 0,
+        chatHardCap: data.chatHardCap ?? 25,
+        buyerPlansUsed: data.buyerPlansUsed ?? 0,
+        sellerPlansUsed: data.sellerPlansUsed ?? 0,
+        totalAllowed: data.totalAllowed ?? 1,
+        planMode: data.planMode ?? 'shared',
+        sellerPlanFreeAttempts: data.sellerPlanFreeAttempts ?? 1,
+        estimatorCount: data.estimatorCount ?? 0,
+        estimatorFreeAttempts: data.estimatorFreeAttempts ?? 0,
+        estimatorHardCap: data.estimatorHardCap ?? 10,
+        status: data.status ?? 'active',
+        vipRequestStatus: data.vipRequestStatus ?? 'none',
+        vipAutoApprove: !!data.vipAutoApprove,
+        loading: false,
+      })
+    } catch {
+      setState(prev => ({ ...prev, loading: false }))
+    }
+  }, [])
+
+  // â”€â”€â”€ Main effect: decide what to fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  useEffect(() => {
+    // Inert on admin/dashboard/login routes â€” no work, no fetch
+    if (isInertRoute(pathname)) {
+      lastFetchKey.current = null
+      return
+    }
+
+    // Wait for auth resolution and tenantId hydration
+    if (authLoading) return
+    if (!tenantId) return
+
+    const userId = user?.id ?? null
+    const fetchKey = `${userId ?? 'anon'}:${tenantId}`
+
+    // Deduplicate â€” same (userId, tenantId) shouldn't trigger a refetch
+    if (lastFetchKey.current === fetchKey) return
+    lastFetchKey.current = fetchKey
+
+    if (userId) {
+      loadSession(userId, tenantId)
+    } else {
+      loadAnonymousDefaults(tenantId)
+    }
+  }, [authLoading, user?.id, tenantId, pathname, loadSession, loadAnonymousDefaults])
+
+  // â”€â”€â”€ Mutators â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  const incrementMessageCount = useCallback(() => {
+    setState(prev => ({ ...prev, messageCount: prev.messageCount + 1 }))
+  }, [])
+
+  const incrementPlansUsed = useCallback((planType: 'buyer' | 'seller') => {
+    setState(prev =>
+      planType === 'seller'
+        ? { ...prev, sellerPlansUsed: prev.sellerPlansUsed + 1 }
+        : { ...prev, buyerPlansUsed: prev.buyerPlansUsed + 1 }
+    )
+  }, [])
+
+  const refresh = useCallback(async (pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }) => {
+    if (!tenantId) return
+    if (isInertRoute(pathname)) return
+    const userId = user?.id ?? null
+    // Force refetch by clearing dedupe key
+    lastFetchKey.current = null
+    if (userId) {
+      await loadSession(userId, tenantId, pageContext)
+    } else {
+      await loadAnonymousDefaults(tenantId)
+    }
+    lastFetchKey.current = `${userId ?? 'anon'}:${tenantId}`
+  }, [tenantId, pathname, user?.id, loadSession, loadAnonymousDefaults])
+
+  const clear = useCallback(() => {
+    lastFetchKey.current = null
+    setState(DEFAULT_STATE)
+  }, [])
+
+  return (
+    <CreditSessionContext.Provider
+      value={{ state, incrementMessageCount, incrementPlansUsed, refresh, clear }}
+    >
+      {children}
+    </CreditSessionContext.Provider>
+  )
+}
+
+// â”€â”€â”€ Consumer hook â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+export function useCreditSession(): CreditSessionContextValue {
+  const ctx = useContext(CreditSessionContext)
+  if (!ctx) {
+    throw new Error('useCreditSession must be used within CreditSessionProvider')
+  }
+  return ctx
+}
+
+========================================================================
+FILE: app\charlie\hooks\useCharlie.ts
+========================================================================
+Size: 22184 bytes
+
+// app/charlie/hooks/useCharlie.ts
+'use client'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useTenantId } from '@/hooks/useTenantId'
+import { useCreditSession } from '@/components/credits/CreditSessionContext'
+
+export type MessageRole = 'user' | 'assistant'
+export type ConversationBlock =
+  | { type: 'analytics'; data: any; geoName: string }
+  | { type: 'listings'; label: string; listings: any[] }
+  | { type: 'buildings'; label: string; buildings: any[] }
+  | { type: 'rankings'; rankType: string; data: any }
+  | { type: 'priceTrends'; data: any }
+  | { type: 'sellerEstimate'; data: any; analyticsSnapshot: any | null; geoName: string }
+  | { type: 'comparables'; listings: any[]; intent: string }
+  | { type: 'plan'; data: any; analyticsSnapshot: any; listingsSnapshot: any[]; geoContext: any }
+
+export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables' | 'generate_plan' | 'search_buildings' | 'compare_geo' | 'get_price_trends' | 'get_investment_rankings' | 'get_inventory_rankings' | 'get_seasonal_trends' | 'get_building_directory'
+
+export interface ChatMessage {
+  id: string
+  role: MessageRole
+  content: string
+  streaming?: boolean
+}
+
+export interface ToolResult {
+  tool: ToolName
+  data: any
+}
+
+export interface CharlieState {
+  messages: ChatMessage[]
+  toolResults: ToolResult[]
+  analytics: any[]
+  geoContext: { geoType: string; geoId: string; geoName: string } | null
+  listingGroups: { label: string; listings: any[] }[]
+  comparables: any[]
+  isStreaming: boolean
+  isOpen: boolean
+  initialForm: 'buyer' | 'seller' | null
+  activePanel: 'chat' | 'results'
+  mode: 'search' | 'buyer_funnel' | 'seller_funnel'
+  planReady: boolean
+  plan: any | null
+  leadCaptureActive: boolean
+  leadCaptured: boolean
+  buyerProfile: any
+  sellerProfile: any
+  sellerEstimate: any | null
+  searchedBuildings: { label: string; buildings: any[] }[]
+  rankings: any[]
+  priceTrends: any[]
+  seasonalData: any | null
+  // WALLiam session
+  sessionId: string | null
+  userId: string | null
+  buyerPlansUsed: number
+  sellerPlansUsed: number
+  totalAllowed: number
+  // Chat credits
+  messageCount: number
+  chatFreeMessages: number
+  chatHardCap: number
+  // Estimator credits
+  estimatorCount: number
+  estimatorFreeAttempts: number
+  estimatorHardCap: number
+  // Plan mode
+  planMode: 'shared' | 'independent'
+  sellerPlanFreeAttempts: number
+  isRegistered: boolean
+  // Gate state
+  gateActive: boolean
+  gateReason: 'register' | 'vip_required' | 'chat_limit' | null
+  gatePlanType: 'buyer' | 'seller' | null
+  vipRequestId: string | null
+  vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
+  vipCreditUsed: boolean
+  chatCreditUsed: boolean
+  approvalNotification: boolean
+  chatCreditCount: number
+  chatCreditTotal: number
+  isPlanGenerating: boolean
+  vipCreditPlanType: 'buyer' | 'seller' | null
+  vipCreditPlansUsed: number
+  vipCreditTotal: number
+  blocks: ConversationBlock[]
+  // Assistant name (per-tenant)
+  assistantName: string
+}
+
+const INITIAL_STATE: CharlieState = {
+  messages: [],
+  toolResults: [],
+  analytics: [],
+  searchedBuildings: [],
+  rankings: [],
+  priceTrends: [],
+  seasonalData: null,
+  geoContext: null,
+  listingGroups: [],
+  comparables: [],
+  isStreaming: false,
+  isOpen: false,
+  initialForm: null,
+  activePanel: 'chat',
+  mode: 'search',
+  planReady: false,
+  plan: null,
+  leadCaptureActive: false,
+  leadCaptured: false,
+  buyerProfile: {},
+  sellerProfile: {},
+  sellerEstimate: null,
+  sessionId: null,
+  userId: null,
+  buyerPlansUsed: 0,
+  sellerPlansUsed: 0,
+  totalAllowed: 1,
+  messageCount: 0,
+  chatFreeMessages: 5,
+  chatHardCap: 25,
+  estimatorCount: 0,
+  estimatorFreeAttempts: 2,
+  estimatorHardCap: 10,
+  planMode: 'shared',
+  sellerPlanFreeAttempts: 1,
+  isRegistered: false,
+  gateActive: false,
+  gateReason: null,
+  gatePlanType: null,
+  vipRequestId: null,
+  vipRequestStatus: 'idle',
+  vipCreditUsed: false,
+  chatCreditUsed: false,
+  approvalNotification: false,
+  chatCreditCount: 0,
+  chatCreditTotal: 5,
+  isPlanGenerating: false,
+  vipCreditPlansUsed: 0,
+  vipCreditTotal: 1,
+  vipCreditPlanType: null,
+  blocks: [],
+  assistantName: 'Charlie',
+}
+
+export function useCharlie() {
+  const tenantId = useTenantId()
+  const tenantIdRef = useRef<string | null>(null)
+  useEffect(() => { tenantIdRef.current = tenantId }, [tenantId])
+  const credits = useCreditSession()
+  const creditsRef = useRef(credits)
+  useEffect(() => { creditsRef.current = credits }, [credits])
+  const [state, setStateRaw] = useState<CharlieState>(INITIAL_STATE)
+  const setState = (updater: CharlieState | ((s: CharlieState) => CharlieState)) => {
+    setStateRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      stateRef.current = next
+      return next
+    })
+  }
+  const stateRef = useRef<CharlieState>(INITIAL_STATE)
+  const analyticsRef = useRef<any>(null)
+  const sessionId = useRef(Math.random().toString(36).slice(2))
+  const geoContextRef = useRef<any>(null)
+  const greetingSentRef = useRef(false)
+  const messagesRef = useRef<any[]>([])
+  const lastUserMessageRef = useRef<string | null>(null)
+  const sendMessageRef = useRef<any>(null)
+  const pageContextRef = useRef<any>(null)
+
+  const setPageContext = useCallback((context: any) => {
+    pageContextRef.current = context
+  }, [])
+
+  const dismissGate = useCallback(() => {
+    setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
+  }, [])
+
+  const requestVipAccess = useCallback(async (planType: 'buyer' | 'seller' | 'chat' | 'estimator') => {
+    const sid = creditsRef.current.state.sessionId
+    if (!sid) return
+    try {
+      const res = await fetch('/api/walliam/charlie/vip-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sid, planType }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setState(s => ({
+          ...s,
+          vipRequestId: data.requestId,
+          vipRequestStatus: data.status,
+          gateActive: false,
+        }))
+      }
+    } catch (err) {
+      console.error('[useCharlie] requestVipAccess error:', err)
+    }
+  }, [])
+
+  // Poll VIP request status when pending — refresh credits on approval
+  useEffect(() => {
+    if (stateRef.current?.vipRequestStatus !== 'pending') return
+    const requestId = stateRef.current?.vipRequestId
+    if (!requestId) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/walliam/charlie/vip-request?requestId=${requestId}`)
+        const data = await res.json()
+        if (data.status === 'approved' || data.status === 'denied') {
+          clearInterval(interval)
+          if (data.status === 'approved') {
+            // Refresh session credits after approval
+            const uid = creditsRef.current.state.userId
+            const pctx = pageContextRef.current
+            if (uid) await creditsRef.current.refresh(pctx)
+          }
+          setState(s => ({ ...s, vipRequestStatus: data.status, gateActive: false, approvalNotification: data.status === 'approved' ? true : s.approvalNotification }))
+        }
+      } catch {}
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [state.vipRequestStatus])
+
+  const setLeadCaptured = useCallback(() => {
+    setState(s => ({ ...s, leadCaptured: true }))
+  }, [])
+
+  const open = useCallback((initialMessage?: string, initialForm?: 'buyer' | 'seller') => {
+    setState(s => ({ ...s, isOpen: true, initialForm: initialForm || null }))
+    if (initialMessage && messagesRef.current.length === 0 && !greetingSentRef.current) {
+      greetingSentRef.current = true
+      setTimeout(() => sendMessageRef.current?.(initialMessage), 100)
+    }
+  }, [])
+
+  const close = useCallback(() => {
+    setState(s => ({ ...s, isOpen: false }))
+  }, [])
+
+  const setActivePanel = useCallback((panel: 'chat' | 'results') => {
+    setState(s => ({ ...s, activePanel: panel }))
+  }, [])
+
+  const setGeoContext = useCallback((geoType: string, geoId: string, geoName: string) => {
+    geoContextRef.current = { geoType, geoId, geoName }
+    setState(s => ({ ...s, geoContext: { geoType, geoId, geoName } }))
+  }, [])
+
+  const setSellerEstimate = useCallback((data: any) => {
+    setState(s => ({
+      ...s,
+      sellerEstimate: data,
+      activePanel: 'results',
+      analytics: data.marketAnalytics ? [...s.analytics, { ...data.marketAnalytics }] : s.analytics,
+      geoContext: data.analyticsGeoType ? { geoType: data.analyticsGeoType, geoId: data.analyticsGeoId, geoName: data.buildingName || '' } : s.geoContext,
+      blocks: [...s.blocks, { type: 'sellerEstimate', data, analyticsSnapshot: data.marketAnalytics || null, geoName: data.analyticsGeoType ? (data.buildingName || '') : s.geoContext?.geoName || '' }],
+    }))
+  }, [])
+
+  const sendMessage = useCallback(async (userText: string, isGreeting = false) => {
+    if (!userText.trim() && !isGreeting) return
+
+    const userMessage = { role: 'user', content: userText }
+    if (!isGreeting) lastUserMessageRef.current = userText
+
+    // W-RECOVERY A1.2 client gate — require registration before any /api/charlie call.
+    // Server enforces this too (returns 401 without auth), but client gate prevents the
+    // wasted round-trip and surfaces the register modal immediately.
+    if (!creditsRef.current.state.userId && !isGreeting) {
+        setState(s => ({
+        ...s,
+        gateActive: true,
+        gateReason: 'register',
+        gatePlanType: null,
+        isStreaming: false,
+      }))
+      return
+    }
+    // END W-RECOVERY A1.2 client gate
+
+    if (!isGreeting) {
+      const uiMsg: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: userText,
+      }
+      setState(s => ({ ...s, messages: [...s.messages, uiMsg] }))
+    }
+
+    messagesRef.current = [...messagesRef.current, userMessage]
+
+    const assistantId = (Date.now() + 1).toString()
+    setState(s => ({
+      ...s,
+      isStreaming: true,
+      messages: isGreeting ? s.messages : [
+        ...s.messages,
+        { id: assistantId, role: 'assistant', content: '', streaming: true }
+      ]
+    }))
+
+    try {
+      const currentTenantId = tenantIdRef.current
+      if (!currentTenantId) { setState(s => ({ ...s, isStreaming: false })); return }
+
+      // W-CREDITS Phase 7b — fail-fast on context not ready
+      if (creditsRef.current.state.loading || !creditsRef.current.state.sessionId) {
+        console.error('[useCharlie] credit session not ready — aborting send')
+        setState(s => ({ ...s, isStreaming: false }))
+        return
+      }
+
+      const res = await fetch('/api/charlie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': currentTenantId },
+        body: JSON.stringify({
+          messages: messagesRef.current,
+          sessionId: creditsRef.current.state.sessionId,
+          userId: creditsRef.current.state.userId,
+          geoContext: geoContextRef.current ? { ...geoContextRef.current, building_id: pageContextRef.current?.building_id || null } : (pageContextRef.current?.building_id ? { building_id: pageContextRef.current.building_id } : null),
+        }),
+      })
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let assistantText = ''
+      let addedAssistant = true
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n').filter(l => l.startsWith('data: '))
+
+        for (const line of lines) {
+          const raw = line.replace('data: ', '')
+          try {
+            const event = JSON.parse(raw)
+
+            if (event.type === 'text') {
+              assistantText += event.content
+              if (!addedAssistant) {
+                addedAssistant = true
+                setState(s => ({
+                  ...s,
+                  messages: [...s.messages, { id: assistantId, role: 'assistant', content: assistantText, streaming: true }]
+                }))
+              } else {
+                setState(s => ({
+                  ...s,
+                  messages: s.messages.map(m =>
+                    m.id === assistantId ? { ...m, content: assistantText } : m
+                  )
+                }))
+              }
+            }
+
+            if (event.type === 'vip_credit_used' && creditsRef.current.state.userId) {
+              setState(s => ({
+                ...s,
+                vipCreditUsed: true,
+                vipCreditPlansUsed: event.plansUsed,
+                vipCreditTotal: event.totalAllowed,
+                vipCreditPlanType: event.planType || 'buyer',
+              }))
+            }
+
+            if (event.type === 'chat_credit_used') {
+              setState(s => ({
+                ...s,
+                chatCreditUsed: true,
+                chatCreditCount: (event as any).messageCount,
+                chatCreditTotal: (event as any).chatFreeMessages,
+              }))
+            }
+
+            // Gate event — plan gating fired server-side
+            if (event.type === 'gate') {
+              setState(s => ({
+                ...s,
+                isStreaming: false,
+                gateActive: true,
+                gateReason: event.reason,
+                gatePlanType: event.planType || null,
+                messages: s.messages.map(m =>
+                  m.id === assistantId ? { ...m, streaming: false, content: assistantText } : m
+                )
+              }))
+            }
+
+            if (event.type === 'tool_result') {
+              handleToolResult(event.tool, event.data)
+            }
+
+            if (event.type === 'done') {
+              setState(s => ({
+                ...s,
+                isStreaming: false, isPlanGenerating: false,
+                messages: s.messages.map(m =>
+                  m.id === assistantId ? { ...m, streaming: false } : m
+                )
+              }))
+              // W-CREDITS Phase 7b — synchronous local increment, no refetch
+              creditsRef.current.incrementMessageCount()
+              messagesRef.current = [
+                ...messagesRef.current,
+                { role: 'assistant', content: assistantText }
+              ]
+            }
+
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setState(s => ({ ...s, isStreaming: false }))
+    }
+  }, [])
+
+  sendMessageRef.current = sendMessage
+
+  const handleToolResult = (tool: ToolName, data: any) => {
+    if (tool === 'resolve_geo' && data.geoId) {
+      geoContextRef.current = { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName }
+      setState(s => ({ ...s, geoContext: { geoType: data.geoType, geoId: data.geoId, geoName: data.geoName } }))
+    }
+    if (tool === 'get_market_analytics' && data.analytics) {
+        setState(s => ({ ...s, analytics: [...s.analytics, { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }], blocks: [...s.blocks, { type: 'analytics', data: { ...data.analytics, geoType: data.geoType, geoId: data.geoId, track: data.track }, geoName: s.geoContext?.geoName || '' }], activePanel: 'results' }))
+        analyticsRef.current = data.analytics
+    }
+    if (tool === 'search_listings' && data.listings) {
+      setState(s => ({ ...s, listingGroups: [...s.listingGroups, { label: data.label || 'Matched Listings', listings: data.listings }], blocks: [...s.blocks, { type: 'listings', label: data.label || 'Matched Listings', listings: data.listings }], activePanel: 'results' }))
+    }
+    if (tool === 'generate_plan') {
+      setState(s => ({ ...s, isPlanGenerating: true }))
+    }
+    if (tool === 'generate_plan' && data.planReady) {
+      setState(s => ({ ...s, planReady: true, plan: data, blocks: [...s.blocks, { type: 'plan', data, analyticsSnapshot: analyticsRef.current, listingsSnapshot: stateRef.current.listingGroups.flatMap(g => g.listings), geoContext: stateRef.current.geoContext }], activePanel: 'results' }))
+      creditsRef.current.incrementPlansUsed(data.type === 'seller' ? 'seller' : 'buyer')
+        fetch('/api/charlie/plan-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: creditsRef.current.state.sessionId,
+            userId: creditsRef.current.state.userId,
+            planType: data.type,
+            plan: data,
+            analytics: analyticsRef.current,
+            listings: stateRef.current.listingGroups.flatMap(g => g.listings).slice(0, 10),
+            geoContext: stateRef.current.geoContext,
+            vipCreditUsed: stateRef.current.vipCreditUsed,
+            vipCreditPlansUsed: stateRef.current.vipCreditPlansUsed,
+            vipCreditTotal: stateRef.current.vipCreditTotal,
+            comparables: stateRef.current.comparables.slice(0, 6),
+            sellerEstimate: stateRef.current.sellerEstimate,
+            blocks: stateRef.current.blocks.filter(b => b.type !== 'plan').slice(0, 20),
+          }),
+        }).catch(err => console.error('[useCharlie] plan email error:', err))
+    }
+    if (tool === 'search_buildings' && data.buildings) {
+      const mapped = (data.buildings || []).map((b: any) => ({
+        buildingName: b.building_name,
+        slug: b.slug,
+        photo: b.cover_photo_url || null,
+        medianPsf: b.avg_psf || 0,
+        activeCount: b.active_count || 0,
+        avgDom: b.closed_avg_dom_90 || null,
+        saleToList: b.sale_to_list_ratio || null,
+        medianPrice: b.median_sale_price || null,
+        medianMaintFee: b.median_maint_fee || null,
+        yearBuilt: b.year_built || null,
+        url: b.url || null,
+      }))
+        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, { label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], blocks: [...s.blocks, { type: 'buildings', label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], activePanel: 'results' }))
+    }
+    if (tool === 'get_building_directory' && data.buildings) {
+      const mapped = (data.buildings || []).map((b: any) => ({
+        buildingName: b.building_name,
+        slug: b.slug,
+        photo: b.cover_photo_url || null,
+        medianPsf: 0,
+        activeCount: 0,
+        url: b.url || null,
+      }))
+        setState(s => ({ ...s, searchedBuildings: [...s.searchedBuildings, { label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], blocks: [...s.blocks, { type: 'buildings', label: s.geoContext?.geoName || 'Buildings', buildings: mapped }], activePanel: 'results' }))
+    }
+    if (tool === 'compare_geo' && data.comparisons) {
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'compare_geo', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'compare_geo', data }], activePanel: 'results' }))
+    }
+    if (tool === 'get_price_trends' && data.price_trend_monthly) {
+        setState(s => ({ ...s, priceTrends: [...s.priceTrends, data], blocks: [...s.blocks, { type: 'priceTrends', data }], activePanel: 'results' }))
+    }
+    if (tool === 'get_investment_rankings' && data.rankings) {
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'investment', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'investment', data }], activePanel: 'results' }))
+    }
+    if (tool === 'get_inventory_rankings' && data.rankings) {
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'inventory', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'inventory', data }], activePanel: 'results' }))
+    }
+    if (tool === 'get_seasonal_trends' && data.insight_seasonal) {
+        setState(s => ({ ...s, rankings: [...s.rankings, { type: 'seasonal', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'seasonal', data }], activePanel: 'results' }))
+    }
+    if (tool === 'get_comparables' && data.listings) {
+      setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), blocks: [...s.blocks, { type: 'comparables', listings: data.listings, intent: '' }], activePanel: 'results' }))
+    }
+  }
+
+  const resumeAfterGate = useCallback(() => {
+    // W-RECOVERY A1.7 — clear gate first, regardless of whether there's a queued message
+    setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
+    const lastMsg = lastUserMessageRef.current
+    if (lastMsg) {
+      setTimeout(() => sendMessageRef.current?.(lastMsg), 300)
+    }
+  }, [])
+
+  return {
+    state: {
+      ...state,
+      sessionId: credits.state.sessionId,
+      userId: credits.state.userId,
+      isRegistered: credits.state.isRegistered,
+      assistantName: credits.state.assistantName,
+      messageCount: credits.state.messageCount,
+      chatFreeMessages: credits.state.chatFreeMessages,
+      chatHardCap: credits.state.chatHardCap,
+      buyerPlansUsed: credits.state.buyerPlansUsed,
+      sellerPlansUsed: credits.state.sellerPlansUsed,
+      totalAllowed: credits.state.totalAllowed,
+      planMode: credits.state.planMode,
+      sellerPlanFreeAttempts: credits.state.sellerPlanFreeAttempts,
+      estimatorCount: credits.state.estimatorCount,
+      estimatorFreeAttempts: credits.state.estimatorFreeAttempts,
+      estimatorHardCap: credits.state.estimatorHardCap,
+    },
+    open,
+    close,
+    sendMessage,
+    setActivePanel,
+    setSellerEstimate,
+    setGeoContext,
+    dismissGate,
+    setPageContext,
+    requestVipAccess,
+    setLeadCaptured,
+    resumeAfterGate,
+  }
+}
+
+
+========================================================================
+GREP: credit references in lead routes + helper
+========================================================================
+
+--- app\api\walliam ---
+  (no credit references)
+
+--- app\api\charlie ---
+  (no credit references)
+
+--- lib\actions\leads.ts ---
+  (no credit references)
+
+--- lib\admin-homes\lead-email-recipients.ts ---
+  (no credit references)
+
+========================================================================
+MIGRATION GREP: credit / counter tables
+========================================================================
+  (no migration matches)
+
+========================================================================
+ADMIN UI: credit management surfaces
+========================================================================

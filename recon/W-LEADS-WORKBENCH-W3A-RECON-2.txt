@@ -1,0 +1,482 @@
+
+===== app\admin-homes\leads\page.tsx L75-L220 (page.tsx prefetches+render) =====
+L75:   // L4: pre-fetch user_activities for inline engagement badge + last-2-activities preview.
+L76:   // Multi-tenant safety: scope by tenant_id when !seeAll (mirrors leads query at line above).
+L77:   // Role scoping is implicit -- only activities for emails of already-role-filtered leads are fetched.
+L78:   const leadEmails = Array.from(
+L79:     new Set((leads || []).map((l: any) => l.contact_email).filter(Boolean))
+L80:   ) as string[];
+L81:   const activitiesByLeadId: Record<string, Array<{ id: string; activity_type: string; activity_data: any; page_url: string | null; created_at: string }>> = {};
+L82:   if (leadEmails.length > 0) {
+L83:     let actQuery = supabase
+L84:       .from('user_activities')
+L85:       .select('id, activity_type, activity_data, page_url, created_at, contact_email')
+L86:       .in('contact_email', leadEmails)
+L87:       .order('created_at', { ascending: true });
+L88:     if (!seeAll && scopedTenantId) {
+L89:       actQuery = actQuery.eq('tenant_id', scopedTenantId);
+L90:     }
+L91:     const { data: allActivities } = await actQuery;
+L92:     const byEmail: Record<string, any[]> = {};
+L93:     for (const a of (allActivities || [])) {
+L94:       const email = (a as any).contact_email;
+L95:       if (!byEmail[email]) byEmail[email] = [];
+L96:       byEmail[email].push(a);
+L97:     }
+L98:     for (const lead of (leads || [])) {
+L99:       activitiesByLeadId[(lead as any).id] = byEmail[(lead as any).contact_email] || [];
+L100:     }
+L101:   }
+L102: 
+L103:   // L5: pre-fetch user_credit_overrides + vip_requests for credit posture chip.
+L104:   // Multi-tenant safety: both tables have tenant_id NOT NULL. Scope by scopedTenantId when !seeAll.
+L105:   // user_credit_overrides keyed by (user_id, tenant_id) -- 1 row per user per tenant. Join by lead.user_id.
+L106:   // vip_requests has direct FK lead_id to leads. Join by lead.id (semantically equivalent to "by lead.user_id" since lead.id is keyed under lead.user_id).
+L107:   const leadUserIds = Array.from(
+L108:     new Set((leads || []).map((l: any) => l.user_id).filter(Boolean))
+L109:   ) as string[];
+L110:   const leadIds = (leads || []).map((l: any) => l.id) as string[];
+L111: 
+L112:   const creditByUserId: Record<string, any> = {};
+L113:   if (leadUserIds.length > 0) {
+L114:     let credQuery = supabase
+L115:       .from('user_credit_overrides')
+L116:       .select('user_id, ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit, granted_at, granted_by_tier')
+L117:       .in('user_id', leadUserIds);
+L118:     if (!seeAll && scopedTenantId) {
+L119:       credQuery = credQuery.eq('tenant_id', scopedTenantId);
+L120:     }
+L121:     const { data: creditRows } = await credQuery;
+L122:     for (const c of (creditRows || [])) {
+L123:       const uid = (c as any).user_id;
+L124:       if (uid) creditByUserId[uid] = c;
+L125:     }
+L126:   }
+L127: 
+L128:   const vipByLeadId: Record<string, any[]> = {};
+L129:   if (leadIds.length > 0) {
+L130:     let vipQuery = supabase
+L131:       .from('vip_requests')
+L132:       .select('id, lead_id, status, request_type, messages_granted, created_at, expires_at, approval_token')
+L133:       .in('lead_id', leadIds);
+L134:     if (!seeAll && scopedTenantId) {
+L135:       vipQuery = vipQuery.eq('tenant_id', scopedTenantId);
+L136:     }
+L137:     const { data: vipRows } = await vipQuery;
+L138:     for (const v of (vipRows || [])) {
+L139:       const lid = (v as any).lead_id;
+L140:       if (lid) {
+L141:         if (!vipByLeadId[lid]) vipByLeadId[lid] = [];
+L142:         vipByLeadId[lid].push(v);
+L143:       }
+L144:     }
+L145:   }
+L146: 
+L147:   // L7: pre-fetch lead_email_recipients_log + lead_notes for the lead detail drawer.
+L148:   // Multi-tenant safety:
+L149:   //   - lead_email_recipients_log has tenant_id NOT NULL -> direct scope by scopedTenantId when !seeAll.
+L150:   //   - lead_notes has NO tenant_id column -> tenant scoping IMPLICIT via lead_id IN leadIds
+L151:   //     (leadIds was already filtered through the tenant-scoped leads query upstream).
+L152:   const emailLogByLeadId: Record<string, any[]> = {};
+L153:   if (leadIds.length > 0) {
+L154:     let emailQuery = supabase
+L155:       .from('lead_email_recipients_log')
+L156:       .select('id, lead_id, recipient_email, recipient_layer, direction, subject, template_key, status, sent_at, delivered_at, bounced_at, created_at')
+L157:       .in('lead_id', leadIds)
+L158:       .order('sent_at', { ascending: false, nullsFirst: false });
+L159:     if (!seeAll && scopedTenantId) {
+L160:       emailQuery = emailQuery.eq('tenant_id', scopedTenantId);
+L161:     }
+L162:     const { data: emailRows } = await emailQuery;
+L163:     for (const e of (emailRows || [])) {
+L164:       const lid = (e as any).lead_id;
+L165:       if (lid) {
+L166:         if (!emailLogByLeadId[lid]) emailLogByLeadId[lid] = [];
+L167:         emailLogByLeadId[lid].push(e);
+L168:       }
+L169:     }
+L170:   }
+L171: 
+L172:   const notesByLeadId: Record<string, any[]> = {};
+L173:   if (leadIds.length > 0) {
+L174:     const { data: noteRows } = await supabase
+L175:       .from('lead_notes')
+L176:       .select('id, lead_id, agent_id, note, created_at, updated_at')
+L177:       .in('lead_id', leadIds)
+L178:       .order('created_at', { ascending: false });
+L179:     for (const n of (noteRows || [])) {
+L180:       const lid = (n as any).lead_id;
+L181:       if (lid) {
+L182:         if (!notesByLeadId[lid]) notesByLeadId[lid] = [];
+L183:         notesByLeadId[lid].push(n);
+L184:       }
+L185:     }
+L186:   }
+L187: 
+L188:   // Agents for filter dropdown â€” scoped by role
+L189:   let agentsQuery = supabase
+L190:     .from('agents')
+L191:     .select('id, full_name, email')
+L192:     .eq('site_type', 'comprehensive')
+L193:     .order('full_name')
+L194: 
+L195:   if (!seeAll && scopedTenantId) {
+L196:     agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
+L197:   }
+L198: 
+L199:   if (adminUser?.role === 'manager' && adminUser.agentId) {
+L200:     // Manager only sees themselves + their managed agents in filter
+L201:     agentsQuery = agentsQuery.in('id', [adminUser.agentId, ...adminUser.managedAgentIds])
+L202:   } else if (adminUser?.role === 'agent' && adminUser.agentId) {
+L203:     agentsQuery = agentsQuery.eq('id', adminUser.agentId)
+L204:   }
+L205: 
+L206:   const { data: agents } = await agentsQuery
+L207: 
+L208:   return (
+L209:     <AdminHomesLeadsClient
+L210:       initialLeads={leads || []}
+L211:       initialActivities={activitiesByLeadId}
+L212:       initialCreditOverrides={creditByUserId}
+L213:       initialVipRequests={vipByLeadId}
+L214:       initialEmailLog={emailLogByLeadId}
+L215:       initialNotes={notesByLeadId}
+L216:       agents={agents || []}
+L217:       currentRole={adminUser?.role || 'admin'}
+L218:       currentAgentId={adminUser?.agentId || null}
+L219:     />
+L220:   )
+
+===== components\admin-homes\AdminHomesLeadsClient.tsx L95-L130 (function sig + state hooks) =====
+L95: const QUALITY_VALUES = ['unqualified', 'qualified_hot', 'qualified_cold', 'disqualified'] as const
+L96: type QualityValue = typeof QUALITY_VALUES[number]
+L97: const QUALITY_LABELS: Record<QualityValue, string> = {
+L98:   unqualified: 'Unqualified',
+L99:   qualified_hot: 'Hot',
+L100:   qualified_cold: 'Cold',
+L101:   disqualified: 'Disqualified',
+L102: }
+L103: 
+L104: export default function AdminHomesLeadsClient({ initialLeads, initialActivities, initialCreditOverrides, initialVipRequests, initialEmailLog, initialNotes, agents, currentRole, currentAgentId }: Props) {
+L105:   const [leads, setLeads] = useState<Lead[]>(initialLeads)
+L106:   const [searchTerm, setSearchTerm] = useState('')
+L107:   const [filterAgent, setFilterAgent] = useState('all')
+L108:   const [filterStatus, setFilterStatus] = useState('all')
+L109:   const [filterQuality, setFilterQuality] = useState('all')
+L110:   const [filterIntent, setFilterIntent] = useState('all')
+L111:   const [filterSource, setFilterSource] = useState('all')
+L112:   const [sortBy, setSortBy] = useState<'date' | 'name' | 'status'>('date')
+L113:   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+L114:   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
+L115:   const [expandedLead, setExpandedLead] = useState<string | null>(null)
+L116:   const [deleting, setDeleting] = useState(false)
+L117:   const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
+L118:   const [creditOverrides, setCreditOverrides] = useState<Record<string, any>>(initialCreditOverrides)
+L119:   const [vipRequests, setVipRequests] = useState<Record<string, any[]>>(initialVipRequests)
+L120:   const [grantFormOpenFor, setGrantFormOpenFor] = useState<string | null>(null)
+L121:   const [grantFormValues, setGrantFormValues] = useState<{ aiChatLimit: string; buyerPlanLimit: string; sellerPlanLimit: string; estimatorLimit: string }>({ aiChatLimit: '', buyerPlanLimit: '', sellerPlanLimit: '', estimatorLimit: '' })
+L122:   const [granting, setGranting] = useState<string | null>(null)
+L123:   const [drawerOpenForLead, setDrawerOpenForLead] = useState<Lead | null>(null)
+L124:   const [emailLog] = useState<Record<string, any[]>>(initialEmailLog)
+L125:   const [notes] = useState<Record<string, any[]>>(initialNotes)
+L126: 
+L127:   useEffect(() => {
+L128:     const handler = (e: KeyboardEvent) => {
+L129:       if (e.key === 'Escape') setDrawerOpenForLead(null)
+L130:     }
+
+===== components\admin-homes\AdminHomesLeadsClient.tsx L160-L225 (grant handler region) =====
+L160:       sellerPlanLimit: existing?.seller_plan_limit != null ? String(existing.seller_plan_limit) : '',
+L161:       estimatorLimit: existing?.estimator_limit != null ? String(existing.estimator_limit) : '',
+L162:     })
+L163:     setGrantFormOpenFor(lead.id)
+L164:   }
+L165: 
+L166:   const handleSubmitGrant = async (lead: Lead) => {
+L167:     if (!lead.user_id) return
+L168:     setGranting(lead.id)
+L169:     try {
+L170:       const parseField = (s: string): number | null => {
+L171:         const t = s.trim()
+L172:         if (t === '') return null
+L173:         const n = parseInt(t, 10)
+L174:         return isNaN(n) ? null : n
+L175:       }
+L176:       const body = {
+L177:         userId: lead.user_id,
+L178:         tenantId: lead.tenant_id,
+L179:         agentId: currentAgentId,
+L180:         agentTier: currentRole,
+L181:         note: 'Granted from leads page',
+L182:         aiChatLimit: parseField(grantFormValues.aiChatLimit),
+L183:         buyerPlanLimit: parseField(grantFormValues.buyerPlanLimit),
+L184:         sellerPlanLimit: parseField(grantFormValues.sellerPlanLimit),
+L185:         estimatorLimit: parseField(grantFormValues.estimatorLimit),
+L186:       }
+L187:       const res = await fetch('/api/admin-homes/users/override', {
+L188:         method: 'POST',
+L189:         headers: { 'Content-Type': 'application/json' },
+L190:         body: JSON.stringify(body),
+L191:       })
+L192:       const data = await res.json()
+L193:       if (res.ok && data.override) {
+L194:         setCreditOverrides(prev => ({ ...prev, [lead.user_id as string]: data.override }))
+L195:         setGrantFormOpenFor(null)
+L196:       } else {
+L197:         alert('Grant failed: ' + (data?.error || res.statusText))
+L198:       }
+L199:     } catch (err: any) {
+L200:       alert('Grant failed: ' + (err?.message || 'network error'))
+L201:     } finally {
+L202:       setGranting(null)
+L203:     }
+L204:   }
+L205: 
+L206:   const filteredLeads = useMemo(() => {
+L207:     let f = [...leads]
+L208:     if (searchTerm) {
+L209:       const s = searchTerm.toLowerCase()
+L210:       f = f.filter(l =>
+L211:         l.contact_name?.toLowerCase().includes(s) ||
+L212:         l.contact_email?.toLowerCase().includes(s) ||
+L213:         l.contact_phone?.includes(s) ||
+L214:         l.geo_name?.toLowerCase().includes(s)
+L215:       )
+L216:     }
+L217:     if (filterAgent !== 'all') f = f.filter(l => l.agent_id === filterAgent)
+L218:     if (filterStatus !== 'all') f = f.filter(l => l.status === filterStatus)
+L219:     if (filterQuality !== 'all') f = f.filter(l => l.quality === filterQuality)
+L220:     if (filterIntent !== 'all') f = f.filter(l => l.intent === filterIntent)
+L221:     if (filterSource !== 'all') f = f.filter(l => deriveLeadOriginRoute(l.source) === filterSource)
+L222:     f.sort((a, b) => {
+L223:       let cmp = 0
+L224:       if (sortBy === 'date') cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+L225:       else if (sortBy === 'name') cmp = (a.contact_name || '').localeCompare(b.contact_name || '')
+
+===== components\admin-homes\AdminHomesLeadsClient.tsx L425-L510 (tr+VIP badge+Approve VIP) =====
+L425:                     onChange={e => setSelectedLeads(e.target.checked ? new Set(filteredLeads.map(l => l.id)) : new Set())}
+L426:                     className="h-4 w-4 rounded border-gray-300"
+L427:                   />
+L428:                 </th>
+L429:                 {['Date', 'Contact', 'Source', 'Intent', 'Area', 'Agent', 'Hierarchy', 'Status', 'Quality', 'Actions'].map(h => (
+L430:                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+L431:                 ))}
+L432:               </tr>
+L433:             </thead>
+L434:             <tbody className="divide-y divide-gray-200">
+L435:               {filteredLeads.length === 0 ? (
+L436:                 <tr><td colSpan={11} className="px-6 py-12 text-center text-gray-400">No leads found</td></tr>
+L437:               ) : filteredLeads.map(lead => (
+L438:                 <>
+L439:                   <tr key={lead.id} onClick={(e) => { const t = e.target as HTMLElement; if (t.closest('button, input, select, a, label')) return; setDrawerOpenForLead(lead) }} className={`hover:bg-gray-50 cursor-pointer ${updatingStatus === lead.id ? 'opacity-60' : ''}`}>
+L440:                     <td className="px-4 py-3">
+L441:                       <input type="checkbox"
+L442:                         checked={selectedLeads.has(lead.id)}
+L443:                         onChange={e => {
+L444:                           const s = new Set(selectedLeads)
+L445:                           e.target.checked ? s.add(lead.id) : s.delete(lead.id)
+L446:                           setSelectedLeads(s)
+L447:                         }}
+L448:                         className="h-4 w-4 rounded border-gray-300"
+L449:                       />
+L450:                     </td>
+L451:                     <td className="px-4 py-3 whitespace-nowrap text-gray-600 text-xs">
+L452:                       {new Date(lead.created_at).toLocaleDateString('en-CA')}
+L453:                       <div className="text-gray-400">{new Date(lead.created_at).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' })}</div>
+L454:                     </td>
+L455:                     <td className="px-4 py-3">
+L456:                       <div className="flex items-center gap-2">
+L457:                         <span className="font-medium text-gray-900">{lead.contact_name}</span>
+L458:                         {(() => {
+L459:                           const eng = calcEngagement(activities[lead.id] || []);
+L460:                           return (
+L461:                             <span className={`text-xs font-semibold ${eng.color}`} title={`Engagement: ${eng.label} (${eng.score})`}>
+L462:                               {eng.label} Â· {eng.score}
+L463:                             </span>
+L464:                           );
+L465:                         })()}
+L466:                         {/* L5: VIP pending badge -- excludes expired-but-not-yet-marked-expired rows */}
+L467:                         {(vipRequests[lead.id] || []).some((v: any) => v.status === 'pending' && (!v.expires_at || new Date(v.expires_at) > new Date())) && (
+L468:                           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 animate-pulse" title="VIP request pending approval">
+L469:                             VIP Pending
+L470:                           </span>
+L471:                         )}
+L472:                         {/* L6: Approve VIP link button -- opens existing token-based approve route */}
+L473:                         {(() => {
+L474:                           const pendingVip = (vipRequests[lead.id] || []).find((v: any) => v.status === 'pending' && (!v.expires_at || new Date(v.expires_at) > new Date()) && v.approval_token)
+L475:                           if (!pendingVip) return null
+L476:                           const baseRoute = pendingVip.request_type === 'estimator' ? 'estimator/vip-approve' : 'charlie/vip-approve'
+L477:                           const url = '/api/walliam/' + baseRoute + '?token=' + pendingVip.approval_token + '&action=approve'
+L478:                           return (
+L479:                             <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-600 text-white hover:bg-emerald-700" title="Approve VIP request (opens approval page in new tab)">
+L480:                               Approve VIP
+L481:                             </a>
+L482:                           )
+L483:                         })()}
+L484:                       </div>
+L485:                       <a href={`mailto:${lead.contact_email}`} className="text-blue-600 text-xs">{lead.contact_email}</a>
+L486:                       {lead.contact_phone && <div className="text-gray-400 text-xs">{lead.contact_phone}</div>}
+L487:                     </td>
+L488:                     <td className="px-4 py-3">
+L489:                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROUTE_COLORS[deriveLeadOriginRoute(lead.source)]}`}>
+L490:                         {ROUTE_LABELS[deriveLeadOriginRoute(lead.source)]}
+L491:                       </span>
+L492:                     </td>
+L493:                     <td className="px-4 py-3">
+L494:                       {lead.intent && (
+L495:                         <span className={`px-2 py-1 rounded-full text-xs font-semibold ${intentColor(lead.intent)}`}>
+L496:                           {lead.intent === 'buyer' ? 'ðŸ  Buyer' : 'ðŸ’° Seller'}
+L497:                         </span>
+L498:                       )}
+L499:                     </td>
+L500:                     <td className="px-4 py-3 text-gray-700 text-xs">{lead.geo_name || 'â€”'}</td>
+L501:                     <td className="px-4 py-3">
+L502:                       <div className="text-xs font-medium text-gray-900">{lead.agents?.full_name || 'â€”'}</div>
+L503:                     </td>
+L504:                     <td className="px-4 py-3">
+L505:                       {(lead.manager || lead.area_manager || lead.tenant_admin) ? (
+L506:                         <div className="text-xs text-gray-500 space-y-0.5">
+L507:                           {lead.manager && (
+L508:                             <div title="Manager">
+L509:                               <span className="text-gray-400 mr-1">â†‘</span>
+L510:                               {lead.manager.full_name}
+
+===== components\admin-homes\AdminHomesLeadsClient.tsx L540-L630 (Quality col L1/L5/L6) =====
+L540:                       </select>
+L541:                     </td>
+L542:                     {/* Inline quality action buttons -- L1 ships 4 state buttons */}
+L543:                     <td className="px-4 py-3">
+L544:                       <div className="flex gap-1 flex-wrap">
+L545:                         {QUALITY_VALUES.map(q => {
+L546:                           const isActive = lead.quality === q
+L547:                           return (
+L548:                             <button
+L549:                               key={q}
+L550:                               onClick={() => updateLeadStatus(lead.id, 'quality', q)}
+L551:                               disabled={updatingStatus === lead.id}
+L552:                               className={`text-xs px-2 py-1 rounded-full font-semibold transition-colors ${isActive ? qualityColor(q) : 'bg-white text-gray-400 border border-gray-200 hover:bg-gray-50'} ${updatingStatus === lead.id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+L553:                               title={QUALITY_LABELS[q]}
+L554:                             >
+L555:                               {QUALITY_LABELS[q]}
+L556:                             </button>
+L557:                           )
+L558:                         })}
+L559:                       </div>
+L560:                       {/* L5: Credit posture chip -- only renders for leads with user_id */}
+L561:                       {lead.user_id && (() => {
+L562:                         const o = creditOverrides[lead.user_id as string]
+L563:                         if (!o) return <div className="mt-1 text-xs text-gray-400">Default credits</div>
+L564:                         const vals = [o.ai_chat_limit, o.buyer_plan_limit, o.seller_plan_limit, o.estimator_limit]
+L565:                         const nonNullVals = vals.filter((v: any) => v != null) as number[]
+L566:                         const allZero = nonNullVals.length > 0 && nonNullVals.every((v) => v === 0)
+L567:                         if (allZero) return <div className="mt-1 text-xs font-semibold text-red-600">Blocked: 0 credits</div>
+L568:                         const labels = [
+L569:                           o.ai_chat_limit != null ? 'Chat:' + o.ai_chat_limit : null,
+L570:                           o.buyer_plan_limit != null ? 'Buyer:' + o.buyer_plan_limit : null,
+L571:                           o.seller_plan_limit != null ? 'Seller:' + o.seller_plan_limit : null,
+L572:                           o.estimator_limit != null ? 'Est:' + o.estimator_limit : null,
+L573:                         ].filter(Boolean) as string[]
+L574:                         if (labels.length === 0) return <div className="mt-1 text-xs text-gray-400">Default credits</div>
+L575:                         return <div className="mt-1 text-xs text-emerald-700">{labels.join(' Â· ')}</div>
+L576:                       })()}
+L577:                       {/* L6: Grant credits inline button + form -- POSTs to /api/admin-homes/users/override */}
+L578:                       {lead.user_id && (grantFormOpenFor === lead.id ? (
+L579:                         <div className="mt-2 p-2 border border-emerald-200 bg-emerald-50 rounded space-y-1">
+L580:                           <div className="text-xs font-semibold text-emerald-700">Grant credits (clamped to tenant hard caps)</div>
+L581:                           <div className="grid grid-cols-2 gap-1">
+L582:                             <input type="number" placeholder="Chat" value={grantFormValues.aiChatLimit} onChange={e => setGrantFormValues((v: any) => ({...v, aiChatLimit: e.target.value}))} className="text-xs px-2 py-1 rounded border border-gray-200" />
+L583:                             <input type="number" placeholder="Buyer Plan" value={grantFormValues.buyerPlanLimit} onChange={e => setGrantFormValues((v: any) => ({...v, buyerPlanLimit: e.target.value}))} className="text-xs px-2 py-1 rounded border border-gray-200" />
+L584:                             <input type="number" placeholder="Seller Plan" value={grantFormValues.sellerPlanLimit} onChange={e => setGrantFormValues((v: any) => ({...v, sellerPlanLimit: e.target.value}))} className="text-xs px-2 py-1 rounded border border-gray-200" />
+L585:                             <input type="number" placeholder="Estimator" value={grantFormValues.estimatorLimit} onChange={e => setGrantFormValues((v: any) => ({...v, estimatorLimit: e.target.value}))} className="text-xs px-2 py-1 rounded border border-gray-200" />
+L586:                           </div>
+L587:                           <div className="flex gap-1">
+L588:                             <button onClick={() => handleSubmitGrant(lead)} disabled={granting === lead.id} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+L589:                               {granting === lead.id ? 'Saving...' : 'Save'}
+L590:                             </button>
+L591:                             <button onClick={() => setGrantFormOpenFor(null)} disabled={granting === lead.id} className="text-xs px-2 py-1 rounded bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-50">
+L592:                               Cancel
+L593:                             </button>
+L594:                           </div>
+L595:                         </div>
+L596:                       ) : (
+L597:                         <button onClick={() => handleOpenGrantForm(lead)} className="mt-1 text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
+L598:                           + Grant credits
+L599:                         </button>
+L600:                       ))}
+L601:                     </td>
+L602:                     <td className="px-4 py-3 whitespace-nowrap">
+L603:                       <div className="flex gap-2">
+L604:                         {lead.plan_data && (
+L605:                           <button
+L606:                             onClick={() => setExpandedLead(expandedLead === lead.id ? null : lead.id)}
+L607:                             className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100"
+L608:                           >
+L609:                             {expandedLead === lead.id ? 'Hide Plan' : 'Plan'}
+L610:                           </button>
+L611:                         )}
+L612:                         <button
+L613:                           onClick={() => deleteLead(lead.id)}
+L614:                           className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100"
+L615:                         >
+L616:                           Delete
+L617:                         </button>
+L618:                       </div>
+L619:                     </td>
+L620:                   </tr>
+L621: 
+L622:                   {/* L4: Inline activity preview (last 2) -- full timeline moves to L7 drawer */}
+L623:                   {(activities[lead.id] || []).length > 0 && (
+L624:                     <tr key={lead.id + '-activity-preview'}>
+L625:                       <td colSpan={11} className="px-6 py-2 bg-slate-50 border-b">
+L626:                         <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
+L627:                           <span className="font-semibold text-gray-400 uppercase tracking-wider">Recent activity</span>
+L628:                           {(activities[lead.id] || []).slice(-2).reverse().map((a: any) => (
+L629:                             <span key={a.id} className="inline-flex items-center gap-1.5">
+L630:                               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+
+===== components\admin-homes\AdminHomesLeadsClient.tsx L680-L705 (drawer opener) =====
+L680:               ))}
+L681:             </tbody>
+L682:           </table>
+L683:         </div>
+L684:       </div>
+L685:     {/* L7: Lead detail drawer -- right-side slide-out, click-row triggered */}
+L686:     {drawerOpenForLead && (
+L687:       <>
+L688:         <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setDrawerOpenForLead(null)} aria-hidden="true" />
+L689:         <div className="fixed inset-y-0 right-0 w-[480px] bg-white shadow-2xl z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Lead details">
+L690:           <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+L691:             <div className="min-w-0">
+L692:               <div className="text-base font-semibold text-gray-900 truncate">{drawerOpenForLead.contact_name}</div>
+L693:               <div className="text-xs text-gray-500 truncate">{drawerOpenForLead.contact_email}</div>
+L694:             </div>
+L695:             <button onClick={() => setDrawerOpenForLead(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none px-2" aria-label="Close drawer">
+L696:               {'\u00d7'}
+L697:             </button>
+L698:           </div>
+L699:           <div className="p-6 space-y-6">
+L700:             {/* Section: Lead Info */}
+L701:             <section>
+L702:               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Lead Info</h3>
+L703:               <dl className="text-sm grid grid-cols-2 gap-2">
+L704:                 <div><dt className="text-xs text-gray-400">Phone</dt><dd className="text-gray-800">{drawerOpenForLead.contact_phone || '\u2014'}</dd></div>
+L705:                 <div><dt className="text-xs text-gray-400">Intent</dt><dd className="text-gray-800">{drawerOpenForLead.intent || '\u2014'}</dd></div>
+
+===== components\admin-homes\AdminHomesLeadsClient.tsx L830-L846 (drawer end) =====
+L830:                 </div>
+L831:               )}
+L832:             </section>
+L833:             {/* Section: Legacy leads.notes free-text */}
+L834:             {drawerOpenForLead.notes && (
+L835:               <section>
+L836:                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Admin Notes (legacy free-text)</h3>
+L837:                 <div className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-wrap">{drawerOpenForLead.notes}</div>
+L838:               </section>
+L839:             )}
+L840:           </div>
+L841:         </div>
+L842:       </>
+L843:     )}
+L844:     </div>
+L845:   )
+L846: }

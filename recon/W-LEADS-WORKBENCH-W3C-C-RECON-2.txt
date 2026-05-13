@@ -1,0 +1,255 @@
+===== app/api/walliam/estimator/vip-request/route.ts (494 lines, LF) =====
+--- buildApprovalEmailHtml (decl L410, calls at: L221) ---
+  ~~~ call context L216-L246 ~~~
+  L216:     // Build approval URLs
+  L217:     const baseUrl = buildBaseUrl(domain)
+  L218:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+  L219:     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+  L220: 
+  L221:     const emailHtml = buildApprovalEmailHtml({
+  L222:       fullName: userName || `${brandName} User`,
+  L223:       phone,
+  L224:       email: userEmail,
+  L225:       buildingName,
+  L226:       pageUrl,
+  L227:       approveUrl,
+  L228:       denyUrl,
+  L229:       agentName: agent?.full_name || 'Agent',
+  L230:       brandName,
+  L231:     })
+  L232: 
+  L233:     // Single email to full chain via helper (replaces F64 dual-send anti-pattern)
+  L234:     let recipients
+  L235:     try {
+  L236:       recipients = await getLeadEmailRecipients(tenantId || '', agent?.id || null, supabase)
+  L237:     } catch (err) {
+  L238:       if (err instanceof AdminPlatformUnreachable) {
+  L239:         console.error('[walliam/estimator/vip-request] admin platform unreachable:', err.message)
+  L240:         recipients = null
+  L241:       } else {
+  L242:         throw err
+  L243:       }
+  L244:     }
+  L245: 
+  L246:     if (recipients) {
+--- buildUserApprovalEmailHtml (decl L471, calls at: L335) ---
+  ~~~ call context L330-L360 ~~~
+  L330:         try {
+  L331:           await sendTenantEmail({
+  L332:             tenantId: tenantId || '',
+  L333:             to: userEmail,
+  L334:             subject: `${brandName} Estimator Access Approved`,
+  L335:             html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, domain, baseUrl),
+  L336:           })
+  L337:         } catch (err) {
+  L338:           // F67 standard try/catch
+  L339:           if (err instanceof TenantEmailNotConfigured) {
+  L340:             console.warn('[walliam/estimator/vip-request] tenant email not configured (user approval):', err.message)
+  L341:           } else if (err instanceof TenantEmailFailed) {
+  L342:             console.error('[walliam/estimator/vip-request] resend send failed (user approval):', err.message)
+  L343:           } else {
+  L344:             console.error('[walliam/estimator/vip-request] unexpected user approval email error:', err)
+  L345:           }
+  L346:         }
+  L347:       }
+  L348: 
+  L349:       return NextResponse.json({
+  L350:         success: true,
+  L351:         requestId: vipRequest.id,
+  L352:         status: 'approved',
+  L353:         messagesGranted: autoApproveMessages,
+  L354:         message: 'VIP access automatically approved',
+  L355:       })
+  L356:     }
+  L357: 
+  L358:     return NextResponse.json({
+  L359:       success: true,
+  L360:       requestId: vipRequest.id,
+--- send mechanisms at: L249,L331 ---
+  ~~~ send context L247-L271 ~~~
+  L247:       try {
+  L248:         const subject = `${brandName} Estimator VIP Request: ${phone}`
+  L249:         const sendResult = await sendTenantEmail({
+  L250:           tenantId: tenantId || '',
+  L251:           to: recipients.to,
+  L252:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+  L253:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+  L254:           subject,
+  L255:           html: emailHtml,
+  L256:         })
+  L257:         if (lead?.id) {
+  L258:           await logEmailRecipients({
+  L259:             supabase,
+  L260:             tenantId: tenantId || '',
+  L261:             leadId: lead.id,
+  L262:             agentId: agent?.id || null,
+  L263:             recipients,
+  L264:             subject,
+  L265:             templateKey: 'walliam_estimator_vip_request_chain',
+  L266:             resendMessageId: sendResult.id,
+  L267:           })
+  L268:         }
+  L269:       } catch (err) {
+  L270:         // F67 standard try/catch
+  L271:         if (err instanceof TenantEmailNotConfigured) {
+  ~~~ send context L329-L353 ~~~
+  L329:       if (userEmail) {
+  L330:         try {
+  L331:           await sendTenantEmail({
+  L332:             tenantId: tenantId || '',
+  L333:             to: userEmail,
+  L334:             subject: `${brandName} Estimator Access Approved`,
+  L335:             html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, domain, baseUrl),
+  L336:           })
+  L337:         } catch (err) {
+  L338:           // F67 standard try/catch
+  L339:           if (err instanceof TenantEmailNotConfigured) {
+  L340:             console.warn('[walliam/estimator/vip-request] tenant email not configured (user approval):', err.message)
+  L341:           } else if (err instanceof TenantEmailFailed) {
+  L342:             console.error('[walliam/estimator/vip-request] resend send failed (user approval):', err.message)
+  L343:           } else {
+  L344:             console.error('[walliam/estimator/vip-request] unexpected user approval email error:', err)
+  L345:           }
+  L346:         }
+  L347:       }
+  L348: 
+  L349:       return NextResponse.json({
+  L350:         success: true,
+  L351:         requestId: vipRequest.id,
+  L352:         status: 'approved',
+  L353:         messagesGranted: autoApproveMessages,
+
+===== app/api/walliam/estimator/vip-questionnaire/route.ts (365 lines, LF) =====
+--- buildQuestionnaireEmailHtml (decl L301, calls at: L208) ---
+  ~~~ call context L203-L233 ~~~
+  L203:         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadError)
+  L204:       }
+  L205:     }
+  L206: 
+  L207:     // Build the chain notification email
+  L208:     const emailHtml = buildQuestionnaireEmailHtml({
+  L209:       brandName,
+  L210:       userName: userName || `${brandName} User`,
+  L211:       phone: vipRequest.phone,
+  L212:       email: userEmail,
+  L213:       buyerTypeDisplay,
+  L214:       budgetDisplay,
+  L215:       timelineDisplay,
+  L216:       buildingName: vipRequest.building_name,
+  L217:       requirements,
+  L218:     })
+  L219: 
+  L220:     // Single email to full chain via helper (replaces F64 dual-send)
+  L221:     let recipients
+  L222:     try {
+  L223:       recipients = await getLeadEmailRecipients(tenantId || '', agent?.id || null, supabase)
+  L224:     } catch (err) {
+  L225:       if (err instanceof AdminPlatformUnreachable) {
+  L226:         console.error('[walliam/estimator/vip-questionnaire] admin platform unreachable:', err.message)
+  L227:         recipients = null
+  L228:       } else {
+  L229:         throw err
+  L230:       }
+  L231:     }
+  L232: 
+  L233:     if (recipients) {
+--- send mechanisms at: L250 ---
+  ~~~ send context L248-L272 ~~~
+  L248:       try {
+  L249:         const subject = `📋 ${brandName} Estimator Questionnaire — ${userName || vipRequest.phone}`
+  L250:         const sendResult = await sendTenantEmail({
+  L251:           tenantId: tenantId || '',
+  L252:           to: recipients.to,
+  L253:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+  L254:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+  L255:           subject,
+  L256:           html: emailHtml,
+  L257:         })
+  L258:         if (leadIdForAudit) {
+  L259:           await logEmailRecipients({
+  L260:             supabase,
+  L261:             tenantId: tenantId || '',
+  L262:             leadId: leadIdForAudit,
+  L263:             agentId: agent?.id || null,
+  L264:             recipients,
+  L265:             subject,
+  L266:             templateKey: 'walliam_estimator_vip_questionnaire_chain',
+  L267:             resendMessageId: sendResult.id,
+  L268:           })
+  L269:         }
+  L270:       } catch (err) {
+  L271:         // F67 standard try/catch
+  L272:         if (err instanceof TenantEmailNotConfigured) {
+
+===== app/api/walliam/estimator/vip-approve/route.ts (259 lines, CRLF) =====
+--- buildUserApprovalEmailHtml (decl L199, calls at: L168) ---
+  ~~~ call context L163-L193 ~~~
+  L163:             tenantId: tenantId || '',
+  L164:             to: vipRequest.email,
+  L165:             cc: managerEmail ? [managerEmail] : undefined,
+  L166:             bcc: bccList,
+  L167:             subject: `Your ${brandName} Estimator Access is Approved`,
+  L168:             html: buildUserApprovalEmailHtml(
+  L169:               vipRequest.full_name,
+  L170:               agent?.full_name || brandName,
+  L171:               attemptsToGrant,
+  L172:               brandName,
+  L173:               baseUrl
+  L174:             ),
+  L175:           })
+  L176:         } catch (err) {
+  L177:           // F67 standard try/catch pattern
+  L178:           if (err instanceof TenantEmailNotConfigured) {
+  L179:             console.warn('[walliam/estimator/vip-approve] tenant email not configured:', err.message)
+  L180:           } else if (err instanceof TenantEmailFailed) {
+  L181:             console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
+  L182:           } else {
+  L183:             console.error('[walliam/estimator/vip-approve] unexpected email error:', err)
+  L184:           }
+  L185:         }
+  L186:       }
+  L187: 
+  L188:       return createHtmlResponse('approved', `Estimator access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${attemptsToGrant} additional estimate${attemptsToGrant > 1 ? 's' : ''}.`, brandName)
+  L189:     } else {
+  L190:       return createHtmlResponse('denied', `Estimator VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`, brandName)
+  L191:     }
+  L192: 
+  L193:   } catch (error) {
+--- send mechanisms at: L162 ---
+  ~~~ send context L160-L184 ~~~
+  L160: 
+  L161:         try {
+  L162:           await sendTenantEmail({
+  L163:             tenantId: tenantId || '',
+  L164:             to: vipRequest.email,
+  L165:             cc: managerEmail ? [managerEmail] : undefined,
+  L166:             bcc: bccList,
+  L167:             subject: `Your ${brandName} Estimator Access is Approved`,
+  L168:             html: buildUserApprovalEmailHtml(
+  L169:               vipRequest.full_name,
+  L170:               agent?.full_name || brandName,
+  L171:               attemptsToGrant,
+  L172:               brandName,
+  L173:               baseUrl
+  L174:             ),
+  L175:           })
+  L176:         } catch (err) {
+  L177:           // F67 standard try/catch pattern
+  L178:           if (err instanceof TenantEmailNotConfigured) {
+  L179:             console.warn('[walliam/estimator/vip-approve] tenant email not configured:', err.message)
+  L180:           } else if (err instanceof TenantEmailFailed) {
+  L181:             console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
+  L182:           } else {
+  L183:             console.error('[walliam/estimator/vip-approve] unexpected email error:', err)
+  L184:           }
+
+===== vip-approve: vip_request record read locations =====
+vip_request / page_url refs at: L44,L45,L60,L69,L70,L71,L76,L85,L91,L94,L95,L102,L108,L111,L120,L128,L136,L164,L169,L188,L190
+  L44:     const { data: vipRequest, error: findError } = await supabase
+  L45:       .from('vip_requests')
+  L60:     const tenantId = vipRequest.chat_sessions?.tenant_id ?? null
+  L69:     if (vipRequest.status !== 'pending') return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`, brandName)
+  L70:     if (new Date(vipRequest.expires_at) < new Date()) {
+  L71:       await supabase.from('vip_requests').update({ status: 'expired' }).eq('id', vipRequest.id)
+  L76:     const agent = vipRequest.agents
+  L85:       .from('vip_requests')

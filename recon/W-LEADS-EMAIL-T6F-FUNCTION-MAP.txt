@@ -1,0 +1,202 @@
+W-LEADS-EMAIL T6f function-map recon (corrects probe-t6f-brand-context)
+Generated: 2026-05-11T14:18:36.853Z
+
+==============================================================================
+FILE: app/api/charlie/lead/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  37..L  43  createServiceClient
+      signature: function createServiceClient() {
+    L  45..L 316  POST
+      signature: export async function POST(req: NextRequest) {
+    L 320..L 328  buildUserPlanEmail
+      signature: function buildUserPlanEmail(data: {
+    L 448..L 457  buildAgentLeadEmail
+      signature: function buildAgentLeadEmail(data: {
+
+  Hit  ->  enclosing module-level fn:
+    L  35  ->  (module-level / outside any fn)
+    L 250  ->  POST
+    L 432  ->  (module-level / outside any fn)
+    L 439  ->  (module-level / outside any fn)
+    L 518  ->  (module-level / outside any fn)
+
+==============================================================================
+FILE: app/api/charlie/plan-email/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  30..L  42  trackUserActivity
+      signature: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+    L  43..L  49  createServiceClient
+      signature: function createServiceClient() {
+    L  51..L 221  POST
+      signature: export async function POST(req: NextRequest) {
+    L 225..L 240  buildRichPlanEmail
+      signature: function buildRichPlanEmail(data: {
+
+  Hit  ->  enclosing module-level fn:
+    L  27  ->  (module-level / outside any fn)
+    L 154  ->  POST
+    L 632  ->  (module-level / outside any fn)
+    L 637  ->  (module-level / outside any fn)
+
+==============================================================================
+FILE: app/api/charlie/appointment/route.ts
+==============================================================================
+
+  Module-level declarations (6):
+    L  28..L  40  trackUserActivity
+      signature: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+    L  41..L  47  createServiceClient
+      signature: function createServiceClient() {
+    L  49..L  52  formatDate
+      signature: function formatDate(dateStr: string): string {
+    L  54..L 264  POST
+      signature: export async function POST(req: NextRequest) {
+    L 268..L 276  buildUserConfirmationEmail
+      signature: function buildUserConfirmationEmail(data: {
+    L 343..L 352  buildAgentNotificationEmail
+      signature: function buildAgentNotificationEmail(data: {
+
+  Hit  ->  enclosing module-level fn:
+    L  25  ->  (module-level / outside any fn)
+    L 335  ->  (module-level / outside any fn)
+    L 403  ->  (module-level / outside any fn)
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-request/route.ts
+==============================================================================
+
+  Module-level declarations (6):
+    L  27..L  39  trackUserActivity
+      signature: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+    L  40..L  46  createServiceClient
+      signature: function createServiceClient() {
+    L  48..L 366  POST
+      signature: export async function POST(request: NextRequest) {
+    L 370..L 405  GET
+      signature: export async function GET(request: NextRequest) {
+    L 407..L 416  buildApprovalEmailHtml
+      signature: function buildApprovalEmailHtml(data: {
+    L 467..L 490  buildUserApprovalEmailHtml
+      signature: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number): string {
+
+  Hit  ->  enclosing module-level fn:
+    L 166  ->  POST
+    L 196  ->  POST
+    L 203  ->  POST
+    L 215  ->  POST
+    L 216  ->  POST
+    L 217  ->  POST
+    L 220  ->  POST
+    L 245  ->  POST
+    L 331  ->  POST
+    L 332  ->  POST
+    L 420  ->  (module-level / outside any fn)
+    L 432  ->  (module-level / outside any fn)
+    L 473  ->  buildUserApprovalEmailHtml
+    L 482  ->  buildUserApprovalEmailHtml
+    L 484  ->  buildUserApprovalEmailHtml
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-approve/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  24..L  30  createServiceClient
+      signature: function createServiceClient() {
+    L  32..L 184  GET
+      signature: export async function GET(request: NextRequest) {
+    L 186..L 203  buildUserApprovalEmailHtml
+      signature: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number): string {
+    L 205..L 246  createHtmlResponse
+      signature: function createHtmlResponse(status: string, message: string): NextResponse {
+
+  Hit  ->  enclosing module-level fn:
+    L 156  ->  GET
+    L 159  ->  GET
+    L 192  ->  buildUserApprovalEmailHtml
+    L 198  ->  buildUserApprovalEmailHtml
+    L 218  ->  createHtmlResponse
+
+==============================================================================
+FILE: app/api/walliam/estimator/session/route.ts
+==============================================================================
+
+  Module-level declarations (2):
+    L   9..L  15  createServiceClient
+      signature: function createServiceClient() {
+    L  17..L 222  POST
+      signature: export async function POST(request: NextRequest) {
+
+  Hit  ->  enclosing module-level fn:
+    L  86  ->  POST
+    L 148  ->  POST
+    L 191  ->  POST
+
+==============================================================================
+FILE: app/api/walliam/estimator/vip-questionnaire/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  27..L  39  trackUserActivity
+      signature: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+    L  40..L  46  createServiceClient
+      signature: function createServiceClient() {
+    L  48..L  48  POST
+      signature: export async function POST(request: NextRequest) {
+    L 299..L 308  buildQuestionnaireEmailHtml
+      signature: function buildQuestionnaireEmailHtml(data: {
+
+  Hit  ->  enclosing module-level fn:
+    L 148  ->  (module-level / outside any fn)
+    L 169  ->  (module-level / outside any fn)
+    L 190  ->  (module-level / outside any fn)
+    L 208  ->  (module-level / outside any fn)
+    L 247  ->  (module-level / outside any fn)
+    L 312  ->  (module-level / outside any fn)
+    L 357  ->  (module-level / outside any fn)
+
+==============================================================================
+FILE: app/api/walliam/charlie/vip-approve/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  10..L  16  createServiceClient
+      signature: function createServiceClient() {
+    L  18..L 189  GET
+      signature: export async function GET(request: NextRequest) {
+    L 191..L 218  buildUserApprovalEmailHtml
+      signature: function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number): string {
+    L 220..L 296  createHtmlResponse
+      signature: function createHtmlResponse(status: string, message: string): NextResponse {
+
+  Hit  ->  enclosing module-level fn:
+    L 162  ->  GET
+    L 165  ->  GET
+    L 197  ->  buildUserApprovalEmailHtml
+    L 205  ->  buildUserApprovalEmailHtml
+    L 211  ->  buildUserApprovalEmailHtml
+    L 212  ->  buildUserApprovalEmailHtml
+    L 234  ->  createHtmlResponse
+
+==============================================================================
+FILE: app/api/walliam/contact/route.ts
+==============================================================================
+
+  Module-level declarations (4):
+    L  27..L  39  trackUserActivity
+      signature: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+    L  40..L  46  createServiceClient
+      signature: function createServiceClient() {
+    L  48..L 187  POST
+      signature: export async function POST(req: NextRequest) {
+    L 189..L 189  buildContactEmail
+      signature: function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id }: any): string {
+
+  Hit  ->  enclosing module-level fn:
+    L 113  ->  POST
+    L 125  ->  POST
+    L 175  ->  POST

@@ -1,0 +1,316 @@
+===== components/admin-homes/AdminHomesLeadsClient.tsx =====
+lines: 846, LE: LF, size: 48034 bytes
+
+--- L1 quality buttons (STRIP) (1 hits) ---
+  hit @ L550:
+    L549:                               key={q}
+    L550:                               onClick={() => updateLeadStatus(lead.id, 'quality', q)}
+    L551:                               disabled={updatingStatus === lead.id}
+    L552:                               className={`text-xs px-2 py-1 rounded-full font-semibold transition-colors ${isActive ? qualityColor(q) : 'bg-white text-gray-400 border border-gray-200 hover:bg-gray-50'...[TRUNC]
+    L553:                               title={QUALITY_LABELS[q]}
+    L554:                             >
+
+--- L1 quality state/handlers (STRIP) (0 hits) ---
+  (no hits)
+
+--- L5 credit chip + VIP pending (STRIP) (3 hits) ---
+  hit @ L466:
+    L465:                         })()}
+    L466:                         {/* L5: VIP pending badge -- excludes expired-but-not-yet-marked-expired rows */}
+    L467:                         {(vipRequests[lead.id] || []).some((v: any) => v.status === 'pending' && (!v.expires_at || new Date(v.expires_at) > new Date())) && (
+    L468:                           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 animate-pulse" title="VIP request pending approval">
+    L469:                             VIP Pending
+    L470:                           </span>
+  hit @ L468:
+    L467:                         {(vipRequests[lead.id] || []).some((v: any) => v.status === 'pending' && (!v.expires_at || new Date(v.expires_at) > new Date())) && (
+    L468:                           <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 animate-pulse" title="VIP request pending approval">
+    L469:                             VIP Pending
+    L470:                           </span>
+    L471:                         )}
+    L472:                         {/* L6: Approve VIP link button -- opens existing token-based approve route */}
+
+--- L5 chip class hints (STRIP) (1 hits) ---
+  hit @ L560:
+    L559:                       </div>
+    L560:                       {/* L5: Credit posture chip -- only renders for leads with user_id */}
+    L561:                       {lead.user_id && (() => {
+    L562:                         const o = creditOverrides[lead.user_id as string]
+    L563:                         if (!o) return <div className="mt-1 text-xs text-gray-400">Default credits</div>
+    L564:                         const vals = [o.ai_chat_limit, o.buyer_plan_limit, o.seller_plan_limit, o.estimator_limit]
+
+--- L6 grant credits form (STRIP) (9 hits) ---
+  hit @ L569:
+    L568:                         const labels = [
+    L569:                           o.ai_chat_limit != null ? 'Chat:' + o.ai_chat_limit : null,
+    L570:                           o.buyer_plan_limit != null ? 'Buyer:' + o.buyer_plan_limit : null,
+    L571:                           o.seller_plan_limit != null ? 'Seller:' + o.seller_plan_limit : null,
+    L572:                           o.estimator_limit != null ? 'Est:' + o.estimator_limit : null,
+    L573:                         ].filter(Boolean) as string[]
+  hit @ L570:
+    L569:                           o.ai_chat_limit != null ? 'Chat:' + o.ai_chat_limit : null,
+    L570:                           o.buyer_plan_limit != null ? 'Buyer:' + o.buyer_plan_limit : null,
+    L571:                           o.seller_plan_limit != null ? 'Seller:' + o.seller_plan_limit : null,
+    L572:                           o.estimator_limit != null ? 'Est:' + o.estimator_limit : null,
+    L573:                         ].filter(Boolean) as string[]
+    L574:                         if (labels.length === 0) return <div className="mt-1 text-xs text-gray-400">Default credits</div>
+
+--- L6 override POST handler (STRIP) (2 hits) ---
+  hit @ L187:
+    L186:       }
+    L187:       const res = await fetch('/api/admin-homes/users/override', {
+    L188:         method: 'POST',
+    L189:         headers: { 'Content-Type': 'application/json' },
+    L190:         body: JSON.stringify(body),
+    L191:       })
+  hit @ L577:
+    L576:                       })()}
+    L577:                       {/* L6: Grant credits inline button + form -- POSTs to /api/admin-homes/users/override */}
+    L578:                       {lead.user_id && (grantFormOpenFor === lead.id ? (
+    L579:                         <div className="mt-2 p-2 border border-emerald-200 bg-emerald-50 rounded space-y-1">
+    L580:                           <div className="text-xs font-semibold text-emerald-700">Grant credits (clamped to tenant hard caps)</div>
+    L581:                           <div className="grid grid-cols-2 gap-1">
+
+--- L7 drawer w-[480px] (STRIP) (1 hits) ---
+  hit @ L689:
+    L688:         <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setDrawerOpenForLead(null)} aria-hidden="true" />
+    L689:         <div className="fixed inset-y-0 right-0 w-[480px] bg-white shadow-2xl z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Lead details">
+    L690:           <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+    L691:             <div className="min-w-0">
+    L692:               <div className="text-base font-semibold text-gray-900 truncate">{drawerOpenForLead.contact_name}</div>
+    L693:               <div className="text-xs text-gray-500 truncate">{drawerOpenForLead.contact_email}</div>
+
+--- L7 drawer dialog role (STRIP) (1 hits) ---
+  hit @ L689:
+    L688:         <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setDrawerOpenForLead(null)} aria-hidden="true" />
+    L689:         <div className="fixed inset-y-0 right-0 w-[480px] bg-white shadow-2xl z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Lead details">
+    L690:           <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+    L691:             <div className="min-w-0">
+    L692:               <div className="text-base font-semibold text-gray-900 truncate">{drawerOpenForLead.contact_name}</div>
+    L693:               <div className="text-xs text-gray-500 truncate">{drawerOpenForLead.contact_email}</div>
+
+--- L7 drawer state (STRIP) (51 hits) ---
+  hit @ L114:
+    L113:   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+    L114:   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
+    L115:   const [expandedLead, setExpandedLead] = useState<string | null>(null)
+    L116:   const [deleting, setDeleting] = useState(false)
+    L117:   const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
+    L118:   const [creditOverrides, setCreditOverrides] = useState<Record<string, any>>(initialCreditOverrides)
+  hit @ L123:
+    L122:   const [granting, setGranting] = useState<string | null>(null)
+    L123:   const [drawerOpenForLead, setDrawerOpenForLead] = useState<Lead | null>(null)
+    L124:   const [emailLog] = useState<Record<string, any[]>>(initialEmailLog)
+    L125:   const [notes] = useState<Record<string, any[]>>(initialNotes)
+    L126: 
+    L127:   useEffect(() => {
+
+--- L7 click-row trigger (STRIP) (1 hits) ---
+  hit @ L439:
+    L438:                 <>
+    L439:                   <tr key={lead.id} onClick={(e) => { const t = e.target as HTMLElement; if (t.closest('button, input, select, a, label')) return; setDrawerOpenForLead(lead) }} className={`hover:bg-gr...[TRUNC]
+    L440:                     <td className="px-4 py-3">
+    L441:                       <input type="checkbox"
+    L442:                         checked={selectedLeads.has(lead.id)}
+    L443:                         onChange={e => {
+
+--- L2 source badge (PRESERVE) (4 hits) ---
+  hit @ L6:
+    L5: import { useState, useMemo, useEffect } from 'react'
+    L6: import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-origin-route'
+    L7: 
+    L8: interface Lead {
+    L9:   id: string
+    L10:   user_id: string | null
+  hit @ L221:
+    L220:     if (filterIntent !== 'all') f = f.filter(l => l.intent === filterIntent)
+    L221:     if (filterSource !== 'all') f = f.filter(l => deriveLeadOriginRoute(l.source) === filterSource)
+    L222:     f.sort((a, b) => {
+    L223:       let cmp = 0
+    L224:       if (sortBy === 'date') cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    L225:       else if (sortBy === 'name') cmp = (a.contact_name || '').localeCompare(b.contact_name || '')
+
+--- L3 hierarchy chain (PRESERVE) (6 hits) ---
+  hit @ L253:
+    L252:       l.manager?.full_name || '',
+    L253:       l.area_manager?.full_name || '',
+    L254:       l.tenant_admin?.full_name || '',
+    L255:       l.status || '',
+    L256:       l.quality || '',
+    L257:     ])
+  hit @ L254:
+    L253:       l.area_manager?.full_name || '',
+    L254:       l.tenant_admin?.full_name || '',
+    L255:       l.status || '',
+    L256:       l.quality || '',
+    L257:     ])
+    L258:     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+
+--- L4 engagement+activity (PRESERVE) (4 hits) ---
+  hit @ L3:
+    L2: // WALLiam leads dashboard — v2
+    L3: // Upgrades: inline status update, source filter, manager column, engagement score, fixed activity panel
+    L4: 'use client'
+    L5: import { useState, useMemo, useEffect } from 'react'
+    L6: import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-origin-route'
+    L7: 
+  hit @ L87:
+    L86: 
+    L87: function calcEngagement(activities: any[]): { score: number; label: string; color: string } {
+    L88:   const score = Math.min(activities.reduce((s, a) => s + (ACTIVITY_SCORES[a.activity_type] || 0), 0), 100)
+    L89:   if (score >= 75) return { score, label: 'Hot', color: 'text-red-600' }
+    L90:   if (score >= 50) return { score, label: 'Warm', color: 'text-orange-500' }
+    L91:   if (score >= 25) return { score, label: 'Active', color: 'text-yellow-600' }
+
+--- All `</button>` lines (for button group identification) — first 20 ---
+  total: 10
+  L399:             </button>
+  L405:               </button>
+  L409:             </button>
+  L556:                             </button>
+  L590:                             </button>
+  L593:                             </button>
+  L599:                         </button>
+  L610:                           </button>
+  L617:                         </button>
+  L697:             </button>
+
+===== app/admin-homes/leads/page.tsx =====
+lines: 220, LE: CRLF, size: 8673 bytes
+
+--- prefetch lead_email_recipients_log (1 .from() hits) ---
+  hit @ L154:
+    L153:     let emailQuery = supabase
+    L154:       .from('lead_email_recipients_log')
+    L155:       .select('id, lead_id, recipient_email, recipient_layer, direction, subject, template_key, status, sent_at, delivered_at, bounced_at, created_at')
+    L156:       .in('lead_id', leadIds)
+    L157:       .order('sent_at', { ascending: false, nullsFirst: false });
+    L158:     if (!seeAll && scopedTenantId) {
+    L159:       emailQuery = emailQuery.eq('tenant_id', scopedTenantId);
+    L160:     }
+    L161:     const { data: emailRows } = await emailQuery;
+    L162:     for (const e of (emailRows || [])) {
+    L163:       const lid = (e as any).lead_id;
+    L164:       if (lid) {
+    L165:         if (!emailLogByLeadId[lid]) emailLogByLeadId[lid] = [];
+    L166:         emailLogByLeadId[lid].push(e);
+
+--- prefetch lead_notes (1 .from() hits) ---
+  hit @ L174:
+    L173:     const { data: noteRows } = await supabase
+    L174:       .from('lead_notes')
+    L175:       .select('id, lead_id, agent_id, note, created_at, updated_at')
+    L176:       .in('lead_id', leadIds)
+    L177:       .order('created_at', { ascending: false });
+    L178:     for (const n of (noteRows || [])) {
+    L179:       const lid = (n as any).lead_id;
+    L180:       if (lid) {
+    L181:         if (!notesByLeadId[lid]) notesByLeadId[lid] = [];
+    L182:         notesByLeadId[lid].push(n);
+    L183:       }
+    L184:     }
+    L185:   }
+    L186: 
+
+--- prefetch user_credit_overrides (1 .from() hits) ---
+  hit @ L114:
+    L113:     let credQuery = supabase
+    L114:       .from('user_credit_overrides')
+    L115:       .select('user_id, ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit, granted_at, granted_by_tier')
+    L116:       .in('user_id', leadUserIds);
+    L117:     if (!seeAll && scopedTenantId) {
+    L118:       credQuery = credQuery.eq('tenant_id', scopedTenantId);
+    L119:     }
+    L120:     const { data: creditRows } = await credQuery;
+    L121:     for (const c of (creditRows || [])) {
+    L122:       const uid = (c as any).user_id;
+    L123:       if (uid) creditByUserId[uid] = c;
+    L124:     }
+    L125:   }
+    L126: 
+
+--- prefetch vip_requests (1 .from() hits) ---
+  hit @ L130:
+    L129:     let vipQuery = supabase
+    L130:       .from('vip_requests')
+    L131:       .select('id, lead_id, status, request_type, messages_granted, created_at, expires_at, approval_token')
+    L132:       .in('lead_id', leadIds);
+    L133:     if (!seeAll && scopedTenantId) {
+    L134:       vipQuery = vipQuery.eq('tenant_id', scopedTenantId);
+    L135:     }
+    L136:     const { data: vipRows } = await vipQuery;
+    L137:     for (const v of (vipRows || [])) {
+    L138:       const lid = (v as any).lead_id;
+    L139:       if (lid) {
+    L140:         if (!vipByLeadId[lid]) vipByLeadId[lid] = [];
+    L141:         vipByLeadId[lid].push(v);
+    L142:       }
+
+--- prefetch user_activities (1 .from() hits) ---
+  hit @ L83:
+    L82:     let actQuery = supabase
+    L83:       .from('user_activities')
+    L84:       .select('id, activity_type, activity_data, page_url, created_at, contact_email')
+    L85:       .in('contact_email', leadEmails)
+    L86:       .order('created_at', { ascending: true });
+    L87:     if (!seeAll && scopedTenantId) {
+    L88:       actQuery = actQuery.eq('tenant_id', scopedTenantId);
+    L89:     }
+    L90:     const { data: allActivities } = await actQuery;
+    L91:     const byEmail: Record<string, any[]> = {};
+    L92:     for (const a of (allActivities || [])) {
+    L93:       const email = (a as any).contact_email;
+    L94:       if (!byEmail[email]) byEmail[email] = [];
+    L95:       byEmail[email].push(a);
+
+--- last 50 lines of page.tsx (likely the render + AdminHomesLeadsClient props) ---
+  L171:   const notesByLeadId: Record<string, any[]> = {};
+  L172:   if (leadIds.length > 0) {
+  L173:     const { data: noteRows } = await supabase
+  L174:       .from('lead_notes')
+  L175:       .select('id, lead_id, agent_id, note, created_at, updated_at')
+  L176:       .in('lead_id', leadIds)
+  L177:       .order('created_at', { ascending: false });
+  L178:     for (const n of (noteRows || [])) {
+  L179:       const lid = (n as any).lead_id;
+  L180:       if (lid) {
+  L181:         if (!notesByLeadId[lid]) notesByLeadId[lid] = [];
+  L182:         notesByLeadId[lid].push(n);
+  L183:       }
+  L184:     }
+  L185:   }
+  L186: 
+  L187:   // Agents for filter dropdown — scoped by role
+  L188:   let agentsQuery = supabase
+  L189:     .from('agents')
+  L190:     .select('id, full_name, email')
+  L191:     .eq('site_type', 'comprehensive')
+  L192:     .order('full_name')
+  L193: 
+  L194:   if (!seeAll && scopedTenantId) {
+  L195:     agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
+  L196:   }
+  L197: 
+  L198:   if (adminUser?.role === 'manager' && adminUser.agentId) {
+  L199:     // Manager only sees themselves + their managed agents in filter
+  L200:     agentsQuery = agentsQuery.in('id', [adminUser.agentId, ...adminUser.managedAgentIds])
+  L201:   } else if (adminUser?.role === 'agent' && adminUser.agentId) {
+  L202:     agentsQuery = agentsQuery.eq('id', adminUser.agentId)
+  L203:   }
+  L204: 
+  L205:   const { data: agents } = await agentsQuery
+  L206: 
+  L207:   return (
+  L208:     <AdminHomesLeadsClient
+  L209:       initialLeads={leads || []}
+  L210:       initialActivities={activitiesByLeadId}
+  L211:       initialCreditOverrides={creditByUserId}
+  L212:       initialVipRequests={vipByLeadId}
+  L213:       initialEmailLog={emailLogByLeadId}
+  L214:       initialNotes={notesByLeadId}
+  L215:       agents={agents || []}
+  L216:       currentRole={adminUser?.role || 'admin'}
+  L217:       currentAgentId={adminUser?.agentId || null}
+  L218:     />
+  L219:   )
+  L220: }
+

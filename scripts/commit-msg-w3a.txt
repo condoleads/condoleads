@@ -1,0 +1,33 @@
+﻿W3a: strip L1/L5/L6/L7 inline noise from leads dashboard
+
+3 files, 18 main + 1 fix-in-flight = 19 transforms shipped as one phase.
+
+app/admin-homes/leads/page.tsx (3 transforms):
+- Main render: L5 user_credit_overrides + vip_requests prefetch removed (43 lines); L7 lead_email_recipients_log + lead_notes prefetch removed (40 lines); 4 render props dropped (initialCreditOverrides, initialVipRequests, initialEmailLog, initialNotes)
+- Early-return render (no-tenant-context branch L43-L58): same 4 props dropped from 2nd <AdminHomesLeadsClient> invocation. Site missed by initial L75-L220 recon; caught by post-patch TSC + 12-pattern residue grep; fixed via indent-agnostic regex with backreference + single-match validation
+
+components/admin-homes/AdminHomesLeadsClient.tsx (11 transforms):
+- Props interface + function destructure trimmed (4 fields each)
+- 8 state hooks removed (creditOverrides, vipRequests, grantFormOpenFor, grantFormValues, granting, drawerOpenForLead, emailLog, notes)
+- useEffect Escape-key drawer handler removed
+- handleOpenGrantForm + handleSubmitGrant removed (51 lines)
+- <tr> onClick + cursor-pointer stripped (row click no-op until W3d)
+- VIP pending badge + Approve VIP IIFE removed (18 lines)
+- Entire Quality column td block + leading L1 comment removed (60 lines)
+- 'Quality' removed from header column-array
+- colSpan 11->10 at both occurrences (empty-state + activity-preview rows)
+- Entire L7 drawer block removed (~159 lines)
+
+docs/W-LEADS-WORKBENCH-TRACKER.md (5 transforms):
+- v9 -> v10 (W3a SHIPPED)
+- W3a phase row OPEN -> SHIPPED
+- W3c phase row OPEN -> SHIPPED (backfill; W3c-A/B/B2/C status log entries already record ship)
+- W3a-SHIPPED status log entry appended
+- Addendum: early-return render fix note + recon-completeness lesson
+
+Verification:
+- TSC --noEmit exit 0
+- 17-pattern residue grep on client.tsx: PASS
+- 12-pattern residue grep on page.tsx: PASS
+
+No regressions: L4 user_activities prefetch + engagement badge + 2-event activity preview unchanged; Status column inline <select> unchanged; agents prefetch + filter dropdown unchanged; Plan toggle + Delete buttons unchanged; tenant-scoping in all surviving queries unchanged. Quality column removed entirely; W6c re-introduces Hot/Cold surfacing with default-sort.

@@ -1,0 +1,404 @@
+=== W3c PHASE 9 2026-05-13T16:02:22.862Z ===
+
+--- buildContactEmail :: app/api/walliam/contact/route.ts ---
+  L200: function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName }: any): string {
+  (function spans L200-L200, 1 lines)
+
+--- buildUserConfirmationEmail :: app/api/charlie/appointment/route.ts ---
+  L273: function buildUserConfirmationEmail(data: {
+  L274:   name: string
+  L275:   intent: string
+  L276:   formattedDate: string
+  L277:   appointment_time: string
+  L278:   appointment_properties?: any[]
+  L279:   agent?: any
+  L280:   rescheduleUrl: string
+  L281:   brandName: string
+  L282:   domain: string
+  L283:   baseUrl: string
+  L284: }): string {
+  (function spans L273-L284, 12 lines)
+
+--- buildAgentNotificationEmail :: app/api/charlie/appointment/route.ts ---
+  L351: function buildAgentNotificationEmail(data: {
+  L352:   name: string
+  L353:   email: string
+  L354:   phone?: string
+  L355:   intent: string
+  L356:   formattedDate: string
+  L357:   appointment_time: string
+  L358:   appointment_properties?: any[]
+  L359:   geo_name?: string
+  L360:   brandName: string
+  L361:   domain: string
+  L362:   baseUrl: string
+  L363: }): string {
+  (function spans L351-L363, 13 lines)
+
+--- buildUserPlanEmail :: app/api/charlie/lead/route.ts ---
+  L323: function buildUserPlanEmail(data: {
+  L324:   name: string
+  L325:   intent: string
+  L326:   buyerProfile?: any
+  L327:   sellerProfile?: any
+  L328:   listings?: any[]
+  L329:   analytics?: any
+  L330:   agent?: any
+  L331:   brandName: string
+  L332:   domain: string
+  L333:   baseUrl: string
+  L334: }): string {
+  (function spans L323-L334, 12 lines)
+
+--- buildAgentLeadEmail :: app/api/charlie/lead/route.ts ---
+  L454: function buildAgentLeadEmail(data: {
+  L455:   name: string
+  L456:   email: string
+  L457:   phone?: string
+  L458:   intent: string
+  L459:   buyerProfile?: any
+  L460:   sellerProfile?: any
+  L461:   listings?: any[]
+  L462:   analytics?: any
+  L463:   brandName: string
+  L464:   domain: string
+  L465:   baseUrl: string
+  L466: }): string {
+  (function spans L454-L466, 13 lines)
+
+--- buildRichPlanEmail :: app/api/charlie/plan-email/route.ts ---
+  L232: function buildRichPlanEmail(data: {
+  L233:   userName: string
+  L234:   userEmail: string
+  L235:   planType: string
+  L236:   plan: any
+  L237:   analytics: any
+  L238:   listings: any[]
+  L239:   agent: any
+  L240:   geoName: string | null
+  L241:   comparables: any[]
+  L242:   sellerEstimate: any | null
+  L243:   vipCreditUsed: boolean
+  L244:   vipCreditPlansUsed: number
+  L245:   vipCreditTotal: number
+  L246:   blocks: any[]
+  L247:   brandName: string
+  L248:   domain: string
+  L249:   baseUrl: string
+  L250: }): string {
+  (function spans L232-L250, 19 lines)
+
+--- buildAgentEmailHtml :: app/api/walliam/charlie/vip-request/route.ts ---
+  L417: function buildAgentEmailHtml(data: {
+  L418:   userName: string
+  L419:   userEmail: string
+  L420:   userPhone: string
+  L421:   planType: string
+  L422:   approveUrl: string
+  L423:   denyUrl: string
+  L424:   agentName: string
+  L425:   brandName: string
+  L426:   tenantDomain: string
+  L427: }): string {
+  (function spans L417-L427, 11 lines)
+
+--- buildUserApprovalEmailHtml :: app/api/walliam/charlie/vip-request/route.ts ---
+  L480: function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number, brandName: string, tenantDomain: string): string {
+  L481:   return `
+  L482:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L483:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+  L484:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  L485:         <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
+  L486:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
+  L487:       </div>
+  L488:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+  L489:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+  L490:           Hi ${userName},
+  L491:         </p>
+  L492:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+  L493:           <strong>${agentName}</strong> has approved your request for additional ${brandName} plan credits.
+  L494:           You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available.
+  L495:         </p>
+  L496:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+  L497:           Head back to ${brandName} to generate your personalized real estate plan. Your agent may also reach out directly.
+  L498:         </p>
+  L499:         <div style="text-align: center;">
+  L500:           <a href="${process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+  L501:             ✦ Back to ${brandName}
+  L502:           </a>
+  L503:         </div>
+  L504:       </div>
+  L505:     </div>
+  L506:   `
+  L507: }
+  (function spans L480-L507, 28 lines)
+
+--- buildApprovalEmailHtml :: app/api/walliam/estimator/vip-request/route.ts ---
+  L410: function buildApprovalEmailHtml(data: {
+  L411:   fullName: string
+  L412:   phone: string
+  L413:   email?: string
+  L414:   buildingName?: string
+  L415:   pageUrl?: string
+  L416:   approveUrl: string
+  L417:   denyUrl: string
+  L418:   agentName: string
+  L419:   brandName: string
+  L420: }): string {
+  (function spans L410-L420, 11 lines)
+
+--- buildUserApprovalEmailHtml :: app/api/walliam/estimator/vip-approve/route.ts ---
+  L199: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, baseUrl: string): string {
+  L200:   return `
+  L201:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L202:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+  L203:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  L204:         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
+  L205:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
+  L206:       </div>
+  L207:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+  L208:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+  L209:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
+  L210:         <div style="text-align: center;">
+  L211:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to ${brandName}</a>
+  L212:         </div>
+  L213:       </div>
+  L214:     </div>
+  L215:   `
+  L216: }
+  (function spans L199-L216, 18 lines)
+
+--- buildQuestionnaireEmailHtml :: app/api/walliam/estimator/vip-questionnaire/route.ts ---
+  L301: function buildQuestionnaireEmailHtml(data: {
+  L302:   userName: string
+  L303:   phone: string
+  L304:   email?: string
+  L305:   buyerTypeDisplay: string
+  L306:   budgetDisplay: string
+  L307:   timelineDisplay: string
+  L308:   buildingName?: string
+  L309:   requirements?: string
+  L310:   brandName: string
+  L311: }): string {
+  (function spans L301-L311, 11 lines)
+
+--- Imports (L1-25 of each affected file) ---
+
+app/api/walliam/contact/route.ts:
+  L1: // app/api/walliam/contact/route.ts
+  L2: // WALLiam contact form lead capture
+  L3: // Used by: building pages, property pages, geo pages
+  L4: // Resolves agent via resolve_agent_for_context
+  L5: //
+  L6: // W-HIERARCHY H3.8 (2026-05-03):
+  L7: //   - getLeadEmailRecipients enforces 6-layer chain (was: inline manager-CC + hardcoded ADMIN_EMAIL)
+  L8: //   - tenant_admin_id captured into lead insert payload (F58)
+  L9: //   - F47 hardcoded ADMIN_EMAIL constant removed
+  L10: //   - F66 walker call shape standardized via helper
+  L11: //   - F67 try/catch standard (was already partially correct on this route — now uniform across both branches)
+  L12: 
+  L13: import { NextRequest, NextResponse } from 'next/server'
+  L14: import { createClient } from '@supabase/supabase-js'
+  L15: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L16: import {
+  L17:   sendTenantEmail,
+  L18:   TenantEmailNotConfigured,
+  L19:   TenantEmailFailed,
+  L20:   getLeadEmailRecipients,
+  L21:   AdminPlatformUnreachable,
+  L22: } from '@/lib/admin-homes/lead-email-recipients'
+  L23: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L24: import { getTenantContext } from '@/lib/utils/tenant-brand'
+  L25: 
+
+app/api/charlie/appointment/route.ts:
+  L1: ﻿// app/api/charlie/appointment/route.ts
+  L2: // WALLiam Charlie appointment booking
+  L3: // Saves lead with appointment fields + sends confirmation emails
+  L4: // System 1 is NEVER touched
+  L5: //
+  L6: // W-HIERARCHY H3.6 (2026-05-03):
+  L7: //   - walkHierarchy replaces inline parent_id query (F48 + F66)
+  L8: //   - getLeadEmailRecipients enforces full 6-layer fan-out (F65 mechanism retired)
+  L9: //   - lead insert payload now includes area_manager_id + tenant_admin_id (F58)
+  L10: //   - F67 try/catch standard for sendTenantEmail errors
+  L11: 
+  L12: import { NextRequest, NextResponse } from 'next/server'
+  L13: import { createClient } from '@supabase/supabase-js'
+  L14: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L15: import {
+  L16:   sendTenantEmail,
+  L17:   TenantEmailNotConfigured,
+  L18:   TenantEmailFailed,
+  L19:   getLeadEmailRecipients,
+  L20:   AdminPlatformUnreachable,
+  L21: } from '@/lib/admin-homes/lead-email-recipients'
+  L22: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L23: import { validateSession } from '@/lib/utils/validate-session'
+  L24: import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+  L25: 
+
+app/api/charlie/lead/route.ts:
+  L1: ﻿// app/api/charlie/lead/route.ts
+  L2: // WALLiam Charlie lead capture — form-submission enrichment writer
+  L3: // Resolves agent via resolve_agent_for_context() — NOT getAgentFromHost
+  L4: //
+  L5: // W-HIERARCHY H3.4b (2026-05-03): comprehensive refactor.
+  L6: //
+  L7: //   ROLE CHANGE: This route was the lead CREATOR. Now it's the lead ENRICHER.
+  L8: //   Plan-email creates the lead at plan-generation time. This route updates that
+  L9: //   row with form-submitted follow-up details (name correction, phone, message).
+  L10: //
+  L11: //   - F53: walkHierarchy replaces direct parent_id query — full chain capture
+  L12: //   - F57: INSERT → UPSERT keyed on (user_id, tenant_id, source, intent).
+  L13: //          Defensive INSERT only if no matching plan-email row found.
+  L14: //   - F60: server-authoritative auth email — uses auth.users.email regardless of
+  L15: //          form-supplied email; form's email field is informational only.
+  L16: //          Name + phone from form (those can legitimately differ from registration).
+  L17: //   - F58 piece: tenant_admin_id captured into lead payload.
+  L18: //   - F47: helper replaces hardcoded ADMIN_EMAIL constant.
+  L19: //   - F67: standard try/catch (TenantEmailNotConfigured / TenantEmailFailed /
+  L20: //          AdminPlatformUnreachable / unexpected).
+  L21: 
+  L22: import { NextRequest, NextResponse } from 'next/server'
+  L23: import { createClient } from '@supabase/supabase-js'
+  L24: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L25: import {
+
+app/api/charlie/plan-email/route.ts:
+  L1: ﻿export const maxDuration = 60
+  L2: 
+  L3: // app/api/charlie/plan-email/route.ts
+  L4: // Sends rich plan email to user + agent + manager + admin BCC
+  L5: // Called client-side from useCharlie after generate_plan tool completes
+  L6: //
+  L7: // W-HIERARCHY H3.8 (2026-05-03):
+  L8: //   - getLeadEmailRecipients enforces 6-layer chain (was: inline conditional with hardcoded ADMIN_EMAIL)
+  L9: //   - tenant_admin_id captured into lead insert payload (F58)
+  L10: //   - F47 hardcoded ADMIN_EMAIL constant removed
+  L11: //   - F66 walker call shape standardized via helper
+  L12: //   - F67 try/catch standard
+  L13: 
+  L14: import { NextRequest, NextResponse } from 'next/server'
+  L15: import { createClient } from '@supabase/supabase-js'
+  L16: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L17: import {
+  L18:   sendTenantEmail,
+  L19:   TenantEmailNotConfigured,
+  L20:   TenantEmailFailed,
+  L21:   getLeadEmailRecipients,
+  L22:   AdminPlatformUnreachable,
+  L23: } from '@/lib/admin-homes/lead-email-recipients'
+  L24: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L25: import { validateSession } from '@/lib/utils/validate-session'
+
+app/api/walliam/charlie/vip-request/route.ts:
+  L1: ﻿// app/api/walliam/charlie/vip-request/route.ts
+  L2: // WALLiam VIP plan request — no questionnaire, user already registered
+  L3: // Adapted from app/api/chat/vip-request/route.ts — System 1 never touched
+  L4: //
+  L5: // W-HIERARCHY H3.8 (2026-05-03):
+  L6: //   - getLeadEmailRecipients enforces 6-layer chain (was: inline manager-CC + hardcoded ADMIN_EMAIL)
+  L7: //   - tenant_admin_id captured into lead insert payload (F58)
+  L8: //   - F47 hardcoded ADMIN_EMAIL constant removed
+  L9: //   - F66 walker call shape standardized via helper
+  L10: //   - F67 try/catch standard
+  L11: 
+  L12: import { NextRequest, NextResponse } from 'next/server'
+  L13: import { createClient } from '@supabase/supabase-js'
+  L14: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L15: import {
+  L16:   sendTenantEmail,
+  L17:   TenantEmailNotConfigured,
+  L18:   TenantEmailFailed,
+  L19:   getLeadEmailRecipients,
+  L20:   AdminPlatformUnreachable,
+  L21: } from '@/lib/admin-homes/lead-email-recipients'
+  L22: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L23: 
+  L24: 
+  L25: function createServiceClient() {
+
+app/api/walliam/estimator/vip-request/route.ts:
+  L1: ﻿// app/api/walliam/estimator/vip-request/route.ts
+  L2: // WALLiam estimator VIP request — adapted from app/api/chat/vip-request/route.ts
+  L3: // System 1 never touched.
+  L4: //
+  L5: // W-HIERARCHY H3.4 (2026-05-03):
+  L6: //   - walkHierarchy added (was: NO walker — F48 piece)
+  L7: //   - getLeadEmailRecipients enforces 6-layer chain on agent notification
+  L8: //   - Two-email anti-pattern collapsed to single send (F64)
+  L9: //   - Lead insert payload now includes manager_id + area_manager_id + tenant_admin_id + tenant_id
+  L10: //     (was: manager_id only, no tenant_id — F48 + F58)
+  L11: //   - F67 try/catch standard
+  L12: 
+  L13: import { NextRequest, NextResponse } from 'next/server'
+  L14: import { createClient } from '@supabase/supabase-js'
+  L15: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L16: import {
+  L17:   sendTenantEmail,
+  L18:   TenantEmailNotConfigured,
+  L19:   TenantEmailFailed,
+  L20:   getLeadEmailRecipients,
+  L21:   AdminPlatformUnreachable,
+  L22: } from '@/lib/admin-homes/lead-email-recipients'
+  L23: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L24: import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+  L25: 
+
+app/api/walliam/estimator/vip-approve/route.ts:
+  L1: // app/api/walliam/estimator/vip-approve/route.ts
+  L2: // Token-based approve/deny for WALLiam estimator VIP requests
+  L3: // Adapted from app/api/chat/vip-approve/route.ts — System 1 never touched
+  L4: // Key differences:
+  L5: //   - Redirects to /admin-homes/leads
+  L6: //   - FROM: notifications@condoleads.ca
+  L7: //   - WALLiam dark theme HTML response
+  L8: //
+  L9: // W-HIERARCHY H3.8b (2026-05-03): inline ADMIN_EMAIL literal removed.
+  L10: // BCC now resolved via getLeadEmailRecipients helper (Admin Platform layer 6,
+  L11: // extensible to delegations via W-ROLES-DELEGATION). F54 retired.
+  L12: 
+  L13: import { NextRequest, NextResponse } from 'next/server'
+  L14: import { createClient } from '@supabase/supabase-js'
+  L15: import {
+  L16:   sendTenantEmail,
+  L17:   TenantEmailNotConfigured,
+  L18:   TenantEmailFailed,
+  L19:   getLeadEmailRecipients,
+  L20:   AdminPlatformUnreachable,
+  L21: } from '@/lib/admin-homes/lead-email-recipients'
+  L22: import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+  L23: 
+  L24: 
+  L25: function createServiceClient() {
+
+app/api/walliam/estimator/vip-questionnaire/route.ts:
+  L1: // app/api/walliam/estimator/vip-questionnaire/route.ts
+  L2: // Adapted from app/api/chat/vip-questionnaire/route.ts — System 1 never touched
+  L3: //
+  L4: // W-HIERARCHY H3.5 (2026-05-03):
+  L5: //   - walkHierarchy added (was: NO walker — F48 piece)
+  L6: //   - getLeadEmailRecipients enforces 6-layer chain on agent notification
+  L7: //   - Two-email anti-pattern collapsed to single send (F64 fully retired with H3.4)
+  L8: //   - Lead UPSERT instead of INSERT — questionnaire enriches existing vip-request lead
+  L9: //     instead of creating duplicate row (F57-class fix for estimator flow)
+  L10: //   - Lead row stamped with full hierarchy chain on enrichment write
+  L11: //   - F67 try/catch standard
+  L12: 
+  L13: import { NextRequest, NextResponse } from 'next/server'
+  L14: import { createClient } from '@supabase/supabase-js'
+  L15: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+  L16: import {
+  L17:   sendTenantEmail,
+  L18:   TenantEmailNotConfigured,
+  L19:   TenantEmailFailed,
+  L20:   getLeadEmailRecipients,
+  L21:   AdminPlatformUnreachable,
+  L22: } from '@/lib/admin-homes/lead-email-recipients'
+  L23: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+  L24: 
+  L25: 
+
+=== PHASE 9 COMPLETE ===
+Output: recon/W-LEADS-WORKBENCH-W3C-PHASE9.txt

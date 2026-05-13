@@ -1,0 +1,300 @@
+﻿
+========================================================================
+GREP: every email-send + lead_email_log write site (excludes backups)
+========================================================================
+
+--- app ---
+
+FILE: C:\Condoleads\project\app\api\01leads-contact\route.ts (1 hits)
+  L10: await resend.emails.send({
+
+FILE: C:\Condoleads\project\app\api\charlie\appointment\route.ts (4 hits)
+  L10: //   - F67 try/catch standard for sendTenantEmail errors
+  L16: sendTenantEmail,
+  L178: await sendTenantEmail({
+  L214: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\charlie\lead\route.ts (3 hits)
+  L26: sendTenantEmail,
+  L247: await sendTenantEmail({
+  L278: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\charlie\plan-email\route.ts (3 hits)
+  L18: sendTenantEmail,
+  L152: await sendTenantEmail({ tenantId: tenantId || '', to: userEmail, subject, html })
+  L178: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\chat\vip-approve\route.ts (1 hits)
+  L175: await resend.emails.send({
+
+FILE: C:\Condoleads\project\app\api\chat\vip-questionnaire\route.ts (2 hits)
+  L177: await resend.emails.send({
+  L190: await resend.emails.send({
+
+FILE: C:\Condoleads\project\app\api\chat\vip-request\route.ts (3 hits)
+  L189: await resend.emails.send({
+  L202: await resend.emails.send({
+  L272: await resend.emails.send({
+
+FILE: C:\Condoleads\project\app\api\email\low-credits\route.ts (2 hits)
+  L17: import { sendTenantEmail } from '@/lib/email/sendTenantEmail'
+  L132: await sendTenantEmail({ tenantId, to: userEmail, subject, html })
+
+FILE: C:\Condoleads\project\app\api\email\welcome\route.ts (4 hits)
+  L16: import { sendTenantEmail } from '@/lib/email/sendTenantEmail'
+  L141: await sendTenantEmail({ tenantId, to: email, subject, html: userHtml })
+  L148: await sendTenantEmail({
+  L157: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\paddle\webhook\route.ts (1 hits)
+  L45: await resend.emails.send({
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\vip-approve\route.ts (2 hits)
+  L7: import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
+  L159: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts (3 hits)
+  L16: sendTenantEmail,
+  L234: await sendTenantEmail({
+  L285: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\walliam\contact\route.ts (2 hits)
+  L17: sendTenantEmail,
+  L140: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\walliam\estimator\vip-approve\route.ts (2 hits)
+  L16: sendTenantEmail,
+  L151: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\walliam\estimator\vip-questionnaire\route.ts (2 hits)
+  L17: sendTenantEmail,
+  L220: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\app\api\walliam\estimator\vip-request\route.ts (3 hits)
+  L17: sendTenantEmail,
+  L235: await sendTenantEmail({
+  L305: await sendTenantEmail({
+
+--- lib ---
+
+FILE: C:\Condoleads\project\lib\actions\leads.ts (4 hits)
+  L8: //   - Email fan-out replaced: was 3 sequential sendActivityEmail calls (agent → manager → admin loop with receive_*_emails flags),
+  L9: //     now single getLeadEmailRecipients + sendTenantEmail with TO/CC/BCC (open chain, no suppression per Q1)
+  L21: sendTenantEmail,
+  L234: await sendTenantEmail({
+
+FILE: C:\Condoleads\project\lib\admin-homes\lead-email-recipients.ts (5 hits)
+  L27: sendTenantEmail,
+  L30: } from '@/lib/email/sendTenantEmail'
+  L32: SendTenantEmailParams,
+  L33: SendTenantEmailResult,
+  L34: } from '@/lib/email/sendTenantEmail'
+
+FILE: C:\Condoleads\project\lib\email\resend.ts (2 hits)
+  L32: const { data, error } = await resend.emails.send({
+  L144: const { data, error } = await resend.emails.send({
+
+FILE: C:\Condoleads\project\lib\email\sendActivityEmail.ts (7 hits)
+  L130: async function shouldSendActivityEmail(
+  L148: .from('lead_email_log')
+  L172: await supabase.from('lead_email_log').insert({
+  L320: export async function sendActivityEmail({
+  L350: const shouldSend = await shouldSendActivityEmail(leadId, activityType)
+  L478: const { data, error } = await resend.emails.send({
+  L496: console.error('❌ Error in sendActivityEmail:', error)
+
+FILE: C:\Condoleads\project\lib\email\sendTenantEmail.ts (8 hits)
+  L1: // lib/email/sendTenantEmail.ts
+  L24: export interface SendTenantEmailParams {
+  L35: export interface SendTenantEmailResult {
+  L46: *   try { await sendTenantEmail({ tenantId, to, subject, html }) }
+  L53: export async function sendTenantEmail(
+  L54: params: SendTenantEmailParams
+  L55: ): Promise<SendTenantEmailResult> {
+  L84: const { data, error: sendError } = await resend.emails.send({
+
+========================================================================
+GREP: hardcoded source='walliam' (Rule Zero multitenant defect scan)
+========================================================================
+
+--- app ---
+C:\Condoleads\project\app\api\charlie\appointment\route.ts:88: .eq('source', 'walliam')
+C:\Condoleads\project\app\api\charlie\lead\route.ts:84: .eq('source', 'walliam')
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:64: .eq('source', 'walliam')
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts:100: .eq('source', 'walliam')
+
+--- lib ---
+  (no hardcoded walliam source filters)
+
+========================================================================
+T0-G: tenants table — code references to platform-routing columns
+========================================================================
+
+FILE: C:\Condoleads\project\lib\admin-homes\lead-email-recipients.ts (12 hits)
+  L66: notification_email: string | null
+  L107: .select('id, email, notification_email')
+  L112: agentEmail = row.notification_email || row.email || null
+  L132: .select('id, email, notification_email')
+  L135: const byId = new Map(rows.map(r => [r.id, r.notification_email || r.email || null]))
+  L154: // their notification_email to BCC. Single batched query; in-memory map keyed
+  L179: .select('id, email, notification_email')
+  L184: emailByDelegateId.set(r.id, r.notification_email || r.email || null)
+  ... +4 more hits
+
+FILE: C:\Condoleads\project\lib\utils\is-walliam.ts (3 hits)
+  L78: // Fall back to tenant default_agent_id
+  L79: const { data: tenant } = await supabase.from('tenants').select('default_agent_id').eq('id', params.tenant_id).single()
+  L80: return tenant?.default_agent_id || null
+
+FILE: C:\Condoleads\project\app\actions\createLead.ts.backup (2 hits)
+  L24: const DEFAULT_AGENT_ID = 'd5ab9f8b-5819-4363-806c-a414657e7763'
+  L39: agentId: DEFAULT_AGENT_ID,
+
+FILE: C:\Condoleads\project\app\api\admin\agents\route.ts (1 hits)
+  L104: notification_email: data.email,
+
+FILE: C:\Condoleads\project\app\api\admin\agents\route.ts.backup (1 hits)
+  L73: notification_email: data.email,
+
+FILE: C:\Condoleads\project\app\api\admin\agents\[id]\route.ts (1 hits)
+  L153: 'bio', 'profile_photo_url', 'notification_email', 'is_active',
+
+FILE: C:\Condoleads\project\app\api\admin-homes\agents\route.ts (3 hits)
+  L23: .select('id, full_name, email, cell_phone, subdomain, can_create_children, is_active, profile_photo_url, tenant_id, parent_id, notification_email, brokerage_name, title, total_leads')
+  L82: notification_email,
+  L118: notification_email: notification_email || email,
+
+FILE: C:\Condoleads\project\app\api\admin-homes\agents\[id]\route.ts (2 hits)
+  L77: notification_email, is_active,
+  L111: if (notification_email !== undefined) update.notification_email = notification_email
+
+FILE: C:\Condoleads\project\app\api\admin-homes\tenants\[id]\route.ts (1 hits)
+  L15: // Platform-admin-only fields (default_claim_quota, default_agent_id) are NOT in this list;
+
+FILE: C:\Condoleads\project\app\api\charlie\route.ts (2 hits)
+  L73: .select('source_key, domain, name, assistant_name, anthropic_api_key')
+  L91: const sourceKey = tenantConfig.source_key
+
+FILE: C:\Condoleads\project\app\api\charlie\appointment\route.ts (1 hits)
+  L118: .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id')
+
+FILE: C:\Condoleads\project\app\api\charlie\lead\route.ts (1 hits)
+  L121: .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id')
+
+FILE: C:\Condoleads\project\app\api\charlie\plan-email\route.ts (1 hits)
+  L102: .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id')
+
+FILE: C:\Condoleads\project\app\api\chat\vip-approve\route.ts (1 hits)
+  L66: full_name, email, notification_email,
+
+FILE: C:\Condoleads\project\app\api\chat\vip-questionnaire\route.ts (2 hits)
+  L38: .select('*, agents(id, full_name, email, notification_email), chat_sessions(user_id, current_page_type, current_page_id)')
+  L175: const agentEmail = agent.notification_email || agent.email
+
+FILE: C:\Condoleads\project\app\api\chat\vip-request\route.ts (2 hits)
+  L71: id, full_name, email, notification_email, vip_auto_approve,
+  L186: const agentEmail = agent.notification_email || agent.email
+
+FILE: C:\Condoleads\project\app\api\chat\vip-upgrade\route.ts (1 hits)
+  L23: .select('*, agents(full_name, email, notification_email)')
+
+FILE: C:\Condoleads\project\app\api\email\low-credits\route.ts (5 hits)
+  L77: .select('id, name, domain, brand_name, default_agent_id, admin_email')
+  L97: .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, tenant_id')
+  L104: if (!agent && tenant.default_agent_id) {
+  L107: .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, tenant_id')
+  L108: .eq('id', tenant.default_agent_id)
+
+FILE: C:\Condoleads\project\app\api\email\welcome\route.ts (9 hits)
+  L64: // Resolve tenant config (brand, domain, credits, default_agent_id)
+  L70: default_agent_id, admin_email, brokerage_name
+  L98: .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id, tenant_id')
+  L107: .select('email, notification_email')
+  L110: if (manager) managerEmail = manager.notification_email || manager.email
+  L115: if (!agent && tenant.default_agent_id) {
+  L118: .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id, tenant_id')
+  L119: .eq('id', tenant.default_agent_id)
+  ... +1 more hits
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\session\route.ts (8 hits)
+  L45: // D2b — F8 fix: fetch source_key from tenant config (replaces hardcoded 'walliam')
+  L48: .select('source_key')
+  L51: if (sourceErr || !sourceTenant?.source_key) {
+  L52: console.error('[session] tenant source_key fetch failed:', sourceErr)
+  L58: const sourceKey = sourceTenant.source_key
+  L79: // Fall back to tenant default_agent_id if RPC returns null
+  L82: const { data: tenantDefault } = await supabase.from('tenants').select('default_agent_id').eq('id', tenantId).single()
+  L83: if (tenantDefault?.default_agent_id) agentId = tenantDefault.default_agent_id
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\vip-approve\route.ts (1 hits)
+  L41: full_name, email, notification_email,
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts (4 hits)
+  L55: .select('source_key, name, brand_name, domain, assistant_name, vip_auto_approve, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, estimator_manual_approve_attempts, estimator_hard_cap')
+  L59: if (tenantConfigError || !tenantConfig?.source_key) {
+  L64: const sourceKey = tenantConfig.source_key
+  L79: id, full_name, email, notification_email, parent_id,
+
+FILE: C:\Condoleads\project\app\api\walliam\contact\route.ts (1 hits)
+  L88: .select('id, full_name, email, notification_email, parent_id')
+
+FILE: C:\Condoleads\project\app\api\walliam\estimator\vip-approve\route.ts (3 hits)
+  L49: full_name, email, notification_email, parent_id,
+  L144: .select('email, notification_email')
+  L147: if (mgr) managerEmail = mgr.notification_email || mgr.email
+
+FILE: C:\Condoleads\project\app\api\walliam\estimator\vip-questionnaire\route.ts (1 hits)
+  L62: agents (id, full_name, email, notification_email, parent_id),
+
+FILE: C:\Condoleads\project\app\api\walliam\estimator\vip-request\route.ts (1 hits)
+  L69: id, full_name, email, notification_email, parent_id
+
+FILE: C:\Condoleads\project\app\comprehensive-site\page.tsx (6 hits)
+  L43: // Known tenant domains resolved via tenant.default_agent_id (matches middleware pattern)
+  L54: // FAST PATH: known tenant domain — resolve via tenant.default_agent_id
+  L62: .select('default_agent_id, homepage_layout')
+  L67: if (!tenantErr && tenant?.default_agent_id) {
+  L71: .eq('id', tenant.default_agent_id)
+  L84: console.error('[comprehensive-site] Known tenant domain but default_agent_id lookup failed:', { host, tenantId })
+
+========================================================================
+T0-G: platform_admins / platform_manager_tenants — every code reference
+========================================================================
+
+FILE: C:\Condoleads\project\lib\admin-homes\auth.ts (1 hits)
+  L159: .from('platform_admins')
+
+FILE: C:\Condoleads\project\lib\admin-homes\lead-email-recipients.ts (5 hits)
+  L155: // by delegator. Layers 5–6 are platform_admins (different table); their
+  L207: //   2. Read those rows from platform_admins, filter active + tier='manager'
+  L209: .from('platform_manager_tenants')
+  L218: .from('platform_admins')
+  L234: .from('platform_admins')
+
+FILE: C:\Condoleads\project\lib\admin-homes\permissions.ts (3 hits)
+  L39: //   Tier 5: Manager Platform  — platform_admins.tier = 'manager'
+  L40: //   Tier 6: Admin Platform    — platform_admins.tier = 'admin' (cardinality 1)
+  L142: // Auth gate — must have at least an agent row OR a platform_admins row.
+
+FILE: C:\Condoleads\project\lib\admin-homes\tenant-context.ts (2 hits)
+  L5: //   1. platform_tenant_override cookie (only if user is in platform_admins)
+  L33: * @param isPlatformAdmin - whether the user is in platform_admins (gates override)
+
+FILE: C:\Condoleads\project\scripts\p0-4-helper-patch.js (1 hits)
+  L29: new: '  // \u2500\u2500\u2500 Layers 1\u20134 delegation overlay (W-ROLES-DELEGATION R7) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  // For each populated principal at layers 1\u20134, fetch active delegates and add\n  // their notification_email to BCC. Single batched query; in-memory map keyed\n  // by delegator. Layers 5\u20136 are platform_admins (different table); their\n  // delegation overlay would require a parallel mechanism \u2014 out of R7 scope.\n  const principalAgentIds: string[] = [\n    agentId,\n    chain?.manager_id ?? null,\n    chain?.area_manager_id ?? null,\n    chain?.tenant_admin_id ?? null,\n  ].filter((x): x is string => !!x)\n\n  const delegateEmailsByDelegator = new Map<string, string[]>()\n  if (principalAgentIds.length > 0) {\n    const { data: delegationRows } = await supabase\n      .from(\'agent_delegations\')\n      .select(\'delegator_id, delegate_id\')\n      .in(\'delegator_id\', principalAgentIds)\n      .eq(\'tenant_id\', tenantId)\n      .is(\'revoked_at\', null)\n\n    const delegateIds = (delegationRows || [])\n      .map(r => (r as { delegator_id: string; delegate_id: string }).delegate_id)\n\n    if (delegateIds.length > 0) {\n      const { data: delegateAgentRows } = await supabase\n        .from(\'agents\')\n        .select(\'id, email, notification_email\')\n        .in(\'id\', delegateIds)\n\n      const emailByDelegateId = new Map<string, string | null>()\n      for (const r of (delegateAgentRows || []) as AgentEmailRow[]) {\n        emailByDelegateId.set(r.id, r.notification_email || r.email || null)\n      }\n\n      for (const d of (delegationRows || []) as Array<{ delegator_id: string; delegate_id: string }>) {\n        const email = emailByDelegateId.get(d.delegate_id)\n        if (email) {\n          const arr = delegateEmailsByDelegator.get(d.delegator_id) || []\n          arr.push(email)\n          delegateEmailsByDelegator.set(d.delegator_id, arr)\n        }\n      }\n\n      // Populate diagnostic resolved.* fields\n      if (agentId) resolved.agent_delegates = delegateEmailsByDelegator.get(agentId) || []\n      if (chain?.manager_id) resolved.manager_delegates = delegateEmailsByDelegator.get(chain.manager_id) || []\n      if (chain?.area_manager_id) resolved.area_manager_delegates = delegateEmailsByDelegator.get(chain.area_manager_id) || []\n      if (chain?.tenant_admin_id) resolved.tenant_admin_delegates = delegateEmailsByDelegator.get(chain.tenant_admin_id) || []\n    }\n  }\n\n  // \u2500\u2500\u2500 Layer 5: Manager Platforms assigned to this tenant \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  // Two-step query (cleaner than nested-join type inference):'
+
+FILE: C:\Condoleads\project\scripts\patch-launch-tracker-p0-4-shipped.js (4 hits)
+  L30: new: '**Delegation BCC overlay LIVE** via R7 (commit `' + COMMIT_HASH + '` 2026-05-05 \u2014 layers 1\u20134; layers 5\u20136 platform_admins out of scope).'
+  L35: new: '- **Delegation \u2192 Email BCC overlay**: \u2705 Helper reads `agent_delegations` and adds active delegates\u2019 `notification_email` to BCC at layers 1\u20134 (R7 shipped 2026-05-05 commit `' + COMMIT_HASH + '`; 5 smoke cases pass). Layers 5\u20136 (platform_admins) out of scope \u2014 would need parallel mechanism.'
+  L40: new: '**P0-4. W-ROLES-DELEGATION R7 \u2014 delegate BCC overlay** \u2014 \u2705 **SHIPPED 2026-05-05** commit `' + COMMIT_HASH + '`\n- Helper `lib/admin-homes/lead-email-recipients.ts` extended via 5 surgical patches: single batched query against `agent_delegations` (delegator_id IN principalIds, tenant_id, revoked_at IS NULL), in-memory map keyed by delegator, BCC entries added during assembly. Layers 1\u20134 only (5\u20136 are platform_admins, different table).\n- Smoke `scripts/smoke-recipients-helper.ts` rewritten: Case 4 (active delegation \u2192 delegate in BCC + resolved.tenant_admin_delegates) + Case 5 (revoked \u2192 delegate absent). Both PASS. Setup/teardown safe via try/finally.\n- Sister R5 (CRUD) + R6 (UI) + R8 (full smoke matrix) remain in P1 backlog.'
+  L73: const v10Line = '\n- **2026-05-05 v10** \u2014 **P0-4 SHIPPED.** Commit `' + COMMIT_HASH + '` pushed; TSC clean; 5 smoke cases all PASS (1: leaf no-delegations, 2: null agent, 3: tenant_admin as agent, 4: active delegation \u2192 delegate in BCC + resolved fields, 5: revoked delegation \u2192 delegate removed). Helper `lib/admin-homes/lead-email-recipients.ts` extended via 5 surgical patches. Smoke `scripts/smoke-recipients-helper.ts` rewritten with try/finally teardown. Layers 5\u20136 (platform_admins) explicitly out of R7 scope. **R7 was upgraded from P1 to P0 during cohesion review** \u2014 it was the only R5\u2013R8 item that was P0 because granting a delegation without BCC overlay creates a silent business-process failure (delegate never sees leads). **Note**: v10 first-attempt hit an apostrophe-class mismatch (curly \u2019 vs straight \') in P0-4 entry OLD anchor; fixed in 19.2-fixed; idempotency guard added so future reruns are safe no-ops. **Status: 4/5 P0 closed.** Next: P0-5 (W-ADMIN-AUTH-LOCKDOWN \u2014 13 routes).'
+
+FILE: C:\Condoleads\project\scripts\r3-2-2-smoke-king-shah.js (2 hits)
+  L78: .from('platform_admins')
+  L110: { name: 'platformTier is null (not in platform_admins)', pass: context.platformTier === null },
+
+========================================================================
+T0-G: migrations creating platform_* / tenant_admin / agent_role tables
+========================================================================
+C:\Condoleads\project\supabase\migrations\20260504_r2_3_agent_role_changes.sql:10: CREATE TABLE IF NOT EXISTS agent_role_changes (
+

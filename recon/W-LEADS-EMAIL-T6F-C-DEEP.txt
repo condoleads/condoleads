@@ -1,0 +1,314 @@
+W-LEADS-EMAIL T6f-C deep recon probe (read-only, gap-fill)
+Generated: 2026-05-11T19:37:34.560Z
+
+=== FILE: app/api/walliam/charlie/vip-approve/route.ts ===
+
+  --- SECTION A: createHtmlResponse(...) call sites (±2 line context) ---
+  -- call site #1 at L25 --
+  L  23: 
+  L  24:     if (!token || !action) {
+  L  25:       return createHtmlResponse('error', 'Invalid request. Missing token or action.')
+  L  26:     }
+  L  27: 
+  L  28:     if (!['approve', 'deny'].includes(action)) {
+
+  -- call site #2 at L29 --
+  L  27: 
+  L  28:     if (!['approve', 'deny'].includes(action)) {
+  L  29:       return createHtmlResponse('error', 'Invalid action.')
+  L  30:     }
+  L  31: 
+  L  32:     const supabase = createServiceClient()
+
+  -- call site #3 at L49 --
+  L  47: 
+  L  48:     if (findError || !vipRequest) {
+  L  49:       return createHtmlResponse('error', 'Request not found or link has expired.')
+  L  50:     }
+  L  51: 
+  L  52:     if (vipRequest.status !== 'pending') {
+
+  -- call site #4 at L53 --
+  L  51: 
+  L  52:     if (vipRequest.status !== 'pending') {
+  L  53:       return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`)
+  L  54:     }
+  L  55: 
+  L  56:     if (new Date(vipRequest.expires_at) < new Date()) {
+
+  -- call site #5 at L61 --
+  L  59:         .update({ status: 'expired' })
+  L  60:         .eq('id', vipRequest.id)
+  L  61:       return createHtmlResponse('expired', 'This request has expired.')
+  L  62:     }
+  L  63: 
+  L  64:     const newStatus = action === 'approve' ? 'approved' : 'denied'
+
+  -- call site #6 at L174 --
+  L 172:       }
+  L 173: 
+  L 174:       return createHtmlResponse(
+  L 175:         'approved',
+  L 176:         `Plan access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${plansToGrant} additional plan${plansToGrant > 1 ? 's' : ''}.`
+  L 177:       )
+
+  -- call site #7 at L179 --
+  L 177:       )
+  L 178:     } else {
+  L 179:       return createHtmlResponse(
+  L 180:         'denied',
+  L 181:         `VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`
+  L 182:       )
+
+  -- call site #8 at L187 --
+  L 185:   } catch (error) {
+  L 186:     console.error('[walliam/vip-approve] error:', error)
+  L 187:     return createHtmlResponse('error', 'An unexpected error occurred.')
+  L 188:   }
+  L 189: }
+  L 190: 
+
+  TOTAL: 8 createHtmlResponse call sites
+
+  --- SECTION B: vip_request load + early-return paths (L30..L90) ---
+  L  30:     }
+  L  31: 
+  L  32:     const supabase = createServiceClient()
+  L  33: 
+  L  34:     // Find VIP request by token
+  L  35:     const { data: vipRequest, error: findError } = await supabase
+  L  36:       .from('vip_requests')
+  L  37:       .select(`
+  L  38:         *,
+  L  39:         chat_sessions (*),
+  L  40:         agents (
+  L  41:           full_name, email, notification_email,
+  L  42:           ai_manual_approve_limit
+  L  43:         )
+  L  44:       `)
+  L  45:       .eq('approval_token', token)
+  L  46:       .single()
+  L  47: 
+  L  48:     if (findError || !vipRequest) {
+  L  49:       return createHtmlResponse('error', 'Request not found or link has expired.')
+  L  50:     }
+  L  51: 
+  L  52:     if (vipRequest.status !== 'pending') {
+  L  53:       return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`)
+  L  54:     }
+  L  55: 
+  L  56:     if (new Date(vipRequest.expires_at) < new Date()) {
+  L  57:       await supabase
+  L  58:         .from('vip_requests')
+  L  59:         .update({ status: 'expired' })
+  L  60:         .eq('id', vipRequest.id)
+  L  61:       return createHtmlResponse('expired', 'This request has expired.')
+  L  62:     }
+  L  63: 
+  L  64:     const newStatus = action === 'approve' ? 'approved' : 'denied'
+  L  65:     const agent = vipRequest.agents
+  L  66:     // Use tenant plan_manual_approve_limit — not agent ai_manual_approve_limit
+  L  67:       let plansToGrant = agent?.ai_manual_approve_limit ?? 3
+  L  68:       const sessionTenantId = vipRequest.chat_sessions?.tenant_id
+  L  69:       if (sessionTenantId) {
+  L  70:         const { data: tenantRow } = await supabase
+  L  71:           .from('tenants')
+  L  72:           .select('plan_manual_approve_limit')
+  L  73:           .eq('id', sessionTenantId)
+  L  74:           .single()
+  L  75:         if (tenantRow?.plan_manual_approve_limit != null) {
+  L  76:           plansToGrant = tenantRow.plan_manual_approve_limit
+  L  77:         }
+  L  78:       }
+  L  79: 
+  L  80:     // Update VIP request
+  L  81:     await supabase
+  L  82:       .from('vip_requests')
+  L  83:       .update({
+  L  84:         status: newStatus,
+  L  85:         responded_at: new Date().toISOString(),
+  L  86:         messages_granted: action === 'approve' ? plansToGrant : 0,
+  L  87:       })
+  L  88:       .eq('id', vipRequest.id)
+  L  89: 
+  L  90:     if (action === 'approve') {
+
+  --- SECTION C: approve email-send block (subject L162 + agent L165 + helper call) (L150..L190) ---
+  L 150:             buyer_plan_limit: newPlanLimit,
+  L 151:             estimator_limit: newEstimatorLimit,
+  L 152:             granted_at: new Date().toISOString(),
+  L 153:           }, { onConflict: 'user_id,tenant_id' })
+  L 154:       }
+  L 155: 
+  L 156:       // Send approval email to user
+  L 157:       if (vipRequest.email) {
+  L 158:         try {
+  L 159:           await sendTenantEmail({
+  L 160:             tenantId: tenantId || '',
+  L 161:             to: vipRequest.email,
+  L 162:             subject: 'Your WALLiam Plan Access is Approved',
+  L 163:             html: buildUserApprovalEmailHtml(
+  L 164:               vipRequest.full_name,
+  L 165:               agent?.full_name || 'WALLiam',
+  L 166:               plansToGrant
+  L 167:             ),
+  L 168:           })
+  L 169:         } catch (err) {
+  L 170:           console.error('[walliam/vip-approve] user email error:', err)
+  L 171:         }
+  L 172:       }
+  L 173: 
+  L 174:       return createHtmlResponse(
+  L 175:         'approved',
+  L 176:         `Plan access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${plansToGrant} additional plan${plansToGrant > 1 ? 's' : ''}.`
+  L 177:       )
+  L 178:     } else {
+  L 179:       return createHtmlResponse(
+  L 180:         'denied',
+  L 181:         `VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`
+  L 182:       )
+  L 183:     }
+  L 184: 
+  L 185:   } catch (error) {
+  L 186:     console.error('[walliam/vip-approve] error:', error)
+  L 187:     return createHtmlResponse('error', 'An unexpected error occurred.')
+  L 188:   }
+  L 189: }
+  L 190: 
+
+=== END FILE: app/api/walliam/charlie/vip-approve/route.ts ===
+
+=== FILE: app/api/walliam/contact/route.ts ===
+
+  --- SECTION D: POST handler body (L60..L188) (L60..L188) ---
+  L  60:     }
+  L  61: 
+  L  62:     if (!tenant_id) {
+  L  63:       return NextResponse.json({ error: 'tenant_id required' }, { status: 400 })
+  L  64:     }
+  L  65: 
+  L  66:     const supabase = createServiceClient()
+  L  67: 
+  L  68:     // Resolve agent
+  L  69:     const { data: agentId } = await supabase.rpc('resolve_agent_for_context', {
+  L  70:       p_listing_id: listing_id || null,
+  L  71:       p_building_id: building_id || null,
+  L  72:       p_neighbourhood_id: null,
+  L  73:       p_community_id: community_id || null,
+  L  74:       p_municipality_id: municipality_id || null,
+  L  75:       p_area_id: area_id || null,
+  L  76:       p_user_id: null,
+  L  77:       p_tenant_id: tenant_id,
+  L  78:     })
+  L  79: 
+  L  80:     // Get agent details + walk hierarchy
+  L  81:     let agent: any = null
+  L  82:     let chainManagerId: string | null = null
+  L  83:     let chainAreaManagerId: string | null = null
+  L  84:     let chainTenantAdminId: string | null = null
+  L  85: 
+  L  86:     if (agentId) {
+  L  87:       const { data: agentData } = await supabase
+  L  88:         .from('agents')
+  L  89:         .select('id, full_name, email, notification_email, parent_id')
+  L  90:         .eq('id', agentId)
+  L  91:         .single()
+  L  92: 
+  L  93:       if (agentData) {
+  L  94:         agent = agentData
+  L  95:         const chain = await walkHierarchy(agentData.id, supabase)
+  L  96:         chainManagerId = chain.manager_id
+  L  97:         chainAreaManagerId = chain.area_manager_id
+  L  98:         chainTenantAdminId = chain.tenant_admin_id
+  L  99:       }
+  L 100:     }
+  L 101: 
+  L 102:     // Save lead with full hierarchy chain (per Lead+Email contract)
+  L 103:     const { data: lead } = await supabase.from('leads').insert({
+  L 104:       agent_id: agent?.id || null,
+  L 105:       manager_id: chainManagerId,
+  L 106:       area_manager_id: chainAreaManagerId,
+  L 107:       tenant_admin_id: chainTenantAdminId,
+  L 108:       tenant_id,
+  L 109:       contact_name: name,
+  L 110:       contact_email: email,
+  L 111:       contact_phone: phone || null,
+  L 112:       message: message || null,
+  L 113:       source: source || 'walliam_contact',
+  L 114:       lead_origin_route: 'contact_form',
+  L 115:       building_id: building_id || null,
+  L 116:       listing_id: listing_id || null,
+  L 117:       geo_name: geo_name || null,
+  L 118:       status: 'new',
+  L 119:       quality: 'hot',
+  L 120:       assignment_source: agent ? 'geo' : 'admin',
+  L 121:     }).select('id').single()
+  L 122: 
+  L 123:     // Build email HTML
+  L 124:     const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id })
+  L 125:     const subject = `\u2756 WALLiam Inquiry \u2014 ${name} \u2014 ${geo_name || source || 'WALLiam'}`
+  L 126: 
+  L 127:     // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
+  L 128:     let recipients
+  L 129:     try {
+  L 130:       recipients = await getLeadEmailRecipients(tenant_id, agent?.id || null, supabase)
+  L 131:     } catch (err) {
+  L 132:       if (err instanceof AdminPlatformUnreachable) {
+  L 133:         console.error('[walliam/contact] admin platform unreachable:', err.message)
+  L 134:         recipients = null
+  L 135:       } else {
+  L 136:         throw err
+  L 137:       }
+  L 138:     }
+  L 139: 
+  L 140:     if (recipients) {
+  L 141:       try {
+  L 142:         const sendResult = await sendTenantEmail({
+  L 143:           tenantId: tenant_id,
+  L 144:           to: recipients.to,
+  L 145:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+  L 146:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+  L 147:           subject,
+  L 148:           html,
+  L 149:         })
+  L 150:         if (lead?.id) {
+  L 151:           await logEmailRecipients({
+  L 152:             supabase,
+  L 153:             tenantId: tenant_id,
+  L 154:             leadId: lead.id,
+  L 155:             agentId: agent?.id || null,
+  L 156:             recipients,
+  L 157:             subject,
+  L 158:             templateKey: 'walliam_contact_lead_capture',
+  L 159:             resendMessageId: sendResult.id,
+  L 160:           })
+  L 161:         }
+  L 162:       } catch (err) {
+  L 163:         if (err instanceof TenantEmailNotConfigured) {
+  L 164:           console.warn('[walliam/contact] tenant email not configured:', err.message)
+  L 165:         } else if (err instanceof TenantEmailFailed) {
+  L 166:           console.error('[walliam/contact] resend send failed:', err.message)
+  L 167:         } else {
+  L 168:           console.error('[walliam/contact] unexpected email error:', err)
+  L 169:         }
+  L 170:       }
+  L 171:     }
+  L 172: 
+  L 173:     // Track activity
+  L 174:     await trackUserActivity(supabase, email, agent?.id || null, 'contact_form', {
+  L 175:       source: source || 'walliam_contact',
+  L 176:       geoName: geo_name || null,
+  L 177:       buildingId: building_id || null,
+  L 178:       listingId: listing_id || null,
+  L 179:       message: message || null,
+  L 180:     }, req.headers.get('referer') || '')
+  L 181: 
+  L 182:     return NextResponse.json({ success: true, leadId: lead?.id })
+  L 183:   } catch (error) {
+  L 184:     console.error('[walliam/contact] error:', error)
+  L 185:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  L 186:   }
+  L 187: }
+  L 188: 
+
+=== END FILE: app/api/walliam/contact/route.ts ===

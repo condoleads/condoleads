@@ -1,0 +1,12 @@
+const { Client } = require('pg')
+;(async () => {
+  const c = new Client({ connectionString: process.env.DATABASE_URL })
+  await c.connect()
+  const cnt = await c.query("SELECT COUNT(*)::int AS n FROM lead_email_recipients_log")
+  console.log('lead_email_recipients_log row count:', cnt.rows[0].n)
+  console.log('  -> 0 = T3 callers not yet wired; >0 = silent shipment, tracker correction needed')
+  const cols = await c.query("SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='lead_email_recipients_log' ORDER BY ordinal_position")
+  console.log('--- lead_email_recipients_log columns ---')
+  cols.rows.forEach(r => console.log('  ' + r.column_name + ': ' + r.data_type + ' (nullable=' + r.is_nullable + ', default=' + (r.column_default === null ? '-' : r.column_default) + ')'))
+  await c.end()
+})().catch(e => { console.error(e); process.exit(1) })

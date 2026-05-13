@@ -1,0 +1,172 @@
+﻿
+========================================================================
+GREP (REGEX): credit references in route + helper paths
+========================================================================
+
+--- app\api\walliam ---
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts:29: read_only,       // if true, never create a session — just read credits
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts:267: // Step 6: Calculate plan allowance — check user_credit_overrides first
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts:274: .from('user_credit_overrides')
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts:328: // Chat credits
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts:332: // Estimator credits
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260505_091347:29: read_only,       // if true, never create a session — just read credits
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260505_091347:259: // Step 6: Calculate plan allowance — check user_credit_overrides first
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260505_091347:266: .from('user_credit_overrides')
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260505_091347:320: // Chat credits
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260505_091347:324: // Estimator credits
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260506164404:29: read_only,       // if true, never create a session — just read credits
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260506164404:266: // Step 6: Calculate plan allowance — check user_credit_overrides first
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260506164404:273: .from('user_credit_overrides')
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260506164404:327: // Chat credits
+C:\Condoleads\project\app\api\walliam\charlie\session\route.ts.backup_20260506164404:331: // Estimator credits
+C:\Condoleads\project\app\api\walliam\charlie\vip-approve\route.ts:108: // Write to user_credit_overrides — single source of truth
+C:\Condoleads\project\app\api\walliam\charlie\vip-approve\route.ts:134: // Grant all three pools using tenant Credits per Email Approval config
+C:\Condoleads\project\app\api\walliam\charlie\vip-approve\route.ts:142: .from('user_credit_overrides')
+C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts:154: // Use tenant config for credit decisions
+C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts:267: // Write to user_credit_overrides using tenant configured values
+C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts:271: await supabase.from('user_credit_overrides').upsert({
+C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts:276: note: 'Auto-approved — ' + autoApproveMessages + ' credits',
+C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts:413: Approve to grant this user additional ${data.brandName} plan credits.
+C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts:442: <strong>${agentName}</strong> has approved your request for additional ${brandName} plan credits.
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts:156: // Check user-level credit override for estimator
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts:158: ? await supabase.from('user_credit_overrides').select('estimator_limit').eq('user_id', userId).eq('tenant_id', tenantId).maybeSingle()
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts:188: // Low credit warning email at 1 estimate remaining
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts:190: fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts:192: body: JSON.stringify({ userId, creditType: 'estimate', remaining: 1, sessionId: session.id }),
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts.backup_20260506164404:155: // Check user-level credit override for estimator
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts.backup_20260506164404:157: ? await supabase.from('user_credit_overrides').select('estimator_limit').eq('user_id', userId).eq('tenant_id', tenantId).maybeSingle()
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts.backup_20260506164404:187: // Low credit warning email at 1 estimate remaining
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts.backup_20260506164404:189: fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+C:\Condoleads\project\app\api\walliam\estimator\session\route.ts.backup_20260506164404:191: body: JSON.stringify({ userId, creditType: 'estimate', remaining: 1, sessionId: session.id }),
+C:\Condoleads\project\app\api\walliam\estimator\vip-approve\route.ts:99: // Write to user_credit_overrides
+C:\Condoleads\project\app\api\walliam\estimator\vip-approve\route.ts:103: const { data: existingOverride } = await supabase.from('user_credit_overrides').select('estimator_limit').eq('user_id', userId).eq('tenant_id', tenantId).maybeSingle()
+C:\Condoleads\project\app\api\walliam\estimator\vip-approve\route.ts:106: await supabase.from('user_credit_overrides').upsert({
+C:\Condoleads\project\app\api\walliam\estimator\vip-approve\route.ts:111: note: 'Email approval — ' + attemptsToGrant + ' estimator credits granted',
+C:\Condoleads\project\app\api\walliam\estimator\vip-request\route.ts:265: // Auto-approve: update session + write credit override + send user email
+C:\Condoleads\project\app\api\walliam\estimator\vip-request\route.ts:280: // Write to user_credit_overrides so session route picks up new limit
+C:\Condoleads\project\app\api\walliam\estimator\vip-request\route.ts:283: .from('user_credit_overrides')
+C:\Condoleads\project\app\api\walliam\estimator\vip-request\route.ts:293: .from('user_credit_overrides')
+C:\Condoleads\project\app\api\walliam\tenant-config\route.ts:2: // Returns tenant credit config for anonymous users (unregistered view)
+
+--- app\api\charlie ---
+C:\Condoleads\project\app\api\charlie\route.ts:248: // Check user-level credit override for chat
+C:\Condoleads\project\app\api\charlie\route.ts:250: ? await supabase.from('user_credit_overrides').select('ai_chat_limit').eq('user_id', sessionData.user_id).eq('tenant_id', tenantId).maybeSingle()
+C:\Condoleads\project\app\api\charlie\route.ts:270: const { data: newMsgCount, error: incErr } = await supabase.rpc('increment_chat_session_counter', {
+C:\Condoleads\project\app\api\charlie\route.ts:281: // Store pending chat credit event for post-stream — uses RPC return value, not stale read
+C:\Condoleads\project\app\api\charlie\route.ts:283: // Low credit warning email at 1 remaining
+C:\Condoleads\project\app\api\charlie\route.ts:286: fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+C:\Condoleads\project\app\api\charlie\route.ts:288: body: JSON.stringify({ userId: sessionData.user_id, creditType: 'chat', remaining: 1, sessionId }),
+C:\Condoleads\project\app\api\charlie\route.ts:296: // Gate fires BEFORE streaming — AI never starts if credits exhausted
+C:\Condoleads\project\app\api\charlie\route.ts:303: const { data: userPlanOverride } = await supabase.from('user_credit_overrides').select('buyer_plan_limit').eq('user_id', effectiveUserId).eq('tenant_id', tenantId).maybeSingle()
+C:\Condoleads\project\app\api\charlie\route.ts:435: // Check user-level credit override for plans
+C:\Condoleads\project\app\api\charlie\route.ts:437: ? await supabase.from('user_credit_overrides').select('buyer_plan_limit, seller_plan_limit').eq('user_id', sessionData.user_id).eq('tenant_id', tenantId).maybeSingle()
+C:\Condoleads\project\app\api\charlie\route.ts:466: const { error: planIncErr } = await supabase.rpc('increment_chat_session_counter', {
+C:\Condoleads\project\app\api\charlie\route.ts:478: // Notify frontend — registered user used a VIP credit
+C:\Condoleads\project\app\api\charlie\route.ts:480: // Low credit warning email — fire when 1 plan remaining
+C:\Condoleads\project\app\api\charlie\route.ts:483: fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+C:\Condoleads\project\app\api\charlie\route.ts:488: creditType: 'plan',
+C:\Condoleads\project\app\api\charlie\route.ts:492: }).catch(err => console.error('[charlie] low credit email error:', err))
+C:\Condoleads\project\app\api\charlie\route.ts:494: // vip_credit_used fires AFTER done — stored for post-stream
+C:\Condoleads\project\app\api\charlie\route.ts:532: // Fire vip_credit_used AFTER full plan completion
+C:\Condoleads\project\app\api\charlie\route.ts:537: // Atomic decrement — refund the chat credit because a plan was generated this turn
+C:\Condoleads\project\app\api\charlie\route.ts:538: const { error: decErr } = await supabase.rpc('decrement_chat_session_counter', {
+C:\Condoleads\project\app\api\charlie\route.ts:544: send({ type: 'chat_credit_used', messageCount: cevt.messageCount, chatFreeMessages: cevt.chatFreeMessages })
+C:\Condoleads\project\app\api\charlie\route.ts:549: send({ type: 'vip_credit_used', plansUsed: evt.plansUsed, totalAllowed: evt.totalAllowed, planType: evt.planType })
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:51: const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:147: const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [] })
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:218: vipCreditUsed: boolean
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:219: vipCreditPlansUsed: number
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:220: vipCreditTotal: number
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:223: const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = data
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:552: const vipHtml = vipCreditUsed ? `
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:555: <div style="font-size: 12px; font-weight: 700; color: #a5b4fc;">&#10022; VIP Access Credit Used</div>
+C:\Condoleads\project\app\api\charlie\plan-email\route.ts:556: <div style="font-size: 11px; color: rgba(165,180,252,0.6); margin-top: 3px;">${vipCreditPlansUsed} of ${vipCreditTotal} plans used</div>
+
+--- lib\actions\leads.ts ---
+  (no credit references)
+
+--- lib\admin-homes\lead-email-recipients.ts ---
+  (no credit references)
+
+--- lib\credits ---
+C:\Condoleads\project\lib\credits\resolveUserLimits.ts:1: export interface TenantCreditConfig {
+C:\Condoleads\project\lib\credits\resolveUserLimits.ts:24: export interface UserCreditOverride {
+C:\Condoleads\project\lib\credits\resolveUserLimits.ts:46: * Resolves effective credit limits for a specific user.
+C:\Condoleads\project\lib\credits\resolveUserLimits.ts:48: * If user_credit_overrides row exists for this user:
+C:\Condoleads\project\lib\credits\resolveUserLimits.ts:55: export function resolveUserLimits(
+C:\Condoleads\project\lib\credits\resolveUserLimits.ts:56: tenant: TenantCreditConfig,
+C:\Condoleads\project\lib\credits\resolveUserLimits.ts:57: override: UserCreditOverride | null
+
+========================================================================
+MIGRATION GREP (REGEX): credit / counter functions across migrations + scripts
+========================================================================
+
+--- supabase\migrations ---
+
+FILE: C:\Condoleads\project\supabase\migrations\20260430_phase_d0_atomic_session_counters.sql (12 hits)
+  L16: DROP FUNCTION IF EXISTS increment_chat_session_counter(UUID, TEXT);
+  L18: CREATE OR REPLACE FUNCTION increment_chat_session_counter(
+  L67: DROP FUNCTION IF EXISTS decrement_chat_session_counter(UUID, TEXT);
+  L69: CREATE OR REPLACE FUNCTION decrement_chat_session_counter(
+  L109: GRANT EXECUTE ON FUNCTION increment_chat_session_counter(UUID, TEXT) TO authenticated, service_role;
+  ... +7 more hits
+
+--- scripts ---
+
+FILE: C:\Condoleads\project\scripts\patch-launch-tracker-block2.js (2 hits)
+  L14: new: '| User Management (profiles, sessions, tenant link) | \u2705 | \ud83d\udfe1 | \ud83d\udfe1 | \ud83d\udfe1 | `user_profiles` (96 rows, **no `tenant_id`** \u2014 by design, cross-tenant users). `chat_sessions` (2096 rows; 48 with NULL `tenant_id`; 2003 anonymous). `user_credit_overrides` (11 rows, `tenant_id NOT NULL` \u2705). `tenant_users` table exists but **no `lib/` or `app/` code refs** \u2014 orphan or RLS-only, needs sweep. Auth helper: `lib/admin-homes/auth.ts` (R3.2.1, 11175B). |'
+  L19: new: '| Multi-tenant isolation (tenant_id propagation) | \u2705 | \ud83d\udfe1 | \ud83d\udfe1 | \u2014 | `tenant_id` columns present on `agents`, `leads`, `user_credit_overrides`, `chat_sessions`, `vip_requests`. **Strong enforcement:** `leads.tenant_id NOT NULL`, `user_credit_overrides.tenant_id NOT NULL`, `agents.tenant_id` (FK). **Soft enforcement:** `chat_sessions.tenant_id` nullable; 48 prod rows have NULL. **By design:** `user_profiles` has no `tenant_id` column \u2014 cross-tenant user model. W-TENANT-AUTH Phase 4b smoke matrix 8/8 per W-CREDIT-VERIFY tracker. |'
+
+FILE: C:\Condoleads\project\scripts\patch-launch-tracker-block3.js (4 hits)
+  L13: old: '| User Management (profiles, sessions, tenant link) | \u2705 | \ud83d\udfe1 | \ud83d\udfe1 | \ud83d\udfe1 | `user_profiles` (96 rows, **no `tenant_id`** \u2014 by design, cross-tenant users). `chat_sessions` (2096 rows; 48 with NULL `tenant_id`; 2003 anonymous). `user_credit_overrides` (11 rows, `tenant_id NOT NULL` \u2705). `tenant_users` table exists but **no `lib/` or `app/` code refs** \u2014 orphan or RLS-only, needs sweep. Auth helper: `lib/admin-homes/auth.ts` (R3.2.1, 11175B). |',
+  L14: new: '| User Management (profiles, sessions, tenant link) | \u2705 | \u2705 | \ud83d\udfe1 | \ud83d\udfe1 | `user_profiles` (96 rows, no `tenant_id` \u2014 global metadata). `tenant_users` (46 rows, **9 active callers**: `joinTenant.ts`, `RegisterModal.tsx`, welcome + low-credit emails, `assign-user-agent`, `smoke-w-tenant-auth`, 3 migrations) \u2014 per-tenant consent + agent assignment + email throttle. `chat_sessions` (2096 rows). `user_credit_overrides` (11 rows, `tenant_id NOT NULL`). 50 pre-W-TENANT-AUTH legacy users have no `tenant_users` row (52% of profiles). Auth helper: `lib/admin-homes/auth.ts` (R3.2.1). |'
+  L18: old: '| Multi-tenant isolation (tenant_id propagation) | \u2705 | \ud83d\udfe1 | \ud83d\udfe1 | \u2014 | `tenant_id` columns present on `agents`, `leads`, `user_credit_overrides`, `chat_sessions`, `vip_requests`. **Strong enforcement:** `leads.tenant_id NOT NULL`, `user_credit_overrides.tenant_id NOT NULL`, `agents.tenant_id` (FK). **Soft enforcement:** `chat_sessions.tenant_id` nullable; 48 prod rows have NULL. **By design:** `user_profiles` has no `tenant_id` column \u2014 cross-tenant user model. W-TENANT-AUTH Phase 4b smoke matrix 8/8 per W-CREDIT-VERIFY tracker. |',
+  L19: new: '| Multi-tenant isolation (tenant_id propagation) | \u2705 | \u2705 | \u2705 | \u2014 | `tenant_id NOT NULL` on `agents`, `leads`, `user_credit_overrides`, `tenant_users`. `chat_sessions.tenant_id` nullable but **all 48 NULL rows are pre-W-RECOVERY (Apr 28); 0 NULL post-recovery** \u2014 historical hygiene, not active leak. By design: `user_profiles` has no `tenant_id` (global metadata; per-tenant membership lives in `tenant_users`). W-TENANT-AUTH Phase 4b 8/8. |'
+
+FILE: C:\Condoleads\project\scripts\patch-launch-tracker-block6.js (1 hits)
+  L38: '- **tenant_id \u2192 critical writes**: \u2705 NOT NULL on `agents`, `leads`, `user_credit_overrides`, `tenant_users`. Walker stamps `lead.tenant_id` from agent.',
+
+FILE: C:\Condoleads\project\scripts\patch-launch-tracker-p0-2-shipped.js (4 hits)
+  L14: new: '| Credit System (pools, gates, overrides, logging) | \u2705 | \u2705 | \ud83d\udfe1 | \u2705 | `lib/credits/resolveUserLimits.ts` + `components/credits/CreditSessionContext.tsx` + `app/charlie/hooks/useCharlie.ts`. `chat_messages_v2` writes from 2 sites in `/api/charlie/route.ts` \u2014 64 rows logged Apr 29 \u2192 May 2 (Chunk 6 working). **Atomic counter SHIPPED** as W-CREDIT-VERIFY D0 (`increment_chat_session_counter` + `decrement_chat_session_counter`, parameterized whitelist, SECURITY DEFINER, UPDATE\u2026RETURNING row-lock). v3 claim retired \u2014 grep used wrong name. **Residual:** pre-increment gate uses stale msgUsed; concurrent race can soft-exceed cap by 1\u20132 \u2014 P1-6. **Open:** logging gap May 3\u20135 \u2014 P0-3. 2 stale `useCharlie.ts` backups on disk. |'
+  L24: new: '**P0-2. W-CREDITS Phase 9 \u2014 atomic increment RPC** \u2014 \u2705 **SHIPPED Apr 30** as W-CREDIT-VERIFY D0, migration `20260430_phase_d0_atomic_session_counters.sql`\n- Atomic RPC is `increment_chat_session_counter(p_session_id, p_counter)` + sibling `decrement_chat_session_counter`. Parameterized whitelist over 4 counter columns. `UPDATE\u2026RETURNING` with row-lock eliminates F5 race.\n- **v3 claim retired**: prior tracker said "never shipped" \u2014 grep used the W-CREDITS-plan name (`increment_chat_message_count`); actual function is `increment_chat_session_counter` (parameterized).\n- **Residual moved to P1-6**: post-increment cap check still missing.',
+  L29: new: '**P1-5. Approvals + Tickets pages** (per Phase 3 nav spec)\n- Verify: pages exist, rendered for tenant_admin role.\n\n**P1-6. Post-increment cap check (W-CREDITS Phase 9 polish)**\n- Symptom: pre-increment gate uses stale `msgUsed`. Concurrent same-user requests can soft-exceed cap by 1\u20132. Counter is correct (atomic), so subsequent requests are gated normally; soft over-cap is bounded.\n- Verify: 10 parallel POSTs at msgUsed=24 (cap=25) \u2192 final counter \u2264 25, no requests proceed past cap.\n- Fix shape: after `increment_chat_session_counter` returns `newMsgCount`, if `newMsgCount > chatAllowed`, call `decrement_chat_session_counter` and return gate. Same pattern at line 466 for plan counters (needs sum across buyer + seller for shared-pool semantics).'
+  L67: const v8Line = '\n- **2026-05-05 v8** \u2014 **P0-2 SHIPPED** (already shipped Apr 30 as W-CREDIT-VERIFY Phase D0, migration `20260430_phase_d0_atomic_session_counters.sql`). **v3 claim retired**: atomic counter IS in codebase under name `increment_chat_session_counter` (parameterized), not `increment_chat_message_count` as the W-CREDITS plan named it. Migration verified: SECURITY DEFINER, EXECUTE format with whitelist over 4 counter columns, UPDATE\u2026RETURNING with row-lock serialization, built-in DO $$ smoke checks. Decrement uses GREATEST(0, \u2026) \u2014 no underflow. Both wired in route.ts (lines 270 + 466 increment, 538 decrement). **Residual race opens as P1-6**: pre-increment gate uses stale `msgUsed`; concurrent burst can soft-exceed cap by 1\u20132 messages per user. Counter stays correct (atomic), subsequent requests gated normally. **Pattern note**: this is the THIRD too-narrow-grep correction (v3 tenant_users, v4 AgentOrgChart, v8 RPC name). Going forward, when checking "is X shipped" \u2014 grep on functional behavior or migration filenames, not on guessed function names. **Status: 2/5 P0 shipped. Next: P0-3 (logging continuity gap May 3\u20135).**'
+
+FILE: C:\Condoleads\project\scripts\r4-3-fix-next-action.js (1 hits)
+  L64: '3. Recon user management (user_profiles, chat_sessions, user_credit_overrides, user-tenant linkage)',
+
+FILE: C:\Condoleads\project\scripts\r4-3-tracker-close.js (1 hits)
+  L41: '3. Recon user management (user_profiles, chat_sessions, user_credit_overrides, user-tenant linkage)',
+
+FILE: C:\Condoleads\project\scripts\seed-test-data.js (2 hits)
+  L123: await supabase.from('user_credit_overrides').delete().eq('user_id', authUser.id)
+  L192: const { error: overrideError } = await supabase.from('user_credit_overrides').insert({
+
+FILE: C:\Condoleads\project\scripts\verify-test-results.js (1 hits)
+  L36: const { data: override } = await supabase.from('user_credit_overrides').select('*').eq('user_id', authUser.id).eq('tenant_id', TENANT_ID).maybeSingle()
+
+========================================================================
+ADMIN UI: credit management surfaces (path or filename match)
+========================================================================
+  (no path/filename matches in app/admin-homes)
+
+========================================================================
+MIGRATION DIRECTORY SANITY: supabase/migrations contents
+========================================================================
+File count: 25
+  20260504_r2_1_tighten_role_check.sql (1329 bytes)
+  20260504_r2_2_agent_delegations.sql (5093 bytes)
+  20260504_r2_3_agent_role_changes.sql (3227 bytes)
+  20260504_r2_4b_drop_is_admin.sql (801 bytes)
+  20260504_r3_2_0_grants_on_delegation_tables.sql (2439 bytes)
+  20260504_r4_0_role_transition_rpcs.sql (20831 bytes)
+  20260506_t2a_01_apa_tenant_id_not_null.sql (1266 bytes)
+  20260506_t2a_02_apa_is_primary.sql (4320 bytes)
+  20260506_t2a_03_lead_ownership_changes.sql (3865 bytes)
+  20260506_t2a_04_territory_assignment_changes.sql (4092 bytes)
+  20260507_t3_01_resolver_baseline.sql (7886 bytes)
+  20260507_t3_02_resolvers_v2.sql (14451 bytes)
+  20260507_t3b_a_01_mls_listings_assigned_agent_id.sql (2498 bytes)
+  20260507_t3b_b_01_distribution_functions.sql (11096 bytes)
+  20260507_t3b_c_01_apa_distribution_triggers.sql (8286 bytes)
+

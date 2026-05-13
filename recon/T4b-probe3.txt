@@ -1,0 +1,757 @@
+﻿
+
+========================================================================
+FILE: app\[slug]\page.tsx   [Slug router #1 root (full, was truncated last time)]
+========================================================================
+import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
+import { isPropertySlug, parsePropertySlug, isHomePropertySlug, parseHomePropertySlug } from '@/lib/utils/slugs'
+import DevelopmentPage, { generateDevelopmentMetadata } from './DevelopmentPage'
+import AreaPage, { generateAreaMetadata } from './AreaPage'
+import MunicipalityPage, { generateMunicipalityMetadata } from './MunicipalityPage'
+import CommunityPage, { generateCommunityMetadata } from './CommunityPage'
+import BuildingPage, { generateMetadata as generateBuildingMetadata } from './BuildingPage'
+import PropertyPage, { generateMetadata as generatePropertyMetadata } from '../property/[id]/page'
+import HomePropertyPage, { generateHomeMetadata } from '../property/[id]/HomePropertyPage'
+import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
+
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const serverSupabase = createClient()
+
+  // Check if it's a property slug first
+  if (isPropertySlug(params.slug)) {
+  const { mlsNumber } = parsePropertySlug(params.slug)  
+  if (!mlsNumber) {
+    notFound()
+  }
+    
+     
+    // Query listing ID only
+    const { data: listing } = await serverSupabase
+      .from('mls_listings')
+      .select('id')
+      .eq('listing_key', mlsNumber)
+      .single()
+    
+    if (!listing) {
+      return { title: 'Property Not Found' }
+    }
+    // Reuse property page metadata
+    return generatePropertyMetadata({ params: { id: listing.id } })
+  }
+
+
+  // Check if it's a home property slug (e.g., 123-main-street-burlington-w12569682)
+  if (isHomePropertySlug(params.slug)) {
+    const { mlsNumber: homeMls } = parseHomePropertySlug(params.slug)
+    if (!homeMls) return { title: 'Property Not Found' }
+    const { data: homeListing } = await serverSupabase
+      .from('mls_listings').select('id').eq('listing_key', homeMls).maybeSingle()
+    if (!homeListing) return { title: 'Property Not Found' }
+    return generateHomeMetadata({ params: { id: homeListing.id } })
+  }
+
+  // Check if it's a development slug
+    const { data: development } = await serverSupabase
+    .from('developments')
+    .select('id, name, slug')
+    .eq('slug', params.slug)
+    .single()
+
+  if (development) {
+    return generateDevelopmentMetadata(development)
+  }
+
+  // Check if it's an area slug
+  const { data: area } = await serverSupabase
+    .from('treb_areas')
+    .select('id, name, slug')
+    .eq('slug', params.slug)
+    .single()
+
+  if (area) {
+    return generateAreaMetadata(area)
+  }
+
+  // Check if it's a municipality slug
+  const { data: municipality } = await serverSupabase
+    .from('municipalities')
+    .select('id, name, slug, area_id')
+    .eq('slug', params.slug)
+    .single()
+
+  if (municipality) {
+    return generateMunicipalityMetadata(municipality)
+  }
+
+  // Check if it's a community slug
+  const { data: community } = await serverSupabase
+    .from('communities')
+    .select('id, name, slug, municipality_id')
+    .eq('slug', params.slug)
+    .single()
+
+  if (community) {
+    return generateCommunityMetadata(community)
+  }
+
+  // Fall back to building metadata
+  return generateBuildingMetadata({ params })
+}
+
+export default async function DynamicSlugPage({
+  params
+}: {
+  params: { slug: string }
+}) {
+    // Property URL: /101-charles-st-e-unit-2503-c7351578
+    if (isPropertySlug(params.slug)) {
+      const { mlsNumber } = parsePropertySlug(params.slug)
+      console.log('PAGE DEBUG 1:', { slug: params.slug, mlsNumber })
+      if (!mlsNumber) {
+        notFound()
+      }
+      // Lookup property ID by MLS number (use server supabase and case-insensitive match)
+      const { createClient } = await import('@/lib/supabase/server')
+      const serverSupabase = createClient()
+      const { data: listing, error } = await serverSupabase
+        .from('mls_listings')
+        .select('id')
+        .eq('listing_key', mlsNumber)
+        .single()
+        console.log('PAGE DEBUG 2:', { listing, error })
+
+      if (!listing) {
+        notFound()
+      }
+      // Render property page with the found ID
+      return <PropertyPage params={{ id: listing.id }} />
+    }
+
+
+  // Home Property URL: /123-main-street-burlington-w12569682
+  if (isHomePropertySlug(params.slug)) {
+    const { mlsNumber: homeMls } = parseHomePropertySlug(params.slug)
+    if (!homeMls) notFound()
+    const { createClient: _sc } = await import('@supabase/supabase-js')
+    const homeSupabase = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+    const { data: homeListing } = await homeSupabase
+      .from('mls_listings').select('id').eq('listing_key', homeMls).maybeSingle()
+        if (!homeListing) notFound()
+    return <HomePropertyPage params={{ id: homeListing.id }} />
+  }
+
+  // Check if it's a development slug
+  const { data: development } = await supabase
+    .from('developments')
+    .select('id, name, slug')
+    .eq('slug', params.slug)
+    .single()
+
+  if (development) {
+    // Development URL: /playground-condos-30-50-ordnance-st-toronto
+    return <DevelopmentPage params={params} development={development} />
+  }
+
+  // Check if it's an area slug
+  const { data: area } = await supabase
+    .from('treb_areas')
+    .select('id, name, slug')
+    .eq('slug', params.slug)
+    .single()
+
+  if (area) {
+    return <AreaPage area={area} />
+  }
+
+  // Check if it's a municipality slug
+  const { data: municipality } = await supabase
+    .from('municipalities')
+    .select('id, name, slug, area_id')
+    .eq('slug', params.slug)
+    .single()
+
+  if (municipality) {
+    return <MunicipalityPage municipality={municipality} />
+  }
+
+  // Check if it's a community slug
+  const { data: community } = await supabase
+    .from('communities')
+    .select('id, name, slug, municipality_id')
+    .eq('slug', params.slug)
+    .single()
+
+  if (community) {
+    return <CommunityPage community={community} />
+  }
+
+  // Building URL: /x2-condos-101-charles-st-e-toronto
+  return <BuildingPage params={params} />
+}
+
+
+
+
+
+========================================================================
+FILE: app\comprehensive-site\toronto\[neighbourhood]\page.tsx   [Toronto neighbourhood page (NEW finding — already exists)]
+========================================================================
+import { notFound } from 'next/navigation'
+import { Metadata } from 'next'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import NeighbourhoodPageTabs from '@/app/[slug]/components/NeighbourhoodPageTabs'
+import GeoHero from '@/app/[slug]/components/GeoHero'
+import { getAgentFromHost } from '@/lib/utils/agent-detection'
+import { getWalliamTenantId, resolveWalliamAgent } from '@/lib/utils/is-walliam'
+import CharliePageContext from '@/components/CharliePageContext'
+import WalliamCTA from '@/components/WalliamCTA'
+import WalliamAgentCard from '@/components/WalliamAgentCard'
+import { headers } from 'next/headers'
+
+interface Props {
+  params: { neighbourhood: string }
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const supabase = createClient()
+  const { data: n } = await supabase
+    .from('neighbourhoods')
+    .select('name')
+    .eq('slug', params.neighbourhood)
+    .eq('is_active', true)
+    .single()
+
+  if (!n) return { title: 'Neighbourhood Not Found' }
+  return {
+    title: `${n.name} Real Estate â€“ Condos & Homes | CondoLeads`,
+    description: `Browse condos and homes for sale and lease in ${n.name}, Toronto.`,
+  }
+}
+
+const getNeighbourhoodData = unstable_cache(
+  async function getNeighbourhoodData(slug: string) {
+  const supabase = createClient()
+
+  const { data: neighbourhood } = await supabase
+    .from('neighbourhoods')
+    .select('id, name, slug')
+    .eq('slug', slug)
+    .eq('is_active', true)
+    .single()
+
+  if (!neighbourhood) return null
+
+  const { data: mappings } = await supabase
+    .from('municipality_neighbourhoods')
+    .select('municipality_id, municipalities(id, name, slug)')
+    .eq('neighbourhood_id', neighbourhood.id)
+
+  const municipalities = (mappings ?? [])
+    .map((m: any) => m.municipalities)
+    .filter(Boolean)
+
+  const municipalityIds = municipalities.map((m: any) => m.id)
+  if (!municipalityIds.length) return { neighbourhood, municipalities: [], municipalityIds: [], stats: null }
+
+  // Resolve community IDs for building count upfront
+  const { data: communities } = await supabase
+    .from('communities')
+    .select('id, name, slug')
+    .in('municipality_id', municipalityIds)
+    .limit(10000)
+
+  const communityIds = (communities ?? []).map((c: any) => c.id)
+
+  // FIX: run all queries in parallel
+  // FIX: initialTotal and forSaleCount were identical queries â€” merged into one
+  // FIX: sold/leased counts deferred â€” not needed on initial SSR render, fetched by tabs on demand
+  const [
+    { count: activeCount },
+    { count: condoCount },
+    { count: homeCount },
+    { count: buildingCount },
+    { data: initialListingsRaw },
+    { count: forSaleCount },
+    { count: forLeaseCount },
+  ] = await Promise.all([
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending']),
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .in('property_subtype', ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
+        'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']),
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .in('property_subtype', ['Detached', 'Semi-Detached', 'Att/Row/Townhouse',
+        'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']),
+    communityIds.length
+      ? supabase.from('buildings')
+          .select('id', { count: 'exact', head: true })
+          .in('community_id', communityIds)
+      : Promise.resolve({ count: 0 }),
+    supabase.from('mls_listings')
+      .select(`id, building_id, community_id, municipality_id, listing_id, listing_key,
+        standard_status, transaction_type, list_price, close_price, close_date,
+        unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer,
+        property_type, property_subtype, living_area_range, square_foot_source,
+        building_area_total, parking_total, locker, association_fee, tax_annual_amount,
+        days_on_market, listing_contract_date,
+        lot_width, lot_depth, frontage_length, basement, garage_type, garage_yn,
+        approximate_age, architectural_style, cooling, pool_features, fireplace_yn,
+        media (id, media_url, variant_type, order_number, preferred_photo_yn)`)
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .eq('transaction_type', 'For Sale')
+      .order('list_price', { ascending: false })
+      .range(0, 23),
+    // FIX: forSaleCount and initialTotal were duplicated â€” now one query serves both
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .eq('transaction_type', 'For Sale'),
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .eq('transaction_type', 'For Lease'),
+  ])
+
+  // FIX: sold/leased counts removed from SSR â€” NeighbourhoodPageTabs fetches them
+  // when the user clicks those tabs via the API route
+  const initialCounts = {
+    forSale: forSaleCount ?? 0,
+    forLease: forLeaseCount ?? 0,
+    sold: 0,
+    leased: 0,
+  }
+
+  // Process media thumbnails
+  const initialListings = (initialListingsRaw ?? []).map((l: any) => ({
+    ...l,
+    media: (l.media?.filter((m: any) => m.variant_type === 'thumbnail') || [])
+      .sort((a: any, b: any) => (a.order_number ?? 999) - (b.order_number ?? 999))
+      .slice(0, 1),
+  }))
+
+  return {
+    neighbourhood,
+    municipalities,
+    municipalityIds,
+    communities,
+    stats: {
+      active: activeCount ?? 0,
+      condos: condoCount ?? 0,
+      homes: homeCount ?? 0,
+      buildings: buildingCount ?? 0,
+    },
+    initialListings,
+    initialTotal: forSaleCount ?? 0,
+    initialCounts,
+  }
+  },
+  ['neighbourhood-data'],
+  { revalidate: 300, tags: ['neighbourhood'] }
+)
+
+export default async function NeighbourhoodPage({ params }: Props) {
+  const data = await getNeighbourhoodData(params.neighbourhood)
+  if (!data) notFound()
+
+  const headersList = headers()
+  const host = headersList.get('host') || ''
+  const agent = await getAgentFromHost(host)
+  const tenantId = await getWalliamTenantId()
+  const isWalliam = !!tenantId
+  let walliamAgentId: string | null = null
+  if (isWalliam && tenantId) {
+    walliamAgentId = await resolveWalliamAgent({ tenant_id: tenantId })
+  }
+
+  const { neighbourhood, municipalities, municipalityIds, communities, stats, initialListings, initialTotal, initialCounts } = data
+
+  return (
+    <div className="min-h-screen bg-white">
+      <GeoHero
+        title={`${neighbourhood.name} Real Estate`}
+        subtitle="Toronto Neighbourhood"
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Toronto", href: "/toronto" },
+          { label: neighbourhood.name, href: "#" },
+        ]}
+        stats={{
+          active: stats?.active ?? 0,
+          sold: 0,
+          leased: 0,
+          buildings: stats?.buildings ?? 0,
+        }}
+        geoType="neighbourhood"
+      />
+
+      {/* Municipality pills â€” quick links */}
+      {municipalities.length > 1 && (
+        <div className="bg-gray-50 border-b border-gray-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap gap-2">
+            {municipalities.map((m: any) => (
+              <Link
+                key={m.id}
+                href={`/${m.slug}`}
+                className="px-3 py-1 text-sm bg-white border border-gray-200 rounded-full text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              >
+                {m.name}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Listings â€” tabbed */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <NeighbourhoodPageTabs
+          municipalityIds={municipalityIds}
+          agentId={isWalliam ? (walliamAgentId || '') : (agent?.id || '')}
+          tenantId={isWalliam ? (tenantId || '') : (agent?.tenant_id || '')}
+          buildingCount={stats?.buildings ?? 0}
+          municipalities={municipalities}
+          initialListings={initialListings}
+          initialTotal={initialTotal}
+          counts={initialCounts}
+        />
+      </div>
+
+      {/* Communities */}
+      {communities && communities.length > 0 && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 border-t border-gray-100">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Communities</h2>
+          <div className="flex flex-wrap gap-2">
+            {communities.map((c: any) => (
+              <Link key={c.id} href={`/${c.slug}`}
+                className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg text-gray-600 hover:border-blue-400 hover:text-blue-600 transition-colors">
+                {c.name}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isWalliam && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <WalliamCTA context={neighbourhood.name} />
+          <WalliamAgentCard tenant_id={tenantId!} />
+          <CharliePageContext
+            municipality_id={municipalityIds[0] || null}
+            municipality_slug={municipalities[0]?.slug || null}
+            neighbourhood_id={neighbourhood.id}
+            neighbourhood_slug={neighbourhood.slug}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+========================================================================
+FILE: lib\utils\is-walliam.ts   [is-walliam helpers (3rd agent-resolution surface)]
+========================================================================
+// lib/utils/is-walliam.ts
+// Detects if the current request is on the WALLiam tenant (walliam.ca)
+// Used in server components to conditionally render WALLiam UI vs System 1 UI
+// Detection: host header â†’ tenants table lookup
+// Dev: uses DEV_TENANT_DOMAIN env var (set to 'walliam.ca' in .env.local)
+
+import { headers } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+
+const WALLIAM_TENANT_ID = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
+
+export async function getWalliamTenantId(): Promise<string | null> {
+  try {
+    const headersList = headers()
+    const host = headersList.get('host') || ''
+
+    // Dev environment â€” use DEV_TENANT_DOMAIN
+    if (host.includes('localhost') || host.includes('vercel.app')) {
+      const devTenantDomain = process.env.DEV_TENANT_DOMAIN || null
+      if (!devTenantDomain) return null
+
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('domain', devTenantDomain)
+        .eq('is_active', true)
+        .single()
+
+      return data?.id || null
+    }
+
+    // Production â€” check host against tenants table
+    const cleanHost = host.replace(/^www\./, '')
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('domain', cleanHost)
+      .eq('is_active', true)
+      .single()
+
+    return data?.id || null
+  } catch {
+    return null
+  }
+}
+
+// Convenience boolean check
+export async function isWalliamTenant(): Promise<boolean> {
+  const id = await getWalliamTenantId()
+  return !!id
+}
+
+// Get WALLiam-resolved agent for a given context
+// Returns agentId string or null
+export async function resolveWalliamAgent(params: {
+  listing_id?: string | null
+  building_id?: string | null
+  community_id?: string | null
+  municipality_id?: string | null
+  area_id?: string | null
+  user_id?: string | null
+  tenant_id: string
+}): Promise<string | null> {
+  try {
+    const supabase = createClient()
+    const { data } = await supabase.rpc('resolve_agent_for_context', {
+      p_listing_id: params.listing_id || null,
+      p_building_id: params.building_id || null,
+      p_neighbourhood_id: null,
+      p_community_id: params.community_id || null,
+      p_municipality_id: params.municipality_id || null,
+      p_area_id: params.area_id || null,
+      p_user_id: params.user_id || null,
+      p_tenant_id: params.tenant_id,
+    })
+    if (data) return data
+    // Fall back to tenant default_agent_id
+    const { data: tenant } = await supabase.from('tenants').select('default_agent_id').eq('id', params.tenant_id).single()
+    return tenant?.default_agent_id || null
+  } catch {
+    return null
+  }
+}
+
+========================================================================
+WalliamAgentCard JSX call sites (props passed by each caller)
+========================================================================
+
+--- app\[slug]\AreaPage.tsx ---
+    11: import CharliePageContext from '@/components/CharliePageContext'
+    12: import WalliamAgentCard from '@/components/WalliamAgentCard'
+    13: 
+    14: const LISTING_SELECT = `
+    15:   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
+    16:   list_price, close_price, close_date, unit_number, unparsed_address,
+    17:   bedrooms_total, bathrooms_total_integer, property_type, property_subtype,
+    18:   living_area_range, square_foot_source, parking_total, locker,
+    19:   association_fee, tax_annual_amount, days_on_market, listing_contract_date,
+    20:   building_area_total,
+    21:   media (id, media_url, variant_type, order_number, preferred_photo_yn)
+    22: `
+    23: 
+    24: const CONDO_SUBTYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
+  ----
+   229:           <div className="mt-8 grid md:grid-cols-2 gap-6">
+   230:             <WalliamAgentCard
+   231:               area_id={area.id}
+   232:               tenant_id={tenantId!}
+   233:             />
+   234:             <WalliamCTA context={area.name} />
+   235:             <CharliePageContext area_id={area.id} area_slug={area.slug} />
+   236:           </div>
+   237:         )}
+   238: 
+   239:         <GeoInterlinking
+   240:           title={`Municipalities in ${area.name}`}
+   241:           links={municipalityLinks}
+   242:         />
+  ----
+
+--- app\[slug]\CommunityPage.tsx ---
+    11: import CharliePageContext from '@/components/CharliePageContext'
+    12: import WalliamAgentCard from '@/components/WalliamAgentCard'
+    13: 
+    14: const LISTING_SELECT = `
+    15:   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
+    16:   list_price, close_price, close_date, unit_number, unparsed_address,
+    17:   bedrooms_total, bathrooms_total_integer, property_type, property_subtype,
+    18:   living_area_range, square_foot_source, parking_total, locker,
+    19:   association_fee, tax_annual_amount, days_on_market, listing_contract_date,
+    20:   building_area_total,
+    21:   lot_width, lot_depth, lot_size_dimensions, lot_size_area, lot_size_area_units,
+    22:   frontage_length, basement, garage_type, garage_yn, approximate_age,
+    23:   legal_stories, architectural_style, cooling, pool_features, fireplace_yn,
+    24:   media (id, media_url, variant_type, order_number, preferred_photo_yn)
+  ----
+   176:           <div className="mt-8 grid md:grid-cols-2 gap-6">
+   177:             <WalliamAgentCard
+   178:               community_id={community.id}
+   179:               municipality_id={community.municipality_id}
+   180:               tenant_id={tenantId!}
+   181:             />
+   182:             <WalliamCTA context={community.name} />
+   183:             <CharliePageContext community_id={community.id} community_slug={community.slug} municipality_id={community.municipality_id} />
+   184:           </div>
+   185:         )}
+   186: 
+   187:         <AnalyticsSection
+   188:           geoType="community"
+   189:           geoId={community.id}
+  ----
+
+--- app\[slug]\BuildingPage.tsx ---
+   118: import CharliePageContext from '@/components/CharliePageContext'
+   119: import WalliamAgentCard from '@/components/WalliamAgentCard'
+   120: import WalliamContactForm from '@/components/WalliamContactForm'
+   121: import { getWalliamTenantId, resolveWalliamAgent } from '@/lib/utils/is-walliam'
+   122: 
+   123: export async function generateMetadata({ params }: { params: { slug: string } }) {
+   124:   const headersList = headers()
+   125:   const host = headersList.get('host') || ''
+   126:   
+   127:   // Fetch agent branding based on host
+   128:   let agentBranding: { site_title: string | null; site_tagline: string | null; og_image_url: string | null } | null = null
+   129:   const serverSupabase = createClient()
+   130:   
+   131:   if (isCustomDomain(host)) {
+  ----
+   575:                 <>
+   576:                   <WalliamAgentCard
+   577:                    building_id={building.id}
+   578:                    community_id={building.community_id || null}
+   579:                    municipality_id={building.municipality_id || null}
+   580:                    tenant_id={tenantId!}
+   581:                   />
+   582:                   <WalliamCTA context={building.building_name} />
+   583:                   <CharliePageContext building_id={building.id} community_id={building.community_id || null} municipality_id={building.municipality_id || null} />
+   584:                   <WalliamContactForm
+   585:                     tenantId={tenantId!}
+   586:                     building_id={building.id}
+   587:                     geo_name={building.building_name}
+   588:                     source="walliam_building_inquiry"
+  ----
+
+--- app\[slug]\PropertyPageContent.tsx ---
+     9: import { AgentCard } from '@/components/AgentCard'
+    10: import WalliamAgentCard from '@/components/WalliamAgentCard'
+    11: import WalliamContactForm from '@/components/WalliamContactForm'
+    12: import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+    13: 
+    14: export async function PropertyPageContent({ slug }: { slug: string }) {
+    15:   // Parse slug to get MLS number
+    16:   const { mlsNumber } = parsePropertySlug(slug)
+    17:   
+    18:   if (!mlsNumber) {
+    19:     notFound()
+    20:   }
+    21: 
+    22:   // Use service role client for data fetching
+  ----
+   174:                 <>
+   175:                   <WalliamAgentCard
+   176:                     listing_id={listing.id}
+   177:                     building_id={listing.building_id}
+   178:                     community_id={listing.community_id || null}
+   179:                     municipality_id={listing.municipality_id || null}
+   180:                     tenant_id={tenantId!}
+   181:                   />
+   182:                   <PropertyEstimateCTA
+   183:                     listing={listingWithBuilding}
+   184:                     status={status}
+   185:                     isSale={isSale}
+   186:                     buildingName={building?.building_name || ''}
+   187:                     buildingAddress={building?.canonical_address || ''}
+  ----
+
+--- app\property\[id]\PropertyPageClient.tsx ---
+    28: import CharliePageContext from '@/components/CharliePageContext'
+    29: import WalliamAgentCard from '@/components/WalliamAgentCard'
+    30: import WalliamContactForm from '@/components/WalliamContactForm'
+    31: import AppointmentForm from '@/app/charlie/components/AppointmentForm'
+    32: 
+    33: interface PropertyPageClientProps {
+    34:   listing: any
+    35:   largePhotos: any[]
+    36:   rooms: any[]
+    37:   unitHistory: any[]
+    38:   amenities: any[]
+    39:   feeIncludes: any[]
+    40:   similarListings: any[]
+    41:   availableListings: any[]
+  ----
+   175:                 <>
+   176:                   <WalliamAgentCard
+   177:                     listing_id={listing.id}
+   178:                     building_id={listing.building_id}
+   179:                     community_id={listing.community_id || null}
+   180:                     municipality_id={listing.municipality_id || null}
+   181:                     tenant_id={walliamTenantId}
+   182:                     hideCTA={true}
+   183:                   />
+   184:                   <WalliamCTA context={building?.building_name} />
+   185:                   <CharliePageContext listing_id={listing.id} building_id={listing.building_id} community_id={listing.community_id || null} municipality_id={listing.municipality_id || null} />
+   186:                   <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
+   187:                     <button
+   188:                       onClick={() => setShowBooking(b => !b)}
+  ----
+
+--- app\property\[id]\HomePropertyPageClient.tsx ---
+    25: import CharliePageContext from '@/components/CharliePageContext'
+    26: import WalliamAgentCard from '@/components/WalliamAgentCard'
+    27: import WalliamContactForm from '@/components/WalliamContactForm'
+    28: import AppointmentForm from '@/app/charlie/components/AppointmentForm'
+    29: 
+    30: interface HomePropertyPageClientProps {
+    31:   listing: any
+    32:   largePhotos: any[]
+    33:   rooms: any[]
+    34:   addressHistory: any[]
+    35:   similarListings: any[]
+    36:   availableNearby: any[]
+    37:   isSale: boolean
+    38:   status: 'Active' | 'Closed'
+  ----
+   169:                 <>
+   170:                   <WalliamAgentCard
+   171:                     listing_id={listing.id}
+   172:                     community_id={community?.id || null}
+   173:                     municipality_id={municipality?.id || null}
+   174:                     area_id={area?.id || null}
+   175:                     tenant_id={walliamTenantId}
+   176:                   />
+   177:                   <WalliamCTA context={listing.unparsed_address} />
+   178:                   <CharliePageContext listing_id={listing.id} community_id={community?.id || null} municipality_id={municipality?.id || null} area_id={area?.id || null} />
+   179:                   <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
+   180:                     <button onClick={() => setShowBooking(b => !b)} style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+   181:                       <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>ðŸ“… Book a Visit</span>
+   182:                       <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.4)', transform: showBooking ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>â€º</span>
+  ----

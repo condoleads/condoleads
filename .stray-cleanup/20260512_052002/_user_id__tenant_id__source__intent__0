@@ -1,0 +1,4 @@
+warning: in the working copy of 'app/api/charlie/lead/route.ts', LF will be replaced by CRLF the next time Git touches it
+ app/api/charlie/lead/route.ts       |  2 [32m+[m[31m-[m
+ app/api/charlie/plan-email/route.ts | 10 [32m+++++++[m[31m---[m
+ 2 files changed, 8 insertions(+), 4 deletions(-)

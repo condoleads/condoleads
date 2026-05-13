@@ -1,0 +1,795 @@
+=== W3c PHASE 7 RECON 2026-05-13T15:21:20.080Z ===
+
+--- submitLeadFromForm (lib/actions/leads.ts) signature + body window ---
+  HEADER NOT MATCHED: (?:export\s+)?(?:async\s+)?function\s+submitLeadFromForm\b
+
+--- buildContactEmail (app/api/walliam/contact/route.ts) ---
+Declaration + first 25 lines:
+  L200: function buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName }: any): string {
+  L201:   return `
+  L202:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+  L203:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+  L204:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
+  L205:           <span style="font-weight: 900;">${brandName}</span>
+  L206:         </div>
+  L207:         <div style="font-size: 18px; font-weight: 700; color: #fff;">New Inquiry</div>
+  L208:         ${geo_name ? `<div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${geo_name}</div>` : ''}
+  L209:       </div>
+  L210:       <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+  L211:         <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+  L212:           <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${name}</td></tr>
+  L213:           <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${email}" style="color: #1d4ed8;">${email}</a></td></tr>
+  L214:           ${phone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${phone}" style="color: #1d4ed8;">${phone}</a></td></tr>` : ''}
+  L215:           ${source ? `<tr><td style="color: #64748b;">Source</td><td style="color: #64748b;">${source}</td></tr>` : ''}
+  L216:           ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+  L217:         </table>
+  L218:         <div style="margin-top: 20px; text-align: center;">
+  L219:           <a href="mailto:${email}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+  L220:             Reply to ${name}
+  L221:           </a>
+  L222:         </div>
+  L223:       </div>
+  L224:     </div>
+  L225:   `
+
+Call-site context (line 135 ± 12 before / 6 after):
+    L123:       contact_phone: phone || null,
+    L124:       message: message || null,
+    L125:       source: source || `${sourceKey}_contact`,
+    L126:       lead_origin_route: 'contact_form',
+    L127:       building_id: building_id || null,
+    L128:       listing_id: listing_id || null,
+    L129:       geo_name: geo_name || null,
+    L130:       status: 'new',
+    L131:       assignment_source: agent ? 'geo' : 'admin',
+    L132:     }).select('id').single()
+    L133: 
+    L134:     // Build email HTML
+ >> L135:     const html = buildContactEmail({ name, email, phone, message, source, geo_name, building_id, listing_id, brandName })
+    L136:     const subject = `\u2756 ${brandName} Inquiry \u2014 ${name} \u2014 ${geo_name || source || brandName}`
+    L137: 
+    L138:     // Chain notification — single helper-driven send (replaces inline manager-CC + hardcoded admin BCC)
+    L139:     let recipients
+    L140:     try {
+    L141:       recipients = await getLeadEmailRecipients(tenant_id, agent?.id || null, supabase)
+
+--- buildUserConfirmationEmail (app/api/charlie/appointment/route.ts) ---
+Declaration + first 25 lines:
+  L273: function buildUserConfirmationEmail(data: {
+  L274:   name: string
+  L275:   intent: string
+  L276:   formattedDate: string
+  L277:   appointment_time: string
+  L278:   appointment_properties?: any[]
+  L279:   agent?: any
+  L280:   rescheduleUrl: string
+  L281:   brandName: string
+  L282:   domain: string
+  L283:   baseUrl: string
+  L284: }): string {
+  L285:   const { name, intent, formattedDate, appointment_time, appointment_properties, agent, rescheduleUrl, brandName, domain, baseUrl } = data
+  L286:   const isBuyer = intent === 'buyer'
+  L287: 
+  L288:   const propertiesHtml = isBuyer && appointment_properties?.length ? `
+  L289:     <div style="margin: 20px 0;">
+  L290:       <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Properties to View</h3>
+  L291:       ${appointment_properties.map(p => `
+  L292:         <a href="${baseUrl}/${p.slug || p.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; text-decoration: none;">
+  L293:           <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${p.address || '—'}</div>
+  L294:           <div style="font-size: 14px; font-weight: 800; color: #1d4ed8;">$${Number(p.price || 0).toLocaleString('en-CA')}</div>
+  L295:         </a>
+  L296:       `).join('')}
+  L297:     </div>
+  L298:   ` : ''
+
+Call-site context (line 184 ± 12 before / 6 after):
+    L172:         .eq('id', sessionId)
+    L173:     }
+    L174: 
+    L175:     const formattedDate = formatDate(appointment_date)
+    L176:     const rescheduleUrl = `${BASE_URL}/reschedule?token=${lead.reschedule_token}`
+    L177: 
+    L178:     // Step 4: Confirmation email → user (single recipient, no chain)
+    L179:     try {
+    L180:       await sendTenantEmail({
+    L181:         tenantId: tenantId || '',
+    L182:         to: email,
+    L183:         subject: `Your ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${formattedDate} at ${appointment_time}`,
+ >> L184:         html: buildUserConfirmationEmail({
+    L185:           name, intent, formattedDate, appointment_time,
+    L186:           appointment_properties, agent, rescheduleUrl,
+    L187:           brandName, domain, baseUrl: BASE_URL,
+    L188:         }),
+    L189:       })
+    L190:     } catch (err) {
+
+--- buildAgentNotificationEmail (app/api/charlie/appointment/route.ts) ---
+Declaration + first 25 lines:
+  L351: function buildAgentNotificationEmail(data: {
+  L352:   name: string
+  L353:   email: string
+  L354:   phone?: string
+  L355:   intent: string
+  L356:   formattedDate: string
+  L357:   appointment_time: string
+  L358:   appointment_properties?: any[]
+  L359:   geo_name?: string
+  L360:   brandName: string
+  L361:   domain: string
+  L362:   baseUrl: string
+  L363: }): string {
+  L364:   const { name, email, phone, intent, formattedDate, appointment_time, appointment_properties, geo_name, brandName, domain, baseUrl } = data
+  L365:   const isBuyer = intent === 'buyer'
+  L366: 
+  L367:   const propertiesHtml = isBuyer && appointment_properties?.length ? `
+  L368:     <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 20px 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Properties Requested</h2>
+  L369:     ${appointment_properties.map(p => `
+  L370:       <a href="${baseUrl}/${p.slug || p.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
+  L371:         <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${p.address || '—'}</div>
+  L372:         <div style="font-size: 14px; font-weight: 800; color: #1d4ed8;">$${Number(p.price || 0).toLocaleString('en-CA')}</div>
+  L373:       </a>
+  L374:     `).join('')}
+  L375:   ` : ''
+  L376: 
+
+Call-site context (line 224 ± 12 before / 6 after):
+    L212:       }
+    L213:     }
+    L214: 
+    L215:     if (recipients) {
+    L216:       try {
+    L217:         const subject = `📅 New ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${name} — ${formattedDate}`
+    L218:         const sendResult = await sendTenantEmail({
+    L219:           tenantId: tenantId || '',
+    L220:           to: recipients.to,
+    L221:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+    L222:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+    L223:           subject,
+ >> L224:           html: buildAgentNotificationEmail({
+    L225:             name, email, phone, intent, formattedDate, appointment_time,
+    L226:             appointment_properties, geo_name,
+    L227:             brandName, domain, baseUrl: BASE_URL,
+    L228:           }),
+    L229:         })
+    L230:         if (lead?.id) {
+
+--- buildUserPlanEmail (app/api/charlie/lead/route.ts) ---
+Declaration + first 25 lines:
+  L323: function buildUserPlanEmail(data: {
+  L324:   name: string
+  L325:   intent: string
+  L326:   buyerProfile?: any
+  L327:   sellerProfile?: any
+  L328:   listings?: any[]
+  L329:   analytics?: any
+  L330:   agent?: any
+  L331:   brandName: string
+  L332:   domain: string
+  L333:   baseUrl: string
+  L334: }): string {
+  L335:   const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl } = data
+  L336:   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+  L337:   const isBuyer = intent === 'buyer'
+  L338:   const topListings = (listings || []).slice(0, 5)
+  L339: 
+  L340:   const marketCards = analytics ? `
+  L341:     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0;">
+  L342:       ${[
+  L343:         { label: 'Median PSF', value: analytics.median_psf ? `$${Number(analytics.median_psf).toLocaleString('en-CA', { maximumFractionDigits: 0 })}` : '—' },
+  L344:         { label: 'Avg Days on Market', value: analytics.closed_avg_dom_90 ? `${analytics.closed_avg_dom_90}d` : '—' },
+  L345:         { label: 'Sale / List', value: analytics.sale_to_list_ratio ? `${analytics.sale_to_list_ratio}%` : '—' },
+  L346:       ].map(m => `
+  L347:         <div style="background: #f1f5f9; border-radius: 10px; padding: 14px; text-align: center;">
+  L348:           <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">${m.label}</div>
+
+Call-site context (line 254 ± 12 before / 6 after):
+    L242:       await supabase
+    L243:         .from('chat_sessions')
+    L244:         .update({ lead_id: leadId, last_activity_at: new Date().toISOString() })
+    L245:         .eq('id', sessionId)
+    L246:     }
+    L247: 
+    L248:     // Step: Send rich plan email → USER (single recipient, not chain)
+    L249:     try {
+    L250:       await sendTenantEmail({
+    L251:         tenantId,
+    L252:         to: authEmail,
+    L253:         subject: `Your ${brandName} ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+ >> L254:         html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl: BASE_URL }),
+    L255:       })
+    L256:     } catch (err) {
+    L257:       if (err instanceof TenantEmailNotConfigured) {
+    L258:         console.warn('[charlie/lead] tenant email not configured (user):', err.message)
+    L259:       } else if (err instanceof TenantEmailFailed) {
+    L260:         console.error('[charlie/lead] resend send failed (user):', err.message)
+
+--- buildAgentLeadEmail (app/api/charlie/lead/route.ts) ---
+Declaration + first 25 lines:
+  L454: function buildAgentLeadEmail(data: {
+  L455:   name: string
+  L456:   email: string
+  L457:   phone?: string
+  L458:   intent: string
+  L459:   buyerProfile?: any
+  L460:   sellerProfile?: any
+  L461:   listings?: any[]
+  L462:   analytics?: any
+  L463:   brandName: string
+  L464:   domain: string
+  L465:   baseUrl: string
+  L466: }): string {
+  L467:   const { name, email, phone, intent, buyerProfile, sellerProfile, listings, brandName, domain, baseUrl } = data
+  L468:   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+  L469:   const isBuyer = intent === 'buyer'
+  L470:   const topListings = (listings || []).slice(0, 3)
+  L471: 
+  L472:   return `
+  L473:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+  L474:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L475:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 4px;">
+  L476:           <span>${brandName}</span>
+  L477:         </div>
+  L478:         <h1 style="color: #fff; margin: 8px 0 0; font-size: 18px; font-weight: 700;">
+  L479:           New ${isBuyer ? '🏠 Buyer' : '💰 Seller'} Lead
+
+Call-site context (line 288 ± 12 before / 6 after):
+    L276:       }
+    L277:     }
+    L278: 
+    L279:     if (recipients) {
+    L280:       try {
+    L281:         const subject = `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead — ${name} — ${profile?.geoName || 'GTA'}`
+    L282:         const sendResult = await sendTenantEmail({
+    L283:           tenantId,
+    L284:           to: recipients.to,
+    L285:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+    L286:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+    L287:           subject,
+ >> L288:           html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics, brandName, domain, baseUrl: BASE_URL }),
+    L289:         })
+    L290:         if (leadId) {
+    L291:           await logEmailRecipients({
+    L292:             supabase,
+    L293:             tenantId,
+    L294:             leadId,
+
+--- buildRichPlanEmail (app/api/charlie/plan-email/route.ts) ---
+Declaration + first 25 lines:
+  L232: function buildRichPlanEmail(data: {
+  L233:   userName: string
+  L234:   userEmail: string
+  L235:   planType: string
+  L236:   plan: any
+  L237:   analytics: any
+  L238:   listings: any[]
+  L239:   agent: any
+  L240:   geoName: string | null
+  L241:   comparables: any[]
+  L242:   sellerEstimate: any | null
+  L243:   vipCreditUsed: boolean
+  L244:   vipCreditPlansUsed: number
+  L245:   vipCreditTotal: number
+  L246:   blocks: any[]
+  L247:   brandName: string
+  L248:   domain: string
+  L249:   baseUrl: string
+  L250: }): string {
+  L251:   const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl } = data
+  L252:   const isBuyer = planType === 'buyer'
+  L253:   const topListings = (listings || []).slice(0, 10)
+  L254: 
+  L255:   const stl = analytics?.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio) : null
+  L256:   const dom = analytics?.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90) : null
+  L257:   const conditionLabel = !stl || !dom ? 'Insufficient Data'
+
+Call-site context (line 160 ± 12 before / 6 after):
+    L148:       tenant_id: tenantId,
+    L149:     }).select('id').single()
+    L150:     if (leadError) console.error('[plan-email] lead error:', leadError)
+    L151: 
+    L152:     // Track activity
+    L153:     await trackUserActivity(supabase, tenantId, userEmail, agent?.id || null, 'plan_generated', {
+    L154:       source: `${sourceKey}_charlie`,
+    L155:       planType,
+    L156:       geoName: geoName || null,
+    L157:       budgetMax: plan?.budgetMax || null,
+    L158:     })
+    L159: 
+ >> L160:     const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL })
+    L161:     const subject = `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
+    L162: 
+    L163:     // User-facing plan email — single recipient, not chain
+    L164:     try {
+    L165:       await sendTenantEmail({ tenantId: tenantId || '', to: userEmail, subject, html })
+    L166:     } catch (err) {
+
+--- buildAgentEmailHtml (app/api/walliam/charlie/vip-request/route.ts) ---
+Declaration + first 25 lines:
+  L417: function buildAgentEmailHtml(data: {
+  L418:   userName: string
+  L419:   userEmail: string
+  L420:   userPhone: string
+  L421:   planType: string
+  L422:   approveUrl: string
+  L423:   denyUrl: string
+  L424:   agentName: string
+  L425:   brandName: string
+  L426:   tenantDomain: string
+  L427: }): string {
+  L428:   const planLabel = data.planType === 'seller' ? '💰 Seller Plan' : '🏠 Buyer Plan'
+  L429: 
+  L430:   return `
+  L431:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L432:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L433:         <div style="font-size: 32px; margin-bottom: 8px;">✦</div>
+  L434:         <h1 style="color: white; margin: 0; font-size: 22px;">New VIP Plan Request</h1>
+  L435:         <p style="color: rgba(255,255,255,0.5); margin: 6px 0 0; font-size: 13px;">${data.brandName} · ${planLabel}</p>
+  L436:       </div>
+  L437: 
+  L438:       <div style="background: #f8fafc; padding: 24px; border: 1px solid #e2e8f0;">
+  L439:         <h2 style="margin: 0 0 16px; color: #1e293b; font-size: 16px;">Contact</h2>
+  L440:         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+  L441:           <tr>
+  L442:             <td style="padding: 6px 0; color: #64748b; width: 80px;">Name</td>
+
+Call-site context (line 204 ± 12 before / 6 after):
+    L192:       .select()
+    L193:       .single()
+    L194: 
+    L195:     if (insertError || !vipRequest) {
+    L196:       console.error('[walliam/vip-request] insert error:', insertError)
+    L197:       return NextResponse.json({ error: 'Failed to create request' }, { status: 500 })
+    L198:     }
+    L199: 
+    L200:     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`
+    L201:     const approveUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=approve`
+    L202:     const denyUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=deny`
+    L203: 
+ >> L204:     const emailHtml = buildAgentEmailHtml({
+    L205:       userName,
+    L206:       userEmail,
+    L207:       userPhone,
+    L208:       planType: planType || 'buyer',
+    L209:       approveUrl,
+    L210:       denyUrl,
+
+--- buildUserApprovalEmailHtml (app/api/walliam/charlie/vip-request/route.ts) ---
+Declaration + first 25 lines:
+  L480: function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number, brandName: string, tenantDomain: string): string {
+  L481:   return `
+  L482:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L483:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+  L484:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  L485:         <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
+  L486:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
+  L487:       </div>
+  L488:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+  L489:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+  L490:           Hi ${userName},
+  L491:         </p>
+  L492:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+  L493:           <strong>${agentName}</strong> has approved your request for additional ${brandName} plan credits.
+  L494:           You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available.
+  L495:         </p>
+  L496:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+  L497:           Head back to ${brandName} to generate your personalized real estate plan. Your agent may also reach out directly.
+  L498:         </p>
+  L499:         <div style="text-align: center;">
+  L500:           <a href="${process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+  L501:             ✦ Back to ${brandName}
+  L502:           </a>
+  L503:         </div>
+  L504:       </div>
+  L505:     </div>
+
+Call-site context (line 340 ± 12 before / 6 after):
+    L328:         if (overrideError) {
+    L329:           console.error('[walliam/vip-request] user_credit_overrides upsert failed:', overrideError)
+    L330:         }
+    L331:       }
+    L332: 
+    L333:       // User-facing approval email — single recipient, not chain
+    L334:       if (userEmail) {
+    L335:         try {
+    L336:           await sendTenantEmail({
+    L337:             tenantId: tenantId,
+    L338:             to: userEmail,
+    L339:             subject: `Your ${brandName} Plan Access is Approved`,
+ >> L340:             html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, tenantDomain),
+    L341:           })
+    L342:         } catch (err) {
+    L343:           if (err instanceof TenantEmailNotConfigured) {
+    L344:             console.warn('[walliam/vip-request] tenant email not configured (user approval):', err.message)
+    L345:           } else if (err instanceof TenantEmailFailed) {
+    L346:             console.error('[walliam/vip-request] resend send failed (user approval):', err.message)
+
+--- buildApprovalEmailHtml (app/api/walliam/estimator/vip-request/route.ts) ---
+Declaration + first 25 lines:
+  L410: function buildApprovalEmailHtml(data: {
+  L411:   fullName: string
+  L412:   phone: string
+  L413:   email?: string
+  L414:   buildingName?: string
+  L415:   pageUrl?: string
+  L416:   approveUrl: string
+  L417:   denyUrl: string
+  L418:   agentName: string
+  L419:   brandName: string
+  L420: }): string {
+  L421:   return `
+  L422:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L423:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L424:         <h1 style="color: white; margin: 0; font-size: 22px;">🔔 ${data.brandName} Estimator VIP Request</h1>
+  L425:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">📊 Estimator</p>
+  L426:       </div>
+  L427:       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+  L428:         <h2 style="margin-top: 0; color: #1f2937; font-size: 16px;">Contact Information</h2>
+  L429:         <table style="width: 100%; border-collapse: collapse;">
+  L430:           <tr>
+  L431:             <td style="padding: 8px 0; color: #6b7280; width: 100px;">Phone:</td>
+  L432:             <td style="padding: 8px 0; font-weight: 600;">
+  L433:               <a href="tel:${data.phone}" style="color: #2563eb;">${data.phone}</a>
+  L434:             </td>
+  L435:           </tr>
+
+Call-site context (line 221 ± 12 before / 6 after):
+    L209:         })
+    L210:         .select('id')
+    L211:         .single()
+    L212:       if (leadError) console.error('[walliam/estimator/vip-request] lead error:', leadError)
+    L213:       lead = leadData
+    L214:     }
+    L215: 
+    L216:     // Build approval URLs
+    L217:     const baseUrl = buildBaseUrl(domain)
+    L218:     const approveUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=approve`
+    L219:     const denyUrl = `${baseUrl}/api/walliam/estimator/vip-approve?token=${vipRequest.approval_token}&action=deny`
+    L220: 
+ >> L221:     const emailHtml = buildApprovalEmailHtml({
+    L222:       fullName: userName || `${brandName} User`,
+    L223:       phone,
+    L224:       email: userEmail,
+    L225:       buildingName,
+    L226:       pageUrl,
+    L227:       approveUrl,
+
+--- buildQuestionnaireEmailHtml (app/api/walliam/estimator/vip-questionnaire/route.ts) ---
+Declaration + first 25 lines:
+  L301: function buildQuestionnaireEmailHtml(data: {
+  L302:   userName: string
+  L303:   phone: string
+  L304:   email?: string
+  L305:   buyerTypeDisplay: string
+  L306:   budgetDisplay: string
+  L307:   timelineDisplay: string
+  L308:   buildingName?: string
+  L309:   requirements?: string
+  L310:   brandName: string
+  L311: }): string {
+  L312:   return `
+  L313:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L314:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+  L315:         <h1 style="color: white; margin: 0; font-size: 22px;">📋 ${data.brandName} Estimator Questionnaire</h1>
+  L316:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0; font-size: 13px;">Additional buyer details submitted</p>
+  L317:       </div>
+  L318:       <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb;">
+  L319:         <h2 style="margin-top: 0; color: #1f2937; font-size: 16px;">Contact</h2>
+  L320:         <table style="width: 100%; border-collapse: collapse;">
+  L321:           <tr>
+  L322:             <td style="padding: 8px 0; color: #6b7280; width: 120px;">Name:</td>
+  L323:             <td style="padding: 8px 0; color: #1f2937; font-weight: 600;">${data.userName}</td>
+  L324:           </tr>
+  L325:           <tr>
+  L326:             <td style="padding: 8px 0; color: #6b7280;">Phone:</td>
+
+Call-site context (line 208 ± 12 before / 6 after):
+    L196:             lead_origin_route: 'estimator_questionnaire',
+    L197:             source_url: vipRequest.page_url,
+    L198:             building_id: session?.current_page_type === 'building' ? session?.current_page_id : null,
+    L199:             message: enrichedMessage,
+    L200:             status: 'new',
+    L201:             assignment_source: agent?.id ? 'geo' : 'admin',
+    L202:           })
+    L203:         if (insertLeadError) console.error('[walliam/estimator/vip-questionnaire] lead insert (defensive) error:', insertLeadError)
+    L204:       }
+    L205:     }
+    L206: 
+    L207:     // Build the chain notification email
+ >> L208:     const emailHtml = buildQuestionnaireEmailHtml({
+    L209:       brandName,
+    L210:       userName: userName || `${brandName} User`,
+    L211:       phone: vipRequest.phone,
+    L212:       email: userEmail,
+    L213:       buyerTypeDisplay,
+    L214:       budgetDisplay,
+
+--- vip-approve route email pattern (full first 250 lines) ---
+app/api/walliam/estimator/vip-approve/route.ts
+  L1: // app/api/walliam/estimator/vip-approve/route.ts
+  L2: // Token-based approve/deny for WALLiam estimator VIP requests
+  L3: // Adapted from app/api/chat/vip-approve/route.ts — System 1 never touched
+  L4: // Key differences:
+  L5: //   - Redirects to /admin-homes/leads
+  L6: //   - FROM: notifications@condoleads.ca
+  L7: //   - WALLiam dark theme HTML response
+  L8: //
+  L9: // W-HIERARCHY H3.8b (2026-05-03): inline ADMIN_EMAIL literal removed.
+  L10: // BCC now resolved via getLeadEmailRecipients helper (Admin Platform layer 6,
+  L11: // extensible to delegations via W-ROLES-DELEGATION). F54 retired.
+  L12: 
+  L13: import { NextRequest, NextResponse } from 'next/server'
+  L14: import { createClient } from '@supabase/supabase-js'
+  L15: import {
+  L16:   sendTenantEmail,
+  L17:   TenantEmailNotConfigured,
+  L18:   TenantEmailFailed,
+  L19:   getLeadEmailRecipients,
+  L20:   AdminPlatformUnreachable,
+  L21: } from '@/lib/admin-homes/lead-email-recipients'
+  L22: import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+  L23: 
+  L24: 
+  L25: function createServiceClient() {
+  L26:   return createClient(
+  L27:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  L28:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  L29:     { auth: { autoRefreshToken: false, persistSession: false } }
+  L30:   )
+  L31: }
+  L32: 
+  L33: export async function GET(request: NextRequest) {
+  L34:   try {
+  L35:     const { searchParams } = new URL(request.url)
+  L36:     const token = searchParams.get('token')
+  L37:     const action = searchParams.get('action')
+  L38: 
+  L39:     if (!token || !action) return createHtmlResponse('error', 'Invalid request. Missing token or action.')
+  L40:     if (!['approve', 'deny'].includes(action)) return createHtmlResponse('error', 'Invalid action.')
+  L41: 
+  L42:     const supabase = createServiceClient()
+  L43: 
+  L44:     const { data: vipRequest, error: findError } = await supabase
+  L45:       .from('vip_requests')
+  L46:       .select(`
+  L47:         *,
+  L48:         chat_sessions (*),
+  L49:         agents (
+  L50:           full_name, email, notification_email, parent_id,
+  L51:           ai_manual_approve_limit
+  L52:         )
+  L53:       `)
+  L54:       .eq('approval_token', token)
+  L55:       .single()
+  L56: 
+  L57:     if (findError || !vipRequest) return createHtmlResponse('error', 'Request not found or link has expired.')
+  L58: 
+  L59:     // T6f-B-3 — multitenant brand-string + URL load (must precede subsequent createHtmlResponse + helper calls)
+  L60:     const tenantId = vipRequest.chat_sessions?.tenant_id ?? null
+  L61:     let brandName: string = ''
+  L62:     let baseUrl: string = ''
+  L63:     if (tenantId) {
+  L64:       const { data: brandTenant } = await supabase.from('tenants').select('brand_name, name, domain').eq('id', tenantId).single()
+  L65:       brandName = (brandTenant?.brand_name || brandTenant?.name) ?? ''
+  L66:       baseUrl = buildBaseUrl(brandTenant?.domain ?? '')
+  L67:     }
+  L68: 
+  L69:     if (vipRequest.status !== 'pending') return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`, brandName)
+  L70:     if (new Date(vipRequest.expires_at) < new Date()) {
+  L71:       await supabase.from('vip_requests').update({ status: 'expired' }).eq('id', vipRequest.id)
+  L72:       return createHtmlResponse('expired', 'This request has expired.', brandName)
+  L73:     }
+  L74: 
+  L75:     const newStatus = action === 'approve' ? 'approved' : 'denied'
+  L76:     const agent = vipRequest.agents
+  L77: 
+  L78:     let attemptsToGrant = 3
+  L79:     if (tenantId) {
+  L80:       const { data: tenantCfg } = await supabase.from('tenants').select('estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
+  L81:       if (tenantCfg?.estimator_manual_approve_attempts != null) attemptsToGrant = tenantCfg.estimator_manual_approve_attempts
+  L82:     }
+  L83: 
+  L84:     await supabase
+  L85:       .from('vip_requests')
+  L86:       .update({
+  L87:         status: newStatus,
+  L88:         responded_at: new Date().toISOString(),
+  L89:         messages_granted: action === 'approve' ? attemptsToGrant : 0,
+  L90:       })
+  L91:       .eq('id', vipRequest.id)
+  L92: 
+  L93:     if (action === 'approve') {
+  L94:       const currentGranted = vipRequest.chat_sessions?.vip_messages_granted || 0
+  L95:       const currentApprovals = vipRequest.chat_sessions?.manual_approvals_count || 0
+  L96: 
+  L97:       await supabase
+  L98:         .from('chat_sessions')
+  L99:         .update({
+  L100:           status: 'vip',
+  L101:           vip_accepted_at: new Date().toISOString(),
+  L102:           vip_phone: vipRequest.phone,
+  L103:           vip_messages_granted: currentGranted + attemptsToGrant,
+  L104:           manual_approvals_count: currentApprovals + 1,
+  L105:           last_approval_at: new Date().toISOString(),
+  L106:           updated_at: new Date().toISOString(),
+  L107:         })
+  L108:         .eq('id', vipRequest.session_id)
+  L109: 
+  L110:       // Write to user_credit_overrides
+  L111:       const userId = vipRequest.chat_sessions?.user_id
+  L112:       if (userId && tenantId) {
+  L113:         const { data: tCfg } = await supabase.from('tenants').select('estimator_hard_cap').eq('id', tenantId).single()
+  L114:         const { data: existingOverride } = await supabase.from('user_credit_overrides').select('estimator_limit').eq('user_id', userId).eq('tenant_id', tenantId).maybeSingle()
+  L115:         const currentLimit = existingOverride?.estimator_limit ?? 0
+  L116:         const newLimit = Math.min(currentLimit + attemptsToGrant, tCfg?.estimator_hard_cap ?? 50)
+  L117:         await supabase.from('user_credit_overrides').upsert({
+  L118:           user_id: userId,
+  L119:           tenant_id: tenantId,
+  L120:           granted_by_agent_id: vipRequest.agent_id || null,
+  L121:           granted_by_tier: 'manager',
+  L122:           note: 'Email approval — ' + attemptsToGrant + ' estimator credits granted',
+  L123:           estimator_limit: newLimit,
+  L124:           granted_at: new Date().toISOString(),
+  L125:         }, { onConflict: 'user_id,tenant_id' })
+  L126:       }
+  L127: 
+  L128:       if (vipRequest.email) {
+  L129:         // Resolve helper recipients for this approval notification.
+  L130:         // TO/CC stay route-driven (TO=user, CC=manager). BCC comes from helper layer 6.
+  L131:         // Future delegations of Admin Platform will appear here via W-ROLES-DELEGATION.
+  L132:         let bccList: string[] = []
+  L133:         try {
+  L134:           const recipients = await getLeadEmailRecipients(
+  L135:             tenantId || '',
+  L136:             vipRequest.agent_id || null,
+  L137:             supabase
+  L138:           )
+  L139:           bccList = recipients.bcc
+  L140:         } catch (err) {
+  L141:           if (err instanceof AdminPlatformUnreachable) {
+  L142:             console.error('[walliam/estimator/vip-approve] admin platform unreachable:', err.message)
+  L143:             // Fail closed: don't send the email if we can't BCC platform admin
+  L144:             return createHtmlResponse('error', 'System notification failed. Approval recorded; please contact support.', brandName)
+  L145:           }
+  L146:           throw err
+  L147:         }
+  L148: 
+  L149:         // Manager CC: pull manager email if agent has parent_id (preserves existing CC pattern;
+  L150:         // also fixes pre-existing bug where parent_id was missing from agents SELECT).
+  L151:         let managerEmail: string | null = null
+  L152:         if (agent?.parent_id) {
+  L153:           const { data: mgr } = await supabase
+  L154:             .from('agents')
+  L155:             .select('email, notification_email')
+  L156:             .eq('id', agent.parent_id)
+  L157:             .single()
+  L158:           if (mgr) managerEmail = mgr.notification_email || mgr.email
+  L159:         }
+  L160: 
+  L161:         try {
+  L162:           await sendTenantEmail({
+  L163:             tenantId: tenantId || '',
+  L164:             to: vipRequest.email,
+  L165:             cc: managerEmail ? [managerEmail] : undefined,
+  L166:             bcc: bccList,
+  L167:             subject: `Your ${brandName} Estimator Access is Approved`,
+  L168:             html: buildUserApprovalEmailHtml(
+  L169:               vipRequest.full_name,
+  L170:               agent?.full_name || brandName,
+  L171:               attemptsToGrant,
+  L172:               brandName,
+  L173:               baseUrl
+  L174:             ),
+  L175:           })
+  L176:         } catch (err) {
+  L177:           // F67 standard try/catch pattern
+  L178:           if (err instanceof TenantEmailNotConfigured) {
+  L179:             console.warn('[walliam/estimator/vip-approve] tenant email not configured:', err.message)
+  L180:           } else if (err instanceof TenantEmailFailed) {
+  L181:             console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
+  L182:           } else {
+  L183:             console.error('[walliam/estimator/vip-approve] unexpected email error:', err)
+  L184:           }
+  L185:         }
+  L186:       }
+  L187: 
+  L188:       return createHtmlResponse('approved', `Estimator access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${attemptsToGrant} additional estimate${attemptsToGrant > 1 ? 's' : ''}.`, brandName)
+  L189:     } else {
+  L190:       return createHtmlResponse('denied', `Estimator VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`, brandName)
+  L191:     }
+  L192: 
+  L193:   } catch (error) {
+  L194:     console.error('[walliam/estimator/vip-approve] error:', error)
+  L195:     return createHtmlResponse('error', 'An unexpected error occurred.')
+  L196:   }
+  L197: }
+  L198: 
+  L199: function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, baseUrl: string): string {
+  L200:   return `
+  L201:     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  L202:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+  L203:         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
+  L204:         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
+  L205:         <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
+  L206:       </div>
+  L207:       <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
+  L208:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
+  L209:         <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
+  L210:         <div style="text-align: center;">
+  L211:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to ${brandName}</a>
+  L212:         </div>
+  L213:       </div>
+  L214:     </div>
+  L215:   `
+  L216: }
+  L217: 
+  L218: function createHtmlResponse(status: string, message: string, brandName: string = ''): NextResponse {
+  L219:   const configs: Record<string, { bg: string; icon: string; title: string }> = {
+  L220:     approved:          { bg: '#10b981', icon: '✅', title: 'Approved' },
+  L221:     denied:            { bg: '#ef4444', icon: '❌', title: 'Denied' },
+  L222:     error:             { bg: '#ef4444', icon: '❌', title: 'Error' },
+  L223:     expired:           { bg: '#f59e0b', icon: '⏰', title: 'Expired' },
+  L224:     already_processed: { bg: '#64748b', icon: 'ℹ️', title: 'Already Processed' },
+  L225:   }
+  L226:   const cfg = configs[status] || configs.error
+  L227: 
+  L228:   const html = `<!DOCTYPE html>
+  L229: <html>
+  L230: <head>
+  L231:   <title>${brandName} Estimator — ${cfg.title}</title>
+  L232:   <meta name="viewport" content="width=device-width, initial-scale=1">
+  L233:   <style>
+  L234:     * { margin: 0; padding: 0; box-sizing: border-box; }
+  L235:     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  L236:     .card { background: #1e293b; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; max-width: 400px; width: 100%; overflow: hidden; }
+  L237:     .header { background: ${cfg.bg}; padding: 32px; text-align: center; }
+  L238:     .icon { font-size: 48px; margin-bottom: 12px; }
+  L239:     .title { color: white; font-size: 22px; font-weight: 700; }
+  L240:     .content { padding: 24px; text-align: center; }
+  L241:     .message { color: rgba(255,255,255,0.7); font-size: 15px; line-height: 1.6; }
+  L242:     .footer { padding: 0 24px 24px; text-align: center; }
+  L243:     .btn { display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; }
+  L244:   </style>
+  L245: </head>
+  L246: <body>
+  L247:   <div class="card">
+  L248:     <div class="header">
+  L249:       <div class="icon">${cfg.icon}</div>
+  L250:       <div class="title">${cfg.title}</div>
+
+--- pageUrl / page_url variable origin search ---
+app/api/walliam/contact/route.ts:
+  L28: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L35: page_url: pageUrl || '',
+  L57: } = await req.json()
+  L191: }, req.headers.get('referer') || '')
+app/api/charlie/appointment/route.ts:
+  L29: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L36: page_url: pageUrl || '',
+  L57: const body = await req.json()
+app/api/charlie/lead/route.ts:
+  L48: const body = await req.json()
+app/api/charlie/plan-email/route.ts:
+  L31: async function trackUserActivity(supabase: any, tenantId: string | null, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L39: page_url: pageUrl || '',
+  L58: const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
+app/api/walliam/charlie/vip-request/route.ts:
+  (no pageUrl / referer / body-parse hits)
+app/api/walliam/estimator/vip-request/route.ts:
+  L28: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L35: page_url: pageUrl || '',
+  L54: pageUrl,
+  L171: page_url: pageUrl,
+  L204: source_url: pageUrl,
+  L226: pageUrl,
+  L288: }, pageUrl || '')
+  L415: pageUrl?: string
+app/api/walliam/estimator/vip-approve/route.ts:
+  (no pageUrl / referer / body-parse hits)
+app/api/walliam/estimator/vip-questionnaire/route.ts:
+  L27: async function trackUserActivity(supabase: any, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+  L34: page_url: pageUrl || '',
+  L197: source_url: vipRequest.page_url,
+  L290: }, vipRequest.page_url || '')
+
+=== PHASE 7 COMPLETE ===
+Output: recon/W-LEADS-WORKBENCH-W3C-PHASE7.txt

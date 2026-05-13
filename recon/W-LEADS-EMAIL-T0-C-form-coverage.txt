@@ -1,0 +1,315 @@
+﻿
+========================================================================
+T0-C SECTION 1: form component file inventory
+========================================================================
+FILE: C:\Condoleads\project\app\actions\submitLeadFromForm.ts  (2804 bytes)
+FILE: C:\Condoleads\project\app\charlie\components\AppointmentForm.tsx  (14191 bytes)
+FILE: C:\Condoleads\project\components\auth\RegisterModal.tsx  (13460 bytes)
+FILE: C:\Condoleads\project\components\auth\RegisterModal.tsx.backup  (10251 bytes)
+FILE: C:\Condoleads\project\components\auth\RegisterModal.tsx.backup2_20251117_162600  (11797 bytes)
+FILE: C:\Condoleads\project\components\chat\VipRequestForm.tsx  (12053 bytes)
+FILE: C:\Condoleads\project\components\estimator\WalliamVipForm.tsx  (7874 bytes)
+FILE: C:\Condoleads\project\components\property\AgentContactForm.tsx  (7741 bytes)
+FILE: C:\Condoleads\project\components\property\AgentContactForm.tsx.backup2_20251117_051230  (6756 bytes)
+FILE: C:\Condoleads\project\components\WalliamContactForm.tsx  (5947 bytes)
+FILE: C:\Condoleads\project\components\WalliamCTA.tsx  (4942 bytes)
+
+========================================================================
+T0-C SECTION 2: every client POST to confirmed lead-write endpoints
+========================================================================
+
+FILE: C:\Condoleads\project\components\WalliamAgentCard.tsx (1 hits)
+  L50: await fetch('/api/walliam/contact', {
+
+FILE: C:\Condoleads\project\components\WalliamContactForm.tsx (2 hits)
+  L3: // Posts to /api/walliam/contact
+  L48: const res = await fetch('/api/walliam/contact', {
+
+FILE: C:\Condoleads\project\components\auth\VIPAIAccess.tsx (1 hits)
+  L84: await fetch('/api/walliam/charlie/vip-request', {
+
+FILE: C:\Condoleads\project\components\estimator\EstimatorVipWrapper.tsx (3 hits)
+  L96: ? `/api/walliam/estimator/vip-request?requestId=${session.vipRequestId}`
+  L268: const vipRes = await fetch('/api/walliam/estimator/vip-request', {
+  L292: const vipUrl = tenantId ? '/api/walliam/estimator/vip-request' : '/api/chat/vip-request'
+
+FILE: C:\Condoleads\project\app\api\charlie\appointment\route.ts (1 hits)
+  L1: // app/api/charlie/appointment/route.ts
+
+FILE: C:\Condoleads\project\app\api\charlie\lead\route.ts (1 hits)
+  L1: // app/api/charlie/lead/route.ts
+
+FILE: C:\Condoleads\project\app\api\charlie\plan-email\route.ts (1 hits)
+  L3: // app/api/charlie/plan-email/route.ts
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts (1 hits)
+  L1: // app/api/walliam/charlie/vip-request/route.ts
+
+FILE: C:\Condoleads\project\app\api\walliam\contact\route.ts (1 hits)
+  L1: // app/api/walliam/contact/route.ts
+
+FILE: C:\Condoleads\project\app\api\walliam\estimator\vip-questionnaire\route.ts (1 hits)
+  L1: // app/api/walliam/estimator/vip-questionnaire/route.ts
+
+FILE: C:\Condoleads\project\app\api\walliam\estimator\vip-request\route.ts (1 hits)
+  L1: // app/api/walliam/estimator/vip-request/route.ts
+
+FILE: C:\Condoleads\project\app\charlie\components\AppointmentForm.tsx (1 hits)
+  L124: const res = await fetch('/api/charlie/appointment', {
+
+FILE: C:\Condoleads\project\app\charlie\components\PlanDocument.tsx (1 hits)
+  L142: const res = await fetch('/api/charlie/lead', {
+
+FILE: C:\Condoleads\project\app\charlie\hooks\useCharlie.ts (3 hits)
+  L185: const res = await fetch('/api/walliam/charlie/vip-request', {
+  L211: const res = await fetch(`/api/walliam/charlie/vip-request?requestId=${requestId}`)
+  L444: fetch('/api/charlie/plan-email', {
+
+FILE: C:\Condoleads\project\app\charlie\hooks\useCharlie.ts.debug_20260427_071645 (3 hits)
+  L240: const res = await fetch('/api/walliam/charlie/vip-request', {
+  L266: const res = await fetch(`/api/walliam/charlie/vip-request?requestId=${requestId}`)
+  L476: fetch('/api/charlie/plan-email', {
+
+FILE: C:\Condoleads\project\app\charlie\hooks\useCharlie.ts.predebugremoval_20260427_074506 (3 hits)
+  L241: const res = await fetch('/api/walliam/charlie/vip-request', {
+  L267: const res = await fetch(`/api/walliam/charlie/vip-request?requestId=${requestId}`)
+  L477: fetch('/api/charlie/plan-email', {
+
+FILE: C:\Condoleads\project\app\estimator\components\EstimatorBuyerModal.tsx (4 hits)
+  L111: ? `/api/walliam/estimator/vip-request?requestId=${session.vipRequestId}`
+  L298: ? '/api/walliam/estimator/vip-request'
+  L347: ? '/api/walliam/estimator/vip-questionnaire'
+  L389: const vipRes = await fetch('/api/walliam/estimator/vip-request', {
+
+FILE: C:\Condoleads\project\app\estimator\components\HomeEstimatorBuyerModal.tsx (4 hits)
+  L104: ? `/api/walliam/estimator/vip-request?requestId=${session.vipRequestId}`
+  L299: const vipUrl = tenantId ? '/api/walliam/estimator/vip-request' : '/api/chat/vip-request'
+  L333: const questionnaireUrl = tenantId ? '/api/walliam/estimator/vip-questionnaire' : '/api/chat/vip-questionnaire'
+  L374: const vipRes = await fetch('/api/walliam/estimator/vip-request', {
+
+========================================================================
+T0-C SECTION 3: page-type rendering (area / muni / community / neighbourhood / building / property)
+========================================================================
+
+--- PATH: app\[slug] ---
+  app\[slug]\AreaPage.tsx (9977 bytes)
+  app\[slug]\BuildingPage.tsx (26788 bytes)
+  app\[slug]\BuildingPage.tsx.backup-before-field-fix (12706 bytes)
+  app\[slug]\BuildingPageContent.tsx (755 bytes)
+  app\[slug]\CommunityPage.tsx (8575 bytes)
+  app\[slug]\components\BuildingAmenities.tsx (5591 bytes)
+  app\[slug]\components\BuildingCard.tsx (1998 bytes)
+  app\[slug]\components\BuildingHero.tsx (4442 bytes)
+  app\[slug]\components\BuildingHighlights.tsx (9485 bytes)
+  app\[slug]\components\BuildingMap.tsx (2811 bytes)
+  app\[slug]\components\BuildingReviews.tsx (7905 bytes)
+  app\[slug]\components\BuildingSchema.tsx (1436 bytes)
+  app\[slug]\components\BuildingsGrid.tsx (4253 bytes)
+  app\[slug]\components\CommunityCard.tsx (1277 bytes)
+  app\[slug]\components\DevelopmentListings.tsx (12113 bytes)
+  app\[slug]\components\DevelopmentSEO.tsx (6346 bytes)
+  app\[slug]\components\DevelopmentStickyNav.tsx (4993 bytes)
+  app\[slug]\components\DualCTASection.tsx (5602 bytes)
+  app\[slug]\components\GeoAdvancedFilters.tsx (8902 bytes)
+  app\[slug]\components\GeoBuildingCard.tsx (9829 bytes)
+  app\[slug]\components\GeoHero.tsx (5071 bytes)
+  app\[slug]\components\GeoHeroCTA.tsx (2065 bytes)
+  app\[slug]\components\GeoInterlinking.tsx (1106 bytes)
+  app\[slug]\components\GeoListingCard.tsx (20576 bytes)
+  app\[slug]\components\GeoListingSection.tsx (16495 bytes)
+  app\[slug]\components\GeoPageTabs.tsx (4408 bytes)
+  app\[slug]\components\GeoQuickFilters.tsx (7610 bytes)
+  app\[slug]\components\GeoSEOContent.tsx (2902 bytes)
+  app\[slug]\components\GeoStatPill.tsx (989 bytes)
+  app\[slug]\components\HomeListingCard.tsx (22971 bytes)
+
+========================================================================
+T0-C SECTION 4: WalliamCTA references (buyer_plan / seller_plan triggers)
+========================================================================
+
+FILE: C:\Condoleads\project\components\WalliamCTA.tsx (2 hits)
+  L5: // WalliamCTA — drop into any page to show Buyer/Seller Plan CTAs + AI search
+  L12: export default function WalliamCTA({ context }: Props) {
+
+FILE: C:\Condoleads\project\components\admin-homes\AddTenantModal.tsx (5 hits)
+  L32: seller_plan_free_attempts: 1, seller_plan_hard_cap: 10,
+  L78: seller_plan_free_attempts: formData.seller_plan_free_attempts,
+  L79: seller_plan_hard_cap: formData.seller_plan_hard_cap,
+  L323: <input type="number" min={0} value={formData.seller_plan_free_attempts} onChange={e => setFormData({...formData, seller_plan_free_attempts: parseInt(e.target.value)||1})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+  L325: <input type="number" min={1} value={formData.seller_plan_hard_cap} onChange={e => setFormData({...formData, seller_plan_hard_cap: parseInt(e.target.value)||10})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+
+FILE: C:\Condoleads\project\components\admin-homes\AdminHomesLeadsClient.tsx (1 hits)
+  L60: contact_form: 15,
+
+FILE: C:\Condoleads\project\components\admin-homes\EditTenantModal.tsx (5 hits)
+  L32: seller_plan_free_attempts: 1, seller_plan_hard_cap: 10,
+  L78: seller_plan_free_attempts: data.seller_plan_free_attempts ?? 1,
+  L79: seller_plan_hard_cap: data.seller_plan_hard_cap ?? 10,
+  L131: seller_plan_free_attempts: formData.seller_plan_free_attempts,
+  L132: seller_plan_hard_cap: formData.seller_plan_hard_cap,
+
+FILE: C:\Condoleads\project\components\dashboard\ActivityTimeline.tsx (2 hits)
+  L24: contact_form: FileText,
+  L38: contact_form: 'Contact form submission',
+
+FILE: C:\Condoleads\project\components\dashboard\LeadsTable.tsx (2 hits)
+  L45: 'contact_form': 'Contact Form',
+  L143: <option value="contact_form">Contact Form</option>
+
+FILE: C:\Condoleads\project\components\dashboard\LeadsTable.tsx.backup2_20251116_084838 (1 hits)
+  L124: <option value="contact_form">Contact Form</option>
+
+FILE: C:\Condoleads\project\components\home\ContactSection.tsx (2 hits)
+  L31: source: 'contact_form',
+  L36: activityType: 'contact_form',
+
+FILE: C:\Condoleads\project\components\modals\ContactModal.tsx (1 hits)
+  L71: activityType: 'contact_form',
+
+FILE: C:\Condoleads\project\components\modals\ContactModal.tsx.backup2_20251117_051230 (1 hits)
+  L67: activityType: 'contact_form',
+
+FILE: C:\Condoleads\project\app\actions\createLead.ts (4 hits)
+  L65: 'building_page': 'contact_form',
+  L66: 'contact_form': 'contact_form',
+  L67: 'message_agent': 'contact_form',
+  L118: 'contact_form',
+
+FILE: C:\Condoleads\project\app\actions\createLead.ts.backup (1 hits)
+  L32: 'contact_form': 'contact_form'
+
+FILE: C:\Condoleads\project\app\actions\createLead.ts.backup2_20251116_091959 (1 hits)
+  L55: 'contact_form': 'contact_form'
+
+FILE: C:\Condoleads\project\app\actions\createLead.ts.backup3_20251117_163845 (1 hits)
+  L55: 'contact_form': 'contact_form'
+
+FILE: C:\Condoleads\project\app\admin-homes\settings\SettingsClient.tsx (9 hits)
+  L38: seller_plan_free_attempts: number | null
+  L39: seller_plan_auto_approve_limit: number | null
+  L40: seller_plan_manual_approve_limit: number | null
+  L41: seller_plan_hard_cap: number | null
+  L283: 'seller_plan_free_attempts','seller_plan_auto_approve_limit','seller_plan_manual_approve_limit','seller_plan_hard_cap',
+  ... +4 more hits
+
+FILE: C:\Condoleads\project\app\admin-homes\users\page.tsx (4 hits)
+  L99: .select('user_id, message_count, buyer_plans_used, seller_plans_used, estimator_count, updated_at')
+  L119: plans:     (s.buyer_plans_used || 0) + (s.seller_plans_used || 0),
+  L129: .select('user_id, ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit, note, granted_at, granted_by_tier, granted_by_agent_id')
+  L146: .select('ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, seller_plan_free_attempts, seller_plan_auto_approve_limit, seller_plan_manual_approve_limit, seller_plan_hard_cap, estimator_free_attempts, estimator_auto_approve_attempts, estimator_manual_approve_attempts, estimator_hard_cap')
+
+FILE: C:\Condoleads\project\app\admin-homes\users\UsersClient.tsx (3 hits)
+  L27: plans:     override?.buyer_plan_limit   != null ? Math.min(override.buyer_plan_limit,   tenant?.plan_hard_cap ?? 10)        : d.plans,
+  L34: { key: 'plans',     label: 'AI Plans',    overrideKey: 'buyer_plan_limit' },
+  L63: setPlansLimit(ex?.buyer_plan_limit  != null ? String(ex.buyer_plan_limit)   : '')
+
+FILE: C:\Condoleads\project\app\api\admin-homes\tenants\[id]\route.ts (2 hits)
+  L35: 'seller_plan_free_attempts', 'seller_plan_auto_approve_limit',
+  L36: 'seller_plan_manual_approve_limit', 'seller_plan_hard_cap',
+
+FILE: C:\Condoleads\project\app\api\admin-homes\users\override\route.ts (4 hits)
+  L27: .select('ai_hard_cap, plan_hard_cap, seller_plan_hard_cap, estimator_hard_cap')
+  L35: const safeSeller    = sellerPlanLimit != null ? Math.min(sellerPlanLimit, tenant.seller_plan_hard_cap ?? 10) : null
+  L47: buyer_plan_limit:    safeBuyer,
+  L48: seller_plan_limit:   safeSeller,
+
+FILE: C:\Condoleads\project\app\api\charlie\route.ts (16 hits)
+  L124: message_count, buyer_plans_used, seller_plans_used,
+  L302: const plansUsed = (sessionData.buyer_plans_used || 0) + (sessionData.seller_plans_used || 0)
+  L303: const { data: userPlanOverride } = await supabase.from('user_credit_overrides').select('buyer_plan_limit').eq('user_id', effectiveUserId).eq('tenant_id', tenantId).maybeSingle()
+  L306: if (userPlanOverride?.buyer_plan_limit != null) {
+  L307: preCachedTotal = Math.min(userPlanOverride.buyer_plan_limit, planHardCap)
+  ... +11 more hits
+
+FILE: C:\Condoleads\project\app\api\charlie\plan-email\route.ts (2 hits)
+  L5: // Called client-side from useCharlie after generate_plan tool completes
+  L140: await trackUserActivity(supabase, userEmail, agent?.id || null, 'contact_form', {
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\session\route.ts (17 hits)
+  L6: // Tracks buyer_plans_used and seller_plans_used (not message_count)
+  L98: seller_plan_free_attempts: 1,
+  L99: seller_plan_hard_cap: 10,
+  L108: .select(`name, ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, vip_auto_approve, plan_free_attempts, plan_hard_cap, plan_mode, plan_manual_approve_limit, seller_plan_free_attempts, seller_plan_hard_cap, estimator_free_attempts, estimator_hard_cap, assistant_name`)
+  L123: seller_plan_free_attempts: tenant.seller_plan_free_attempts ?? 1,
+  ... +12 more hits
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\vip-approve\route.ts (6 hits)
+  L114: .select('plan_hard_cap, seller_plan_hard_cap, ai_hard_cap, estimator_hard_cap, ai_manual_approve_limit, plan_manual_approve_limit, estimator_manual_approve_attempts')
+  L124: ? (tenantCfg?.seller_plan_hard_cap ?? 10)
+  L131: ? (vipRequest.chat_sessions?.seller_plans_used || 0)
+  L132: : (vipRequest.chat_sessions?.buyer_plans_used || 0)
+  L136: const planUsed = (vipRequest.chat_sessions?.buyer_plans_used || 0) + (vipRequest.chat_sessions?.seller_plans_used || 0)
+  ... +1 more hits
+
+FILE: C:\Condoleads\project\app\api\walliam\charlie\vip-request\route.ts (2 hits)
+  L269: const currentUsed = (session.buyer_plans_used || 0) + (session.seller_plans_used || 0)
+  L277: buyer_plan_limit: newLimit,
+
+FILE: C:\Condoleads\project\app\api\walliam\contact\route.ts (1 hits)
+  L160: await trackUserActivity(supabase, email, agent?.id || null, 'contact_form', {
+
+FILE: C:\Condoleads\project\app\charlie\hooks\useCharlie.ts (3 hits)
+  L18: export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables' | 'generate_plan' | 'search_buildings' | 'compare_geo' | 'get_price_trends' | 'get_investment_rankings' | 'get_inventory_rankings' | 'get_seasonal_trends' | 'get_building_directory'
+  L438: if (tool === 'generate_plan') {
+  L441: if (tool === 'generate_plan' && data.planReady) {
+
+FILE: C:\Condoleads\project\app\charlie\hooks\useCharlie.ts.debug_20260427_071645 (3 hits)
+  L17: export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables' | 'generate_plan' | 'search_buildings' | 'compare_geo' | 'get_price_trends' | 'get_investment_rankings' | 'get_inventory_rankings' | 'get_seasonal_trends' | 'get_building_directory'
+  L471: if (tool === 'generate_plan') {
+  L474: if (tool === 'generate_plan' && data.planReady) {
+
+FILE: C:\Condoleads\project\app\charlie\hooks\useCharlie.ts.predebugremoval_20260427_074506 (3 hits)
+  L17: export type ToolName = 'resolve_geo' | 'get_market_analytics' | 'search_listings' | 'get_comparables' | 'generate_plan' | 'search_buildings' | 'compare_geo' | 'get_price_trends' | 'get_investment_rankings' | 'get_inventory_rankings' | 'get_seasonal_trends' | 'get_building_directory'
+  L472: if (tool === 'generate_plan') {
+  L475: if (tool === 'generate_plan' && data.planReady) {
+
+FILE: C:\Condoleads\project\app\charlie\lib\charlie-prompts.ts (11 hits)
+  L31: - After search results return, immediately call generate_plan — do NOT ask more questions first.
+  L39: 6. ALWAYS call search_listings FIRST. Wait for results. THEN immediately call generate_plan. NEVER call generate_plan without calling search_listings first.
+  L42: CRITICAL: If the opening message has area + budget + type, call resolve_geo → get_market_analytics → search_listings → generate_plan all in ONE turn. Zero questions. Just execute. The order is NON-NEGOTIABLE: search_listings MUST be called before generate_plan every single time.
+  L49: 5. If timeline and goal provided in opening message, call generate_plan immediately after get_market_analytics. Do NOT ask for value estimate.
+  L52: 8. Call generate_plan with all collected info (type: seller, geoName, propertyType, timeline, goal).
+  ... +6 more hits
+
+FILE: C:\Condoleads\project\app\charlie\lib\charlie-tools.ts (1 hits)
+  L195: name: 'generate_plan',
+
+FILE: C:\Condoleads\project\app\comprehensive-site\toronto\[neighbourhood]\page.tsx (2 hits)
+  L11: import WalliamCTA from '@/components/WalliamCTA'
+  L256: <WalliamCTA context={neighbourhood.name} />
+
+FILE: C:\Condoleads\project\app\property\[id]\HomePropertyPage.tsx (1 hits)
+  L9: import WalliamCTA from '@/components/WalliamCTA'
+
+FILE: C:\Condoleads\project\app\property\[id]\HomePropertyPageClient.tsx (3 hits)
+  L24: import WalliamCTA from '@/components/WalliamCTA'
+  L177: <WalliamCTA context={listing.unparsed_address} />
+  L219: <WalliamCTA context={listing.unparsed_address} />
+
+FILE: C:\Condoleads\project\app\property\[id]\page.tsx (1 hits)
+  L9: import WalliamCTA from '@/components/WalliamCTA'
+
+FILE: C:\Condoleads\project\app\property\[id]\PropertyPageClient.tsx (3 hits)
+  L27: import WalliamCTA from '@/components/WalliamCTA'
+  L184: <WalliamCTA context={building?.building_name} />
+  L240: <WalliamCTA context={building?.building_name} />
+
+FILE: C:\Condoleads\project\app\[slug]\AreaPage.tsx (2 hits)
+  L10: import WalliamCTA from '@/components/WalliamCTA'
+  L234: <WalliamCTA context={area.name} />
+
+FILE: C:\Condoleads\project\app\[slug]\BuildingPage.tsx (2 hits)
+  L117: import WalliamCTA from '@/components/WalliamCTA'
+  L582: <WalliamCTA context={building.building_name} />
+
+FILE: C:\Condoleads\project\app\[slug]\CommunityPage.tsx (2 hits)
+  L10: import WalliamCTA from '@/components/WalliamCTA'
+  L182: <WalliamCTA context={community.name} />
+
+FILE: C:\Condoleads\project\app\[slug]\MunicipalityPage.tsx (2 hits)
+  L11: import WalliamCTA from '@/components/WalliamCTA'
+  L227: <WalliamCTA context={municipality.name} />
+
+FILE: C:\Condoleads\project\app\[slug]\components\ListYourUnit.tsx.backup2_20251117_051230 (2 hits)
+  L54: source: 'contact_form',
+  L91: source: 'contact_form',

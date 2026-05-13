@@ -1,0 +1,149 @@
+W-LEADS-EMAIL T6f residual recon
+Generated: 2026-05-11T14:24:15.715Z
+
+==============================================================================
+SECTION A — walliam/estimator/session/route.ts tenant SELECT context
+==============================================================================
+
+  SELECT @ L34
+       L  31: 
+       L  32:     // Step 1: Load tenant estimator config
+       L  33:     const { data: tenant, error: tenantError } = await supabase
+    >> L  34:       .from('tenants')
+       L  35:       .select(`
+       L  36:         estimator_nonai_enabled,
+       L  37:         estimator_free_attempts,
+       L  38:         estimator_auto_approve_attempts,
+       L  39:         estimator_manual_approve_attempts,
+       L  40:         estimator_hard_cap,
+       L  41:         estimator_vip_auto_approve,
+       L  42:         estimator_ai_enabled,
+       L  43:         anthropic_api_key,
+       L  44:         source_key
+       L  45:       `)
+       L  46:       .eq('id', tenantId)
+       L  47:       .single()
+       L  48: 
+       L  49:     if (tenantError || !tenant) {
+       L  50:       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+       L  51:     }
+       L  52: 
+       L  53:     if (!tenant.estimator_nonai_enabled) {
+       L  54:       return NextResponse.json({ error: 'Estimator is not enabled for this tenant' }, { status: 403 })
+
+==============================================================================
+SECTION B — split-tag wordmark sites (pattern: WALL</span>)
+==============================================================================
+
+  FILE: app/api/charlie/lead/route.ts  (2 wordmark hits)
+
+    WORDMARK @ L404
+         L 402:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+         L 403:         <div style="font-size: 28px; font-weight: 900; color: #fff; letter-spacing: -0.02em; margin-bottom: 4px;">
+      >> L 404:           <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.6);">iam</span>
+         L 405:         </div>
+         L 406:         <div style="font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 20px;">AI Real Estate</div>
+         L 407:         <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 6px;">
+         L 408:           Your ${isBuyer ? 'Buyer' : 'Seller'} Plan is Ready
+
+    WORDMARK @ L467
+         L 465:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+         L 466:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 4px;">
+      >> L 467:           <span>WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+         L 468:         </div>
+         L 469:         <h1 style="color: #fff; margin: 8px 0 0; font-size: 18px; font-weight: 700;">
+         L 470:           New ${isBuyer ? '🏠 Buyer' : '💰 Seller'} Lead
+         L 471:         </h1>
+
+  FILE: app/api/charlie/plan-email/route.ts  (1 wordmark hit)
+
+    WORDMARK @ L606
+         L 604:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+         L 605:         <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 16px;">
+      >> L 606:           <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+         L 607:         </div>
+         L 608:         <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 8px;">
+         L 609:           ${isBuyer ? '&#127968; Buyer Plan' : '&#128176; Seller Strategy'} &mdash; ${geoName || 'GTA'}
+         L 610:         </h1>
+
+  FILE: app/api/charlie/appointment/route.ts  (2 wordmark hits)
+
+    WORDMARK @ L309
+         L 307:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+         L 308:         <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 4px;">
+      >> L 309:           <span>WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+         L 310:         </div>
+         L 311:         <h1 style="color: #fff; font-size: 20px; font-weight: 800; margin: 16px 0 6px;">
+         L 312:           ${isBuyer ? '🏠 Viewing Request Sent' : '📋 Consultation Request Sent'}
+         L 313:         </h1>
+
+    WORDMARK @ L370
+         L 368:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+         L 369:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
+      >> L 370:           <span>WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+         L 371:         </div>
+         L 372:         <h1 style="color: #fff; margin: 0; font-size: 18px; font-weight: 700;">
+         L 373:           📅 New ${isBuyer ? 'Viewing' : 'Consultation'} Request
+         L 374:         </h1>
+
+  FILE: app/api/walliam/contact/route.ts  (1 wordmark hit)
+
+    WORDMARK @ L194
+         L 192:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+         L 193:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 8px;">
+      >> L 194:           <span style="font-weight: 900;">WALL</span><span style="font-weight: 300; color: rgba(255,255,255,0.5);">iam</span>
+         L 195:         </div>
+         L 196:         <div style="font-size: 18px; font-weight: 700; color: #fff;">New Inquiry</div>
+         L 197:         ${geo_name ? `<div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${geo_name}</div>` : ''}
+         L 198:       </div>
+
+  TOTAL wordmark sites across 9 files: 6
+
+==============================================================================
+SECTION C — walliam/contact POST body opening (for new-tenant-load anchor)
+==============================================================================
+
+  POST declaration at L48
+    L  48: export async function POST(req: NextRequest) {
+    L  49:   try {
+    L  50:     const {
+    L  51:       name, email, phone, message,
+    L  52:       source,
+    L  53:       building_id, listing_id,
+    L  54:       community_id, municipality_id, area_id,
+    L  55:       geo_name, tenant_id,
+    L  56:     } = await req.json()
+    L  57: 
+    L  58:     if (!name || !email) {
+    L  59:       return NextResponse.json({ error: 'Name and email required' }, { status: 400 })
+    L  60:     }
+    L  61: 
+    L  62:     if (!tenant_id) {
+    L  63:       return NextResponse.json({ error: 'tenant_id required' }, { status: 400 })
+    L  64:     }
+    L  65: 
+    L  66:     const supabase = createServiceClient()
+    L  67: 
+    L  68:     // Resolve agent
+    L  69:     const { data: agentId } = await supabase.rpc('resolve_agent_for_context', {
+    L  70:       p_listing_id: listing_id || null,
+    L  71:       p_building_id: building_id || null,
+    L  72:       p_neighbourhood_id: null,
+    L  73:       p_community_id: community_id || null,
+    L  74:       p_municipality_id: municipality_id || null,
+    L  75:       p_area_id: area_id || null,
+    L  76:       p_user_id: null,
+    L  77:       p_tenant_id: tenant_id,
+    L  78:     })
+    L  79: 
+    L  80:     // Get agent details + walk hierarchy
+    L  81:     let agent: any = null
+    L  82:     let chainManagerId: string | null = null
+    L  83:     let chainAreaManagerId: string | null = null
+    L  84:     let chainTenantAdminId: string | null = null
+    L  85: 
+    L  86:     if (agentId) {
+    L  87:       const { data: agentData } = await supabase
+
+  CONFIRMATION: .from('tenants').select( call count in contact route = 0
+    Expected: 0 (this is the structural gap the T6f-C patch fills)

@@ -1,0 +1,585 @@
+========================================================================
+T0-F SCHEMA PROBE — W-LEADS-EMAIL
+Generated: 2026-05-10T11:24:04.287Z
+========================================================================
+
+========================================================================
+TABLE: leads
+========================================================================
+
+-- COLUMNS --
+  id                                       uuid                           NOT NULL  DEFAULT uuid_generate_v4()
+  agent_id                                 uuid                           NOT NULL
+  user_id                                  uuid                           NULL
+  contact_name                             text                           NOT NULL
+  contact_email                            text                           NOT NULL
+  contact_phone                            text                           NULL
+  source                                   text                           NOT NULL
+  source_url                               text                           NULL
+  building_id                              uuid                           NULL
+  listing_id                               uuid                           NULL
+  message                                  text                           NULL
+  estimated_value_min                      numeric                        NULL
+  estimated_value_max                      numeric                        NULL
+  property_details                         jsonb                          NULL
+  quality                                  text                           NULL  DEFAULT 'cold'::text
+  status                                   text                           NULL  DEFAULT 'new'::text
+  notes                                    text                           NULL
+  last_contact_at                          timestamp with time zone       NULL
+  next_followup_at                         timestamp with time zone       NULL
+  created_at                               timestamp with time zone       NULL  DEFAULT now()
+  updated_at                               timestamp with time zone       NULL  DEFAULT now()
+  tags                                     ARRAY                          NULL  DEFAULT '{}'::text[]
+  follow_up_date                           date                           NULL
+  intent                                   text                           NULL
+  geo_name                                 text                           NULL
+  budget_max                               numeric                        NULL
+  plan_data                                jsonb                          NULL
+  manager_id                               uuid                           NULL
+  assignment_source                        text                           NULL
+  override_agent_id                        uuid                           NULL
+  tenant_id                                uuid                           NOT NULL
+  appointment_date                         date                           NULL
+  appointment_time                         text                           NULL
+  appointment_properties                   jsonb                          NULL
+  appointment_status                       text                           NULL  DEFAULT 'pending'::text
+  reschedule_token                         uuid                           NULL  DEFAULT gen_random_uuid()
+  status_axis                              text                           NULL  DEFAULT 'active'::text
+  stage                                    text                           NULL  DEFAULT 'undecided'::text
+  urgency                                  text                           NULL  DEFAULT 'normal'::text
+  closed_reason                            text                           NULL
+  area_manager_id                          uuid                           NULL
+  tenant_admin_id                          uuid                           NULL
+
+-- CHECK CONSTRAINTS --
+  leads_quality_check: CHECK ((quality = ANY (ARRAY['cold'::text, 'warm'::text, 'hot'::text])))
+  leads_stage_check: CHECK ((stage = ANY (ARRAY['undecided'::text, 'decided'::text])))
+  leads_status_axis_check: CHECK ((status_axis = ANY (ARRAY['active'::text, 'passive'::text, 'closed'::text])))
+  leads_status_check: CHECK ((status = ANY (ARRAY['new'::text, 'contacted'::text, 'qualified'::text, 'closed'::text, 'lost'::text])))
+  leads_urgency_check: CHECK ((urgency = ANY (ARRAY['normal'::text, 'urgent'::text])))
+
+-- FOREIGN KEYS --
+  leads_agent_id_fkey: FOREIGN KEY (agent_id) REFERENCES agents(id)
+  leads_area_manager_id_fkey: FOREIGN KEY (area_manager_id) REFERENCES agents(id) ON DELETE SET NULL
+  leads_building_id_fkey: FOREIGN KEY (building_id) REFERENCES buildings(id)
+  leads_listing_id_fkey: FOREIGN KEY (listing_id) REFERENCES mls_listings(id)
+  leads_manager_id_fkey: FOREIGN KEY (manager_id) REFERENCES agents(id)
+  leads_override_agent_id_fkey: FOREIGN KEY (override_agent_id) REFERENCES agents(id)
+  leads_tenant_admin_id_fkey: FOREIGN KEY (tenant_admin_id) REFERENCES agents(id)
+  leads_tenant_id_fkey: FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+  leads_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id)
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] leads_pkey: PRIMARY KEY (id)
+
+-- INDEXES --
+  idx_leads_agent_id: CREATE INDEX idx_leads_agent_id ON public.leads USING btree (agent_id)
+  idx_leads_building_id: CREATE INDEX idx_leads_building_id ON public.leads USING btree (building_id)
+  idx_leads_created_at: CREATE INDEX idx_leads_created_at ON public.leads USING btree (created_at DESC)
+  idx_leads_follow_up_date: CREATE INDEX idx_leads_follow_up_date ON public.leads USING btree (follow_up_date)
+  idx_leads_quality: CREATE INDEX idx_leads_quality ON public.leads USING btree (quality)
+  idx_leads_status: CREATE INDEX idx_leads_status ON public.leads USING btree (status)
+  idx_leads_tenant: CREATE INDEX idx_leads_tenant ON public.leads USING btree (tenant_id)
+  idx_leads_tenant_agent: CREATE INDEX idx_leads_tenant_agent ON public.leads USING btree (tenant_id, agent_id)
+  idx_leads_user_id: CREATE INDEX idx_leads_user_id ON public.leads USING btree (user_id)
+  leads_area_manager_id_idx: CREATE INDEX leads_area_manager_id_idx ON public.leads USING btree (area_manager_id) WHERE (area_manager_id IS NOT NULL)
+  leads_manager_id_idx: CREATE INDEX leads_manager_id_idx ON public.leads USING btree (manager_id) WHERE (manager_id IS NOT NULL)
+  leads_pkey: CREATE UNIQUE INDEX leads_pkey ON public.leads USING btree (id)
+  leads_tenant_admin_id_idx: CREATE INDEX leads_tenant_admin_id_idx ON public.leads USING btree (tenant_admin_id)
+
+-- TRIGGERS --
+  leads_updated_at: CREATE TRIGGER leads_updated_at BEFORE UPDATE ON public.leads FOR EACH ROW EXECUTE FUNCTION update_leads_updated_at()
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~0 rows
+
+========================================================================
+TABLE: vip_requests
+========================================================================
+
+-- COLUMNS --
+  id                                       uuid                           NOT NULL  DEFAULT gen_random_uuid()
+  session_id                               uuid                           NULL
+  agent_id                                 uuid                           NOT NULL
+  lead_id                                  uuid                           NULL
+  status                                   character varying(20)          NULL  DEFAULT 'pending'::character varying
+  phone                                    character varying(20)          NOT NULL
+  full_name                                character varying(100)         NULL
+  email                                    character varying(255)         NULL
+  budget_range                             character varying(50)          NULL
+  timeline                                 character varying(50)          NULL
+  buyer_type                               character varying(20)          NULL
+  requirements                             text                           NULL
+  approval_token                           uuid                           NULL  DEFAULT gen_random_uuid()
+  created_at                               timestamp with time zone       NULL  DEFAULT now()
+  responded_at                             timestamp with time zone       NULL
+  expires_at                               timestamp with time zone       NULL  DEFAULT (now() + '24:00:00'::interval)
+  page_url                                 character varying(500)         NULL
+  building_name                            character varying(255)         NULL
+  request_source                           character varying(20)          NULL  DEFAULT 'chat'::character varying
+  messages_granted                         integer                        NULL  DEFAULT 10
+  request_type                             character varying(20)          NULL  DEFAULT 'plan'::character varying
+  tenant_id                                uuid                           NULL
+
+-- CHECK CONSTRAINTS --
+  (none)
+
+-- FOREIGN KEYS --
+  vip_requests_agent_id_fkey: FOREIGN KEY (agent_id) REFERENCES agents(id)
+  vip_requests_lead_id_fkey: FOREIGN KEY (lead_id) REFERENCES leads(id)
+  vip_requests_session_id_fkey: FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] vip_requests_pkey: PRIMARY KEY (id)
+
+-- INDEXES --
+  idx_vip_requests_agent: CREATE INDEX idx_vip_requests_agent ON public.vip_requests USING btree (agent_id, status)
+  idx_vip_requests_session: CREATE INDEX idx_vip_requests_session ON public.vip_requests USING btree (session_id)
+  idx_vip_requests_token: CREATE INDEX idx_vip_requests_token ON public.vip_requests USING btree (approval_token)
+  vip_requests_pkey: CREATE UNIQUE INDEX vip_requests_pkey ON public.vip_requests USING btree (id)
+
+-- TRIGGERS --
+  (none)
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~0 rows
+
+========================================================================
+TABLE: lead_email_log
+========================================================================
+
+-- COLUMNS --
+  id                                       uuid                           NOT NULL  DEFAULT uuid_generate_v4()
+  lead_id                                  uuid                           NOT NULL
+  activity_type                            text                           NOT NULL
+  sent_at                                  timestamp with time zone       NOT NULL  DEFAULT now()
+  created_at                               timestamp with time zone       NOT NULL  DEFAULT now()
+
+-- CHECK CONSTRAINTS --
+  (none)
+
+-- FOREIGN KEYS --
+  lead_email_log_lead_id_fkey: FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] lead_email_log_pkey: PRIMARY KEY (id)
+
+-- INDEXES --
+  idx_lead_email_log_lead_id: CREATE INDEX idx_lead_email_log_lead_id ON public.lead_email_log USING btree (lead_id)
+  idx_lead_email_log_sent_at: CREATE INDEX idx_lead_email_log_sent_at ON public.lead_email_log USING btree (sent_at DESC)
+  lead_email_log_pkey: CREATE UNIQUE INDEX lead_email_log_pkey ON public.lead_email_log USING btree (id)
+
+-- TRIGGERS --
+  (none)
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~0 rows
+
+========================================================================
+TABLE: lead_ownership_changes
+========================================================================
+
+-- COLUMNS --
+  id                                       uuid                           NOT NULL  DEFAULT gen_random_uuid()
+  lead_id                                  uuid                           NOT NULL
+  tenant_id                                uuid                           NOT NULL
+  old_agent_id                             uuid                           NULL
+  new_agent_id                             uuid                           NOT NULL
+  reason                                   text                           NOT NULL
+  changed_by                               uuid                           NULL
+  changed_at                               timestamp with time zone       NOT NULL  DEFAULT now()
+  notes                                    text                           NULL
+
+-- CHECK CONSTRAINTS --
+  lead_ownership_changes_reason_check: CHECK ((reason = ANY (ARRAY['reroll'::text, 'scope_shrink'::text, 'manual_reassign'::text, 'percentage_renormalize'::text, 'agent_removed'::text, 'agent_added'::text, 'pin_grant'::text, 'pin_revoke'::text, 'cascade_resolution'::text, 'other'::text])))
+
+-- FOREIGN KEYS --
+  lead_ownership_changes_changed_by_fkey: FOREIGN KEY (changed_by) REFERENCES agents(id)
+  lead_ownership_changes_lead_id_fkey: FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+  lead_ownership_changes_new_agent_id_fkey: FOREIGN KEY (new_agent_id) REFERENCES agents(id)
+  lead_ownership_changes_old_agent_id_fkey: FOREIGN KEY (old_agent_id) REFERENCES agents(id)
+  lead_ownership_changes_tenant_id_fkey: FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] lead_ownership_changes_pkey: PRIMARY KEY (id)
+
+-- INDEXES --
+  idx_loc_changed_at: CREATE INDEX idx_loc_changed_at ON public.lead_ownership_changes USING btree (changed_at DESC)
+  idx_loc_lead: CREATE INDEX idx_loc_lead ON public.lead_ownership_changes USING btree (lead_id)
+  idx_loc_new_agent: CREATE INDEX idx_loc_new_agent ON public.lead_ownership_changes USING btree (new_agent_id)
+  idx_loc_tenant: CREATE INDEX idx_loc_tenant ON public.lead_ownership_changes USING btree (tenant_id)
+  lead_ownership_changes_pkey: CREATE UNIQUE INDEX lead_ownership_changes_pkey ON public.lead_ownership_changes USING btree (id)
+
+-- TRIGGERS --
+  trg_loc_no_delete: CREATE TRIGGER trg_loc_no_delete BEFORE DELETE ON public.lead_ownership_changes FOR EACH ROW EXECUTE FUNCTION lead_ownership_changes_no_mutate()
+  trg_loc_no_update: CREATE TRIGGER trg_loc_no_update BEFORE UPDATE ON public.lead_ownership_changes FOR EACH ROW EXECUTE FUNCTION lead_ownership_changes_no_mutate()
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~-1 rows
+
+========================================================================
+TABLE: tenant_users
+========================================================================
+
+-- COLUMNS --
+  user_id                                  uuid                           NOT NULL
+  tenant_id                                uuid                           NOT NULL
+  registered_at                            timestamp with time zone       NOT NULL  DEFAULT now()
+  registration_source                      text                           NULL
+  registration_url                         text                           NULL
+  marketing_consent                        boolean                        NOT NULL  DEFAULT false
+  sms_consent                              boolean                        NOT NULL  DEFAULT false
+  assigned_agent_id                        uuid                           NULL
+  agent_assigned_at                        timestamp with time zone       NULL
+  agent_assignment_source                  text                           NULL
+  unsubscribed_at                          timestamp with time zone       NULL
+  welcome_email_sent                       boolean                        NOT NULL  DEFAULT false
+  created_at                               timestamp with time zone       NOT NULL  DEFAULT now()
+  updated_at                               timestamp with time zone       NOT NULL  DEFAULT now()
+  low_credit_email_sent                    jsonb                          NOT NULL  DEFAULT '{}'::jsonb
+
+-- CHECK CONSTRAINTS --
+  (none)
+
+-- FOREIGN KEYS --
+  tenant_users_assigned_agent_id_fkey: FOREIGN KEY (assigned_agent_id) REFERENCES agents(id) ON DELETE SET NULL
+  tenant_users_tenant_id_fkey: FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+  tenant_users_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] tenant_users_pkey: PRIMARY KEY (user_id, tenant_id)
+
+-- INDEXES --
+  idx_tenant_users_agent: CREATE INDEX idx_tenant_users_agent ON public.tenant_users USING btree (tenant_id, assigned_agent_id)
+  idx_tenant_users_tenant: CREATE INDEX idx_tenant_users_tenant ON public.tenant_users USING btree (tenant_id)
+  idx_tenant_users_user: CREATE INDEX idx_tenant_users_user ON public.tenant_users USING btree (user_id)
+  tenant_users_pkey: CREATE UNIQUE INDEX tenant_users_pkey ON public.tenant_users USING btree (user_id, tenant_id)
+
+-- TRIGGERS --
+  (none)
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~46 rows
+
+========================================================================
+TABLE: user_credit_overrides
+========================================================================
+
+-- COLUMNS --
+  id                                       uuid                           NOT NULL  DEFAULT gen_random_uuid()
+  user_id                                  uuid                           NOT NULL
+  tenant_id                                uuid                           NOT NULL
+  granted_by_agent_id                      uuid                           NULL
+  granted_by_tier                          text                           NULL
+  note                                     text                           NULL
+  granted_at                               timestamp with time zone       NULL  DEFAULT now()
+  updated_at                               timestamp with time zone       NULL  DEFAULT now()
+  ai_chat_limit                            integer                        NULL
+  buyer_plan_limit                         integer                        NULL
+  seller_plan_limit                        integer                        NULL
+  estimator_limit                          integer                        NULL
+
+-- CHECK CONSTRAINTS --
+  user_credit_overrides_ai_chat_limit_check: CHECK ((ai_chat_limit >= 0))
+  user_credit_overrides_buyer_plan_limit_check: CHECK ((buyer_plan_limit >= 0))
+  user_credit_overrides_estimator_limit_check: CHECK ((estimator_limit >= 0))
+  user_credit_overrides_granted_by_tier_check: CHECK ((granted_by_tier = ANY (ARRAY['admin'::text, 'manager'::text, 'managed'::text])))
+  user_credit_overrides_seller_plan_limit_check: CHECK ((seller_plan_limit >= 0))
+
+-- FOREIGN KEYS --
+  user_credit_overrides_granted_by_agent_id_fkey: FOREIGN KEY (granted_by_agent_id) REFERENCES agents(id) ON DELETE SET NULL
+  user_credit_overrides_tenant_id_fkey: FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+  user_credit_overrides_user_id_fkey: FOREIGN KEY (user_id) REFERENCES user_profiles(id) ON DELETE CASCADE
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] user_credit_overrides_pkey: PRIMARY KEY (id)
+  [UQ] user_credit_overrides_user_id_tenant_id_key: UNIQUE (user_id, tenant_id)
+
+-- INDEXES --
+  idx_user_credit_overrides_lookup: CREATE INDEX idx_user_credit_overrides_lookup ON public.user_credit_overrides USING btree (user_id, tenant_id)
+  user_credit_overrides_pkey: CREATE UNIQUE INDEX user_credit_overrides_pkey ON public.user_credit_overrides USING btree (id)
+  user_credit_overrides_user_id_tenant_id_key: CREATE UNIQUE INDEX user_credit_overrides_user_id_tenant_id_key ON public.user_credit_overrides USING btree (user_id, tenant_id)
+
+-- TRIGGERS --
+  trg_user_credit_overrides_updated_at: CREATE TRIGGER trg_user_credit_overrides_updated_at BEFORE UPDATE ON public.user_credit_overrides FOR EACH ROW EXECUTE FUNCTION set_user_credit_overrides_updated_at()
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~-1 rows
+
+========================================================================
+TABLE: platform_admins
+========================================================================
+
+-- COLUMNS --
+  id                                       uuid                           NOT NULL  DEFAULT gen_random_uuid()
+  user_id                                  uuid                           NOT NULL
+  email                                    text                           NOT NULL
+  full_name                                text                           NOT NULL
+  is_active                                boolean                        NOT NULL  DEFAULT true
+  granted_at                               timestamp with time zone       NULL  DEFAULT now()
+  granted_by                               uuid                           NULL
+  last_activity_at                         timestamp with time zone       NULL
+  notes                                    text                           NULL
+  tier                                     text                           NOT NULL  DEFAULT 'admin'::text
+
+-- CHECK CONSTRAINTS --
+  platform_admins_tier_check: CHECK ((tier = ANY (ARRAY['admin'::text, 'manager'::text])))
+
+-- FOREIGN KEYS --
+  platform_admins_granted_by_fkey: FOREIGN KEY (granted_by) REFERENCES platform_admins(id)
+  platform_admins_user_id_fkey: FOREIGN KEY (user_id) REFERENCES auth.users(id)
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] platform_admins_pkey: PRIMARY KEY (id)
+  [UQ] platform_admins_email_key: UNIQUE (email)
+  [UQ] platform_admins_user_id_key: UNIQUE (user_id)
+
+-- INDEXES --
+  platform_admins_email_key: CREATE UNIQUE INDEX platform_admins_email_key ON public.platform_admins USING btree (email)
+  platform_admins_pkey: CREATE UNIQUE INDEX platform_admins_pkey ON public.platform_admins USING btree (id)
+  platform_admins_user_id_key: CREATE UNIQUE INDEX platform_admins_user_id_key ON public.platform_admins USING btree (user_id)
+
+-- TRIGGERS --
+  (none)
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~-1 rows
+
+========================================================================
+TABLE: platform_manager_tenants
+========================================================================
+
+-- COLUMNS --
+  platform_admin_id                        uuid                           NOT NULL
+  tenant_id                                uuid                           NOT NULL
+  granted_at                               timestamp with time zone       NOT NULL  DEFAULT now()
+  granted_by                               uuid                           NULL
+
+-- CHECK CONSTRAINTS --
+  (none)
+
+-- FOREIGN KEYS --
+  platform_manager_tenants_granted_by_fkey: FOREIGN KEY (granted_by) REFERENCES platform_admins(id)
+  platform_manager_tenants_platform_admin_id_fkey: FOREIGN KEY (platform_admin_id) REFERENCES platform_admins(id) ON DELETE CASCADE
+  platform_manager_tenants_tenant_id_fkey: FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] platform_manager_tenants_pkey: PRIMARY KEY (platform_admin_id, tenant_id)
+
+-- INDEXES --
+  platform_manager_tenants_admin_idx: CREATE INDEX platform_manager_tenants_admin_idx ON public.platform_manager_tenants USING btree (platform_admin_id)
+  platform_manager_tenants_pkey: CREATE UNIQUE INDEX platform_manager_tenants_pkey ON public.platform_manager_tenants USING btree (platform_admin_id, tenant_id)
+  platform_manager_tenants_tenant_idx: CREATE INDEX platform_manager_tenants_tenant_idx ON public.platform_manager_tenants USING btree (tenant_id)
+
+-- TRIGGERS --
+  (none)
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~-1 rows
+
+========================================================================
+TABLE: tenants
+========================================================================
+
+-- COLUMNS --
+  id                                       uuid                           NOT NULL  DEFAULT gen_random_uuid()
+  name                                     text                           NOT NULL
+  domain                                   text                           NOT NULL
+  brand_name                               text                           NULL
+  logo_url                                 text                           NULL
+  primary_color                            text                           NULL  DEFAULT '#1d4ed8'::text
+  secondary_color                          text                           NULL  DEFAULT '#4f46e5'::text
+  admin_email                              text                           NOT NULL
+  is_active                                boolean                        NULL  DEFAULT true
+  ai_free_messages                         integer                        NULL  DEFAULT 1
+  vip_auto_approve                         boolean                        NULL  DEFAULT false
+  ai_auto_approve_limit                    integer                        NULL  DEFAULT 2
+  ai_manual_approve_limit                  integer                        NULL  DEFAULT 3
+  ai_hard_cap                              integer                        NULL  DEFAULT 10
+  created_at                               timestamp with time zone       NULL  DEFAULT now()
+  updated_at                               timestamp with time zone       NULL  DEFAULT now()
+  anthropic_api_key                        text                           NULL
+  estimator_ai_enabled                     boolean                        NULL  DEFAULT false
+  estimator_nonai_enabled                  boolean                        NULL  DEFAULT true
+  estimator_free_attempts                  integer                        NULL  DEFAULT 1
+  estimator_auto_approve_attempts          integer                        NULL  DEFAULT 2
+  estimator_manual_approve_attempts        integer                        NULL  DEFAULT 3
+  estimator_hard_cap                       integer                        NULL  DEFAULT 10
+  estimator_vip_auto_approve               boolean                        NULL  DEFAULT false
+  default_agent_id                         uuid                           NULL
+  plan_free_attempts                       integer                        NULL  DEFAULT 1
+  plan_auto_approve_limit                  integer                        NULL  DEFAULT 0
+  plan_manual_approve_limit                integer                        NULL  DEFAULT 3
+  plan_hard_cap                            integer                        NULL  DEFAULT 10
+  plan_vip_auto_approve                    boolean                        NULL  DEFAULT false
+  plan_mode                                text                           NULL  DEFAULT 'shared'::text
+  seller_plan_free_attempts                integer                        NULL  DEFAULT 1
+  seller_plan_hard_cap                     integer                        NULL  DEFAULT 10
+  seller_plan_auto_approve_limit           integer                        NULL  DEFAULT 0
+  seller_plan_manual_approve_limit         integer                        NULL  DEFAULT 3
+  assistant_name                           text                           NULL  DEFAULT 'Charlie'::text
+  google_analytics_id                      text                           NULL
+  brokerage_name                           text                           NULL
+  brokerage_address                        text                           NULL
+  brokerage_phone                          text                           NULL
+  broker_of_record                         text                           NULL
+  license_number                           text                           NULL
+  footer_tagline                           text                           NULL
+  about_content                            text                           NULL
+  privacy_content                          text                           NULL
+  terms_content                            text                           NULL
+  homepage_layout                          text                           NOT NULL  DEFAULT 'v1'::text
+  default_claim_quota                      integer                        NOT NULL  DEFAULT 10
+  lifecycle_status                         text                           NOT NULL  DEFAULT 'active'::text
+  suspended_at                             timestamp with time zone       NULL
+  suspended_reason                         text                           NULL
+  terminated_at                            timestamp with time zone       NULL
+  termination_grace_until                  timestamp with time zone       NULL
+  manager_cc                               text                           NULL
+  admin_bcc                                text                           NULL
+  send_from                                text                           NULL
+  resend_api_key                           text                           NULL
+  email_from_domain                        text                           NULL
+  resend_verified_at                       timestamp with time zone       NULL
+  resend_verification_status               text                           NULL
+  google_ads_id                            text                           NULL
+  google_conversion_label                  text                           NULL
+  facebook_pixel_id                        text                           NULL
+  source_key                               text                           NOT NULL
+
+-- CHECK CONSTRAINTS --
+  tenants_homepage_layout_check: CHECK ((homepage_layout = ANY (ARRAY['v1'::text, 'v2'::text, 'v3'::text])))
+  tenants_lifecycle_status_check: CHECK ((lifecycle_status = ANY (ARRAY['active'::text, 'suspended'::text, 'terminated'::text])))
+  tenants_plan_mode_check: CHECK ((plan_mode = ANY (ARRAY['shared'::text, 'independent'::text])))
+  tenants_resend_verification_status_check: CHECK (((resend_verification_status IS NULL) OR (resend_verification_status = ANY (ARRAY['pending'::text, 'verified'::text, 'failed'::text, 'revoked'::text]))))
+
+-- FOREIGN KEYS --
+  tenants_default_agent_id_fkey: FOREIGN KEY (default_agent_id) REFERENCES agents(id)
+
+-- UNIQUE / PRIMARY KEY --
+  [PK] tenants_pkey: PRIMARY KEY (id)
+  [UQ] tenants_domain_key: UNIQUE (domain)
+
+-- INDEXES --
+  idx_tenants_resend_verification_status: CREATE INDEX idx_tenants_resend_verification_status ON public.tenants USING btree (resend_verification_status) WHERE (resend_verification_status IS NOT NULL)
+  idx_tenants_source_key_unique: CREATE UNIQUE INDEX idx_tenants_source_key_unique ON public.tenants USING btree (source_key)
+  tenants_domain_key: CREATE UNIQUE INDEX tenants_domain_key ON public.tenants USING btree (domain)
+  tenants_pkey: CREATE UNIQUE INDEX tenants_pkey ON public.tenants USING btree (id)
+
+-- TRIGGERS --
+  (none)
+
+-- ROW COUNT (estimate from pg_class.reltuples) --
+  ~2 rows
+
+========================================================================
+FUNCTION: resolve_agent_for_context (RPC body)
+========================================================================
+
+-- public.resolve_agent_for_context(p_listing_id uuid, p_building_id uuid, p_neighbourhood_id uuid, p_community_id uuid, p_municipality_id uuid, p_area_id uuid, p_user_id uuid, p_tenant_id uuid) RETURNS uuid --
+CREATE OR REPLACE FUNCTION public.resolve_agent_for_context(p_listing_id uuid DEFAULT NULL::uuid, p_building_id uuid DEFAULT NULL::uuid, p_neighbourhood_id uuid DEFAULT NULL::uuid, p_community_id uuid DEFAULT NULL::uuid, p_municipality_id uuid DEFAULT NULL::uuid, p_area_id uuid DEFAULT NULL::uuid, p_user_id uuid DEFAULT NULL::uuid, p_tenant_id uuid DEFAULT NULL::uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+AS $function$
+DECLARE
+  v_agent_id uuid;
+BEGIN
+  -- Tenant-restriction check (preserved from baseline).
+  IF p_tenant_id IS NOT NULL THEN
+    IF EXISTS (SELECT 1 FROM tenant_property_access WHERE tenant_id = p_tenant_id AND is_active = true) THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM tenant_property_access
+        WHERE tenant_id = p_tenant_id AND is_active = true
+        AND (
+          (area_id = p_area_id AND p_area_id IS NOT NULL) OR
+          (municipality_id = p_municipality_id AND p_municipality_id IS NOT NULL) OR
+          (community_id = p_community_id AND p_community_id IS NOT NULL)
+        )
+      ) THEN
+        RETURN NULL;
+      END IF;
+    END IF;
+  END IF;
+
+  -- P1: Listing pin (firm).
+  IF p_listing_id IS NOT NULL THEN
+    SELECT agent_id INTO v_agent_id FROM agent_listing_assignments WHERE listing_id = p_listing_id;
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P2: Building pin (firm).
+  IF p_building_id IS NOT NULL THEN
+    SELECT agent_id INTO v_agent_id FROM agent_geo_buildings WHERE building_id = p_building_id;
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P3: Neighbourhood routing set.
+  IF p_neighbourhood_id IS NOT NULL THEN
+    v_agent_id := pick_routing_agent('neighbourhood', p_neighbourhood_id, p_tenant_id, p_listing_id);
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P4: Community routing set.
+  IF p_community_id IS NOT NULL THEN
+    v_agent_id := pick_routing_agent('community', p_community_id, p_tenant_id, p_listing_id);
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P5: Municipality routing set.
+  IF p_municipality_id IS NOT NULL THEN
+    v_agent_id := pick_routing_agent('municipality', p_municipality_id, p_tenant_id, p_listing_id);
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P6: Area routing set.
+  IF p_area_id IS NOT NULL THEN
+    v_agent_id := pick_routing_agent('area', p_area_id, p_tenant_id, p_listing_id);
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P7: User-level assignment via tenant_users (modern path).
+  IF p_user_id IS NOT NULL AND p_tenant_id IS NOT NULL THEN
+    SELECT assigned_agent_id INTO v_agent_id FROM tenant_users
+    WHERE user_id = p_user_id AND tenant_id = p_tenant_id AND assigned_agent_id IS NOT NULL;
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P8: User-level assignment via user_profiles (legacy back-compat).
+  IF p_user_id IS NOT NULL THEN
+    SELECT assigned_agent_id INTO v_agent_id FROM user_profiles
+    WHERE id = p_user_id AND assigned_agent_id IS NOT NULL;
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P9: Tenant default agent.
+  IF p_tenant_id IS NOT NULL THEN
+    SELECT default_agent_id INTO v_agent_id FROM tenants
+    WHERE id = p_tenant_id AND default_agent_id IS NOT NULL;
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  -- P10: Any active agent in tenant (last resort).
+  IF p_tenant_id IS NOT NULL THEN
+    SELECT id INTO v_agent_id FROM agents
+    WHERE tenant_id = p_tenant_id AND is_active = true
+    ORDER BY created_at ASC LIMIT 1;
+    IF v_agent_id IS NOT NULL THEN RETURN v_agent_id; END IF;
+  END IF;
+
+  RETURN NULL;
+END;
+$function$
+
+
+========================================================================
+SUMMARY: column counts
+========================================================================
+  leads                               42 columns
+  vip_requests                        22 columns
+  lead_email_log                      5 columns
+  lead_ownership_changes              9 columns
+  tenant_users                        15 columns
+  user_credit_overrides               12 columns
+  platform_admins                     10 columns
+  platform_manager_tenants            4 columns
+  tenants                             64 columns

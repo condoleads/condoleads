@@ -1,0 +1,410 @@
+﻿
+========================================================================
+T0-C-2 Q1: JSX render callsites for lead-capture components
+========================================================================
+
+FILE: C:\Condoleads\project\components\AgentCard.tsx (1 hits)
+  L116: <ContactModal
+
+FILE: C:\Condoleads\project\components\HomePage.tsx (1 hits)
+  L135: <ContactSection agent={{ id: agent.id, full_name: agent.full_name, email: agent.email, cell_phone: agent.phone }} />
+
+FILE: C:\Condoleads\project\components\MobileContactBar.tsx (1 hits)
+  L52: <ContactModal
+
+FILE: C:\Condoleads\project\app\comprehensive-site\contact\page.tsx (1 hits)
+  L64: <WalliamContactForm tenantId={tenant.id} source="contact_page" contextLabel="Get in touch" />
+
+FILE: C:\Condoleads\project\app\comprehensive-site\toronto\[neighbourhood]\page.tsx (2 hits)
+  L256: <WalliamCTA context={neighbourhood.name} />
+  L257: <WalliamAgentCard neighbourhood_id={neighbourhood.id} tenant_id={tenantId!} />
+
+FILE: C:\Condoleads\project\app\property\[id]\HomePropertyPageClient.tsx (3 hits)
+  L170: <WalliamAgentCard
+  L177: <WalliamCTA context={listing.unparsed_address} />
+  L219: <WalliamCTA context={listing.unparsed_address} />
+
+FILE: C:\Condoleads\project\app\property\[id]\PropertyPageClient.tsx (3 hits)
+  L176: <WalliamAgentCard
+  L184: <WalliamCTA context={building?.building_name} />
+  L240: <WalliamCTA context={building?.building_name} />
+
+FILE: C:\Condoleads\project\app\[slug]\AreaPage.tsx (2 hits)
+  L230: <WalliamAgentCard
+  L234: <WalliamCTA context={area.name} />
+
+FILE: C:\Condoleads\project\app\[slug]\BuildingPage.tsx (3 hits)
+  L576: <WalliamAgentCard
+  L582: <WalliamCTA context={building.building_name} />
+  L584: <WalliamContactForm
+
+FILE: C:\Condoleads\project\app\[slug]\CommunityPage.tsx (2 hits)
+  L177: <WalliamAgentCard
+  L182: <WalliamCTA context={community.name} />
+
+FILE: C:\Condoleads\project\app\[slug]\MunicipalityPage.tsx (2 hits)
+  L222: <WalliamAgentCard
+  L227: <WalliamCTA context={municipality.name} />
+
+FILE: C:\Condoleads\project\app\[slug]\PropertyPageContent.tsx (2 hits)
+  L175: <WalliamAgentCard
+  L199: <WalliamContactForm
+
+========================================================================
+T0-C-2 Q2: full *Page.tsx and *PageClient.tsx enumeration
+========================================================================
+  app\[slug]\AreaPage.tsx (9977 bytes)
+  app\[slug]\BuildingPage.tsx (26788 bytes)
+  app\[slug]\BuildingPageContent.tsx (755 bytes)
+  app\[slug]\CommunityPage.tsx (8575 bytes)
+  app\[slug]\components\BuildingAmenities.tsx (5591 bytes)
+  app\[slug]\components\BuildingCard.tsx (1998 bytes)
+  app\[slug]\components\BuildingHero.tsx (4442 bytes)
+  app\[slug]\components\BuildingHighlights.tsx (9485 bytes)
+  app\[slug]\components\BuildingMap.tsx (2811 bytes)
+  app\[slug]\components\BuildingReviews.tsx (7905 bytes)
+  app\[slug]\components\BuildingSchema.tsx (1436 bytes)
+  app\[slug]\components\BuildingsGrid.tsx (4253 bytes)
+  app\[slug]\components\CommunityCard.tsx (1277 bytes)
+  app\[slug]\components\DevelopmentListings.tsx (12113 bytes)
+  app\[slug]\components\DevelopmentSEO.tsx (6346 bytes)
+  app\[slug]\components\DevelopmentStickyNav.tsx (4993 bytes)
+  app\[slug]\components\DualCTASection.tsx (5602 bytes)
+  app\[slug]\components\GeoAdvancedFilters.tsx (8902 bytes)
+  app\[slug]\components\GeoBuildingCard.tsx (9829 bytes)
+  app\[slug]\components\GeoHero.tsx (5071 bytes)
+  app\[slug]\components\GeoHeroCTA.tsx (2065 bytes)
+  app\[slug]\components\GeoInterlinking.tsx (1106 bytes)
+  app\[slug]\components\GeoListingCard.tsx (20576 bytes)
+  app\[slug]\components\GeoListingSection.tsx (16495 bytes)
+  app\[slug]\components\GeoPageTabs.tsx (4408 bytes)
+  app\[slug]\components\GeoQuickFilters.tsx (7610 bytes)
+  app\[slug]\components\GeoSEOContent.tsx (2902 bytes)
+  app\[slug]\components\GeoStatPill.tsx (989 bytes)
+  app\[slug]\components\HomeListingCard.tsx (22971 bytes)
+  app\[slug]\components\InvestmentAnalysis.tsx (15073 bytes)
+  app\[slug]\components\ListingCard.tsx (18907 bytes)
+  app\[slug]\components\ListingSection.tsx (11472 bytes)
+  app\[slug]\components\ListYourUnit.tsx (12833 bytes)
+  app\[slug]\components\MarketIntelligence.tsx (10685 bytes)
+  app\[slug]\components\MarketStats.tsx (2164 bytes)
+  app\[slug]\components\NeighbourhoodListingSection.tsx (14278 bytes)
+  app\[slug]\components\NeighbourhoodPageTabs.tsx (4017 bytes)
+  app\[slug]\components\PriceChart.tsx (4689 bytes)
+  app\[slug]\components\PSFAnalysis.tsx (8393 bytes)
+  app\[slug]\components\PSFComparisonTable.tsx (7041 bytes)
+  app\[slug]\components\PSFTrendChart.tsx (10504 bytes)
+  app\[slug]\components\SEODescription.tsx (3791 bytes)
+  app\[slug]\components\ShareSaveButtons.tsx (6263 bytes)
+  app\[slug]\components\SocialShare.tsx (3633 bytes)
+  app\[slug]\components\StickyNav.tsx (2731 bytes)
+  app\[slug]\components\TransactionHistory.tsx (7770 bytes)
+  app\[slug]\components\TransactionInsights.tsx (7908 bytes)
+  app\[slug]\components\WalkScore.tsx (2351 bytes)
+  app\[slug]\DevelopmentPage.tsx (15789 bytes)
+  app\[slug]\MunicipalityPage.tsx (10873 bytes)
+  app\[slug]\page.tsx (6424 bytes)
+  app\[slug]\PropertyPageContent.tsx (8831 bytes)
+  app\_landing.disabled\layout.tsx (178 bytes)
+  app\_landing.disabled\page.tsx (921 bytes)
+  app\actions\createLead.ts (9824 bytes)
+  app\actions\joinTenant.ts (8854 bytes)
+  app\actions\reviews.ts (850 bytes)
+  app\actions\submitActivityFromForm.ts (1553 bytes)
+  app\actions\submitLeadFromForm.ts (2804 bytes)
+  app\admin\adjustments\page.tsx (203 bytes)
+  app\admin\agents\[id]\page.tsx (2307 bytes)
+  app\admin\agents\page.tsx (1620 bytes)
+  app\admin\branding\actions.ts (3626 bytes)
+  app\admin\branding\BrandingClient.tsx (35026 bytes)
+  app\admin\branding\page.tsx (930 bytes)
+  app\admin\buildings\batch-sync\page.tsx (22954 bytes)
+  app\admin\buildings\sync\page.tsx (19056 bytes)
+  app\admin\bulk-discovery\page.tsx (49791 bytes)
+  app\admin\database\validate\page.tsx (156 bytes)
+  app\admin\layout.tsx (514 bytes)
+  app\admin\leads\page.tsx (1158 bytes)
+  app\admin\market-analytics\page.tsx (28371 bytes)
+  app\admin\page.tsx (1799 bytes)
+  app\admin\photos\page.tsx (19389 bytes)
+  app\admin\psf-analytics\building-psf-chart.tsx (10736 bytes)
+  app\admin\psf-analytics\geo-tree.tsx (6720 bytes)
+  app\admin\psf-analytics\page.tsx (2438 bytes)
+  app\admin\psf-analytics\psf-chart.tsx (9381 bytes)
+  app\admin\psf-analytics\psf-dashboard.tsx (25470 bytes)
+  app\admin\settings\page.tsx (7153 bytes)
+  app\admin-homes\agents\[id]\page.tsx (4843 bytes)
+  app\admin-homes\agents\page.tsx (2588 bytes)
+  app\admin-homes\agents\tree\page.tsx (2044 bytes)
+  app\admin-homes\bulk-sync\BulkSyncClient.tsx (27897 bytes)
+  app\admin-homes\bulk-sync\components\CommandCenter.tsx (26049 bytes)
+  app\admin-homes\bulk-sync\page.tsx (529 bytes)
+  app\admin-homes\layout.tsx (899 bytes)
+  app\admin-homes\leads\page.tsx (3263 bytes)
+  app\admin-homes\page.tsx (5063 bytes)
+  app\admin-homes\settings\page.tsx (1736 bytes)
+  app\admin-homes\settings\SettingsClient.tsx (36627 bytes)
+  app\admin-homes\tenants\[id]\page.tsx (4883 bytes)
+  app\admin-homes\tenants\page.tsx (1842 bytes)
+  app\admin-homes\territory\page.tsx (1176 bytes)
+  app\admin-homes\users\page.tsx (6387 bytes)
+  app\admin-homes\users\UsersClient.tsx (12477 bytes)
+  app\api\01leads-contact\route.ts (2005 bytes)
+  app\api\address-history\route.ts (1212 bytes)
+  app\api\admin\adjustments\resolve\route.ts (5659 bytes)
+  app\api\admin\adjustments\route.ts (7023 bytes)
+  app\api\admin\agents\[id]\buildings\route.ts (1495 bytes)
+  app\api\admin\agents\[id]\route.ts (6366 bytes)
+  app\api\admin\agents\list\route.ts (926 bytes)
+  app\api\admin\agents\route.ts (3715 bytes)
+  app\api\admin\analytics\sync-stats\route.ts (2864 bytes)
+  app\api\admin\buildings\bulk-assign\route.ts (3251 bytes)
+  app\api\admin\buildings\delete\route.ts (3217 bytes)
+  app\api\admin\buildings\incremental-sync\route.ts (68690 bytes)
+  app\api\admin\buildings\incremental-sync\route.ts.before-sync-history (62770 bytes)
+  app\api\admin\buildings\list\route.ts (5991 bytes)
+  app\api\admin\buildings\save\route.ts (57154 bytes)
+  app\api\admin\buildings\schema\route.ts (1295 bytes)
+  app\api\admin\buildings\search\route.ts (27015 bytes)
+  app\api\admin\buildings\update\route.ts (3902 bytes)
+  app\api\admin\bulk-discovery\buildings\route.ts (3507 bytes)
+  app\api\admin\bulk-discovery\db-assign\route.ts (12503 bytes)
+  app\api\admin\bulk-discovery\discover\route.ts (14503 bytes)
+  app\api\admin\bulk-discovery\geo-tree\route.ts (2302 bytes)
+  app\api\admin\bulk-discovery\sync\route.ts (8794 bytes)
+  app\api\admin\database\validate-schema\route.ts.disabled (4250 bytes)
+  app\api\admin\developments\delete\route.ts (1839 bytes)
+  app\api\admin\developments\list\route.ts (2818 bytes)
+  app\api\admin\developments\save\route.ts (2389 bytes)
+  app\api\admin\developments\update\route.ts (1705 bytes)
+  app\api\admin\geography\sync\route.ts (8052 bytes)
+  app\api\admin\leads\[id]\route.ts (1063 bytes)
+  app\api\admin\leads\bulk-delete\route.ts (1070 bytes)
+  app\api\admin\market-analytics\calculate\route.ts (13649 bytes)
+  app\api\admin\market-analytics\parking-sale\route.ts (38848 bytes)
+  app\api\admin\psf-analytics\buildings\[buildingId]\transactions\route.ts (2074 bytes)
+  app\api\admin\psf-analytics\buildings\route.ts (2643 bytes)
+  app\api\admin\psf-analytics\calculate\route.ts (19081 bytes)
+  app\api\admin\psf-analytics\results\route.ts (6174 bytes)
+  app\api\admin\psf-analytics\test\route.ts (1385 bytes)
+  app\api\admin\refresh-views\route.ts (570 bytes)
+  app\api\admin\reset-password\route.ts (904 bytes)
+  app\api\admin\settings\route.ts (1947 bytes)
+  app\api\admin\sync-history\route.ts (1657 bytes)
+  app\api\admin-homes\activities\route.ts (2426 bytes)
+  app\api\admin-homes\agents\[id]\buildings\route.ts (3534 bytes)
+  app\api\admin-homes\agents\[id]\geo\route.ts (7200 bytes)
+  app\api\admin-homes\agents\[id]\listings\route.ts (4535 bytes)
+  app\api\admin-homes\agents\[id]\route.ts (7085 bytes)
+  app\api\admin-homes\agents\list\route.ts (1292 bytes)
+  app\api\admin-homes\agents\route.ts (5561 bytes)
+  app\api\admin-homes\agents\tree-data\route.ts (3191 bytes)
+  app\api\admin-homes\area-sync-status\route.ts (8218 bytes)
+  app\api\admin-homes\db-stats\route.ts (2978 bytes)
+  app\api\admin-homes\delegations\[id]\route.ts (1720 bytes)
+  app\api\admin-homes\delegations\route.ts (4459 bytes)
+  app\api\admin-homes\discover\route.ts (1450 bytes)
+  app\api\admin-homes\geo-tree\route.ts (3116 bytes)
+  app\api\admin-homes\incremental-sync\route.ts (12839 bytes)
+  app\api\admin-homes\leads\[id]\route.ts (3220 bytes)
+  app\api\admin-homes\parallel-sync\route.ts (18131 bytes)
+  app\api\admin-homes\sync\route.ts (19012 bytes)
+  app\api\admin-homes\sync-status\route.ts (6372 bytes)
+  app\api\admin-homes\tenants\[id]\geo\route.ts (5430 bytes)
+  app\api\admin-homes\tenants\[id]\lifecycle\route.ts (3475 bytes)
+  app\api\admin-homes\tenants\[id]\route.ts (4793 bytes)
+  app\api\admin-homes\tenants\[id]\verify-resend\route.ts (5207 bytes)
+  app\api\admin-homes\tenants\route.ts (3117 bytes)
+  app\api\admin-homes\tenants\verify-anthropic-key\route.ts (3263 bytes)
+  app\api\admin-homes\territory\audit-log\route.ts (2966 bytes)
+  app\api\admin-homes\territory\bulk-assign\route.ts (9915 bytes)
+  app\api\admin-homes\territory\coverage\route.ts (5156 bytes)
+  app\api\admin-homes\territory\matrix\route.ts (12914 bytes)
+  app\api\admin-homes\users\override\route.ts (4211 bytes)
+  app\api\analytics\route.ts (903 bytes)
+  app\api\building-listings\route.ts (1607 bytes)
+  app\api\charlie\appointment\route.ts (18151 bytes)
+  app\api\charlie\community-buildings\route.ts (6557 bytes)
+  app\api\charlie\competing-listings\route.ts (3002 bytes)
+  app\api\charlie\lead\route.ts (26001 bytes)
+  app\api\charlie\municipalities\route.ts (1629 bytes)
+  app\api\charlie\plan-email\route.ts (41287 bytes)
+  app\api\charlie\route.ts (45755 bytes)
+  app\api\charlie\seller-estimate\route.ts (4869 bytes)
+  app\api\chat\route.ts (11367 bytes)
+  app\api\chat\session\route.ts (3276 bytes)
+  app\api\chat\vip-approve\route.ts (11718 bytes)
+  app\api\chat\vip-prompted\route.ts (1158 bytes)
+  app\api\chat\vip-questionnaire\route.ts (9297 bytes)
+  app\api\chat\vip-request\route.ts (16269 bytes)
+  app\api\chat\vip-upgrade\route.ts (3415 bytes)
+  app\api\cron\sync-all\route.ts (4898 bytes)
+  app\api\development-listings\route.ts (2138 bytes)
+  app\api\email\low-credits\route.ts (9853 bytes)
+  app\api\email\welcome\route.ts (15206 bytes)
+  app\api\estimator\increment\route.ts (2058 bytes)
+  app\api\estimator\session\route.ts (5514 bytes)
+  app\api\geo-buildings\route.ts (3978 bytes)
+  app\api\geo-listings\route.ts (6338 bytes)
+  app\api\market-ticker\route.ts (1849 bytes)
+  app\api\neighbourhood-listings\route.ts (7464 bytes)
+  app\api\paddle\webhook\route.ts (9412 bytes)
+  app\api\rankings\route.ts (993 bytes)
+  app\api\search\route.ts (11492 bytes)
+  app\api\submit-application\route.ts (2093 bytes)
+  app\api\test-email\route.ts (1246 bytes)
+  app\api\unit-history\route.ts (1319 bytes)
+  app\api\walliam\assign-user-agent\route.ts (7524 bytes)
+  app\api\walliam\charlie\session\route.ts (13910 bytes)
+  app\api\walliam\charlie\vip-approve\route.ts (11615 bytes)
+  app\api\walliam\charlie\vip-request\route.ts (18534 bytes)
+  app\api\walliam\contact\route.ts (8109 bytes)
+  app\api\walliam\estimator\increment\route.ts (2068 bytes)
+  app\api\walliam\estimator\session\route.ts (7985 bytes)
+  app\api\walliam\estimator\vip-approve\route.ts (11678 bytes)
+  app\api\walliam\estimator\vip-questionnaire\route.ts (13169 bytes)
+  app\api\walliam\estimator\vip-request\route.ts (17695 bytes)
+  app\api\walliam\resolve-agent\route.ts (3571 bytes)
+  app\api\walliam\tenant-config\route.ts (1127 bytes)
+  app\auth\callback\route.ts (1095 bytes)
+  app\charlie\components\ActiveListingCard.tsx (4789 bytes)
+  app\charlie\components\AppointmentForm.tsx (14191 bytes)
+  app\charlie\components\BuildingCard.tsx (2582 bytes)
+  app\charlie\components\BuyerForm.tsx (15968 bytes)
+  app\charlie\components\BuyerOfferBlock.tsx (10989 bytes)
+  app\charlie\components\CharlieOverlay.tsx (14108 bytes)
+  app\charlie\components\CharlieWidget.tsx (17260 bytes)
+  app\charlie\components\ChatPanel.tsx (9248 bytes)
+  app\charlie\components\ComparableCard.tsx (5118 bytes)
+  app\charlie\components\PlanDocument.tsx (13580 bytes)
+  app\charlie\components\PricingRiskBlock.tsx (5485 bytes)
+  app\charlie\components\ResultsPanel.tsx (32001 bytes)
+  app\charlie\components\SellerEstimateBlock.tsx (6260 bytes)
+  app\charlie\components\SellerEstimateRunner.tsx (6904 bytes)
+  app\charlie\components\SellerForm.tsx (16905 bytes)
+  app\charlie\hooks\useCharlie.ts (22184 bytes)
+  app\charlie\lib\charlie-plan.ts (1999 bytes)
+  app\charlie\lib\charlie-prompts.ts (11897 bytes)
+  app\charlie\lib\charlie-tools.ts (9259 bytes)
+  app\comprehensive-site\[slug]\page.tsx (5411 bytes)
+  app\comprehensive-site\about\page.tsx (1217 bytes)
+  app\comprehensive-site\contact\page.tsx (3493 bytes)
+  app\comprehensive-site\layout.tsx (2564 bytes)
+  app\comprehensive-site\page.tsx (3574 bytes)
+  app\comprehensive-site\privacy\page.tsx (1159 bytes)
+  app\comprehensive-site\terms\page.tsx (1137 bytes)
+  app\comprehensive-site\toronto\[neighbourhood]\page.tsx (10337 bytes)
+  app\dashboard\buildings\page.tsx (2409 bytes)
+  app\dashboard\leads\[id]\page.tsx (4710 bytes)
+  app\dashboard\leads\page.tsx (2975 bytes)
+  app\dashboard\page.tsx (5093 bytes)
+  app\estimator\actions\estimate-home-rent.ts (3634 bytes)
+  app\estimator\actions\estimate-home-sale.ts (3724 bytes)
+  app\estimator\actions\estimate-rent.ts (3037 bytes)
+  app\estimator\actions\estimate-sale.ts (2774 bytes)
+  app\estimator\components\EstimatorBuyer.tsx (4757 bytes)
+  app\estimator\components\EstimatorBuyerModal.tsx (19096 bytes)
+  app\estimator\components\EstimatorResults.tsx (39847 bytes)
+  app\estimator\components\EstimatorSeller.tsx (13846 bytes)
+  app\estimator\components\HomeEstimatorBuyerModal.tsx (23399 bytes)
+  app\estimator\components\HomeEstimatorResults.tsx (38571 bytes)
+  app\globals.css (687 bytes)
+  app\layout.tsx (1841 bytes)
+  app\login\page.tsx (4956 bytes)
+  app\og\route.tsx (3132 bytes)
+  app\page.tsx (13403 bytes)
+  app\privacy-policy\page.tsx (25281 bytes)
+  app\property\[id]\HomePropertyPage.tsx (12305 bytes)
+  app\property\[id]\HomePropertyPageClient.tsx (12485 bytes)
+  app\property\[id]\page.tsx (13613 bytes)
+  app\property\[id]\PropertyPageClient.tsx (14842 bytes)
+  app\reset-password\page.tsx (4323 bytes)
+  app\team\[slug]\page.tsx (9923 bytes)
+  app\team\page.tsx (5161 bytes)
+  app\terms-of-service\page.tsx (20182 bytes)
+  app\test-auth\page.tsx (2898 bytes)
+  app\test-email\page.tsx (3313 bytes)
+  app\test-reset\page.tsx (2784 bytes)
+  app\zerooneleads\components\FAQ.tsx (7879 bytes)
+  app\zerooneleads\components\Features.tsx (4953 bytes)
+  app\zerooneleads\components\Footer.tsx (3448 bytes)
+  app\zerooneleads\components\FooterCTA.tsx (3402 bytes)
+  app\zerooneleads\components\Hero.tsx (10791 bytes)
+  app\zerooneleads\components\HowItWorks.tsx (3433 bytes)
+  app\zerooneleads\components\MLSFusion.tsx (26932 bytes)
+  app\zerooneleads\components\Nav.tsx (2750 bytes)
+  app\zerooneleads\components\Pricing.tsx (12549 bytes)
+  app\zerooneleads\components\Problem.tsx (4424 bytes)
+  app\zerooneleads\components\Solution.tsx (30431 bytes)
+  app\zerooneleads\contact\page.tsx (6600 bytes)
+  app\zerooneleads\layout.tsx (894 bytes)
+  app\zerooneleads\page.tsx (665 bytes)
+  app\zerooneleads\privacy-policy\page.tsx (2434 bytes)
+  app\zerooneleads\refund-policy\page.tsx (2464 bytes)
+  app\zerooneleads\terms-of-service\page.tsx (5481 bytes)
+  app\zerooneleads\thank-you\page.tsx (2894 bytes)
+
+========================================================================
+T0-C-2 Q3: neighbourhood routing surface
+========================================================================
+  app\[slug]\components\NeighbourhoodListingSection.tsx (14278 bytes)
+  app\[slug]\components\NeighbourhoodPageTabs.tsx (4017 bytes)
+  app\api\neighbourhood-listings\route.ts (7464 bytes)
+  app\comprehensive-site\[slug]\page.tsx (5411 bytes)
+  app\comprehensive-site\about\page.tsx (1217 bytes)
+  app\comprehensive-site\contact\page.tsx (3493 bytes)
+  app\comprehensive-site\layout.tsx (2564 bytes)
+  app\comprehensive-site\page.tsx (3574 bytes)
+  app\comprehensive-site\privacy\page.tsx (1159 bytes)
+  app\comprehensive-site\terms\page.tsx (1137 bytes)
+  app\comprehensive-site\toronto\[neighbourhood]\page.tsx (10337 bytes)
+
+========================================================================
+T0-C-2 Q4: createLead.ts and submitLeadFromForm.ts caller inventory
+========================================================================
+
+FILE: C:\Condoleads\project\components\auth\RegisterModal.tsx (1 hits)
+  L10: *       - Creates the per-tenant lead via getOrCreateLead
+
+FILE: C:\Condoleads\project\components\home\ContactSection.tsx (2 hits)
+  L5: import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+  L26: await submitLeadFromForm({
+
+FILE: C:\Condoleads\project\components\modals\ContactModal.tsx (2 hits)
+  L6: import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+  L85: const result = await submitLeadFromForm({
+
+FILE: C:\Condoleads\project\components\property\AgentContactForm.tsx (2 hits)
+  L4: import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+  L69: const result = await submitLeadFromForm({
+
+FILE: C:\Condoleads\project\components\property\OfferInquiryModal.tsx (2 hits)
+  L4: import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+  L54: const lead = await submitLeadFromForm({
+
+FILE: C:\Condoleads\project\components\property\UnitHistoryModal.tsx (2 hits)
+  L8: import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+  L134: await submitLeadFromForm({
+
+FILE: C:\Condoleads\project\app\actions\joinTenant.ts (3 hits)
+  L25: *        - Call getOrCreateLead with tenantId scope.
+  L32: import { getOrCreateLead } from '@/lib/actions/leads'
+  L180: const leadResult = await getOrCreateLead({
+
+FILE: C:\Condoleads\project\app\actions\submitActivityFromForm.ts (1 hits)
+  L15: * Same pattern as `submitLeadFromForm` — request-scoped tenant resolution at the
+
+FILE: C:\Condoleads\project\app\estimator\components\EstimatorResults.tsx (2 hits)
+  L9: import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+  L133: const leadResult = await submitLeadFromForm({
+
+FILE: C:\Condoleads\project\app\estimator\components\HomeEstimatorResults.tsx (2 hits)
+  L9: import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+  L134: const leadResult = await submitLeadFromForm({
+
+FILE: C:\Condoleads\project\app\[slug]\components\ListYourUnit.tsx (5 hits)
+  L3: import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+  L49: console.log('?? Calling submitLeadFromForm for EVALUATION')
+  L51: const result = await submitLeadFromForm({
+  L89: console.log(' Calling submitLeadFromForm for VISIT')
+  L91: const result = await submitLeadFromForm({
