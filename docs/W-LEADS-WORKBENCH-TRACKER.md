@@ -27,7 +27,7 @@ Founder direction 2026-05-12: "make a tracker and lets get to work — a day's d
 After the v1 plan locked, founder review surfaced three substantial gaps:
 
 ### Gap 1: Lead source completeness + bugs
-Comprehensive lead capture inventory across the platform was missing. Every CTA must be wired, source-correct, URL-bearing, and email-flowing. Two confirmed bugs: `testingleads@gmail.com` buyer plan delivery failure; registration flow not setting source. Plus Home property page is missing the Book a Visit CTA that exists on Condo property pages (parity gap).
+Comprehensive lead capture inventory across the platform was missing. Every CTA must be wired, source-correct, URL-bearing, and email-flowing. Home property page is missing the Book a Visit CTA that exists on Condo property pages (parity gap). The two known-bug instances (testingleads@gmail.com buyer plan delivery; registration source) are tackled comprehensively through universal source URL + lead-write wiring covering every CTA — not as separate bug traces.
 
 ### Gap 2: Source URL propagation to email
 Every lead capture has a context URL (the property page, the building page, the listing card's parent, the home page). That URL must be captured at lead-write time, stored on the lead row (`leads.source_url TEXT` column), and rendered in every email going to the hierarchy chain. Recipient clicks URL in email → instantly at the relevant page → acts in seconds. This applies to every CTA in the inventory, no exceptions.
@@ -128,8 +128,6 @@ After Wclose:
 15. **Role-aware UI:** Universal/Tenant toggle (platform_admin + platform_assistant), tenant switcher (tenant_manager), locked-to-tenant (everyone else). Action visibility/enablement per role.
 16. **scopeLeadsQuery** wraps every leads read across the workstream's API surface.
 17. **Smoke matrix** in `scripts/smoke-w-leads-workbench.ts` validates: every CTA writes correct source + lead_origin_route + source_url + tenant_id; every email fans out correctly; every role sees only their scope; cumulative-view aggregation works.
-18. `testingleads@gmail.com` buyer plan delivery bug RCA'd and fixed as part of the architecture, not a separate hotfix.
-19. Registration flow source-field bug RCA'd and fixed.
 
 ---
 
@@ -139,7 +137,7 @@ After Wclose:
 
 | # | Phase | Status | Commit | Notes |
 |---|---|---|---|---|
-| W1 | Deep recon | OPEN | — | Every CTA + every API + every email template + plan_data shapes + status enum values + quality writers + existing scope/permission code + `testingleads@gmail.com` bug trace + registration source bug trace + Users page credit UI shape + "History missing contact" clarification |
+| W1 | Deep recon (Group A) | PARTIAL | 2026-05-13 | 6/10 sub-targets VERIFIED from disk+DB. VERIFIED: (1) lead-capture surface — 10 paths (9 `submitLeadFromForm` callers + `WalliamContactForm` + `VIPAIAccess` SiteHeaderClient L139/L242); (2) property page CTAs — `PropertyPageClient.tsx` + `HomePropertyPageClient.tsx` full dumps, dual-branch isWalliam/agent, OfferInquiryModal P1 bug at L300/L266 `{agent && ...}` guard; (3) 5 API routes — `walliam/contact` P0 body-trust tenant_id, `charlie/{appointment,lead,plan-email}` + `walliam/charlie/vip-request` header-correct, `walliam/estimator/vip-request` L204 writes source_url:pageUrl (50% partial); (4) `leads` schema 47 cols `source_url TEXT` EXISTS — no W2 column-add — + `tenants` schema; (5) distributions Q3-Q8 + testingleads history + King Shah tenant_admin no parent; (6) `deriveLeadOriginRoute` at `lib/utils/lead-origin-route.ts`. 4/10 PENDING (verify in next probes, not silent absorption): (a) `can()` permission code; (b) Users page credit UI shape (W4c extraction source); (c) email template renderers across 5 API routes; (d) cumulative-view data model (union leads by user_id). |
 | W2 | Schema migrations | OPEN | — | Status enum +3 values; `leads.source_url TEXT` + backfill; `lead_admin_actions` audit table; `tenant_manager_assignments` table; all multi-tenant safe with tenant_id NOT NULL |
 | W2.5 | `scopeLeadsQuery` helper + `can()` permission expansion | OPEN | — | New file `lib/admin-homes/scope.ts`; role-aware predicates; permission constants for 7 roles; existing routes refactored to use it |
 
@@ -210,14 +208,9 @@ Every new query, every new admin endpoint, every new UI surface in this workstre
 
 ---
 
-## Open questions log
-
-- **"History missing contact?"** — founder mentioned this on 2026-05-12; awaiting clarification on which screen / which lead row showed missing contact info.
-
----
-
 ## Status log
 
+- **2026-05-13 Group A / W1-PARTIAL** — Deep recon 6 of 10 sub-targets VERIFIED with disk+DB output (not guess). VERIFIED: lead-capture surface 10 paths (9 `submitLeadFromForm` callers + `WalliamContactForm` direct POST + `VIPAIAccess` in `SiteHeaderClient`); property page dual-branch architecture (`PropertyPageClient` + `HomePropertyPageClient` full file dumps); 5 API routes audited; `leads` schema confirms `source_url TEXT` already exists (no W2 column-add for that column); status / source / lead_origin_route / assignment_source / source-url-by-source / testingleads-history / King-Shah-hierarchy distributions; `deriveLeadOriginRoute` source documented. P0 FOUND: `walliam/contact` body-trust `tenant_id` (multi-tenant leak vector). P1 FOUND: `OfferInquiryModal` `{showOfferModal && agent && ...}` guard breaks Make-an-Offer on every WALLiam property page (condo + home). PENDING — must verify on disk before downstream phase implementation: `can()` permission code (W2.5 Group A prereq); Users page credit UI shape (W4c Group C extraction source); email template renderers across 5 API routes + `lib/actions/leads.ts buildLeadEmail` (W3c Group B rendering target); cumulative-view data model for union by user_id (W4a Group C aggregation design). Founder direction 2026-05-13: bug-trace approach abandoned — `testingleads@gmail.com` buyer plan delivery + registration source fold into universal source URL wiring across all CTAs; "History missing contact" question retracted. Working group-by-group from now on (A Foundation → B Strip+Wire → C Workbench → D Role-Aware → E Enhancements → F Test+Close). Next: 4 probe pastes complete remaining Group A / W1 sub-targets, tracker flips to W1 VERIFIED, then W2 schema (status enum +3 values, `lead_admin_actions`, `tenant_manager_assignments`).
 - **2026-05-12 W-open** — Workstream opened. v1 tracker created. 16-phase plan locked. Sized 10-15 hours. Master tracker Section 4 row inserted as OPEN; v18 status log entry appended. Commit: master `b1a327b` (Lclose) → W-open paste 114.
 
 - **2026-05-12 W-v2** — Scope expansion. Founder review surfaced 4 substantial gaps: (1) Lead source completeness across the platform + 2 confirmed bugs (`testingleads@gmail.com` buyer plan delivery, registration source missing) + Home property Book a Visit CTA parity gap; (2) Source URL must propagate from every CTA to every email recipient (new `leads.source_url TEXT` column + email template rendering); (3) Cumulative view architecture — leads list collapses by user_id, workbench page anchored on user_id aggregating all leads from that user; (4) Full 7-role hierarchy with 2 new roles (`platform_assistant`, `tenant_manager`) — multi-tenant role membership via new `tenant_manager_assignments` table. Phase table expanded from 16 to 22 phases across 6 groups (A Foundation, B Strip+Wire, C Workbench, D Role-Aware, E Enhancements, F Test+Close). Sized now: ~25-30 hours focused work. Founder mandate: "I want this done once and for all comprehensively — efficient + comprehensive — done once." Multi-tenant safety contract restated: every query through `scopeLeadsQuery`, every action through `can()`, no exceptions. Testing approach: code-based smoke matrix in `scripts/smoke-w-leads-workbench.ts` validating every CTA × every role × cumulative-view variants. `testingleads@gmail.com` bug resolves as part of the architecture (Source URL + delivery pipeline correctness), not a separate hotfix. Next: W1 deep recon — read every CTA file, every lead-capture API, every email template, locate Users credit UI, SQL probe enum/state, trace 2 bugs, audit existing scope/permission code.
