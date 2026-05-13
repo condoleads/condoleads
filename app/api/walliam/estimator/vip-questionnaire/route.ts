@@ -215,6 +215,7 @@ export async function POST(request: NextRequest) {
       timelineDisplay,
       buildingName: vipRequest.building_name,
       requirements,
+      pageUrl: vipRequest.page_url,
     })
 
     // Single email to full chain via helper (replaces F64 dual-send)
@@ -299,6 +300,7 @@ export async function POST(request: NextRequest) {
 }
 
 function buildQuestionnaireEmailHtml(data: {
+  pageUrl?: string | null
   userName: string
   phone: string
   email?: string
@@ -359,6 +361,7 @@ function buildQuestionnaireEmailHtml(data: {
         <p style="margin: 0; color: rgba(255,255,255,0.6); font-size: 13px;">
           ✦ ${data.brandName} — Use the approve/deny links from the original VIP email to manage access.
         </p>
+        ${data.pageUrl ? `<p style="margin: 8px 0 0; color: rgba(255,255,255,0.4); font-size: 10px;">Source: <a href="${data.pageUrl}" style="color: rgba(255,255,255,0.6); text-decoration: underline;">${data.pageUrl}</a></p>` : ''}
       </div>
     </div>
   `

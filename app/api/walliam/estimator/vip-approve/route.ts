@@ -170,7 +170,8 @@ export async function GET(request: NextRequest) {
               agent?.full_name || brandName,
               attemptsToGrant,
               brandName,
-              baseUrl
+              baseUrl,
+              vipRequest.page_url || null
             ),
           })
         } catch (err) {
@@ -196,7 +197,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, baseUrl: string): string {
+function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, baseUrl: string, pageUrl: string | null): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
@@ -210,6 +211,7 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, attempt
         <div style="text-align: center;">
           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to ${brandName}</a>
         </div>
+        ${pageUrl ? `<p style="margin: 24px 0 0; text-align: center; color: #cbd5e1; font-size: 10px;">Source: <a href="${pageUrl}" style="color: #94a3b8; text-decoration: underline;">${pageUrl}</a></p>` : ''}
       </div>
     </div>
   `

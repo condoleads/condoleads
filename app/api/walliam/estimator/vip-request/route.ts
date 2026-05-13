@@ -332,7 +332,7 @@ export async function POST(request: NextRequest) {
             tenantId: tenantId || '',
             to: userEmail,
             subject: `${brandName} Estimator Access Approved`,
-            html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, domain, baseUrl),
+            html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, domain, baseUrl, pageUrl),
           })
         } catch (err) {
           // F67 standard try/catch
@@ -463,12 +463,13 @@ function buildApprovalEmailHtml(data: {
           ❌ Deny
         </a>
         <p style="margin: 20px 0 0; font-size: 12px; color: #9ca3af;">Expires in 24 hours.</p>
+        ${data.pageUrl ? `<p style="margin: 8px 0 0; font-size: 10px; color: #cbd5e1;">Source: <a href="${data.pageUrl}" style="color: #94a3b8; text-decoration: underline;">${data.pageUrl}</a></p>` : ''}
       </div>
     </div>
   `
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, domain: string, baseUrl: string): string {
+function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, domain: string, baseUrl: string, pageUrl: string | null): string {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
@@ -488,6 +489,7 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, attempt
             ✦ Back to ${brandName}
           </a>
         </div>
+        ${pageUrl ? `<p style="margin: 24px 0 0; text-align: center; color: #cbd5e1; font-size: 10px;">Source: <a href="${pageUrl}" style="color: #94a3b8; text-decoration: underline;">${pageUrl}</a></p>` : ''}
       </div>
     </div>
   `
