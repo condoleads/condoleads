@@ -180,7 +180,7 @@ export async function createLead(params: CreateLeadParams) {
       tenant_admin_id: chainTenantAdminId,
       building_id: params.buildingId || null,
       listing_id: params.listingId || null,
-      source_url: params.sourceUrl || null,
+      source_url: params.sourceUrl || referer || null,
       estimated_value_min: params.estimatedValueMin || null,
       estimated_value_max: params.estimatedValueMax || null,
       property_details: params.propertyDetails || null,
@@ -226,6 +226,7 @@ export async function createLead(params: CreateLeadParams) {
       contactPhone: params.contactPhone,
       message: params.message,
       source,
+      sourceUrl: params.sourceUrl || referer || null,
       buildingName: params.propertyDetails?.buildingName,
       buildingAddress: params.propertyDetails?.buildingAddress,
       unitNumber: params.propertyDetails?.unitNumber,
@@ -277,11 +278,12 @@ function buildLeadEmail(params: {
   contactPhone?: string
   message?: string
   source: string
+  sourceUrl?: string | null
   buildingName?: string
   buildingAddress?: string
   unitNumber?: string
 }): string {
-  const { contactName, contactEmail, contactPhone, message, source, buildingName, buildingAddress, unitNumber } = params
+  const { contactName, contactEmail, contactPhone, message, source, sourceUrl, buildingName, buildingAddress, unitNumber } = params
   const propertyLine = buildingName || buildingAddress
     ? `${buildingName || ''}${buildingAddress ? ' — ' + buildingAddress : ''}${unitNumber ? ' #' + unitNumber : ''}`
     : null
@@ -298,6 +300,7 @@ function buildLeadEmail(params: {
           <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${contactEmail}" style="color: #1d4ed8;">${contactEmail}</a></td></tr>
           ${contactPhone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${contactPhone}" style="color: #1d4ed8;">${contactPhone}</a></td></tr>` : ''}
           ${propertyLine ? `<tr><td style="color: #64748b;">Property</td><td style="color: #0f172a;">${propertyLine}</td></tr>` : ''}
+          ${sourceUrl ? `<tr><td style="color: #64748b; vertical-align: top;">Source URL</td><td style="color: #0f172a; word-break: break-all;"><a href="${sourceUrl}" style="color: #1d4ed8;">${sourceUrl}</a></td></tr>` : ''}
           ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
         </table>
         <div style="margin-top: 20px; text-align: center;">
