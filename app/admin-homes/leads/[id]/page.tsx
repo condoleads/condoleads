@@ -148,13 +148,15 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
 
   // W4d: Activity feed (cumulative visitor + admin timeline across leadFamily)
   // Visitor activities keyed by contact_email; admin actions keyed by lead_id.
-  // Both tenant_id-scoped to anchorLead.tenant_id (trusted source from cross-tenant gate).
+  // W4e: Email log (lead_email_recipients_log rows across leadFamily, lead_id-keyed).
+  // All tenant_id-scoped to anchorLead.tenant_id (trusted source from cross-tenant gate).
   let activityFeed: any[] = []
+  let emailLog: any[] = []
   const familyEmails = Array.from(new Set(leadFamily.map((l: any) => l.contact_email).filter(Boolean))) as string[]
   const familyIds = leadFamily.map((l: any) => l.id) as string[]
   const tenantIdForActivity = (anchorLead as any).tenant_id
   if (tenantIdForActivity && (familyEmails.length > 0 || familyIds.length > 0)) {
-    const [activitiesResult, actionsResult] = await Promise.all([
+    const [activitiesResult, actionsResult, emailLogResult] = await Promise.all([
       familyEmails.length > 0
         ? supabase
             .from('user_activities')
@@ -173,12 +175,22 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
             .order('created_at', { ascending: false })
             .limit(500)
         : Promise.resolve({ data: [] as any[] }),
+      familyIds.length > 0
+        ? supabase
+            .from('lead_email_recipients_log')
+            .select('id, lead_id, tenant_id, agent_id, recipient_email, recipient_layer, direction, subject, template_key, resend_message_id, status, sent_at, delivered_at, bounced_at, created_at')
+            .in('lead_id', familyIds)
+            .eq('tenant_id', tenantIdForActivity)
+            .order('created_at', { ascending: false })
+            .limit(500)
+        : Promise.resolve({ data: [] as any[] }),
     ])
     const visitorRows = ((activitiesResult.data as any[]) || []).map((r: any) => ({ ...r, kind: 'visitor' }))
     const adminRows = ((actionsResult.data as any[]) || []).map((r: any) => ({ ...r, kind: 'admin' }))
     activityFeed = [...visitorRows, ...adminRows].sort((a: any, b: any) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )
+    emailLog = (emailLogResult.data as any[]) || []
   }
 
   return (
@@ -195,6 +207,7 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
         tenantId: user.tenantId || null,
       }}
       activityFeed={activityFeed}
+      emailLog={emailLog}
     />
   )
 }

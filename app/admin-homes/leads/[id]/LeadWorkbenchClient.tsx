@@ -11,6 +11,7 @@ import Link from 'next/link'
 import PlanTab from '@/components/admin-homes/lead-workbench/PlanRenderer'
 import UserCreditPanel, { UserCreditData } from '@/components/admin-homes/lead-workbench/UserCreditPanel'
 import ActivityTab, { ActivityFeedItem } from '@/components/admin-homes/lead-workbench/ActivityTab'
+import EmailsTab, { EmailLogRow } from '@/components/admin-homes/lead-workbench/EmailsTab'
 
 type TabKey = 'overview' | 'plan' | 'credits' | 'activity' | 'emails' | 'vip' | 'notes'
 
@@ -39,9 +40,10 @@ interface Props {
   userCredit: UserCreditData | null
   adminUser: AdminUserShape
   activityFeed: ActivityFeedItem[]
+  emailLog: EmailLogRow[]
 }
 
-export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId, userCredit, adminUser, activityFeed }: Props) {
+export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId, userCredit, adminUser, activityFeed, emailLog }: Props) {
   const [tab, setTab] = useState<TabKey>('overview')
   const activeTabMeta = TABS.find(t => t.id === tab)!
 
@@ -95,6 +97,8 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
           <CreditsTab anchorLead={anchorLead} userCredit={userCredit} adminUser={adminUser} />
         ) : tab === 'activity' ? (
           <ActivityTab activityFeed={activityFeed} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
+        ) : tab === 'emails' ? (
+          <EmailsTab emailLog={emailLog} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
         ) : (
           <PlaceholderTab name={activeTabMeta.label} phase={activeTabMeta.phase} />
         )}

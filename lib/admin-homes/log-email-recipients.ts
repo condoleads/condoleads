@@ -1,15 +1,19 @@
 // lib/admin-homes/log-email-recipients.ts
 // W-LEADS-EMAIL T3a — audit-log writer for lead email fan-out.
 // W-LEADS-EMAIL T3b-hotfix-A (2026-05-10) — aligned vocabulary with T2f schema CHECKs.
+// W-LEADS-WORKBENCH W4e.2 (2026-05-14) — added 'lead_contact' layer label for
+//   admin-composed customer-facing emails (POST send-email).
 //
 // Writes one row per recipient (TO/CC/BCC layers) into lead_email_recipients_log
 // after sendTenantEmail succeeds.
 //
-// Schema reference (CHECK constraints from T2f migration 8e84040):
+// Schema reference (CHECK constraints — T2f migration 8e84040 + W4e.1 migration
+// 20260514_w4e1_lerl_recipient_layer_lead_contact):
 //   direction        IN ('to', 'cc', 'bcc')
 //   recipient_layer  IN ('agent', 'manager', 'area_manager', 'tenant_admin',
 //                        'platform_manager', 'platform_admin',
-//                        'tenant_overlay_cc', 'tenant_overlay_bcc')
+//                        'tenant_overlay_cc', 'tenant_overlay_bcc',
+//                        'lead_contact')
 //   status           IN ('queued', 'sent', 'delivered', 'bounced', 'failed', 'complained')
 //
 // Vocabulary mapping (recipients-helper internal names -> schema labels):
@@ -23,6 +27,8 @@
 //                                  (delegate granularity intentionally collapsed; recoverable
 //                                   via JOIN to agent_delegations on (tenant_id, delegate_id))
 //   unresolved (anomaly)        -> 'tenant_overlay_<cc|bcc>' + console.warn alarm
+//   leadContactEmail (param)    -> 'lead_contact' (W4e.2 — external customer
+//                                  recipient for admin-composed emails)
 //
 // Pattern at call sites:
 //   const result = await sendTenantEmail({ tenantId, to, cc, bcc, subject, html })
@@ -57,6 +63,7 @@ export type EmailRecipientLayer =
   | 'platform_admin'
   | 'tenant_overlay_cc'
   | 'tenant_overlay_bcc'
+  | 'lead_contact'
 
 export type EmailStatus =
   | 'queued'
@@ -77,6 +84,10 @@ export interface LogEmailRecipientsParams {
   resendMessageId: string | null
   status?: EmailStatus
   sentAt?: Date | null
+  /** W4e.2 — when present and a recipient matches, that recipient is labeled
+   *  'lead_contact' instead of falling through to tenant_overlay_*. Used by
+   *  admin-composed customer-facing emails (POST send-email). */
+  leadContactEmail?: string | null
 }
 
 interface AuditRow {
@@ -98,17 +109,24 @@ interface AuditRow {
  * resolved breakdown. Envelope position is required to disambiguate overlay
  * variants (tenant_overlay_cc vs tenant_overlay_bcc).
  *
- * Order matters: principal roles checked before overlay fallback. Any email
- * that doesn't match a principal field becomes a tenant_overlay_* row. If the
- * email isn't a known delegate either, an audit anomaly is logged but the row
- * is still written (audit completeness > schema purity — losing the row would
- * silently break traceability).
+ * Order matters: lead_contact > principal roles > delegate overlay > anomaly.
+ * The leadContactEmail param (W4e.2) is checked first — when present and a
+ * match, the row is labeled 'lead_contact'. Otherwise any email that does not
+ * match a principal field becomes a tenant_overlay_* row. If the email is not
+ * a known delegate either, an audit anomaly is logged but the row is still
+ * written (audit completeness > schema purity — losing the row would silently
+ * break traceability).
  */
 function resolveLayer(
   email: string,
   resolved: LeadEmailRecipients['resolved'],
-  envelopePosition: EmailEnvelopePosition
+  envelopePosition: EmailEnvelopePosition,
+  leadContactEmail: string | null | undefined
 ): EmailRecipientLayer {
+  // W4e.2 — external customer recipient takes precedence over hierarchy checks.
+  // For admin-composed customer-facing emails, the lead's contact_email is the
+  // TO recipient and must be labeled 'lead_contact', not bucketed as overlay.
+  if (leadContactEmail && leadContactEmail === email) return 'lead_contact'
   if (resolved.agent === email) return 'agent'
   if (resolved.manager === email) return 'manager'
   if (resolved.area_manager === email) return 'area_manager'
@@ -144,7 +162,7 @@ export async function logEmailRecipients(params: LogEmailRecipientsParams): Prom
     lead_id: params.leadId,
     agent_id: params.agentId,
     recipient_email: email,
-    recipient_layer: resolveLayer(email, params.recipients.resolved, position),
+    recipient_layer: resolveLayer(email, params.recipients.resolved, position, params.leadContactEmail),
     direction: position,
     subject: params.subject,
     template_key: params.templateKey,

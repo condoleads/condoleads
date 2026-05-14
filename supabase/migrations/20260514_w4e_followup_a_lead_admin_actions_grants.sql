@@ -1,0 +1,44 @@
+-- supabase/migrations/20260514_w4e_followup_a_lead_admin_actions_grants.sql
+-- W-LEADS-WORKBENCH W4e followup-A (2026-05-14)
+--
+-- Fixes a bug discovered during W4e.8 smoke: the application's service-role
+-- Supabase client got "permission denied for table lead_admin_actions" when
+-- attempting INSERT from POST /api/admin-homes/leads/[id]/send-email.
+--
+-- ROOT CAUSE
+--   The W2 migration (20260513_w2_a_lead_admin_actions.sql) created the table
+--   via Supabase Studio's SQL editor direct DDL. That path does NOT auto-grant
+--   table privileges to Supabase's standard role trio (service_role,
+--   authenticated, anon). The sibling audit table lead_email_recipients_log
+--   was created via the Table Editor UI, which DOES auto-grant -- hence the
+--   asymmetry: lead_email_recipients_log writes worked, lead_admin_actions
+--   writes silently failed.
+--
+-- WHY SERVICE_ROLE NEEDS A GRANT
+--   PostgreSQL has two access layers: row-level security (RLS) and
+--   table-level GRANTs. The service_role bypasses RLS but NOT GRANTs.
+--   A table created by 'postgres' role without explicit GRANTs is
+--   accessible only to 'postgres' and superusers -- not to service_role.
+--
+-- FIX
+--   GRANT ALL on the table to service_role (matches Supabase convention
+--   for tables that are accessed only from server-side admin code).
+--   No grants to authenticated / anon -- this is an admin-only audit table
+--   with no public client surface; granting only what's needed minimizes
+--   attack surface.
+--
+-- IDEMPOTENCY
+--   PostgreSQL GRANT is naturally idempotent -- re-running this migration
+--   in any environment is safe.
+--
+-- VERIFICATION (post-apply)
+--   SELECT grantee, string_agg(privilege_type, ', ' ORDER BY privilege_type)
+--   FROM information_schema.role_table_grants
+--   WHERE table_schema = 'public' AND table_name = 'lead_admin_actions'
+--   GROUP BY grantee ORDER BY grantee;
+--
+-- ROLLBACK
+--   REVOKE ALL ON TABLE public.lead_admin_actions FROM service_role;
+--   (Will break W4e.4 audit writes; do not run unless deprecating the table.)
+
+GRANT ALL PRIVILEGES ON TABLE public.lead_admin_actions TO service_role;

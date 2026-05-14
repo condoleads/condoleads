@@ -1,0 +1,554 @@
+
+==================== lib\admin-homes\lead-email-recipients.ts ====================
+
+L   1: // lib/admin-homes/lead-email-recipients.ts
+L   2: // W-HIERARCHY H3.3 — single source of truth for lead email fan-out recipients.
+L   3: //
+L   4: // Returns the 6-layer recipient chain for any lead-triggering email:
+L   5: //   Layer 1: assigned agent              -> TO
+L   6: //   Layer 2: manager (walker)            -> CC
+L   7: //   Layer 3: area_manager (walker)       -> BCC
+L   8: //   Layer 4: tenant_admin (walker)       -> BCC
+L   9: //   Layer 5: Manager Platform (per tenant assignment) -> BCC
+L  10: //   Layer 6: Admin Platform              -> BCC (UNCONDITIONAL — F40/F59/F65 lesson)
+L  11: //
+L  12: // Layer 6 is unconditional. If for any reason Layer 6 cannot resolve, this throws.
+L  13: // Better to alarm loudly than silently lose admin BCC.
+L  14: //
+L  15: // Layer 1 fallback: if agentId is null, agent layer is empty and Admin Platform
+L  16: // is promoted to TO so the email is never address-less.
+L  17: //
+L  18: // Delegation overlay (Support / Supervisor / Assistant) will be added by
+L  19: // W-ROLES-DELEGATION sister tracker as additive extension — same return shape,
+L  20: // just more BCC entries when active delegations exist for any layer's principal.
+L  21: 
+L  22: import type { SupabaseClient } from '@supabase/supabase-js'
+L  23: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+L  24: 
+L  25: // Re-export the email send helper's error types so consuming routes have one import surface.
+L  26: export {
+L  27:   sendTenantEmail,
+L  28:   TenantEmailNotConfigured,
+L  29:   TenantEmailFailed,
+L  30: } from '@/lib/email/sendTenantEmail'
+L  31: export type {
+L  32:   SendTenantEmailParams,
+L  33:   SendTenantEmailResult,
+L  34: } from '@/lib/email/sendTenantEmail'
+L  35: 
+L  36: export interface LeadEmailRecipients {
+L  37:   to: string[]
+L  38:   cc: string[]
+L  39:   bcc: string[]
+L  40:   /** Diagnostic: which layers were resolved, for logging/debugging. */
+L  41:   resolved: {
+L  42:     agent: string | null
+L  43:     manager: string | null
+L  44:     area_manager: string | null
+L  45:     tenant_admin: string | null
+L  46:     manager_platforms: string[]
+L  47:     admin_platforms: string[]
+L  48:     /** W-ROLES-DELEGATION R7 — active delegates of each layer-1–4 principal. */
+L  49:     agent_delegates: string[]
+L  50:     manager_delegates: string[]
+L  51:     area_manager_delegates: string[]
+L  52:     tenant_admin_delegates: string[]
+L  53:   }
+L  54: }
+L  55: 
+L  56: export class AdminPlatformUnreachable extends Error {
+L  57:   constructor(detail: string) {
+L  58:     super(`Admin Platform layer-6 BCC could not be resolved — ${detail}. This is a system alarm.`)
+L  59:     this.name = 'AdminPlatformUnreachable'
+L  60:   }
+L  61: }
+L  62: 
+L  63: interface AgentEmailRow {
+L  64:   id: string
+L  65:   email: string | null
+L  66:   notification_email: string | null
+L  67: }
+L  68: 
+L  69: /**
+L  70:  * Resolve the 6-layer recipient chain for a lead email.
+L  71:  *
+L  72:  * @param tenantId - The tenant the lead belongs to. Required.
+L  73:  * @param agentId  - The assigned agent. Pass null when no agent is resolved
+L  74:  *                   (in that case Admin Platform is promoted to TO).
+L  75:  * @param supabase - A Supabase service-role client.
+L  76:  *
+L  77:  * @throws AdminPlatformUnreachable if no active Admin Platform with email exists.
+L  78:  *         Layer 6 is unconditional; the system fails closed rather than dropping it.
+L  79:  */
+L  80: export async function getLeadEmailRecipients(
+L  81:   tenantId: string,
+L  82:   agentId: string | null,
+L  83:   supabase: SupabaseClient
+L  84: ): Promise<LeadEmailRecipients> {
+L  85:   const resolved: LeadEmailRecipients['resolved'] = {
+L  86:     agent: null,
+L  87:     manager: null,
+L  88:     area_manager: null,
+L  89:     tenant_admin: null,
+L  90:     manager_platforms: [],
+L  91:     admin_platforms: [],
+L  92:     agent_delegates: [],
+L  93:     manager_delegates: [],
+L  94:     area_manager_delegates: [],
+L  95:     tenant_admin_delegates: [],
+L  96:   }
+L  97: 
+L  98:   let agentEmail: string | null = null
+L  99:   let managerEmail: string | null = null
+L 100:   let areaManagerEmail: string | null = null
+L 101:   let tenantAdminEmail: string | null = null
+L 102: 
+L 103:   // ─── Layer 1: assigned agent ─────────────────────────────────────────────
+L 104:   if (agentId) {
+L 105:     const { data } = await supabase
+L 106:       .from('agents')
+L 107:       .select('id, email, notification_email')
+L 108:       .eq('id', agentId)
+L 109:       .maybeSingle()
+L 110:     const row = data as AgentEmailRow | null
+L 111:     if (row) {
+L 112:       agentEmail = row.notification_email || row.email || null
+L 113:       resolved.agent = agentEmail
+L 114:     }
+L 115:   }
+L 116: 
+L 117:   // ─── Layers 2–4: walker (manager / area_manager / tenant_admin) ──────────
+L 118:   // R7: walker hoisted to outer scope so the delegation overlay block below
+L 119:   // can reuse the chain without a second walkHierarchy round-trip.
+L 120:   const chain = agentId ? await walkHierarchy(agentId, supabase) : null
+L 121:   if (chain) {
+L 122:     // Resolve emails for any walker-classified ancestor in one query
+L 123:     const idsToResolve = [
+L 124:       chain.manager_id,
+L 125:       chain.area_manager_id,
+L 126:       chain.tenant_admin_id,
+L 127:     ].filter((x): x is string => !!x)
+L 128: 
+L 129:     if (idsToResolve.length > 0) {
+L 130:       const { data } = await supabase
+L 131:         .from('agents')
+L 132:         .select('id, email, notification_email')
+L 133:         .in('id', idsToResolve)
+L 134:       const rows = (data || []) as AgentEmailRow[]
+L 135:       const byId = new Map(rows.map(r => [r.id, r.notification_email || r.email || null]))
+L 136: 
+L 137:       if (chain.manager_id) {
+L 138:         managerEmail = byId.get(chain.manager_id) || null
+L 139:         resolved.manager = managerEmail
+L 140:       }
+L 141:       if (chain.area_manager_id) {
+L 142:         areaManagerEmail = byId.get(chain.area_manager_id) || null
+L 143:         resolved.area_manager = areaManagerEmail
+L 144:       }
+L 145:       if (chain.tenant_admin_id) {
+L 146:         tenantAdminEmail = byId.get(chain.tenant_admin_id) || null
+L 147:         resolved.tenant_admin = tenantAdminEmail
+L 148:       }
+L 149:     }
+L 150:   }
+L 151: 
+L 152:   // ─── Layers 1–4 delegation overlay (W-ROLES-DELEGATION R7) ──────────
+L 153:   // For each populated principal at layers 1–4, fetch active delegates and add
+L 154:   // their notification_email to BCC. Single batched query; in-memory map keyed
+L 155:   // by delegator. Layers 5–6 are platform_admins (different table); their
+L 156:   // delegation overlay would require a parallel mechanism — out of R7 scope.
+L 157:   const principalAgentIds: string[] = [
+L 158:     agentId,
+L 159:     chain?.manager_id ?? null,
+L 160:     chain?.area_manager_id ?? null,
+L 161:     chain?.tenant_admin_id ?? null,
+L 162:   ].filter((x): x is string => !!x)
+L 163: 
+L 164:   const delegateEmailsByDelegator = new Map<string, string[]>()
+L 165:   if (principalAgentIds.length > 0) {
+L 166:     const { data: delegationRows } = await supabase
+L 167:       .from('agent_delegations')
+L 168:       .select('delegator_id, delegate_id')
+L 169:       .in('delegator_id', principalAgentIds)
+L 170:       .eq('tenant_id', tenantId)
+L 171:       .is('revoked_at', null)
+L 172: 
+L 173:     const delegateIds = (delegationRows || [])
+L 174:       .map(r => (r as { delegator_id: string; delegate_id: string }).delegate_id)
+L 175: 
+L 176:     if (delegateIds.length > 0) {
+L 177:       const { data: delegateAgentRows } = await supabase
+L 178:         .from('agents')
+L 179:         .select('id, email, notification_email')
+L 180:         .in('id', delegateIds)
+L 181: 
+L 182:       const emailByDelegateId = new Map<string, string | null>()
+L 183:       for (const r of (delegateAgentRows || []) as AgentEmailRow[]) {
+L 184:         emailByDelegateId.set(r.id, r.notification_email || r.email || null)
+L 185:       }
+L 186: 
+L 187:       for (const d of (delegationRows || []) as Array<{ delegator_id: string; delegate_id: string }>) {
+L 188:         const email = emailByDelegateId.get(d.delegate_id)
+L 189:         if (email) {
+L 190:           const arr = delegateEmailsByDelegator.get(d.delegator_id) || []
+L 191:           arr.push(email)
+L 192:           delegateEmailsByDelegator.set(d.delegator_id, arr)
+L 193:         }
+L 194:       }
+L 195: 
+L 196:       // Populate diagnostic resolved.* fields
+L 197:       if (agentId) resolved.agent_delegates = delegateEmailsByDelegator.get(agentId) || []
+L 198:       if (chain?.manager_id) resolved.manager_delegates = delegateEmailsByDelegator.get(chain.manager_id) || []
+L 199:       if (chain?.area_manager_id) resolved.area_manager_delegates = delegateEmailsByDelegator.get(chain.area_manager_id) || []
+L 200:       if (chain?.tenant_admin_id) resolved.tenant_admin_delegates = delegateEmailsByDelegator.get(chain.tenant_admin_id) || []
+L 201:     }
+L 202:   }
+L 203: 
+L 204:   // ─── Layer 5: Manager Platforms assigned to this tenant ──────────────────
+L 205:   // Two-step query (cleaner than nested-join type inference):
+L 206:   //   1. Find platform_admin_ids assigned to this tenant
+L 207:   //   2. Read those rows from platform_admins, filter active + tier='manager'
+L 208:   const { data: assignmentRows } = await supabase
+L 209:     .from('platform_manager_tenants')
+L 210:     .select('platform_admin_id')
+L 211:     .eq('tenant_id', tenantId)
+L 212: 
+L 213:   const assignedAdminIds = (assignmentRows || []).map(r => (r as { platform_admin_id: string }).platform_admin_id)
+L 214:   const managerPlatformEmails: string[] = []
+L 215: 
+L 216:   if (assignedAdminIds.length > 0) {
+L 217:     const { data: managerPlatformRows } = await supabase
+L 218:       .from('platform_admins')
+L 219:       .select('id, email, is_active, tier')
+L 220:       .in('id', assignedAdminIds)
+L 221:       .eq('tier', 'manager')
+L 222:       .eq('is_active', true)
+L 223: 
+L 224:     for (const row of (managerPlatformRows || []) as Array<{ id: string; email: string | null; is_active: boolean; tier: string }>) {
+L 225:       if (row.email) {
+L 226:         managerPlatformEmails.push(row.email)
+L 227:         resolved.manager_platforms.push(row.email)
+L 228:       }
+L 229:     }
+L 230:   }
+L 231: 
+L 232:   // ─── Layer 6: Admin Platform — UNCONDITIONAL ─────────────────────────────
+L 233:   const { data: adminPlatformRows, error: adminError } = await supabase
+L 234:     .from('platform_admins')
+L 235:     .select('id, email, is_active, tier')
+L 236:     .eq('tier', 'admin')
+L 237:     .eq('is_active', true)
+L 238: 
+L 239:   if (adminError) {
+L 240:     throw new AdminPlatformUnreachable(`db error: ${adminError.message}`)
+L 241:   }
+L 242:   const adminPlatformEmails: string[] = []
+L 243:   for (const row of (adminPlatformRows || []) as Array<{ id: string; email: string | null; is_active: boolean; tier: string }>) {
+L 244:     if (row.email) {
+L 245:       adminPlatformEmails.push(row.email)
+L 246:       resolved.admin_platforms.push(row.email)
+L 247:     }
+L 248:   }
+L 249:   if (adminPlatformEmails.length === 0) {
+L 250:     throw new AdminPlatformUnreachable('no active Admin Platform with email')
+L 251:   }
+L 252: 
+L 253:   // ─── Assemble TO / CC / BCC ──────────────────────────────────────────────
+L 254:   const to: string[] = []
+L 255:   const cc: string[] = []
+L 256:   const bcc: string[] = []
+L 257: 
+L 258:   // Layer 1 → TO. Fallback: if no agent, promote Admin Platform to TO (single recipient
+L 259:   // to ensure the email is never address-less).
+L 260:   if (agentEmail) {
+L 261:     to.push(agentEmail)
+L 262:   } else {
+L 263:     // No agent assigned — surface Admin Platform as TO so the message is delivered.
+L 264:     // Admin Platform is also still in BCC below; routes/inboxes can dedupe.
+L 265:     to.push(adminPlatformEmails[0])
+L 266:   }
+L 267: 
+L 268:   // Layer 2 → CC
+L 269:   if (managerEmail) cc.push(managerEmail)
+L 270: 
+L 271:   // Layer 3 → BCC
+L 272:   if (areaManagerEmail) bcc.push(areaManagerEmail)
+L 273:   // Layer 4 → BCC
+L 274:   if (tenantAdminEmail) bcc.push(tenantAdminEmail)
+L 275:   // Layers 1–4 delegate overlay → BCC (W-ROLES-DELEGATION R7)
+L 276:   for (const emails of delegateEmailsByDelegator.values()) {
+L 277:     for (const e of emails) bcc.push(e)
+L 278:   }
+L 279:   // Layer 5 → BCC
+L 280:   for (const e of managerPlatformEmails) bcc.push(e)
+L 281:   // Layer 6 → BCC (unconditional)
+L 282:   for (const e of adminPlatformEmails) bcc.push(e)
+L 283: 
+L 284:   // De-dupe each list (an email shouldn't appear twice in the same field)
+L 285:   return {
+L 286:     to: dedupe(to),
+L 287:     cc: dedupe(cc),
+L 288:     bcc: dedupe(bcc),
+L 289:     resolved,
+L 290:   }
+L 291: }
+L 292: 
+L 293: function dedupe(arr: string[]): string[] {
+L 294:   return Array.from(new Set(arr.filter(Boolean)))
+L 295: }
+
+==================== lib\admin-homes\log-email-recipients.ts ====================
+
+L   1: // lib/admin-homes/log-email-recipients.ts
+L   2: // W-LEADS-EMAIL T3a — audit-log writer for lead email fan-out.
+L   3: // W-LEADS-EMAIL T3b-hotfix-A (2026-05-10) — aligned vocabulary with T2f schema CHECKs.
+L   4: //
+L   5: // Writes one row per recipient (TO/CC/BCC layers) into lead_email_recipients_log
+L   6: // after sendTenantEmail succeeds.
+L   7: //
+L   8: // Schema reference (CHECK constraints from T2f migration 8e84040):
+L   9: //   direction        IN ('to', 'cc', 'bcc')
+L  10: //   recipient_layer  IN ('agent', 'manager', 'area_manager', 'tenant_admin',
+L  11: //                        'platform_manager', 'platform_admin',
+L  12: //                        'tenant_overlay_cc', 'tenant_overlay_bcc')
+L  13: //   status           IN ('queued', 'sent', 'delivered', 'bounced', 'failed', 'complained')
+L  14: //
+L  15: // Vocabulary mapping (recipients-helper internal names -> schema labels):
+L  16: //   resolved.agent              -> 'agent'
+L  17: //   resolved.manager            -> 'manager'
+L  18: //   resolved.area_manager       -> 'area_manager'
+L  19: //   resolved.tenant_admin       -> 'tenant_admin'
+L  20: //   resolved.manager_platforms  -> 'platform_manager'
+L  21: //   resolved.admin_platforms    -> 'platform_admin'
+L  22: //   resolved.*_delegates        -> 'tenant_overlay_<cc|bcc>' by envelope position
+L  23: //                                  (delegate granularity intentionally collapsed; recoverable
+L  24: //                                   via JOIN to agent_delegations on (tenant_id, delegate_id))
+L  25: //   unresolved (anomaly)        -> 'tenant_overlay_<cc|bcc>' + console.warn alarm
+L  26: //
+L  27: // Pattern at call sites:
+L  28: //   const result = await sendTenantEmail({ tenantId, to, cc, bcc, subject, html })
+L  29: //   if (lead?.id) {
+L  30: //     await logEmailRecipients({
+L  31: //       supabase, tenantId, leadId: lead.id, agentId,
+L  32: //       recipients, subject,
+L  33: //       templateKey: 'walliam_contact_lead_capture',
+L  34: //       resendMessageId: result.id,
+L  35: //     })
+L  36: //   }
+L  37: //
+L  38: // Schema enforcement (append-only):
+L  39: //   - DELETE blocked (trg_lerl_no_delete).
+L  40: //   - UPDATE limited to status / sent_at / delivered_at / bounced_at /
+L  41: //     resend_message_id (NULL -> value, once) via trg_lerl_status_only_update.
+L  42: //
+L  43: // Failure handling: insert errors log to console but do NOT throw. Audit
+L  44: // failures must never block lead-write or email-send operations.
+L  45: 
+L  46: import type { SupabaseClient } from '@supabase/supabase-js'
+L  47: import type { LeadEmailRecipients } from '@/lib/admin-homes/lead-email-recipients'
+L  48: 
+L  49: export type EmailEnvelopePosition = 'to' | 'cc' | 'bcc'
+L  50: 
+L  51: export type EmailRecipientLayer =
+L  52:   | 'agent'
+L  53:   | 'manager'
+L  54:   | 'area_manager'
+L  55:   | 'tenant_admin'
+L  56:   | 'platform_manager'
+L  57:   | 'platform_admin'
+L  58:   | 'tenant_overlay_cc'
+L  59:   | 'tenant_overlay_bcc'
+L  60: 
+L  61: export type EmailStatus =
+L  62:   | 'queued'
+L  63:   | 'sent'
+L  64:   | 'delivered'
+L  65:   | 'bounced'
+L  66:   | 'failed'
+L  67:   | 'complained'
+L  68: 
+L  69: export interface LogEmailRecipientsParams {
+L  70:   supabase: SupabaseClient
+L  71:   tenantId: string
+L  72:   leadId: string
+L  73:   agentId: string | null
+L  74:   recipients: LeadEmailRecipients
+L  75:   subject: string
+L  76:   templateKey: string
+L  77:   resendMessageId: string | null
+L  78:   status?: EmailStatus
+L  79:   sentAt?: Date | null
+L  80: }
+L  81: 
+L  82: interface AuditRow {
+L  83:   tenant_id: string
+L  84:   lead_id: string
+L  85:   agent_id: string | null
+L  86:   recipient_email: string
+L  87:   recipient_layer: EmailRecipientLayer
+L  88:   direction: EmailEnvelopePosition
+L  89:   subject: string
+L  90:   template_key: string
+L  91:   resend_message_id: string | null
+L  92:   status: EmailStatus
+L  93:   sent_at: string | null
+L  94: }
+L  95: 
+L  96: /**
+L  97:  * Resolve which layer label a recipient email belongs to, using the walker's
+L  98:  * resolved breakdown. Envelope position is required to disambiguate overlay
+L  99:  * variants (tenant_overlay_cc vs tenant_overlay_bcc).
+L 100:  *
+L 101:  * Order matters: principal roles checked before overlay fallback. Any email
+L 102:  * that doesn't match a principal field becomes a tenant_overlay_* row. If the
+L 103:  * email isn't a known delegate either, an audit anomaly is logged but the row
+L 104:  * is still written (audit completeness > schema purity — losing the row would
+L 105:  * silently break traceability).
+L 106:  */
+L 107: function resolveLayer(
+L 108:   email: string,
+L 109:   resolved: LeadEmailRecipients['resolved'],
+L 110:   envelopePosition: EmailEnvelopePosition
+L 111: ): EmailRecipientLayer {
+L 112:   if (resolved.agent === email) return 'agent'
+L 113:   if (resolved.manager === email) return 'manager'
+L 114:   if (resolved.area_manager === email) return 'area_manager'
+L 115:   if (resolved.tenant_admin === email) return 'tenant_admin'
+L 116:   if (resolved.manager_platforms.includes(email)) return 'platform_manager'
+L 117:   if (resolved.admin_platforms.includes(email)) return 'platform_admin'
+L 118: 
+L 119:   const isDelegate =
+L 120:     resolved.agent_delegates.includes(email) ||
+L 121:     resolved.manager_delegates.includes(email) ||
+L 122:     resolved.area_manager_delegates.includes(email) ||
+L 123:     resolved.tenant_admin_delegates.includes(email)
+L 124: 
+L 125:   if (!isDelegate) {
+L 126:     console.warn('[T3 logEmailRecipients] email not classified in resolved chain — recording as tenant_overlay:', {
+L 127:       email,
+L 128:       envelopePosition,
+L 129:     })
+L 130:   }
+L 131: 
+L 132:   return envelopePosition === 'cc' ? 'tenant_overlay_cc' : 'tenant_overlay_bcc'
+L 133: }
+L 134: 
+L 135: export async function logEmailRecipients(params: LogEmailRecipientsParams): Promise<void> {
+L 136:   const status: EmailStatus = params.status ?? 'sent'
+L 137:   const sentAtDate = params.sentAt !== undefined ? params.sentAt : status === 'sent' ? new Date() : null
+L 138:   const sentAtIso = sentAtDate ? sentAtDate.toISOString() : null
+L 139: 
+L 140:   const rows: AuditRow[] = []
+L 141: 
+L 142:   const make = (email: string, position: EmailEnvelopePosition): AuditRow => ({
+L 143:     tenant_id: params.tenantId,
+L 144:     lead_id: params.leadId,
+L 145:     agent_id: params.agentId,
+L 146:     recipient_email: email,
+L 147:     recipient_layer: resolveLayer(email, params.recipients.resolved, position),
+L 148:     direction: position,
+L 149:     subject: params.subject,
+L 150:     template_key: params.templateKey,
+L 151:     resend_message_id: params.resendMessageId,
+L 152:     status,
+L 153:     sent_at: sentAtIso,
+L 154:   })
+L 155: 
+L 156:   for (const email of params.recipients.to) rows.push(make(email, 'to'))
+L 157:   for (const email of params.recipients.cc) rows.push(make(email, 'cc'))
+L 158:   for (const email of params.recipients.bcc) rows.push(make(email, 'bcc'))
+L 159: 
+L 160:   if (rows.length === 0) return
+L 161: 
+L 162:   const { error } = await params.supabase.from('lead_email_recipients_log').insert(rows)
+L 163:   if (error) {
+L 164:     console.error('[T3 logEmailRecipients] insert failed:', {
+L 165:       tenantId: params.tenantId,
+L 166:       leadId: params.leadId,
+L 167:       templateKey: params.templateKey,
+L 168:       rowCount: rows.length,
+L 169:       error: error.message ?? error,
+L 170:     })
+L 171:   }
+L 172: }
+L 173: 
+
+==================== app\api\admin-homes\leads\[id]\route.ts ====================
+
+L   1: // app/api/admin-homes/leads/[id]/route.ts
+L   2: // Phase 3.4+: auth + tenant-check on every mutation via shared api-auth helper.
+L   3: 
+L   4: import { NextRequest, NextResponse } from 'next/server'
+L   5: import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+L   6: import { createServiceClient } from '@/lib/admin-homes/service-client'
+L   7: import { can } from '@/lib/admin-homes/permissions'
+L   8: 
+L   9: export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+L  10:   try {
+L  11:     const user = await resolveAdminHomesUser()
+L  12:     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+L  13:     const supabase = createServiceClient()
+L  14:     const { data: target } = await supabase
+L  15:       .from('leads')
+L  16:       .select('id, tenant_id, agent_id')
+L  17:       .eq('id', params.id)
+L  18:       .maybeSingle()
+L  19:     if (!target) {
+L  20:       return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+L  21:     }
+L  22:     const decision = can(user.permissions, 'lead.write', {
+L  23:       kind: 'lead',
+L  24:       leadId: target.id,
+L  25:       tenantId: target.tenant_id,
+L  26:       agentId: target.agent_id,
+L  27:     })
+L  28:     if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+L  29: 
+L  30:     const { status, quality } = await request.json()
+L  31:     const update: any = { updated_at: new Date().toISOString() }
+L  32:     if (status) update.status = status
+L  33:     if (quality) update.quality = quality
+L  34: 
+L  35:     const { error } = await supabase.from('leads').update(update).eq('id', params.id)
+L  36:     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+L  37:     return NextResponse.json({ success: true })
+L  38:   } catch (error) {
+L  39:     console.error('[admin-homes/leads PATCH] error:', error)
+L  40:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+L  41:   }
+L  42: }
+L  43: 
+L  44: export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+L  45:   try {
+L  46:     const user = await resolveAdminHomesUser()
+L  47:     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+L  48:     const supabase = createServiceClient()
+L  49:     const { data: target } = await supabase
+L  50:       .from('leads')
+L  51:       .select('id, tenant_id, agent_id')
+L  52:       .eq('id', params.id)
+L  53:       .maybeSingle()
+L  54:     if (!target) {
+L  55:       return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+L  56:     }
+L  57:     const decision = can(user.permissions, 'lead.write', {
+L  58:       kind: 'lead',
+L  59:       leadId: target.id,
+L  60:       tenantId: target.tenant_id,
+L  61:       agentId: target.agent_id,
+L  62:     })
+L  63:     if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+L  64: 
+L  65:     // DELETE additionally restricted: no agent destructive deletes (legacy compliance policy preserved).
+L  66:     if (!user.isPlatformAdmin && user.permissions.roleDb === 'agent') {
+L  67:       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+L  68:     }
+L  69: 
+L  70:     const { error } = await supabase.from('leads').delete().eq('id', params.id)
+L  71:     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+L  72:     return NextResponse.json({ success: true })
+L  73:   } catch (error) {
+L  74:     console.error('[admin-homes/leads DELETE] error:', error)
+L  75:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+L  76:   }
+L  77: }
