@@ -28,9 +28,9 @@ import LeadWorkbenchClient from './LeadWorkbenchClient'
 
 export const metadata = { title: 'Lead Workbench — Admin' }
 
-const ANCHOR_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email), manager:agents!leads_manager_id_fkey(id, full_name, email), area_manager:agents!leads_area_manager_id_fkey(id, full_name, email), tenant_admin:agents!leads_tenant_admin_id_fkey(id, full_name, email)'
+const ANCHOR_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email, cell_phone, profile_photo_url, brokerage_name, title), manager:agents!leads_manager_id_fkey(id, full_name, email), area_manager:agents!leads_area_manager_id_fkey(id, full_name, email), tenant_admin:agents!leads_tenant_admin_id_fkey(id, full_name, email)'
 
-const FAMILY_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email)'
+const FAMILY_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email, cell_phone, profile_photo_url, brokerage_name, title)'
 
 export default async function LeadWorkbenchPage({ params }: { params: { id: string } }) {
   const user = await resolveAdminHomesUser()

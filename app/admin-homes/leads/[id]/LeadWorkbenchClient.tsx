@@ -8,6 +8,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import PlanTab from '@/components/admin-homes/lead-workbench/PlanRenderer'
 
 type TabKey = 'overview' | 'plan' | 'credits' | 'activity' | 'emails' | 'vip' | 'notes'
 
@@ -76,6 +77,8 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
       <div>
         {tab === 'overview' ? (
           <OverviewTab anchorLead={anchorLead} leadFamily={leadFamily} />
+        ) : tab === 'plan' ? (
+          <PlanTab anchorLead={anchorLead} leadFamily={leadFamily} />
         ) : (
           <PlaceholderTab name={activeTabMeta.label} phase={activeTabMeta.phase} />
         )}

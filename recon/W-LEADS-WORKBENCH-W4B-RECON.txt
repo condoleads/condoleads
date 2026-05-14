@@ -1,0 +1,1629 @@
+
+==================== lib\actions\leads.ts ====================
+
+L   1: 'use server'
+L   2: // lib/actions/leads.ts
+L   3: // Tenant-aware lead creation with full Lead+Email contract compliance (W-HIERARCHY H3.9).
+L   4: //
+L   5: // W-HIERARCHY H3.9 (2026-05-03):
+L   6: //   - walkHierarchy captures full chain (manager_id, area_manager_id, tenant_admin_id) â€” was: single parent_id query
+L   7: //   - Insert payload now includes manager_id, area_manager_id, tenant_admin_id (was: agent_id only)
+L   8: //   - Email fan-out replaced: was 3 sequential sendActivityEmail calls (agent â†’ manager â†’ admin loop with receive_*_emails flags),
+L   9: //     now single getLeadEmailRecipients + sendTenantEmail with TO/CC/BCC (open chain, no suppression per Q1)
+L  10: //   - F67 try/catch standard: TenantEmailNotConfigured warn, TenantEmailFailed error, AdminPlatformUnreachable soft-fail
+L  11: //   - F51 (W-TENANT-AUTH coordination) retired
+L  12: //
+L  13: // Option A (locked 2026-05-03): dup-branch in getOrCreateLead stays silent.
+L  14: // When a lead already exists for (contact_email, tenant_id), updated_at is bumped, no email fires.
+L  15: // Re-engagement signaling is out of W-HIERARCHY scope; future lead-lifecycle work can revisit.
+L  16: 
+L  17: import { createClient as createServerClient } from '@supabase/supabase-js'
+L  18: import { headers } from 'next/headers'
+L  19: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+L  20: import {
+L  21:   sendTenantEmail,
+L  22:   TenantEmailNotConfigured,
+L  23:   TenantEmailFailed,
+L  24:   getLeadEmailRecipients,
+L  25:   AdminPlatformUnreachable,
+L  26: } from '@/lib/admin-homes/lead-email-recipients'
+L  27: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+L  28: 
+L  29: import { deriveLeadOriginRoute } from '@/lib/utils/lead-origin-route'
+L  30: // Create service role client that bypasses RLS
+L  31: function createServiceClient() {
+L  32:   return createServerClient(
+L  33:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+L  34:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+L  35:     {
+L  36:       auth: {
+L  37:         autoRefreshToken: false,
+L  38:         persistSession: false
+L  39:       }
+L  40:     }
+L  41:   )
+L  42: }
+L  43: 
+L  44: interface CreateLeadParams {
+L  45:   tenantId: string                  // REQUIRED â€” every lead is scoped to a tenant
+L  46:   agentId?: string                  // Optional â€” if missing, resolved via resolve_agent_for_context
+L  47:   buildingId?: string
+L  48:   contactName: string
+L  49:   contactEmail: string
+L  50:   contactPhone?: string
+L  51:   message?: string
+L  52:   source?: string
+L  53:   sourceUrl?: string
+L  54:   listingId?: string
+L  55:   communityId?: string
+L  56:   municipalityId?: string
+L  57:   areaId?: string
+L  58:   userId?: string
+L  59:   estimatedValueMin?: number
+L  60:   estimatedValueMax?: number
+L  61:   propertyDetails?: any
+L  62: }
+L  63: 
+L  64: // Resolve agent via RPC scoped to tenant.
+L  65: // Returns null if no agent matches the context (lead routes to admin in that case).
+L  66: async function resolveAgentForLead(
+L  67:   supabase: ReturnType<typeof createServiceClient>,
+L  68:   params: CreateLeadParams
+L  69: ): Promise<string | null> {
+L  70:   if (params.agentId) return params.agentId
+L  71: 
+L  72:   const { data: agentId, error } = await supabase.rpc('resolve_agent_for_context', {
+L  73:     p_listing_id: params.listingId || null,
+L  74:     p_building_id: params.buildingId || null,
+L  75:     p_neighbourhood_id: null,
+L  76:     p_community_id: params.communityId || null,
+L  77:     p_municipality_id: params.municipalityId || null,
+L  78:     p_area_id: params.areaId || null,
+L  79:     p_user_id: params.userId || null,
+L  80:     p_tenant_id: params.tenantId,
+L  81:   })
+L  82: 
+L  83:   if (error) {
+L  84:     console.error('[leads] resolve_agent_for_context RPC error:', error)
+L  85:     return null
+L  86:   }
+L  87:   return (agentId as string) || null
+L  88: }
+L  89: 
+L  90: // Smart lead handler â€” prevents duplicates, scoped per tenant.
+L  91: // Duplicate detection key: (contact_email, tenant_id).
+L  92: // Same email can legitimately be a lead on multiple tenants.
+L  93: //
+L  94: // Option A: dup branch is silent. Bumps updated_at, no email.
+L  95: export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: boolean }) {
+L  96:   if (!params.tenantId) {
+L  97:     return { success: false, error: 'tenantId is required' }
+L  98:   }
+L  99: 
+L 100:   const supabase = createServiceClient()
+L 101: 
+L 102:   // Force new on form submissions
+L 103:   if (params.forceNew) {
+L 104:     console.log('[leads] Force creating new lead:', params.contactEmail, 'tenant:', params.tenantId)
+L 105:     return await createLead(params)
+L 106:   }
+L 107: 
+L 108:   // Per-tenant duplicate check
+L 109:   const { data: existingLead, error: searchError } = await supabase
+L 110:     .from('leads')
+L 111:     .select('id, contact_email, agent_id, tenant_id')
+L 112:     .eq('contact_email', params.contactEmail)
+L 113:     .eq('tenant_id', params.tenantId)
+L 114:     .maybeSingle()
+L 115: 
+L 116:   if (existingLead && !searchError) {
+L 117:     // Option A: silent re-engagement bump. No email fires on dup.
+L 118:     console.log('[leads] Lead exists for tenant â€” bumping updated_at (Option A: silent):', existingLead.id)
+L 119:     await supabase
+L 120:       .from('leads')
+L 121:       .update({ updated_at: new Date().toISOString() })
+L 122:       .eq('id', existingLead.id)
+L 123:     return { success: true, lead: existingLead, isNew: false }
+L 124:   }
+L 125: 
+L 126:   console.log('[leads] Creating new lead for:', params.contactEmail, 'tenant:', params.tenantId)
+L 127:   return await createLead(params)
+L 128: }
+L 129: 
+L 130: export async function createLead(params: CreateLeadParams) {
+L 131:   console.log('[leads] CREATE LEAD:', { tenantId: params.tenantId, email: params.contactEmail })
+L 132: 
+L 133:   if (!params.tenantId) {
+L 134:     return { success: false, error: 'tenantId is required' }
+L 135:   }
+L 136: 
+L 137:   const supabase = createServiceClient()
+L 138: 
+L 139:   // â”€â”€â”€ Resolve agent (tenant-scoped RPC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 140:   const resolvedAgentId = await resolveAgentForLead(supabase, params)
+L 141:   if (!resolvedAgentId) {
+L 142:     console.warn('[leads] No agent resolved for tenant', params.tenantId, 'â€” lead will route to admin only')
+L 143:   }
+L 144: 
+L 145:   // â”€â”€â”€ Walker: capture full hierarchy chain â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 146:   let chainManagerId: string | null = null
+L 147:   let chainAreaManagerId: string | null = null
+L 148:   let chainTenantAdminId: string | null = null
+L 149: 
+L 150:   if (resolvedAgentId) {
+L 151:     const chain = await walkHierarchy(resolvedAgentId, supabase)
+L 152:     chainManagerId = chain.manager_id
+L 153:     chainAreaManagerId = chain.area_manager_id
+L 154:     chainTenantAdminId = chain.tenant_admin_id
+L 155:   }
+L 156: 
+L 157:   // â”€â”€â”€ Source detection from referer if not explicit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 158:   const headersList = headers()
+L 159:   const referer = headersList.get('referer') || ''
+L 160: 
+L 161:   let source = params.source
+L 162:   if (!source) {
+L 163:     if (referer.includes('/estimator')) {
+L 164:       source = 'estimator'
+L 165:     } else if (referer.includes('/register')) {
+L 166:       source = 'registration'
+L 167:     } else {
+L 168:       source = 'contact_form'
+L 169:     }
+L 170:   }
+L 171: 
+L 172:   // â”€â”€â”€ Insert lead row with full hierarchy chain (Lead+Email contract) â”€â”€â”€â”€â”€â”€â”€
+L 173:   const { data: lead, error } = await supabase
+L 174:     .from('leads')
+L 175:     .insert({
+L 176:       tenant_id: params.tenantId,
+L 177:       agent_id: resolvedAgentId,
+L 178:       manager_id: chainManagerId,
+L 179:       area_manager_id: chainAreaManagerId,
+L 180:       tenant_admin_id: chainTenantAdminId,
+L 181:       building_id: params.buildingId || null,
+L 182:       listing_id: params.listingId || null,
+L 183:       source_url: params.sourceUrl || referer || null,
+L 184:       estimated_value_min: params.estimatedValueMin || null,
+L 185:       estimated_value_max: params.estimatedValueMax || null,
+L 186:       property_details: params.propertyDetails || null,
+L 187:       contact_name: params.contactName,
+L 188:       contact_email: params.contactEmail,
+L 189:       contact_phone: params.contactPhone,
+L 190:       message: params.message,
+L 191:       source: source,
+L 192:       lead_origin_route: deriveLeadOriginRoute(source),
+L 193:       assignment_source: resolvedAgentId ? 'geo' : 'admin',
+L 194:       status: 'new',
+L 195:       created_at: new Date().toISOString()
+L 196:     })
+L 197:     .select()
+L 198:     .single()
+L 199: 
+L 200:   if (error) {
+L 201:     console.error('[leads] Insert error:', error)
+L 202:     return { success: false, error: error.message }
+L 203:   }
+L 204: 
+L 205:   console.log('[leads] Lead created:', lead.id)
+L 206: 
+L 207:   // â”€â”€â”€ Chain notification: single helper-driven send (F67 try/catch) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 208:   // Replaces the prior 3-step loop (agent â†’ manager â†’ admin) with one send
+L 209:   // that hits the full 6-layer chain via the recipients helper.
+L 210:   let recipients
+L 211:   try {
+L 212:     recipients = await getLeadEmailRecipients(params.tenantId, resolvedAgentId, supabase)
+L 213:   } catch (err) {
+L 214:     if (err instanceof AdminPlatformUnreachable) {
+L 215:       console.error('[leads] admin platform unreachable:', err.message)
+L 216:       recipients = null
+L 217:     } else {
+L 218:       throw err
+L 219:     }
+L 220:   }
+L 221: 
+L 222:   if (recipients) {
+L 223:     const html = buildLeadEmail({
+L 224:       contactName: params.contactName,
+L 225:       contactEmail: params.contactEmail,
+L 226:       contactPhone: params.contactPhone,
+L 227:       message: params.message,
+L 228:       source,
+L 229:       sourceUrl: params.sourceUrl || referer || null,
+L 230:       buildingName: params.propertyDetails?.buildingName,
+L 231:       buildingAddress: params.propertyDetails?.buildingAddress,
+L 232:       unitNumber: params.propertyDetails?.unitNumber,
+L 233:     })
+L 234:     const subject = `âœ¦ New Lead â€” ${params.contactName} â€” ${source}`
+L 235: 
+L 236:     try {
+L 237:       const sendResult = await sendTenantEmail({
+L 238:         tenantId: params.tenantId,
+L 239:         to: recipients.to,
+L 240:         cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+L 241:         bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+L 242:         subject,
+L 243:         html,
+L 244:       })
+L 245:       if (lead?.id) {
+L 246:         await logEmailRecipients({
+L 247:           supabase,
+L 248:           tenantId: params.tenantId,
+L 249:           leadId: lead.id,
+L 250:           agentId: resolvedAgentId,
+L 251:           recipients,
+L 252:           subject,
+L 253:           templateKey: 'leads_helper_new_lead_notification',
+L 254:           resendMessageId: sendResult.id,
+L 255:         })
+L 256:       }
+L 257:     } catch (err) {
+L 258:       if (err instanceof TenantEmailNotConfigured) {
+L 259:         console.warn('[leads] tenant email not configured:', err.message)
+L 260:       } else if (err instanceof TenantEmailFailed) {
+L 261:         console.error('[leads] resend send failed:', err.message)
+L 262:       } else {
+L 263:         console.error('[leads] unexpected email error:', err)
+L 264:       }
+L 265:     }
+L 266:   }
+L 267: 
+L 268:   return { success: true, lead }
+L 269: }
+L 270: 
+L 271: // â”€â”€â”€ Email body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 272: // Mirrors the visual shape used by walliam/contact for consistency across all
+L 273: // chain notifications. No agent-specific branding here â€” the helper resolves
+L 274: // recipients per tenant; this template is content-only.
+L 275: function buildLeadEmail(params: {
+L 276:   contactName: string
+L 277:   contactEmail: string
+L 278:   contactPhone?: string
+L 279:   message?: string
+L 280:   source: string
+L 281:   sourceUrl?: string | null
+L 282:   buildingName?: string
+L 283:   buildingAddress?: string
+L 284:   unitNumber?: string
+L 285: }): string {
+L 286:   const { contactName, contactEmail, contactPhone, message, source, sourceUrl, buildingName, buildingAddress, unitNumber } = params
+L 287:   const propertyLine = buildingName || buildingAddress
+L 288:     ? `${buildingName || ''}${buildingAddress ? ' â€” ' + buildingAddress : ''}${unitNumber ? ' #' + unitNumber : ''}`
+L 289:     : null
+L 290: 
+L 291:   return `
+L 292:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+L 293:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+L 294:         <div style="font-size: 18px; font-weight: 700; color: #fff;">New Lead</div>
+L 295:         <div style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 4px;">${source}</div>
+L 296:       </div>
+L 297:       <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+L 298:         <table width="100%" cellpadding="8" cellspacing="0" border="0" style="font-size: 14px;">
+L 299:           <tr><td style="color: #64748b; width: 120px;">Name</td><td style="font-weight: 700; color: #0f172a;">${contactName}</td></tr>
+L 300:           <tr><td style="color: #64748b;">Email</td><td><a href="mailto:${contactEmail}" style="color: #1d4ed8;">${contactEmail}</a></td></tr>
+L 301:           ${contactPhone ? `<tr><td style="color: #64748b;">Phone</td><td><a href="tel:${contactPhone}" style="color: #1d4ed8;">${contactPhone}</a></td></tr>` : ''}
+L 302:           ${propertyLine ? `<tr><td style="color: #64748b;">Property</td><td style="color: #0f172a;">${propertyLine}</td></tr>` : ''}
+L 303:           ${sourceUrl ? `<tr><td style="color: #64748b; vertical-align: top;">Source URL</td><td style="color: #0f172a; word-break: break-all;"><a href="${sourceUrl}" style="color: #1d4ed8;">${sourceUrl}</a></td></tr>` : ''}
+L 304:           ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
+L 305:         </table>
+L 306:         <div style="margin-top: 20px; text-align: center;">
+L 307:           <a href="mailto:${contactEmail}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+L 308:             Reply to ${contactName}
+L 309:           </a>
+L 310:         </div>
+L 311:       </div>
+L 312:     </div>
+L 313:   `
+L 314: }
+L 315: 
+L 316: // â”€â”€â”€ Untouched read/update helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+L 317: 
+L 318: export async function updateLeadStatus(leadId: string, status: string, notes?: string) {
+L 319:   const supabase = createServiceClient()
+L 320: 
+L 321:   const updateData: any = {
+L 322:     status,
+L 323:     updated_at: new Date().toISOString()
+L 324:   }
+L 325:   if (notes) updateData.notes = notes
+L 326: 
+L 327:   const { error } = await supabase
+L 328:     .from('leads')
+L 329:     .update(updateData)
+L 330:     .eq('id', leadId)
+L 331: 
+L 332:   if (error) {
+L 333:     console.error('Error updating lead status:', error)
+L 334:     return { success: false, error: error.message }
+L 335:   }
+L 336:   return { success: true }
+L 337: }
+L 338: 
+L 339: export async function getAgentLeads(agentId: string) {
+L 340:   const supabase = createServiceClient()
+L 341: 
+L 342:   const { data: leads, error } = await supabase
+L 343:     .from('leads')
+L 344:     .select(`
+L 345:       *,
+L 346:       buildings (
+L 347:         id,
+L 348:         building_name,
+L 349:         canonical_address
+L 350:       ),
+L 351:       mls_listings (
+L 352:         id,
+L 353:         unit_number,
+L 354:         unparsed_address
+L 355:       )
+L 356:     `)
+L 357:     .eq('agent_id', agentId)
+L 358:     .order('created_at', { ascending: false })
+L 359: 
+L 360:   if (error) {
+L 361:     console.error('Error fetching leads:', error)
+L 362:     return { success: false, leads: [], error: error.message }
+L 363:   }
+L 364:   return { success: true, leads: leads || [] }
+L 365: }
+L 366: 
+L 367: export async function getAllLeadsForAdmin() {
+L 368:   const supabase = createServiceClient()
+L 369: 
+L 370:   const { data: leads, error } = await supabase
+L 371:     .from('leads')
+L 372:     .select(`
+L 373:       *,
+L 374:       buildings (
+L 375:         id,
+L 376:         building_name,
+L 377:         canonical_address
+L 378:       ),
+L 379:       mls_listings (
+L 380:         id,
+L 381:         unit_number,
+L 382:         unparsed_address
+L 383:       ),
+L 384:       agents!leads_agent_id_fkey (
+L 385:           id,
+L 386:           full_name,
+L 387:           email,
+L 388:           subdomain,
+L 389:           parent_id
+L 390:         )
+L 391:     `)
+L 392:     .order('created_at', { ascending: false })
+L 393: 
+L 394:   if (error) {
+L 395:     console.error('Error fetching all leads for admin:', error)
+L 396:     return { success: false, leads: [], error: error.message }
+L 397:   }
+L 398: 
+L 399:   const parentIds = [...new Set(leads?.filter(l => l.agents?.parent_id).map(l => l.agents.parent_id))]
+L 400: 
+L 401:   let parentMap: Record<string, string> = {}
+L 402:   if (parentIds.length > 0) {
+L 403:     const { data: parents } = await supabase
+L 404:       .from('agents')
+L 405:       .select('id, full_name')
+L 406:       .in('id', parentIds)
+L 407: 
+L 408:     if (parents) {
+L 409:       parentMap = parents.reduce((acc, p) => ({ ...acc, [p.id]: p.full_name }), {})
+L 410:     }
+L 411:   }
+L 412: 
+L 413:   const leadsWithParent = leads?.map(lead => ({
+L 414:     ...lead,
+L 415:     agents: lead.agents ? {
+L 416:       ...lead.agents,
+L 417:       parent: lead.agents.parent_id ? { full_name: parentMap[lead.agents.parent_id] } : null
+L 418:     } : null
+L 419:   }))
+L 420: 
+L 421:   return { success: true, leads: leadsWithParent || [] }
+L 422: }
+
+==================== app\api\charlie\plan-email\route.ts ====================
+
+L   1: export const maxDuration = 60
+L   2: 
+L   3: // app/api/charlie/plan-email/route.ts
+L   4: // Sends rich plan email to user + agent + manager + admin BCC
+L   5: // Called client-side from useCharlie after generate_plan tool completes
+L   6: //
+L   7: // W-HIERARCHY H3.8 (2026-05-03):
+L   8: //   - getLeadEmailRecipients enforces 6-layer chain (was: inline conditional with hardcoded ADMIN_EMAIL)
+L   9: //   - tenant_admin_id captured into lead insert payload (F58)
+L  10: //   - F47 hardcoded ADMIN_EMAIL constant removed
+L  11: //   - F66 walker call shape standardized via helper
+L  12: //   - F67 try/catch standard
+L  13: 
+L  14: import { NextRequest, NextResponse } from 'next/server'
+L  15: import { headers } from 'next/headers'
+L  16: import { createClient } from '@supabase/supabase-js'
+L  17: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+L  18: import {
+L  19:   sendTenantEmail,
+L  20:   TenantEmailNotConfigured,
+L  21:   TenantEmailFailed,
+L  22:   getLeadEmailRecipients,
+L  23:   AdminPlatformUnreachable,
+L  24: } from '@/lib/admin-homes/lead-email-recipients'
+L  25: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+L  26: import { validateSession } from '@/lib/utils/validate-session'
+L  27: import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+L  28: 
+L  29: // T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
+L  30: 
+L  31: 
+L  32: async function trackUserActivity(supabase: any, tenantId: string | null, contactEmail: string, agentId: string | null, activityType: string, activityData: any, pageUrl?: string) {
+L  33:   try {
+L  34:     const { error } = await supabase.from('user_activities').insert({
+L  35:       tenant_id: tenantId,
+L  36:       contact_email: contactEmail,
+L  37:       agent_id: agentId || null,
+L  38:       activity_type: activityType,
+L  39:       activity_data: activityData || {},
+L  40:       page_url: pageUrl || '',
+L  41:     })
+L  42:     if (error) {
+L  43:       console.error('[trackUserActivity] insert error:', error)
+L  44:     }
+L  45:   } catch (err) {
+L  46:     console.error('[trackUserActivity] error:', err)
+L  47:   }
+L  48: }
+L  49: function createServiceClient() {
+L  50:   return createClient(
+L  51:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+L  52:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+L  53:     { auth: { autoRefreshToken: false, persistSession: false } }
+L  54:   )
+L  55: }
+L  56: 
+L  57: export async function POST(req: NextRequest) {
+L  58:   try {
+L  59:     const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
+L  60: 
+L  61:     if (!sessionId || !userId || !planType) {
+L  62:       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+L  63:     }
+L  64: 
+L  65:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+L  66:     const _gateSupabase = createServiceClient()
+L  67:     const _sessionCheck = await validateSession({
+L  68:       supabase: _gateSupabase,
+L  69:       sessionId,
+L  70:       userId,
+L  71:       tenantId: req.headers.get('x-tenant-id') || '',
+L  72:       selectColumns: 'id, tenant_id',
+L  73:     })
+L  74:     if (!_sessionCheck.ok) {
+L  75:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+L  76:     }
+L  77:     const validSession = _sessionCheck.session
+L  78:     const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
+L  79:     const brandName = _sessionCheck.brandName  // T6f — for brand-text templating
+L  80:     const domain = _sessionCheck.domain        // T6f — for URL templating
+L  81:     const BASE_URL = buildBaseUrl(domain)      // T6f — handler-local tenant-aware base URL
+L  82:     // END T6a auth gate
+L  83: 
+L  84:     const supabase = createServiceClient()
+L  85: 
+L  86:     const { data: authData } = await supabase.auth.admin.getUserById(userId)
+L  87:     const userEmail = authData?.user?.email
+L  88:     if (!userEmail) return NextResponse.json({ error: 'User email not found' }, { status: 404 })
+L  89: 
+L  90:     const { data: profile } = await supabase
+L  91:       .from('user_profiles')
+L  92:       .select('full_name')
+L  93:       .eq('id', userId)
+L  94:       .single()
+L  95:     const userName = profile?.full_name || 'there'
+L  96: 
+L  97:     let agent: any = null
+L  98:     let chainManagerId: string | null = null
+L  99:     let chainAreaManagerId: string | null = null
+L 100:     let chainTenantAdminId: string | null = null
+L 101:     let tenantId: string | null = null
+L 102: 
+L 103:     if (sessionId) {
+L 104:       const { data: session } = await supabase
+L 105:         .from('chat_sessions')
+L 106:         .select('agent_id, tenant_id')
+L 107:         .eq('id', sessionId)
+L 108:         .single()
+L 109: 
+L 110:       tenantId = session?.tenant_id || null
+L 111: 
+L 112:       if (session?.agent_id) {
+L 113:         const { data: agentData } = await supabase
+L 114:           .from('agents')
+L 115:           .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id')
+L 116:           .eq('id', session.agent_id)
+L 117:           .single()
+L 118: 
+L 119:         if (agentData) {
+L 120:           agent = agentData
+L 121:           // Walker captures full chain (manager + area_manager + tenant_admin)
+L 122:           const chain = await walkHierarchy(agentData.id, supabase)
+L 123:           chainManagerId = chain.manager_id
+L 124:           chainAreaManagerId = chain.area_manager_id
+L 125:           chainTenantAdminId = chain.tenant_admin_id
+L 126:         }
+L 127:       }
+L 128:     }
+L 129: 
+L 130:     const geoName = geoContext?.geoName || plan?.geoName || null
+L 131: 
+L 132:     // W3c: capture source URL from referer for both leads.source_url + email render
+L 133:     const pageUrl = headers().get('referer') || null
+L 134: 
+L 135:     // Save lead with full hierarchy chain stamped (per Lead+Email contract)
+L 136:     const { data: lead, error: leadError } = await supabase.from('leads').insert({
+L 137:       agent_id: agent?.id || null,
+L 138:       user_id: userId,
+L 139:       contact_name: userName,
+L 140:       contact_email: userEmail,
+L 141:       source: `${sourceKey}_charlie`,
+L 142:       source_url: pageUrl,
+L 143:       lead_origin_route: 'charlie',
+L 144:       intent: planType,
+L 145:       geo_name: geoName,
+L 146:       budget_max: plan?.budgetMax || null,
+L 147:       plan_data: { planType, plan, analytics, topListings: (listings || []).slice(0, 5) },
+L 148:       manager_id: chainManagerId,
+L 149:       area_manager_id: chainAreaManagerId,
+L 150:       tenant_admin_id: chainTenantAdminId,
+L 151:       assignment_source: agent ? 'geo' : 'admin',
+L 152:       status: 'new',
+L 153:       tenant_id: tenantId,
+L 154:     }).select('id').single()
+L 155:     if (leadError) console.error('[plan-email] lead error:', leadError)
+L 156: 
+L 157:     // Track activity
+L 158:     await trackUserActivity(supabase, tenantId, userEmail, agent?.id || null, 'plan_generated', {
+L 159:       source: `${sourceKey}_charlie`,
+L 160:       planType,
+L 161:       geoName: geoName || null,
+L 162:       budgetMax: plan?.budgetMax || null,
+L 163:     })
+L 164: 
+L 165:     const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl })
+L 166:     const subject = `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
+L 167: 
+L 168:     // User-facing plan email — single recipient, not chain
+L 169:     try {
+L 170:       await sendTenantEmail({ tenantId: tenantId || '', to: userEmail, subject, html })
+L 171:     } catch (err) {
+L 172:       if (err instanceof TenantEmailNotConfigured) {
+L 173:         console.warn('[plan-email] tenant email not configured (user):', err.message)
+L 174:       } else if (err instanceof TenantEmailFailed) {
+L 175:         console.error('[plan-email] resend send failed (user):', err.message)
+L 176:       } else {
+L 177:         console.error('[plan-email] unexpected user email error:', err)
+L 178:       }
+L 179:     }
+L 180: 
+L 181:     // Chain notification — single helper-driven send (replaces inline conditional ADMIN_EMAIL)
+L 182:     let recipients
+L 183:     try {
+L 184:       recipients = await getLeadEmailRecipients(tenantId || '', agent?.id || null, supabase)
+L 185:     } catch (err) {
+L 186:       if (err instanceof AdminPlatformUnreachable) {
+L 187:         console.error('[plan-email] admin platform unreachable:', err.message)
+L 188:         recipients = null
+L 189:       } else {
+L 190:         throw err
+L 191:       }
+L 192:     }
+L 193: 
+L 194:     if (recipients) {
+L 195:       try {
+L 196:         const sendResult = await sendTenantEmail({
+L 197:           tenantId: tenantId || '',
+L 198:           to: recipients.to,
+L 199:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+L 200:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+L 201:           subject,
+L 202:           html,
+L 203:         })
+L 204:         if (lead?.id) {
+L 205:           await logEmailRecipients({
+L 206:             supabase,
+L 207:             tenantId: tenantId || '',
+L 208:             leadId: lead.id,
+L 209:             agentId: agent?.id || null,
+L 210:             recipients,
+L 211:             subject,
+L 212:             templateKey: 'charlie_plan_email_chain',
+L 213:             resendMessageId: sendResult.id,
+L 214:           })
+L 215:         }
+L 216:       } catch (err) {
+L 217:         if (err instanceof TenantEmailNotConfigured) {
+L 218:           console.warn('[plan-email] tenant email not configured (chain):', err.message)
+L 219:         } else if (err instanceof TenantEmailFailed) {
+L 220:           console.error('[plan-email] resend send failed (chain):', err.message)
+L 221:         } else {
+L 222:           console.error('[plan-email] unexpected chain email error:', err)
+L 223:         }
+L 224:       }
+L 225:     }
+L 226: 
+L 227:     return NextResponse.json({ success: true })
+L 228: 
+L 229:   } catch (error) {
+L 230:     console.error('[charlie/plan-email] error:', error)
+L 231:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+L 232:   }
+L 233: }
+L 234: 
+L 235: const MONTHS_ARR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+L 236: 
+L 237: function buildRichPlanEmail(data: {
+L 238:   userName: string
+L 239:   userEmail: string
+L 240:   planType: string
+L 241:   plan: any
+L 242:   analytics: any
+L 243:   listings: any[]
+L 244:   agent: any
+L 245:   geoName: string | null
+L 246:   comparables: any[]
+L 247:   sellerEstimate: any | null
+L 248:   vipCreditUsed: boolean
+L 249:   vipCreditPlansUsed: number
+L 250:   vipCreditTotal: number
+L 251:   blocks: any[]
+L 252:   brandName: string
+L 253:   domain: string
+L 254:   baseUrl: string
+L 255:   sourceUrl?: string | null
+L 256: }): string {
+L 257:   const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl, sourceUrl } = data
+L 258:   const isBuyer = planType === 'buyer'
+L 259:   const topListings = (listings || []).slice(0, 10)
+L 260: 
+L 261:   const stl = analytics?.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio) : null
+L 262:   const dom = analytics?.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90) : null
+L 263:   const conditionLabel = !stl || !dom ? 'Insufficient Data'
+L 264:     : stl >= 99 && dom <= 20 ? "Strong Seller's Market"
+L 265:     : stl >= 97 && dom <= 40 ? "Seller's Market"
+L 266:     : stl < 95 || dom > 70 ? "Buyer's Market"
+L 267:     : 'Balanced Market'
+L 268:   const conditionColor = !stl || !dom ? '#94a3b8'
+L 269:     : stl >= 97 ? '#10b981'
+L 270:     : stl < 95 || (dom && dom > 70) ? '#ef4444'
+L 271:     : '#f59e0b'
+L 272: 
+L 273:   const blocksHtml = (blocks || []).length > 0 ? (() => {
+L 274:     const parts: string[] = []
+L 275:     for (const block of (blocks || [])) {
+L 276:       if (block.type === 'analytics') {
+L 277:         parts.push(`<div style="margin:16px 0;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+L 278:           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Market Intelligence &middot; ${block.geoName}</div>
+L 279:           <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+L 280:             <tr><td style="color:#64748b;width:160px;">Avg DOM</td><td style="font-weight:700;color:#0f172a;">${block.data?.closed_avg_dom_90 ? block.data.closed_avg_dom_90 + 'd' : '&mdash;'}</td></tr>
+L 281:             <tr><td style="color:#64748b;">Sale/List</td><td style="font-weight:700;color:#0f172a;">${block.data?.sale_to_list_ratio ? block.data.sale_to_list_ratio + '%' : '&mdash;'}</td></tr>
+L 282:             <tr><td style="color:#64748b;">Active</td><td style="font-weight:700;color:#0f172a;">${block.data?.active_count || '&mdash;'}</td></tr>
+L 283:           </table>
+L 284:         </div>`)
+L 285:       }
+L 286:       if (block.type === 'buildings') {
+L 287:         parts.push(`<div style="margin:16px 0;">
+L 288:           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Buildings Found &middot; ${block.label} &middot; ${block.buildings.length}</div>
+L 289:           ${(block.buildings || []).slice(0, 8).map((b: any) => `
+L 290:             <a href="${b.url || baseUrl}" style="display:block;text-decoration:none;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:6px;">
+L 291:               <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+L 292:                 ${b.photo ? `<td width="48"><img src="${b.photo}" width="48" height="48" style="border-radius:6px;object-fit:cover;"></td>` : ''}
+L 293:                 <td style="padding-left:10px;vertical-align:middle;">
+L 294:                   <div style="font-size:13px;font-weight:700;color:#0f172a;">${b.buildingName}</div>
+L 295:                   <div style="font-size:12px;color:#64748b;">${b.medianPrice ? '$' + Number(b.medianPrice).toLocaleString('en-CA') : ''}${b.medianPsf ? ' &middot; $' + b.medianPsf + '/sqft' : ''}</div>
+L 296:                 </td>
+L 297:                 <td style="text-align:right;vertical-align:middle;">
+L 298:                   ${b.activeCount > 0 ? `<span style="background:#10b981;color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700;">${b.activeCount} active</span>` : ''}
+L 299:                 </td>
+L 300:               </tr></table>
+L 301:             </a>
+L 302:           `).join('')}
+L 303:         </div>`)
+L 304:       }
+L 305:       if (block.type === 'rankings' && block.data?.rankings?.length > 0) {
+L 306:         const title = (block.data.ranking_type || block.rankType || '').split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+L 307:         parts.push(`<div style="margin:16px 0;">
+L 308:           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">${title}</div>
+L 309:           ${(block.data.rankings || []).slice(0, 5).map((r: any) => `
+L 310:             <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
+L 311:               <a href="${r.url || baseUrl}" style="font-size:13px;font-weight:600;color:#1d4ed8;text-decoration:none;">#${r.rank} ${r.entity_name}</a>
+L 312:               <span style="font-size:12px;color:#64748b;">${r.median_price ? '$' + Number(r.median_price).toLocaleString('en-CA') : ''}${r.gross_yield ? ' &middot; ' + r.gross_yield.toFixed(1) + '% yield' : ''}</span>
+L 313:             </div>
+L 314:           `).join('')}
+L 315:         </div>`)
+L 316:       }
+L 317:       if (block.type === 'priceTrends' && block.data?.current_median_sale) {
+L 318:         parts.push(`<div style="margin:16px 0;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+L 319:           <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Price Trends</div>
+L 320:           <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:13px;">
+L 321:             <tr><td style="color:#64748b;width:160px;">Median Price</td><td style="font-weight:700;color:#1d4ed8;">$${Number(block.data.current_median_sale).toLocaleString('en-CA')}</td></tr>
+L 322:             ${block.data.current_avg_psf ? `<tr><td style="color:#64748b;">Avg PSF</td><td style="font-weight:700;color:#0f172a;">$${Number(block.data.current_avg_psf).toLocaleString('en-CA')}/sqft</td></tr>` : ''}
+L 323:             ${block.data.psf_trend_pct != null ? `<tr><td style="color:#64748b;">PSF Trend</td><td style="font-weight:700;color:${block.data.psf_trend_pct >= 0 ? '#10b981' : '#ef4444'};">${block.data.psf_trend_pct > 0 ? '+' : ''}${block.data.psf_trend_pct.toFixed(1)}%</td></tr>` : ''}
+L 324:           </table>
+L 325:         </div>`)
+L 326:       }
+L 327:     }
+L 328:     return parts.length > 0 ? `<div style="margin:20px 0;"><div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;">Your Research</div>${parts.join('')}</div>` : ''
+L 329:   })() : ''
+L 330: 
+L 331:   const conditionHtml = `
+L 332:     <div style="margin: 0 0 16px;">
+L 333:       <span style="display: inline-flex; align-items: center; gap: 8px; background: ${conditionColor}18; border: 1px solid ${conditionColor}40; border-radius: 100px; padding: 5px 14px;">
+L 334:         <span style="width: 7px; height: 7px; border-radius: 50%; background: ${conditionColor}; display: inline-block;"></span>
+L 335:         <span style="font-size: 12px; font-weight: 700; color: ${conditionColor};">${conditionLabel}</span>
+L 336:       </span>
+L 337:     </div>
+L 338:   `
+L 339: 
+L 340:   const marketHtml = analytics ? `
+L 341:     <div style="margin: 20px 0;">
+L 342:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Market Intelligence &middot; ${geoName || ''}</div>
+L 343:       <table width="100%" cellpadding="0" cellspacing="8" border="0" style="margin-bottom: 8px;">
+L 344:         <tr>
+L 345:           ${[
+L 346:             { label: 'Avg Days on Market', value: analytics.closed_avg_dom_90 ? `${analytics.closed_avg_dom_90}d` : '&mdash;' },
+L 347:             { label: 'Sale / List Ratio', value: analytics.sale_to_list_ratio ? `${analytics.sale_to_list_ratio}%` : '&mdash;' },
+L 348:             { label: 'Active Listings', value: analytics.active_count ? `${Number(analytics.active_count).toLocaleString()}` : '&mdash;' },
+L 349:           ].map(m => `
+L 350:             <td width="33%" style="padding: 0 4px;">
+L 351:               <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+L 352:                 <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">${m.label}</div>
+L 353:                 <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${m.value}</div>
+L 354:               </div>
+L 355:             </td>
+L 356:           `).join('')}
+L 357:         </tr>
+L 358:       </table>
+L 359:       <table width="100%" cellpadding="0" cellspacing="8" border="0">
+L 360:         <tr>
+L 361:           ${[
+L 362:             { label: 'Sold (90d)', value: analytics.closed_sale_count_90 ? `${Number(analytics.closed_sale_count_90).toLocaleString()}` : '&mdash;' },
+L 363:             { label: 'Absorption Rate', value: analytics.absorption_rate_pct ? `${analytics.absorption_rate_pct}%` : '&mdash;' },
+L 364:             { label: 'Median PSF', value: analytics.median_psf ? `$${Number(analytics.median_psf).toLocaleString('en-CA', { maximumFractionDigits: 0 })}` : '&mdash;' },
+L 365:           ].map(m => `
+L 366:             <td width="33%" style="padding: 0 4px;">
+L 367:               <div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+L 368:                 <div style="font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">${m.label}</div>
+L 369:                 <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${m.value}</div>
+L 370:               </div>
+L 371:             </td>
+L 372:           `).join('')}
+L 373:         </tr>
+L 374:       </table>
+L 375:     </div>
+L 376:     ${analytics.subtype_breakdown && Object.keys(analytics.subtype_breakdown).length > 0 ? `
+L 377:     <div style="margin: 16px 0;">
+L 378:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Price by Home Type</div>
+L 379:       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
+L 380:         <tr style="background: #f8fafc;">
+L 381:           <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">Type</td>
+L 382:           <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: center;">DOM</td>
+L 383:           <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: center;">STL</td>
+L 384:           <td style="padding: 8px 10px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; text-align: right;">Median</td>
+L 385:         </tr>
+L 386:         ${Object.entries(analytics.subtype_breakdown).map(([subtype, d]: [string, any]) => `
+L 387:         <tr style="border-top: 1px solid #f1f5f9;">
+L 388:           <td style="padding: 9px 10px; font-size: 13px; font-weight: 600; color: #0f172a;">${subtype}</td>
+L 389:           <td style="padding: 9px 10px; font-size: 12px; color: #64748b; text-align: center;">${d.avg_dom ? `${Math.round(d.avg_dom)}d` : '&mdash;'}</td>
+L 390:           <td style="padding: 9px 10px; font-size: 12px; color: #64748b; text-align: center;">${d.sale_to_list ? `${d.sale_to_list}%` : '&mdash;'}</td>
+L 391:           <td style="padding: 9px 10px; font-size: 14px; font-weight: 800; color: #1d4ed8; text-align: right;">${d.median_price ? `$${Number(d.median_price).toLocaleString('en-CA')}` : '&mdash;'}</td>
+L 392:         </tr>
+L 393:         `).join('')}
+L 394:       </table>
+L 395:     </div>
+L 396:     ` : ''}
+L 397:   ` : ''
+L 398: 
+L 399:   const offerIntelHtml = analytics ? `
+L 400:     <div style="margin: 16px 0;">
+L 401:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Offer Intelligence</div>
+L 402:       <table width="100%" cellpadding="0" cellspacing="4" border="0"><tr>
+L 403:         <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+L 404:           <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Offer At</div>
+L 405:           <div style="font-size: 18px; font-weight: 800; color: #1d4ed8;">${analytics.sale_to_list_ratio ? Number(analytics.sale_to_list_ratio).toFixed(1) + '%' : '&mdash;'}</div>
+L 406:           <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">of asking</div>
+L 407:         </div></td>
+L 408:         <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+L 409:           <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Avg Concession</div>
+L 410:           <div style="font-size: 18px; font-weight: 800; color: #10b981;">${analytics.avg_concession_pct ? Number(analytics.avg_concession_pct).toFixed(1) + '%' : '&mdash;'}</div>
+L 411:           <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">below asking</div>
+L 412:         </div></td>
+L 413:         <td width="33%" style="padding: 0 4px;"><div style="background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;">
+L 414:           <div style="font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px;">Decide In</div>
+L 415:           <div style="font-size: 18px; font-weight: 800; color: #f59e0b;">${analytics.closed_avg_dom_90 ? Number(analytics.closed_avg_dom_90).toFixed(0) + 'd' : '&mdash;'}</div>
+L 416:           <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">avg DOM</div>
+L 417:         </div></td>
+L 418:       </tr></table>
+L 419:     </div>
+L 420:   ` : ''
+L 421: 
+L 422:   const seasonal = analytics?.insight_seasonal
+L 423:   const bestMonths = (seasonal?.best_months || []) as number[]
+L 424:   const worstMonths = (seasonal?.worst_months || []) as number[]
+L 425:   const currentMonth = seasonal?.current_month as number | undefined
+L 426:   const bestTimeHtml = seasonal ? `
+L 427:     <div style="margin: 16px 0;">
+L 428:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Best Time to Buy</div>
+L 429:       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px;">
+L 430:         <div style="font-size: 13px; color: #1e293b; line-height: 1.7;">
+L 431:           Best months: <strong style="color: #10b981;">${bestMonths.map((m: number) => MONTHS_ARR[m-1]).join(', ')}</strong> &nbsp;&middot;&nbsp;
+L 432:           Avoid: <strong style="color: #ef4444;">${worstMonths.map((m: number) => MONTHS_ARR[m-1]).join(', ')}</strong>
+L 433:           ${currentMonth ? `<br>Currently <strong>${MONTHS_ARR[currentMonth-1]}</strong> &mdash; ranked #${seasonal.current_month_rank} of 12 for buyer power.` : ''}
+L 434:         </div>
+L 435:       </div>
+L 436:     </div>
+L 437:   ` : ''
+L 438: 
+L 439:   const summaryHtml = plan?.summary ? `
+L 440:     <div style="background: linear-gradient(135deg, #eff6ff, #f0fdf4); border: 1px solid #bfdbfe; border-radius: 10px; padding: 18px; margin: 16px 0;">
+L 441:       <div style="font-size: 11px; font-weight: 700; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">&#10022; Your ${isBuyer ? 'Buyer' : 'Seller'} Strategy</div>
+L 442:       <p style="margin: 0; font-size: 14px; line-height: 1.7; color: #1e293b;">${plan.summary}</p>
+L 443:     </div>
+L 444:   ` : ''
+L 445: 
+L 446:   const profileHtml = isBuyer ? `
+L 447:     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+L 448:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Buyer Profile</div>
+L 449:       <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px;">
+L 450:         ${plan?.budgetMax ? `<tr><td style="color: #64748b; width: 130px;">Budget</td><td style="font-weight: 700; color: #0f172a;">$${Number(plan.budgetMin || 0).toLocaleString('en-CA')} &mdash; $${Number(plan.budgetMax).toLocaleString('en-CA')}</td></tr>` : ''}
+L 451:         ${plan?.propertyType ? `<tr><td style="color: #64748b;">Property Type</td><td style="font-weight: 600; color: #0f172a;">${plan.propertyType}</td></tr>` : ''}
+L 452:         ${plan?.bedrooms ? `<tr><td style="color: #64748b;">Bedrooms</td><td style="font-weight: 600; color: #0f172a;">${plan.bedrooms}+</td></tr>` : ''}
+L 453:         ${plan?.timeline ? `<tr><td style="color: #64748b;">Timeline</td><td style="font-weight: 600; color: #0f172a;">${plan.timeline}</td></tr>` : ''}
+L 454:       </table>
+L 455:     </div>
+L 456:   ` : `
+L 457:     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin: 16px 0;">
+L 458:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px;">Seller Profile</div>
+L 459:       <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size: 13px;">
+L 460:         ${plan?.propertyType ? `<tr><td style="color: #64748b; width: 130px;">Property Type</td><td style="font-weight: 600; color: #0f172a;">${plan.propertyType}</td></tr>` : ''}
+L 461:         ${plan?.estimatedValueMin ? `<tr><td style="color: #64748b;">Est. Value</td><td style="font-weight: 700; color: #059669;">$${Number(plan.estimatedValueMin).toLocaleString('en-CA')} &mdash; $${Number(plan.estimatedValueMax).toLocaleString('en-CA')}</td></tr>` : ''}
+L 462:         ${plan?.timeline ? `<tr><td style="color: #64748b;">Timeline</td><td style="font-weight: 600; color: #0f172a;">${plan.timeline}</td></tr>` : ''}
+L 463:         ${plan?.goal ? `<tr><td style="color: #64748b;">Goal</td><td style="font-weight: 600; color: #0f172a;">${plan.goal}</td></tr>` : ''}
+L 464:       </table>
+L 465:     </div>
+L 466:   `
+L 467: 
+L 468:   const planCardHtml = `
+L 469:     <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; margin: 20px 0;">
+L 470:       <div style="margin-bottom: 12px;">
+L 471:         <div style="font-size: 16px; font-weight: 800; color: #fff;">${isBuyer ? '&#127968; Your Buyer Plan' : '&#128176; Your Seller Strategy'}</div>
+L 472:         <div style="font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px;">${geoName || 'GTA'} &middot; ${new Date().toLocaleDateString('en-CA')}</div>
+L 473:       </div>
+L 474:       <div style="margin-bottom: 14px;">
+L 475:         <span style="display: inline-flex; align-items: center; gap: 6px; background: ${conditionColor}18; border: 1px solid ${conditionColor}40; border-radius: 100px; padding: 4px 12px;">
+L 476:           <span style="width: 6px; height: 6px; border-radius: 50%; background: ${conditionColor}; display: inline-block;"></span>
+L 477:           <span style="font-size: 11px; font-weight: 700; color: ${conditionColor};">${conditionLabel}</span>
+L 478:         </span>
+L 479:       </div>
+L 480:       <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Your Profile</div>
+L 481:       ${isBuyer && plan?.budgetMax ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Budget</span><span style="font-size:13px;font-weight:700;color:#3b82f6;">$${Number(plan.budgetMin||0).toLocaleString('en-CA')} &mdash; $${Number(plan.budgetMax).toLocaleString('en-CA')}</span></div>` : ''}
+L 482:       ${plan?.propertyType ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Property Type</span><span style="font-size:13px;font-weight:700;color:#fff;">${plan.propertyType}</span></div>` : ''}
+L 483:       ${plan?.timeline ? `<div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Timeline</span><span style="font-size:13px;font-weight:700;color:#fff;">${plan.timeline}</span></div>` : ''}
+L 484:       <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 12px 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Market Snapshot</div>
+L 485:       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Avg Days on Market</span><span style="font-size:13px;font-weight:700;color:#6366f1;">${analytics?.closed_avg_dom_90 ? analytics.closed_avg_dom_90 + 'd' : '&mdash;'}</span></div>
+L 486:       <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Sale-to-List Ratio</span><span style="font-size:13px;font-weight:700;color:#10b981;">${analytics?.sale_to_list_ratio ? analytics.sale_to_list_ratio + '%' : '&mdash;'}</span></div>
+L 487:       <div style="display:flex;justify-content:space-between;padding:5px 0;"><span style="font-size:12px;color:rgba(255,255,255,0.45);">Active Listings</span><span style="font-size:13px;font-weight:700;color:#fff;">${analytics?.active_count || '&mdash;'}</span></div>
+L 488:       ${topListings.length > 0 ? `
+L 489:       <div style="font-size: 10px; font-weight: 700; letter-spacing: 0.2em; color: rgba(255,255,255,0.3); text-transform: uppercase; margin: 12px 0 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">Top Matches (${topListings.length})</div>
+L 490:       ${topListings.map((l) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);"><div><div style="font-size:12px;font-weight:700;color:#fff;">$${Number(l.list_price||0).toLocaleString('en-CA')}</div><div style="font-size:11px;color:rgba(255,255,255,0.35);">${(l.unparsed_address||'').split(',')[0]}</div></div><div style="font-size:11px;color:rgba(255,255,255,0.3);">${l.bedrooms_total||''} bed &middot; ${l.bathrooms_total_integer||''} bath</div></div>`).join('')}
+L 491:       ` : ''}
+L 492:     </div>
+L 493:   `
+L 494: 
+L 495:   const listingsHtml = topListings.length > 0 ? `
+L 496:     <div style="margin: 20px 0;">
+L 497:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">
+L 498:         ${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (${topListings.length})
+L 499:       </div>
+L 500:       ${topListings.map((l: any) => {
+L 501:         const url = `${baseUrl}${l._slug || '/' + (l.listing_key || '')}`
+L 502:         const price = l.list_price || l.close_price || 0
+L 503:         const address = l.unparsed_address || '&mdash;'
+L 504:         const beds = l.bedrooms_total
+L 505:         const baths = l.bathrooms_total_integer
+L 506:         const subtype = l.property_subtype || ''
+L 507:         const photo = (l.media && l.media[0]?.media_url) || ''
+L 508:         return `
+L 509:           <a href="${url}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+L 510:             <table width="100%" cellpadding="0" cellspacing="0" border="0">
+L 511:               <tr>
+L 512:                 ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" alt="" width="80" height="72" style="display: block; width: 80px; height: 72px;"></td>` : ''}
+L 513:                 <td style="padding: 10px 14px; vertical-align: middle;">
+L 514:                   <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${address}</div>
+L 515:                   <div style="font-size: 12px; color: #64748b; margin-top: 3px;">
+L 516:                     ${[beds ? `${beds} bed` : '', baths ? `${baths} bath` : '', subtype].filter(Boolean).join(' &middot; ')}
+L 517:                   </div>
+L 518:                 </td>
+L 519:                 <td style="padding: 10px 14px; text-align: right; white-space: nowrap; vertical-align: middle;">
+L 520:                   <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(price).toLocaleString('en-CA')}</div>
+L 521:                   <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">View &rarr;</div>
+L 522:                 </td>
+L 523:               </tr>
+L 524:             </table>
+L 525:           </a>
+L 526:         `
+L 527:       }).join('')}
+L 528:     </div>
+L 529:   ` : ''
+L 530: 
+L 531:   const sellerComps = sellerEstimate?.comparables || comparables || []
+L 532:   const comparableSoldHtml = sellerComps.length > 0 ? `
+L 533:     <div style="margin: 20px 0;">
+L 534:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Comparable Sold (${sellerComps.length})</div>
+L 535:       ${sellerComps.map((c: any) => {
+L 536:         const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
+L 537:         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+L 538:         const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+L 539:         return `
+L 540:           <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+L 541:             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+L 542:               ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"><div style="background:${c.temperature === 'HOT' ? '#ef4444' : c.temperature === 'WARM' ? '#f59e0b' : '#3b82f6'};color:#fff;font-size:9px;font-weight:700;padding:2px 5px;margin-top:2px;text-align:center;">${c.temperature || 'SOLD'}</div></td>` : ''}
+L 543:               <td style="padding: 10px 14px; vertical-align: middle;">
+L 544:                 <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${(c.unparsedAddress || c.unparsed_address || '').split(',')[0]}</div>
+L 545:                 <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : '', c.sqft ? c.sqft + ' sqft' : '', c.daysOnMarket ? c.daysOnMarket + 'd DOM' : ''].filter(Boolean).join(' &middot; ')}</div>
+L 546:                 ${c.matchQuality ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${c.matchQuality}</div>` : ''}
+L 547:               </td>
+L 548:               <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+L 549:                 <div style="font-size: 16px; font-weight: 800; color: #059669;">$${Number(price).toLocaleString('en-CA')}</div>
+L 550:                 <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Sold &rarr;</div>
+L 551:               </td>
+L 552:             </tr></table>
+L 553:           </a>
+L 554:         `
+L 555:       }).join('')}
+L 556:     </div>
+L 557:   ` : ''
+L 558: 
+L 559:   const competingHtml = sellerEstimate?.competingListings && sellerEstimate.competingListings.length > 0 ? `
+L 560:     <div style="margin: 20px 0;">
+L 561:       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Competing For Sale (${sellerEstimate.competingListings.length})</div>
+L 562:       ${sellerEstimate.competingListings.slice(0, 10).map((c: any) => {
+L 563:         const price = c.list_price || 0
+L 564:         const addr = (c.unparsed_address || '').split(',')[0]
+L 565:         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+L 566:         const slug = c._slug || (c.listing_key ? '/' + c.listing_key : '')
+L 567:         return `
+L 568:           <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+L 569:             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+L 570:               ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"></td>` : ''}
+L 571:               <td style="padding: 10px 14px; vertical-align: middle;">
+L 572:                 <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${addr}</div>
+L 573:                 <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : ''].filter(Boolean).join(' &middot; ')}</div>
+L 574:               </td>
+L 575:               <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+L 576:                 <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(price).toLocaleString('en-CA')}</div>
+L 577:                 <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">For Sale &rarr;</div>
+L 578:               </td>
+L 579:             </tr></table>
+L 580:           </a>
+L 581:         `
+L 582:       }).join('')}
+L 583:     </div>
+L 584:   ` : ''
+L 585: 
+L 586:   const vipHtml = vipCreditUsed ? `
+L 587:     <div style="background: linear-gradient(135deg, #1e1b4b, #312e81); border: 1px solid rgba(99,102,241,0.3); border-radius: 10px; padding: 14px 18px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between;">
+L 588:       <div>
+L 589:         <div style="font-size: 12px; font-weight: 700; color: #a5b4fc;">&#10022; VIP Access Credit Used</div>
+L 590:         <div style="font-size: 11px; color: rgba(165,180,252,0.6); margin-top: 3px;">${vipCreditPlansUsed} of ${vipCreditTotal} plans used</div>
+L 591:       </div>
+L 592:       <div style="font-size: 11px; color: rgba(165,180,252,0.5);">Request more from your agent</div>
+L 593:     </div>
+L 594:   ` : ''
+L 595: 
+L 596:   const disclaimerHtml = `
+L 597:     <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px; margin: 16px 0;">
+L 598:       <p style="margin: 0; font-size: 11px; color: #92400e; line-height: 1.6;">
+L 599:         <strong style="color: #d97706;">&#9888; AI Disclaimer:</strong> This plan is generated by artificial intelligence using market data and algorithms. It is intended for informational purposes only and does not constitute professional real estate, legal, or financial advice. All information should be independently verified with a licensed real estate agent before making any decisions.
+L 600:       </p>
+L 601:     </div>
+L 602:   `
+L 603: 
+L 604:   const agentHtml = agent ? `
+L 605:     <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+L 606:       <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px;">Your Agent</div>
+L 607:       ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.15); margin-bottom: 8px;">` : ''}
+L 608:       <div style="font-size: 15px; font-weight: 700; color: #fff;">${agent.full_name}</div>
+L 609:       ${agent.title ? `<div style="font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.title}</div>` : ''}
+L 610:       ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
+L 611:       <div style="margin-top: 12px;">
+L 612:         ${agent.email ? `<a href="mailto:${agent.email}" style="display: inline-block; margin: 4px; padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
+L 613:         ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="display: inline-block; margin: 4px; padding: 7px 16px; background: rgba(255,255,255,0.08); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
+L 614:       </div>
+L 615:     </div>
+L 616:   ` : ''
+L 617: 
+L 618:   return `
+L 619:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+L 620:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+L 621:         <div style="font-size: 26px; font-weight: 900; color: #fff; margin-bottom: 16px;">
+L 622:           <span style="font-weight: 900;">${brandName}</span>
+L 623:         </div>
+L 624:         <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 8px;">
+L 625:           ${isBuyer ? '&#127968; Buyer Plan' : '&#128176; Seller Strategy'} &mdash; ${geoName || 'GTA'}
+L 626:         </h1>
+L 627:         <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 14px;">
+L 628:           Prepared for ${userName} &middot; ${new Date().toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+L 629:         </p>
+L 630:       </div>
+L 631:       <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
+L 632:         ${conditionHtml}
+L 633:         ${marketHtml}
+L 634:         ${offerIntelHtml}
+L 635:         ${bestTimeHtml}
+L 636:         ${summaryHtml}
+L 637:         ${blocksHtml}
+L 638:         ${planCardHtml}
+L 639:         ${profileHtml}
+L 640:         ${listingsHtml}
+L 641:         ${comparableSoldHtml}
+L 642:         ${competingHtml}
+L 643:         ${vipHtml}
+L 644:         ${disclaimerHtml}
+L 645:         ${agentHtml}
+L 646:         <div style="text-align: center; margin: 24px 0 8px;">
+L 647:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+L 648:             &#10022; Open ${brandName}
+L 649:           </a>
+L 650:         </div>
+L 651:       </div>
+L 652:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+L 653:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">${brandName} &middot; ${domain}</p>
+L 654:         ${sourceUrl ? `<p style="margin: 4px 0 0; color: #cbd5e1; font-size: 10px;">Source: <a href="${sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${sourceUrl}</a></p>` : ''}
+L 655:       </div>
+L 656:     </div>
+L 657:   `
+L 658: }
+
+==================== app\api\charlie\lead\route.ts ====================
+
+L   1: // app/api/charlie/lead/route.ts
+L   2: // WALLiam Charlie lead capture — form-submission enrichment writer
+L   3: // Resolves agent via resolve_agent_for_context() — NOT getAgentFromHost
+L   4: //
+L   5: // W-HIERARCHY H3.4b (2026-05-03): comprehensive refactor.
+L   6: //
+L   7: //   ROLE CHANGE: This route was the lead CREATOR. Now it's the lead ENRICHER.
+L   8: //   Plan-email creates the lead at plan-generation time. This route updates that
+L   9: //   row with form-submitted follow-up details (name correction, phone, message).
+L  10: //
+L  11: //   - F53: walkHierarchy replaces direct parent_id query — full chain capture
+L  12: //   - F57: INSERT → UPSERT keyed on (user_id, tenant_id, source, intent).
+L  13: //          Defensive INSERT only if no matching plan-email row found.
+L  14: //   - F60: server-authoritative auth email — uses auth.users.email regardless of
+L  15: //          form-supplied email; form's email field is informational only.
+L  16: //          Name + phone from form (those can legitimately differ from registration).
+L  17: //   - F58 piece: tenant_admin_id captured into lead payload.
+L  18: //   - F47: helper replaces hardcoded ADMIN_EMAIL constant.
+L  19: //   - F67: standard try/catch (TenantEmailNotConfigured / TenantEmailFailed /
+L  20: //          AdminPlatformUnreachable / unexpected).
+L  21: 
+L  22: import { NextRequest, NextResponse } from 'next/server'
+L  23: import { headers } from 'next/headers'
+L  24: import { createClient } from '@supabase/supabase-js'
+L  25: import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+L  26: import {
+L  27:   sendTenantEmail,
+L  28:   TenantEmailNotConfigured,
+L  29:   TenantEmailFailed,
+L  30:   getLeadEmailRecipients,
+L  31:   AdminPlatformUnreachable,
+L  32: } from '@/lib/admin-homes/lead-email-recipients'
+L  33: import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+L  34: import { validateSession } from '@/lib/utils/validate-session'
+L  35: import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+L  36: 
+L  37: // T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
+L  38: 
+L  39: function createServiceClient() {
+L  40:   return createClient(
+L  41:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+L  42:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+L  43:     { auth: { autoRefreshToken: false, persistSession: false } }
+L  44:   )
+L  45: }
+L  46: 
+L  47: export async function POST(req: NextRequest) {
+L  48:   try {
+L  49:     const body = await req.json()
+L  50:     const tenantId = req.headers.get('x-tenant-id') || ''
+L  51:     const {
+L  52:       // Contact info — name + phone come from form. email IGNORED (F60).
+L  53:       name,
+L  54:       phone,
+L  55:       // Plan context (for chain notification email content)
+L  56:       intent,         // 'buyer' | 'seller'
+L  57:       buyerProfile,
+L  58:       sellerProfile,
+L  59:       listings,
+L  60:       analytics,
+L  61:       // Agent resolution context (for defensive insert path only)
+L  62:       sessionId,
+L  63:       userId,
+L  64:       listing_id,
+L  65:       building_id,
+L  66:       community_id,
+L  67:       municipality_id,
+L  68:       area_id,
+L  69:     } = body
+L  70: 
+L  71:     // W-RECOVERY A1.5 auth gate — block forged lead submissions
+L  72:     if (!sessionId || !userId) {
+L  73:       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+L  74:     }
+L  75: 
+L  76:     if (!name || !intent) {
+L  77:       return NextResponse.json({ error: 'name and intent are required' }, { status: 400 })
+L  78:     }
+L  79: 
+L  80:     const supabase = createServiceClient()
+L  81: 
+L  82:     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
+L  83:     const _sessionCheck = await validateSession({ supabase, sessionId, userId, tenantId })
+L  84:     if (!_sessionCheck.ok) {
+L  85:       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
+L  86:     }
+L  87:     const validSession = _sessionCheck.session
+L  88:     const sourceKey = _sessionCheck.sourceKey  // T6c — for source-field templating
+L  89:     const brandName = _sessionCheck.brandName  // T6f — for brand-text templating
+L  90:     const domain = _sessionCheck.domain        // T6f — for URL templating
+L  91:     const BASE_URL = buildBaseUrl(domain)      // T6f — handler-local tenant-aware base URL
+L  92:     // END T6a auth gate
+L  93: 
+L  94:     // F60: auth email is identity. Pull from auth.users; ignore any form-supplied email.
+L  95:     const { data: authData } = await supabase.auth.admin.getUserById(userId)
+L  96:     const authEmail = authData?.user?.email
+L  97:     if (!authEmail) {
+L  98:       return NextResponse.json({ error: 'User email not found' }, { status: 404 })
+L  99:     }
+L 100: 
+L 101:     // Step 1: Resolve agent (still needed for defensive insert path + chain recipients)
+L 102:     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
+L 103:       p_listing_id: listing_id || null,
+L 104:       p_building_id: building_id || null,
+L 105:       p_neighbourhood_id: null,
+L 106:       p_community_id: community_id || null,
+L 107:       p_municipality_id: municipality_id || null,
+L 108:       p_area_id: area_id || null,
+L 109:       p_user_id: userId || null,
+L 110:       p_tenant_id: tenantId || null,
+L 111:     })
+L 112: 
+L 113:     const agentId = resolvedAgentId || null
+L 114: 
+L 115:     // Step 2: Get agent details + walk hierarchy chain
+L 116:     let agent: any = null
+L 117:     let chainManagerId: string | null = null
+L 118:     let chainAreaManagerId: string | null = null
+L 119:     let chainTenantAdminId: string | null = null
+L 120: 
+L 121:     if (agentId) {
+L 122:       const { data: agentData } = await supabase
+L 123:         .from('agents')
+L 124:         .select('id, full_name, email, notification_email, cell_phone, profile_photo_url, brokerage_name, title, parent_id')
+L 125:         .eq('id', agentId)
+L 126:         .single()
+L 127: 
+L 128:       if (agentData) {
+L 129:         agent = agentData
+L 130:         const chain = await walkHierarchy(agentData.id, supabase)
+L 131:         chainManagerId = chain.manager_id
+L 132:         chainAreaManagerId = chain.area_manager_id
+L 133:         chainTenantAdminId = chain.tenant_admin_id
+L 134:       }
+L 135:     }
+L 136: 
+L 137:     // Build plan_data for storage on the lead row
+L 138:     const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+L 139:     const planData = {
+L 140:       intent,
+L 141:       geoName: profile?.geoName || null,
+L 142:       geoType: profile?.geoType || null,
+L 143:       geoId: profile?.geoId || null,
+L 144:       ...(intent === 'buyer' ? {
+L 145:         budgetMin: buyerProfile?.budgetMin || null,
+L 146:         budgetMax: buyerProfile?.budgetMax || null,
+L 147:         propertyType: buyerProfile?.propertyType || null,
+L 148:         bedrooms: buyerProfile?.bedrooms || null,
+L 149:         timeline: buyerProfile?.timeline || null,
+L 150:       } : {
+L 151:         propertyType: sellerProfile?.propertyType || null,
+L 152:         estimatedValueMin: sellerProfile?.estimatedValueMin || null,
+L 153:         estimatedValueMax: sellerProfile?.estimatedValueMax || null,
+L 154:         timeline: sellerProfile?.timeline || null,
+L 155:         goal: sellerProfile?.goal || null,
+L 156:       }),
+L 157:       analytics: analytics || null,
+L 158:       topListings: (listings || []).slice(0, 5).map((l: any) => ({
+L 159:         listingKey: l.listing_key,
+L 160:         address: l.unparsed_address,
+L 161:         price: l.list_price,
+L 162:         bedrooms: l.bedrooms_total,
+L 163:         slug: l._slug || null,
+L 164:       })),
+L 165:       generatedAt: new Date().toISOString(),
+L 166:     }
+L 167: 
+L 168:     // W3c: capture source URL from referer for both leads.source_url + email render
+L 169:     const pageUrl = headers().get('referer') || null
+L 170: 
+L 171:     // F57: UPSERT into existing plan-email lead row, not new INSERT.
+L 172:     // Match on (user_id, source='walliam_charlie', intent). Most recent row wins
+L 173:     // in the rare case multiple plan-email rows exist for same user+intent.
+L 174:     let leadId: string | null = null
+L 175: 
+L 176:     const { data: existingLeads } = await supabase
+L 177:       .from('leads')
+L 178:       .select('id')
+L 179:       .eq('user_id', userId)
+L 180:       .eq('tenant_id', tenantId || '')
+L 181:       .eq('source', `${sourceKey}_charlie`)
+L 182:       .eq('intent', intent)
+L 183:       .order('created_at', { ascending: false })
+L 184:       .limit(1)
+L 185: 
+L 186:     const existingLead = existingLeads?.[0]
+L 187: 
+L 188:     if (existingLead) {
+L 189:       // UPDATE: enrich the existing plan-email row with form-supplied detail
+L 190:       leadId = existingLead.id
+L 191:       const { error: updateError } = await supabase
+L 192:         .from('leads')
+L 193:         .update({
+L 194:           contact_name: name,           // form-supplied; can legitimately differ from auth name
+L 195:           contact_email: authEmail,     // F60: auth-authoritative
+L 196:           contact_phone: phone || null, // form-supplied
+L 197:           plan_data: planData,
+L 198:           manager_id: chainManagerId,
+L 199:           area_manager_id: chainAreaManagerId,
+L 200:           tenant_admin_id: chainTenantAdminId,
+L 201:           assignment_source: agentId ? 'geo' : 'admin',
+L 202:           updated_at: new Date().toISOString(),
+L 203:         })
+L 204:         .eq('id', existingLead.id)
+L 205: 
+L 206:       if (updateError) {
+L 207:         console.error('[charlie/lead] enrichment update error:', updateError)
+L 208:         return NextResponse.json({ error: 'Failed to update lead' }, { status: 500 })
+L 209:       }
+L 210:       leadId = existingLead.id
+L 211:     } else {
+L 212:       // Defensive INSERT: plan-email never created a row (shouldn't happen, but don't lose data)
+L 213:       const { data: newLead, error: insertError } = await supabase
+L 214:         .from('leads')
+L 215:         .insert({
+L 216:           agent_id: agentId,
+L 217:           user_id: userId,
+L 218:           contact_name: name,
+L 219:           contact_email: authEmail,
+L 220:           contact_phone: phone || null,
+L 221:           source: `${sourceKey}_charlie`,
+L 222:           source_url: pageUrl,
+L 223:           lead_origin_route: 'charlie',
+L 224:           intent,
+L 225:           geo_name: profile?.geoName || null,
+L 226:           budget_max: buyerProfile?.budgetMax || null,
+L 227:           plan_data: planData,
+L 228:           manager_id: chainManagerId,
+L 229:           area_manager_id: chainAreaManagerId,
+L 230:           tenant_admin_id: chainTenantAdminId,
+L 231:           assignment_source: agentId ? 'geo' : 'admin',
+L 232:           tenant_id: tenantId || null,
+L 233:           status: 'new',
+L 234:         })
+L 235:         .select('id')
+L 236:         .single()
+L 237: 
+L 238:       if (insertError || !newLead) {
+L 239:         console.error('[charlie/lead] defensive insert error:', insertError)
+L 240:         return NextResponse.json({ error: 'Failed to save lead' }, { status: 500 })
+L 241:       }
+L 242:       leadId = newLead.id
+L 243:     }
+L 244: 
+L 245:     // Link lead to session
+L 246:     if (sessionId && leadId) {
+L 247:       await supabase
+L 248:         .from('chat_sessions')
+L 249:         .update({ lead_id: leadId, last_activity_at: new Date().toISOString() })
+L 250:         .eq('id', sessionId)
+L 251:     }
+L 252: 
+L 253:     // Step: Send rich plan email → USER (single recipient, not chain)
+L 254:     try {
+L 255:       await sendTenantEmail({
+L 256:         tenantId,
+L 257:         to: authEmail,
+L 258:         subject: `Your ${brandName} ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
+L 259:         html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl }),
+L 260:       })
+L 261:     } catch (err) {
+L 262:       if (err instanceof TenantEmailNotConfigured) {
+L 263:         console.warn('[charlie/lead] tenant email not configured (user):', err.message)
+L 264:       } else if (err instanceof TenantEmailFailed) {
+L 265:         console.error('[charlie/lead] resend send failed (user):', err.message)
+L 266:       } else {
+L 267:         console.error('[charlie/lead] unexpected user email error:', err)
+L 268:       }
+L 269:     }
+L 270: 
+L 271:     // Step: Chain notification — single helper-driven send (replaces inline manager-CC + ADMIN_EMAIL)
+L 272:     let recipients
+L 273:     try {
+L 274:       recipients = await getLeadEmailRecipients(tenantId, agentId, supabase)
+L 275:     } catch (err) {
+L 276:       if (err instanceof AdminPlatformUnreachable) {
+L 277:         console.error('[charlie/lead] admin platform unreachable:', err.message)
+L 278:         recipients = null
+L 279:       } else {
+L 280:         throw err
+L 281:       }
+L 282:     }
+L 283: 
+L 284:     if (recipients) {
+L 285:       try {
+L 286:         const subject = `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead — ${name} — ${profile?.geoName || 'GTA'}`
+L 287:         const sendResult = await sendTenantEmail({
+L 288:           tenantId,
+L 289:           to: recipients.to,
+L 290:           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+L 291:           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+L 292:           subject,
+L 293:           html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics, brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl }),
+L 294:         })
+L 295:         if (leadId) {
+L 296:           await logEmailRecipients({
+L 297:             supabase,
+L 298:             tenantId,
+L 299:             leadId,
+L 300:             agentId,
+L 301:             recipients,
+L 302:             subject,
+L 303:             templateKey: 'charlie_lead_enrichment_chain',
+L 304:             resendMessageId: sendResult.id,
+L 305:           })
+L 306:         }
+L 307:       } catch (err) {
+L 308:         if (err instanceof TenantEmailNotConfigured) {
+L 309:           console.warn('[charlie/lead] tenant email not configured (chain):', err.message)
+L 310:         } else if (err instanceof TenantEmailFailed) {
+L 311:           console.error('[charlie/lead] resend send failed (chain):', err.message)
+L 312:         } else {
+L 313:           console.error('[charlie/lead] unexpected chain email error:', err)
+L 314:         }
+L 315:       }
+L 316:     }
+L 317: 
+L 318:     return NextResponse.json({ success: true, leadId })
+L 319: 
+L 320:   } catch (error) {
+L 321:     console.error('[charlie/lead] error:', error)
+L 322:     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+L 323:   }
+L 324: }
+L 325: 
+L 326: // ─── Rich plan email → user ────────────────────────────────────────────────
+L 327: 
+L 328: function buildUserPlanEmail(data: {
+L 329:   name: string
+L 330:   intent: string
+L 331:   buyerProfile?: any
+L 332:   sellerProfile?: any
+L 333:   listings?: any[]
+L 334:   analytics?: any
+L 335:   agent?: any
+L 336:   brandName: string
+L 337:   domain: string
+L 338:   baseUrl: string
+L 339:   sourceUrl?: string | null
+L 340: }): string {
+L 341:   const { name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl, sourceUrl } = data
+L 342:   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+L 343:   const isBuyer = intent === 'buyer'
+L 344:   const topListings = (listings || []).slice(0, 5)
+L 345: 
+L 346:   const marketCards = analytics ? `
+L 347:     <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0;">
+L 348:       ${[
+L 349:         { label: 'Median PSF', value: analytics.median_psf ? `$${Number(analytics.median_psf).toLocaleString('en-CA', { maximumFractionDigits: 0 })}` : '—' },
+L 350:         { label: 'Avg Days on Market', value: analytics.closed_avg_dom_90 ? `${analytics.closed_avg_dom_90}d` : '—' },
+L 351:         { label: 'Sale / List', value: analytics.sale_to_list_ratio ? `${analytics.sale_to_list_ratio}%` : '—' },
+L 352:       ].map(m => `
+L 353:         <div style="background: #f1f5f9; border-radius: 10px; padding: 14px; text-align: center;">
+L 354:           <div style="font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">${m.label}</div>
+L 355:           <div style="font-size: 20px; font-weight: 800; color: #0f172a;">${m.value}</div>
+L 356:         </div>
+L 357:       `).join('')}
+L 358:     </div>
+L 359:   ` : ''
+L 360: 
+L 361:   const listingCards = topListings.length > 0 ? `
+L 362:     <div style="margin: 20px 0;">
+L 363:       <h3 style="font-size: 14px; font-weight: 700; color: #0f172a; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 0.08em;">
+L 364:         ${isBuyer ? 'Matched Listings' : 'Comparable Sales'}
+L 365:       </h3>
+L 366:       ${topListings.map((l: any) => `
+L 367:         <a href="${baseUrl}/${l._slug || l.listing_key}" style="display: block; text-decoration: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-bottom: 10px;">
+L 368:           <div style="display: flex; justify-content: space-between; align-items: center;">
+L 369:             <div>
+L 370:               <div style="font-size: 14px; font-weight: 700; color: #0f172a;">${l.unparsed_address || '—'}</div>
+L 371:               <div style="font-size: 12px; color: #64748b; margin-top: 2px;">${l.bedrooms_total ? `${l.bedrooms_total} bed` : ''} ${l.bathrooms_total_integer ? `· ${l.bathrooms_total_integer} bath` : ''}</div>
+L 372:             </div>
+L 373:             <div style="font-size: 16px; font-weight: 800; color: #1d4ed8;">$${Number(l.list_price || l.close_price || 0).toLocaleString('en-CA')}</div>
+L 374:           </div>
+L 375:         </a>
+L 376:       `).join('')}
+L 377:     </div>
+L 378:   ` : ''
+L 379: 
+L 380:   const profileSection = isBuyer ? `
+L 381:     <div style="background: #f1f5f9; border-radius: 10px; padding: 16px; margin: 16px 0;">
+L 382:       <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Your Buyer Profile</h3>
+L 383:       ${buyerProfile?.budgetMax ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Budget:</strong> $${Number(buyerProfile.budgetMin || 0).toLocaleString('en-CA')} – $${Number(buyerProfile.budgetMax).toLocaleString('en-CA')}</p>` : ''}
+L 384:       ${buyerProfile?.propertyType ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Property Type:</strong> ${buyerProfile.propertyType}</p>` : ''}
+L 385:       ${buyerProfile?.bedrooms ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Bedrooms:</strong> ${buyerProfile.bedrooms}+</p>` : ''}
+L 386:       ${buyerProfile?.timeline ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Timeline:</strong> ${buyerProfile.timeline}</p>` : ''}
+L 387:     </div>
+L 388:   ` : `
+L 389:     <div style="background: #f1f5f9; border-radius: 10px; padding: 16px; margin: 16px 0;">
+L 390:       <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Your Seller Profile</h3>
+L 391:       ${sellerProfile?.propertyType ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Property Type:</strong> ${sellerProfile.propertyType}</p>` : ''}
+L 392:       ${sellerProfile?.estimatedValueMin ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Estimated Value:</strong> $${Number(sellerProfile.estimatedValueMin).toLocaleString('en-CA')} – $${Number(sellerProfile.estimatedValueMax).toLocaleString('en-CA')}</p>` : ''}
+L 393:       ${sellerProfile?.timeline ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Timeline:</strong> ${sellerProfile.timeline}</p>` : ''}
+L 394:       ${sellerProfile?.goal ? `<p style="margin: 4px 0; font-size: 13px; color: #374151;"><strong>Goal:</strong> ${sellerProfile.goal}</p>` : ''}
+L 395:     </div>
+L 396:   `
+L 397: 
+L 398:   const agentSection = agent ? `
+L 399:     <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;">
+L 400:       <div style="font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">Your Agent</div>
+L 401:       ${agent.profile_photo_url ? `<img src="${agent.profile_photo_url}" alt="${agent.full_name}" style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,0.15); margin-bottom: 10px;">` : ''}
+L 402:       <div style="font-size: 16px; font-weight: 700; color: #fff;">${agent.full_name}</div>
+L 403:       ${agent.title ? `<div style="font-size: 12px; color: rgba(255,255,255,0.4); margin-top: 2px;">${agent.title}</div>` : ''}
+L 404:       ${agent.brokerage_name ? `<div style="font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 2px;">${agent.brokerage_name}</div>` : ''}
+L 405:       <div style="margin-top: 14px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+L 406:         ${agent.email ? `<a href="mailto:${agent.email}" style="display: inline-block; padding: 8px 18px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.email}</a>` : ''}
+L 407:         ${agent.cell_phone ? `<a href="tel:${agent.cell_phone}" style="display: inline-block; padding: 8px 18px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; color: #93c5fd; font-size: 12px; text-decoration: none;">${agent.cell_phone}</a>` : ''}
+L 408:       </div>
+L 409:     </div>
+L 410:   ` : ''
+L 411: 
+L 412:   return `
+L 413:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
+L 414:       <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px 28px; border-radius: 12px 12px 0 0;">
+L 415:         <div style="font-size: 28px; font-weight: 900; color: #fff; letter-spacing: -0.02em; margin-bottom: 4px;">
+L 416:           <span style="font-weight: 900;">${brandName}</span>
+L 417:         </div>
+L 418:         <div style="font-size: 13px; color: rgba(255,255,255,0.4); margin-bottom: 20px;">AI Real Estate</div>
+L 419:         <h1 style="color: #fff; font-size: 22px; font-weight: 800; margin: 0 0 6px;">
+L 420:           Your ${isBuyer ? 'Buyer' : 'Seller'} Plan is Ready
+L 421:         </h1>
+L 422:         <p style="color: rgba(255,255,255,0.5); margin: 0; font-size: 14px;">
+L 423:           Hi ${name} — here's your personalized plan for ${profile?.geoName || 'the GTA'}.
+L 424:         </p>
+L 425:       </div>
+L 426: 
+L 427:       <div style="padding: 24px 28px; border: 1px solid #e2e8f0; border-top: none;">
+L 428: 
+L 429:         ${analytics ? `
+L 430:         <h3 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.08em;">
+L 431:           Market Intelligence · ${profile?.geoName || ''}
+L 432:         </h3>
+L 433:         ${marketCards}
+L 434:         ` : ''}
+L 435: 
+L 436:         ${profileSection}
+L 437: 
+L 438:         ${listingCards}
+L 439: 
+L 440:         ${agentSection}
+L 441: 
+L 442:         <div style="text-align: center; margin: 24px 0 8px;">
+L 443:           <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
+L 444:             ✦ Continue on ${brandName}
+L 445:           </a>
+L 446:         </div>
+L 447:       </div>
+L 448: 
+L 449:       <div style="padding: 16px 28px; background: #f8fafc; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+L 450:         <p style="margin: 0; color: #94a3b8; font-size: 11px;">
+L 451:           Sent by ${brandName} AI · ${domain}
+L 452:         </p>
+L 453:         ${sourceUrl ? `<p style="margin: 4px 0 0; color: #cbd5e1; font-size: 10px;">Source: <a href="${sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${sourceUrl}</a></p>` : ''}
+L 454:       </div>
+L 455:     </div>
+L 456:   `
+L 457: }
+L 458: 
+L 459: // ─── Lead brief email → agent / chain ─────────────────────────────────────
+L 460: 
+L 461: function buildAgentLeadEmail(data: {
+L 462:   name: string
+L 463:   email: string
+L 464:   phone?: string
+L 465:   intent: string
+L 466:   buyerProfile?: any
+L 467:   sellerProfile?: any
+L 468:   listings?: any[]
+L 469:   analytics?: any
+L 470:   brandName: string
+L 471:   domain: string
+L 472:   baseUrl: string
+L 473:   sourceUrl?: string | null
+L 474: }): string {
+L 475:   const { name, email, phone, intent, buyerProfile, sellerProfile, listings, brandName, domain, baseUrl, sourceUrl } = data
+L 476:   const profile = intent === 'buyer' ? buyerProfile : sellerProfile
+L 477:   const isBuyer = intent === 'buyer'
+L 478:   const topListings = (listings || []).slice(0, 3)
+L 479: 
+L 480:   return `
+L 481:     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
+L 482:       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 24px; border-radius: 12px 12px 0 0;">
+L 483:         <div style="font-size: 22px; font-weight: 900; color: #fff; margin-bottom: 4px;">
+L 484:           <span>${brandName}</span>
+L 485:         </div>
+L 486:         <h1 style="color: #fff; margin: 8px 0 0; font-size: 18px; font-weight: 700;">
+L 487:           New ${isBuyer ? '🏠 Buyer' : '💰 Seller'} Lead
+L 488:         </h1>
+L 489:         <p style="color: rgba(255,255,255,0.4); margin: 4px 0 0; font-size: 12px;">via Charlie AI · ${new Date().toLocaleDateString('en-CA')}</p>
+L 490:       </div>
+L 491: 
+L 492:       <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-top: none;">
+L 493:         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Contact</h2>
+L 494:         <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px;">
+L 495:           <tr><td style="padding: 5px 0; color: #64748b; width: 80px;">Name</td><td style="padding: 5px 0; font-weight: 700; color: #0f172a;">${name}</td></tr>
+L 496:           <tr><td style="padding: 5px 0; color: #64748b;">Email</td><td style="padding: 5px 0;"><a href="mailto:${email}" style="color: #2563eb;">${email}</a></td></tr>
+L 497:           ${phone ? `<tr><td style="padding: 5px 0; color: #64748b;">Phone</td><td style="padding: 5px 0;"><a href="tel:${phone}" style="color: #2563eb;">${phone}</a></td></tr>` : ''}
+L 498:           <tr><td style="padding: 5px 0; color: #64748b;">Area</td><td style="padding: 5px 0; color: #0f172a;">${profile?.geoName || '—'}</td></tr>
+L 499:           <tr><td style="padding: 5px 0; color: #64748b;">Intent</td><td style="padding: 5px 0; color: #0f172a;">${isBuyer ? 'Buyer' : 'Seller'}</td></tr>
+L 500:         </table>
+L 501: 
+L 502:         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Plan Summary</h2>
+L 503:         <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 20px; font-size: 13px;">
+L 504:           ${isBuyer ? `
+L 505:             ${buyerProfile?.budgetMax ? `<p style="margin: 4px 0; color: #374151;"><strong>Budget:</strong> $${Number(buyerProfile.budgetMin || 0).toLocaleString('en-CA')} – $${Number(buyerProfile.budgetMax).toLocaleString('en-CA')}</p>` : ''}
+L 506:             ${buyerProfile?.propertyType ? `<p style="margin: 4px 0; color: #374151;"><strong>Type:</strong> ${buyerProfile.propertyType}</p>` : ''}
+L 507:             ${buyerProfile?.bedrooms ? `<p style="margin: 4px 0; color: #374151;"><strong>Bedrooms:</strong> ${buyerProfile.bedrooms}+</p>` : ''}
+L 508:             ${buyerProfile?.timeline ? `<p style="margin: 4px 0; color: #374151;"><strong>Timeline:</strong> ${buyerProfile.timeline}</p>` : ''}
+L 509:           ` : `
+L 510:             ${sellerProfile?.propertyType ? `<p style="margin: 4px 0; color: #374151;"><strong>Type:</strong> ${sellerProfile.propertyType}</p>` : ''}
+L 511:             ${sellerProfile?.estimatedValueMin ? `<p style="margin: 4px 0; color: #374151;"><strong>Est. Value:</strong> $${Number(sellerProfile.estimatedValueMin).toLocaleString('en-CA')} – $${Number(sellerProfile.estimatedValueMax).toLocaleString('en-CA')}</p>` : ''}
+L 512:             ${sellerProfile?.timeline ? `<p style="margin: 4px 0; color: #374151;"><strong>Timeline:</strong> ${sellerProfile.timeline}</p>` : ''}
+L 513:             ${sellerProfile?.goal ? `<p style="margin: 4px 0; color: #374151;"><strong>Goal:</strong> ${sellerProfile.goal}</p>` : ''}
+L 514:           `}
+L 515:         </div>
+L 516: 
+L 517:         ${topListings.length > 0 ? `
+L 518:         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.08em;">Top Matched Listings</h2>
+L 519:         ${topListings.map((l: any) => `
+L 520:           <a href="${baseUrl}/${l._slug || l.listing_key}" style="display: flex; justify-content: space-between; align-items: center; background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 8px; text-decoration: none;">
+L 521:             <div>
+L 522:               <div style="font-size: 13px; font-weight: 600; color: #0f172a;">${l.unparsed_address || '—'}</div>
+L 523:               <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${l.bedrooms_total ? `${l.bedrooms_total} bed` : ''}${l.bathrooms_total_integer ? ` · ${l.bathrooms_total_integer} bath` : ''}</div>
+L 524:             </div>
+L 525:             <div style="font-size: 15px; font-weight: 800; color: #1d4ed8;">$${Number(l.list_price || 0).toLocaleString('en-CA')}</div>
+L 526:           </a>
+L 527:         `).join('')}
+L 528:         ` : ''}
+L 529:       </div>
+L 530: 
+L 531:       <div style="padding: 16px 20px; background: white; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; text-align: center;">
+L 532:         <a href="${baseUrl}/admin-homes/leads" style="display: inline-block; padding: 10px 24px; background: #0f172a; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+L 533:           View in Dashboard
+L 534:         </a>
+L 535:         <p style="margin: 12px 0 0; color: #94a3b8; font-size: 11px;">${brandName} · ${domain}</p>
+L 536:         ${sourceUrl ? `<p style="margin: 4px 0 0; color: #cbd5e1; font-size: 10px;">Source: <a href="${sourceUrl}" style="color: #94a3b8; text-decoration: underline;">${sourceUrl}</a></p>` : ''}
+L 537:       </div>
+L 538:     </div>
+L 539:   `
+L 540: }
