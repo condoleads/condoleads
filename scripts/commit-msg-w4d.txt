@@ -1,0 +1,55 @@
+﻿W4d: Activity tab with cumulative visitor + admin timeline
+
+New file: components/admin-homes/lead-workbench/ActivityTab.tsx
+(9807 bytes, ~270 LOC).
+- Cumulative timeline across leadFamily (user_activities by
+  contact_email + lead_admin_actions by lead_id, both tenant_id-scoped).
+- ActivityFeedItem discriminated union (kind: 'visitor' | 'admin').
+- ACTIVITY_META maps 13 verified activity_type values to icon+label
+  pairs (viewed_transaction_history dominates at 67% of walliam rows).
+- Filter pills (All / Visitor / Admin with live counts).
+- Date-bucket grouping (Today / Yesterday / This week / older months).
+- 50-event cap with "Show all N events" expansion.
+- VisitorRow extracts activity_data summary (buildingName, unitNumber,
+  buildingAddress, totalSales, geoName) + page_url click-through via
+  window.open (avoiding chat-sanitization issue from F-W4B).
+- AdminRow shows actor_role + action_type + target_field + lead
+  context (when family > 1) + notes + before/after JSON.
+
+2 patches to existing files:
+- app/admin-homes/leads/[id]/page.tsx: parallel Promise.all server-side
+  fetch (user_activities by familyEmails + lead_admin_actions by
+  familyIds, both .eq('tenant_id', anchorLead.tenant_id), 500-row cap
+  per source); merged + sorted desc by created_at; passed as
+  activityFeed prop.
+- app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx (4 transforms):
+  import ActivityTab + ActivityFeedItem; extend Props with
+  activityFeed; extend destructure; extend tab ternary with
+  tab === 'activity' branch.
+
+Tracker:
+- docs/W-LEADS-WORKBENCH-TRACKER.md v14 -> v15
+- W4d row OPEN -> SHIPPED
+- Status log entry appended
+
+Findings logged:
+- F-W4D-ADMIN-ACTIONS-NOT-POPULATED: lead_admin_actions empty until
+  W6a writes land. Timeline degrades gracefully to visitor-only.
+- F-W4D-NO-PAGINATION-BEYOND-500: 500-row cap per source. Heavy users
+  with > 500 visitor events would miss older history. Deferred to
+  W6/W7.
+- F-W4D-NO-AGENT-NAME-RESOLUTION: user_activities.agent_id not
+  joined to agents.full_name for display. Future enhancement.
+
+Multi-tenant safety: both queries .eq('tenant_id', anchorLead.tenant_id)
+(trusted from W4a cross-tenant gate). Cross-tenant activity leak
+impossible by design.
+
+Cleanup: scripts/commit-msg-w4c.txt orphan deletion.
+
+TSC --noEmit exit 0.
+
+NEXT: W4e Emails tab + Send composer -- list lead_email_recipients_log
+per family + new POST /api/admin-homes/leads/[id]/send-email endpoint
+with audit logging to lead_admin_actions (first writer to the audit
+table established in W2).

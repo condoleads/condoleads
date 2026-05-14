@@ -146,6 +146,41 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
     }
   }
 
+  // W4d: Activity feed (cumulative visitor + admin timeline across leadFamily)
+  // Visitor activities keyed by contact_email; admin actions keyed by lead_id.
+  // Both tenant_id-scoped to anchorLead.tenant_id (trusted source from cross-tenant gate).
+  let activityFeed: any[] = []
+  const familyEmails = Array.from(new Set(leadFamily.map((l: any) => l.contact_email).filter(Boolean))) as string[]
+  const familyIds = leadFamily.map((l: any) => l.id) as string[]
+  const tenantIdForActivity = (anchorLead as any).tenant_id
+  if (tenantIdForActivity && (familyEmails.length > 0 || familyIds.length > 0)) {
+    const [activitiesResult, actionsResult] = await Promise.all([
+      familyEmails.length > 0
+        ? supabase
+            .from('user_activities')
+            .select('id, contact_email, agent_id, activity_type, activity_data, page_url, created_at')
+            .in('contact_email', familyEmails)
+            .eq('tenant_id', tenantIdForActivity)
+            .order('created_at', { ascending: false })
+            .limit(500)
+        : Promise.resolve({ data: [] as any[] }),
+      familyIds.length > 0
+        ? supabase
+            .from('lead_admin_actions')
+            .select('id, lead_id, actor_user_id, actor_agent_id, actor_role, action_type, target_field, before_value, after_value, notes, created_at')
+            .in('lead_id', familyIds)
+            .eq('tenant_id', tenantIdForActivity)
+            .order('created_at', { ascending: false })
+            .limit(500)
+        : Promise.resolve({ data: [] as any[] }),
+    ])
+    const visitorRows = ((activitiesResult.data as any[]) || []).map((r: any) => ({ ...r, kind: 'visitor' }))
+    const adminRows = ((actionsResult.data as any[]) || []).map((r: any) => ({ ...r, kind: 'admin' }))
+    activityFeed = [...visitorRows, ...adminRows].sort((a: any, b: any) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+  }
+
   return (
     <LeadWorkbenchClient
       anchorLead={anchorLead}
@@ -159,6 +194,7 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
         isPlatformAdmin: user.isPlatformAdmin === true,
         tenantId: user.tenantId || null,
       }}
+      activityFeed={activityFeed}
     />
   )
 }
