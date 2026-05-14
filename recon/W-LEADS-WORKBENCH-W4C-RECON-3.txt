@@ -1,0 +1,265 @@
+
+==================== app\admin-homes\leads\[id]\page.tsx (3828 bytes) ====================
+
+L   1: // app/admin-homes/leads/[id]/page.tsx
+L   2: // W-LEADS-WORKBENCH W4a (2026-05-13).
+L   3: //
+L   4: // Workbench page shell -- server component. Anchors on a single lead by id,
+L   5: // then aggregates all leads from the same user_id within the same tenant_id
+L   6: // (cumulative view per outcome #3). Permission-gated via can('lead.read').
+L   7: //
+L   8: // MULTITENANT CONTRACT (Rule Zero #1):
+L   9: //   - Cross-tenant access returns notFound() (404, defense-in-depth -- no
+L  10: //     leak of existence via 403).
+L  11: //   - leadFamily aggregation scoped by anchorLead.tenant_id always
+L  12: //     (trusted source -- anchorLead already passed the tenant gate).
+L  13: //
+L  14: // PERMISSION CONTRACT:
+L  15: //   - can(user.permissions, 'lead.read', { kind: 'lead', leadId, tenantId, agentId })
+L  16: //     gates access to the anchor. Sibling leads in the same user-family
+L  17: //     within the same tenant are shown without per-agent filter (intent:
+L  18: //     agents see the complete journey for that user -- outcome #3).
+L  19: //     F-W4A-LEADFAMILY-NO-PER-AGENT-SCOPE logged for W5c evaluation.
+L  20: 
+L  21: import { notFound } from 'next/navigation'
+L  22: import { createServiceClient } from '@/lib/admin-homes/service-client'
+L  23: import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+L  24: import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
+L  25: import { can } from '@/lib/admin-homes/permissions'
+L  26: import { getScopedTenantId, isCrossTenantView } from '@/lib/admin-homes/scope'
+L  27: import LeadWorkbenchClient from './LeadWorkbenchClient'
+L  28: 
+L  29: export const metadata = { title: 'Lead Workbench — Admin' }
+L  30: 
+L  31: const ANCHOR_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email, cell_phone, profile_photo_url, brokerage_name, title), manager:agents!leads_manager_id_fkey(id, full_name, email), area_manager:agents!leads_area_manager_id_fkey(id, full_name, email), tenant_admin:agents!leads_tenant_admin_id_fkey(id, full_name, email)'
+L  32: 
+L  33: const FAMILY_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email, cell_phone, profile_photo_url, brokerage_name, title)'
+L  34: 
+L  35: export default async function LeadWorkbenchPage({ params }: { params: { id: string } }) {
+L  36:   const user = await resolveAdminHomesUser()
+L  37:   if (!user) return notFound()
+L  38: 
+L  39:   const hostTenantId = await getCurrentTenantId()
+L  40:   const seeAll = isCrossTenantView(user, hostTenantId)
+L  41:   const scopedTenantId = getScopedTenantId(user, hostTenantId)
+L  42: 
+L  43:   // No tenant context for a tenant-scoped user -> nothing to show.
+L  44:   if (!seeAll && !scopedTenantId) return notFound()
+L  45: 
+L  46:   const supabase = createServiceClient()
+L  47: 
+L  48:   const { data: anchorLead } = await supabase
+L  49:     .from('leads')
+L  50:     .select(ANCHOR_SELECT)
+L  51:     .eq('id', params.id)
+L  52:     .maybeSingle()
+L  53: 
+L  54:   if (!anchorLead) return notFound()
+L  55: 
+L  56:   // Cross-tenant gate: scoped user must match anchor's tenant.
+L  57:   if (!seeAll && scopedTenantId && (anchorLead as any).tenant_id !== scopedTenantId) {
+L  58:     return notFound()
+L  59:   }
+L  60: 
+L  61:   // Permission gate.
+L  62:   const decision = can(user.permissions, 'lead.read', {
+L  63:     kind: 'lead',
+L  64:     leadId: (anchorLead as any).id,
+L  65:     tenantId: (anchorLead as any).tenant_id,
+L  66:     agentId: (anchorLead as any).agent_id,
+L  67:   })
+L  68:   if (!decision.ok) return notFound()
+L  69: 
+L  70:   // leadFamily aggregation: all leads with same user_id within same tenant_id.
+L  71:   // When anchor.user_id is null, family = [anchorLead] (single-event view).
+L  72:   let leadFamily: any[] = [anchorLead]
+L  73:   if ((anchorLead as any).user_id) {
+L  74:     const { data: family } = await supabase
+L  75:       .from('leads')
+L  76:       .select(FAMILY_SELECT)
+L  77:       .eq('user_id', (anchorLead as any).user_id)
+L  78:       .eq('tenant_id', (anchorLead as any).tenant_id)
+L  79:       .order('created_at', { ascending: false })
+L  80:     if (family && family.length > 0) {
+L  81:       leadFamily = family
+L  82:     }
+L  83:   }
+L  84: 
+L  85:   return (
+L  86:     <LeadWorkbenchClient
+L  87:       anchorLead={anchorLead}
+L  88:       leadFamily={leadFamily}
+L  89:       currentRole={user.role || 'admin'}
+L  90:       currentAgentId={user.agentId || null}
+L  91:     />
+L  92:   )
+L  93: }
+L  94: 
+
+==================== app\admin-homes\leads\[id]\LeadWorkbenchClient.tsx (7076 bytes) ====================
+
+L   1: 'use client'
+L   2: 
+L   3: // app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+L   4: // W-LEADS-WORKBENCH W4a (2026-05-13).
+L   5: //
+L   6: // Workbench client component -- 7-tab nav + Overview tab content.
+L   7: // Plan/Credits/Activity/Emails/VIP/Notes are placeholders filled by W4b-g.
+L   8: 
+L   9: import { useState } from 'react'
+L  10: import Link from 'next/link'
+L  11: import PlanTab from '@/components/admin-homes/lead-workbench/PlanRenderer'
+L  12: 
+L  13: type TabKey = 'overview' | 'plan' | 'credits' | 'activity' | 'emails' | 'vip' | 'notes'
+L  14: 
+L  15: const TABS: { id: TabKey; label: string; phase: string }[] = [
+L  16:   { id: 'overview', label: 'Overview', phase: 'W4a' },
+L  17:   { id: 'plan', label: 'Plan', phase: 'W4b' },
+L  18:   { id: 'credits', label: 'Credits & Usage', phase: 'W4c' },
+L  19:   { id: 'activity', label: 'Activity', phase: 'W4d' },
+L  20:   { id: 'emails', label: 'Emails', phase: 'W4e' },
+L  21:   { id: 'vip', label: 'VIP Requests', phase: 'W4f' },
+L  22:   { id: 'notes', label: 'Notes', phase: 'W4g' },
+L  23: ]
+L  24: 
+L  25: interface Props {
+L  26:   anchorLead: any
+L  27:   leadFamily: any[]
+L  28:   currentRole: string
+L  29:   currentAgentId: string | null
+L  30: }
+L  31: 
+L  32: export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId }: Props) {
+L  33:   const [tab, setTab] = useState<TabKey>('overview')
+L  34:   const activeTabMeta = TABS.find(t => t.id === tab)!
+L  35: 
+L  36:   return (
+L  37:     <div className="max-w-7xl mx-auto p-6">
+L  38:       <div className="mb-4">
+L  39:         <Link href="/admin-homes/leads" className="text-blue-600 hover:underline text-sm">
+L  40:           {'←'} Back to leads
+L  41:         </Link>
+L  42:       </div>
+L  43: 
+L  44:       <header className="border-b border-gray-200 pb-4 mb-6">
+L  45:         <h1 className="text-2xl font-semibold text-gray-900">{anchorLead.contact_name || 'Unnamed lead'}</h1>
+L  46:         <div className="mt-1 text-sm text-gray-600">
+L  47:           {anchorLead.contact_email && (
+L  48:             <a href={`mailto:${anchorLead.contact_email}`} className="text-blue-600 hover:underline">
+L  49:               {anchorLead.contact_email}
+L  50:             </a>
+L  51:           )}
+L  52:           {anchorLead.contact_phone && <span className="ml-3 text-gray-500">{anchorLead.contact_phone}</span>}
+L  53:         </div>
+L  54:         <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+L  55:           <span>Created {new Date(anchorLead.created_at).toLocaleDateString('en-CA')}</span>
+L  56:           {anchorLead.source && <span>Source: <span className="text-gray-700">{anchorLead.source}</span></span>}
+L  57:           {anchorLead.intent && <span>Intent: <span className="text-gray-700">{anchorLead.intent}</span></span>}
+L  58:           {anchorLead.agents?.full_name && <span>Agent: <span className="text-gray-700">{anchorLead.agents.full_name}</span></span>}
+L  59:           {leadFamily.length > 1 && (
+L  60:             <span className="font-semibold text-indigo-600">{leadFamily.length} events for this user</span>
+L  61:           )}
+L  62:         </div>
+L  63:       </header>
+L  64: 
+L  65:       <nav className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
+L  66:         {TABS.map((t) => (
+L  67:           <button
+L  68:             key={t.id}
+L  69:             onClick={() => setTab(t.id)}
+L  70:             className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${tab === t.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+L  71:           >
+L  72:             {t.label}
+L  73:           </button>
+L  74:         ))}
+L  75:       </nav>
+L  76: 
+L  77:       <div>
+L  78:         {tab === 'overview' ? (
+L  79:           <OverviewTab anchorLead={anchorLead} leadFamily={leadFamily} />
+L  80:         ) : tab === 'plan' ? (
+L  81:           <PlanTab anchorLead={anchorLead} leadFamily={leadFamily} />
+L  82:         ) : (
+L  83:           <PlaceholderTab name={activeTabMeta.label} phase={activeTabMeta.phase} />
+L  84:         )}
+L  85:       </div>
+L  86:     </div>
+L  87:   )
+L  88: }
+L  89: 
+L  90: function OverviewTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: any[] }) {
+L  91:   return (
+L  92:     <div className="space-y-6">
+L  93:       <section>
+L  94:         <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Lead Info</h2>
+L  95:         <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+L  96:           <Field label="Status" value={anchorLead.status} />
+L  97:           <Field label="Quality" value={anchorLead.quality} />
+L  98:           <Field label="Intent" value={anchorLead.intent} />
+L  99:           <Field label="Geo" value={anchorLead.geo_name} />
+L 100:           <Field label="Budget Max" value={anchorLead.budget_max ? `$${Number(anchorLead.budget_max).toLocaleString()}` : null} />
+L 101:           <Field label="Source" value={anchorLead.source} />
+L 102:         </dl>
+L 103:         {anchorLead.source_url && (
+L 104:           <div className="mt-3 text-sm">
+L 105:             <span className="text-xs text-gray-400">Source URL: </span>
+L 106:             <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+L 107:               {anchorLead.source_url}
+L 108:             </a>
+L 109:           </div>
+L 110:         )}
+L 111:       </section>
+L 112: 
+L 113:       <section>
+L 114:         <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Hierarchy</h2>
+L 115:         <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+L 116:           <Field label="Agent" value={anchorLead.agents?.full_name} />
+L 117:           <Field label="Manager" value={anchorLead.manager?.full_name} />
+L 118:           <Field label="Area Manager" value={anchorLead.area_manager?.full_name} />
+L 119:           <Field label="Tenant Admin" value={anchorLead.tenant_admin?.full_name} />
+L 120:         </dl>
+L 121:       </section>
+L 122: 
+L 123:       {leadFamily.length > 1 && (
+L 124:         <section>
+L 125:           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">All Events ({leadFamily.length})</h2>
+L 126:           <ul className="space-y-2 text-sm">
+L 127:             {leadFamily.map((l: any) => (
+L 128:               <li key={l.id} className={`p-3 rounded border ${l.id === anchorLead.id ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white'}`}>
+L 129:                 <div className="flex items-center justify-between">
+L 130:                   <span className="font-medium text-gray-800">{l.source || 'unknown source'}</span>
+L 131:                   <span className="text-xs text-gray-500">{new Date(l.created_at).toLocaleDateString('en-CA')}</span>
+L 132:                 </div>
+L 133:                 <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
+L 134:                   {l.status && <span>Status: {l.status}</span>}
+L 135:                   {l.quality && <span>Quality: {l.quality}</span>}
+L 136:                   {l.intent && <span>Intent: {l.intent}</span>}
+L 137:                   {l.agents?.full_name && <span>Agent: {l.agents.full_name}</span>}
+L 138:                 </div>
+L 139:               </li>
+L 140:             ))}
+L 141:           </ul>
+L 142:         </section>
+L 143:       )}
+L 144:     </div>
+L 145:   )
+L 146: }
+L 147: 
+L 148: function Field({ label, value }: { label: string; value: any }) {
+L 149:   return (
+L 150:     <div>
+L 151:       <dt className="text-xs text-gray-400">{label}</dt>
+L 152:       <dd className="text-gray-800">{value || '—'}</dd>
+L 153:     </div>
+L 154:   )
+L 155: }
+L 156: 
+L 157: function PlaceholderTab({ name, phase }: { name: string; phase: string }) {
+L 158:   return (
+L 159:     <div className="text-center py-16 text-gray-400">
+L 160:       <div className="text-sm font-medium">{name}</div>
+L 161:       <div className="text-xs mt-1">Coming in {phase}</div>
+L 162:     </div>
+L 163:   )
+L 164: }
+L 165: 

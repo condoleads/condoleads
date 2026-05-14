@@ -9,6 +9,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import PlanTab from '@/components/admin-homes/lead-workbench/PlanRenderer'
+import UserCreditPanel, { UserCreditData } from '@/components/admin-homes/lead-workbench/UserCreditPanel'
 
 type TabKey = 'overview' | 'plan' | 'credits' | 'activity' | 'emails' | 'vip' | 'notes'
 
@@ -22,14 +23,23 @@ const TABS: { id: TabKey; label: string; phase: string }[] = [
   { id: 'notes', label: 'Notes', phase: 'W4g' },
 ]
 
+interface AdminUserShape {
+  agentId: string | null
+  role: string | null
+  isPlatformAdmin: boolean
+  tenantId: string | null
+}
+
 interface Props {
   anchorLead: any
   leadFamily: any[]
   currentRole: string
   currentAgentId: string | null
+  userCredit: UserCreditData | null
+  adminUser: AdminUserShape
 }
 
-export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId }: Props) {
+export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId, userCredit, adminUser }: Props) {
   const [tab, setTab] = useState<TabKey>('overview')
   const activeTabMeta = TABS.find(t => t.id === tab)!
 
@@ -79,6 +89,8 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
           <OverviewTab anchorLead={anchorLead} leadFamily={leadFamily} />
         ) : tab === 'plan' ? (
           <PlanTab anchorLead={anchorLead} leadFamily={leadFamily} />
+        ) : tab === 'credits' ? (
+          <CreditsTab anchorLead={anchorLead} userCredit={userCredit} adminUser={adminUser} />
         ) : (
           <PlaceholderTab name={activeTabMeta.label} phase={activeTabMeta.phase} />
         )}
@@ -142,6 +154,33 @@ function OverviewTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: 
         </section>
       )}
     </div>
+  )
+}
+
+function CreditsTab({ anchorLead, userCredit, adminUser }: { anchorLead: any; userCredit: UserCreditData | null; adminUser: AdminUserShape }) {
+  if (!anchorLead.user_id) {
+    return (
+      <div className="text-center py-16 text-gray-400">
+        <div className="text-sm font-medium">No user account linked to this lead</div>
+        <div className="text-xs mt-1">Credit limits are user-scoped, not lead-scoped. Anonymous leads have no credit data.</div>
+      </div>
+    )
+  }
+  if (!userCredit) {
+    return (
+      <div className="text-center py-16 text-gray-400">
+        <div className="text-sm font-medium">Credit data not available</div>
+        <div className="text-xs mt-1">Failed to load user credit bundle.</div>
+      </div>
+    )
+  }
+  return (
+    <UserCreditPanel
+      userId={anchorLead.user_id}
+      tenantId={anchorLead.tenant_id}
+      userCredit={userCredit}
+      adminUser={adminUser}
+    />
   )
 }
 

@@ -1,0 +1,273 @@
+
+==================== app\admin-homes\users\page.tsx ====================
+
+L   1: // app/admin-homes/users/page.tsx
+L   2: import { createClient } from '@supabase/supabase-js'
+L   3: import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+L   4: import UsersClient from './UsersClient'
+L   5: import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
+L   6: 
+L   7: function createServiceClient() {
+L   8:   return createClient(
+L   9:     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+L  10:     process.env.SUPABASE_SERVICE_ROLE_KEY!,
+L  11:     { auth: { autoRefreshToken: false, persistSession: false } }
+L  12:   )
+L  13: }
+L  14: 
+L  15: export const metadata = { title: 'Users - Admin' }
+L  16: 
+L  17: 
+L  18: export default async function AdminHomesUsersPage() {
+L  19:   const supabase = createServiceClient()
+L  20:   const hostTenantId = await getCurrentTenantId()
+L  21:   const adminUser = await resolveAdminHomesUser()
+L  22:   if (!adminUser) return null
+L  23: 
+L  24:   // Phase 3.4+: tenant scoping
+L  25:   // Tenant Admin / staff: scope by their tenantId
+L  26:   // Platform Admin without selected tenant: see all (across all tenants)
+L  27:   // Platform Admin with host-resolved tenant: scope to that
+L  28:   const seeAll = adminUser.isPlatformAdmin === true && !adminUser.tenantId && !hostTenantId
+L  29:   const scopedTenantId = adminUser.tenantId ?? hostTenantId
+L  30:   const tenantId = scopedTenantId // alias used by downstream queries (preserved for back-compat)
+L  31: 
+L  32:   // user_profiles has no tenant_id column. Scope via assigned_agent_id IN (agents of this tenant).
+L  33:   // Pre-fetch the agent IDs in the current tenant so we can use them as an IN filter.
+L  34:   let tenantAgentIds: string[] = []
+L  35:   if (!seeAll) {
+L  36:     if (!scopedTenantId) {
+L  37:       return (
+L  38:         <UsersClient
+L  39:           users={[]}
+L  40:           usageMap={{}}
+L  41:           overrideMap={{}}
+L  42:           tenant={null}
+L  43:           agentMap={{}}
+L  44:           adminUser={adminUser}
+L  45:           tenantId={null}
+L  46:         />
+L  47:       )
+L  48:     }
+L  49:     const { data: tenantAgents } = await supabase
+L  50:       .from('agents')
+L  51:       .select('id')
+L  52:       .eq('tenant_id', scopedTenantId)
+L  53:     tenantAgentIds = (tenantAgents || []).map((a: any) => a.id)
+L  54:   }
+L  55: 
+L  56:   // Scope users by tenant + role
+L  57:   let usersQuery = supabase
+L  58:     .from('user_profiles')
+L  59:     .select('id, full_name, phone, created_at, last_active_at, assigned_agent_id, looking_to')
+L  60:     .order('created_at', { ascending: false })
+L  61:     .limit(10000)
+L  62: 
+L  63:   if (!seeAll) {
+L  64:     if (adminUser.role === 'manager' && adminUser.agentId) {
+L  65:       // Manager: own + managed agents (already a subset of tenant)
+L  66:       const agentIds = [adminUser.agentId, ...adminUser.managedAgentIds]
+L  67:       usersQuery = usersQuery.in('assigned_agent_id', agentIds)
+L  68:     } else if (adminUser.role === 'agent' && adminUser.agentId) {
+L  69:       usersQuery = usersQuery.eq('assigned_agent_id', adminUser.agentId)
+L  70:     } else {
+L  71:       // Tenant Admin / Assistant / Support: every user assigned to a tenant agent
+L  72:       if (tenantAgentIds.length === 0) {
+L  73:         // Tenant has no agents → no users
+L  74:         return (
+L  75:           <UsersClient
+L  76:             users={[]}
+L  77:             usageMap={{}}
+L  78:             overrideMap={{}}
+L  79:             tenant={null}
+L  80:             agentMap={{}}
+L  81:             adminUser={adminUser}
+L  82:             tenantId={scopedTenantId}
+L  83:           />
+L  84:         )
+L  85:       }
+L  86:       usersQuery = usersQuery.in('assigned_agent_id', tenantAgentIds)
+L  87:     }
+L  88:   }
+L  89: 
+L  90:   const { data: users } = await usersQuery
+L  91: 
+L  92:   const userIds = (users || []).map((u: any) => u.id)
+L  93: 
+L  94:   // Fetch aggregated usage from chat_sessions per user
+L  95:   let sessions: any[] = []
+L  96:   if (userIds.length > 0) {
+L  97:     let sQuery = supabase
+L  98:       .from('chat_sessions')
+L  99:       .select('user_id, message_count, buyer_plans_used, seller_plans_used, estimator_count, updated_at')
+L 100:       .in('user_id', userIds)
+L 101:       .order('updated_at', { ascending: false })
+L 102:       .limit(10000)
+L 103:     if (!seeAll && tenantId) sQuery = sQuery.eq('tenant_id', tenantId)
+L 104:     const { data } = await sQuery
+L 105:     sessions = data || []
+L 106:   }
+L 107: 
+L 108:   // Use most recent session per user only
+L 109:   const usageMap: Record<string, {
+L 110:     chat: number; plans: number; estimator: number
+L 111:   }> = {}
+L 112:   const seenUsers = new Set<string>()
+L 113:   for (const s of sessions || []) {
+L 114:     if (!s.user_id) continue
+L 115:     if (seenUsers.has(s.user_id)) continue
+L 116:     seenUsers.add(s.user_id)
+L 117:     usageMap[s.user_id] = {
+L 118:       chat:      s.message_count || 0,
+L 119:       plans:     (s.buyer_plans_used || 0) + (s.seller_plans_used || 0),
+L 120:       estimator: s.estimator_count || 0,
+L 121:     }
+L 122:   }
+L 123: 
+L 124:   // Fetch existing overrides for these users
+L 125:   let overrides: any[] = []
+L 126:   if (userIds.length > 0) {
+L 127:     let oQuery = supabase
+L 128:       .from('user_credit_overrides')
+L 129:       .select('user_id, ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit, note, granted_at, granted_by_tier, granted_by_agent_id')
+L 130:       .in('user_id', userIds)
+L 131:     if (!seeAll && tenantId) oQuery = oQuery.eq('tenant_id', tenantId)
+L 132:     const { data } = await oQuery
+L 133:     overrides = data || []
+L 134:   }
+L 135: 
+L 136:   const overrideMap: Record<string, any> = {}
+L 137:   for (const o of overrides || []) {
+L 138:     overrideMap[o.user_id] = o
+L 139:   }
+L 140: 
+L 141:   // Fetch tenant config for limit display (null for Platform Admin viewing across tenants)
+L 142:   let tenant: any = null
+L 143:   if (tenantId) {
+L 144:     const { data } = await supabase
+L 145:       .from('tenants')
+L 146:       .select('ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, seller_plan_free_attempts, seller_plan_auto_approve_limit, seller_plan_manual_approve_limit, seller_plan_hard_cap, estimator_free_attempts, estimator_auto_approve_attempts, estimator_manual_approve_attempts, estimator_hard_cap')
+L 147:       .eq('id', tenantId)
+L 148:       .maybeSingle()
+L 149:     tenant = data
+L 150:   }
+L 151: 
+L 152:   // Fetch agents for display names
+L 153:   let agentsQuery = supabase
+L 154:     .from('agents')
+L 155:     .select('id, full_name')
+L 156:   if (!seeAll && tenantId) agentsQuery = agentsQuery.eq('tenant_id', tenantId)
+L 157:   if (adminUser.role === 'manager' && adminUser.agentId) {
+L 158:     agentsQuery = agentsQuery.in('id', [adminUser.agentId, ...adminUser.managedAgentIds])
+L 159:   } else if (adminUser.role === 'agent' && adminUser.agentId) {
+L 160:     agentsQuery = agentsQuery.eq('id', adminUser.agentId)
+L 161:   }
+L 162:   const { data: agents } = await agentsQuery
+L 163:   const agentMap: Record<string, string> = {}
+L 164:   for (const a of agents || []) agentMap[a.id] = a.full_name || 'Unknown'
+L 165: 
+L 166:   return (
+L 167:     <UsersClient
+L 168:       users={users || []}
+L 169:       usageMap={usageMap}
+L 170:       overrideMap={overrideMap}
+L 171:       tenant={tenant}
+L 172:       agentMap={agentMap}
+L 173:       adminUser={adminUser}
+L 174:       tenantId={tenantId}
+L 175:     />
+L 176:   )
+L 177: }
+
+==================== app\api\admin-homes\users\override\route.ts ====================
+
+L   1: // app/api/admin-homes/users/override/route.ts
+L   2: // Phase 3.4+: auth + tenant + role gate via shared api-auth helper.
+L   3: 
+L   4: import { NextRequest, NextResponse } from 'next/server'
+L   5: import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+L   6: import { createServiceClient } from '@/lib/admin-homes/service-client'
+L   7: 
+L   8: export async function POST(request: NextRequest) {
+L   9:   try {
+L  10:     const body = await request.json()
+L  11:     const { userId, tenantId, agentId, agentTier, note, aiChatLimit, buyerPlanLimit, sellerPlanLimit, estimatorLimit } = body
+L  12:     if (!userId || !tenantId) {
+L  13:       return NextResponse.json({ error: 'userId and tenantId required' }, { status: 400 })
+L  14:     }
+L  15: 
+L  16:     const user = await resolveAdminHomesUser()
+L  17:     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+L  18:     // Trust-based policy 2026-05-05: any tenant-resident can adjust user credits.
+L  19:     // Hard cap (clamped below) is the safety net; tenant config gates the cap.
+L  20:     if (!user.isPlatformAdmin && user.tenantId !== tenantId) {
+L  21:       return NextResponse.json({ error: 'Forbidden — cross-tenant access blocked' }, { status: 403 })
+L  22:     }
+L  23:     const supabase = createServiceClient()
+L  24: 
+L  25:     const { data: tenant, error: tenantError } = await supabase
+L  26:       .from('tenants')
+L  27:       .select('ai_hard_cap, plan_hard_cap, seller_plan_hard_cap, estimator_hard_cap')
+L  28:       .eq('id', tenantId)
+L  29:       .single()
+L  30:     if (tenantError) return NextResponse.json({ error: 'Tenant fetch failed', detail: tenantError.message }, { status: 500 })
+L  31:     if (!tenant) return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+L  32: 
+L  33:     const safeChat      = aiChatLimit     != null ? Math.min(aiChatLimit,     tenant.ai_hard_cap ?? 10)          : null
+L  34:     const safeBuyer     = buyerPlanLimit  != null ? Math.min(buyerPlanLimit,  tenant.plan_hard_cap ?? 10)        : null
+L  35:     const safeSeller    = sellerPlanLimit != null ? Math.min(sellerPlanLimit, tenant.seller_plan_hard_cap ?? 10) : null
+L  36:     const safeEstimator = estimatorLimit  != null ? Math.min(estimatorLimit,  tenant.estimator_hard_cap ?? 10)   : null
+L  37: 
+L  38:     const { data: override, error: upsertError } = await supabase
+L  39:       .from('user_credit_overrides')
+L  40:       .upsert({
+L  41:         user_id:             userId,
+L  42:         tenant_id:           tenantId,
+L  43:         granted_by_agent_id: agentId || null,
+L  44:         granted_by_tier:     agentTier || null,
+L  45:         note:                note || null,
+L  46:         ai_chat_limit:       safeChat,
+L  47:         buyer_plan_limit:    safeBuyer,
+L  48:         seller_plan_limit:   safeSeller,
+L  49:         estimator_limit:     safeEstimator,
+L  50:         granted_at:          new Date().toISOString(),
+L  51:       }, { onConflict: 'user_id,tenant_id' })
+L  52:       .select()
+L  53:       .maybeSingle()
+L  54: 
+L  55:     if (upsertError) {
+L  56:       return NextResponse.json({ error: 'Upsert failed', detail: upsertError.message, code: upsertError.code }, { status: 500 })
+L  57:     }
+L  58:     return NextResponse.json({ override })
+L  59:   } catch (e: any) {
+L  60:     return NextResponse.json({ error: 'Unexpected error', detail: e?.message }, { status: 500 })
+L  61:   }
+L  62: }
+L  63: 
+L  64: export async function DELETE(request: NextRequest) {
+L  65:   try {
+L  66:     const { userId, tenantId } = await request.json()
+L  67:     if (!userId || !tenantId) {
+L  68:       return NextResponse.json({ error: 'userId and tenantId required' }, { status: 400 })
+L  69:     }
+L  70: 
+L  71:     const user = await resolveAdminHomesUser()
+L  72:     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+L  73:     // Trust-based policy 2026-05-05: any tenant-resident can adjust user credits.
+L  74:     // Hard cap (clamped below) is the safety net; tenant config gates the cap.
+L  75:     if (!user.isPlatformAdmin && user.tenantId !== tenantId) {
+L  76:       return NextResponse.json({ error: 'Forbidden — cross-tenant access blocked' }, { status: 403 })
+L  77:     }
+L  78:     const supabase = createServiceClient()
+L  79: 
+L  80:     const { error } = await supabase
+L  81:       .from('user_credit_overrides')
+L  82:       .delete()
+L  83:       .eq('user_id', userId)
+L  84:       .eq('tenant_id', tenantId)
+L  85:     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+L  86:     return NextResponse.json({ success: true })
+L  87:   } catch (e: any) {
+L  88:     return NextResponse.json({ error: 'Unexpected error', detail: e?.message }, { status: 500 })
+L  89:   }
+L  90: }

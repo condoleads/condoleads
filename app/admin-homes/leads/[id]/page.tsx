@@ -82,12 +82,83 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
     }
   }
 
+  // W4c: User credit bundle (5-source) when user_id is present.
+  // Null when anchorLead.user_id is null (anonymous lead) -- workbench
+  // Credits tab renders an empty state in that case.
+  let userCredit: any = null
+  if ((anchorLead as any).user_id) {
+    const u = (anchorLead as any).user_id
+    const t = (anchorLead as any).tenant_id
+
+    const [
+      { data: userProfile },
+      { data: sessions },
+      { data: override },
+      { data: tenant },
+    ] = await Promise.all([
+      supabase
+        .from('user_profiles')
+        .select('id, full_name, phone, created_at, last_active_at, assigned_agent_id, looking_to')
+        .eq('id', u)
+        .maybeSingle(),
+      supabase
+        .from('chat_sessions')
+        .select('user_id, message_count, buyer_plans_used, seller_plans_used, estimator_count, updated_at')
+        .eq('user_id', u)
+        .eq('tenant_id', t)
+        .order('updated_at', { ascending: false })
+        .limit(1),
+      supabase
+        .from('user_credit_overrides')
+        .select('user_id, ai_chat_limit, buyer_plan_limit, seller_plan_limit, estimator_limit, note, granted_at, granted_by_tier, granted_by_agent_id')
+        .eq('user_id', u)
+        .eq('tenant_id', t)
+        .maybeSingle(),
+      supabase
+        .from('tenants')
+        .select('ai_free_messages, ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap, plan_free_attempts, plan_auto_approve_limit, plan_manual_approve_limit, plan_hard_cap, seller_plan_free_attempts, seller_plan_auto_approve_limit, seller_plan_manual_approve_limit, seller_plan_hard_cap, estimator_free_attempts, estimator_auto_approve_attempts, estimator_manual_approve_attempts, estimator_hard_cap, plan_mode')
+        .eq('id', t)
+        .maybeSingle(),
+    ])
+
+    const session = (sessions as any[] | null)?.[0] || null
+
+    let assignedAgent: any = null
+    if ((userProfile as any)?.assigned_agent_id) {
+      const { data: agentRow } = await supabase
+        .from('agents')
+        .select('id, full_name')
+        .eq('id', (userProfile as any).assigned_agent_id)
+        .maybeSingle()
+      assignedAgent = agentRow
+    }
+
+    userCredit = {
+      userProfile,
+      usage: {
+        chat:      session?.message_count    || 0,
+        plans:     (session?.buyer_plans_used || 0) + (session?.seller_plans_used || 0),
+        estimator: session?.estimator_count   || 0,
+      },
+      override,
+      tenant,
+      assignedAgent,
+    }
+  }
+
   return (
     <LeadWorkbenchClient
       anchorLead={anchorLead}
       leadFamily={leadFamily}
       currentRole={user.role || 'admin'}
       currentAgentId={user.agentId || null}
+      userCredit={userCredit}
+      adminUser={{
+        agentId: user.agentId || null,
+        role: user.role || null,
+        isPlatformAdmin: user.isPlatformAdmin === true,
+        tenantId: user.tenantId || null,
+      }}
     />
   )
 }

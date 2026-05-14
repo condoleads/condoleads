@@ -1,0 +1,54 @@
+﻿W4c: Credits & Usage tab with UserCreditPanel
+
+New file: components/admin-homes/lead-workbench/UserCreditPanel.tsx
+(13231 bytes, ~310 LOC). 3-pool surface (chat / plans / estimator)
+extracted verbatim from app/admin-homes/users/UsersClient.tsx:
+- POOLS const + getTenantDefaults() + getResolvedLimits() algorithm
+- Grant modal with 3 inputs (AI Chat / AI Plans / Estimator)
+- POST/DELETE to /api/admin-homes/users/override (existing endpoint)
+- Shared plan mode badge when tenant.plan_mode === 'shared'
+
+2 patches to existing files:
+- app/admin-homes/leads/[id]/page.tsx: 5-source server-side fetch
+  keyed on anchorLead.user_id + tenant_id (user_profiles +
+  chat_sessions most-recent + user_credit_overrides + tenants config
+  + assigned agent display); userCredit + adminUser props passed to
+  LeadWorkbenchClient.
+- app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx (5 transforms):
+  import UserCreditPanel + UserCreditData; extend Props with
+  userCredit + adminUser; extend function destructure; extend tab
+  ternary with tab === 'credits' branch; insert CreditsTab function
+  with two-tier empty state (user_id IS NULL / userCredit IS NULL).
+
+Tracker:
+- docs/W-LEADS-WORKBENCH-TRACKER.md v13 -> v14
+- W4c row OPEN -> SHIPPED
+- Status log entry appended
+
+Findings logged:
+- F-W4C-USERCREDITPANEL-LOCATION: component in lead-workbench/ for
+  now; move-candidate to components/admin-homes/ when Users page
+  migrates to consume it.
+- F-W4C-PLAN-MODE-NOT-VISUALIZED: shared-plan-mode badge shown but
+  buyer/seller usage combined. Future phase splits when any tenant
+  ships plan_mode = 'independent'.
+
+Existing finding (unchanged):
+- F-USERS-NO-SELLER-PLAN-INPUT: override API + DB store 4 limits;
+  UI shows 3. Users page intentionally not modified in W4c per Rule
+  Zero #2 no-regression. Separate phase to close.
+
+Cleanup: scripts/commit-msg-w4b.txt orphan deletion (same pattern as
+W4b cleaning up commit-msg-w4a.txt).
+
+Multi-tenant safety: 5-source fetch uses anchorLead.tenant_id
+(trusted from W4a cross-tenant gate) for all sibling queries;
+cross-tenant credit data access impossible by design. Override
+POST/DELETE go through existing endpoint that enforces its own
+cross-tenant gate.
+
+TSC --noEmit exit 0. Local dev server running.
+
+NEXT: W4d Activity tab (unified visitor + admin timeline cumulative
+across leadFamily; joins user_activities by contact_email +
+lead_admin_actions by lead_id across all leads in family).
