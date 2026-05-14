@@ -14,10 +14,7 @@ export default async function AdminHomesLayout({ children }: { children: React.R
     <div className="flex min-h-screen bg-gray-50">
       <AdminHomesSidebar user={adminUser} />
       <div className="flex-1 flex flex-col min-w-0">
-        <TenantHeader
-          tenantId={adminUser.tenantId}
-          isPlatformAdmin={adminUser.isPlatformAdmin}
-        />
+        <TenantHeader user={adminUser} />
         <main className="flex-1 p-6 overflow-auto">
           {children}
         </main>

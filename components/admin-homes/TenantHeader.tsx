@@ -1,14 +1,25 @@
-﻿// components/admin-homes/TenantHeader.tsx
-// Phase 3.3 — sticky tenant workspace header
-// Renders on every /admin-homes/* page above the main content.
-// Slot for tenant switcher (3.7) reserved but inactive in 3.3.
+// components/admin-homes/TenantHeader.tsx
+// W-LEADS-WORKBENCH W5a (2026-05-14)
+//
+// Sticky tenant workspace header on every /admin-homes/* page above the
+// main content. The W5a rewrite replaces the 'Switcher coming in 3.7'
+// placeholder with the active TenantSwitcher dropdown.
+//
+// SWITCHER VISIBILITY
+//   platform_admin / platform_assistant (isPlatformAdmin = true)
+//     -> dropdown with Universal + all active tenants
+//   tenant_manager (rows in tenant_manager_assignments)
+//     -> dropdown with their assigned tenants only; no Universal option
+//   all other roles
+//     -> no switcher rendered
 
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import type { AdminHomesUser } from '@/lib/admin-homes/auth'
+import TenantSwitcher, { TenantOption } from './TenantSwitcher'
 
 interface TenantHeaderProps {
-  tenantId: string | null
-  isPlatformAdmin: boolean
+  user: AdminHomesUser
 }
 
 interface TenantRow {
@@ -37,8 +48,63 @@ async function fetchTenant(tenantId: string): Promise<TenantRow | null> {
   return (data as TenantRow | null) ?? null
 }
 
-export default async function TenantHeader({ tenantId, isPlatformAdmin }: TenantHeaderProps) {
-  // Platform Admin landing on /admin-homes with no tenant context selected
+// W5a: Fetch the list of tenants the user is allowed to switch into.
+//   platform_admin / platform_assistant -> all active tenants + universal
+//   tenant_manager (rows in tenant_manager_assignments) -> assigned tenants
+//   everyone else -> empty (no switcher rendered)
+async function fetchSwitcherTenants(
+  user: AdminHomesUser,
+): Promise<{ tenants: TenantOption[]; allowUniversal: boolean }> {
+  const supabase = createClient()
+
+  if (user.isPlatformAdmin) {
+    const { data } = await supabase
+      .from('tenants')
+      .select('id, name, brand_name, domain')
+      .eq('is_active', true)
+      .order('name')
+    return {
+      tenants: (data as TenantOption[]) || [],
+      allowUniversal: true,
+    }
+  }
+
+  // Non-platform: check tenant_manager_assignments for this auth user.
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser()
+  if (!authUser) return { tenants: [], allowUniversal: false }
+
+  const { data: assignments } = await supabase
+    .from('tenant_manager_assignments')
+    .select('tenants(id, name, brand_name, domain, is_active)')
+    .eq('user_id', authUser.id)
+    .is('revoked_at', null)
+
+  const tenants: TenantOption[] = []
+  for (const row of (assignments as any[]) || []) {
+    const t = row?.tenants
+    if (t && t.is_active !== false) {
+      tenants.push({
+        id: t.id,
+        name: t.name,
+        brand_name: t.brand_name,
+        domain: t.domain,
+      })
+    }
+  }
+  return { tenants, allowUniversal: false }
+}
+
+export default async function TenantHeader({ user }: TenantHeaderProps) {
+  const tenantId = user.tenantId
+  const isPlatformAdmin = user.isPlatformAdmin
+
+  // Fetch switcher options (empty -> no switcher rendered).
+  const { tenants: switcherTenants, allowUniversal } = await fetchSwitcherTenants(user)
+  const canSwitch = allowUniversal || switcherTenants.length > 0
+
+  // Platform Admin landing on /admin-homes with no tenant context (Universal)
   if (!tenantId) {
     if (!isPlatformAdmin) return null // tenant agent without tenant_id is a data error, fail silent
     return (
@@ -47,15 +113,24 @@ export default async function TenantHeader({ tenantId, isPlatformAdmin }: Tenant
           <div className="w-8 h-8 rounded bg-amber-100 flex items-center justify-center text-amber-700 text-xs font-bold">PA</div>
           <div>
             <div className="text-sm font-semibold text-gray-900">No tenant selected</div>
-            <div className="text-xs text-gray-500">Platform Admin — choose a tenant to enter its workspace</div>
+            <div className="text-xs text-gray-500">Platform Admin {'\u2014'} Universal view (all tenants)</div>
           </div>
         </div>
-        <Link
-          href="/platform"
-          className="text-xs px-3 py-1.5 rounded-md bg-amber-600 text-white hover:bg-amber-700 transition"
-        >
-          Go to /platform →
-        </Link>
+        <div className="flex items-center gap-3">
+          {canSwitch && (
+            <TenantSwitcher
+              tenants={switcherTenants}
+              currentTenantId={null}
+              allowUniversal={allowUniversal}
+            />
+          )}
+          <Link
+            href="/platform"
+            className="text-xs px-3 py-1.5 rounded-md bg-amber-600 text-white hover:bg-amber-700 transition"
+          >
+            Go to /platform {'\u2192'}
+          </Link>
+        </div>
       </header>
     )
   }
@@ -77,7 +152,7 @@ export default async function TenantHeader({ tenantId, isPlatformAdmin }: Tenant
       <div className="flex items-center gap-3 min-w-0">
         {tenant.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={tenant.logo_url} alt={`${displayName} logo`} className="w-8 h-8 rounded object-contain bg-gray-50" />
+          <img src={tenant.logo_url} alt={displayName + ' logo'} className="w-8 h-8 rounded object-contain bg-gray-50" />
         ) : (
           <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-600 text-xs font-bold">
             {displayName.slice(0, 2).toUpperCase()}
@@ -87,7 +162,7 @@ export default async function TenantHeader({ tenantId, isPlatformAdmin }: Tenant
           <div className="text-sm font-semibold text-gray-900 truncate">{displayName}</div>
           <div className="text-xs text-gray-500 truncate">{tenant.domain}</div>
         </div>
-        <span className={`ml-3 text-xs font-medium px-2 py-0.5 rounded-full border ${status.className}`}>
+        <span className={'ml-3 text-xs font-medium px-2 py-0.5 rounded-full border ' + status.className}>
           {status.label}
         </span>
         {tenant.lifecycle_status === 'terminated' && tenant.termination_grace_until && (
@@ -97,10 +172,14 @@ export default async function TenantHeader({ tenantId, isPlatformAdmin }: Tenant
         )}
       </div>
 
-      {/* Tenant switcher slot — reserved for 3.7, inactive in 3.3 */}
+      {/* W5a: active tenant switcher (replaces 3.7 placeholder slot) */}
       <div className="flex items-center gap-2">
-        {isPlatformAdmin && (
-          <span className="text-xs text-gray-400 italic">Switcher coming in 3.7</span>
+        {canSwitch && (
+          <TenantSwitcher
+            tenants={switcherTenants}
+            currentTenantId={tenantId}
+            allowUniversal={allowUniversal}
+          />
         )}
       </div>
     </header>
