@@ -152,11 +152,12 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
   // All tenant_id-scoped to anchorLead.tenant_id (trusted source from cross-tenant gate).
   let activityFeed: any[] = []
   let emailLog: any[] = []
+  let vipRequests: any[] = []
   const familyEmails = Array.from(new Set(leadFamily.map((l: any) => l.contact_email).filter(Boolean))) as string[]
   const familyIds = leadFamily.map((l: any) => l.id) as string[]
   const tenantIdForActivity = (anchorLead as any).tenant_id
   if (tenantIdForActivity && (familyEmails.length > 0 || familyIds.length > 0)) {
-    const [activitiesResult, actionsResult, emailLogResult] = await Promise.all([
+    const [activitiesResult, actionsResult, emailLogResult, vipRequestsResult] = await Promise.all([
       familyEmails.length > 0
         ? supabase
             .from('user_activities')
@@ -184,6 +185,15 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
             .order('created_at', { ascending: false })
             .limit(500)
         : Promise.resolve({ data: [] as any[] }),
+      familyIds.length > 0
+        ? supabase
+            .from('vip_requests')
+            .select('id, lead_id, tenant_id, agent_id, session_id, status, request_type, request_source, phone, full_name, email, budget_range, timeline, buyer_type, requirements, approval_token, page_url, building_name, messages_granted, created_at, responded_at, expires_at')
+            .in('lead_id', familyIds)
+            .eq('tenant_id', tenantIdForActivity)
+            .order('created_at', { ascending: false })
+            .limit(500)
+        : Promise.resolve({ data: [] as any[] }),
     ])
     const visitorRows = ((activitiesResult.data as any[]) || []).map((r: any) => ({ ...r, kind: 'visitor' }))
     const adminRows = ((actionsResult.data as any[]) || []).map((r: any) => ({ ...r, kind: 'admin' }))
@@ -191,6 +201,7 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )
     emailLog = (emailLogResult.data as any[]) || []
+    vipRequests = (vipRequestsResult.data as any[]) || []
   }
 
   return (
@@ -208,6 +219,7 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
       }}
       activityFeed={activityFeed}
       emailLog={emailLog}
+      vipRequests={vipRequests}
     />
   )
 }
