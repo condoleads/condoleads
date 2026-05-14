@@ -13,6 +13,7 @@ import UserCreditPanel, { UserCreditData } from '@/components/admin-homes/lead-w
 import ActivityTab, { ActivityFeedItem } from '@/components/admin-homes/lead-workbench/ActivityTab'
 import EmailsTab, { EmailLogRow } from '@/components/admin-homes/lead-workbench/EmailsTab'
 import VipRequestsTab, { VipRequestRow } from '@/components/admin-homes/lead-workbench/VipRequestsTab'
+import NotesTab, { NoteRow } from '@/components/admin-homes/lead-workbench/NotesTab'
 
 type TabKey = 'overview' | 'plan' | 'credits' | 'activity' | 'emails' | 'vip' | 'notes'
 
@@ -43,9 +44,10 @@ interface Props {
   activityFeed: ActivityFeedItem[]
   emailLog: EmailLogRow[]
   vipRequests: VipRequestRow[]
+  notes: NoteRow[]
 }
 
-export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId, userCredit, adminUser, activityFeed, emailLog, vipRequests }: Props) {
+export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId, userCredit, adminUser, activityFeed, emailLog, vipRequests, notes }: Props) {
   const [tab, setTab] = useState<TabKey>('overview')
   const activeTabMeta = TABS.find(t => t.id === tab)!
 
@@ -103,6 +105,8 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
           <EmailsTab emailLog={emailLog} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
         ) : tab === 'vip' ? (
           <VipRequestsTab vipRequests={vipRequests} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
+        ) : tab === 'notes' ? (
+          <NotesTab notes={notes} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
         ) : (
           <PlaceholderTab name={activeTabMeta.label} phase={activeTabMeta.phase} />
         )}

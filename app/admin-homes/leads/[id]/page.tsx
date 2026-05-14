@@ -153,11 +153,12 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
   let activityFeed: any[] = []
   let emailLog: any[] = []
   let vipRequests: any[] = []
+  let notes: any[] = []
   const familyEmails = Array.from(new Set(leadFamily.map((l: any) => l.contact_email).filter(Boolean))) as string[]
   const familyIds = leadFamily.map((l: any) => l.id) as string[]
   const tenantIdForActivity = (anchorLead as any).tenant_id
   if (tenantIdForActivity && (familyEmails.length > 0 || familyIds.length > 0)) {
-    const [activitiesResult, actionsResult, emailLogResult, vipRequestsResult] = await Promise.all([
+    const [activitiesResult, actionsResult, emailLogResult, vipRequestsResult, notesResult] = await Promise.all([
       familyEmails.length > 0
         ? supabase
             .from('user_activities')
@@ -194,6 +195,14 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
             .order('created_at', { ascending: false })
             .limit(500)
         : Promise.resolve({ data: [] as any[] }),
+      familyIds.length > 0
+        ? supabase
+            .from('lead_notes')
+            .select('id, lead_id, agent_id, note, created_at, updated_at, agents(id, full_name)')
+            .in('lead_id', familyIds)
+            .order('created_at', { ascending: false })
+            .limit(500)
+        : Promise.resolve({ data: [] as any[] }),
     ])
     const visitorRows = ((activitiesResult.data as any[]) || []).map((r: any) => ({ ...r, kind: 'visitor' }))
     const adminRows = ((actionsResult.data as any[]) || []).map((r: any) => ({ ...r, kind: 'admin' }))
@@ -202,6 +211,7 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
     )
     emailLog = (emailLogResult.data as any[]) || []
     vipRequests = (vipRequestsResult.data as any[]) || []
+    notes = (notesResult.data as any[]) || []
   }
 
   return (
@@ -220,6 +230,7 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
       activityFeed={activityFeed}
       emailLog={emailLog}
       vipRequests={vipRequests}
+      notes={notes}
     />
   )
 }
