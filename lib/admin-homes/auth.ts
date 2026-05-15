@@ -189,7 +189,20 @@ export async function resolveAdminHomesUser(): Promise<AdminHomesUser | null> {
     agentQuery = agentQuery.eq('tenant_id', effectiveTenantId)
   }
 
-  const { data: agent } = await agentQuery.maybeSingle()
+  const { data: rawAgent } = await agentQuery.maybeSingle()
+
+  // W5c-1: F-RESOLVEUSER-AGENTID-CROSS-TENANT-LEAK-IN-CROSS-VIEW fix.
+  // Universal-view edge case: when a platform admin has no effective tenant scope
+  // (no platform_tenant_override cookie + no x-tenant-id header + no home tenant),
+  // effectiveTenantId is null and the agent query above lacks .eq('tenant_id', ...).
+  // If the platform admin happens to have an agents row in any tenant (e.g., seeded
+  // as an agent in tenant #2 for testing), .maybeSingle() may return that row and
+  // user.agentId becomes cross-tenant-leaked. Force agent=null in this state so the
+  // synthetic admin path below returns agentId=null. Non-platform users with no
+  // tenant context (legacy condoleads.ca standalone agents like Shah) are unaffected:
+  // they keep their unscoped lookup which correctly matches their tenant_id IS NULL
+  // agent row.
+  const agent = (!effectiveTenantId && isPlatformAdmin) ? null : rawAgent
 
   // ───── Synthetic admin path: PA with no agents row in effective tenant. ─────
   if (!agent) {
