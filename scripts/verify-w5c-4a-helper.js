@@ -35,7 +35,7 @@ for (let i = 0; i < buf.length; i++) {
     else lf++
   }
 }
-check('LE pure (no mixed line endings)', !(crlf > 0 && lf > 0), 'crlf=' + crlf + ' lf=' + lf)
+check('LE is LF only (lib/admin-homes/ convention)', lf > 0 && crlf === 0, 'crlf=' + crlf + ' lf=' + lf)
 check('file is >5KB (substantive helper)', buf.length > 5000, 'got ' + buf.length + ' bytes')
 
 // ============================================================================
