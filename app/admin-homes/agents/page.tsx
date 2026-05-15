@@ -3,6 +3,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
+import { isCrossTenantView, getScopedTenantId } from '@/lib/admin-homes/scope'
 import { redirect } from 'next/navigation'
 import AgentsManagementClient from '@/components/admin-homes/AgentsManagementClient'
 
@@ -14,10 +16,17 @@ export default async function AdminHomesAgentsPage() {
   if (!user) redirect('/login?redirect=/admin-homes/agents')
 
   const supabase = createClient()
+  const hostTenantId = await getCurrentTenantId()
 
-  // Tenant scoping
-  const seeAll = user.isPlatformAdmin === true && !user.tenantId
-  const scopedTenantId = user.tenantId
+  // W5c-2: scope.ts consumer migration. Tenant scoping via helpers; no role
+  // gate applied (preserved per current behavior -- agents management page
+  // lists all tenant agents regardless of manager/agent role to avoid behavior
+  // change in this refactor commit; see F-W5C-2-AGENTS-PAGE-NO-ROLE-GATE).
+  // Pre-W5c-2 seeAll missed hostTenantId; helper-based check adds it as belt-
+  // and-suspenders. In practice user.tenantId already incorporates hostTenantId
+  // via auth.ts/getAdminTenantContext priority chain, so no observable delta.
+  const seeAll = isCrossTenantView(user, hostTenantId)
+  const scopedTenantId = getScopedTenantId(user, hostTenantId)
 
   let agentsQuery = supabase
     .from('agents')

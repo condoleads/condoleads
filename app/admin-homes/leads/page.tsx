@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
+import { scopeLeadsQuery, scopeAgentsByRole } from '@/lib/admin-homes/scope'
 import AdminHomesLeadsClient from '@/components/admin-homes/AdminHomesLeadsClient'
 
 function createServiceClient() {
@@ -40,32 +41,29 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
     .order('created_at', { ascending: false })
     .limit(10000)
 
-  if (!seeAll) {
-    if (!scopedTenantId) {
-      // Authenticated but no tenant context — return empty
-      return (
-        <AdminHomesLeadsClient
-          initialLeads={[]}
-          initialActivities={{}}
-          agents={[]}
-          currentRole={adminUser?.role || 'admin'}
-          currentAgentId={adminUser?.agentId || null}
-          initialExpanded={initialExpanded}
-        />
-      )
-    }
-    query = query.eq('tenant_id', scopedTenantId)
+  if (!seeAll && !scopedTenantId) {
+    // Authenticated but no tenant context — return empty
+    return (
+      <AdminHomesLeadsClient
+        initialLeads={[]}
+        initialActivities={{}}
+        agents={[]}
+        currentRole={adminUser?.role || 'admin'}
+        currentAgentId={adminUser?.agentId || null}
+        initialExpanded={initialExpanded}
+      />
+    )
   }
 
-  if (adminUser?.role === 'manager' && adminUser.agentId) {
-    // Manager sees own leads + all managed agents' leads
-    const agentIds = [adminUser.agentId, ...adminUser.managedAgentIds]
-    query = query.in('agent_id', agentIds)
-  } else if (adminUser?.role === 'agent' && adminUser.agentId) {
-    // Agent sees only their own leads
-    query = query.eq('agent_id', adminUser.agentId)
+  // W5c-2: scope.ts consumer migration. Replaces inline tenant + role gates
+  // with scopeLeadsQuery helper. Behavior-preserving when adminUser is non-null
+  // (inline pattern matched helper semantics exactly). Preserves the existing
+  // null-adminUser tenant-only fallback (no role gate when not authenticated).
+  if (adminUser) {
+    query = scopeLeadsQuery(query, adminUser, tenantId)
+  } else if (!seeAll && scopedTenantId) {
+    query = query.eq('tenant_id', scopedTenantId)
   }
-  // Admin sees all — no filter
 
   const { data: leads } = await query
 
@@ -97,22 +95,18 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
     }
   }
 
-  // Agents for filter dropdown — scoped by role
+  // W5c-2: scope.ts consumer migration. Agents-for-filter dropdown uses
+  // scopeAgentsByRole (mirrors leads query scoping above with column=id).
   let agentsQuery = supabase
     .from('agents')
     .select('id, full_name, email')
     .eq('site_type', 'comprehensive')
     .order('full_name')
 
-  if (!seeAll && scopedTenantId) {
+  if (adminUser) {
+    agentsQuery = scopeAgentsByRole(agentsQuery, adminUser, tenantId)
+  } else if (!seeAll && scopedTenantId) {
     agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
-  }
-
-  if (adminUser?.role === 'manager' && adminUser.agentId) {
-    // Manager only sees themselves + their managed agents in filter
-    agentsQuery = agentsQuery.in('id', [adminUser.agentId, ...adminUser.managedAgentIds])
-  } else if (adminUser?.role === 'agent' && adminUser.agentId) {
-    agentsQuery = agentsQuery.eq('id', adminUser.agentId)
   }
 
   const { data: agents } = await agentsQuery

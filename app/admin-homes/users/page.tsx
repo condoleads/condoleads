@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import UsersClient from './UsersClient'
 import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
+import { scopeAgentsByRole } from '@/lib/admin-homes/scope'
 
 function createServiceClient() {
   return createClient(
@@ -149,16 +150,15 @@ export default async function AdminHomesUsersPage() {
     tenant = data
   }
 
-  // Fetch agents for display names
+  // W5c-2: scope.ts consumer migration. Agents-for-display-names uses
+  // scopeAgentsByRole. Note: only THIS query migrates; user_profiles +
+  // chat_sessions + overrides keep inline scoping because their patterns
+  // (assigned_agent_id IN tenant agents; tenant-only) do not fit existing
+  // helpers (see F-W5C-2-USERS-PAGE-PARTIAL-MIGRATION).
   let agentsQuery = supabase
     .from('agents')
     .select('id, full_name')
-  if (!seeAll && tenantId) agentsQuery = agentsQuery.eq('tenant_id', tenantId)
-  if (adminUser.role === 'manager' && adminUser.agentId) {
-    agentsQuery = agentsQuery.in('id', [adminUser.agentId, ...adminUser.managedAgentIds])
-  } else if (adminUser.role === 'agent' && adminUser.agentId) {
-    agentsQuery = agentsQuery.eq('id', adminUser.agentId)
-  }
+  agentsQuery = scopeAgentsByRole(agentsQuery, adminUser, hostTenantId)
   const { data: agents } = await agentsQuery
   const agentMap: Record<string, string> = {}
   for (const a of agents || []) agentMap[a.id] = a.full_name || 'Unknown'
