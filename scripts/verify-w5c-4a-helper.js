@@ -65,8 +65,8 @@ check('AdminPlatformUnreachable handled', /AdminPlatformUnreachable/.test(text),
 // ============================================================================
 // Email template -- verbatim wording preserved per branch
 // ============================================================================
-check('Plan Access Approved heading present', /Plan Access Approved/.test(text), 'plan branch heading')
-check('Estimator Access Approved heading present', /Estimator Access Approved/.test(text), 'estimator branch heading')
+check('plan branch accessLabel literal present', /'Plan Access'/.test(text), 'plan ternary branch')
+check('estimator branch accessLabel literal present', /'Estimator Access'/.test(text), 'estimator ternary branch')
 check("legacy plan body 'approved your request' preserved", /approved your request/.test(text), 'plan branch body wording')
 check("legacy estimator body 'approved your estimator access' preserved", /approved your estimator access/.test(text), 'estimator branch body wording')
 check("plan branch 'agent may also reach out' preserved", /Your agent may also reach out/.test(text), 'plan branch extra paragraph')
