@@ -410,7 +410,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
             </button>
           </div>
           <div className="flex gap-2">
-            {selectedLeads.size > 0 && (
+            {/* W5c-3: bulk-delete hidden for agents (matches server policy:
+                lead [id] route.ts 403s agent deletes regardless of ownership). */}
+            {selectedLeads.size > 0 && currentRole !== 'agent' && (
               <button onClick={handleDeleteSelected} disabled={deleting} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50">
                 {deleting ? 'Deleting...' : `Delete (${selectedLeads.size})`}
               </button>
@@ -557,12 +559,15 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                             {expandedLead === lead.id ? 'Hide Plan' : 'Plan'}
                           </button>
                         )}
-                        <button
-                          onClick={() => deleteLead(lead.id)}
-                          className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100"
-                        >
-                          Delete
-                        </button>
+                        {/* W5c-3: per-row delete hidden for agents (matches server policy). */}
+                        {currentRole !== 'agent' && (
+                          <button
+                            onClick={() => deleteLead(lead.id)}
+                            className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
