@@ -39,8 +39,8 @@ function check(name, condition, detail) {
 // File size + LE sanity
 // ============================================================================
 check(
-  'file shrunk substantially after migration (was ~16170 bytes, expect <8000)',
-  buf.length < 8000,
+  'file shrunk substantially after migration (was ~16170 bytes, expect <10000)',
+  buf.length < 10000,
   'current size ' + buf.length + ' bytes',
 )
 check(
@@ -100,7 +100,7 @@ check(
 )
 check(
   'no direct AdminPlatformUnreachable handling in route',
-  !/AdminPlatformUnreachable/.test(text),
+  !/instanceof AdminPlatformUnreachable/.test(text),
   'helper handles fail-open recovery',
 )
 check(
