@@ -14,7 +14,8 @@ function createServiceClient() {
 
 export const metadata = { title: 'Leads — Admin' }
 
-export default async function AdminHomesLeadsPage() {
+export default async function AdminHomesLeadsPage({ searchParams }: { searchParams: { expanded?: string } }) {
+  const initialExpanded = searchParams?.expanded === '1'
   const supabase = createServiceClient()
   const tenantId = await getCurrentTenantId()
   const adminUser = await resolveAdminHomesUser()
@@ -49,6 +50,7 @@ export default async function AdminHomesLeadsPage() {
           agents={[]}
           currentRole={adminUser?.role || 'admin'}
           currentAgentId={adminUser?.agentId || null}
+          initialExpanded={initialExpanded}
         />
       )
     }
@@ -122,6 +124,7 @@ export default async function AdminHomesLeadsPage() {
       agents={agents || []}
       currentRole={adminUser?.role || 'admin'}
       currentAgentId={adminUser?.agentId || null}
+      initialExpanded={initialExpanded}
     />
   )
 }

@@ -2,7 +2,7 @@
 // WALLiam leads dashboard — v2
 // Upgrades: inline status update, source filter, manager column, engagement score, fixed activity panel
 'use client'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, Fragment } from 'react'
 import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-origin-route'
 import { useRouter } from 'next/navigation'
 
@@ -41,6 +41,7 @@ interface Props {
   agents: Agent[]
   currentRole: 'admin' | 'manager' | 'agent'
   currentAgentId: string | null
+  initialExpanded: boolean
 }
 
 const ROUTE_LABELS: Record<LeadOriginRoute, string> = {
@@ -98,7 +99,7 @@ const QUALITY_LABELS: Record<QualityValue, string> = {
   disqualified: 'Disqualified',
 }
 
-export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId }: Props) {
+export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId, initialExpanded }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterAgent, setFilterAgent] = useState('all')
@@ -113,7 +114,30 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [deleting, setDeleting] = useState(false)
   const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<boolean>(initialExpanded)
+  const [expandedUserIds, setExpandedUserIds] = useState<Set<string>>(new Set())
   const router = useRouter()
+
+  const toggleExpanded = () => {
+    const next = !expanded
+    setExpanded(next)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (next) params.set('expanded', '1')
+      else params.delete('expanded')
+      const query = params.toString()
+      router.replace(`/admin-homes/leads${query ? '?' + query : ''}`, { scroll: false })
+    }
+  }
+
+  const toggleUserIdExpand = (userId: string) => {
+    setExpandedUserIds(prev => {
+      const next = new Set(prev)
+      if (next.has(userId)) next.delete(userId)
+      else next.add(userId)
+      return next
+    })
+  }
 
   const updateLeadStatus = async (leadId: string, field: 'status' | 'quality', value: string) => {
     setUpdatingStatus(leadId)
@@ -158,6 +182,60 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     })
     return f
   }, [leads, searchTerm, filterAgent, filterStatus, filterQuality, filterIntent, filterSource, sortBy, sortOrder])
+
+  type FlatRow =
+    | { kind: 'primary'; lead: Lead; earlierCount: number; groupUserId: string | null }
+    | { kind: 'earlier'; lead: Lead; groupUserId: string }
+
+  // W5b: collapse leads by user_id when !expanded. Anonymous (user_id IS NULL) stays per-row.
+  // Identified users with N>1 leads collapse to the most-recent representative + "+N earlier" badge.
+  // Clicking the badge adds the user_id to expandedUserIds, inline-rendering earlier leads.
+  // expanded=true returns every filteredLead as its own primary row (preserves original behavior).
+  const flatRows = useMemo<FlatRow[]>(() => {
+    if (expanded) {
+      return filteredLeads.map(l => ({ kind: 'primary' as const, lead: l, earlierCount: 0, groupUserId: l.user_id }))
+    }
+    const groups = new Map<string, Lead[]>()
+    const orderedPrimaries: Array<{ groupUserId: string | null; firstSeenLead: Lead }> = []
+    const seen = new Set<string>()
+    for (const l of filteredLeads) {
+      if (!l.user_id) {
+        // Anonymous: each is its own group of 1, in filteredLeads order.
+        orderedPrimaries.push({ groupUserId: null, firstSeenLead: l })
+        continue
+      }
+      const key = l.user_id
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(l)
+      if (!seen.has(key)) {
+        seen.add(key)
+        orderedPrimaries.push({ groupUserId: key, firstSeenLead: l })
+      }
+    }
+    const out: FlatRow[] = []
+    for (const p of orderedPrimaries) {
+      if (p.groupUserId === null) {
+        out.push({ kind: 'primary', lead: p.firstSeenLead, earlierCount: 0, groupUserId: null })
+        continue
+      }
+      const groupLeads = groups.get(p.groupUserId) || [p.firstSeenLead]
+      if (groupLeads.length <= 1) {
+        out.push({ kind: 'primary', lead: p.firstSeenLead, earlierCount: 0, groupUserId: p.groupUserId })
+        continue
+      }
+      // Sort within group by created_at DESC so the most recent is the primary representative.
+      const sorted = [...groupLeads].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      const primary = sorted[0]
+      const earlier = sorted.slice(1)
+      out.push({ kind: 'primary', lead: primary, earlierCount: earlier.length, groupUserId: p.groupUserId })
+      if (expandedUserIds.has(p.groupUserId)) {
+        for (const e of earlier) {
+          out.push({ kind: 'earlier', lead: e, groupUserId: p.groupUserId })
+        }
+      }
+    }
+    return out
+  }, [filteredLeads, expanded, expandedUserIds])
 
   const stats = useMemo(() => ({
     total: leads.length,
@@ -327,6 +405,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
             <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50">
               {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
             </button>
+            <button onClick={toggleExpanded} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50" title={expanded ? 'Collapse list by user' : 'Show every event as its own row'}>
+              {expanded ? 'Collapse by user' : 'Show all events'}
+            </button>
           </div>
           <div className="flex gap-2">
             {selectedLeads.size > 0 && (
@@ -362,11 +443,17 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredLeads.length === 0 ? (
+              {flatRows.length === 0 ? (
                 <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">No leads found</td></tr>
-              ) : filteredLeads.map(lead => (
-                <>
-                  <tr key={lead.id} onClick={(e) => { const t = e.target as HTMLElement; if (t.closest('button, input, select, a, label')) return; router.push('/admin-homes/leads/' + lead.id) }} className={`hover:bg-gray-50 cursor-pointer ${updatingStatus === lead.id ? 'opacity-60' : ''}`}>
+              ) : flatRows.map(row => {
+                const lead = row.lead
+                const isEarlier = row.kind === 'earlier'
+                const earlierCount = row.kind === 'primary' ? row.earlierCount : 0
+                const groupUserId = row.groupUserId
+                const rowKey = isEarlier ? lead.id + '-earlier' : lead.id
+                return (
+                <Fragment key={rowKey}>
+                  <tr onClick={(e) => { const t = e.target as HTMLElement; if (t.closest('button, input, select, a, label')) return; router.push('/admin-homes/leads/' + lead.id) }} className={`hover:bg-gray-50 cursor-pointer ${updatingStatus === lead.id ? 'opacity-60' : ''} ${isEarlier ? 'bg-slate-50/70 border-l-4 border-slate-300' : ''}`}>
                     <td className="px-4 py-3">
                       <input type="checkbox"
                         checked={selectedLeads.has(lead.id)}
@@ -393,6 +480,15 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                             </span>
                           );
                         })()}
+                        {!isEarlier && earlierCount > 0 && groupUserId && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleUserIdExpand(groupUserId); }}
+                            className="ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                            title="Toggle earlier events for this user"
+                          >
+                            {expandedUserIds.has(groupUserId) ? 'Hide earlier' : `+${earlierCount} earlier`}
+                          </button>
+                        )}
                       </div>
                       <a href={`mailto:${lead.contact_email}`} className="text-blue-600 text-xs">{lead.contact_email}</a>
                       {lead.contact_phone && <div className="text-gray-400 text-xs">{lead.contact_phone}</div>}
@@ -472,7 +568,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                   </tr>
 
                   {/* L4: Inline activity preview (last 2) -- full timeline moves to L7 drawer */}
-                  {(activities[lead.id] || []).length > 0 && (
+                  {!isEarlier && (activities[lead.id] || []).length > 0 && (
                     <tr key={lead.id + '-activity-preview'}>
                       <td colSpan={10} className="px-6 py-2 bg-slate-50 border-b">
                         <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
@@ -492,7 +588,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                   )}
 
                   {/* Plan data panel */}
-                  {expandedLead === lead.id && lead.plan_data && (
+                  {!isEarlier && expandedLead === lead.id && lead.plan_data && (
                     <tr key={`${lead.id}-plan`}>
                       <td colSpan={11} className="px-6 py-4 bg-gray-50 border-b">
                         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Plan Data</div>
@@ -528,8 +624,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                       </td>
                     </tr>
                   )}
-                </>
-              ))}
+                </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
