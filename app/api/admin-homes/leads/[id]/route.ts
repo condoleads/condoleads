@@ -41,7 +41,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     // W6a-2: SELECT widened to include status, quality for audit before_value.
     const { data: target } = await supabase
       .from('leads')
-      .select('id, tenant_id, agent_id, status, quality')
+      .select('id, tenant_id, agent_id, status, quality, temperature')
       .eq('id', params.id)
       .maybeSingle()
     if (!target) {
@@ -55,10 +55,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     })
     if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
-    const { status, quality } = await request.json()
+    const { status, quality, temperature } = await request.json()
     const update: any = { updated_at: new Date().toISOString() }
     if (status) update.status = status
     if (quality) update.quality = quality
+    if (temperature !== undefined) update.temperature = temperature
 
     const { error } = await supabase.from('leads').update(update).eq('id', params.id)
     if (error) {
@@ -101,6 +102,22 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         }),
       )
     }
+    if (temperature !== undefined && temperature !== target.temperature) {
+      auditWrites.push(
+        logLeadAdminAction({
+          supabase,
+          tenantId: target.tenant_id,
+          leadId: target.id,
+          actorAgentId: user.agentId || null,
+          actorRole,
+          actionType: 'temperature_changed',
+          targetField: 'temperature',
+          beforeValue: { temperature: target.temperature },
+          afterValue: { temperature },
+          notes: (target.temperature == null ? '(null)' : String(target.temperature)) + ' -> ' + (temperature == null ? '(null)' : String(temperature)),
+        }),
+      )
+    }
     if (auditWrites.length > 0) {
       await Promise.all(auditWrites)
     }
@@ -122,7 +139,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     // lead_admin_actions.lead_id was dropped in W6a-1.
     const { data: target } = await supabase
       .from('leads')
-      .select('id, tenant_id, agent_id, contact_name, contact_email, contact_phone, status, quality, source, source_url, intent, geo_name, created_at')
+      .select('id, tenant_id, agent_id, contact_name, contact_email, contact_phone, status, quality, temperature, source, source_url, intent, geo_name, created_at')
       .eq('id', params.id)
       .maybeSingle()
     if (!target) {
@@ -163,6 +180,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
         contact_phone: target.contact_phone,
         status: target.status,
         quality: target.quality,
+        temperature: target.temperature,
         agent_id: target.agent_id,
         source: target.source,
         source_url: target.source_url,

@@ -123,6 +123,7 @@ function OverviewTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: 
         <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
           <Field label="Status" value={anchorLead.status} />
           <Field label="Quality" value={anchorLead.quality} />
+                <Field label="Temperature" value={anchorLead.temperature || '\u2014'} />
           <Field label="Intent" value={anchorLead.intent} />
           <Field label="Geo" value={anchorLead.geo_name} />
           <Field label="Budget Max" value={anchorLead.budget_max ? `$${Number(anchorLead.budget_max).toLocaleString()}` : null} />
@@ -161,6 +162,7 @@ function OverviewTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: 
                 <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
                   {l.status && <span>Status: {l.status}</span>}
                   {l.quality && <span>Quality: {l.quality}</span>}
+              {l.temperature && <span>Temperature: {l.temperature}</span>}
                   {l.intent && <span>Intent: {l.intent}</span>}
                   {l.agents?.full_name && <span>Agent: {l.agents.full_name}</span>}
                 </div>

@@ -64,7 +64,7 @@ export default async function AdminHomesAgentsPage() {
   const agentsWithStats = await Promise.all(
     (agents || []).map(async (agent) => {
       const [{ data: leads }, { data: geoAssignments }, { data: buildingAssignments }] = await Promise.all([
-        supabase.from('leads').select('id, status, quality').eq('agent_id', agent.id).like('source', 'walliam_%'),
+        supabase.from('leads').select('id, status, quality, temperature').eq('agent_id', agent.id).like('source', 'walliam_%'),
         supabase.from('agent_property_access').select('id').eq('agent_id', agent.id).eq('is_active', true),
         supabase.from('agent_geo_buildings').select('id').eq('agent_id', agent.id),
       ])
@@ -72,7 +72,7 @@ export default async function AdminHomesAgentsPage() {
         ...agent,
         total_leads: leads?.length || 0,
         new_leads: leads?.filter(l => l.status === 'new').length || 0,
-        hot_leads: leads?.filter(l => l.quality === 'hot').length || 0,
+        hot_leads: leads?.filter(l => l.temperature === 'hot').length || 0,
         geo_territories: geoAssignments?.length || 0,
         assigned_buildings: buildingAssignments?.length || 0,
       }

@@ -21,6 +21,7 @@ interface Lead {
   plan_data: any | null
   status: string
   quality: string
+  temperature: string | null
   agent_id: string | null
   manager_id: string | null
   area_manager_id: string | null
@@ -90,13 +91,20 @@ function calcEngagement(activities: any[]): { score: number; label: string; colo
   return { score, label: 'Cold', color: 'text-gray-400' }
 }
 
-const QUALITY_VALUES = ['unqualified', 'qualified_hot', 'qualified_cold', 'disqualified'] as const
+const QUALITY_VALUES = ['unqualified', 'qualified', 'disqualified'] as const
 type QualityValue = typeof QUALITY_VALUES[number]
 const QUALITY_LABELS: Record<QualityValue, string> = {
   unqualified: 'Unqualified',
-  qualified_hot: 'Hot',
-  qualified_cold: 'Cold',
+  qualified: 'Qualified',
   disqualified: 'Disqualified',
+}
+
+const TEMPERATURE_VALUES = ['hot', 'warm', 'cold'] as const
+type TemperatureValue = typeof TEMPERATURE_VALUES[number]
+const TEMPERATURE_LABELS: Record<TemperatureValue, string> = {
+  hot: 'Hot',
+  warm: 'Warm',
+  cold: 'Cold',
 }
 
 export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId, initialExpanded }: Props) {
@@ -105,6 +113,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [filterAgent, setFilterAgent] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterQuality, setFilterQuality] = useState('all')
+  const [filterTemperature, setFilterTemperature] = useState('all')
   const [filterIntent, setFilterIntent] = useState('all')
   const [filterSource, setFilterSource] = useState('all')
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'status'>('date')
@@ -139,7 +148,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     })
   }
 
-  const updateLeadStatus = async (leadId: string, field: 'status' | 'quality', value: string) => {
+  const updateLeadStatus = async (leadId: string, field: 'status' | 'quality' | 'temperature', value: string | null) => {
     setUpdatingStatus(leadId)
     try {
       const res = await fetch(`/api/admin-homes/leads/${leadId}`, {
@@ -171,6 +180,10 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     if (filterAgent !== 'all') f = f.filter(l => l.agent_id === filterAgent)
     if (filterStatus !== 'all') f = f.filter(l => l.status === filterStatus)
     if (filterQuality !== 'all') f = f.filter(l => l.quality === filterQuality)
+    if (filterTemperature !== 'all') {
+      if (filterTemperature === 'none') f = f.filter(l => !l.temperature)
+      else f = f.filter(l => l.temperature === filterTemperature)
+    }
     if (filterIntent !== 'all') f = f.filter(l => l.intent === filterIntent)
     if (filterSource !== 'all') f = f.filter(l => deriveLeadOriginRoute(l.source) === filterSource)
     f.sort((a, b) => {
@@ -181,7 +194,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
       return sortOrder === 'asc' ? cmp : -cmp
     })
     return f
-  }, [leads, searchTerm, filterAgent, filterStatus, filterQuality, filterIntent, filterSource, sortBy, sortOrder])
+  }, [leads, searchTerm, filterAgent, filterStatus, filterQuality, filterTemperature, filterIntent, filterSource, sortBy, sortOrder])
 
   type FlatRow =
     | { kind: 'primary'; lead: Lead; earlierCount: number; groupUserId: string | null }
@@ -242,11 +255,11 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     newLeads: leads.filter(l => l.status === 'new').length,
     buyers: leads.filter(l => l.intent === 'buyer').length,
     sellers: leads.filter(l => l.intent === 'seller').length,
-    qualified_hot: leads.filter(l => l.quality === 'qualified_hot').length,
+    hot: leads.filter(l => l.temperature === 'hot').length,
   }), [leads])
 
   const exportToCSV = () => {
-    const headers = ['Date', 'Name', 'Email', 'Phone', 'Source', 'Intent', 'Area', 'Budget', 'Agent', 'Manager', 'Area Manager', 'Tenant Admin', 'Status', 'Quality']
+    const headers = ['Date', 'Name', 'Email', 'Phone', 'Source', 'Intent', 'Area', 'Budget', 'Agent', 'Manager', 'Area Manager', 'Tenant Admin', 'Status', 'Quality', 'Temperature']
     const rows = filteredLeads.map(l => [
       new Date(l.created_at).toLocaleDateString('en-CA'),
       l.contact_name || '',
@@ -262,6 +275,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
       l.tenant_admin?.full_name || '',
       l.status || '',
       l.quality || '',
+      l.temperature || '',
     ])
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -324,11 +338,19 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   }[s] || 'bg-gray-100 text-gray-800')
 
   const qualityColor = (q: string) => ({
-    qualified_hot: 'bg-red-100 text-red-800',
-    qualified_cold: 'bg-blue-100 text-blue-800',
+    qualified: 'bg-green-100 text-green-800',
     unqualified: 'bg-gray-100 text-gray-700',
     disqualified: 'bg-zinc-100 text-zinc-500',
   }[q] || 'bg-gray-100 text-gray-800')
+
+  const temperatureColor = (t: string | null) => {
+    if (!t) return 'bg-gray-50 text-gray-500'
+    return ({
+      hot: 'bg-red-100 text-red-800',
+      warm: 'bg-orange-100 text-orange-800',
+      cold: 'bg-blue-100 text-blue-800',
+    } as Record<string, string>)[t] || 'bg-gray-100 text-gray-800'
+  }
 
   const intentColor = (i: string) => ({
     buyer: 'bg-indigo-100 text-indigo-800',
@@ -350,7 +372,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
           { label: 'New', value: stats.newLeads, color: 'text-blue-600' },
           { label: 'Buyers', value: stats.buyers, color: 'text-indigo-600' },
           { label: 'Sellers', value: stats.sellers, color: 'text-emerald-600' },
-          { label: 'Hot Leads', value: stats.qualified_hot, color: 'text-red-600' },
+          { label: 'Hot Leads', value: stats.hot, color: 'text-red-600' },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-lg shadow p-5">
             <div className="text-sm text-gray-500">{s.label}</div>
@@ -361,7 +383,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-5 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-8 gap-4">
           <div className="md:col-span-2">
             <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Search</label>
             <input
@@ -410,10 +432,15 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
             <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Quality</label>
             <select value={filterQuality} onChange={e => setFilterQuality(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
               <option value="all">All</option>
-              <option value="unqualified">Unqualified</option>
-              <option value="qualified_hot">Hot</option>
-              <option value="qualified_cold">Cold</option>
-              <option value="disqualified">Disqualified</option>
+              {QUALITY_VALUES.map(v => <option key={v} value={v}>{QUALITY_LABELS[v]}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Temperature</label>
+            <select value={filterTemperature} onChange={e => setFilterTemperature(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="all">All</option>
+              {TEMPERATURE_VALUES.map(v => <option key={v} value={v}>{TEMPERATURE_LABELS[v]}</option>)}
+              <option value="none">(none)</option>
             </select>
           </div>
         </div>
@@ -461,14 +488,14 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                     className="h-4 w-4 rounded border-gray-300"
                   />
                 </th>
-                {['Date', 'Contact', 'Source', 'Intent', 'Area', 'Agent', 'Hierarchy', 'Status', 'Actions'].map(h => (
+                {['Date', 'Contact', 'Source', 'Intent', 'Area', 'Agent', 'Hierarchy', 'Status', 'Quality', 'Temperature', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {flatRows.length === 0 ? (
-                <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400">No leads found</td></tr>
+                <tr><td colSpan={12} className="px-6 py-12 text-center text-gray-400">No leads found</td></tr>
               ) : flatRows.map(row => {
                 const lead = row.lead
                 const isEarlier = row.kind === 'earlier'
@@ -571,6 +598,33 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                         <option value="closed">Closed</option>
                       </select>
                     </td>
+                    {/* Inline quality update (W-QUALITY-SPLIT) */}
+                    <td className="px-4 py-3">
+                      <select
+                        value={lead.quality || 'unqualified'}
+                        onChange={e => updateLeadStatus(lead.id, 'quality', e.target.value)}
+                        disabled={updatingStatus === lead.id}
+                        className={`text-xs px-2 py-1 rounded-full font-semibold border-0 cursor-pointer ${qualityColor(lead.quality)}`}
+                      >
+                        {QUALITY_VALUES.map(v => (
+                          <option key={v} value={v}>{QUALITY_LABELS[v]}</option>
+                        ))}
+                      </select>
+                    </td>
+                    {/* Inline temperature update (W-QUALITY-SPLIT) */}
+                    <td className="px-4 py-3">
+                      <select
+                        value={lead.temperature || ''}
+                        onChange={e => updateLeadStatus(lead.id, 'temperature', e.target.value || null)}
+                        disabled={updatingStatus === lead.id}
+                        className={`text-xs px-2 py-1 rounded-full font-semibold border-0 cursor-pointer ${temperatureColor(lead.temperature)}`}
+                      >
+                        <option value="">—</option>
+                        {TEMPERATURE_VALUES.map(v => (
+                          <option key={v} value={v}>{TEMPERATURE_LABELS[v]}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex gap-2">
                         {lead.plan_data && (
@@ -591,7 +645,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                   {/* L4: Inline activity preview (last 2) -- full timeline moves to L7 drawer */}
                   {!isEarlier && (activities[lead.id] || []).length > 0 && (
                     <tr key={lead.id + '-activity-preview'}>
-                      <td colSpan={10} className="px-6 py-2 bg-slate-50 border-b">
+                      <td colSpan={12} className="px-6 py-2 bg-slate-50 border-b">
                         <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                           <span className="font-semibold text-gray-400 uppercase tracking-wider">Recent activity</span>
                           {(activities[lead.id] || []).slice(-2).reverse().map((a: any) => (
@@ -611,7 +665,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                   {/* Plan data panel */}
                   {!isEarlier && expandedLead === lead.id && lead.plan_data && (
                     <tr key={`${lead.id}-plan`}>
-                      <td colSpan={11} className="px-6 py-4 bg-gray-50 border-b">
+                      <td colSpan={12} className="px-6 py-4 bg-gray-50 border-b">
                         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Plan Data</div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                           {lead.plan_data.geoName && (
