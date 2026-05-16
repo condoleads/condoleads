@@ -16,7 +16,25 @@
 //     gates access to the anchor. Sibling leads in the same user-family
 //     within the same tenant are shown without per-agent filter (intent:
 //     agents see the complete journey for that user -- outcome #3).
-//     F-W4A-LEADFAMILY-NO-PER-AGENT-SCOPE logged for W5c evaluation.
+//     F-W4A-LEADFAMILY-NO-PER-AGENT-SCOPE -- EVALUATED W5c-5 (2026-05-16):
+//     LOCKED keep-as-is. Decision rationale:
+//       (a) outcome #3 of W-LEADS-WORKBENCH v2 scope-lock explicitly
+//           calls for cumulative-journey view (agent sees the complete
+//           user journey across all touchpoints, even sibling leads
+//           owned by other agents in the same tenant);
+//       (b) tenant safety is preserved (every sibling fetch is gated
+//           by anchorLead.tenant_id, the trusted source from the
+//           cross-tenant gate above) -- this is NOT a multi-tenant leak;
+//       (c) the visibility is intra-tenant only: an agent in tenant A
+//           never sees a lead in tenant B regardless of user_id
+//           collisions;
+//       (d) changing to per-agent scope would be a UX regression for
+//           agents serving repeat-engagement users (the whole point of
+//           the workbench cumulative-history surface).
+//     Forward escape hatch: if a future requirement surfaces for
+//     agent-only sibling visibility (e.g. a tenant onboards with a
+//     brokerage-level privacy policy), implement as an opt-in tenant
+//     config flag rather than changing the default behavior.
 
 import { notFound } from 'next/navigation'
 import { createServiceClient } from '@/lib/admin-homes/service-client'
