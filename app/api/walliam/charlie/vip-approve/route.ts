@@ -1,18 +1,87 @@
 // app/api/walliam/charlie/vip-approve/route.ts
-// Token-based approve/deny for WALLiam VIP plan requests
-// Adapted from app/api/chat/vip-approve/route.ts — System 1 never touched
+// W-LEADS-WORKBENCH W5c-4d (2026-05-16) -- migrated to shared helper.
+// Original: Token-based approve/deny for WALLiam Charlie (chat + plan)
+// VIP requests. Adapted from app/api/chat/vip-approve/route.ts --
+// System 1 never touched.
+//
+// =========================================================================
+// CONTRACT (post-W5c-4d migration)
+// =========================================================================
+//   - Token in URL (?token=...&action=approve|deny) auths the request.
+//   - vipRequest fetched WHERE approval_token = $1 with chat_sessions +
+//     agents joins (helper requires this shape).
+//   - Brand context resolved via getTenantContext helper (legacy pattern;
+//     differs from W5c-4c estimator route which uses direct tenants SELECT
+//     -- both shapes accepted by helper since brand is passed as a value
+//     object, not fetched inside the helper).
+//   - Idempotency + expiry checked in route; helper trusts caller's check.
+//   - Side effects (status flip + chat_sessions upgrade + user_credit_overrides
+//     UPSERT for all 3 pools when request_type is 'plan' | 'chat' + email
+//     send to user via sendTenantEmail try/catch best-effort) delegated to
+//     approveVipRequest.
+//   - estimatorBccFailurePolicy='fail-open' is passed for type-completeness
+//     but IRRELEVANT here: Charlie's request_type is 'plan' or 'chat'
+//     (never 'estimator'), so the helper does NOT fetch a BCC chain and
+//     the policy is not consulted (helper docstring L155 confirms).
+//   - HTML response builder createHtmlResponse PRESERVED VERBATIM (HTML
+//     entity icons, conditional brand-prefix title format, dashboard link).
+//
+// =========================================================================
+// PRESERVED VERBATIM
+// =========================================================================
+//   - GET handler signature + token/action URL params
+//   - createServiceClient inline (NOT switched to admin-homes/service-client)
+//   - vip_requests fetch (single-gate by approval_token; no triple gate)
+//   - agents join shape (full_name, email, notification_email,
+//     ai_manual_approve_limit) -- helper consumes this exact shape
+//   - getTenantContext brand load (NOT switched to direct tenants SELECT)
+//   - Idempotency: status !== 'pending' -> HTML 'already_processed'
+//   - Expiry: mark 'expired' + HTML 'expired'
+//   - All HTML response statuses with verbatim messages
+//   - Approve message: "Plan access granted to <user>. They now have <N>
+//     additional plan/plans."
+//   - Deny message: "VIP request from <user> has been denied." (note:
+//     legacy wording starts "VIP request from", NOT "Charlie VIP
+//     request from" -- preserved as-is)
+//   - createHtmlResponse function (full HTML template + 5 status configs
+//     using HTML entity icons + conditional brand-prefix title format)
+//
+// =========================================================================
+// W5c-4d SOURCE-TEXT DELTAS (runtime behavior unchanged)
+// =========================================================================
+//   - F-W5C-4D-ASCII-COMMENTS: em-dashes in comments replaced with `--`
+//     for pure-ASCII source (paste safety, matches W5c-4c convention).
+//     Runtime output unaffected (comments are source-only).
+//   - F-W5C-4D-EMPTY-TENANT-GUARD-ADDED: explicit error HTML early-return
+//     when vipRequest.chat_sessions?.tenant_id is null. Practically
+//     unreachable (vip_requests always have a chat_sessions link in
+//     practice) but legacy used `tenantId || ''` which would have failed
+//     silently downstream. Defensive guard mirrors W5c-4c.
+//
+// =========================================================================
+// HELPER PARAMS (per-route values)
+// =========================================================================
+//   - userId: vipRequest.chat_sessions?.user_id   (legacy session-bound)
+//   - creditGrantNotePrefix: 'Email approval \u2014'   (em-dash escape;
+//                              matches legacy 'Email approval --' runtime)
+//   - estimatorBccFailurePolicy: 'fail-open'   (IRRELEVANT for plan/chat
+//                                                per helper L155; passed
+//                                                for type-completeness)
+//   - audit: undefined   (legacy Charlie does not write lead_admin_actions)
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { sendTenantEmail, TenantEmailNotConfigured, TenantEmailFailed } from '@/lib/email/sendTenantEmail'
 import { getTenantContext, buildBaseUrl } from '@/lib/utils/tenant-brand'
-
+import {
+  approveVipRequest,
+  type VipRequestWithJoins,
+} from '@/lib/admin-homes/approve-vip-request'
 
 function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    { auth: { autoRefreshToken: false, persistSession: false } },
   )
 }
 
@@ -32,7 +101,7 @@ export async function GET(request: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // Find VIP request by token
+    // Find VIP request by token (helper requires this exact join shape)
     const { data: vipRequest, error: findError } = await supabase
       .from('vip_requests')
       .select(`
@@ -50,14 +119,15 @@ export async function GET(request: NextRequest) {
       return createHtmlResponse('error', 'Request not found or link has expired.')
     }
 
-    // T6f-C-2 — tenant brand context (loaded post-vipRequest non-null check;
-    // brandName/domain/baseUrl available for all subsequent createHtmlResponse + email paths)
-    const brandTenantId = vipRequest.chat_sessions?.tenant_id || null
+    // T6f-C-2 -- tenant brand context (loaded post-vipRequest non-null check;
+    // brandName/domain/baseUrl available for all subsequent createHtmlResponse
+    // + helper paths). Uses getTenantContext (NOT direct SELECT) per legacy.
+    const tenantId = vipRequest.chat_sessions?.tenant_id || null
     let brandName = ''
     let domain = ''
     let baseUrl = ''
-    if (brandTenantId) {
-      const _t6fcCtx = await getTenantContext(supabase, brandTenantId)
+    if (tenantId) {
+      const _t6fcCtx = await getTenantContext(supabase, tenantId)
       if (_t6fcCtx) {
         brandName = _t6fcCtx.brandName
         domain = _t6fcCtx.domain
@@ -66,7 +136,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (vipRequest.status !== 'pending') {
-      return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`, brandName)
+      return createHtmlResponse(
+        'already_processed',
+        `This request was already ${vipRequest.status}.`,
+        brandName,
+      )
     }
 
     if (new Date(vipRequest.expires_at) < new Date()) {
@@ -77,168 +151,83 @@ export async function GET(request: NextRequest) {
       return createHtmlResponse('expired', 'This request has expired.', brandName)
     }
 
-    const newStatus = action === 'approve' ? 'approved' : 'denied'
-    const agent = vipRequest.agents
-    // Use tenant plan_manual_approve_limit — not agent ai_manual_approve_limit
-      let plansToGrant = agent?.ai_manual_approve_limit ?? 3
-      const sessionTenantId = vipRequest.chat_sessions?.tenant_id
-      if (sessionTenantId) {
-        const { data: tenantRow } = await supabase
-          .from('tenants')
-          .select('plan_manual_approve_limit')
-          .eq('id', sessionTenantId)
-          .single()
-        if (tenantRow?.plan_manual_approve_limit != null) {
-          plansToGrant = tenantRow.plan_manual_approve_limit
-        }
-      }
+    // F-W5C-4D-EMPTY-TENANT-GUARD-ADDED: helper requires non-empty tenantId.
+    // Practically unreachable (vip_requests always have a chat_sessions
+    // link in practice) but legacy used `tenantId || ''` which would have
+    // failed silently downstream. Explicit error is safer.
+    if (!tenantId) {
+      console.error(
+        '[walliam/charlie/vip-approve] vipRequest has no chat_sessions.tenant_id',
+      )
+      return createHtmlResponse(
+        'error',
+        'System error: request is missing tenant context. Please contact support.',
+        brandName,
+      )
+    }
 
-    // Update VIP request
-    await supabase
-      .from('vip_requests')
-      .update({
-        status: newStatus,
-        responded_at: new Date().toISOString(),
-        messages_granted: action === 'approve' ? plansToGrant : 0,
-      })
-      .eq('id', vipRequest.id)
+    // action is narrowed to 'approve' | 'deny' by the early-return guard above.
+    const typedAction = action as 'approve' | 'deny'
 
-    if (action === 'approve') {
-      const currentGranted = vipRequest.chat_sessions?.vip_messages_granted || 0
-      const currentApprovals = vipRequest.chat_sessions?.manual_approvals_count || 0
+    const result = await approveVipRequest({
+      supabase,
+      tenantId,
+      vipRequest: vipRequest as unknown as VipRequestWithJoins,
+      action: typedAction,
+      brand: { brandName, baseUrl, domain },
+      userId: vipRequest.chat_sessions?.user_id ?? null,
+      creditGrantNotePrefix: 'Email approval \u2014',
+      estimatorBccFailurePolicy: 'fail-open',
+      // audit OMITTED: legacy Charlie does not write lead_admin_actions.
+    })
 
-      // Upgrade session to VIP + increment plan counters
-      await supabase
-        .from('chat_sessions')
-        .update({
-          status: 'vip',
-          vip_accepted_at: new Date().toISOString(),
-          vip_phone: vipRequest.phone,
-          vip_messages_granted: currentGranted + plansToGrant,
-          manual_approvals_count: currentApprovals + 1,
-          last_approval_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', vipRequest.session_id)
+    if (!result.ok) {
+      // estimatorBccFailurePolicy is irrelevant for Charlie (plan/chat) per
+      // helper L155, so result.ok=false should not fire on this path in
+      // practice. Defensive HTML mirrors W5c-4c wording for consistency.
+      return createHtmlResponse(
+        'error',
+        'System notification failed. Approval recorded; please contact support.',
+        brandName,
+      )
+    }
 
-      // Write to user_credit_overrides — single source of truth
-      const userId = vipRequest.chat_sessions?.user_id
-      const tenantId = vipRequest.chat_sessions?.tenant_id
-      if (userId && tenantId) {
-        const { data: tenantCfg } = await supabase
-          .from('tenants')
-          .select('plan_hard_cap, seller_plan_hard_cap, ai_hard_cap, estimator_hard_cap, ai_manual_approve_limit, plan_manual_approve_limit, estimator_manual_approve_attempts')
-          .eq('id', tenantId)
-          .single()
-        const planType = vipRequest.buyer_type || 'buyer'
-        const requestType = vipRequest.request_type || 'plan'
-        const hardCap = requestType === 'chat'
-          ? (tenantCfg?.ai_hard_cap ?? 25)
-          : requestType === 'estimator'
-          ? (tenantCfg?.estimator_hard_cap ?? 10)
-          : planType === 'seller'
-          ? (tenantCfg?.seller_plan_hard_cap ?? 10)
-          : (tenantCfg?.plan_hard_cap ?? 10)
-        const currentUsed = requestType === 'chat'
-          ? (vipRequest.chat_sessions?.message_count || 0)
-          : requestType === 'estimator'
-          ? (vipRequest.chat_sessions?.estimator_count || 0)
-          : planType === 'seller'
-          ? (vipRequest.chat_sessions?.seller_plans_used || 0)
-          : (vipRequest.chat_sessions?.buyer_plans_used || 0)
-        const newLimit = Math.min(currentUsed + plansToGrant, hardCap)
-        // Grant all three pools using tenant Credits per Email Approval config
-        const chatUsed = vipRequest.chat_sessions?.message_count || 0
-        const planUsed = (vipRequest.chat_sessions?.buyer_plans_used || 0) + (vipRequest.chat_sessions?.seller_plans_used || 0)
-        const estimatorUsed = vipRequest.chat_sessions?.estimator_count || 0
-        const newChatLimit = Math.min(chatUsed + (tenantCfg?.ai_manual_approve_limit ?? 3), tenantCfg?.ai_hard_cap ?? 25)
-        const newPlanLimit = Math.min(planUsed + (tenantCfg?.plan_manual_approve_limit ?? 3), tenantCfg?.plan_hard_cap ?? 10)
-        const newEstimatorLimit = Math.min(estimatorUsed + (tenantCfg?.estimator_manual_approve_attempts ?? 3), tenantCfg?.estimator_hard_cap ?? 10)
-        await supabase
-          .from('user_credit_overrides')
-          .upsert({
-            user_id: userId,
-            tenant_id: tenantId,
-            granted_by_agent_id: vipRequest.agent_id || null,
-            granted_by_tier: 'manager',
-            note: 'Email approval — chat:' + newChatLimit + ' plans:' + newPlanLimit + ' estimator:' + newEstimatorLimit,
-            ai_chat_limit: newChatLimit,
-            buyer_plan_limit: newPlanLimit,
-            estimator_limit: newEstimatorLimit,
-            granted_at: new Date().toISOString(),
-          }, { onConflict: 'user_id,tenant_id' })
-      }
-
-      // Send approval email to user
-      if (vipRequest.email) {
-        try {
-          await sendTenantEmail({
-            tenantId: tenantId || '',
-            to: vipRequest.email,
-            subject: `Your ${brandName} Plan Access is Approved`,
-            html: buildUserApprovalEmailHtml(
-              vipRequest.full_name,
-              agent?.full_name || brandName,
-              plansToGrant,
-              brandName,
-              domain,
-              baseUrl
-            ),
-          })
-        } catch (err) {
-          console.error('[walliam/vip-approve] user email error:', err)
-        }
-      }
-
+    if (typedAction === 'approve') {
       return createHtmlResponse(
         'approved',
-        `Plan access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${plansToGrant} additional plan${plansToGrant > 1 ? 's' : ''}.`,
-        brandName
+        `Plan access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${result.messagesGranted} additional plan${result.messagesGranted > 1 ? 's' : ''}.`,
+        brandName,
       )
     } else {
       return createHtmlResponse(
         'denied',
         `VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`,
-        brandName
+        brandName,
       )
     }
-
   } catch (error) {
-    console.error('[walliam/vip-approve] error:', error)
+    console.error('[walliam/charlie/vip-approve] error:', error)
     return createHtmlResponse('error', 'An unexpected error occurred.')
   }
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, plansGranted: number, brandName: string, domain: string, baseUrl: string): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
-        <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
-        <h1 style="color: white; margin: 0; font-size: 24px;">Plan Access Approved</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
-      </div>
-      <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
-        <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-          Hi ${userName || 'there'},
-        </p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-          <strong>${agentName}</strong> has approved your request.
-          You now have <strong>${plansGranted} additional plan${plansGranted > 1 ? 's' : ''}</strong> available on ${brandName}.
-        </p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-          Your agent may also reach out directly to help with your real estate journey.
-        </p>
-        <div style="text-align: center;">
-          <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
-            ✦ Back to ${brandName}
-          </a>
-        </div>
-      </div>
-    </div>
-  `
-}
+// =========================================================================
+// createHtmlResponse PRESERVED VERBATIM from legacy.
+// HTML format + icons (HTML entities, already ASCII) + title format
+// all unchanged to avoid email-link UX delta.
+// Icons (HTML numeric entities, pure ASCII source, no escape needed):
+//   &#10003; = check mark             (approved)
+//   &#10007; = ballot X               (denied)
+//   &#9888;  = warning sign           (error)
+//   &#8987;  = hourglass              (expired)
+//   &#8505;  = information source     (already_processed)
+// =========================================================================
 
-function createHtmlResponse(status: string, message: string, brandName: string = ''): NextResponse {
+function createHtmlResponse(
+  status: string,
+  message: string,
+  brandName: string = '',
+): NextResponse {
   const configs: Record<string, { bg: string; icon: string; title: string }> = {
     approved:          { bg: '#10b981', icon: '&#10003;', title: 'Approved' },
     denied:            { bg: '#ef4444', icon: '&#10007;', title: 'Denied' },
