@@ -133,7 +133,10 @@ const newLines = [
   '    if (quality) update.quality = quality',
   '',
   "    const { error } = await supabase.from('leads').update(update).eq('id', params.id)",
-  '    if (error) return NextResponse.json({ error: error.message }, { status: 500 })',
+  '    if (error) {',
+  "      console.error('[admin-homes/leads PATCH] lead-update failed:', { leadId: target.id, tenantId: target.tenant_id, error })",
+  '      return NextResponse.json({ error: error.message }, { status: 500 })',
+  '    }',
   '',
   '    // W6a-2 audit: one row per field changed. Best-effort (never-throw).',
   "    const actorRole = user.role || (user.isPlatformAdmin ? 'platform_admin' : 'admin')",
@@ -211,7 +214,10 @@ const newLines = [
   '    }',
   '',
   "    const { error } = await supabase.from('leads').delete().eq('id', params.id)",
-  '    if (error) return NextResponse.json({ error: error.message }, { status: 500 })',
+  '    if (error) {',
+  "      console.error('[admin-homes/leads DELETE] lead-delete failed:', { leadId: target.id, tenantId: target.tenant_id, error })",
+  '      return NextResponse.json({ error: error.message }, { status: 500 })',
+  '    }',
   '',
   '    // W6a-3 audit: snapshot the deleted lead. Best-effort (never-throw).',
   "    const actorRole = user.role || (user.isPlatformAdmin ? 'platform_admin' : 'admin')",
@@ -266,6 +272,9 @@ const assertions = [
   ['can(lead.write) gate present exactly twice', (newContent.match(/const decision = can\(user\.permissions, 'lead\.write'/g) || []).length === 2],
   ['actorRole inline pattern present exactly twice', (newContent.match(/user\.role \|\| \(user\.isPlatformAdmin \? 'platform_admin' : 'admin'\)/g) || []).length === 2],
   ['no stray CRLF in LF file', LE === '\r\n' || newContent.indexOf('\r\n') === -1],
+  // W6a FU-B-1: diagnostic must be re-emitted on every re-run.
+  ['PATCH error diagnostic in newContent', newContent.indexOf("console.error('[admin-homes/leads PATCH] lead-update failed:'") !== -1],
+  ['DELETE error diagnostic in newContent', newContent.indexOf("console.error('[admin-homes/leads DELETE] lead-delete failed:'") !== -1],
 ]
 
 let allPass = true

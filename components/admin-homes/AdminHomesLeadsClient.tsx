@@ -272,26 +272,48 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     a.click()
   }
 
-  const deleteLead = async (leadId: string) => {
-    if (!confirm('Delete this lead?')) return
-    try {
-      const res = await fetch(`/api/admin-homes/leads/${leadId}`, { method: 'DELETE' })
-      if (res.ok) setLeads(leads.filter(l => l.id !== leadId))
-      else alert('Failed to delete lead')
-    } catch { alert('Error deleting lead') }
-  }
+  // W6a followup-B: deleteLead() removed -- per-row Delete UI consolidated to bulk-only.
 
   const handleDeleteSelected = async () => {
     if (!confirm(`Delete ${selectedLeads.size} leads?`)) return
     setDeleting(true)
     try {
-      await Promise.all(Array.from(selectedLeads).map(id =>
-        fetch(`/api/admin-homes/leads/${id}`, { method: 'DELETE' })
-      ))
-      setLeads(leads.filter(l => !selectedLeads.has(l.id)))
-      setSelectedLeads(new Set())
-    } catch { alert('Error deleting leads') }
-    finally { setDeleting(false) }
+      // W6a followup-B: per-fetch res.ok check. Failures must NOT silently vanish.
+      // Only successfully-deleted ids leave local state and selection; failed ids
+      // remain visible so the operator can retry. Failures are surfaced via alert
+      // summarising up to the first 5 by id + server message.
+      const ids = Array.from(selectedLeads)
+      const results = await Promise.all(
+        ids.map(async id => {
+          try {
+            const res = await fetch(`/api/admin-homes/leads/${id}`, { method: 'DELETE' })
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({} as any))
+              return { id, ok: false as const, status: res.status, message: (body && body.error) || `HTTP ${res.status}` }
+            }
+            return { id, ok: true as const }
+          } catch (err: any) {
+            return { id, ok: false as const, status: 0, message: (err && err.message) || 'Network error' }
+          }
+        }),
+      )
+      const okIds = results.filter(r => r.ok).map(r => r.id)
+      const failed = results.filter(r => !r.ok)
+      if (okIds.length > 0) {
+        const okSet = new Set(okIds)
+        setLeads(prev => prev.filter(l => !okSet.has(l.id)))
+        setSelectedLeads(prev => {
+          const next = new Set(prev)
+          for (const id of okIds) next.delete(id)
+          return next
+        })
+      }
+      if (failed.length > 0) {
+        const summary = failed.slice(0, 5).map(f => `  - ${f.id}: ${f.message}`).join('\n')
+        const more = failed.length > 5 ? `\n  ... and ${failed.length - 5} more` : ''
+        alert(`${failed.length} of ${ids.length} deletes failed:\n${summary}${more}`)
+      }
+    } finally { setDeleting(false) }
   }
 
   const statusColor = (s: string) => ({
@@ -559,15 +581,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                             {expandedLead === lead.id ? 'Hide Plan' : 'Plan'}
                           </button>
                         )}
-                        {/* W5c-3: per-row delete hidden for agents (matches server policy). */}
-                        {currentRole !== 'agent' && (
-                          <button
-                            onClick={() => deleteLead(lead.id)}
-                            className="text-xs px-2 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100"
-                          >
-                            Delete
-                          </button>
-                        )}
+                        {/* W6a followup-B: per-row Delete removed. Delete UI consolidated to bulk-only
+                            via the red "Delete (N)" button above the table. Server policy (agent-block)
+                            still enforced on every DELETE call regardless of UI surface. */}
                       </div>
                     </td>
                   </tr>

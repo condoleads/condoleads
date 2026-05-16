@@ -61,7 +61,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (quality) update.quality = quality
 
     const { error } = await supabase.from('leads').update(update).eq('id', params.id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error('[admin-homes/leads PATCH] lead-update failed:', { leadId: target.id, tenantId: target.tenant_id, error })
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
     // W6a-2 audit: one row per field changed. Best-effort (never-throw).
     const actorRole = user.role || (user.isPlatformAdmin ? 'platform_admin' : 'admin')
@@ -139,7 +142,10 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     const { error } = await supabase.from('leads').delete().eq('id', params.id)
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error('[admin-homes/leads DELETE] lead-delete failed:', { leadId: target.id, tenantId: target.tenant_id, error })
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
     // W6a-3 audit: snapshot the deleted lead. Best-effort (never-throw).
     const actorRole = user.role || (user.isPlatformAdmin ? 'platform_admin' : 'admin')
