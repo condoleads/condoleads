@@ -1,32 +1,85 @@
 // app/api/walliam/estimator/vip-approve/route.ts
-// Token-based approve/deny for WALLiam estimator VIP requests
-// Adapted from app/api/chat/vip-approve/route.ts — System 1 never touched
-// Key differences:
-//   - Redirects to /admin-homes/leads
-//   - FROM: notifications@condoleads.ca
-//   - WALLiam dark theme HTML response
+// W-LEADS-WORKBENCH W5c-4c (2026-05-15) -- migrated to shared helper.
+// Original: Token-based approve/deny for WALLiam estimator VIP requests.
+// Adapted from app/api/chat/vip-approve/route.ts -- System 1 never touched.
 //
 // W-HIERARCHY H3.8b (2026-05-03): inline ADMIN_EMAIL literal removed.
 // BCC now resolved via getLeadEmailRecipients helper (Admin Platform layer 6,
 // extensible to delegations via W-ROLES-DELEGATION). F54 retired.
+//
+// =========================================================================
+// CONTRACT (post-W5c-4c migration)
+// =========================================================================
+//   - Token in URL (?token=...&action=approve|deny) auths the request.
+//   - vipRequest fetched WHERE approval_token = $1 with chat_sessions + agents
+//     joins (helper requires this shape).
+//   - Brand context resolved via direct tenants SELECT (legacy pattern; NOT
+//     getTenantContext, to preserve byte-equivalent legacy behavior).
+//   - Idempotency + expiry checked in route; helper trusts caller's check.
+//   - Side effects (status flip + chat_sessions upgrade + estimator_limit
+//     UPSERT + email send with BCC chain) delegated to approveVipRequest.
+//   - estimatorBccFailurePolicy='fail-closed' (matches legacy L141-145):
+//     when AdminPlatformUnreachable fires in helper's BCC fetch, the approve
+//     side effects ARE persisted (vip_requests + chat_sessions + credits)
+//     but the email is suppressed; helper returns ok:false; route renders
+//     HTML error with legacy wording.
+//   - HTML response builder createHtmlResponse PRESERVED VERBATIM (same icons,
+//     same titles, same template, same brand-name pattern).
+//
+// =========================================================================
+// PRESERVED VERBATIM
+// =========================================================================
+//   - GET handler signature + token/action URL params
+//   - createServiceClient inline (NOT switched to @/lib/admin-homes/service-client)
+//   - vip_requests fetch (single-gate by approval_token; no triple gate)
+//   - agents join shape (full_name, email, notification_email, parent_id,
+//     ai_manual_approve_limit) -- helper consumes this exact shape
+//   - Direct brand SELECT (brand_name || name fallback; not getTenantContext)
+//   - Idempotency: status !== 'pending' -> HTML 'already_processed'
+//   - Expiry: mark 'expired' + HTML 'expired'
+//   - All HTML response statuses with verbatim messages
+//   - fail-closed response wording: "System notification failed. Approval
+//     recorded; please contact support."
+//   - approve/deny HTML message format: "Estimator access granted to <user>"
+//     and "Estimator VIP request from <user> has been denied"
+//   - createHtmlResponse function (full HTML template + 5 status configs)
+//
+// =========================================================================
+// W5c-4c MINOR SOURCE-TEXT DELTAS (runtime behavior unchanged)
+// =========================================================================
+//   - F-W5C-4C-UNICODE-AS-ESCAPES: Unicode characters (icons + em-dash) are
+//     written as `\uXXXX` escapes rather than raw UTF-8 characters. Source
+//     text differs from legacy; runtime strings byte-identical. Bulletproofs
+//     against clipboard/encoding issues during paste.
+//   - F-W5C-4C-EMPTY-TENANT-GUARD-ADDED: a defensive early-return added
+//     when vipRequest.chat_sessions?.tenant_id is null. Pre-migration code
+//     used `tenantId || ''` and would have silently failed in downstream
+//     SELECT calls. New behavior: explicit error HTML with support message.
+//     Practically unreachable (vip_requests always have a chat_sessions
+//     link in practice) but defensively prevents downstream errors.
+//
+// =========================================================================
+// HELPER PARAMS (per-route values)
+// =========================================================================
+//   - userId: vipRequest.chat_sessions?.user_id  (legacy session-bound source)
+//   - creditGrantNotePrefix: 'Email approval \u2014'  (em-dash, legacy wording)
+//   - estimatorBccFailurePolicy: 'fail-closed'  (preserves legacy abort posture)
+//   - audit: undefined  (legacy estimator does not write lead_admin_actions;
+//                        F-VIP-APPROVE-EMAILS-NOT-AUDITED preserved)
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import {
-  sendTenantEmail,
-  TenantEmailNotConfigured,
-  TenantEmailFailed,
-  getLeadEmailRecipients,
-  AdminPlatformUnreachable,
-} from '@/lib/admin-homes/lead-email-recipients'
 import { buildBaseUrl } from '@/lib/utils/tenant-brand'
-
+import {
+  approveVipRequest,
+  type VipRequestWithJoins,
+} from '@/lib/admin-homes/approve-vip-request'
 
 function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    { auth: { autoRefreshToken: false, persistSession: false } },
   )
 }
 
@@ -36,8 +89,12 @@ export async function GET(request: NextRequest) {
     const token = searchParams.get('token')
     const action = searchParams.get('action')
 
-    if (!token || !action) return createHtmlResponse('error', 'Invalid request. Missing token or action.')
-    if (!['approve', 'deny'].includes(action)) return createHtmlResponse('error', 'Invalid action.')
+    if (!token || !action) {
+      return createHtmlResponse('error', 'Invalid request. Missing token or action.')
+    }
+    if (!['approve', 'deny'].includes(action)) {
+      return createHtmlResponse('error', 'Invalid action.')
+    }
 
     const supabase = createServiceClient()
 
@@ -54,183 +111,134 @@ export async function GET(request: NextRequest) {
       .eq('approval_token', token)
       .single()
 
-    if (findError || !vipRequest) return createHtmlResponse('error', 'Request not found or link has expired.')
+    if (findError || !vipRequest) {
+      return createHtmlResponse('error', 'Request not found or link has expired.')
+    }
 
-    // T6f-B-3 — multitenant brand-string + URL load (must precede subsequent createHtmlResponse + helper calls)
+    // T6f-B-3 -- multitenant brand-string + URL load (direct SELECT, preserves
+    // legacy pattern; not switched to getTenantContext).
     const tenantId = vipRequest.chat_sessions?.tenant_id ?? null
     let brandName: string = ''
     let baseUrl: string = ''
+    let domain: string = ''
     if (tenantId) {
-      const { data: brandTenant } = await supabase.from('tenants').select('brand_name, name, domain').eq('id', tenantId).single()
+      const { data: brandTenant } = await supabase
+        .from('tenants')
+        .select('brand_name, name, domain')
+        .eq('id', tenantId)
+        .single()
       brandName = (brandTenant?.brand_name || brandTenant?.name) ?? ''
-      baseUrl = buildBaseUrl(brandTenant?.domain ?? '')
+      domain = brandTenant?.domain ?? ''
+      baseUrl = buildBaseUrl(domain)
     }
 
-    if (vipRequest.status !== 'pending') return createHtmlResponse('already_processed', `This request was already ${vipRequest.status}.`, brandName)
+    if (vipRequest.status !== 'pending') {
+      return createHtmlResponse(
+        'already_processed',
+        `This request was already ${vipRequest.status}.`,
+        brandName,
+      )
+    }
+
     if (new Date(vipRequest.expires_at) < new Date()) {
-      await supabase.from('vip_requests').update({ status: 'expired' }).eq('id', vipRequest.id)
+      await supabase
+        .from('vip_requests')
+        .update({ status: 'expired' })
+        .eq('id', vipRequest.id)
       return createHtmlResponse('expired', 'This request has expired.', brandName)
     }
 
-    const newStatus = action === 'approve' ? 'approved' : 'denied'
-    const agent = vipRequest.agents
-
-    let attemptsToGrant = 3
-    if (tenantId) {
-      const { data: tenantCfg } = await supabase.from('tenants').select('estimator_manual_approve_attempts, estimator_hard_cap').eq('id', tenantId).single()
-      if (tenantCfg?.estimator_manual_approve_attempts != null) attemptsToGrant = tenantCfg.estimator_manual_approve_attempts
+    // F-W5C-4C-EMPTY-TENANT-GUARD-ADDED: helper requires non-empty tenantId.
+    // Practically unreachable (vip_requests always have a chat_sessions link
+    // in practice) but legacy used `tenantId || ''` which would have failed
+    // silently downstream. Explicit error is safer.
+    if (!tenantId) {
+      console.error(
+        '[walliam/estimator/vip-approve] vipRequest has no chat_sessions.tenant_id',
+      )
+      return createHtmlResponse(
+        'error',
+        'System error: request is missing tenant context. Please contact support.',
+        brandName,
+      )
     }
 
-    await supabase
-      .from('vip_requests')
-      .update({
-        status: newStatus,
-        responded_at: new Date().toISOString(),
-        messages_granted: action === 'approve' ? attemptsToGrant : 0,
-      })
-      .eq('id', vipRequest.id)
+    // action is narrowed to 'approve' | 'deny' by the early-return guard above.
+    const typedAction = action as 'approve' | 'deny'
 
-    if (action === 'approve') {
-      const currentGranted = vipRequest.chat_sessions?.vip_messages_granted || 0
-      const currentApprovals = vipRequest.chat_sessions?.manual_approvals_count || 0
+    const result = await approveVipRequest({
+      supabase,
+      tenantId,
+      vipRequest: vipRequest as unknown as VipRequestWithJoins,
+      action: typedAction,
+      brand: { brandName, baseUrl, domain },
+      userId: vipRequest.chat_sessions?.user_id ?? null,
+      creditGrantNotePrefix: 'Email approval \u2014',
+      estimatorBccFailurePolicy: 'fail-closed',
+      // audit OMITTED: legacy estimator does not write lead_admin_actions.
+      // F-VIP-APPROVE-EMAILS-NOT-AUDITED preserved across this migration.
+    })
 
-      await supabase
-        .from('chat_sessions')
-        .update({
-          status: 'vip',
-          vip_accepted_at: new Date().toISOString(),
-          vip_phone: vipRequest.phone,
-          vip_messages_granted: currentGranted + attemptsToGrant,
-          manual_approvals_count: currentApprovals + 1,
-          last_approval_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', vipRequest.session_id)
+    if (!result.ok) {
+      // fail-closed fired in helper's BCC fetch.
+      // Approve side effects WERE persisted (vip_requests + chat_sessions +
+      // credits) but the confirmation email was suppressed.
+      // Wording preserved verbatim from legacy L144.
+      return createHtmlResponse(
+        'error',
+        'System notification failed. Approval recorded; please contact support.',
+        brandName,
+      )
+    }
 
-      // Write to user_credit_overrides
-      const userId = vipRequest.chat_sessions?.user_id
-      if (userId && tenantId) {
-        const { data: tCfg } = await supabase.from('tenants').select('estimator_hard_cap').eq('id', tenantId).single()
-        const { data: existingOverride } = await supabase.from('user_credit_overrides').select('estimator_limit').eq('user_id', userId).eq('tenant_id', tenantId).maybeSingle()
-        const currentLimit = existingOverride?.estimator_limit ?? 0
-        const newLimit = Math.min(currentLimit + attemptsToGrant, tCfg?.estimator_hard_cap ?? 50)
-        await supabase.from('user_credit_overrides').upsert({
-          user_id: userId,
-          tenant_id: tenantId,
-          granted_by_agent_id: vipRequest.agent_id || null,
-          granted_by_tier: 'manager',
-          note: 'Email approval — ' + attemptsToGrant + ' estimator credits granted',
-          estimator_limit: newLimit,
-          granted_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,tenant_id' })
-      }
-
-      if (vipRequest.email) {
-        // Resolve helper recipients for this approval notification.
-        // TO/CC stay route-driven (TO=user, CC=manager). BCC comes from helper layer 6.
-        // Future delegations of Admin Platform will appear here via W-ROLES-DELEGATION.
-        let bccList: string[] = []
-        try {
-          const recipients = await getLeadEmailRecipients(
-            tenantId || '',
-            vipRequest.agent_id || null,
-            supabase
-          )
-          bccList = recipients.bcc
-        } catch (err) {
-          if (err instanceof AdminPlatformUnreachable) {
-            console.error('[walliam/estimator/vip-approve] admin platform unreachable:', err.message)
-            // Fail closed: don't send the email if we can't BCC platform admin
-            return createHtmlResponse('error', 'System notification failed. Approval recorded; please contact support.', brandName)
-          }
-          throw err
-        }
-
-        // Manager CC: pull manager email if agent has parent_id (preserves existing CC pattern;
-        // also fixes pre-existing bug where parent_id was missing from agents SELECT).
-        let managerEmail: string | null = null
-        if (agent?.parent_id) {
-          const { data: mgr } = await supabase
-            .from('agents')
-            .select('email, notification_email')
-            .eq('id', agent.parent_id)
-            .single()
-          if (mgr) managerEmail = mgr.notification_email || mgr.email
-        }
-
-        try {
-          await sendTenantEmail({
-            tenantId: tenantId || '',
-            to: vipRequest.email,
-            cc: managerEmail ? [managerEmail] : undefined,
-            bcc: bccList,
-            subject: `Your ${brandName} Estimator Access is Approved`,
-            html: buildUserApprovalEmailHtml(
-              vipRequest.full_name,
-              agent?.full_name || brandName,
-              attemptsToGrant,
-              brandName,
-              baseUrl,
-              vipRequest.page_url || null
-            ),
-          })
-        } catch (err) {
-          // F67 standard try/catch pattern
-          if (err instanceof TenantEmailNotConfigured) {
-            console.warn('[walliam/estimator/vip-approve] tenant email not configured:', err.message)
-          } else if (err instanceof TenantEmailFailed) {
-            console.error('[walliam/estimator/vip-approve] resend send failed:', err.message)
-          } else {
-            console.error('[walliam/estimator/vip-approve] unexpected email error:', err)
-          }
-        }
-      }
-
-      return createHtmlResponse('approved', `Estimator access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${attemptsToGrant} additional estimate${attemptsToGrant > 1 ? 's' : ''}.`, brandName)
+    if (typedAction === 'approve') {
+      return createHtmlResponse(
+        'approved',
+        `Estimator access granted to ${vipRequest.full_name || vipRequest.phone}. They now have ${result.messagesGranted} additional estimate${result.messagesGranted > 1 ? 's' : ''}.`,
+        brandName,
+      )
     } else {
-      return createHtmlResponse('denied', `Estimator VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`, brandName)
+      return createHtmlResponse(
+        'denied',
+        `Estimator VIP request from ${vipRequest.full_name || vipRequest.phone} has been denied.`,
+        brandName,
+      )
     }
-
   } catch (error) {
     console.error('[walliam/estimator/vip-approve] error:', error)
     return createHtmlResponse('error', 'An unexpected error occurred.')
   }
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, baseUrl: string, pageUrl: string | null): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
-        <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
-        <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
-        <p style="color: rgba(255,255,255,0.5); margin: 8px 0 0;">${brandName} AI Real Estate</p>
-      </div>
-      <div style="background: #f8fafc; padding: 28px; border: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
-        <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">Hi ${userName || 'there'},</p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 24px;"><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted} additional estimate${attemptsGranted > 1 ? 's' : ''}</strong> available.</p>
-        <div style="text-align: center;">
-          <a href="${baseUrl}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">✦ Back to ${brandName}</a>
-        </div>
-        ${pageUrl ? `<p style="margin: 24px 0 0; text-align: center; color: #cbd5e1; font-size: 10px;">Source: <a href="${pageUrl}" style="color: #94a3b8; text-decoration: underline;">${pageUrl}</a></p>` : ''}
-      </div>
-    </div>
-  `
-}
+// =========================================================================
+// createHtmlResponse PRESERVED VERBATIM from legacy lines 220-261.
+// HTML format + icons + title format all unchanged to avoid email-link UX delta.
+// Icons written as Unicode escapes per F-W5C-4C-UNICODE-AS-ESCAPES:
+//   \u2705 = approved checkmark
+//   \u274c = denied/error cross
+//   \u23f0 = expired alarm clock
+//   \u2139\ufe0f = already_processed info
+//   \u2014 = em-dash (title separator)
+// =========================================================================
 
-function createHtmlResponse(status: string, message: string, brandName: string = ''): NextResponse {
+function createHtmlResponse(
+  status: string,
+  message: string,
+  brandName: string = '',
+): NextResponse {
   const configs: Record<string, { bg: string; icon: string; title: string }> = {
-    approved:          { bg: '#10b981', icon: '✅', title: 'Approved' },
-    denied:            { bg: '#ef4444', icon: '❌', title: 'Denied' },
-    error:             { bg: '#ef4444', icon: '❌', title: 'Error' },
-    expired:           { bg: '#f59e0b', icon: '⏰', title: 'Expired' },
-    already_processed: { bg: '#64748b', icon: 'ℹ️', title: 'Already Processed' },
+    approved:          { bg: '#10b981', icon: '\u2705', title: 'Approved' },
+    denied:            { bg: '#ef4444', icon: '\u274c', title: 'Denied' },
+    error:             { bg: '#ef4444', icon: '\u274c', title: 'Error' },
+    expired:           { bg: '#f59e0b', icon: '\u23f0', title: 'Expired' },
+    already_processed: { bg: '#64748b', icon: '\u2139\ufe0f', title: 'Already Processed' },
   }
   const cfg = configs[status] || configs.error
 
   const html = `<!DOCTYPE html>
 <html>
 <head>
-  <title>${brandName} Estimator — ${cfg.title}</title>
+  <title>${brandName} Estimator \u2014 ${cfg.title}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
