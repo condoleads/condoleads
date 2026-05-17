@@ -1,0 +1,931 @@
+
+================================================================
+=== FILE: Workbench API route  (app/api/admin-homes/leads/[id]/route.ts)
+================================================================
+SIZE: 8866 bytes
+--- BEGIN ---
+// app/api/admin-homes/leads/[id]/route.ts
+// Phase 3.4+: auth + tenant-check on every mutation via shared api-auth helper.
+// W-LEADS-WORKBENCH W6a-2 + W6a-3 (2026-05-16) -- audit writes for PATCH
+// (status/quality) and DELETE handlers.
+//
+// MULTITENANT CONTRACT (Rule Zero #1)
+//   Every audit row is written under the LEAD's tenant_id (target.tenant_id),
+//   never the user's claimed tenant. Identical to W4e/W4f/W4g pattern.
+//
+// PERMISSION CONTRACT
+//   can(user.permissions, 'lead.write', { kind, leadId, tenantId, agentId })
+//   preserved verbatim. The agent-deletes-blocked check in DELETE is
+//   preserved verbatim. Audit writes happen ONLY after the mutation
+//   succeeds -- on failure (404, 403, 500) no audit row is written.
+//
+// AUDIT
+//   PATCH writes one audit row per field changed (status_changed and/or
+//   quality_changed), each with target_field set, before_value capturing
+//   the pre-mutation value, after_value capturing the new value. No row
+//   written when the sent value equals the current value.
+//
+//   DELETE captures a snapshot of the lead before deleting and writes a
+//   single lead_deleted audit row with the snapshot in before_value. The
+//   snapshot survives the lead's destruction because the FK on
+//   lead_admin_actions.lead_id was dropped in W6a-1.
+//
+//   All audit writes use logLeadAdminAction which is never-throw -- a
+//   failed audit logs to console but does NOT break the mutation response.
+
+import { NextRequest, NextResponse } from 'next/server'
+import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { createServiceClient } from '@/lib/admin-homes/service-client'
+import { can } from '@/lib/admin-homes/permissions'
+import { logLeadAdminAction } from '@/lib/admin-homes/log-lead-admin-action'
+
+export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const user = await resolveAdminHomesUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const supabase = createServiceClient()
+    // W6a-2: SELECT widened to include status, quality for audit before_value.
+    const { data: target } = await supabase
+      .from('leads')
+      .select('id, tenant_id, agent_id, status, quality, temperature')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (!target) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+    }
+    const decision = can(user.permissions, 'lead.write', {
+      kind: 'lead',
+      leadId: target.id,
+      tenantId: target.tenant_id,
+      agentId: target.agent_id,
+    })
+    if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+
+    const { status, quality, temperature } = await request.json()
+    const update: any = { updated_at: new Date().toISOString() }
+    if (status) update.status = status
+    if (quality) update.quality = quality
+    if (temperature !== undefined) update.temperature = temperature
+
+    const { error } = await supabase.from('leads').update(update).eq('id', params.id)
+    if (error) {
+      console.error('[admin-homes/leads PATCH] lead-update failed:', { leadId: target.id, tenantId: target.tenant_id, error })
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // W6a-2 audit: one row per field changed. Best-effort (never-throw).
+    const actorRole = user.role || (user.isPlatformAdmin ? 'platform_admin' : 'admin')
+    const auditWrites: Promise<void>[] = []
+    if (status && status !== target.status) {
+      auditWrites.push(
+        logLeadAdminAction({
+          supabase,
+          tenantId: target.tenant_id,
+          leadId: target.id,
+          actorAgentId: user.agentId || null,
+          actorRole,
+          actionType: 'status_changed',
+          targetField: 'status',
+          beforeValue: { status: target.status },
+          afterValue: { status },
+          notes: (target.status == null ? '(null)' : String(target.status)) + ' -> ' + String(status),
+        }),
+      )
+    }
+    if (quality && quality !== target.quality) {
+      auditWrites.push(
+        logLeadAdminAction({
+          supabase,
+          tenantId: target.tenant_id,
+          leadId: target.id,
+          actorAgentId: user.agentId || null,
+          actorRole,
+          actionType: 'quality_changed',
+          targetField: 'quality',
+          beforeValue: { quality: target.quality },
+          afterValue: { quality },
+          notes: (target.quality == null ? '(null)' : String(target.quality)) + ' -> ' + String(quality),
+        }),
+      )
+    }
+    if (temperature !== undefined && temperature !== target.temperature) {
+      auditWrites.push(
+        logLeadAdminAction({
+          supabase,
+          tenantId: target.tenant_id,
+          leadId: target.id,
+          actorAgentId: user.agentId || null,
+          actorRole,
+          actionType: 'temperature_changed',
+          targetField: 'temperature',
+          beforeValue: { temperature: target.temperature },
+          afterValue: { temperature },
+          notes: (target.temperature == null ? '(null)' : String(target.temperature)) + ' -> ' + (temperature == null ? '(null)' : String(temperature)),
+        }),
+      )
+    }
+    if (auditWrites.length > 0) {
+      await Promise.all(auditWrites)
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('[admin-homes/leads PATCH] error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const user = await resolveAdminHomesUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const supabase = createServiceClient()
+    // W6a-3: SELECT widened to capture full snapshot for audit before_value.
+    // Snapshot survives lead destruction because the FK on
+    // lead_admin_actions.lead_id was dropped in W6a-1.
+    const { data: target } = await supabase
+      .from('leads')
+      .select('id, tenant_id, agent_id, contact_name, contact_email, contact_phone, status, quality, temperature, source, source_url, intent, geo_name, created_at, building_id, listing_id, area_id, municipality_id, community_id, neighbourhood_id, building:buildings!leads_building_id_fkey(id,building_name,slug), listing:mls_listings!leads_listing_id_fkey(id,unparsed_address), area:treb_areas!leads_area_id_fkey(id,name,slug), municipality:municipalities!leads_municipality_id_fkey(id,name,slug), community:communities!leads_community_id_fkey(id,name,slug), neighbourhood:neighbourhoods!leads_neighbourhood_id_fkey(id,name,slug)')
+      .eq('id', params.id)
+      .maybeSingle()
+    if (!target) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
+    }
+    const decision = can(user.permissions, 'lead.write', {
+      kind: 'lead',
+      leadId: target.id,
+      tenantId: target.tenant_id,
+      agentId: target.agent_id,
+    })
+    if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+
+    // DELETE additionally restricted: no agent destructive deletes (legacy compliance policy preserved).
+    if (!user.isPlatformAdmin && user.permissions.roleDb === 'agent') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { error } = await supabase.from('leads').delete().eq('id', params.id)
+    if (error) {
+      console.error('[admin-homes/leads DELETE] lead-delete failed:', { leadId: target.id, tenantId: target.tenant_id, error })
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // W6a-3 audit: snapshot the deleted lead. Best-effort (never-throw).
+    const actorRole = user.role || (user.isPlatformAdmin ? 'platform_admin' : 'admin')
+    await logLeadAdminAction({
+      supabase,
+      tenantId: target.tenant_id,
+      leadId: target.id,
+      actorAgentId: user.agentId || null,
+      actorRole,
+      actionType: 'lead_deleted',
+      targetField: null,
+      beforeValue: {
+        contact_name: target.contact_name,
+        contact_email: target.contact_email,
+        contact_phone: target.contact_phone,
+        status: target.status,
+        quality: target.quality,
+        temperature: target.temperature,
+        agent_id: target.agent_id,
+        source: target.source,
+        source_url: target.source_url,
+        intent: target.intent,
+        geo_name: target.geo_name,
+        created_at: target.created_at,
+      },
+      afterValue: null,
+      notes: target.contact_email || target.contact_name || target.id,
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('[admin-homes/leads DELETE] error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+--- END ---
+
+================================================================
+=== FILE: Workbench client  (app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx)
+================================================================
+SIZE: 14574 bytes
+--- BEGIN ---
+'use client'
+
+// app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+// W-LEADS-WORKBENCH W4a (2026-05-13).
+//
+// Workbench client component -- 7-tab nav + Overview tab content.
+// Plan/Credits/Activity/Emails/VIP/Notes are placeholders filled by W4b-g.
+
+import { useState } from 'react'
+import Link from 'next/link'
+import PlanTab from '@/components/admin-homes/lead-workbench/PlanRenderer'
+import UserCreditPanel, { UserCreditData } from '@/components/admin-homes/lead-workbench/UserCreditPanel'
+import ActivityTab, { ActivityFeedItem } from '@/components/admin-homes/lead-workbench/ActivityTab'
+import EmailsTab, { EmailLogRow } from '@/components/admin-homes/lead-workbench/EmailsTab'
+import VipRequestsTab, { VipRequestRow } from '@/components/admin-homes/lead-workbench/VipRequestsTab'
+import NotesTab, { NoteRow } from '@/components/admin-homes/lead-workbench/NotesTab'
+
+function SourceContextSection({ lead }: { lead: any }) {
+  const items: Array<{ label: string; name: string | null; slug: string | null }> = []
+  if (lead?.building) items.push({ label: 'Building', name: lead.building.building_name, slug: lead.building.slug })
+  if (lead?.listing) items.push({ label: 'Listing', name: lead.listing.unparsed_address, slug: null })
+  if (lead?.neighbourhood) items.push({ label: 'Neighbourhood', name: lead.neighbourhood.name, slug: lead.neighbourhood.slug })
+  if (lead?.community) items.push({ label: 'Community', name: lead.community.name, slug: lead.community.slug })
+  if (lead?.municipality) items.push({ label: 'Municipality', name: lead.municipality.name, slug: lead.municipality.slug })
+  if (lead?.area) items.push({ label: 'Area', name: lead.area.name, slug: lead.area.slug })
+  if (items.length === 0) return null
+  return (
+    <div className="mt-4">
+      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Source Context</div>
+      <div className="space-y-1 text-sm">
+        {items.map((it, i) => (
+          <div key={i}>
+            <span className="text-gray-400">{it.label}: </span>
+            {it.slug ? (
+              <a href={`/${it.slug}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                {it.name || '(unnamed)'} ↗
+              </a>
+            ) : (
+              <span>{it.name || '(unnamed)'}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+type TabKey = 'overview' | 'plan' | 'estimator' | 'estimator_questionnaire' | 'credits' | 'activity' | 'emails' | 'vip' | 'notes'
+
+const TABS: { id: TabKey; label: string; phase: string }[] = [
+  { id: 'overview', label: 'Overview', phase: 'W4a' },
+  { id: 'plan', label: 'Plan', phase: 'W4b' },
+  { id: 'estimator', label: 'Estimator', phase: 'W4b-est' },
+  { id: 'estimator_questionnaire', label: 'Estimator Q', phase: 'W4b-estq' },
+  { id: 'credits', label: 'Credits & Usage', phase: 'W4c' },
+  { id: 'activity', label: 'Activity', phase: 'W4d' },
+  { id: 'emails', label: 'Emails', phase: 'W4e' },
+  { id: 'vip', label: 'VIP Requests', phase: 'W4f' },
+  { id: 'notes', label: 'Notes', phase: 'W4g' },
+]
+
+interface AdminUserShape {
+  agentId: string | null
+  role: string | null
+  isPlatformAdmin: boolean
+  tenantId: string | null
+}
+
+interface Props {
+  anchorLead: any
+  leadFamily: any[]
+  currentRole: string
+  currentAgentId: string | null
+  userCredit: UserCreditData | null
+  adminUser: AdminUserShape
+  activityFeed: ActivityFeedItem[]
+  emailLog: EmailLogRow[]
+  vipRequests: VipRequestRow[]
+  notes: NoteRow[]
+}
+
+export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId, userCredit, adminUser, activityFeed, emailLog, vipRequests, notes }: Props) {
+  const [tab, setTab] = useState<TabKey>('overview')
+  const activeTabMeta = TABS.find(t => t.id === tab)!
+
+  return (
+    <div className="max-w-7xl mx-auto p-6">
+      <div className="mb-4">
+        <Link href="/admin-homes/leads" className="text-blue-600 hover:underline text-sm">
+          {'←'} Back to leads
+        </Link>
+      </div>
+
+      <header className="border-b border-gray-200 pb-4 mb-6">
+        <h1 className="text-2xl font-semibold text-gray-900">{anchorLead.contact_name || 'Unnamed lead'}</h1>
+        <div className="mt-1 text-sm text-gray-600">
+          {anchorLead.contact_email && (
+            <a href={`mailto:${anchorLead.contact_email}`} className="text-blue-600 hover:underline">
+              {anchorLead.contact_email}
+            </a>
+          )}
+          {anchorLead.contact_phone && <span className="ml-3 text-gray-500">{anchorLead.contact_phone}</span>}
+        </div>
+        <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+          <span>Created {new Date(anchorLead.created_at).toLocaleDateString('en-CA')}</span>
+          {anchorLead.source && <span>Source: <span className="text-gray-700">{anchorLead.source}</span></span>}
+          {anchorLead.intent && <span>Intent: <span className="text-gray-700">{anchorLead.intent}</span></span>}
+          {anchorLead.agents?.full_name && <span>Agent: <span className="text-gray-700">{anchorLead.agents.full_name}</span></span>}
+          {leadFamily.length > 1 && (
+            <span className="font-semibold text-indigo-600">{leadFamily.length} events for this user</span>
+          )}
+        </div>
+      </header>
+
+      <nav className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${tab === t.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      <div>
+        {tab === 'overview' ? (
+          <OverviewTab anchorLead={anchorLead} leadFamily={leadFamily} />
+        ) : tab === 'plan' ? (
+          <PlanTab anchorLead={anchorLead} leadFamily={leadFamily} />
+        ) : tab === 'estimator' ? (
+
+          <div className="space-y-6">
+
+            {anchorLead.source_url && (
+
+
+              <div className="text-sm">
+
+
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submitted from </span>
+
+
+                <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+
+
+                  {anchorLead.source_url} ↗
+
+
+                </a>
+
+
+              </div>
+
+
+            )}
+
+
+            <SourceContextSection lead={anchorLead} />
+
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Estimator Submission</h3>
+
+            <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+
+              <Field label="Estimated Value Min" value={anchorLead.estimated_value_min ? `${Number(anchorLead.estimated_value_min).toLocaleString()}` : null} />
+
+              <Field label="Estimated Value Max" value={anchorLead.estimated_value_max ? `${Number(anchorLead.estimated_value_max).toLocaleString()}` : null} />
+
+              <Field label="Budget Max" value={anchorLead.budget_max ? `${Number(anchorLead.budget_max).toLocaleString()}` : null} />
+
+            </div>
+
+            {anchorLead.property_details && (
+
+              <div className="mt-6">
+
+                <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Property Details</h4>
+
+                <pre className="text-xs bg-gray-50 p-3 rounded border overflow-auto whitespace-pre-wrap">{JSON.stringify(anchorLead.property_details, null, 2)}</pre>
+
+              </div>
+
+            )}
+
+            {!anchorLead.estimated_value_min && !anchorLead.estimated_value_max && !anchorLead.property_details && (
+
+              <p className="text-sm text-gray-500 italic">No estimator data captured for this lead.</p>
+
+            )}
+
+          </div>
+
+        ) : tab === 'estimator_questionnaire' ? (
+
+          <div className="space-y-6">
+
+            {anchorLead.source_url && (
+
+
+              <div className="text-sm">
+
+
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submitted from </span>
+
+
+                <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+
+
+                  {anchorLead.source_url} ↗
+
+
+                </a>
+
+
+              </div>
+
+
+            )}
+
+
+            <SourceContextSection lead={anchorLead} />
+
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Estimator Questionnaire</h3>
+
+            {anchorLead.message ? (
+
+              <div className="whitespace-pre-wrap text-sm text-gray-800 bg-gray-50 p-4 rounded border">{anchorLead.message}</div>
+
+            ) : (
+
+              <p className="text-sm text-gray-500 italic">No questionnaire data captured for this lead.</p>
+
+            )}
+
+          </div>
+
+        ) : tab === 'credits' ? (
+          <CreditsTab anchorLead={anchorLead} userCredit={userCredit} adminUser={adminUser} />
+        ) : tab === 'activity' ? (
+          <ActivityTab activityFeed={activityFeed} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
+        ) : tab === 'emails' ? (
+          <EmailsTab emailLog={emailLog} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
+        ) : tab === 'vip' ? (
+          <VipRequestsTab vipRequests={vipRequests} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
+        ) : tab === 'notes' ? (
+          <NotesTab notes={notes} leadFamily={leadFamily} anchorLeadId={anchorLead.id} />
+        ) : (
+          <PlaceholderTab name={activeTabMeta.label} phase={activeTabMeta.phase} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function OverviewTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: any[] }) {
+  return (
+    <div className="space-y-6">
+      <section>
+        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Lead Info</h2>
+        <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <Field label="Status" value={anchorLead.status} />
+          <Field label="Quality" value={anchorLead.quality} />
+                <Field label="Temperature" value={anchorLead.temperature || '\u2014'} />
+          <Field label="Intent" value={anchorLead.intent} />
+          <Field label="Geo" value={anchorLead.geo_name} />
+          <Field label="Budget Max" value={anchorLead.budget_max ? `$${Number(anchorLead.budget_max).toLocaleString()}` : null} />
+          <Field label="Source" value={anchorLead.source} />
+        </dl>
+        <div className="mt-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Source URL</div>
+          <div className="text-sm break-all">
+            {anchorLead.source_url ? (
+              <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                {anchorLead.source_url} ↗
+              </a>
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
+          </div>
+        </div>
+
+        <SourceContextSection lead={anchorLead} />
+      </section>
+
+      <section>
+        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Hierarchy</h2>
+        <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <Field label="Agent" value={anchorLead.agents?.full_name} />
+          <Field label="Manager" value={anchorLead.manager?.full_name} />
+          <Field label="Area Manager" value={anchorLead.area_manager?.full_name} />
+          <Field label="Tenant Admin" value={anchorLead.tenant_admin?.full_name} />
+        </dl>
+      </section>
+
+      {leadFamily.length > 1 && (
+        <section>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">All Events ({leadFamily.length})</h2>
+          <ul className="space-y-2 text-sm">
+            {leadFamily.map((l: any) => (
+              <li key={l.id} className={`p-3 rounded border ${l.id === anchorLead.id ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-gray-800">{l.source || 'unknown source'}</span>
+                  <span className="text-xs text-gray-500">{new Date(l.created_at).toLocaleDateString('en-CA')}</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3">
+                  {l.status && <span>Status: {l.status}</span>}
+                  {l.quality && <span>Quality: {l.quality}</span>}
+              {l.temperature && <span>Temperature: {l.temperature}</span>}
+                  {l.intent && <span>Intent: {l.intent}</span>}
+                  {l.agents?.full_name && <span>Agent: {l.agents.full_name}</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  )
+}
+
+function CreditsTab({ anchorLead, userCredit, adminUser }: { anchorLead: any; userCredit: UserCreditData | null; adminUser: AdminUserShape }) {
+  if (!anchorLead.user_id) {
+    return (
+      <div className="text-center py-16 text-gray-400">
+        <div className="text-sm font-medium">No user account linked to this lead</div>
+        <div className="text-xs mt-1">Credit limits are user-scoped, not lead-scoped. Anonymous leads have no credit data.</div>
+      </div>
+    )
+  }
+  if (!userCredit) {
+    return (
+      <div className="text-center py-16 text-gray-400">
+        <div className="text-sm font-medium">Credit data not available</div>
+        <div className="text-xs mt-1">Failed to load user credit bundle.</div>
+      </div>
+    )
+  }
+  return (
+    <UserCreditPanel
+      userId={anchorLead.user_id}
+      tenantId={anchorLead.tenant_id}
+      userCredit={userCredit}
+      adminUser={adminUser}
+    />
+  )
+}
+
+function Field({ label, value }: { label: string; value: any }) {
+  return (
+    <div>
+      <dt className="text-xs text-gray-400">{label}</dt>
+      <dd className="text-gray-800">{value || '—'}</dd>
+    </div>
+  )
+}
+
+function PlaceholderTab({ name, phase }: { name: string; phase: string }) {
+  return (
+    <div className="text-center py-16 text-gray-400">
+      <div className="text-sm font-medium">{name}</div>
+      <div className="text-xs mt-1">Coming in {phase}</div>
+    </div>
+  )
+}
+
+--- END ---
+
+================================================================
+=== FILE SLICE: Leads-list client — Lead interface  (components/admin-homes/AdminHomesLeadsClient.tsx)
+================================================================
+SLICE BYTES 402 .. 1051
+--- BEGIN SLICE ---
+import { useState, useMemo, useEffect, Fragment } from 'react'
+import { deriveLeadOriginRoute, type LeadOriginRoute } from '@/lib/utils/lead-origin-route'
+import { useRouter } from 'next/navigation'
+
+interface Lead {
+  id: string
+  user_id: string | null
+  tenant_id: string
+  notes: string | null
+  contact_name: string
+  contact_email: string
+  contact_phone: string
+  source: string
+  source_url: string | null
+  appointment_date: string | null
+  intent: string | null
+  geo_name: string | null
+  budget_max: number | null
+  plan_data: any | null
+  status: string
+  quality: string
+  temperature: string | null
+  agent_id: string | null
+  manager_id: string | null
+  area_manager_id: string | null
+  tenant_admin_id: string | null
+  assignment_source: string | null
+  created_at: string
+  agents?: { id: string; full_name: string; email: string }
+--- END SLICE ---
+
+================================================================
+=== FILE SLICE: Leads-list client — pillRendered/ctx row block  (components/admin-homes/AdminHomesLeadsClient.tsx)
+================================================================
+SLICE BYTES 27264 .. 28399
+--- BEGIN SLICE ---
+d-full text-xs font-medium ${src.color}`}>
+
+                            {src.label}{lead.source_url ? ' ↗' : ''}
+
+                          </span>
+
+                        )
+
+                        const pillRendered = lead.source_url ? (
+                          <a href={lead.source_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title={lead.source_url} className="inline-block hover:opacity-80">
+                            {pill}
+                          </a>
+                        ) : pill
+
+                        const ctx: Array<{ name: string | null; slug: string | null }> = []
+                        if (lead.building) ctx.push({ name: lead.building.building_name, slug: lead.building.slug })
+                        if (lead.listing) ctx.push({ name: lead.listing.unparsed_address, slug: null })
+                        if (lead.neighbourhood) ctx.push({ name: lead.neighbourhood.name, slug: lead.neighbourhood.slug })
+                        if (lead.community) ctx.push({ name: lead.community.name, slug: lead.community.slug })
+                        if (lead.municipality) ctx.push({ name: lead.municipality.name, slug: lead.municipality.slug })
+                        if (lead.area) ctx.push({ name: lead.area.name, slug: lead.area.slug })
+
+                        return (
+--- END SLICE ---
+
+================================================================
+=== FILE SLICE: Leads-list page — SELECT  (app/admin-homes/leads/page.tsx)
+================================================================
+SLICE BYTES 1417 .. 2189
+--- BEGIN SLICE ---
+PlatformAdmin === true && !adminUser.tenantId && !tenantId
+  const scopedTenantId = adminUser?.tenantId ?? tenantId
+
+  // Build query based on role
+  let query = supabase
+    .from('leads')
+    .select(`
+      *,
+      agents!leads_agent_id_fkey ( id, full_name, email ),
+      manager:agents!leads_manager_id_fkey ( id, full_name, email ),
+      area_manager:agents!leads_area_manager_id_fkey ( id, full_name, email ),
+      tenant_admin:agents!leads_tenant_admin_id_fkey ( id, full_name, email ),
+      building:buildings!leads_building_id_fkey ( id, building_name, slug ),
+      listing:mls_listings!leads_listing_id_fkey ( id, unparsed_address ),
+      area:treb_areas!leads_area_id_fkey ( id, name, slug ),
+      municipality:municipalities!leads_municipality_id_fkey ( id, name, slug ),
+      community:communities!leads_community_id_fkey ( id, name, slug ),
+      neighbourhood:neighbourhoods!leads_neighbourhood_id_fkey ( id, name, slug )
+    `)
+--- END SLICE ---
+
+================================================================
+=== DB: FK constraints on public.leads
+================================================================
+Found 13 FK constraints on leads:
+  leads_agent_id_fkey                           leads.agent_id -> agents.id
+  leads_area_id_fkey                            leads.area_id -> treb_areas.id
+  leads_area_manager_id_fkey                    leads.area_manager_id -> agents.id
+  leads_building_id_fkey                        leads.building_id -> buildings.id
+  leads_community_id_fkey                       leads.community_id -> communities.id
+  leads_listing_id_fkey                         leads.listing_id -> mls_listings.id
+  leads_manager_id_fkey                         leads.manager_id -> agents.id
+  leads_municipality_id_fkey                    leads.municipality_id -> municipalities.id
+  leads_neighbourhood_id_fkey                   leads.neighbourhood_id -> neighbourhoods.id
+  leads_override_agent_id_fkey                  leads.override_agent_id -> agents.id
+  leads_tenant_admin_id_fkey                    leads.tenant_admin_id -> agents.id
+  leads_tenant_id_fkey                          leads.tenant_id -> tenants.id
+  leads_user_id_fkey                            leads.user_id -> users.id
+
+================================================================
+=== DB: leads columns
+================================================================
+Total columns: 48
+  id                             uuid                         nullable=NO default=uuid_generate_v4()
+  agent_id                       uuid                         nullable=NO
+  user_id                        uuid                         nullable=YES
+  contact_name                   text                         nullable=NO
+  contact_email                  text                         nullable=NO
+  contact_phone                  text                         nullable=YES
+  source                         text                         nullable=NO
+  source_url                     text                         nullable=YES
+  building_id                    uuid                         nullable=YES
+  listing_id                     uuid                         nullable=YES
+  message                        text                         nullable=YES
+  estimated_value_min            numeric                      nullable=YES
+  estimated_value_max            numeric                      nullable=YES
+  property_details               jsonb                        nullable=YES
+  quality                        text                         nullable=YES default='unqualified'::text
+  status                         text                         nullable=YES default='new'::text
+  notes                          text                         nullable=YES
+  last_contact_at                timestamp with time zone     nullable=YES
+  next_followup_at               timestamp with time zone     nullable=YES
+  created_at                     timestamp with time zone     nullable=YES default=now()
+  updated_at                     timestamp with time zone     nullable=YES default=now()
+  tags                           ARRAY                        nullable=YES default='{}'::text[]
+  follow_up_date                 date                         nullable=YES
+  intent                         text                         nullable=YES
+  geo_name                       text                         nullable=YES
+  budget_max                     numeric                      nullable=YES
+  plan_data                      jsonb                        nullable=YES
+  manager_id                     uuid                         nullable=YES
+  assignment_source              text                         nullable=YES
+  override_agent_id              uuid                         nullable=YES
+  tenant_id                      uuid                         nullable=NO
+  appointment_date               date                         nullable=YES
+  appointment_time               text                         nullable=YES
+  appointment_properties         jsonb                        nullable=YES
+  appointment_status             text                         nullable=YES default='pending'::text
+  reschedule_token               uuid                         nullable=YES default=gen_random_uuid()
+  status_axis                    text                         nullable=YES default='active'::text
+  stage                          text                         nullable=YES default='undecided'::text
+  urgency                        text                         nullable=YES default='normal'::text
+  closed_reason                  text                         nullable=YES
+  area_manager_id                uuid                         nullable=YES
+  tenant_admin_id                uuid                         nullable=YES
+  area_id                        uuid                         nullable=YES
+  municipality_id                uuid                         nullable=YES
+  community_id                   uuid                         nullable=YES
+  neighbourhood_id               uuid                         nullable=YES
+  lead_origin_route              text                         nullable=NO default='unknown'::text
+  temperature                    text                         nullable=YES
+
+================================================================
+=== DB: test lead row (full)
+================================================================
+  agent_id                       fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe
+  appointment_date               null
+  appointment_properties         null
+  appointment_status             pending
+  appointment_time               null
+  area_id                        77c09059-5882-4bd9-8a17-fd9844f7e2aa
+  area_manager_id                null
+  assignment_source              null
+  budget_max                     null
+  building_id                    95c9befd-1559-44e7-a820-de10911cd03f
+  closed_reason                  null
+  community_id                   243cf47e-16ac-41df-abc7-09981f900a75
+  contact_email                  test-t4h-1779025250638@walliam.test
+  contact_name                   T4-h Dashboard Test Lead 2026-05-17-13-40-50
+  contact_phone                  +14165550199
+  created_at                     "2026-05-17T13:40:51.857Z"
+  estimated_value_max            null
+  estimated_value_min            null
+  follow_up_date                 null
+  geo_name                       Grindstone, Toronto E02 (T4-h test)
+  id                             58c85af4-f6d8-4713-99db-2e8ecb029f3e
+  intent                         null
+  last_contact_at                null
+  lead_origin_route              unknown
+  listing_id                     690c8fd4-6b7d-49a8-b053-3a650f5e953f
+  manager_id                     null
+  message                        T4-h dashboard verification — all 6 entity IDs + source_url populated to exercise the SourceContextSection breadcrumb on the workbench (Overview / Estimator / Estimator Q tabs) and the row-level context strip on the leads list.
+  municipality_id                41724d8b-4c4d-4fcd-a379-72ee273b58e9
+  neighbourhood_id               dd0c4b89-8b4b-4e23-a134-028c7084efe3
+  next_followup_at               null
+  notes                          null
+  override_agent_id              null
+  plan_data                      null
+  property_details               null
+  quality                        unqualified
+  reschedule_token               36a29918-2a54-4fe8-b8ed-b2424b7b9888
+  source                         site_header
+  source_url                     https://walliam.ca/test/source-context-demo
+  stage                          undecided
+  status                         contacted
+  status_axis                    active
+  tags                           []
+  temperature                    null
+  tenant_admin_id                null
+  tenant_id                      b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+  updated_at                     "2026-05-17T13:40:51.857Z"
+  urgency                        normal
+  user_id                        null
+
+================================================================
+=== DB: SQL-level JOIN test (do FK names resolve at SQL layer?)
+================================================================
+JOIN result:
+  id                   58c85af4-f6d8-4713-99db-2e8ecb029f3e
+  building_name        The Way Condos
+  unparsed_address     57 Carleton Street N, Thorold, ON L2V 2A8
+  area_name            Chatham-Kent
+  muni_name            Toronto E02
+  comm_name            Grindstone
+  neigh_name           Downtown
+
+================================================================
+=== DB: tables that look relevant to workbench tabs
+================================================================
+Candidate tables present (6):
+  chat_messages
+  chat_sessions
+  lead_notes
+  lead_ownership_changes
+  user_activities
+  vip_requests
+
+================================================================
+=== DB: columns of each candidate table (to learn shape)
+================================================================
+--- chat_messages (9 cols) ---
+  id                             uuid nullable=NO
+  session_id                     uuid nullable=NO
+  role                           character varying nullable=NO
+  content                        text nullable=NO
+  page_context                   jsonb nullable=YES
+  market_data_used               jsonb nullable=YES
+  tokens_used                    integer nullable=YES
+  response_time_ms               integer nullable=YES
+  created_at                     timestamp with time zone nullable=YES
+--- chat_sessions (28 cols) ---
+  id                             uuid nullable=NO
+  agent_id                       uuid nullable=YES
+  user_id                        uuid nullable=YES
+  lead_id                        uuid nullable=YES
+  session_token                  character varying nullable=NO
+  status                         character varying nullable=YES
+  message_count                  integer nullable=YES
+  vip_prompted_at                timestamp with time zone nullable=YES
+  vip_accepted_at                timestamp with time zone nullable=YES
+  vip_phone                      character varying nullable=YES
+  current_page_type              character varying nullable=YES
+  current_page_id                uuid nullable=YES
+  current_page_slug              character varying nullable=YES
+  preferences                    jsonb nullable=YES
+  buildings_discussed            ARRAY nullable=YES
+  listings_discussed             ARRAY nullable=YES
+  created_at                     timestamp with time zone nullable=YES
+  updated_at                     timestamp with time zone nullable=YES
+  last_activity_at               timestamp with time zone nullable=YES
+  vip_messages_granted           integer nullable=YES
+  estimator_count                integer nullable=YES
+  total_ai_usage                 integer nullable=YES
+  manual_approvals_count         integer nullable=YES
+  last_approval_at               timestamp with time zone nullable=YES
+  source                         text nullable=YES
+  buyer_plans_used               integer nullable=YES
+  seller_plans_used              integer nullable=YES
+  tenant_id                      uuid nullable=YES
+--- lead_notes (6 cols) ---
+  id                             uuid nullable=NO
+  lead_id                        uuid nullable=NO
+  agent_id                       uuid nullable=NO
+  note                           text nullable=NO
+  created_at                     timestamp with time zone nullable=YES
+  updated_at                     timestamp with time zone nullable=YES
+--- lead_ownership_changes (9 cols) ---
+  id                             uuid nullable=NO
+  lead_id                        uuid nullable=NO
+  tenant_id                      uuid nullable=NO
+  old_agent_id                   uuid nullable=YES
+  new_agent_id                   uuid nullable=NO
+  reason                         text nullable=NO
+  changed_by                     uuid nullable=YES
+  changed_at                     timestamp with time zone nullable=NO
+  notes                          text nullable=YES
+--- user_activities (9 cols) ---
+  id                             uuid nullable=NO
+  contact_email                  text nullable=NO
+  agent_id                       uuid nullable=YES
+  activity_type                  text nullable=NO
+  activity_data                  jsonb nullable=YES
+  page_url                       text nullable=YES
+  user_agent                     text nullable=YES
+  created_at                     timestamp with time zone nullable=YES
+  tenant_id                      uuid nullable=NO
+--- vip_requests (22 cols) ---
+  id                             uuid nullable=NO
+  session_id                     uuid nullable=YES
+  agent_id                       uuid nullable=NO
+  lead_id                        uuid nullable=YES
+  status                         character varying nullable=NO
+  phone                          character varying nullable=NO
+  full_name                      character varying nullable=YES
+  email                          character varying nullable=YES
+  budget_range                   character varying nullable=YES
+  timeline                       character varying nullable=YES
+  buyer_type                     character varying nullable=YES
+  requirements                   text nullable=YES
+  approval_token                 uuid nullable=YES
+  created_at                     timestamp with time zone nullable=YES
+  responded_at                   timestamp with time zone nullable=YES
+  expires_at                     timestamp with time zone nullable=YES
+  page_url                       character varying nullable=YES
+  building_name                  character varying nullable=YES
+  request_source                 character varying nullable=YES
+  messages_granted               integer nullable=YES
+  request_type                   character varying nullable=NO
+  tenant_id                      uuid nullable=NO
+
+================================================================
+=== DB: sample WALLiam lead that has the richest tab data
+================================================================
+Top 5 WALLiam leads with user_id set:
+  82cfc489-14e6-4c83-bffb-3052ff9c859a  T3c Smoke Tier7 t3c1778576719586  user=cc18e7df-a932-4f82-9277-af2ee82a00ba
+  c4abc69d-5b2a-4828-9e75-04518137b4c6  T3c Smoke Tier6 t3c1778576719586  user=2df3ecdf-9f66-4fbd-b1ba-8e47bffbb0e3
+  7080bd28-7a66-4708-a64e-d388f12a6ebf  T3c Smoke Tier5 t3c1778576719586  user=5157dd2e-d80e-4343-a839-571be86f5d8d
+  96726a70-e979-4716-984a-001fd8fafd6b  T3b Smoke Tier3 t3b1778576674179  user=1eb9e167-6b00-4600-87fd-d384f9da943f
+  13eb68b0-29a9-47a3-ac74-484fc71bbf57  T3b Smoke Tier2 t3b1778576674179  user=e0201384-5b9b-4c4d-90bd-91d58d89ff48
+
+================================================================
+=== DB: per-tab row counts for top-5 leads (to find which lead has the most populated tabs)
+================================================================
+Lead 82cfc489-14e6-4c83-bffb-3052ff9c859a:
+Lead c4abc69d-5b2a-4828-9e75-04518137b4c6:
+Lead 7080bd28-7a66-4708-a64e-d388f12a6ebf:
+Lead 96726a70-e979-4716-984a-001fd8fafd6b:
+Lead 13eb68b0-29a9-47a3-ac74-484fc71bbf57:
