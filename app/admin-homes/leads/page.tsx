@@ -34,9 +34,15 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
     .select(`
       *,
       agents!leads_agent_id_fkey ( id, full_name, email ),
-      manager:agents!leads_manager_id_fkey ( id, full_name, email ),
+      manager:agents!leads_manager_id_fkey ( id, full_name, email ),
       area_manager:agents!leads_area_manager_id_fkey ( id, full_name, email ),
-      tenant_admin:agents!leads_tenant_admin_id_fkey ( id, full_name, email )
+      tenant_admin:agents!leads_tenant_admin_id_fkey ( id, full_name, email ),
+      building:buildings!leads_building_id_fkey ( id, building_name, slug ),
+      listing:mls_listings!leads_listing_id_fkey ( id, unparsed_address ),
+      area:treb_areas!leads_area_id_fkey ( id, name, slug ),
+      municipality:municipalities!leads_municipality_id_fkey ( id, name, slug ),
+      community:communities!leads_community_id_fkey ( id, name, slug ),
+      neighbourhood:neighbourhoods!leads_neighbourhood_id_fkey ( id, name, slug )
     `)
     .order('created_at', { ascending: false })
     .limit(10000)
