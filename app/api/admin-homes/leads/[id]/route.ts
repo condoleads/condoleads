@@ -139,7 +139,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     // lead_admin_actions.lead_id was dropped in W6a-1.
     const { data: target } = await supabase
       .from('leads')
-      .select('id, tenant_id, agent_id, contact_name, contact_email, contact_phone, status, quality, temperature, source, source_url, intent, geo_name, created_at')
+      .select('id, tenant_id, agent_id, contact_name, contact_email, contact_phone, status, quality, temperature, source, source_url, intent, geo_name, created_at, building_id, listing_id, area_id, municipality_id, community_id, neighbourhood_id, building:buildings!leads_building_id_fkey(id,building_name,slug), listing:mls_listings!leads_listing_id_fkey(id,unparsed_address), area:treb_areas!leads_area_id_fkey(id,name,slug), municipality:municipalities!leads_municipality_id_fkey(id,name,slug), community:communities!leads_community_id_fkey(id,name,slug), neighbourhood:neighbourhoods!leads_neighbourhood_id_fkey(id,name,slug)')
       .eq('id', params.id)
       .maybeSingle()
     if (!target) {

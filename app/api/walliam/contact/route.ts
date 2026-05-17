@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       name, email, phone, message,
       source,
       building_id, listing_id,
-      community_id, municipality_id, area_id,
+      community_id, municipality_id, area_id, neighbourhood_id,
       geo_name, tenant_id,
     } = await req.json()
 
@@ -131,6 +131,10 @@ export async function POST(req: NextRequest) {
       lead_origin_route: 'contact_form',
       building_id: building_id || null,
       listing_id: listing_id || null,
+      area_id: area_id || null,
+      municipality_id: municipality_id || null,
+      community_id: community_id || null,
+      neighbourhood_id: neighbourhood_id || null,
       geo_name: geo_name || null,
       status: 'new',
       assignment_source: agent ? 'geo' : 'admin',

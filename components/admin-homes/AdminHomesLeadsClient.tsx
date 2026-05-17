@@ -15,6 +15,8 @@ interface Lead {
   contact_email: string
   contact_phone: string
   source: string
+  source_url: string | null
+  appointment_date: string | null
   intent: string | null
   geo_name: string | null
   budget_max: number | null
@@ -32,6 +34,12 @@ interface Lead {
   manager?: { id: string; full_name: string; email: string }
   area_manager?: { id: string; full_name: string; email: string }
   tenant_admin?: { id: string; full_name: string; email: string }
+  building?: { id: string; building_name: string | null; slug: string | null } | null
+  listing?: { id: string; unparsed_address: string | null } | null
+  area?: { id: string; name: string | null; slug: string | null } | null
+  municipality?: { id: string; name: string | null; slug: string | null } | null
+  community?: { id: string; name: string | null; slug: string | null } | null
+  neighbourhood?: { id: string; name: string | null; slug: string | null } | null
 }
 
 interface Agent { id: string; full_name: string; email: string }
@@ -46,8 +54,8 @@ interface Props {
 }
 
 const ROUTE_LABELS: Record<LeadOriginRoute, string> = {
-  charlie: 'Charlie',
-  charlie_vip_request: 'Charlie VIP',
+  charlie: 'AI Chat',
+  charlie_vip_request: 'AI Chat VIP',
   estimator: 'Estimator',
   estimator_questionnaire: 'Estimator Q',
   estimator_vip_request: 'Estimator VIP',
@@ -73,6 +81,24 @@ const ROUTE_COLORS: Record<LeadOriginRoute, string> = {
   unknown: 'bg-slate-100 text-slate-600',
 }
 
+// W-SOURCE-AXIS T4: derive source display from (lead_origin_route, plan_data, appointment_date).
+// Surfaces 'Plan' for Charlie-routed leads with plan_data, 'Appointment' for those with
+// appointment_date; otherwise falls through to ROUTE_LABELS. Lets Plan/Appointment become
+// first-class source values without requiring a new lead_origin_route enum value.
+function getSourceDisplay(
+  route: LeadOriginRoute,
+  planData: any,
+  appointmentDate: any,
+): { label: string; color: string } {
+  if (route === 'charlie' && planData) {
+    return { label: 'Plan', color: 'bg-blue-100 text-blue-700' }
+  }
+  if (route === 'charlie' && appointmentDate) {
+    return { label: 'Appointment', color: 'bg-green-100 text-green-700' }
+  }
+  return { label: ROUTE_LABELS[route], color: ROUTE_COLORS[route] }
+}
+
 const ACTIVITY_SCORES: Record<string, number> = {
   registration: 10,
   estimator_used: 20,
@@ -85,10 +111,10 @@ const ACTIVITY_SCORES: Record<string, number> = {
 
 function calcEngagement(activities: any[]): { score: number; label: string; color: string } {
   const score = Math.min(activities.reduce((s, a) => s + (ACTIVITY_SCORES[a.activity_type] || 0), 0), 100)
-  if (score >= 75) return { score, label: 'Hot', color: 'text-red-600' }
-  if (score >= 50) return { score, label: 'Warm', color: 'text-orange-500' }
+  if (score >= 75) return { score, label: 'High', color: 'text-red-600' }
+  if (score >= 50) return { score, label: 'Mid', color: 'text-orange-500' }
   if (score >= 25) return { score, label: 'Active', color: 'text-yellow-600' }
-  return { score, label: 'Cold', color: 'text-gray-400' }
+  return { score, label: 'Low', color: 'text-gray-400' }
 }
 
 const QUALITY_VALUES = ['unqualified', 'qualified', 'disqualified'] as const
@@ -119,7 +145,6 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'status'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
-  const [expandedLead, setExpandedLead] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
@@ -488,14 +513,14 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                     className="h-4 w-4 rounded border-gray-300"
                   />
                 </th>
-                {['Date', 'Contact', 'Source', 'Intent', 'Area', 'Agent', 'Hierarchy', 'Status', 'Quality', 'Temperature', 'Actions'].map(h => (
+                {['Date', 'Contact', 'Source', 'Intent', 'Area', 'Agent', 'Hierarchy', 'Status', 'Quality', 'Temperature'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {flatRows.length === 0 ? (
-                <tr><td colSpan={12} className="px-6 py-12 text-center text-gray-400">No leads found</td></tr>
+                <tr><td colSpan={11} className="px-6 py-12 text-center text-gray-400">No leads found</td></tr>
               ) : flatRows.map(row => {
                 const lead = row.lead
                 const isEarlier = row.kind === 'earlier'
@@ -545,9 +570,55 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                       {lead.contact_phone && <div className="text-gray-400 text-xs">{lead.contact_phone}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROUTE_COLORS[deriveLeadOriginRoute(lead.source)]}`}>
-                        {ROUTE_LABELS[deriveLeadOriginRoute(lead.source)]}
-                      </span>
+                      {(() => {
+
+                        const src = getSourceDisplay(deriveLeadOriginRoute(lead.source), lead.plan_data, null)
+
+                        const pill = (
+
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${src.color}`}>
+
+                            {src.label}{lead.source_url ? ' ↗' : ''}
+
+                          </span>
+
+                        )
+
+                        const pillRendered = lead.source_url ? (
+                          <a href={lead.source_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title={lead.source_url} className="inline-block hover:opacity-80">
+                            {pill}
+                          </a>
+                        ) : pill
+
+                        const ctx: Array<{ name: string | null; slug: string | null }> = []
+                        if (lead.building) ctx.push({ name: lead.building.building_name, slug: lead.building.slug })
+                        if (lead.listing) ctx.push({ name: lead.listing.unparsed_address, slug: null })
+                        if (lead.neighbourhood) ctx.push({ name: lead.neighbourhood.name, slug: lead.neighbourhood.slug })
+                        if (lead.community) ctx.push({ name: lead.community.name, slug: lead.community.slug })
+                        if (lead.municipality) ctx.push({ name: lead.municipality.name, slug: lead.municipality.slug })
+                        if (lead.area) ctx.push({ name: lead.area.name, slug: lead.area.slug })
+
+                        return (
+                          <>
+                            {pillRendered}
+                            {ctx.length > 0 && (
+                              <div className="text-xs text-gray-500 mt-1 truncate max-w-[260px]" title={ctx.map(c => c.name || '?').join(' · ')}>
+                                {ctx.map((it, i) => (
+                                  <span key={i}>
+                                    {i > 0 && <span className="mx-1 text-gray-300">·</span>}
+                                    {it.slug ? (
+                                      <a href={`/${it.slug}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="hover:underline">{it.name || '?'}</a>
+                                    ) : (
+                                      <span>{it.name || '?'}</span>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )
+
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       {lead.intent && (
@@ -625,27 +696,12 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                         ))}
                       </select>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex gap-2">
-                        {lead.plan_data && (
-                          <button
-                            onClick={() => setExpandedLead(expandedLead === lead.id ? null : lead.id)}
-                            className="text-xs px-2 py-1 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100"
-                          >
-                            {expandedLead === lead.id ? 'Hide Plan' : 'Plan'}
-                          </button>
-                        )}
-                        {/* W6a followup-B: per-row Delete removed. Delete UI consolidated to bulk-only
-                            via the red "Delete (N)" button above the table. Server policy (agent-block)
-                            still enforced on every DELETE call regardless of UI surface. */}
-                      </div>
-                    </td>
                   </tr>
 
                   {/* L4: Inline activity preview (last 2) -- full timeline moves to L7 drawer */}
                   {!isEarlier && (activities[lead.id] || []).length > 0 && (
                     <tr key={lead.id + '-activity-preview'}>
-                      <td colSpan={12} className="px-6 py-2 bg-slate-50 border-b">
+                      <td colSpan={11} className="px-6 py-2 bg-slate-50 border-b">
                         <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                           <span className="font-semibold text-gray-400 uppercase tracking-wider">Recent activity</span>
                           {(activities[lead.id] || []).slice(-2).reverse().map((a: any) => (
@@ -662,43 +718,6 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                     </tr>
                   )}
 
-                  {/* Plan data panel */}
-                  {!isEarlier && expandedLead === lead.id && lead.plan_data && (
-                    <tr key={`${lead.id}-plan`}>
-                      <td colSpan={12} className="px-6 py-4 bg-gray-50 border-b">
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Plan Data</div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                          {lead.plan_data.geoName && (
-                            <div className="bg-white rounded-lg p-3 border">
-                              <div className="text-xs text-gray-400">Area</div>
-                              <div className="font-semibold text-gray-900">{lead.plan_data.geoName}</div>
-                            </div>
-                          )}
-                          {lead.plan_data.budgetMax && (
-                            <div className="bg-white rounded-lg p-3 border">
-                              <div className="text-xs text-gray-400">Budget</div>
-                              <div className="font-semibold text-gray-900">
-                                {lead.plan_data.budgetMin ? `$${Number(lead.plan_data.budgetMin).toLocaleString('en-CA')} – ` : ''}
-                                ${Number(lead.plan_data.budgetMax).toLocaleString('en-CA')}
-                              </div>
-                            </div>
-                          )}
-                          {lead.plan_data.propertyType && (
-                            <div className="bg-white rounded-lg p-3 border">
-                              <div className="text-xs text-gray-400">Property Type</div>
-                              <div className="font-semibold text-gray-900">{lead.plan_data.propertyType}</div>
-                            </div>
-                          )}
-                          {lead.plan_data.planType && (
-                            <div className="bg-white rounded-lg p-3 border">
-                              <div className="text-xs text-gray-400">Plan Type</div>
-                              <div className="font-semibold text-gray-900 capitalize">{lead.plan_data.planType}</div>
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
                 </Fragment>
                 )
               })}

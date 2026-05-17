@@ -22,6 +22,7 @@ import {
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+import { entityIdsFromSession } from '@/lib/admin-homes/extract-entity-ids'
 
 
 // Track user activity in user_activities table
@@ -202,7 +203,7 @@ export async function POST(request: NextRequest) {
           source: `${sourceKey}_estimator_vip_request`,
           lead_origin_route: 'estimator_vip_request',
           source_url: pageUrl,
-          building_id: session.current_page_type === 'building' ? session.current_page_id : null,
+          ...entityIdsFromSession(session),
           message: `${brandName} Estimator VIP Request${buildingName ? ` — ${buildingName}` : ''}`,
           status: 'new',
           assignment_source: agent?.id ? 'geo' : 'admin',

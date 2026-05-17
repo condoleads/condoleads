@@ -21,6 +21,7 @@ import {
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+import { entityIdsFromSession } from '@/lib/admin-homes/extract-entity-ids'
 
 
 // Track user activity in user_activities table
@@ -195,7 +196,7 @@ export async function POST(request: NextRequest) {
             source: sourceKey ? `${sourceKey}_estimator_questionnaire` : 'walliam_estimator_questionnaire',
             lead_origin_route: 'estimator_questionnaire',
             source_url: vipRequest.page_url,
-            building_id: session?.current_page_type === 'building' ? session?.current_page_id : null,
+            ...entityIdsFromSession(session),
             message: enrichedMessage,
             status: 'new',
             assignment_source: agent?.id ? 'geo' : 'admin',

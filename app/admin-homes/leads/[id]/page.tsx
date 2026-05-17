@@ -46,7 +46,7 @@ import LeadWorkbenchClient from './LeadWorkbenchClient'
 
 export const metadata = { title: 'Lead Workbench — Admin' }
 
-const ANCHOR_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email, cell_phone, profile_photo_url, brokerage_name, title), manager:agents!leads_manager_id_fkey(id, full_name, email), area_manager:agents!leads_area_manager_id_fkey(id, full_name, email), tenant_admin:agents!leads_tenant_admin_id_fkey(id, full_name, email)'
+const ANCHOR_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email, cell_phone, profile_photo_url, brokerage_name, title), manager:agents!leads_manager_id_fkey(id, full_name, email), area_manager:agents!leads_area_manager_id_fkey(id, full_name, email), tenant_admin:agents!leads_tenant_admin_id_fkey(id, full_name, email), building:buildings!leads_building_id_fkey(id, building_name, slug), listing:mls_listings!leads_listing_id_fkey(id, unparsed_address), area:treb_areas!leads_area_id_fkey(id, name, slug), municipality:municipalities!leads_municipality_id_fkey(id, name, slug), community:communities!leads_community_id_fkey(id, name, slug), neighbourhood:neighbourhoods!leads_neighbourhood_id_fkey(id, name, slug)'
 
 const FAMILY_SELECT = '*, agents!leads_agent_id_fkey(id, full_name, email, cell_phone, profile_photo_url, brokerage_name, title)'
 

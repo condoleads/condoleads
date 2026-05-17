@@ -15,11 +15,43 @@ import EmailsTab, { EmailLogRow } from '@/components/admin-homes/lead-workbench/
 import VipRequestsTab, { VipRequestRow } from '@/components/admin-homes/lead-workbench/VipRequestsTab'
 import NotesTab, { NoteRow } from '@/components/admin-homes/lead-workbench/NotesTab'
 
-type TabKey = 'overview' | 'plan' | 'credits' | 'activity' | 'emails' | 'vip' | 'notes'
+function SourceContextSection({ lead }: { lead: any }) {
+  const items: Array<{ label: string; name: string | null; slug: string | null }> = []
+  if (lead?.building) items.push({ label: 'Building', name: lead.building.building_name, slug: lead.building.slug })
+  if (lead?.listing) items.push({ label: 'Listing', name: lead.listing.unparsed_address, slug: null })
+  if (lead?.neighbourhood) items.push({ label: 'Neighbourhood', name: lead.neighbourhood.name, slug: lead.neighbourhood.slug })
+  if (lead?.community) items.push({ label: 'Community', name: lead.community.name, slug: lead.community.slug })
+  if (lead?.municipality) items.push({ label: 'Municipality', name: lead.municipality.name, slug: lead.municipality.slug })
+  if (lead?.area) items.push({ label: 'Area', name: lead.area.name, slug: lead.area.slug })
+  if (items.length === 0) return null
+  return (
+    <div className="mt-4">
+      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Source Context</div>
+      <div className="space-y-1 text-sm">
+        {items.map((it, i) => (
+          <div key={i}>
+            <span className="text-gray-400">{it.label}: </span>
+            {it.slug ? (
+              <a href={`/${it.slug}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                {it.name || '(unnamed)'} ↗
+              </a>
+            ) : (
+              <span>{it.name || '(unnamed)'}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+type TabKey = 'overview' | 'plan' | 'estimator' | 'estimator_questionnaire' | 'credits' | 'activity' | 'emails' | 'vip' | 'notes'
 
 const TABS: { id: TabKey; label: string; phase: string }[] = [
   { id: 'overview', label: 'Overview', phase: 'W4a' },
   { id: 'plan', label: 'Plan', phase: 'W4b' },
+  { id: 'estimator', label: 'Estimator', phase: 'W4b-est' },
+  { id: 'estimator_questionnaire', label: 'Estimator Q', phase: 'W4b-estq' },
   { id: 'credits', label: 'Credits & Usage', phase: 'W4c' },
   { id: 'activity', label: 'Activity', phase: 'W4d' },
   { id: 'emails', label: 'Emails', phase: 'W4e' },
@@ -97,6 +129,112 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
           <OverviewTab anchorLead={anchorLead} leadFamily={leadFamily} />
         ) : tab === 'plan' ? (
           <PlanTab anchorLead={anchorLead} leadFamily={leadFamily} />
+        ) : tab === 'estimator' ? (
+
+          <div className="space-y-6">
+
+            {anchorLead.source_url && (
+
+
+              <div className="text-sm">
+
+
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submitted from </span>
+
+
+                <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+
+
+                  {anchorLead.source_url} ↗
+
+
+                </a>
+
+
+              </div>
+
+
+            )}
+
+
+            <SourceContextSection lead={anchorLead} />
+
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Estimator Submission</h3>
+
+            <div className="grid grid-cols-2 gap-x-12 gap-y-4">
+
+              <Field label="Estimated Value Min" value={anchorLead.estimated_value_min ? `${Number(anchorLead.estimated_value_min).toLocaleString()}` : null} />
+
+              <Field label="Estimated Value Max" value={anchorLead.estimated_value_max ? `${Number(anchorLead.estimated_value_max).toLocaleString()}` : null} />
+
+              <Field label="Budget Max" value={anchorLead.budget_max ? `${Number(anchorLead.budget_max).toLocaleString()}` : null} />
+
+            </div>
+
+            {anchorLead.property_details && (
+
+              <div className="mt-6">
+
+                <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Property Details</h4>
+
+                <pre className="text-xs bg-gray-50 p-3 rounded border overflow-auto whitespace-pre-wrap">{JSON.stringify(anchorLead.property_details, null, 2)}</pre>
+
+              </div>
+
+            )}
+
+            {!anchorLead.estimated_value_min && !anchorLead.estimated_value_max && !anchorLead.property_details && (
+
+              <p className="text-sm text-gray-500 italic">No estimator data captured for this lead.</p>
+
+            )}
+
+          </div>
+
+        ) : tab === 'estimator_questionnaire' ? (
+
+          <div className="space-y-6">
+
+            {anchorLead.source_url && (
+
+
+              <div className="text-sm">
+
+
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submitted from </span>
+
+
+                <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+
+
+                  {anchorLead.source_url} ↗
+
+
+                </a>
+
+
+              </div>
+
+
+            )}
+
+
+            <SourceContextSection lead={anchorLead} />
+
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Estimator Questionnaire</h3>
+
+            {anchorLead.message ? (
+
+              <div className="whitespace-pre-wrap text-sm text-gray-800 bg-gray-50 p-4 rounded border">{anchorLead.message}</div>
+
+            ) : (
+
+              <p className="text-sm text-gray-500 italic">No questionnaire data captured for this lead.</p>
+
+            )}
+
+          </div>
+
         ) : tab === 'credits' ? (
           <CreditsTab anchorLead={anchorLead} userCredit={userCredit} adminUser={adminUser} />
         ) : tab === 'activity' ? (
@@ -129,14 +267,20 @@ function OverviewTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: 
           <Field label="Budget Max" value={anchorLead.budget_max ? `$${Number(anchorLead.budget_max).toLocaleString()}` : null} />
           <Field label="Source" value={anchorLead.source} />
         </dl>
-        {anchorLead.source_url && (
-          <div className="mt-3 text-sm">
-            <span className="text-xs text-gray-400">Source URL: </span>
-            <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
-              {anchorLead.source_url}
-            </a>
+        <div className="mt-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Source URL</div>
+          <div className="text-sm break-all">
+            {anchorLead.source_url ? (
+              <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                {anchorLead.source_url} ↗
+              </a>
+            ) : (
+              <span className="text-gray-400">—</span>
+            )}
           </div>
-        )}
+        </div>
+
+        <SourceContextSection lead={anchorLead} />
       </section>
 
       <section>
