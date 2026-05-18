@@ -75,6 +75,38 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
           'Add a manual session via the Charlie init route in the dev server and re-run.');
   }
 
+  // Create a real auth user. Both VIP request routes require
+  // chat_sessions.user_id to reference a real auth.users row, and the
+  // lead row's contact_email comes from auth.users (not the request body).
+  const testUserEmail = 'wleadflow+sess+' + Date.now() + '@condoleads.ca';
+  const { data: createdUser, error: createUserErr } = await supabase.auth.admin.createUser({
+    email: testUserEmail,
+    email_confirm: true,
+    user_metadata: { source: 'wleadflow-harness' },
+  });
+  if (createUserErr || !createdUser || !createdUser.user || !createdUser.user.id) {
+    abort('failed to create test auth user: ' + (createUserErr && createUserErr.message ? createUserErr.message : 'no user returned'));
+  }
+  const testUserId = createdUser.user.id;
+  console.log('  Created test auth user: ' + testUserId + ' (' + testUserEmail + ')');
+
+  // S2 (Charlie VIP) needs its own chat_sessions row. The unique partial index
+  // idx_chat_sessions_user_tenant_source_unique on (user_id, tenant_id, source)
+  // forbids two sessions for the same (auth user, tenant, source) trio.
+  // S3/S4 session and S2 session share tenant_id + source='walliam', so they
+  // must be owned by distinct auth users.
+  const testUserEmailS2 = 'wleadflow+sessS2+' + Date.now() + '@condoleads.ca';
+  const { data: createdUserS2, error: createUserErrS2 } = await supabase.auth.admin.createUser({
+    email: testUserEmailS2,
+    email_confirm: true,
+    user_metadata: { source: 'wleadflow-harness' },
+  });
+  if (createUserErrS2 || !createdUserS2 || !createdUserS2.user || !createdUserS2.user.id) {
+    abort('failed to create S2 test auth user: ' + (createUserErrS2 && createUserErrS2.message ? createUserErrS2.message : 'no user returned'));
+  }
+  const testUserIdS2 = createdUserS2.user.id;
+  console.log('  Created S2 test auth user: ' + testUserIdS2 + ' (' + testUserEmailS2 + ')');
+
   // Try to find an existing WALLiam session as a clone template
   let template = null;
   if (chatSessionsCols.includes('tenant_id')) {
@@ -100,9 +132,10 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
     if ('last_message_at' in clone) clone.last_message_at = null;
     if ('current_page_type' in clone) clone.current_page_type = 'building';
     if ('current_page_id' in clone)   clone.current_page_id   = fx.building.id;
-    if ('current_page_url' in clone)  clone.current_page_url  = '/buildings/' + fx.building.slug;
+    if ('current_page_slug' in clone) clone.current_page_slug = fx.building.slug;
     if ('message_count' in clone)     clone.message_count = 0;
-    if ('user_id' in clone)           clone.user_id = null;  // anonymous test session
+    if ('user_id' in clone)           clone.user_id = testUserId;  // real auth user (required by VIP routes)
+    if ('session_token' in clone)     clone.session_token = require('crypto').randomUUID();  // fresh unique token (avoid UNIQUE collision on clone)
 
     const { data: inserted, error: insErr } = await supabase
       .from('chat_sessions')
@@ -118,7 +151,7 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
     if (chatSessionsCols.includes('tenant_id'))         minimal.tenant_id         = fx.tenant.id;
     if (chatSessionsCols.includes('current_page_type')) minimal.current_page_type = 'building';
     if (chatSessionsCols.includes('current_page_id'))   minimal.current_page_id   = fx.building.id;
-    if (chatSessionsCols.includes('current_page_url'))  minimal.current_page_url  = '/buildings/' + fx.building.slug;
+    if (chatSessionsCols.includes('current_page_slug')) minimal.current_page_slug = fx.building.slug;
 
     const { data: inserted, error: insErr } = await supabase
       .from('chat_sessions')
@@ -133,6 +166,33 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
   }
 
   console.log('');
+
+  // S2 (Charlie VIP) needs its own session. The Charlie route dedupes
+  // on session_id when status=pending, and S3 just left such a vip_request
+  // on the first session. A second session sidesteps the short-circuit.
+  let sessionIdS2;
+  {
+    const cloneS2Source = template || { tenant_id: fx.tenant.id };
+    const cloneS2 = { ...cloneS2Source };
+    delete cloneS2.id;
+    if ('created_at' in cloneS2)        delete cloneS2.created_at;
+    if ('updated_at' in cloneS2)        delete cloneS2.updated_at;
+    if ('last_message_at' in cloneS2)   cloneS2.last_message_at = null;
+    if ('current_page_type' in cloneS2) cloneS2.current_page_type = 'building';
+    if ('current_page_id' in cloneS2)   cloneS2.current_page_id   = fx.building.id;
+    if ('current_page_slug' in cloneS2) cloneS2.current_page_slug = fx.building.slug;
+    if ('message_count' in cloneS2)     cloneS2.message_count = 0;
+    cloneS2.user_id       = testUserIdS2;  // distinct user -- unique index (user_id, tenant_id, source)
+    cloneS2.session_token = require('crypto').randomUUID();
+    const { data: insertedS2, error: insErrS2 } = await supabase
+      .from('chat_sessions')
+      .insert(cloneS2)
+      .select()
+      .single();
+    if (insErrS2) abort('chat_sessions clone insert (S2): ' + insErrS2.message);
+    sessionIdS2 = insertedS2.id;
+    console.log('  Cloned second session for S2: ' + sessionIdS2);
+  }
 
   // ========================================================================
   // Helpers
@@ -150,7 +210,7 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
     try {
       response = await fetch(DEV_URL + route, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Host': fx.tenant.domain },
+        headers: { 'Content-Type': 'application/json', 'Host': fx.tenant.domain, 'x-tenant-id': fx.tenant.id },
         body: JSON.stringify(body),
       });
       status = response.status;
@@ -174,18 +234,22 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
 
     await new Promise(r => setTimeout(r, 2000));
 
-    // Find the lead by either lead_id in response, or by contact_email
+    // Find the lead. Production routes don't return leadId, and lead.contact_email
+    // comes from auth.users (not request body), so look up by
+    // tenant_id + the test auth user + lead_origin_route + most recent.
     let lead = null;
     if (resJson && resJson.leadId) {
       const { data } = await supabase.from('leads').select('*').eq('id', resJson.leadId).maybeSingle();
       lead = data;
     }
-    if (!lead && body.email) {
-      const { data } = await supabase.from('leads').select('*').eq('contact_email', body.email).order('created_at', { ascending: false }).limit(1).maybeSingle();
-      lead = data;
-    }
-    if (!lead && resJson && resJson.lead_id) {
-      const { data } = await supabase.from('leads').select('*').eq('id', resJson.lead_id).maybeSingle();
+    if (!lead) {
+      const { data } = await supabase.from('leads').select('*')
+        .eq('tenant_id', fx.tenant.id)
+        .in('user_id', [testUserId, testUserIdS2])
+        .eq('lead_origin_route', expectLeadOriginRoute)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       lead = data;
     }
 
@@ -231,7 +295,7 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
   const s3Body = {
     sessionId:     sessionId,
     phone:         '555-555-0003',
-    pageUrl:       '/buildings/' + fx.building.slug,
+    pageUrl:       '/' + fx.building.slug,
     buildingName:  fx.building.name,
     name:          'WLeadFlow S3 Test',  // route may use either name or fullName
     email:         s3Email,
@@ -286,8 +350,10 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
     };
     await fireAndVerify(
       'S4', 'Surface 5: Estimator Questionnaire', '/api/walliam/estimator/vip-questionnaire',
-      s4Body, 'estimator_questionnaire',
-      (lead) => ({ message_set: typeof lead.message === 'string' && lead.message.length > 0 }),
+      s4Body, 'estimator_vip_request',  // questionnaire enriches the S3 lead in-place; lead_origin_route stays 'estimator_vip_request'
+      (lead) => ({
+        message_includes_questionnaire: typeof lead.message === 'string' && lead.message.indexOf('Questionnaire') !== -1,
+      }),
     );
   }
 
@@ -298,7 +364,7 @@ function abort(msg) { console.error('ABORT: ' + msg); process.exit(1); }
   // Try with the same anonymous session first; if the route rejects, we'll know
   // it needs more setup and we'll add a chat_messages insert next iteration.
   const s2Body = {
-    sessionId: sessionId,
+    sessionId: sessionIdS2,  // own session to avoid Charlie's session_id-based dedup
     planType:  'buyer',
     // some routes also accept these as fallbacks for anonymous sessions
     name:      'WLeadFlow S2 Test',
