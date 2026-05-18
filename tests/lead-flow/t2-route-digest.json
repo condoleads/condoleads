@@ -1,0 +1,437 @@
+{
+  "S1": {
+    "id": "S1",
+    "name": "walliam-contact",
+    "path": "app/api/walliam/contact/route.ts",
+    "bytes": 9723,
+    "methods": [
+      "POST"
+    ],
+    "reqBodyFields": [
+      "name",
+      "email",
+      "phone",
+      "message",
+      "source",
+      "building_id",
+      "listing_id",
+      "community_id",
+      "municipality_id",
+      "area_id",
+      "neighbourhood_id",
+      "geo_name",
+      "tenant_id"
+    ],
+    "leadInserts": [
+      [
+        "agent_id",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "message",
+        "source",
+        "source_url",
+        "lead_origin_route",
+        "building_id",
+        "listing_id",
+        "area_id",
+        "municipality_id",
+        "community_id",
+        "neighbourhood_id",
+        "geo_name",
+        "status",
+        "assignment_source"
+      ]
+    ],
+    "otherInserts": [
+      "user_activities",
+      "agents"
+    ],
+    "lead_origin_route": "contact_form",
+    "authIndicators": [],
+    "emailSends": [
+      "sendTenantEmail"
+    ],
+    "resolverHints": [
+      "resolve_agent_for_context",
+      "geo-resolver",
+      "assignment_source"
+    ]
+  },
+  "S2": {
+    "id": "S2",
+    "name": "walliam-charlie-vip",
+    "path": "app/api/walliam/charlie/vip-request/route.ts",
+    "bytes": 22185,
+    "methods": [
+      "POST",
+      "GET"
+    ],
+    "reqBodyFields": [
+      "sessionId",
+      "planType"
+    ],
+    "leadInserts": [
+      [
+        "agent_id",
+        "user_id",
+        "tenant_id",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "source_url",
+        "lead_origin_route",
+        "intent",
+        "status",
+        "assignment_source"
+      ]
+    ],
+    "otherInserts": [
+      "vip_requests"
+    ],
+    "lead_origin_route": "charlie_vip_request",
+    "authIndicators": [
+      "session"
+    ],
+    "emailSends": [
+      "sendTenantEmail"
+    ],
+    "resolverHints": [
+      "geo-resolver",
+      "assignment_source"
+    ]
+  },
+  "S3": {
+    "id": "S3",
+    "name": "walliam-estimator-vip",
+    "path": "app/api/walliam/estimator/vip-request/route.ts",
+    "bytes": 19293,
+    "methods": [
+      "POST",
+      "GET"
+    ],
+    "reqBodyFields": [
+      "sessionId",
+      "phone",
+      "pageUrl",
+      "buildingName"
+    ],
+    "leadInserts": [
+      [
+        "agent_id",
+        "user_id",
+        "tenant_id",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "lead_origin_route",
+        "source_url",
+        "message",
+        "status",
+        "assignment_source"
+      ]
+    ],
+    "otherInserts": [
+      "user_activities",
+      "vip_requests"
+    ],
+    "lead_origin_route": "estimator_vip_request",
+    "authIndicators": [
+      "session"
+    ],
+    "emailSends": [
+      "sendTenantEmail"
+    ],
+    "resolverHints": [
+      "geo-resolver",
+      "assignment_source",
+      "extract-entity-ids"
+    ]
+  },
+  "S4": {
+    "id": "S4",
+    "name": "walliam-estimator-q",
+    "path": "app/api/walliam/estimator/vip-questionnaire/route.ts",
+    "bytes": 15341,
+    "methods": [
+      "POST"
+    ],
+    "reqBodyFields": [
+      "requestId",
+      "fullName",
+      "email",
+      "budgetRange",
+      "timeline",
+      "buyerType",
+      "requirements"
+    ],
+    "leadInserts": [
+      [
+        "agent_id",
+        "user_id",
+        "tenant_id",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "lead_origin_route",
+        "source_url",
+        "message",
+        "status",
+        "assignment_source"
+      ],
+      [
+        "agent_id",
+        "user_id",
+        "tenant_id",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "lead_origin_route",
+        "source_url",
+        "message",
+        "status",
+        "assignment_source"
+      ],
+      [
+        "agent_id",
+        "user_id",
+        "tenant_id",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "lead_origin_route",
+        "source_url",
+        "message",
+        "status",
+        "assignment_source"
+      ]
+    ],
+    "otherInserts": [
+      "user_activities"
+    ],
+    "lead_origin_route": "estimator_questionnaire",
+    "authIndicators": [
+      "session"
+    ],
+    "emailSends": [
+      "sendTenantEmail"
+    ],
+    "resolverHints": [
+      "geo-resolver",
+      "assignment_source",
+      "extract-entity-ids"
+    ]
+  },
+  "S5": {
+    "id": "S5",
+    "name": "charlie-lead",
+    "path": "app/api/charlie/lead/route.ts",
+    "bytes": 27509,
+    "methods": [
+      "POST"
+    ],
+    "reqBodyFields": [],
+    "leadInserts": [
+      [
+        "agent_id",
+        "user_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "source_url",
+        "lead_origin_route",
+        "geo_name",
+        "budget_max",
+        "plan_data",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "assignment_source",
+        "tenant_id",
+        "status"
+      ],
+      [
+        "agent_id",
+        "user_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "source_url",
+        "lead_origin_route",
+        "geo_name",
+        "budget_max",
+        "plan_data",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "assignment_source",
+        "tenant_id",
+        "status"
+      ],
+      [
+        "agent_id",
+        "user_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "source_url",
+        "lead_origin_route",
+        "geo_name",
+        "budget_max",
+        "plan_data",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "assignment_source",
+        "tenant_id",
+        "status"
+      ]
+    ],
+    "otherInserts": [],
+    "lead_origin_route": "charlie",
+    "authIndicators": [
+      "session"
+    ],
+    "emailSends": [
+      "sendTenantEmail"
+    ],
+    "resolverHints": [
+      "resolve_agent_for_context",
+      "geo-resolver",
+      "assignment_source"
+    ]
+  },
+  "S6": {
+    "id": "S6",
+    "name": "charlie-appointment",
+    "path": "app/api/charlie/appointment/route.ts",
+    "bytes": 19742,
+    "methods": [
+      "POST"
+    ],
+    "reqBodyFields": [],
+    "leadInserts": [
+      [
+        "agent_id",
+        "user_id",
+        "contact_name",
+        "contact_email",
+        "contact_phone",
+        "source",
+        "source_url",
+        "lead_origin_route",
+        "geo_name",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "assignment_source",
+        "tenant_id",
+        "status",
+        "appointment_properties",
+        "appointment_status"
+      ]
+    ],
+    "otherInserts": [
+      "user_activities",
+      "agents"
+    ],
+    "lead_origin_route": "charlie",
+    "authIndicators": [
+      "session"
+    ],
+    "emailSends": [
+      "sendTenantEmail"
+    ],
+    "resolverHints": [
+      "resolve_agent_for_context",
+      "geo-resolver",
+      "assignment_source"
+    ]
+  },
+  "S7": {
+    "id": "S7",
+    "name": "charlie-plan-email",
+    "path": "app/api/charlie/plan-email/route.ts",
+    "bytes": 43116,
+    "methods": [
+      "POST"
+    ],
+    "reqBodyFields": [
+      "sessionId",
+      "userId",
+      "planType",
+      "plan",
+      "analytics",
+      "listings",
+      "geoContext",
+      "comparables",
+      "sellerEstimate",
+      "vipCreditUsed",
+      "vipCreditPlansUsed",
+      "vipCreditTotal",
+      "blocks"
+    ],
+    "leadInserts": [
+      [
+        "agent_id",
+        "user_id",
+        "contact_name",
+        "contact_email",
+        "source",
+        "source_url",
+        "lead_origin_route",
+        "intent",
+        "geo_name",
+        "budget_max",
+        "plan_data",
+        "manager_id",
+        "area_manager_id",
+        "tenant_admin_id",
+        "assignment_source",
+        "status",
+        "tenant_id"
+      ]
+    ],
+    "otherInserts": [
+      "user_activities",
+      "agents"
+    ],
+    "lead_origin_route": "charlie",
+    "authIndicators": [
+      "session"
+    ],
+    "emailSends": [
+      "sendTenantEmail"
+    ],
+    "resolverHints": [
+      "geo-resolver",
+      "assignment_source"
+    ]
+  }
+}
