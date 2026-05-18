@@ -52,7 +52,7 @@ Out of scope: System 1 `app/api/chat/*` routes (maintenance-only per RULE ZERO).
 | T2 Per-route digest | CLOSED | Request shapes / insert keys / auth / email patterns captured (commit e21e6c8) |
 | T3-S1 Contact form | CLOSED | S1-Build PASS (lead c096f8d9); 5 variants PASS (commit 5ac84e3) |
 | T3-S2/S3/S4 Session-based | CLOSED | S3+S4+S2 all PASS via run-S2-S3-S4-session.js; root cause: unique partial index `idx_chat_sessions_user_tenant_source_unique` on (user_id, tenant_id, source) -- fix: distinct auth user for S2 session + `.in()` lead lookup |
-| T3-S5/S6/S7 Charlie chat | NOT STARTED | charlie/lead, charlie/appointment, charlie/plan-email |
+| T3-S5/S6/S7 Charlie chat | CLOSED | S5+S6+S7 all PASS via run-S5-S6-S7-charlie.js -- session-based + lead_origin_route='charlie' + intent disambiguation (S5/S6=buyer, S7=seller via planType) |
 | T4 Hierarchy verification | NOT STARTED | Stamp manager_id / area_manager_id / tenant_admin_id when chain exists |
 | T5 Gap fixes (G1 + G2) | IN PROGRESS | G2 CLOSED 2026-05-18 (lead.user_id via get-or-create from email; lib/auth/get-or-create-by-email.ts + walliam/contact patch). G1 (source_url) still open. |
 | T6 Browser walkthrough (Phase B) | NOT STARTED | Real user flow through every page; verifies frontend wiring |
@@ -72,9 +72,9 @@ Out of scope: System 1 `app/api/chat/*` routes (maintenance-only per RULE ZERO).
 | S3       | Estimator VIP request | `walliam/estimator/vip-request` | PASS | `bf243fc5-e3c4-458a-9ced-520d60856d9e` | agent=King Shah, src=geo |
 | S4       | Estimator questionnaire | `walliam/estimator/vip-questionnaire` | PASS | `bf243fc5-e3c4-458a-9ced-520d60856d9e` | enriches S3 lead in place; agent=King Shah, src=geo |
 | S2       | Charlie VIP request | `walliam/charlie/vip-request` | PASS | `f906a371-ca90-4816-944a-74c2e9d42229` | distinct session+auth user from S3/S4; agent=King Shah, src=geo |
-| S5       | Charlie lead capture | `charlie/lead` | NOT STARTED | -- | needs session + chat messages |
-| S6       | Charlie appointment | `charlie/appointment` | NOT STARTED | -- | needs session |
-| S7       | Charlie plan-email | `charlie/plan-email` | NOT STARTED | -- | needs session + plan_data |
+| S5       | Charlie lead capture | `charlie/lead` | PASS | `408e96ba-7186-4bed-b427-1d25b205fbdd` | intent=buyer, plan_data populated, agent=King Shah, src=geo |
+| S6       | Charlie appointment | `charlie/appointment` | PASS | `c558ca62-b208-468f-aee4-8a1f097f6557` | intent=buyer, appointment_date+time+properties set, agent=King Shah, src=geo |
+| S7       | Charlie plan-email | `charlie/plan-email` | PASS | `5477a25f-31c3-48ed-a428-eabbf585171f` | intent=seller (planType), plan_data.planType='seller', agent=King Shah, src=geo |
 
 ## Gaps to close before launch
 
@@ -125,4 +125,4 @@ Observed in dashboard after S1 runs: Source column shows the contact email only;
 - Test contact emails follow `wleadflow+<scenario>+<timestamp>@condoleads.ca` so all rows produced by this workstream are greppable for cleanup.
 - After T8 close, cleanup script deletes every lead with `contact_email LIKE wleadflow+%@condoleads.ca` and dependent rows (including user_credits initialized at lead creation).
 
-_Last updated: 2026-05-18 (G2 CLOSED: forward-only lead.user_id population via lib/auth/get-or-create-by-email.ts + walliam/contact route patch; S1-Build PASS lead abe3fd23 user_id f7de0765 with auth.users.email match)_
+_Last updated: 2026-05-18 (T3-S5/S6/S7 CLOSED: charlie/lead + charlie/appointment + charlie/plan-email all PASS via run-S5-S6-S7-charlie.js; user_id populated on all 7 lead-write routes per G2)_
