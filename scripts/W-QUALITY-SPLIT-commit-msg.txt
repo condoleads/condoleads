@@ -1,0 +1,57 @@
+W-QUALITY-SPLIT (commit 2 of 3): separate quality enum into quality + temperature axes
+
+Schema migration (20260516_w_quality_split.sql, applied to prod DB):
+- ADD COLUMN temperature TEXT (nullable, CHECK in {hot,warm,cold})
+- Loosen leads_quality_check to also permit 'qualified'
+- Backfill temperature from legacy conflated quality:
+    qualified_hot  -> quality=qualified, temperature=hot
+    qualified_cold -> quality=qualified, temperature=cold
+- Post-migration distribution verified, expected-count match all PASS:
+    qualified+hot       140
+    unqualified+null     20
+    disqualified+null     2
+    qualified+cold        1
+    (total 163, zero data loss)
+
+Code (4 files patched by 2b + 2c, TSC clean):
+- AdminHomesLeadsClient.tsx: new Temperature column, Temperature filter,
+  per-row Temperature dropdown, CSV exports both axes, grid 7-cols -> 8-cols,
+  stats card hot_leads driven by temperature.
+- /api/admin-homes/leads/[id] PATCH: accepts temperature in body, writes
+  temperature_changed audit row. DELETE: snapshot extended to include temperature.
+- LeadWorkbenchClient.tsx: Temperature field surfaced in lead detail view.
+- agents/page.tsx: hot_leads stat driven by leads.temperature column (2b);
+  Supabase .select() extended to fetch temperature (2c forward-fix for missed
+  TSC error + silent runtime regression where hot_leads would have always returned 0).
+
+Multi-tenant: no tenant identifiers introduced. All queries continue to scope
+via existing tenant context. Source axis tenant-leak (Charlie hardcoded) is
+PRE-EXISTING; tracked separately as W-SOURCE-AXIS (tracker artifact pending).
+
+System 1 isolation: untouched. 141 leads formerly displayed as qualified_hot
+or qualified_cold in System 1 admin/dashboard now display as 'qualified' in
+those pages. System 1 read filters for 'hot'/'warm'/'cold' returned 0 before
+migration and return 0 after (verified by code grep of System 1 paths).
+
+Smoke (local on walliam.ca tenant):
+- Quality dropdown writes -> PATCH 200 + quality_changed audit row    PASS
+- Temperature dropdown writes -> PATCH 200 + temperature_changed audit PASS
+- Status dropdown writes (regression) -> PATCH 200 + status_changed    PASS
+- Bulk delete (regression, W6a-followup-B) -> DELETE 200 + lead_deleted
+  snapshot includes temperature field                                   PASS
+- Filter by Temperature='Hot' -> list narrows to <=140 rows             PASS
+- Filter by Quality='Unqualified' -> list narrows to 20 rows            PASS
+- CSV export has Temperature column header + populated values           PASS
+- Multi-tenant sanity: all visible leads carry WALLiam tenant_id        PASS
+
+Artifacts retained in repo for audit trail:
+- supabase/migrations/20260516_w_quality_split.sql
+- scripts/apply-w-quality-split.js + .log (DB apply runner + transcript)
+- scripts/patch-w-quality-split-2b.js + .log (main code patch)
+- scripts/patch-w-quality-split-2c-fix-agents-select.js + .log (forward fix)
+- scripts/recon-w-quality-split.js + .log (pre-work probe)
+
+Next: W-SOURCE-AXIS (tracker spec saved as artifact w-source-axis-tracker;
+addresses the multi-tenant "Charlie" leak, origin URL surfacing, Actions
+column removal, and the unidentified "Cold/Hot score" rendering in the
+contact cell).
