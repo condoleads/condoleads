@@ -232,6 +232,23 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
     notes = (notesResult.data as any[]) || []
   }
 
+  // W6b: server-side fetch of reassign candidates, role-scoped.
+  let reassignCandidates: Array<{ id: string; full_name: string | null; role: string | null }> = []
+  if (user.role !== 'agent' && (anchorLead as any).tenant_id) {
+    let q = supabase
+      .from('agents')
+      .select('id, full_name, role')
+      .eq('tenant_id', (anchorLead as any).tenant_id)
+      .eq('is_active', true)
+      .order('full_name', { ascending: true })
+    if (user.role === 'manager' && user.agentId) {
+      const allowed = Array.from(new Set([user.agentId, ...(user.managedAgentIds || [])]))
+      q = q.in('id', allowed)
+    }
+    const { data: cands } = await q
+    reassignCandidates = (cands as any[]) || []
+  }
+
   return (
     <LeadWorkbenchClient
       anchorLead={anchorLead}
@@ -249,6 +266,7 @@ export default async function LeadWorkbenchPage({ params }: { params: { id: stri
       emailLog={emailLog}
       vipRequests={vipRequests}
       notes={notes}
+      reassignCandidates={reassignCandidates}
     />
   )
 }

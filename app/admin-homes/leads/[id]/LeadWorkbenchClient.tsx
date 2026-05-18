@@ -7,6 +7,7 @@
 // Plan/Credits/Activity/Emails/VIP/Notes are placeholders filled by W4b-g.
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import PlanTab from '@/components/admin-homes/lead-workbench/PlanRenderer'
 import UserCreditPanel, { UserCreditData } from '@/components/admin-homes/lead-workbench/UserCreditPanel'
@@ -77,9 +78,10 @@ interface Props {
   emailLog: EmailLogRow[]
   vipRequests: VipRequestRow[]
   notes: NoteRow[]
+  reassignCandidates: Array<{ id: string; full_name: string | null; role: string | null }>
 }
 
-export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId, userCredit, adminUser, activityFeed, emailLog, vipRequests, notes }: Props) {
+export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRole, currentAgentId, userCredit, adminUser, activityFeed, emailLog, vipRequests, notes, reassignCandidates }: Props) {
   const [tab, setTab] = useState<TabKey>('overview')
   const activeTabMeta = TABS.find(t => t.id === tab)!
 
@@ -126,7 +128,13 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
 
       <div>
         {tab === 'overview' ? (
-          <OverviewTab anchorLead={anchorLead} leadFamily={leadFamily} />
+          <OverviewTab
+            anchorLead={anchorLead}
+            leadFamily={leadFamily}
+            currentRole={currentRole}
+            reassignCandidates={reassignCandidates}
+            anchorLeadId={anchorLead.id}
+          />
         ) : tab === 'plan' ? (
           <PlanTab anchorLead={anchorLead} leadFamily={leadFamily} />
         ) : tab === 'estimator' ? (
@@ -253,7 +261,19 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
   )
 }
 
-function OverviewTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: any[] }) {
+function OverviewTab({
+  anchorLead,
+  leadFamily,
+  currentRole,
+  reassignCandidates,
+  anchorLeadId,
+}: {
+  anchorLead: any
+  leadFamily: any[]
+  currentRole: string
+  reassignCandidates: Array<{ id: string; full_name: string | null; role: string | null }>
+  anchorLeadId: string
+}) {
   return (
     <div className="space-y-6">
       <section>
@@ -291,6 +311,14 @@ function OverviewTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: 
           <Field label="Area Manager" value={anchorLead.area_manager?.full_name} />
           <Field label="Tenant Admin" value={anchorLead.tenant_admin?.full_name} />
         </dl>
+        {currentRole !== 'agent' && (
+          <ReassignAgentControl
+            anchorLeadId={anchorLeadId}
+            currentAgentId={(anchorLead as any).agent_id || null}
+            currentAgentName={(anchorLead as any).agents?.full_name || null}
+            candidates={reassignCandidates}
+          />
+        )}
       </section>
 
       {leadFamily.length > 1 && (
@@ -360,6 +388,94 @@ function PlaceholderTab({ name, phase }: { name: string; phase: string }) {
     <div className="text-center py-16 text-gray-400">
       <div className="text-sm font-medium">{name}</div>
       <div className="text-xs mt-1">Coming in {phase}</div>
+    </div>
+  )
+}
+
+function ReassignAgentControl({
+  anchorLeadId,
+  currentAgentId,
+  currentAgentName,
+  candidates,
+}: {
+  anchorLeadId: string
+  currentAgentId: string | null
+  currentAgentName: string | null
+  candidates: Array<{ id: string; full_name: string | null; role: string | null }>
+}) {
+  const router = useRouter()
+  const [selectedId, setSelectedId] = useState<string>('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const eligible = candidates.filter((c) => c.id !== currentAgentId)
+
+  if (eligible.length === 0) {
+    return (
+      <div className="mt-3 mb-3 text-xs text-gray-400">
+        No other agents available to reassign to.
+      </div>
+    )
+  }
+
+  const handleSubmit = async () => {
+    if (!selectedId) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const url = '/api/admin-homes/leads/' + anchorLeadId + '/reassign-agent'
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newAgentId: selectedId }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(json?.error || ('Reassign failed (status ' + res.status + ')'))
+        setSubmitting(false)
+        return
+      }
+      setSelectedId('')
+      router.refresh()
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mt-3 mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
+      <div className="text-xs font-semibold text-blue-900 mb-2">Reassign agent</div>
+      <div className="text-xs text-gray-600 mb-2">
+        Currently assigned: <span className="font-medium">{currentAgentName || '(unassigned)'}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          disabled={submitting}
+          className="text-sm border border-gray-300 rounded px-2 py-1 bg-white disabled:opacity-50"
+        >
+          <option value="">Select new agent...</option>
+          {eligible.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.full_name || '(unnamed)'}{c.role ? ' (' + c.role + ')' : ''}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={submitting || !selectedId}
+          className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {submitting ? 'Reassigning...' : 'Reassign'}
+        </button>
+      </div>
+      {error && (
+        <div className="mt-2 text-xs text-red-600">{error}</div>
+      )}
     </div>
   )
 }
