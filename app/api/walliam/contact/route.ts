@@ -23,6 +23,7 @@ import {
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { getTenantContext } from '@/lib/utils/tenant-brand'
+import { getOrCreateAuthUserByEmail } from '@/lib/auth/get-or-create-by-email'
 
 
 // Track user activity in user_activities table
@@ -115,9 +116,27 @@ export async function POST(req: NextRequest) {
     // W3c: capture source URL from referer for both leads.source_url + email render
     const pageUrl = headers().get('referer') || null
 
+    // G2: derive auth user_id for credit-management surfaces. The contact
+    // form has no session context, so resolve user_id by email via get-or-
+    // create against auth.users. If resolution fails for any reason, fall
+    // through with user_id=null -- the lead is still saved (graceful
+    // degradation, no regression on existing behavior).
+    let userIdForLead: string | null = null
+    try {
+      const result = await getOrCreateAuthUserByEmail(supabase, email, {
+        source: 'walliam_contact_form',
+        initial_contact_name: name,
+        initial_tenant_id: tenant_id,
+      })
+      userIdForLead = result.userId
+    } catch (err) {
+      console.error('[walliam/contact] get-or-create auth user failed (continuing with user_id=null):', err)
+    }
+
     // Save lead with full hierarchy chain (per Lead+Email contract)
     const { data: lead } = await supabase.from('leads').insert({
       agent_id: agent?.id || null,
+      user_id: userIdForLead,
       manager_id: chainManagerId,
       area_manager_id: chainAreaManagerId,
       tenant_admin_id: chainTenantAdminId,

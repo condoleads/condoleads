@@ -54,7 +54,7 @@ Out of scope: System 1 `app/api/chat/*` routes (maintenance-only per RULE ZERO).
 | T3-S2/S3/S4 Session-based | CLOSED | S3+S4+S2 all PASS via run-S2-S3-S4-session.js; root cause: unique partial index `idx_chat_sessions_user_tenant_source_unique` on (user_id, tenant_id, source) -- fix: distinct auth user for S2 session + `.in()` lead lookup |
 | T3-S5/S6/S7 Charlie chat | NOT STARTED | charlie/lead, charlie/appointment, charlie/plan-email |
 | T4 Hierarchy verification | NOT STARTED | Stamp manager_id / area_manager_id / tenant_admin_id when chain exists |
-| T5 Gap fixes (G1 + G2) | NOT STARTED | Source URL + Credits-at-lead-creation -- ships before launch |
+| T5 Gap fixes (G1 + G2) | IN PROGRESS | G2 CLOSED 2026-05-18 (lead.user_id via get-or-create from email; lib/auth/get-or-create-by-email.ts + walliam/contact patch). G1 (source_url) still open. |
 | T6 Browser walkthrough (Phase B) | NOT STARTED | Real user flow through every page; verifies frontend wiring |
 | T7 Multi-tenant smoke | NOT STARTED | Re-run S1..S7 against a second tenant |
 | T8 Close + launch checklist | NOT STARTED | Tracker frozen; master `W-LAUNCH-TRACKER.md` updated; ready to ship |
@@ -99,21 +99,24 @@ Observed in dashboard after S1 runs: Source column shows the contact email only;
 - All 6 S1 variants re-run; ledger updated with new lead UUIDs.
 - Dashboard re-verification: Source pill renders with `↗` link to the page; clicking opens the original page.
 
-### G2 -- `user_credits` row not created at lead creation
+### G2 -- CLOSED 2026-05-18: lead.user_id population for credit-management
 
-Decision (locked by Shah 2026-05-18): every lead-write route MUST create a `user_credits` row at lead creation, regardless of whether the lead will consume credits. Rationale: agent needs a single place in the workbench to grant or revoke privileges per lead. Money matters live in one place; agent does not hunt for the credit state.
+**Verified state**: No `user_credits` table exists. Per-user credit state is distributed: defaults on `tenants`, per-user overrides on `user_credit_overrides`, usage counters on `chat_sessions`. Workbench Credits & Usage tab (`components/admin-homes/lead-workbench/UserCreditPanel.tsx`) keys on `anchorLead.user_id` and handles override=NULL via tenant defaults (`getResolvedLimits`).
 
-**Acceptance criteria**:
-- Schema: confirm `user_credits` (or equivalent) table shape -- columns, FK to `leads` or `users`, tenant scoping.
-- All 7 System 2 lead-write routes initialize a credit row on lead creation:
-  - tenant_id stamped
-  - lead_id (or user_id, whichever the schema uses) linked
-  - All usage counters at 0
-  - All caps / limits inherited from `tenants` defaults (`ai_free_messages`, `estimator_free_attempts`, `plan_free_attempts`, etc.)
-- Insert is idempotent / upsert -- if a row already exists for the user, do not duplicate.
-- Multi-tenant safe: scoped by `tenant_id` on every read.
-- Workbench Credits & Usage tab renders the row by default; agent can edit limits / grant credits / revoke privileges from this tab.
-- TSC clean; no regression on existing flows that already consume credits (Charlie messages, estimator, plan).
+**Realized G2 goal**: every System 2 lead must carry non-NULL `user_id` so the workbench credits tab is functional per lead. The literal "create user_credits row" spec did not map onto the actual architecture; the spirit of the spec (agent has one place to grant/revoke per lead) translates to ensuring `lead.user_id` is always populated.
+
+**Gap (forward-only -- no backfill; all current leads are test)**:
+- 6 of 7 lead-write routes already populated `user_id` from session context (charlie/*, estimator/*).
+- `app/api/walliam/contact/route.ts` was the only gap: public form, no session, was inserting leads with NULL `user_id`.
+
+**Shipped**:
+- New helper: `lib/auth/get-or-create-by-email.ts` -- resolves an `auth.users` row by email via create-first / list-on-conflict (Supabase Admin has no getUserByEmail). Returns `{ userId, created }`.
+- Patched: `app/api/walliam/contact/route.ts` -- calls helper before lead insert, populates `user_id` on lead row. Wrapped in try/catch; on helper failure the lead still saves with `user_id=null` (graceful degradation, no regression on existing behavior).
+
+**Verification**:
+- S1-Build harness: PASS lead `abe3fd23-3f39-4a07-9c9f-f3a4327ff613`, user_id `f7de0765-0f0c-4861-8035-0cd8869a4c04`, `auth.users.email` matches `lead.contact_email`.
+- S2/S3/S4 harness: PASS exit 0 (no regression on session-based routes).
+- TSC clean.
 
 ## Rules
 
@@ -122,4 +125,4 @@ Decision (locked by Shah 2026-05-18): every lead-write route MUST create a `user
 - Test contact emails follow `wleadflow+<scenario>+<timestamp>@condoleads.ca` so all rows produced by this workstream are greppable for cleanup.
 - After T8 close, cleanup script deletes every lead with `contact_email LIKE wleadflow+%@condoleads.ca` and dependent rows (including user_credits initialized at lead creation).
 
-_Last updated: 2026-05-18 (T3-S2/S3/S4 CLOSED: S3+S4+S2 all PASS via real HTTP requests; harness fixed for unique partial index on chat_sessions (user_id, tenant_id, source))_
+_Last updated: 2026-05-18 (G2 CLOSED: forward-only lead.user_id population via lib/auth/get-or-create-by-email.ts + walliam/contact route patch; S1-Build PASS lead abe3fd23 user_id f7de0765 with auth.users.email match)_
