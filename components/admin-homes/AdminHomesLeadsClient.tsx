@@ -51,6 +51,7 @@ interface Props {
   currentRole: 'admin' | 'manager' | 'agent'
   currentAgentId: string | null
   initialExpanded: boolean
+  initialShowTerminal: boolean
 }
 
 const ROUTE_LABELS: Record<LeadOriginRoute, string> = {
@@ -133,7 +134,12 @@ const TEMPERATURE_LABELS: Record<TemperatureValue, string> = {
   cold: 'Cold',
 }
 
-export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId, initialExpanded }: Props) {
+// W6c: statuses hidden by default in the list view. closed/won/lost/archived are lifecycle-terminal.
+// do_not_contact is a legal-compliance flag (CASL/TCPA); outbound email is ALSO blocked server-side
+// in app/api/admin-homes/leads/[id]/send-email/route.ts. The visual hide here is UX defense in depth.
+const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['closed', 'won', 'lost', 'archived', 'do_not_contact'])
+
+export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId, initialExpanded, initialShowTerminal }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterAgent, setFilterAgent] = useState('all')
@@ -149,6 +155,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [activities, setActivities] = useState<Record<string, any[]>>(initialActivities)
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<boolean>(initialExpanded)
+  const [showTerminal, setShowTerminal] = useState<boolean>(initialShowTerminal)
   const [expandedUserIds, setExpandedUserIds] = useState<Set<string>>(new Set())
   const router = useRouter()
 
@@ -159,6 +166,18 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
       const params = new URLSearchParams(window.location.search)
       if (next) params.set('expanded', '1')
       else params.delete('expanded')
+      const query = params.toString()
+      router.replace(`/admin-homes/leads${query ? '?' + query : ''}`, { scroll: false })
+    }
+  }
+
+  const toggleShowTerminal = () => {
+    const next = !showTerminal
+    setShowTerminal(next)
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (next) params.set('showTerminal', '1')
+      else params.delete('showTerminal')
       const query = params.toString()
       router.replace(`/admin-homes/leads${query ? '?' + query : ''}`, { scroll: false })
     }
@@ -203,7 +222,12 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
       )
     }
     if (filterAgent !== 'all') f = f.filter(l => l.agent_id === filterAgent)
-    if (filterStatus !== 'all') f = f.filter(l => l.status === filterStatus)
+    // W6c: when no explicit status filter, default-hide terminal statuses (showTerminal=true opts out).
+    if (filterStatus !== 'all') {
+      f = f.filter(l => l.status === filterStatus)
+    } else if (!showTerminal) {
+      f = f.filter(l => !TERMINAL_STATUSES.has(l.status))
+    }
     if (filterQuality !== 'all') f = f.filter(l => l.quality === filterQuality)
     if (filterTemperature !== 'all') {
       if (filterTemperature === 'none') f = f.filter(l => !l.temperature)
@@ -219,7 +243,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
       return sortOrder === 'asc' ? cmp : -cmp
     })
     return f
-  }, [leads, searchTerm, filterAgent, filterStatus, filterQuality, filterTemperature, filterIntent, filterSource, sortBy, sortOrder])
+  }, [leads, searchTerm, filterAgent, filterStatus, filterQuality, filterTemperature, filterIntent, filterSource, sortBy, sortOrder, showTerminal])
 
   type FlatRow =
     | { kind: 'primary'; lead: Lead; earlierCount: number; groupUserId: string | null }
@@ -358,8 +382,12 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const statusColor = (s: string) => ({
     new: 'bg-blue-100 text-blue-800',
     contacted: 'bg-yellow-100 text-yellow-800',
-    qualified: 'bg-green-100 text-green-800',
+    meeting_scheduled: 'bg-purple-100 text-purple-800',
     closed: 'bg-gray-100 text-gray-800',
+    won: 'bg-emerald-100 text-emerald-800',
+    lost: 'bg-rose-100 text-rose-800',
+    archived: 'bg-slate-100 text-slate-600',
+    do_not_contact: 'bg-red-600 text-white',
   }[s] || 'bg-gray-100 text-gray-800')
 
   const qualityColor = (q: string) => ({
@@ -449,8 +477,12 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
               <option value="all">All</option>
               <option value="new">New</option>
               <option value="contacted">Contacted</option>
-              <option value="qualified">Qualified</option>
+              <option value="meeting_scheduled">Meeting Scheduled</option>
               <option value="closed">Closed</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+              <option value="archived">Archived</option>
+              <option value="do_not_contact">Do Not Contact</option>
             </select>
           </div>
           <div>
@@ -481,6 +513,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
             </button>
             <button onClick={toggleExpanded} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50" title={expanded ? 'Collapse list by user' : 'Show every event as its own row'}>
               {expanded ? 'Collapse by user' : 'Show all events'}
+            </button>
+            <button onClick={toggleShowTerminal} className="px-3 py-2 border rounded-lg text-sm hover:bg-gray-50" title={showTerminal ? 'Hide terminal statuses (closed/won/lost/archived/do-not-contact)' : 'Show all statuses including closed/won/lost/archived/do-not-contact'}>
+              {showTerminal ? 'Hide terminal' : 'Show terminal'}
             </button>
           </div>
           <div className="flex gap-2">
@@ -665,8 +700,12 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                       >
                         <option value="new">New</option>
                         <option value="contacted">Contacted</option>
-                        <option value="qualified">Qualified</option>
+                        <option value="meeting_scheduled">Meeting Scheduled</option>
                         <option value="closed">Closed</option>
+                        <option value="won">Won</option>
+                        <option value="lost">Lost</option>
+                        <option value="archived">Archived</option>
+                        <option value="do_not_contact">Do Not Contact</option>
                       </select>
                     </td>
                     {/* Inline quality update (W-QUALITY-SPLIT) */}

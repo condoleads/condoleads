@@ -15,8 +15,10 @@ function createServiceClient() {
 
 export const metadata = { title: 'Leads — Admin' }
 
-export default async function AdminHomesLeadsPage({ searchParams }: { searchParams: { expanded?: string } }) {
+export default async function AdminHomesLeadsPage({ searchParams }: { searchParams: { expanded?: string; showTerminal?: string } }) {
   const initialExpanded = searchParams?.expanded === '1'
+  // W6c: default-hide of terminal statuses (closed/won/lost/archived/do_not_contact) is opt-out via ?showTerminal=1.
+  const initialShowTerminal = searchParams?.showTerminal === '1'
   const supabase = createServiceClient()
   const tenantId = await getCurrentTenantId()
   const adminUser = await resolveAdminHomesUser()
@@ -57,6 +59,7 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
         currentRole={adminUser?.role || 'admin'}
         currentAgentId={adminUser?.agentId || null}
         initialExpanded={initialExpanded}
+        initialShowTerminal={initialShowTerminal}
       />
     )
   }
@@ -125,6 +128,7 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
       currentRole={adminUser?.role || 'admin'}
       currentAgentId={adminUser?.agentId || null}
       initialExpanded={initialExpanded}
+      initialShowTerminal={initialShowTerminal}
     />
   )
 }

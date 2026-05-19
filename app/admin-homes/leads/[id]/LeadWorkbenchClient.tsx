@@ -93,6 +93,17 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
         </Link>
       </div>
 
+      {(anchorLead as any)?.status === 'do_not_contact' && (
+        <div role="alert" className="mb-4 rounded border-2 border-red-600 bg-red-50 p-4">
+          <div className="text-red-900 font-bold text-sm uppercase tracking-wider">
+            Do Not Contact — Outbound Communication Blocked
+          </div>
+          <div className="text-red-800 text-sm mt-2">
+            This lead has requested no further contact. Outbound email is blocked server-side. Phone, SMS, and physical mail outreach are also prohibited under CASL / TCPA. Document any inadvertent contact in the Notes tab immediately.
+          </div>
+        </div>
+      )}
+
       <header className="border-b border-gray-200 pb-4 mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">{anchorLead.contact_name || 'Unnamed lead'}</h1>
         <div className="mt-1 text-sm text-gray-600">

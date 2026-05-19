@@ -69,7 +69,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const { data: lead } = await supabase
       .from('leads')
-      .select('id, tenant_id, agent_id, contact_email, contact_name')
+      .select('id, tenant_id, agent_id, status, contact_email, contact_name')
       .eq('id', params.id)
       .maybeSingle()
 
@@ -88,6 +88,35 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     })
     if (!decision.ok) {
       return NextResponse.json({ error: decision.reason }, { status: decision.status })
+    }
+
+    // W6c-DNC: legal-compliance block. When a lead's status is do_not_contact,
+    // outbound customer-facing email is denied at the server with 409. The
+    // attempted send is audit-logged (action_type=email_blocked_dnc) so legal
+    // can produce a trail of suppressed contact attempts under CASL / TCPA.
+    // Audit write is best-effort (never-throw via logLeadAdminAction); the 409
+    // response is the legal enforcement, the audit is the evidentiary trail.
+    if (lead.status === 'do_not_contact') {
+      const actorRoleForBlock = user.role || (user.isPlatformAdmin ? 'platform_admin' : 'admin')
+      await logLeadAdminAction({
+        supabase,
+        tenantId: lead.tenant_id,
+        leadId: lead.id,
+        actorAgentId: user.agentId || null,
+        actorRole: actorRoleForBlock,
+        actionType: 'email_blocked_dnc',
+        targetField: null,
+        beforeValue: null,
+        afterValue: {
+          attempted_to: lead.contact_email,
+          reason: 'lead status is do_not_contact',
+        },
+        notes: 'outbound email blocked by DNC status',
+      })
+      return NextResponse.json({
+        error: 'Outbound email blocked: lead is marked do_not_contact',
+        code: 'DNC_BLOCK',
+      }, { status: 409 })
     }
 
     let body: any
