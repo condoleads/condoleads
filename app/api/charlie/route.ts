@@ -160,7 +160,7 @@ NEVER truncate the geoId.` : ''
   let buildingContext = ''
   if (geoContext?.building_id) {
     try {
-      const buildingIntel = await executeTool('get_building_intelligence', { building_id: geoContext.building_id }, agentId, geoContext)
+      const buildingIntel = await executeTool('get_building_intelligence', { building_id: geoContext.building_id }, agentId, geoContext, tenantDomain)
       if (buildingIntel && !buildingIntel.error) {
         const b = buildingIntel.building
         const s = buildingIntel.stats
@@ -175,7 +175,7 @@ Avg Concession: ${s?.avg_concession_pct || 0}% below asking
 Recent Sales: ${(buildingIntel.recent_sales || []).map((s: any) => `Unit ${s.unit_number}: ${s.bedrooms_total}BR sold ${s.close_price?.toLocaleString()} (${s.days_on_market} DOM)`).join(', ')}
 Active Listings: ${(buildingIntel.active_listings || []).map((l: any) => `Unit ${l.unit_number}: ${l.bedrooms_total}BR at ${l.list_price?.toLocaleString()}`).join(', ') || 'None'}
 
-  Building URL: https://walliam.ca/${b?.slug}
+  Building URL: https://${tenantDomain}/${b?.slug}
 Use this data to answer building-specific questions immediately without calling get_building_intelligence again.`
       }
     } catch (e) {
@@ -284,7 +284,7 @@ Use these exact numbers when answering market questions.`
           // Low credit warning email at 1 remaining
           const remaining = chatAllowed - (msgUsed + 1)
           if (remaining === 1 && sessionData.user_id) {
-            fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+            fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`).toString(), {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ userId: sessionData.user_id, creditType: 'chat', remaining: 1, sessionId }),
             }).catch(() => {})
@@ -481,7 +481,7 @@ Use these exact numbers when answering market questions.`
                   // Low credit warning email — fire when 1 plan remaining
                   const plansRemaining = totalAllowed - (plansUsed + 1)
                   if (plansRemaining === 1 && sessionData?.user_id) {
-                    fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || 'https://walliam.ca').toString(), {
+                    fetch(new URL('/api/email/low-credits', process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`).toString(), {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -499,7 +499,7 @@ Use these exact numbers when answering market questions.`
               }
               // ── END PLAN GATING ──────────────────────────────────────────
 
-              const result = await executeTool(tool.name, tool.input, agentId, geoContext)
+              const result = await executeTool(tool.name, tool.input, agentId, geoContext, tenantDomain)
               send({ type: 'tool_result', tool: tool.name, data: result })
               toolResults.push({
                 type: 'tool_result' as const,
@@ -566,7 +566,8 @@ Use these exact numbers when answering market questions.`
   })
 }
 
-async function executeTool(name: string, input: any, agentId: string | null, geoContext?: any): Promise<any> {
+// C6/D9 -- tenantDomain param added; all platform URLs inside this function are now tenant-derived
+async function executeTool(name: string, input: any, agentId: string | null, geoContext?: any, tenantDomain: string = ''): Promise<any> {
   const supabase = createServiceClient()
 
   if (name === 'resolve_geo') {
@@ -767,7 +768,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
   if (name === 'search_buildings') {
     const { geoType, geoId, sort = 'active_count', limit = 5 } = input
-    const baseUrl = 'https://walliam.ca'
+    const baseUrl = `https://${tenantDomain}`
     let communityIds: string[] = []
     if (geoType === 'municipality') {
       const { data: comms } = await supabase.from('communities').select('id').eq('municipality_id', geoId)
@@ -804,7 +805,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
   if (name === 'compare_geo') {
     const { geoIds, geoType, track = 'condo' } = input
     if (!geoIds || !Array.isArray(geoIds)) return { error: 'geoIds array required' }
-    const baseUrl = 'https://walliam.ca'
+    const baseUrl = `https://${tenantDomain}`
     const comparisons = await Promise.all(geoIds.map(async (id: string) => {
       const { data: analytics } = await supabase
         .from('geo_analytics')
@@ -853,7 +854,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
   if (name === 'get_investment_rankings') {
     const { parentGeoType, parentGeoId, track = 'condo', rankingType = 'best_yield' } = input
-    const baseUrl = 'https://walliam.ca'
+    const baseUrl = `https://${tenantDomain}`
     const { data } = await supabase
       .from('geo_rankings')
       .select('ranking_type, ranked_entity, results')
@@ -869,7 +870,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
   if (name === 'get_inventory_rankings') {
     const { parentGeoType, parentGeoId, track = 'condo' } = input
-    const baseUrl = 'https://walliam.ca'
+    const baseUrl = `https://${tenantDomain}`
     const { data } = await supabase
       .from('geo_rankings')
       .select('ranking_type, ranked_entity, results')
@@ -909,7 +910,7 @@ async function executeTool(name: string, input: any, agentId: string | null, geo
 
   if (name === 'get_building_directory') {
     const { geoType, geoId, limit = 20 } = input
-    const baseUrl = 'https://walliam.ca'
+    const baseUrl = `https://${tenantDomain}`
     let communityIds: string[] = []
     if (geoType === 'municipality') {
       const { data: comms } = await supabase.from('communities').select('id').eq('municipality_id', geoId)
