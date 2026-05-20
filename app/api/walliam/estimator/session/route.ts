@@ -78,6 +78,9 @@ export async function POST(request: NextRequest) {
     if (authUserData?.user?.email) userEmail = authUserData.user.email
 
     // Step 2: Resolve agent via priority chain (for lead routing only)
+    // C3/D3 -- p_tenant_id added; resolver now scopes to the calling tenant.
+    // Was: missing param caused resolver to potentially match agents from any
+    // tenant whose territory covered the geo (cross-tenant agent leak risk).
     const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
       p_listing_id: listingId || null,
       p_building_id: buildingId || null,
@@ -86,6 +89,7 @@ export async function POST(request: NextRequest) {
       p_municipality_id: municipalityId || null,
       p_area_id: areaId || null,
       p_user_id: userId || null,
+      p_tenant_id: tenantId,
     })
     const agentId = resolvedAgentId || null
 
