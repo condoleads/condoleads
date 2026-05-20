@@ -68,16 +68,17 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServiceClient()
 
-    // T6f-C-1 — tenant brand context (tenant_id guaranteed non-null by L62 check)
-    let brandName = ''
-    let sourceKey = 'walliam'  // safe default — replaced when tenant load succeeds
+    // C2/D4 -- tenant brand context (strict-fail: no silent fallback)
+    // Per multi-tenant rule zero: a missing tenant config is a server-side data
+    // integrity issue, not a recoverable condition. Returning 500 here prevents
+    // cross-tenant lead misattribution from a silent default source value.
     const _t6fcCtx = await getTenantContext(supabase, tenant_id)
-    if (_t6fcCtx) {
-      brandName = _t6fcCtx.brandName
-      sourceKey = _t6fcCtx.sourceKey
-    } else {
-      console.warn('[walliam/contact] getTenantContext returned null for tenant_id:', tenant_id)
+    if (!_t6fcCtx) {
+      console.error('[walliam/contact] tenant context unavailable for tenant_id:', tenant_id)
+      return NextResponse.json({ error: 'Tenant configuration unavailable' }, { status: 500 })
     }
+    const brandName = _t6fcCtx.brandName
+    const sourceKey = _t6fcCtx.sourceKey
 
     // Resolve agent
     const { data: agentId } = await supabase.rpc('resolve_agent_for_context', {
