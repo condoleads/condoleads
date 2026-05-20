@@ -26,6 +26,7 @@ interface AccessInfo {
 }
 
 interface Props {
+  assistantName: string
   agent: Agent;
   stats: MarketStats;
   topAreas: AreaCard[];
@@ -213,7 +214,7 @@ function AnimatedTagline({ visible }: { visible: boolean }) {
     </p>
   );
 }
-function WalliamSearch() {
+function WalliamSearch({ assistantName }: { assistantName: string }) {
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -302,16 +303,16 @@ function WalliamSearch() {
         </div>
       </div>
 
-      {/* Ask WALLiam label */}
+      {/* C8a/D13 -- AI-action copy uses tenant assistant_name */}
       <div style={{ textAlign: 'center', marginTop: 10, fontSize: 11, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-        Ask WALLiam anything about GTA real estate
+        Ask {assistantName} anything about GTA real estate
       </div>
     </div>
   );
 }
 
 // ── How WALLiam Works — scroll-animated steps ─────────────────
-function HowItWorks() {
+function HowItWorks({ assistantName }: { assistantName: string }) {
   const [visible, setVisible] = useState([false, false, false]);
   const refs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)];
 
@@ -341,7 +342,7 @@ function HowItWorks() {
       number: '02',
       icon: '✦',
       title: 'AI Builds Your Plan',
-      desc: 'WALLiam pulls live MLS data, market analytics, and comparable sales to build your personalized real estate plan.',
+      desc: `${assistantName} pulls live MLS data, market analytics, and comparable sales to build your personalized real estate plan.`,
       color: '#3b82f6',
     },
     {
@@ -454,7 +455,7 @@ function HowItWorks() {
 }
 
 // ── Hero ──────────────────────────────────────────────────────
-function WalliamHero() {
+function WalliamHero({ assistantName }: { assistantName: string }) {
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -562,7 +563,7 @@ function WalliamHero() {
         transform: searchVisible ? 'translateY(0)' : 'translateY(12px)',
         transition: 'opacity 0.6s ease, transform 0.6s ease',
       }}>
-        <WalliamSearch />
+        <WalliamSearch assistantName={assistantName} />
       </div>
 
       {/* VIP AI Access Block */}
@@ -603,11 +604,11 @@ function WalliamHero() {
 }
 
 // ── Main Export ───────────────────────────────────────────────
-export default function HomePageComprehensiveClient({ agent, stats, topAreas, access }: Props) {
+export default function HomePageComprehensiveClient({ agent, stats, topAreas, access, assistantName }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: '#060b18' }}>
-      <WalliamHero />
-      <HowItWorks />
+      <WalliamHero assistantName={assistantName} />
+      <HowItWorks assistantName={assistantName} />
     </div>
   );
 }

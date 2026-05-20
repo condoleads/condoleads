@@ -3,6 +3,9 @@ import { fetchMarketStats, fetchTopAreas } from '@/lib/comprehensive/stats-fetch
 import HomePageComprehensiveClient from './HomePageComprehensiveClient';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
 import { getWalliamTenantId } from '@/lib/utils/is-walliam';
+import { getTenantByHost } from '@/lib/utils/tenant-brand';
+import { createClient } from '@/lib/supabase/server';
+import { headers } from 'next/headers';
 import MobileContactBar from './MobileContactBar';
 
 interface Agent {
@@ -26,6 +29,12 @@ interface HomePageComprehensiveProps {
 }
 
 export async function HomePageComprehensive({ agent }: HomePageComprehensiveProps) {
+  // C8a/D13 -- fetch tenant context for prop-drilling assistant name to client
+  const host = headers().get('host');
+  const supabaseForTenant = createClient();
+  const tenantContext = await getTenantByHost(supabaseForTenant, host);
+  const assistantName = tenantContext?.name || 'Charlie';
+
   // Resolve agent's geographic access
   const tenantId = await getWalliamTenantId();
   const isWalliam = !!tenantId;
@@ -45,6 +54,7 @@ export async function HomePageComprehensive({ agent }: HomePageComprehensiveProp
   return (
     <>
       <HomePageComprehensiveClient
+        assistantName={assistantName}
         agent={{
           id: agent.id,
           full_name: agent.full_name,

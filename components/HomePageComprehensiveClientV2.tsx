@@ -28,6 +28,7 @@ interface AccessInfo {
 }
 
 interface Props {
+  assistantName: string
   agent: Agent;
   stats: MarketStats;
   topAreas: AreaCard[];
@@ -216,7 +217,7 @@ function AnimatedTagline({ visible }: { visible: boolean }) {
     </p>
   );
 }
-function WalliamSearch() {
+function WalliamSearch({ assistantName }: { assistantName: string }) {
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -307,16 +308,16 @@ function WalliamSearch() {
         </div>
       </div>
 
-      {/* Ask WALLiam label */}
+      {/* C8a/D13 -- AI-action copy uses tenant assistant_name */}
       <div style={{ textAlign: 'center', marginTop: 10, fontSize: 11, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-        Ask WALLiam anything about GTA real estate
+        Ask {assistantName} anything about GTA real estate
       </div>
     </div>
   );
 }
 
 // ── How WALLiam Works — scroll-animated steps ─────────────────
-function HowItWorks() {
+function HowItWorks({ assistantName }: { assistantName: string }) {
   const [visible, setVisible] = useState([false, false, false]);
   const refs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)];
 
@@ -346,7 +347,7 @@ function HowItWorks() {
       number: '02',
       icon: '✦',
       title: 'AI Builds Your Plan',
-      desc: 'WALLiam pulls live MLS data, market analytics, and comparable sales to build your personalized real estate plan.',
+      desc: `${assistantName} pulls live MLS data, market analytics, and comparable sales to build your personalized real estate plan.`,
       color: '#3b82f6',
     },
     {
@@ -461,7 +462,7 @@ function HowItWorks() {
 // ── Hero ──────────────────────────────────────────────────────
 type HomeMode = 'ai' | 'browse';
 
-function WalliamHero({ topAreas, neighbourhoods, access }: { topAreas: AreaCard[]; neighbourhoods: NeighbourhoodMenuItem[]; access: AccessInfo }) {
+function WalliamHero({ topAreas, neighbourhoods, access, assistantName }: { topAreas: AreaCard[]; neighbourhoods: NeighbourhoodMenuItem[]; access: AccessInfo; assistantName: string }) {
   const [homeMode, setHomeMode] = useState<HomeMode>('ai');
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
@@ -516,7 +517,7 @@ function WalliamHero({ topAreas, neighbourhoods, access }: { topAreas: AreaCard[
           <div style={{ position: 'absolute', top: 5, bottom: 5, width: 'calc(50% - 5px)', background: '#f59e0b', borderRadius: 999, transition: 'left 0.25s ease', left: homeMode === 'ai' ? 5 : 'calc(50% + 0px)', zIndex: 0 }} />
           <button onClick={() => { setHomeMode('ai'); setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0); }} style={{ position: 'relative', zIndex: 1, padding: '11px 26px', border: 0, background: 'transparent', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: homeMode === 'ai' ? '#0a1428' : 'rgba(255,255,255,0.7)', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polygon points="12,2 15,9 22,12 15,15 12,22 9,15 2,12 9,9"/></svg>
-            Ask WALLiam (AI)
+            Ask {assistantName} (AI)
           </button>
           <button onClick={() => { setHomeMode('browse'); setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0); }} style={{ position: 'relative', zIndex: 1, padding: '11px 26px', border: 0, background: 'transparent', fontSize: 14, fontWeight: 500, cursor: 'pointer', color: homeMode === 'browse' ? '#0a1428' : 'rgba(255,255,255,0.7)', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -586,7 +587,7 @@ function WalliamHero({ topAreas, neighbourhoods, access }: { topAreas: AreaCard[
         transform: searchVisible ? 'translateY(0)' : 'translateY(12px)',
         transition: 'opacity 0.6s ease, transform 0.6s ease',
       }}>
-        <WalliamSearch />
+        <WalliamSearch assistantName={assistantName} />
       </div>
       </>)}
 
@@ -632,11 +633,11 @@ function WalliamHero({ topAreas, neighbourhoods, access }: { topAreas: AreaCard[
 }
 
 // ── Main Export ───────────────────────────────────────────────
-export default function HomePageComprehensiveClientV2({ agent, stats, topAreas, neighbourhoods, access }: Props) {
+export default function HomePageComprehensiveClientV2({ agent, stats, topAreas, neighbourhoods, access, assistantName }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: '#060b18' }}>
-      <WalliamHero topAreas={topAreas} neighbourhoods={neighbourhoods} access={access} />
-      <HowItWorks />
+      <WalliamHero topAreas={topAreas} neighbourhoods={neighbourhoods} access={access} assistantName={assistantName} />
+      <HowItWorks assistantName={assistantName} />
     </div>
   );
 }
