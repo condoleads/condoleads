@@ -31,7 +31,8 @@ interface Agent {
   subdomain: string
 }
 
-export default function AgentsManagementClient({ agents, tenants, tenantName }: { agents: Agent[], tenants: Tenant[], tenantName: string | null }) {
+// C10 -- tenantBrandName + tenantDomain threaded to AddAgentModal.
+export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -286,12 +287,15 @@ export default function AgentsManagementClient({ agents, tenants, tenantName }: 
         )}
       </div>
 
+      {/* C10 -- thread tenant brand identity into modal for display strings */}
       <AddAgentModal
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false); setPreselectedParentId(null) }}
         onSuccess={() => window.location.reload()}
         preselectedParentId={preselectedParentId}
         existingAgents={agents}
+        tenantBrandName={tenantBrandName}
+        tenantDomain={tenantDomain}
       />
       <EditAgentModal
         isOpen={showEditModal}

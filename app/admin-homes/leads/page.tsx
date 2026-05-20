@@ -30,6 +30,23 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
   const seeAll = adminUser?.isPlatformAdmin === true && !adminUser.tenantId && !tenantId
   const scopedTenantId = adminUser?.tenantId ?? tenantId
 
+  // C10 -- fetch tenant brand identity for client display strings (page title,
+  // subtitle, CSV filename). Falls back to null when no tenant scope (seeAll
+  // path or unresolved). Client uses null-safe fallbacks.
+  let tenantBrandName: string | null = null
+  let tenantDomain: string | null = null
+  if (scopedTenantId) {
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('brand_name, name, domain')
+      .eq('id', scopedTenantId)
+      .single()
+    if (tenantRow) {
+      tenantBrandName = tenantRow.brand_name || tenantRow.name || null
+      tenantDomain = tenantRow.domain || null
+    }
+  }
+
   // Build query based on role
   let query = supabase
     .from('leads')
@@ -60,6 +77,8 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
         currentAgentId={adminUser?.agentId || null}
         initialExpanded={initialExpanded}
         initialShowTerminal={initialShowTerminal}
+        tenantBrandName={tenantBrandName}
+        tenantDomain={tenantDomain}
       />
     )
   }
@@ -129,6 +148,8 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
       currentAgentId={adminUser?.agentId || null}
       initialExpanded={initialExpanded}
       initialShowTerminal={initialShowTerminal}
+      tenantBrandName={tenantBrandName}
+      tenantDomain={tenantDomain}
     />
   )
 }

@@ -37,14 +37,15 @@ export default async function AdminHomesAgentsPage() {
   if (!seeAll) {
     if (!scopedTenantId) {
       // Authenticated but no tenant context — return empty
-      return <AgentsManagementClient agents={[]} tenants={[]} tenantName={null} />
+      return <AgentsManagementClient agents={[]} tenants={[]} tenantName={null} tenantBrandName={null} tenantDomain={null} />
     }
     agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
   }
 
+  // C10 -- include brand_name for admin modal display strings.
   let tenantsQuery = supabase
     .from('tenants')
-    .select('id, name, domain')
+    .select('id, name, domain, brand_name')
     .order('name')
 
   if (!seeAll && scopedTenantId) {
@@ -60,6 +61,15 @@ export default async function AdminHomesAgentsPage() {
     scopedTenantId
       ? (tenants || []).find(t => t.id === scopedTenantId)?.name ?? null
       : null
+
+  // C10 -- brand_name (falls back to name) + domain for admin modal display strings.
+  const _c10_scopedTenant = scopedTenantId
+    ? (tenants || []).find(t => t.id === scopedTenantId)
+    : null
+  const tenantBrandName = _c10_scopedTenant
+    ? (_c10_scopedTenant.brand_name || _c10_scopedTenant.name || null)
+    : null
+  const tenantDomain = _c10_scopedTenant?.domain ?? null
 
   const agentsWithStats = await Promise.all(
     (agents || []).map(async (agent) => {
@@ -80,5 +90,5 @@ export default async function AdminHomesAgentsPage() {
     })
   )
 
-  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} />
+  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} />
 }

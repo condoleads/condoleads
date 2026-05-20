@@ -44,6 +44,7 @@ interface Lead {
 
 interface Agent { id: string; full_name: string; email: string }
 
+// C10 -- tenantBrandName + tenantDomain props for display-string substitution.
 interface Props {
   initialLeads: Lead[]
   initialActivities: Record<string, any[]>
@@ -52,6 +53,8 @@ interface Props {
   currentAgentId: string | null
   initialExpanded: boolean
   initialShowTerminal: boolean
+  tenantBrandName: string | null
+  tenantDomain: string | null
 }
 
 const ROUTE_LABELS: Record<LeadOriginRoute, string> = {
@@ -139,7 +142,7 @@ const TEMPERATURE_LABELS: Record<TemperatureValue, string> = {
 // in app/api/admin-homes/leads/[id]/send-email/route.ts. The visual hide here is UX defense in depth.
 const TERMINAL_STATUSES: ReadonlySet<string> = new Set(['closed', 'won', 'lost', 'archived', 'do_not_contact'])
 
-export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId, initialExpanded, initialShowTerminal }: Props) {
+export default function AdminHomesLeadsClient({ initialLeads, initialActivities, agents, currentRole, currentAgentId, initialExpanded, initialShowTerminal, tenantBrandName, tenantDomain }: Props) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterAgent, setFilterAgent] = useState('all')
@@ -331,7 +334,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `walliam-leads-${new Date().toISOString().split('T')[0]}.csv`
+    // C10 -- filename slug derived from tenant domain (e.g., walliam.ca -> walliam-ca, aily.ca -> aily-ca).
+    const _c10_slug = tenantDomain ? tenantDomain.replace(/\./g, '-') : 'tenant'
+    a.download = `${_c10_slug}-leads-${new Date().toISOString().split('T')[0]}.csv`
     a.click()
   }
 
@@ -414,8 +419,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">WALLiam Leads</h1>
-        <p className="text-gray-600 mt-1">All lead sources from walliam.ca</p>
+        {/* C10 -- tenant-aware page header */}
+        <h1 className="text-3xl font-bold text-gray-900">{tenantBrandName ?? 'Tenant'} Leads</h1>
+        <p className="text-gray-600 mt-1">All lead sources from {tenantDomain ?? 'this tenant'}</p>
       </div>
 
       {/* Stats */}

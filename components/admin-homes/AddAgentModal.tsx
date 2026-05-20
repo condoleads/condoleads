@@ -14,15 +14,18 @@ interface Agent {
   can_create_children?: boolean
 }
 
+// C10 -- tenant brand identity props for display-string substitution.
 interface Props {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
   existingAgents?: Agent[]
   preselectedParentId?: string | null
+  tenantBrandName?: string | null
+  tenantDomain?: string | null
 }
 
-export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgents = [], preselectedParentId = null }: Props) {
+export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgents = [], preselectedParentId = null, tenantBrandName = null, tenantDomain = null }: Props) {
   const [agents, setAgents] = useState<Agent[]>(existingAgents)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -123,7 +126,8 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Add WALLiam Agent</h2>
+          {/* C10 -- tenant-aware modal title */}
+          <h2 className="text-2xl font-bold text-gray-900">Add {tenantBrandName ?? 'Tenant'} Agent</h2>
           <button onClick={onClose}><X className="w-6 h-6 text-gray-400" /></button>
         </div>
 
@@ -153,9 +157,10 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             </div>
           </div>
 
-          {/* VIP Config — WALLiam specific */}
+          {/* C10 -- VIP Config (tenant-specific) */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h3 className="font-semibold text-green-900 mb-3">✦ WALLiam VIP Access Config</h3>
+            {/* C10 -- tenant-aware VIP config header */}
+            <h3 className="font-semibold text-green-900 mb-3">✦ {tenantBrandName ?? 'Tenant'} VIP Access Config</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Free Plans Per User</label>
