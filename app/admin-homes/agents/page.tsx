@@ -64,7 +64,8 @@ export default async function AdminHomesAgentsPage() {
   const agentsWithStats = await Promise.all(
     (agents || []).map(async (agent) => {
       const [{ data: leads }, { data: geoAssignments }, { data: buildingAssignments }] = await Promise.all([
-        supabase.from('leads').select('id, status, quality, temperature').eq('agent_id', agent.id).like('source', 'walliam_%'),
+        // C4/D2 -- tenant boundary enforced by agent_id (leads belong to one agent in one tenant). LIKE filter dropped (was tenant-specific, broke non-WALLiam tenants).
+        supabase.from('leads').select('id, status, quality, temperature').eq('agent_id', agent.id),
         supabase.from('agent_property_access').select('id').eq('agent_id', agent.id).eq('is_active', true),
         supabase.from('agent_geo_buildings').select('id').eq('agent_id', agent.id),
       ])
