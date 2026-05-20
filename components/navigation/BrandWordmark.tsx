@@ -2,13 +2,15 @@
 // Used when the tenant has no uploaded logo AND is not WALLiam itself
 // WALLiam uses the animated WalliamWordmark in SiteHeaderClient.tsx
 
+// C8b-2 -- 'hero' size added for homepage HeroWordmark fallback.
 interface BrandWordmarkProps {
   brand: string
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'hero'
 }
 
 export default function BrandWordmark({ brand, size = 'md' }: BrandWordmarkProps) {
-  const fontSize = size === 'sm' ? 15 : 20
+  const isHero = size === 'hero'
+  const fontSize = isHero ? 'clamp(52px, 10vw, 96px)' : (size === 'sm' ? 15 : 20)
   return (
     <span
       style={{
@@ -16,9 +18,9 @@ export default function BrandWordmark({ brand, size = 'md' }: BrandWordmarkProps
         alignItems: 'baseline',
         lineHeight: 1,
         fontSize,
-        fontWeight: 700,
+        fontWeight: isHero ? 900 : 700,
         color: '#fff',
-        letterSpacing: '-0.01em',
+        letterSpacing: isHero ? '-0.03em' : '-0.01em',
         whiteSpace: 'nowrap',
       }}
     >

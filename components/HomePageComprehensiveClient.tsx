@@ -25,7 +25,15 @@ interface AccessInfo {
   homes_access: boolean;
 }
 
+// C8b-2 -- WALLIAM_TENANT_ID constant duplicated from SiteHeaderClient.tsx:13.
+// C8c follow-up will replace all three callsites with a tenants.wordmark_style flag.
+const WALLIAM_TENANT_ID = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
+
+import BrandWordmark from './navigation/BrandWordmark';
+
 interface Props {
+  tenantId: string | null;
+  brandName: string | null;
   assistantName: string
   agent: Agent;
   stats: MarketStats;
@@ -39,7 +47,9 @@ function openCharlie(form?: 'buyer' | 'seller', message?: string) {
 }
 
 // ── WALLiam Hero Wordmark ─────────────────────────────────────
-function HeroWordmark() {
+// C8b-2 -- gates on tenantId; falls back to BrandWordmark for non-WALLiam tenants.
+// Hooks-first: useState + useEffect declared unconditionally before tenant gate.
+function HeroWordmark({ tenantId, brandName }: { tenantId: string | null; brandName: string | null }) {
   const [revealed, setRevealed] = useState(false);
   const [wallGlow, setWallGlow] = useState(false);
 
@@ -50,6 +60,22 @@ function HeroWordmark() {
     const t3 = setTimeout(() => setWallGlow(false), 1400);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, []);
+
+  // C8b-2 -- non-WALLiam tenants get plain-text BrandWordmark at hero size.
+  // Tenant gate runs AFTER all hooks per React Rules of Hooks.
+  if (tenantId !== WALLIAM_TENANT_ID) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        opacity: revealed ? 1 : 0,
+        transform: revealed ? 'translateY(0)' : 'translateY(12px)',
+        transition: 'opacity 0.7s ease, transform 0.7s ease',
+        marginBottom: 20,
+      }}>
+        <BrandWordmark brand={brandName ?? 'Brand'} size="hero" />
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -455,7 +481,8 @@ function HowItWorks({ assistantName }: { assistantName: string }) {
 }
 
 // ── Hero ──────────────────────────────────────────────────────
-function WalliamHero({ assistantName }: { assistantName: string }) {
+// C8b-2 -- tenantId + brandName threaded through WalliamHero to reach HeroWordmark.
+function WalliamHero({ tenantId, brandName, assistantName }: { tenantId: string | null; brandName: string | null; assistantName: string }) {
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -490,7 +517,8 @@ function WalliamHero({ assistantName }: { assistantName: string }) {
       }} />
 
       {/* WALLiam name */}
-      <HeroWordmark />
+      {/* C8b-2 -- tenant-aware hero wordmark */}
+      <HeroWordmark tenantId={tenantId} brandName={brandName} />
 
       {/* Tagline */}
       <div style={{
@@ -604,10 +632,10 @@ function WalliamHero({ assistantName }: { assistantName: string }) {
 }
 
 // ── Main Export ───────────────────────────────────────────────
-export default function HomePageComprehensiveClient({ agent, stats, topAreas, access, assistantName }: Props) {
+export default function HomePageComprehensiveClient({ tenantId, brandName, agent, stats, topAreas, access, assistantName }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: '#060b18' }}>
-      <WalliamHero assistantName={assistantName} />
+      <WalliamHero tenantId={tenantId} brandName={brandName} assistantName={assistantName} />
       <HowItWorks assistantName={assistantName} />
     </div>
   );

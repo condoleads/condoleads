@@ -53,7 +53,10 @@ export async function HomePageComprehensive({ agent }: HomePageComprehensiveProp
 
   return (
     <>
+      {/* C8b-2 -- tenantId + brandName for hero wordmark gating */}
       <HomePageComprehensiveClient
+        tenantId={tenantContext?.id ?? null}
+        brandName={tenantContext?.name ?? null}
         assistantName={assistantName}
         agent={{
           id: agent.id,

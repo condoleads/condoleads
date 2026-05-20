@@ -54,7 +54,10 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
 
   return (
     <>
+      {/* C8b-2 -- tenantId + brandName for hero wordmark gating */}
       <HomePageComprehensiveClientV2
+        tenantId={tenantContext?.id ?? null}
+        brandName={tenantContext?.name ?? null}
         assistantName={assistantName}
         agent={{
           id: agent.id,
