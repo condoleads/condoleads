@@ -44,8 +44,33 @@ export interface Tenant {
  */
 export async function getTenant(): Promise<Tenant | null> {
   const headerList = await headers()
-  const tenantId = headerList.get('x-tenant-id')
-  if (!tenantId) return null
+  let tenantId = headerList.get('x-tenant-id')
+
+  // C8f -- localhost/preview dev fallback.
+  // Production middleware injects x-tenant-id from host. In dev environments
+  // (localhost, *.vercel.app preview) the middleware does not match any tenant
+  // domain, so x-tenant-id is absent. Mirror the getTenantByHost dev fallback
+  // (lib/utils/tenant-brand.ts:62-65): resolve tenant by DEV_TENANT_DOMAIN env var.
+  if (!tenantId) {
+    const host = headerList.get('host')
+    if (host && (host.includes('localhost') || host.includes('vercel.app'))) {
+      const devDomain = process.env.DEV_TENANT_DOMAIN
+      if (!devDomain) return null
+
+      const supabaseLookup = createServiceClient()
+      const { data: byDomain } = await supabaseLookup
+        .from('tenants')
+        .select('id')
+        .eq('domain', devDomain)
+        .eq('is_active', true)
+        .maybeSingle()
+
+      if (!byDomain?.id) return null
+      tenantId = byDomain.id
+    } else {
+      return null
+    }
+  }
 
   const supabase = createServiceClient()
   const { data, error } = await supabase
