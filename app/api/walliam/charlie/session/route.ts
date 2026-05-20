@@ -90,7 +90,9 @@ export async function POST(request: NextRequest) {
       ai_manual_approve_limit: 3,
       ai_hard_cap: 25,
       vip_auto_approve: false,
-      full_name: 'WALLiam',
+      // C9/D15 -- initial full_name fallback is empty; tenant.name (line ~118) and
+      // agent.full_name (line ~143) override this when their fetches succeed.
+      full_name: '',
       plan_free_attempts: 1,
       plan_hard_cap: 10,
       plan_manual_approve_limit: 3,
