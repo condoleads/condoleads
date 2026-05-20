@@ -124,7 +124,8 @@ export async function POST(req: NextRequest) {
     let userIdForLead: string | null = null
     try {
       const result = await getOrCreateAuthUserByEmail(supabase, email, {
-        source: 'walliam_contact_form',
+        // C1/D5 -- build source from tenant source_key (was: hardcoded literal source value)
+        source: `${sourceKey}_contact_form`,
         initial_contact_name: name,
         initial_tenant_id: tenant_id,
       })

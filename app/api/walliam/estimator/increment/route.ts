@@ -24,16 +24,32 @@ export async function POST(request: NextRequest) {
     const supabase = createServiceClient()
 
     // W-RECOVERY A1.5 auth gate — fetch session AND verify it belongs to a registered walliam user
+    // C1/D1 -- auth gate validates chat session source against the tenant source_key
+    // (was: hardcoded literal source comparison which blocked all non-WALLiam tenants)
     const { data: session, error: fetchError } = await supabase
       .from('chat_sessions')
-      .select('estimator_count, user_id, source')
+      .select('estimator_count, user_id, source, tenant_id')
       .eq('id', sessionId)
       .single()
 
     if (fetchError || !session) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
-    if (!session.user_id || session.source !== 'walliam') {
+    if (!session.user_id || !session.tenant_id) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+
+    // C1/D1 -- resolve tenant source_key and require session.source match
+    const { data: tenantRow, error: tenantErr } = await supabase
+      .from('tenants')
+      .select('source_key')
+      .eq('id', session.tenant_id)
+      .single()
+    if (tenantErr || !tenantRow || !tenantRow.source_key) {
+      console.error('[walliam/estimator/increment] tenant source_key fetch failed:', tenantErr)
+      return NextResponse.json({ error: 'Invalid tenant' }, { status: 400 })
+    }
+    if (session.source !== tenantRow.source_key) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
     // END W-RECOVERY A1.5 auth gate
