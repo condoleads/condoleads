@@ -228,7 +228,8 @@ Use these exact numbers when answering market questions.`
       console.error('[CHARLIE] geo pre-load error:', e)
     }
   }
-  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName, assistantName) + geoReminder + buildingContext + geoAnalyticsContext
+  // C5/D8 -- tenantDomain passed (from tenantConfig.domain at line 92) -- prompt URLs are now tenant-derived
+  const systemPrompt = buildCharlieSystemPrompt(agentName, brokerageName, assistantName, tenantDomain) + geoReminder + buildingContext + geoAnalyticsContext
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
