@@ -1,33 +1,59 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 import ConditionalLayout from "@/components/ConditionalLayout"
 import TenantHeader from "@/components/TenantHeader";
 import { AuthProvider } from "@/components/auth/AuthContext";
 import { CreditSessionProvider } from "@/components/credits/CreditSessionContext";
 import { getWalliamTenantId } from "@/lib/utils/is-walliam";
+import { getTenantByHost } from "@/lib/utils/tenant-brand";
+import { createClient } from "@/lib/supabase/server";
 
 const inter = Inter({ subsets: ["latin"] });
 
-export const metadata: Metadata = {
-  title: "WALLiam — AI Real Estate Assistant",
-  description: "Browse GTA properties, get a personalized AI buyer or seller plan, and connect with a local expert.",
-  openGraph: {
-    title: "WALLiam — AI Real Estate Assistant",
-    description: "Browse → Get an AI plan → Lead Captured. Powered by WALLiam AI.",
-    url: "https://walliam.ca",
-    siteName: "WALLiam",
-    type: "website",
-    images: [{ url: "https://walliam.ca/og-walliam.png", width: 1200, height: 630 }],
-  },
-};
+// C7/D10 -- root metadata is now per-tenant. Reads host at request time,
+// resolves tenant config, builds metadata. Falls back to generic when host
+// has no matching tenant (build-time SSG safety).
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const host = headers().get('host')
+    const supabase = createClient()
+    const tenant = await getTenantByHost(supabase, host)
 
-export const viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 5,
-};
+    if (!tenant) {
+      return {
+        title: "AI Real Estate Assistant",
+        description: "AI-powered real estate platform.",
+      }
+    }
 
+    const url = `https://${tenant.domain}`
+    const ogImageUrl = `${url}/og`
+    const title = `${tenant.name} - AI Real Estate Assistant`
+    const description = `Browse properties, get a personalized AI buyer or seller plan, and connect with a local expert. Powered by ${tenant.name} AI.`
+
+    return {
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        url,
+        siteName: tenant.name,
+        type: "website",
+        images: [{ url: ogImageUrl, width: 1200, height: 630 }],
+      },
+    }
+  } catch {
+    return {
+      title: "AI Real Estate Assistant",
+      description: "AI-powered real estate platform.",
+    }
+  }
+}
+
+// C7/D10 -- static metadata block excised; replaced by generateMetadata above
 export default async function RootLayout({
   children,
 }: Readonly<{

@@ -1,8 +1,45 @@
 import { ImageResponse } from 'next/og'
+import { NextRequest } from 'next/server'
 
 export const runtime = 'edge'
 
-export async function GET() {
+// C7/D12 -- OG image is now tenant-aware. Reads host from request header
+// and renders the tenant brand/domain in the image.
+async function fetchTenantBrand(host: string | null): Promise<{ name: string, domain: string } | null> {
+  if (!host) return null
+  const cleanHost = host.replace(/^www\./, '')
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) return null
+  try {
+    const resp = await fetch(
+      `${supabaseUrl}/rest/v1/tenants?domain=eq.${encodeURIComponent(cleanHost)}&is_active=eq.true&select=name,brand_name,domain`,
+      {
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Accept': 'application/json',
+        },
+      }
+    )
+    if (!resp.ok) return null
+    const rows = await resp.json() as Array<{ name: string | null, brand_name: string | null, domain: string | null }>
+    const row = rows[0]
+    if (!row || !row.domain) return null
+    const name = row.brand_name || row.name
+    if (!name) return null
+    return { name, domain: row.domain }
+  } catch {
+    return null
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const host = req.headers.get('host')
+  const tenant = await fetchTenantBrand(host)
+  const brandName = tenant?.name || 'AI Real Estate'
+  const displayDomain = tenant?.domain || ''
+
   return new ImageResponse(
     (
       <div style={{
@@ -37,7 +74,7 @@ export async function GET() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '22px', fontWeight: 800, color: '#fff',
           }}>01</div>
-          <span style={{ fontSize: '32px', fontWeight: 800, color: '#fff' }}>leads</span>
+          <span style={{ fontSize: '32px', fontWeight: 800, color: '#fff' }}>{brandName}</span>
         </div>
 
         {/* Headline line 1 */}
@@ -59,9 +96,9 @@ export async function GET() {
           </span>
         </div>
 
-        {/* URL */}
+        {/* URL -- C7/D12 tenant-derived */}
         <div style={{ position: 'absolute', bottom: '60px', left: '80px', fontSize: '22px', color: 'rgba(59,130,246,0.7)', display: 'flex' }}>
-          walliam.ca
+          {displayDomain}
         </div>
 
         {/* Binary decoration */}
