@@ -5,6 +5,8 @@ import { isCustomDomain } from '@/lib/utils/agent-detection'
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import HomePropertyPageClient from './HomePropertyPageClient'
+import { createClient as createTenantClient } from '@/lib/supabase/server'
+import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import WalliamCTA from '@/components/WalliamCTA'
 import { getWalliamTenantId } from '@/lib/utils/is-walliam'
@@ -255,6 +257,12 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
   const isClosed = listing.standard_status === 'Closed'
   const status = isClosed ? 'Closed' : 'Active'
 
+  // C8a/D13 -- tenant for assistantName threading
+  const _c8a_host = headers().get('host')
+  const _c8a_supabase = createTenantClient()
+  const _c8a_tenant = await getTenantByHost(_c8a_supabase, _c8a_host)
+  const assistantName = _c8a_tenant?.name || 'Charlie'
+
   return (
     <>
       <script
@@ -281,6 +289,7 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
       />
       <main className="min-h-screen bg-gray-50">
         <HomePropertyPageClient
+    assistantName={assistantName}
           listing={listing}
           largePhotos={largePhotos || []}
           rooms={rooms || []}

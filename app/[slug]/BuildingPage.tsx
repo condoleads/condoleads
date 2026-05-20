@@ -1,5 +1,7 @@
-import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
+import { createClient as createTenantClient } from '@/lib/supabase/server'
+import { getTenantByHost } from '@/lib/utils/tenant-brand'
+import { notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { isCustomDomain } from '@/lib/utils/agent-detection'
 import { calculateAverage, calculateInventoryRate, extractAmenities, extractFeeIncludes } from '@/lib/utils/calculations'
@@ -371,6 +373,12 @@ export default async function BuildingPage({ params }: { params: { slug: string 
 
   // Fetch market intelligence data (PSF analytics, parking/locker values)
 
+  // C8a/D13 -- tenant for assistantName threading
+  const _c8a_host = headers().get('host')
+  const _c8a_supabase = createTenantClient()
+  const _c8a_tenant = await getTenantByHost(_c8a_supabase, _c8a_host)
+  const assistantName = _c8a_tenant?.name || 'Charlie'
+
   return (
     <>
       {agent && (
@@ -579,7 +587,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                    municipality_id={building.municipality_id || null}
                    tenant_id={tenantId!}
                   />
-                  <WalliamCTA context={building.building_name} />
+                  <WalliamCTA context={building.building_name} assistantName={assistantName} />
                   <CharliePageContext building_id={building.id} community_id={building.community_id || null} municipality_id={building.municipality_id || null} />
                   <WalliamContactForm
                     tenantId={tenantId!}

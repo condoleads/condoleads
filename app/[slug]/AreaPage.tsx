@@ -1,4 +1,6 @@
 import { headers } from 'next/headers'
+import { createClient as createTenantClient } from '@/lib/supabase/server'
+import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import { unstable_cache } from 'next/cache'
@@ -190,6 +192,12 @@ export default async function AreaPage({ area }: AreaPageProps) {
   }
   const { initialListings, counts, homeCounts, condoCounts, buildingCount, allAreas, municipalityLinks, municipalities } = data
 
+  // C8a/D13 -- tenant for assistantName threading
+  const _c8a_host = headers().get('host')
+  const _c8a_supabase = createTenantClient()
+  const _c8a_tenant = await getTenantByHost(_c8a_supabase, _c8a_host)
+  const assistantName = _c8a_tenant?.name || 'Charlie'
+
   return (
     <div className="min-h-screen bg-white">
       <GeoHero
@@ -231,7 +239,7 @@ export default async function AreaPage({ area }: AreaPageProps) {
               area_id={area.id}
               tenant_id={tenantId!}
             />
-            <WalliamCTA context={area.name} />
+            <WalliamCTA context={area.name} assistantName={assistantName} />
             <CharliePageContext area_id={area.id} area_slug={area.slug} />
           </div>
         )}

@@ -10,6 +10,8 @@ import { AgentCard } from '@/components/AgentCard'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 import WalliamContactForm from '@/components/WalliamContactForm'
 import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+import { headers } from 'next/headers'
+import { getTenantByHost } from '@/lib/utils/tenant-brand'
 
 export async function PropertyPageContent({ slug }: { slug: string }) {
   // Parse slug to get MLS number
@@ -147,9 +149,15 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
   const status = listing.standard_status === 'Closed' ? 'Closed' : 'Active'
   const isClosed = listing.standard_status === 'Closed'
 
+  // C8a/D13 -- tenant for assistantName threading
+  const _c8a_host = headers().get('host')
+  const _c8a_tenant = await getTenantByHost(supabaseServer, _c8a_host)
+  const assistantName = _c8a_tenant?.name || 'Charlie'
+
   return (
     <main className="min-h-screen bg-slate-50">
       <PropertyPageClient
+    assistantName={assistantName}
         listing={listingWithBuilding}
         largePhotos={largePhotos}
         rooms={rooms || []}

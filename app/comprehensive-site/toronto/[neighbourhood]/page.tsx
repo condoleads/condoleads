@@ -1,3 +1,6 @@
+import { headers } from 'next/headers'
+import { createClient as createTenantClient } from '@/lib/supabase/server'
+import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
 import Link from 'next/link'
@@ -10,7 +13,6 @@ import { getWalliamTenantId, resolveWalliamAgent } from '@/lib/utils/is-walliam'
 import CharliePageContext from '@/components/CharliePageContext'
 import WalliamCTA from '@/components/WalliamCTA'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
-import { headers } from 'next/headers'
 
 interface Props {
   params: { neighbourhood: string }
@@ -186,6 +188,12 @@ export default async function NeighbourhoodPage({ params }: Props) {
 
   const { neighbourhood, municipalities, municipalityIds, communities, stats, initialListings, initialTotal, initialCounts } = data
 
+  // C8a/D13 -- tenant for assistantName threading
+  const _c8a_host = headers().get('host')
+  const _c8a_supabase = createTenantClient()
+  const _c8a_tenant = await getTenantByHost(_c8a_supabase, _c8a_host)
+  const assistantName = _c8a_tenant?.name || 'Charlie'
+
   return (
     <div className="min-h-screen bg-white">
       <GeoHero
@@ -253,7 +261,7 @@ export default async function NeighbourhoodPage({ params }: Props) {
 
       {isWalliam && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          <WalliamCTA context={neighbourhood.name} />
+          <WalliamCTA context={neighbourhood.name} assistantName={assistantName} />
           <WalliamAgentCard neighbourhood_id={neighbourhood.id} tenant_id={tenantId!} />
           <CharliePageContext
             municipality_id={municipalityIds[0] || null}
