@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { createServiceClient } from '@/lib/admin-homes/service-client'
 import { can } from '@/lib/admin-homes/permissions'
+import { deriveUniqueAgentSubdomain } from '@/lib/admin-homes/agent-subdomain'
 
 // GET /api/admin-homes/agents — list comprehensive agents, tenant-scoped
 // Phase 3.4: Tenant Admin sees only their tenant's agents.
@@ -48,23 +49,42 @@ export async function POST(request: NextRequest) {
   const supabase = createServiceClient()
   const body = await request.json()
 
-  // can() target needs the prospective tenant scope. We read tenant_id from
-  // the body before doing the permission check; if absent, fall back to
-  // the actor's home tenant (Tenant Admin creating in their own tenant).
-  const targetTenantId: string | null = body?.tenant_id ?? user.tenantId
+  // D24 (P3.F5): tenant_id is REQUIRED in body. No actor-tenant fallback
+  // because that mechanism caused cross-tenant data leaks (D26): a
+  // platform_admin on Tenant B's page would create rows on their home tenant.
+  const targetTenantId: string | null = body?.tenant_id ?? null
   if (!targetTenantId) {
-    return NextResponse.json({ error: 'tenant_id required' }, { status: 400 })
+    return NextResponse.json({ error: 'tenant_id required in body' }, { status: 400 })
   }
 
-  // Use a synthetic agent target with role='agent' for the prospective new
-  // agent. 'agent.adminMutate' requires Tenant Admin tier or higher; lower
-  // tiers cannot create comprehensive agents.
+  // D26 (P3.F5): cross-tenant guard. Body tenant_id must match actor's
+  // tenant scope OR actor must be platform_admin.
+  if (targetTenantId !== user.tenantId && !user.isPlatformAdmin) {
+    return NextResponse.json(
+      { error: 'cross-tenant agent creation requires platform_admin' },
+      { status: 403 }
+    )
+  }
+
+  // D19 (P3.F5): role accepted from body, validated against agents_role_check
+  // subset (admin tier omitted from user-facing picker for safety).
+  const VALID_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin'] as const
+  type AgentRoleDb = (typeof VALID_ROLES)[number]
+  const requestedRole = (typeof body?.role === 'string' ? body.role : 'agent') as AgentRoleDb
+  if (!VALID_ROLES.includes(requestedRole)) {
+    return NextResponse.json(
+      { error: 'invalid role; must be one of: ' + VALID_ROLES.join(', ') },
+      { status: 400 }
+    )
+  }
+
+  // D19: pass real role to can() decision (was hardcoded 'agent').
   const decision = can(user.permissions, 'agent.adminMutate', {
     kind: 'agent',
     agentId: '00000000-0000-0000-0000-000000000000',
     tenantId: targetTenantId,
     parentId: body?.parent_id ?? null,
-    roleDb: 'agent',
+    roleDb: requestedRole,
   })
   if (!decision.ok) {
     return NextResponse.json({ error: decision.reason }, { status: decision.status })
@@ -85,6 +105,11 @@ export async function POST(request: NextRequest) {
   if (!email || !password || !full_name) {
     return NextResponse.json({ error: 'full_name, email and password are required' }, { status: 400 })
   }
+
+  // D28 (P3.F5): subdomain is system-derived from full_name, never trusted
+  // from body. Even if client sends one, we overwrite with a uniqueness-
+  // enforced server-side derivation.
+  const derivedSubdomain = await deriveUniqueAgentSubdomain(supabase, full_name)
 
   // 1. Create Supabase auth user
   const { data: authData, error: authError } = await supabase.auth.admin.createUser({
@@ -111,13 +136,14 @@ export async function POST(request: NextRequest) {
       brokerage_name: brokerage_name || null,
       brokerage_address: brokerage_address || null,
       license_number: license_number || null,
-      subdomain,
+      subdomain: derivedSubdomain,
       custom_domain: custom_domain || null,
       bio: bio || null,
       profile_photo_url: profile_photo_url || null,
       notification_email: notification_email || email,
       parent_id: parent_id || null,
-        tenant_id: body.tenant_id || null,
+      tenant_id: targetTenantId,
+      role: requestedRole,
       can_create_children: can_create_children || false,
       branding: branding || {},
       site_type: 'comprehensive',
@@ -132,7 +158,11 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (insertError) {
-    // Rollback: delete auth user to avoid orphan
+    // F-AGENT-CREATION-ROLLBACK-INCOMPLETE (P3.F5): on_auth_user_created
+    // trigger inserts a user_profiles row when createUser fires. Rollback
+    // must delete user_profiles first (FK user_profiles_id_fkey), then
+    // auth.users, otherwise deleteUser silently fails and orphans linger.
+    await supabase.from('user_profiles').delete().eq('id', authUserId)
     await supabase.auth.admin.deleteUser(authUserId)
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }

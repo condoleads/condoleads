@@ -309,6 +309,53 @@ const allFiles = SCAN_DIRS.flatMap(d => walk(path.join(ROOT, d)));
   }
 }
 
+// L2.7: every comprehensive agent has non-null tenant_id matching an existing
+// tenant row. W-MULTITENANT-BENCH P3.F5 / D26 cross-tenant invariant seal.
+// Skipped silently if Supabase env not set (CI without secrets).
+{
+  const label = 'L2.7: every comprehensive agent has tenant_id matching an existing tenant';
+  try {
+    const envPath = path.join(ROOT, '.env.local');
+    if (!fs.existsSync(envPath)) {
+      console.log('  SKIP [' + label + '] -- .env.local not present');
+    } else {
+      require('dotenv').config({ path: envPath });
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !key) {
+        console.log('  SKIP [' + label + '] -- Supabase env vars missing');
+      } else {
+        const inline = 'const { createClient } = require(\'@supabase/supabase-js\'); const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY); (async () => { const { data: agents, error: aerr } = await sb.from(\'agents\').select(\'id, full_name, email, tenant_id\').eq(\'site_type\', \'comprehensive\'); if (aerr) { console.error(\'ERR:\' + aerr.message); process.exit(1); } const { data: tenants, error: terr } = await sb.from(\'tenants\').select(\'id\'); if (terr) { console.error(\'ERR:\' + terr.message); process.exit(1); } const tenantIds = new Set(tenants.map(t => t.id)); const orphans = agents.filter(a => !a.tenant_id || !tenantIds.has(a.tenant_id)); if (orphans.length === 0) { console.log(\'OK:\' + agents.length); process.exit(0); } else { console.log(\'BAD:\' + JSON.stringify(orphans.map(o => ({ id: o.id, email: o.email, tenant_id: o.tenant_id })))); process.exit(2); } })();';
+        const result = require('child_process').spawnSync('node', ['-e', inline], {
+          cwd: ROOT,
+          encoding: 'utf8',
+          env: { ...process.env },
+        });
+        if (result.status === 0) {
+          const m = result.stdout.match(/OK:(\d+)/);
+          const count = m ? m[1] : '?';
+          console.log('  PASS [' + label + '] (' + count + ' agents checked)');
+          totalPasses++;
+        } else if (result.status === 2) {
+          console.error('  FAIL [' + label + '] -- orphan or cross-tenant agents:');
+          const m = result.stdout.match(/BAD:(.*)/);
+          if (m) console.error('    ' + m[1]);
+          totalFailures++;
+          failedAssertions.push(label);
+        } else {
+          console.error('  FAIL [' + label + '] -- runtime error');
+          if (result.stdout) console.error('    stdout: ' + result.stdout.trim());
+          if (result.stderr) console.error('    stderr: ' + result.stderr.trim());
+          totalFailures++;
+          failedAssertions.push(label);
+        }
+      }
+    }
+  } catch (e) {
+    console.log('  SKIP [' + label + '] -- ' + e.message);
+  }
+}
+
 // ============================================================
 // Final summary
 // ============================================================

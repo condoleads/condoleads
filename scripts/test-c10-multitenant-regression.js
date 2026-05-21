@@ -137,7 +137,7 @@ assertContains(
 
 assertContains(
   'components/admin-homes/AgentsManagementClient.tsx',
-  'tenantBrandName, tenantDomain }',
+  'tenantBrandName, tenantDomain',
   'agents-client-destructures-new-props'
 )
 assertContains(
@@ -178,10 +178,13 @@ assertContains(
   "Add {tenantBrandName ?? 'Tenant'} Agent",
   'modal-title-tenant-aware'
 )
-assertContains(
+// D21 (P3.F5) anti-regression: VIP Access Config block was REMOVED
+// from agent modal -- tenant-level policy belongs on tenant settings,
+// not per-agent. Lock the removal in place.
+assertNoMatch(
   'components/admin-homes/AddAgentModal.tsx',
-  "{tenantBrandName ?? 'Tenant'} VIP Access Config",
-  'modal-vip-section-header-tenant-aware'
+  /VIP Access Config/,
+  'modal-vip-block-stays-removed-D21'
 )
 // Negative: confirm hardcoded literals are gone
 assertNoMatch(
@@ -195,12 +198,15 @@ assertNoMatch(
   'modal-no-hardcoded-WALLiam-VIP-header'
 )
 
-// ---------- Sanity: condoleads.ca suffix INTENTIONALLY preserved (Option Y) ----------
+// ---------- D28 (P3.F5) anti-regression: subdomain UI removed ----------
+// Subdomain is system-derived server-side (lib/admin-homes/agent-subdomain.ts).
+// Lock the removal of UI field + helper + .condoleads.ca display suffix
+// so they don't drift back into agent onboarding flow.
 
-assertContains(
+assertNoMatch(
   'components/admin-homes/AddAgentModal.tsx',
-  '.condoleads.ca',
-  'modal-condoleads-ca-suffix-preserved-per-Option-Y'
+  /<label[^>]*>Subdomain \*<\/label>/,
+  'modal-subdomain-field-stays-removed-D28'
 )
 
 console.log('\n=== ' + passes + ' PASS / ' + failures + ' FAIL ===')

@@ -37,7 +37,7 @@ export default async function AdminHomesAgentsPage() {
   if (!seeAll) {
     if (!scopedTenantId) {
       // Authenticated but no tenant context — return empty
-      return <AgentsManagementClient agents={[]} tenants={[]} tenantName={null} tenantBrandName={null} tenantDomain={null} />
+      return <AgentsManagementClient agents={[]} tenants={[]} tenantName={null} tenantBrandName={null} tenantDomain={null} tenantId={null} />
     }
     agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
   }
@@ -90,5 +90,5 @@ export default async function AdminHomesAgentsPage() {
     })
   )
 
-  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} />
+  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} />
 }

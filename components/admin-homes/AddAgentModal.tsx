@@ -5,7 +5,6 @@
 
 import { useState, useEffect } from 'react'
 import { X, Upload, Users } from 'lucide-react'
-import { useTenantId } from '@/hooks/useTenantId'
 
 interface Agent {
   id: string
@@ -23,29 +22,26 @@ interface Props {
   preselectedParentId?: string | null
   tenantBrandName?: string | null
   tenantDomain?: string | null
+  // D26 (P3.F5): tenant_id passed from parent (admin-scope), not from
+  // hostname-derived useTenantId hook. Prevents cross-tenant data leaks.
+  tenantId?: string | null
 }
 
-export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgents = [], preselectedParentId = null, tenantBrandName = null, tenantDomain = null }: Props) {
+export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgents = [], preselectedParentId = null, tenantBrandName = null, tenantDomain = null, tenantId = null }: Props) {
   const [agents, setAgents] = useState<Agent[]>(existingAgents)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [photoPreview, setPhotoPreview] = useState('')
-  const tenantId = useTenantId()
 
   const [formData, setFormData] = useState({
     full_name: '', email: '', cell_phone: '', office_phone: '', whatsapp_number: '',
     password: '', confirmPassword: '',
     title: 'Realtor', customTitle: '', useCustomTitle: false,
     brokerage_name: '', brokerage_address: '', license_number: '',
-    subdomain: '', custom_domain: '', bio: '', profile_photo_url: '',
+    custom_domain: '', bio: '', profile_photo_url: '',
     parent_id: '', can_create_children: false, tenant_id: '',
+    role: 'agent' as 'agent' | 'manager' | 'area_manager' | 'tenant_admin',
     primary_color: '#16a34a', secondary_color: '#15803d',
-    // WALLiam VIP config
-    ai_free_messages: 1,
-    vip_auto_approve: false,
-    ai_auto_approve_limit: 2,
-    ai_manual_approve_limit: 3,
-    ai_hard_cap: 10,
   })
 
   useEffect(() => {
@@ -57,10 +53,6 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
       fetch('/api/admin-homes/agents/list').then(r => r.json()).then(d => { if (d.agents) setAgents(d.agents) })
     }
   }, [isOpen])
-
-  function generateSubdomain(name: string) {
-    return name.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 30)
-  }
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -100,15 +92,10 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
           site_type: 'comprehensive',
           profile_photo_url: photoPreview || formData.profile_photo_url,
           parent_id: formData.parent_id || null,
-            tenant_id: tenantId,
+          tenant_id: tenantId,
+          role: formData.role,
           custom_domain: formData.custom_domain || null,
           branding: { primary_color: formData.primary_color, secondary_color: formData.secondary_color },
-          // VIP config
-          ai_free_messages: formData.ai_free_messages,
-          vip_auto_approve: formData.vip_auto_approve,
-          ai_auto_approve_limit: formData.ai_auto_approve_limit,
-          ai_manual_approve_limit: formData.ai_manual_approve_limit,
-          ai_hard_cap: formData.ai_hard_cap,
         })
       })
       const data = await res.json()
@@ -139,52 +126,28 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2"><Users className="w-4 h-4" /> Team Hierarchy</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                <select required value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as typeof formData.role })} className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="agent">Agent</option>
+                  <option value="manager">Manager</option>
+                  <option value="area_manager">Area Manager</option>
+                  <option value="tenant_admin">Tenant Admin</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-1">D19/D20 (P3.F5): determines this user's hierarchy tier</p>
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reports To</label>
                 <select value={formData.parent_id} onChange={e => setFormData({ ...formData, parent_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm">
                   <option value="">None (Solo / Top-level)</option>
-                  {availableParents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+                  {availableParents.map(a => <option key={a.id} value={a.id}>{a.full_name}{(a as any).role ? ' (' + (a as any).role + ')' : ''}</option>)}
                 </select>
               </div>
-              <div className="flex items-center">
+              <div className="flex items-center col-span-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={formData.can_create_children} onChange={e => setFormData({ ...formData, can_create_children: e.target.checked })} className="w-4 h-4" />
                   <div>
                     <span className="text-sm font-medium text-gray-700">Can Manage Team</span>
                     <p className="text-xs text-gray-400">Allow agents under them</p>
-                  </div>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* C10 -- VIP Config (tenant-specific) */}
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            {/* C10 -- tenant-aware VIP config header */}
-            <h3 className="font-semibold text-green-900 mb-3">✦ {tenantBrandName ?? 'Tenant'} VIP Access Config</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Free Plans Per User</label>
-                <input type="number" min={0} max={10} value={formData.ai_free_messages} onChange={e => setFormData({ ...formData, ai_free_messages: parseInt(e.target.value) || 1 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-                <p className="text-xs text-gray-400 mt-1">Plans available before VIP required</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Hard Cap (max ever)</label>
-                <input type="number" min={1} max={100} value={formData.ai_hard_cap} onChange={e => setFormData({ ...formData, ai_hard_cap: parseInt(e.target.value) || 10 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Plans on Auto-Approve</label>
-                <input type="number" min={0} value={formData.ai_auto_approve_limit} onChange={e => setFormData({ ...formData, ai_auto_approve_limit: parseInt(e.target.value) || 2 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Plans on Manual Approve</label>
-                <input type="number" min={0} value={formData.ai_manual_approve_limit} onChange={e => setFormData({ ...formData, ai_manual_approve_limit: parseInt(e.target.value) || 3 })} className="w-full px-3 py-2 border rounded-lg text-sm" />
-              </div>
-              <div className="col-span-2 flex items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={formData.vip_auto_approve} onChange={e => setFormData({ ...formData, vip_auto_approve: e.target.checked })} className="w-4 h-4 text-green-600" />
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Auto-Approve VIP Requests</span>
-                    <p className="text-xs text-gray-400">Instantly grant plans without manual review</p>
                   </div>
                 </label>
               </div>
@@ -197,7 +160,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                <input type="text" required value={formData.full_name} onChange={e => setFormData({ ...formData, full_name: e.target.value, subdomain: generateSubdomain(e.target.value) })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Jane Smith" />
+                <input type="text" required value={formData.full_name} onChange={e => setFormData({ ...formData, full_name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Jane Smith" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
@@ -255,13 +218,6 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
           <div>
             <h3 className="font-semibold text-gray-900 mb-3">Website</h3>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Subdomain *</label>
-                <div className="flex items-center gap-2">
-                  <input type="text" required value={formData.subdomain} onChange={e => setFormData({ ...formData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '') })} className="flex-1 px-3 py-2 border rounded-lg text-sm" />
-                  <span className="text-gray-400 text-xs whitespace-nowrap">.condoleads.ca</span>
-                </div>
-              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Custom Domain</label>
                 <input type="text" value={formData.custom_domain} onChange={e => setFormData({ ...formData, custom_domain: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="agent.ca (optional)" />

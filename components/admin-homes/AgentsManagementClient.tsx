@@ -32,7 +32,10 @@ interface Agent {
 }
 
 // C10 -- tenantBrandName + tenantDomain threaded to AddAgentModal.
-export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null }) {
+// D26 (P3.F5) -- tenantId threaded from server page to AddAgentModal so the
+// modal posts to the correct admin-scope tenant instead of the
+// hostname-derived useTenantId() value (which leaks cross-tenant on localhost).
+export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain, tenantId }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null, tenantId: string | null }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -90,11 +93,26 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
     totalLeads: agents.reduce((s, a) => s + a.total_leads, 0),
   }
 
+  // D29 (W-MULTITENANT-BENCH P3.F5): badge reads agent.role directly from DB,
+  // not inferred from hierarchy flags. Friendly-label map covers all 5
+  // DB role values (agents_role_check) plus a fallback for unexpected values.
+  const ROLE_LABELS: Record<string, { label: string; classes: string }> = {
+    agent:        { label: 'Agent',         classes: 'bg-blue-100 text-blue-700' },
+    manager:      { label: 'Manager',       classes: 'bg-orange-100 text-orange-700' },
+    area_manager: { label: 'Area Manager',  classes: 'bg-purple-100 text-purple-700' },
+    tenant_admin: { label: 'Tenant Admin',  classes: 'bg-emerald-100 text-emerald-700' },
+    admin:        { label: 'Platform Admin', classes: 'bg-rose-100 text-rose-700' },
+  }
+
   function RoleBadge({ agent }: { agent: Agent }) {
-    if (agent.can_create_children)
-      return <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium"><UserCheck className="w-3 h-3" /> Manager</span>
-    if (agent.parent_id)
-      return <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium"><Users className="w-3 h-3" /> Agent</span>
+    const role = (agent as any).role as string | null
+    const entry = (role && ROLE_LABELS[role]) || { label: role || 'Unknown', classes: 'bg-gray-100 text-gray-700' }
+    const Icon = (role === 'manager' || role === 'area_manager' || role === 'tenant_admin' || role === 'admin') ? UserCheck : Users
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-1 ${entry.classes} rounded-full text-xs font-medium`}>
+        <Icon className="w-3 h-3" /> {entry.label}
+      </span>
+    )
     return <span className="inline-flex items-center px-2 py-1 bg-gray-100 text-gray-500 rounded-full text-xs">Solo</span>
   }
 
@@ -288,6 +306,7 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
       </div>
 
       {/* C10 -- thread tenant brand identity into modal for display strings */}
+      {/* D26 (P3.F5) -- tenantId from admin-scope context, not hostname-derived hook */}
       <AddAgentModal
         isOpen={showAddModal}
         onClose={() => { setShowAddModal(false); setPreselectedParentId(null) }}
@@ -296,6 +315,7 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
         existingAgents={agents}
         tenantBrandName={tenantBrandName}
         tenantDomain={tenantDomain}
+        tenantId={tenantId}
       />
       <EditAgentModal
         isOpen={showEditModal}
