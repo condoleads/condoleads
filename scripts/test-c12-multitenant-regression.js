@@ -262,6 +262,53 @@ const allFiles = SCAN_DIRS.flatMap(d => walk(path.join(ROOT, d)));
   }
 }
 
+// L2.6: every tenant in DB has non-null source_key matching /^[a-z0-9_-]+$/
+// W-MULTITENANT-BENCH P3.F1 / D17 regression seal.
+// Skipped silently if Supabase env not set (CI without secrets).
+{
+  const label = 'L2.6: every tenant has non-null source_key matching /^[a-z0-9_-]+$/';
+  try {
+    const envPath = path.join(ROOT, '.env.local');
+    if (!fs.existsSync(envPath)) {
+      console.log('  SKIP [' + label + '] -- .env.local not present');
+    } else {
+      require('dotenv').config({ path: envPath });
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!url || !key) {
+        console.log('  SKIP [' + label + '] -- Supabase env vars missing');
+      } else {
+        const inline = 'const { createClient } = require(\'@supabase/supabase-js\'); const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY); (async () => { const { data, error } = await sb.from(\'tenants\').select(\'id, name, source_key\'); if (error) { console.error(\'ERR:\' + error.message); process.exit(1); } const bad = data.filter(t => !t.source_key || !/^[a-z0-9_-]+$/.test(t.source_key)); if (bad.length === 0) { console.log(\'OK:\' + data.length); process.exit(0); } else { console.log(\'BAD:\' + JSON.stringify(bad)); process.exit(2); } })();';
+        const result = require('child_process').spawnSync('node', ['-e', inline], {
+          cwd: ROOT,
+          encoding: 'utf8',
+          env: { ...process.env },
+        });
+        if (result.status === 0) {
+          const m = result.stdout.match(/OK:(\d+)/);
+          const count = m ? m[1] : '?';
+          console.log('  PASS [' + label + '] (' + count + ' tenants checked)');
+          totalPasses++;
+        } else if (result.status === 2) {
+          console.error('  FAIL [' + label + '] -- offenders:');
+          const m = result.stdout.match(/BAD:(.*)/);
+          if (m) console.error('    ' + m[1]);
+          totalFailures++;
+          failedAssertions.push(label);
+        } else {
+          console.error('  FAIL [' + label + '] -- runtime error');
+          if (result.stdout) console.error('    stdout: ' + result.stdout.trim());
+          if (result.stderr) console.error('    stderr: ' + result.stderr.trim());
+          totalFailures++;
+          failedAssertions.push(label);
+        }
+      }
+    }
+  } catch (e) {
+    console.log('  SKIP [' + label + '] -- ' + e.message);
+  }
+}
+
 // ============================================================
 // Final summary
 // ============================================================

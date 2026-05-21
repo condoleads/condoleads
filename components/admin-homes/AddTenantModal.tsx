@@ -1,8 +1,9 @@
 ﻿// components/admin-homes/AddTenantModal.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Eye, EyeOff, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { deriveSourceKey } from '@/lib/admin-homes/tenant-source-key'
 
 interface Props {
   isOpen: boolean
@@ -16,7 +17,10 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
   const [showApiKey, setShowApiKey] = useState(false)
   const [testingKey, setTestingKey] = useState(false)
   const [keyTestResult, setKeyTestResult] = useState<{ valid: boolean; error?: string } | null>(null)
+  const [createdTenant, setCreatedTenant] = useState<{ id: string; name: string; domain: string; source_key: string } | null>(null)
   const [formData, setFormData] = useState({
+    source_key: '',
+    source_key_overridden: false,
     // Brand
     name: '', domain: '', brand_name: '', admin_email: '',
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
@@ -29,7 +33,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
     // Plan Configuration
     plan_mode: 'shared', plan_free_attempts: 1, plan_auto_approve_limit: 0,
     plan_manual_approve_limit: 3, plan_hard_cap: 10, plan_vip_auto_approve: false,
-    seller_plan_free_attempts: 1, seller_plan_hard_cap: 10,
+    seller_plan_free_attempts: 1, seller_plan_hard_cap: 10, seller_plan_auto_approve_limit: 0, seller_plan_manual_approve_limit: 3,
     estimator_nonai_enabled: true,
     estimator_free_attempts: 1, estimator_vip_auto_approve: false,
     estimator_auto_approve_attempts: 2, estimator_manual_approve_attempts: 3,
@@ -46,7 +50,28 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
     privacy_content: '',
     terms_content: '',
     homepage_layout: 'v1',
+    // Resend email stack (verify_status/verified_at set by verify-resend route)
+    send_from: '',
+    resend_api_key: '',
+    email_from_domain: '',
+    // Analytics & tracking (all optional)
+    google_analytics_id: '',
+    google_ads_id: '',
+    google_conversion_label: '',
+    facebook_pixel_id: '',
+    // CC routing for lead emails (optional)
+    manager_cc: '',
+    admin_bcc: '',
   })
+
+  useEffect(() => {
+    if (!formData.source_key_overridden) {
+      const derived = deriveSourceKey(formData.domain)
+      if (derived !== formData.source_key) {
+        setFormData(fd => ({ ...fd, source_key: derived }))
+      }
+    }
+  }, [formData.domain, formData.source_key_overridden, formData.source_key])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -58,6 +83,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
         body: JSON.stringify({
           name: formData.name,
           domain: formData.domain.toLowerCase(),
+          source_key: formData.source_key,
           brand_name: formData.brand_name || formData.name,
           admin_email: formData.admin_email,
           logo_url: formData.logo_url || null,
@@ -77,6 +103,8 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
           plan_vip_auto_approve: formData.plan_vip_auto_approve,
           seller_plan_free_attempts: formData.seller_plan_free_attempts,
           seller_plan_hard_cap: formData.seller_plan_hard_cap,
+          seller_plan_auto_approve_limit: formData.seller_plan_auto_approve_limit,
+          seller_plan_manual_approve_limit: formData.seller_plan_manual_approve_limit,
           estimator_ai_enabled: false,
           estimator_nonai_enabled: formData.estimator_nonai_enabled,
           estimator_free_attempts: formData.estimator_free_attempts,
@@ -95,6 +123,15 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
           privacy_content: formData.privacy_content || null,
           terms_content: formData.terms_content || null,
           homepage_layout: formData.homepage_layout,
+          send_from: formData.send_from || null,
+          resend_api_key: formData.resend_api_key || null,
+          email_from_domain: formData.email_from_domain || null,
+          google_analytics_id: formData.google_analytics_id || null,
+          google_ads_id: formData.google_ads_id || null,
+          google_conversion_label: formData.google_conversion_label || null,
+          facebook_pixel_id: formData.facebook_pixel_id || null,
+          manager_cc: formData.manager_cc || null,
+          admin_bcc: formData.admin_bcc || null,
         }),
       })
       if (!res.ok) {
@@ -102,7 +139,18 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
         setError(data.error || 'Failed to create tenant')
         return
       }
-      onSuccess(); onClose()
+      const result = await res.json().catch(() => ({ tenant: null }))
+      if (result && result.tenant) {
+        setCreatedTenant({
+          id: result.tenant.id,
+          name: result.tenant.name,
+          domain: result.tenant.domain,
+          source_key: result.tenant.source_key,
+        })
+        onSuccess()
+      } else {
+        onSuccess(); onClose()
+      }
     } catch { setError('Failed to create tenant') }
     setSaving(false)
   }
@@ -138,6 +186,45 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
           <h2 className="text-xl font-bold text-gray-900">Add Tenant</h2>
           <button onClick={onClose}><X className="w-5 h-5 text-gray-400" /></button>
         </div>
+        {createdTenant ? (
+        <div className="p-6 space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-green-900">Tenant Created: {createdTenant.name}</h3>
+                <p className="text-xs text-green-700 mt-1">
+                  domain: <span className="font-mono">{createdTenant.domain}</span>
+                  {' '}&middot;{' '}
+                  source_key: <span className="font-mono">{createdTenant.source_key}</span>
+                  {' '}&middot;{' '}
+                  id: <span className="font-mono text-[10px]">{createdTenant.id}</span>
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <h3 className="font-semibold text-amber-900 mb-2">Required next steps to make this tenant fully operational</h3>
+            <ol className="space-y-3 text-sm text-amber-900 list-decimal list-inside">
+              <li>
+                <strong>Verify Resend domain.</strong> Tenant cannot send emails (lead notifications, VIP requests) until <code className="text-xs bg-amber-100 px-1 rounded">resend_api_key</code> + <code className="text-xs bg-amber-100 px-1 rounded">email_from_domain</code> are configured and verified.
+              </li>
+              <li>
+                <strong>Anthropic API key.</strong> Charlie AI requires a per-tenant key (or platform fallback). Configure in tenant Settings.
+              </li>
+              <li>
+                <strong>Create at least one agent + set as default.</strong> Go to Agents &rarr; Add Agent for <strong>{createdTenant.name}</strong>, then set that agent as <code className="text-xs bg-amber-100 px-1 rounded">default_agent_id</code> in tenant settings. Without a default agent, leads have no fallback owner when the territory resolver returns null.
+              </li>
+              <li>
+                <strong>Territory assignments.</strong> Assign at least one geo level (area / municipality / community / neighbourhood) to agents via the Agents page so the resolver has a real cascade.
+              </li>
+            </ol>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-semibold hover:bg-green-800">Done</button>
+          </div>
+        </div>
+        ) : (
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">{error}</div>}
 
@@ -258,6 +345,69 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
             </div>
           </div>
 
+          {/* Resend Email — required for lead notifications, VIP requests */}
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+            <h3 className="font-semibold text-orange-900 mb-1">✉ Resend Email</h3>
+            <p className="text-xs text-orange-700 mb-3">Required for the tenant to send lead notifications, VIP requests, and admin emails. After save, use the Verify Domain action to complete DNS verification.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Send-From Header</label>
+                <input type="text" value={formData.send_from} onChange={e => setFormData({ ...formData, send_from: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="Tenant Name <notifications@tenant.ca>" />
+                <p className="text-xs text-gray-500 mt-1">Full RFC 5322 From header. Example: <code className="text-xs bg-orange-100 px-1 rounded">WALLiam &lt;notifications@condoleads.ca&gt;</code></p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Resend API Key</label>
+                <input type="password" value={formData.resend_api_key} onChange={e => setFormData({ ...formData, resend_api_key: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="re_..." />
+                <p className="text-xs text-gray-500 mt-1">Resend API key with sending permissions for the from-domain.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email From-Domain</label>
+                <input type="text" value={formData.email_from_domain} onChange={e => setFormData({ ...formData, email_from_domain: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="tenant.ca" />
+                <p className="text-xs text-gray-500 mt-1">DNS-verified sender domain registered with Resend. Must match the domain in Send-From.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Analytics & Tracking — all optional */}
+          <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
+            <h3 className="font-semibold text-cyan-900 mb-1">⊿ Analytics &amp; Tracking</h3>
+            <p className="text-xs text-cyan-700 mb-3">All optional. Configure for production marketing measurement.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Google Analytics ID</label>
+                <input type="text" value={formData.google_analytics_id} onChange={e => setFormData({ ...formData, google_analytics_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="G-XXXXXXXXXX" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Google Ads ID</label>
+                <input type="text" value={formData.google_ads_id} onChange={e => setFormData({ ...formData, google_ads_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="AW-XXXXXXXXX" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Google Conversion Label</label>
+                <input type="text" value={formData.google_conversion_label} onChange={e => setFormData({ ...formData, google_conversion_label: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="AbCdEfGhIj-1234567890" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Facebook Pixel ID</label>
+                <input type="text" value={formData.facebook_pixel_id} onChange={e => setFormData({ ...formData, facebook_pixel_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="123456789012345" />
+              </div>
+            </div>
+          </div>
+
+          {/* CC Routing — manager/admin email copies on lead notifications */}
+          <div className="bg-stone-50 border border-stone-200 rounded-lg p-4">
+            <h3 className="font-semibold text-stone-900 mb-1">⇉ CC Routing</h3>
+            <p className="text-xs text-stone-700 mb-3">Optional comma-separated email lists copied on lead notifications. Manager CC receives a copy of all lead emails; Admin BCC receives a blind copy for compliance / oversight.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Manager CC</label>
+                <input type="text" value={formData.manager_cc} onChange={e => setFormData({ ...formData, manager_cc: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="manager1@tenant.ca, manager2@tenant.ca" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Admin BCC</label>
+                <input type="text" value={formData.admin_bcc} onChange={e => setFormData({ ...formData, admin_bcc: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="admin@tenant.ca" />
+              </div>
+            </div>
+          </div>
+
           {/* AI Configuration — Charlie chat */}
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <h3 className="font-semibold text-green-900 mb-1">✦ AI Configuration</h3>
@@ -324,10 +474,16 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Seller Hard Cap</label>
                   <input type="number" min={1} value={formData.seller_plan_hard_cap} onChange={e => setFormData({...formData, seller_plan_hard_cap: parseInt(e.target.value)||10})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
               </>}
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Auto-Approve Limit</label>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">{formData.plan_mode === 'shared' ? 'Auto-Approve Limit' : 'Buyer Auto-Approve'}</label>
                 <input type="number" min={0} value={formData.plan_auto_approve_limit} onChange={e => setFormData({...formData, plan_auto_approve_limit: parseInt(e.target.value)||0})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Manual Approve Limit</label>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">{formData.plan_mode === 'shared' ? 'Manual Approve Limit' : 'Buyer Manual Approve'}</label>
                 <input type="number" min={0} value={formData.plan_manual_approve_limit} onChange={e => setFormData({...formData, plan_manual_approve_limit: parseInt(e.target.value)||3})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+              {formData.plan_mode === 'split' && <>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Seller Auto-Approve</label>
+                  <input type="number" min={0} value={formData.seller_plan_auto_approve_limit} onChange={e => setFormData({...formData, seller_plan_auto_approve_limit: parseInt(e.target.value)||0})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Seller Manual Approve</label>
+                  <input type="number" min={0} value={formData.seller_plan_manual_approve_limit} onChange={e => setFormData({...formData, seller_plan_manual_approve_limit: parseInt(e.target.value)||3})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+              </>}
               <div className="col-span-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={formData.plan_vip_auto_approve} onChange={e => setFormData({...formData, plan_vip_auto_approve: e.target.checked})} className="w-4 h-4 text-indigo-600" />
@@ -390,6 +546,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   )

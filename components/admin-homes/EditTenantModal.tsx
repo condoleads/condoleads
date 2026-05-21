@@ -45,6 +45,21 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
     about_content: '',
     privacy_content: '',
     terms_content: '',
+    // Resend email stack
+    send_from: '',
+    resend_api_key: '',
+    email_from_domain: '',
+    // Analytics & tracking
+    google_analytics_id: '',
+    google_ads_id: '',
+    google_conversion_label: '',
+    facebook_pixel_id: '',
+    // CC routing
+    manager_cc: '',
+    admin_bcc: '',
+    // Seller plan completeness
+    seller_plan_auto_approve_limit: 0,
+    seller_plan_manual_approve_limit: 3,
   })
 
   useEffect(() => {
@@ -93,6 +108,21 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           about_content: data.about_content || '',
           privacy_content: data.privacy_content || '',
           terms_content: data.terms_content || '',
+          // Resend email stack
+          send_from: data.send_from || '',
+          resend_api_key: data.resend_api_key || '',
+          email_from_domain: data.email_from_domain || '',
+          // Analytics & tracking
+          google_analytics_id: data.google_analytics_id || '',
+          google_ads_id: data.google_ads_id || '',
+          google_conversion_label: data.google_conversion_label || '',
+          facebook_pixel_id: data.facebook_pixel_id || '',
+          // CC routing
+          manager_cc: data.manager_cc || '',
+          admin_bcc: data.admin_bcc || '',
+          // Seller plan completeness
+          seller_plan_auto_approve_limit: data.seller_plan_auto_approve_limit ?? 0,
+          seller_plan_manual_approve_limit: data.seller_plan_manual_approve_limit ?? 3,
         })
         setLoading(false)
       })
@@ -146,6 +176,17 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
           about_content: formData.about_content || null,
           privacy_content: formData.privacy_content || null,
           terms_content: formData.terms_content || null,
+          send_from: formData.send_from || null,
+          resend_api_key: formData.resend_api_key || null,
+          email_from_domain: formData.email_from_domain || null,
+          google_analytics_id: formData.google_analytics_id || null,
+          google_ads_id: formData.google_ads_id || null,
+          google_conversion_label: formData.google_conversion_label || null,
+          facebook_pixel_id: formData.facebook_pixel_id || null,
+          manager_cc: formData.manager_cc || null,
+          admin_bcc: formData.admin_bcc || null,
+          seller_plan_auto_approve_limit: formData.seller_plan_auto_approve_limit,
+          seller_plan_manual_approve_limit: formData.seller_plan_manual_approve_limit,
         })
       })
       const data = await res.json()
@@ -332,6 +373,66 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
               </div>
             </div>
 
+            {/* Resend Email — required for lead notifications, VIP requests */}
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <h3 className="font-semibold text-orange-900 mb-1">✉ Resend Email</h3>
+              <p className="text-xs text-orange-700 mb-3">Required for the tenant to send lead notifications, VIP requests, and admin emails. Use the Verify Domain action to complete DNS verification.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Send-From Header</label>
+                  <input type="text" value={formData.send_from} onChange={e => setFormData({ ...formData, send_from: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="Tenant Name <notifications@tenant.ca>" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Resend API Key</label>
+                  <input type="password" value={formData.resend_api_key} onChange={e => setFormData({ ...formData, resend_api_key: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="re_..." />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email From-Domain</label>
+                  <input type="text" value={formData.email_from_domain} onChange={e => setFormData({ ...formData, email_from_domain: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="tenant.ca" />
+                </div>
+              </div>
+            </div>
+
+            {/* Analytics & Tracking */}
+            <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
+              <h3 className="font-semibold text-cyan-900 mb-1">⊿ Analytics &amp; Tracking</h3>
+              <p className="text-xs text-cyan-700 mb-3">All optional. Configure for production marketing measurement.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Google Analytics ID</label>
+                  <input type="text" value={formData.google_analytics_id} onChange={e => setFormData({ ...formData, google_analytics_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="G-XXXXXXXXXX" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Google Ads ID</label>
+                  <input type="text" value={formData.google_ads_id} onChange={e => setFormData({ ...formData, google_ads_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="AW-XXXXXXXXX" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Google Conversion Label</label>
+                  <input type="text" value={formData.google_conversion_label} onChange={e => setFormData({ ...formData, google_conversion_label: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="AbCdEfGhIj-1234567890" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Facebook Pixel ID</label>
+                  <input type="text" value={formData.facebook_pixel_id} onChange={e => setFormData({ ...formData, facebook_pixel_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="123456789012345" />
+                </div>
+              </div>
+            </div>
+
+            {/* CC Routing */}
+            <div className="bg-stone-50 border border-stone-200 rounded-lg p-4">
+              <h3 className="font-semibold text-stone-900 mb-1">⇉ CC Routing</h3>
+              <p className="text-xs text-stone-700 mb-3">Optional comma-separated email lists copied on lead notifications.</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Manager CC</label>
+                  <input type="text" value={formData.manager_cc} onChange={e => setFormData({ ...formData, manager_cc: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="manager1@tenant.ca, manager2@tenant.ca" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Admin BCC</label>
+                  <input type="text" value={formData.admin_bcc} onChange={e => setFormData({ ...formData, admin_bcc: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="admin@tenant.ca" />
+                </div>
+              </div>
+            </div>
+
             {/* AI Configuration */}
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <h3 className="font-semibold text-green-900 mb-1">AI Configuration</h3>
@@ -423,11 +524,17 @@ export default function EditTenantModal({ isOpen, tenantId, onClose, onSuccess }
                   
                   
                 </>}
-                <div><label className="block text-xs font-medium text-gray-700 mb-1">Auto-Approve Limit</label>
+                <div><label className="block text-xs font-medium text-gray-700 mb-1">{formData.plan_mode === 'shared' ? 'Auto-Approve Limit' : 'Buyer Auto-Approve'}</label>
                   <input type="number" min={0} value={formData.plan_auto_approve_limit} onChange={e => setFormData({...formData, plan_auto_approve_limit: parseInt(e.target.value)||0})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
-                <div><label className="block text-xs font-medium text-gray-700 mb-1">Credits per Email Approval</label>
+                <div><label className="block text-xs font-medium text-gray-700 mb-1">{formData.plan_mode === 'shared' ? 'Credits per Email Approval' : 'Buyer Manual Approve'}</label>
                   <p className="text-xs text-gray-500 mb-1">Plans granted when approving a request via email.</p>
                   <input type="number" min={0} value={formData.plan_manual_approve_limit} onChange={e => setFormData({...formData, plan_manual_approve_limit: parseInt(e.target.value)||3})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                {formData.plan_mode === 'split' && <>
+                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Seller Auto-Approve</label>
+                    <input type="number" min={0} value={formData.seller_plan_auto_approve_limit} onChange={e => setFormData({...formData, seller_plan_auto_approve_limit: parseInt(e.target.value)||0})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                  <div><label className="block text-xs font-medium text-gray-700 mb-1">Seller Manual Approve</label>
+                    <input type="number" min={0} value={formData.seller_plan_manual_approve_limit} onChange={e => setFormData({...formData, seller_plan_manual_approve_limit: parseInt(e.target.value)||3})} className="w-full px-3 py-2 border rounded-lg text-sm" /></div>
+                </>}
                 <div className="col-span-2"><label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={formData.plan_vip_auto_approve} onChange={e => setFormData({...formData, plan_vip_auto_approve: e.target.checked})} className="w-4 h-4 text-indigo-600" />
                   <span className="text-sm font-medium text-gray-700">Auto-Approve Plan Requests</span>
