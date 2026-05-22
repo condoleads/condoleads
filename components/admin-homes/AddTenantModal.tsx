@@ -234,7 +234,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Tenant Name *</label>
-                <input required type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="WALLiam" />
+                <input required type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Your Brand" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Brand Name</label>
@@ -242,11 +242,11 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Domain *</label>
-                <input required type="text" value={formData.domain} onChange={e => setFormData({ ...formData, domain: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="walliam.ca" />
+                <input required type="text" value={formData.domain} onChange={e => setFormData({ ...formData, domain: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="yourbrand.ca" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Admin Email *</label>
-                <input required type="email" value={formData.admin_email} onChange={e => setFormData({ ...formData, admin_email: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="admin@walliam.ca" />
+                <input required type="email" value={formData.admin_email} onChange={e => setFormData({ ...formData, admin_email: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="admin@yourbrand.ca" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
@@ -333,7 +333,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
                   <input type="text" value={formData.license_number} onChange={e => setFormData({ ...formData, license_number: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="RECO Registration #" />
                   <input type="text" value={formData.footer_tagline} onChange={e => setFormData({ ...formData, footer_tagline: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Footer tagline (e.g. AI-powered real estate for the GTA)" />
                   <div className="pt-3 border-t border-slate-200 mt-3">
-                    <p className="text-xs font-semibold text-slate-700 mb-2">Editable Page Content (leave blank to use default WALLiam template)</p>
+                    <p className="text-xs font-semibold text-slate-700 mb-2">Editable Page Content (leave blank to use the default template)</p>
                     <div className="space-y-2">
                       <textarea value={formData.about_content} onChange={e => setFormData({ ...formData, about_content: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="About page content (HTML or Markdown)" rows={4} />
                       <textarea value={formData.privacy_content} onChange={e => setFormData({ ...formData, privacy_content: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Privacy Policy (HTML or Markdown)" rows={4} />
@@ -353,7 +353,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Send-From Header</label>
                 <input type="text" value={formData.send_from} onChange={e => setFormData({ ...formData, send_from: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm font-mono" placeholder="Tenant Name <notifications@tenant.ca>" />
-                <p className="text-xs text-gray-500 mt-1">Full RFC 5322 From header. Example: <code className="text-xs bg-orange-100 px-1 rounded">WALLiam &lt;notifications@condoleads.ca&gt;</code></p>
+                <p className="text-xs text-gray-500 mt-1">Full RFC 5322 From header. Example: <code className="text-xs bg-orange-100 px-1 rounded">Your Brand &lt;notifications@yourbrand.ca&gt;</code></p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Resend API Key</label>

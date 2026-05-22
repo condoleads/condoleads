@@ -42,7 +42,7 @@ export default function TenantsClient({ tenants }: { tenants: Tenant[] }) {
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Tenants</h1>
-          <p className="text-gray-500 mt-1">Manage WALLiam-like branded platforms</p>
+          <p className="text-gray-500 mt-1">Manage branded tenant platforms</p>
         </div>
         <button
           onClick={() => setShowAdd(true)}
