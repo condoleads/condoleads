@@ -9,7 +9,7 @@ import { MarketTicker } from './home/MarketTicker';
 import { ScrollReveal } from './home/useScrollReveal';
 import { ContactSection } from './home/ContactSection';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
-import { getWalliamTenantId } from '@/lib/utils/is-walliam';
+import { getCurrentTenantId, isHeroTenant } from '@/lib/utils/tenant-resolver';
 import MobileContactBar from './MobileContactBar';
 
 interface HomePageProps {
@@ -68,8 +68,8 @@ interface HomePageProps {
   }
 
 export async function HomePage({ agent, buildings, developments = [], isTeamSite = false, teamAgents = [] }: HomePageProps) {
-  const tenantId = await getWalliamTenantId();
-  const isWalliam = !!tenantId;
+  const tenantId = await getCurrentTenantId();
+  const isHero = await isHeroTenant();
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -134,7 +134,7 @@ export async function HomePage({ agent, buildings, developments = [], isTeamSite
       {/* Contact Section */}
       <ContactSection agent={{ id: agent.id, full_name: agent.full_name, email: agent.email, cell_phone: agent.phone }} />
       {/* AI Chat Widget */}
-      {!isWalliam && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
+      {!isHero && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
       
       {/* Mobile Contact Bar */}
       <MobileContactBar 

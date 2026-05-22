@@ -3,7 +3,7 @@ import { fetchMarketStats, fetchTopAreas } from '@/lib/comprehensive/stats-fetch
 import { getMenuData } from '@/components/navigation/SiteHeader';
 import HomePageComprehensiveClientV2 from './HomePageComprehensiveClientV2';
 import ChatWidgetWrapper from './chat/ChatWidgetWrapper';
-import { getWalliamTenantId } from '@/lib/utils/is-walliam';
+import { getCurrentTenantId, isHeroTenant } from '@/lib/utils/tenant-resolver';
 import { getTenantByHost } from '@/lib/utils/tenant-brand';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
@@ -36,8 +36,8 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
   const assistantName = tenantContext?.name || 'Charlie';
 
   // Resolve agent's geographic access
-  const tenantId = await getWalliamTenantId();
-  const isWalliam = !!tenantId;
+  const tenantId = await getCurrentTenantId();
+  const isHero = await isHeroTenant();
     const access = await resolveAgentAccess(agent.id);
 
   if (!access) {
@@ -82,7 +82,7 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
           homes_access: access.homes_access,
         }}
       />
-      {!isWalliam && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
+      {!isHero && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
     </>
   );
 }

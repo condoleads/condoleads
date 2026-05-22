@@ -18,7 +18,7 @@ interface ListingSectionProps {
   buildingSlug: string
   agentId: string
   tenantId?: string
-  isWalliam?: boolean
+  isHero?: boolean
 }
 
 type TabType = 'for-sale' | 'for-lease' | 'sold' | 'leased'
@@ -34,7 +34,7 @@ export default function ListingSection({
   buildingSlug,
   agentId,
   tenantId,
-  isWalliam = false,
+  isHero = false,
 }: ListingSectionProps) {
   const { user } = useAuth()
   const [showRegister, setShowRegister] = useState(false)
@@ -96,7 +96,7 @@ export default function ListingSection({
   }
 
   const handleEstimateClick = (listing: MLSListing, type: 'sale' | 'lease', exactSqft: number | null) => {
-    if (isWalliam && !user) {
+    if (isHero && !user) {
       setShowRegister(true)
       return
     }
@@ -160,7 +160,7 @@ export default function ListingSection({
         ) : paginatedData.length > 0 ? (
           <>
             <div className="relative">
-              <div className={(isWalliam && !user && (activeTab === 'sold' || activeTab === 'leased')) ? 'grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 blur-sm pointer-events-none select-none' : 'grid grid-cols-1 md:grid-cols-3 gap-6 mb-8'}>
+              <div className={(isHero && !user && (activeTab === 'sold' || activeTab === 'leased')) ? 'grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 blur-sm pointer-events-none select-none' : 'grid grid-cols-1 md:grid-cols-3 gap-6 mb-8'}>
                 {paginatedData.map((listing) => (
                   <ListingCard
                     key={listing.id}
@@ -173,7 +173,7 @@ export default function ListingSection({
                   />
                 ))}
               </div>
-              {isWalliam && !user && (activeTab === 'sold' || activeTab === 'leased') && (
+              {isHero && !user && (activeTab === 'sold' || activeTab === 'leased') && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md mx-4 text-center border border-gray-100">
                     <div className="text-3xl mb-3">🔒</div>

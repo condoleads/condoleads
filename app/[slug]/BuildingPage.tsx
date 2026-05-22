@@ -120,7 +120,7 @@ import WalliamCTA from '@/components/WalliamCTA'
 import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 import WalliamContactForm from '@/components/WalliamContactForm'
-import { getWalliamTenantId, resolveWalliamAgent } from '@/lib/utils/is-walliam'
+import { getCurrentTenantId, isHeroTenant, resolveAgentForContext } from '@/lib/utils/tenant-resolver'
 
 export async function generateMetadata({ params }: { params: { slug: string } }) {
   const headersList = headers()
@@ -278,11 +278,11 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   const host = headersList.get('host') || ''
 
   // WALLiam tenant detection
-  const tenantId = await getWalliamTenantId()
-  const isWalliam = !!tenantId
+  const tenantId = await getCurrentTenantId()
+  const isHero = await isHeroTenant()
   let walliamAgentId: string | null = null
-  if (isWalliam && tenantId) {
-    walliamAgentId = await resolveWalliamAgent({
+  if (isHero && tenantId) {
+    walliamAgentId = await resolveAgentForContext({
       building_id: building.id,
       community_id: building.community_id || null,
       municipality_id: building.municipality_id || null,
@@ -413,7 +413,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       />
       <StickyNav agentId={agent?.id} />
       
-      {isWalliam && <div className="h-16 bg-[#060b18]" />}
+      {isHero && <div className="h-16 bg-[#060b18]" />}
       <BuildingHero 
         building={building}
         slug={params.slug}
@@ -426,7 +426,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         avgDaysOnMarketLease={avgDaysOnMarketLease}
       />
           {/* Compact Agent CTA - Fixed at top for lead capture */}
-        {agent && !isWalliam && (
+        {agent && !isHero && (
         <div className="bg-white border-b border-gray-200 py-3 md:py-4 fixed top-16 left-0 right-0 z-40 shadow-md">
           <div className="max-w-7xl mx-auto px-4">
             <div className="flex items-center justify-between gap-3">
@@ -485,9 +485,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
                   buildingSlug={building.slug}
-                  agentId={isWalliam ? (walliamAgentId || '') : (agent?.id || '')}
-                  tenantId={isWalliam ? (tenantId ?? undefined) : (agent?.tenant_id ?? undefined)}
-                  isWalliam={isWalliam && !!walliamAgentId}
+                  agentId={isHero ? (walliamAgentId || '') : (agent?.id || '')}
+                  tenantId={isHero ? (tenantId ?? undefined) : (agent?.tenant_id ?? undefined)}
+                  isHero={isHero && !!walliamAgentId}
                 />
             </div>
             
@@ -547,7 +547,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
             </div>
             
             <div id="list-your-unit">
-              {agent && !isWalliam ? (
+              {agent && !isHero ? (
                 <EstimatorSeller
                   buildingId={building.id}
                   buildingSlug={building.slug}
@@ -555,7 +555,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingAddress={building.canonical_address}
                   agentId={agent.id}
                 />
-              ) : isWalliam && walliamAgentId && tenantId ? (
+              ) : isHero && walliamAgentId && tenantId ? (
                 <EstimatorSeller
                   buildingId={building.id}
                   buildingSlug={building.slug}
@@ -579,7 +579,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
           {/* Agent Sidebar - 1 column, sticky */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
-              {isWalliam ? (
+              {isHero ? (
                 <>
                   <WalliamAgentCard
                    building_id={building.id}
@@ -647,13 +647,13 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         </div>
       </div>
     </div>
-    {!isWalliam && agent && <MobileContactBar
+    {!isHero && agent && <MobileContactBar
       agent={agent}
       buildingId={building.id}
       buildingName={building.building_name}
       buildingAddress={building.canonical_address}
     />}
-    {!isWalliam && agent && (
+    {!isHero && agent && (
       <ChatWidgetWrapper
         agent={{
           id: agent.id,

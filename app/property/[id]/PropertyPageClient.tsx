@@ -47,7 +47,7 @@ interface PropertyPageClientProps {
   building?: any
   development?: { id: string; name: string; slug: string } | null
   investmentData?: InvestmentData
-  isWalliam?: boolean
+  isHero?: boolean
   walliamTenantId?: string | null
 }
 
@@ -67,7 +67,7 @@ export default function PropertyPageClient({
   building,
   development,
   investmentData,
-  isWalliam = false,
+  isHero = false,
   walliamTenantId = null,
   assistantName,
 }: PropertyPageClientProps) {
@@ -82,7 +82,7 @@ export default function PropertyPageClient({
 
   return (
     <>
-      {isWalliam && <div className="h-16 bg-[#060b18]" />}
+      {isHero && <div className="h-16 bg-[#060b18]" />}
       <PropertyGallery
         photos={largePhotos}
         listingId={listing.id}
@@ -173,7 +173,7 @@ export default function PropertyPageClient({
           {/* RIGHT COLUMN - Sticky Sidebar */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
-              {isWalliam && walliamTenantId ? (
+              {isHero && walliamTenantId ? (
                 <>
                   <WalliamAgentCard
                     listing_id={listing.id}

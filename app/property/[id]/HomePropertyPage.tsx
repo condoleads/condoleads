@@ -9,7 +9,7 @@ import { createClient as createTenantClient } from '@/lib/supabase/server'
 import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import WalliamCTA from '@/components/WalliamCTA'
-import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+import { getCurrentTenantId, isHeroTenant } from '@/lib/utils/tenant-resolver'
 
 const RESIDENTIAL_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']
 
@@ -93,7 +93,7 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
   // WALLiam fallback — resolve agent from tenant if no display agent
   let agent: any = displayAgent
   if (!agent) {
-    const walliamTenantId = await getWalliamTenantId()
+    const walliamTenantId = await getCurrentTenantId()
     if (walliamTenantId) {
       const { createClient: _sc } = await import('@supabase/supabase-js')
       const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -252,8 +252,8 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
   }))
 
   const isSale = listing.transaction_type === 'For Sale'
-  const tenantId = await getWalliamTenantId()
-  const isWalliam = !!tenantId
+  const tenantId = await getCurrentTenantId()
+  const isHero = await isHeroTenant()
   const isClosed = listing.standard_status === 'Closed'
   const status = isClosed ? 'Closed' : 'Active'
 
@@ -299,15 +299,15 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
           isSale={isSale}
           status={status}
           isClosed={isClosed}
-          agent={isWalliam ? null : agent}
+          agent={isHero ? null : agent}
           community={community}
           municipality={municipality}
           area={area}
-          isWalliam={isWalliam}
+          isHero={isHero}
           walliamTenantId={tenantId}
         />
       </main>
-      {!isWalliam && <ChatWidgetWrapper
+      {!isHero && <ChatWidgetWrapper
         agent={{
           id: agent.id,
           full_name: agent.full_name,

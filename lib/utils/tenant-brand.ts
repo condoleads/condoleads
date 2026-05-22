@@ -59,7 +59,7 @@ export async function getTenantByHost(
 ): Promise<TenantContext | null> {
   if (!host) return null
 
-  // Dev / preview fallback -- match getWalliamTenantId behavior
+  // Dev / preview fallback -- match getCurrentTenantId behavior (lib/utils/tenant-resolver.ts)
   let lookupDomain: string
   if (host.includes('localhost') || host.includes('vercel.app')) {
     const devDomain = process.env.DEV_TENANT_DOMAIN

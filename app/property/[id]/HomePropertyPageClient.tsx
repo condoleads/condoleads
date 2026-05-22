@@ -42,7 +42,7 @@ interface HomePropertyPageClientProps {
   community?: { id: string; name: string; slug: string } | null
   municipality?: { id: string; name: string; slug: string } | null
   area?: { id: string; name: string; slug: string } | null
-  isWalliam?: boolean
+  isHero?: boolean
   walliamTenantId?: string | null
 }
 
@@ -60,7 +60,7 @@ export default function HomePropertyPageClient({
   community,
   municipality,
   area,
-  isWalliam = false,
+  isHero = false,
   walliamTenantId = null,
   assistantName,
 }: HomePropertyPageClientProps) {
@@ -79,7 +79,7 @@ export default function HomePropertyPageClient({
 
   return (
     <>
-      {isWalliam && <div className="h-16 bg-[#060b18]" />}
+      {isHero && <div className="h-16 bg-[#060b18]" />}
       <PropertyGallery
         photos={largePhotos}
         listingId={listing.id}
@@ -167,7 +167,7 @@ export default function HomePropertyPageClient({
           {/* RIGHT COLUMN - Sticky Sidebar */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
-              {isWalliam && walliamTenantId ? (
+              {isHero && walliamTenantId ? (
                 <>
                   <WalliamAgentCard
                     listing_id={listing.id}

@@ -6,7 +6,7 @@ import ConditionalLayout from "@/components/ConditionalLayout"
 import TenantHeader from "@/components/TenantHeader";
 import { AuthProvider } from "@/components/auth/AuthContext";
 import { CreditSessionProvider } from "@/components/credits/CreditSessionContext";
-import { getWalliamTenantId } from "@/lib/utils/is-walliam";
+import { getCurrentTenantId } from "@/lib/utils/tenant-resolver";
 import { getTenantByHost } from "@/lib/utils/tenant-brand";
 import { createClient } from "@/lib/supabase/server";
 
@@ -59,7 +59,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const tenantId = await getWalliamTenantId();
+  const tenantId = await getCurrentTenantId();
 
   return (
     <html lang="en">

@@ -111,16 +111,16 @@ const getCommunityData = unstable_cache(
 export default async function CommunityPage({ community }: CommunityPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const { getWalliamTenantId, resolveWalliamAgent } = await import('@/lib/utils/is-walliam')
+  const { getCurrentTenantId, isHeroTenant, resolveAgentForContext } = await import('@/lib/utils/tenant-resolver')
   const [data, agent, tenantId] = await Promise.all([
     getCommunityData(community.id, community.municipality_id),
     getAgentFromHost(host),
-    getWalliamTenantId(),
+    getCurrentTenantId(),
   ])
-  const isWalliam = !!tenantId
+  const isHero = await isHeroTenant()
   let walliamAgentId: string | null = null
-  if (isWalliam && tenantId) {
-    walliamAgentId = await resolveWalliamAgent({ community_id: community.id, tenant_id: tenantId })
+  if (isHero && tenantId) {
+    walliamAgentId = await resolveAgentForContext({ community_id: community.id, tenant_id: tenantId })
   }
   const { municipality, buildingCount, initialListings, counts, siblingCommunities } = data
 
@@ -170,8 +170,8 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           <GeoPageTabs
             geoType="community"
             geoId={community.id}
-            agentId={isWalliam ? (walliamAgentId || '') : (agent?.id || '')}
-            tenantId={isWalliam ? (tenantId || '') : (agent?.tenant_id || '')}
+            agentId={isHero ? (walliamAgentId || '') : (agent?.id || '')}
+            tenantId={isHero ? (tenantId || '') : (agent?.tenant_id || '')}
             buildingCount={buildingCount}
             initialListings={initialListings}
             initialTotal={counts.forSale}
@@ -180,7 +180,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           />
         </div>
 
-        {isWalliam && (
+        {isHero && (
           <div className="mt-8 grid md:grid-cols-2 gap-6">
             <WalliamAgentCard
               community_id={community.id}

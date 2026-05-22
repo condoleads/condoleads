@@ -179,16 +179,16 @@ const getAreaData = unstable_cache(
 export default async function AreaPage({ area }: AreaPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
-  const { getWalliamTenantId, resolveWalliamAgent } = await import('@/lib/utils/is-walliam')
+  const { getCurrentTenantId, isHeroTenant, resolveAgentForContext } = await import('@/lib/utils/tenant-resolver')
   const [data, agent, tenantId] = await Promise.all([
     getAreaData(area.id),
     getAgentFromHost(host),
-    getWalliamTenantId(),
+    getCurrentTenantId(),
   ])
-  const isWalliam = !!tenantId
+  const isHero = await isHeroTenant()
   let walliamAgentId: string | null = null
-  if (isWalliam && tenantId) {
-    walliamAgentId = await resolveWalliamAgent({ area_id: area.id, tenant_id: tenantId })
+  if (isHero && tenantId) {
+    walliamAgentId = await resolveAgentForContext({ area_id: area.id, tenant_id: tenantId })
   }
   const { initialListings, counts, homeCounts, condoCounts, buildingCount, allAreas, municipalityLinks, municipalities } = data
 
@@ -221,8 +221,8 @@ export default async function AreaPage({ area }: AreaPageProps) {
           <GeoPageTabs
             geoType="area"
             geoId={area.id}
-            agentId={isWalliam ? (walliamAgentId || '') : (agent?.id || '')}
-            tenantId={isWalliam ? (tenantId || '') : (agent?.tenant_id || '')}
+            agentId={isHero ? (walliamAgentId || '') : (agent?.id || '')}
+            tenantId={isHero ? (tenantId || '') : (agent?.tenant_id || '')}
             buildingCount={buildingCount}
             initialListings={initialListings}
             initialTotal={counts.forSale}
@@ -233,7 +233,7 @@ export default async function AreaPage({ area }: AreaPageProps) {
           />
         </div>
 
-        {isWalliam && (
+        {isHero && (
           <div className="mt-8 grid md:grid-cols-2 gap-6">
             <WalliamAgentCard
               area_id={area.id}

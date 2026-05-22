@@ -9,7 +9,7 @@ import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import { getListingInvestmentData } from '@/lib/market/get-listing-investment-data'
 import WalliamCTA from '@/components/WalliamCTA'
-import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+import { getCurrentTenantId, isHeroTenant } from '@/lib/utils/tenant-resolver'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 import WalliamContactForm from '@/components/WalliamContactForm'
 
@@ -142,7 +142,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   // WALLiam fallback ΓÇö resolve agent from tenant if no display agent
   let agent: any = displayAgent
   if (!agent) {
-    const walliamTenantId = await getWalliamTenantId()
+    const walliamTenantId = await getCurrentTenantId()
     if (walliamTenantId) {
       const { createClient: _sc } = await import('@supabase/supabase-js')
       const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -342,8 +342,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const status = isClosed ? 'Closed' : 'Active'
 
   // WALLiam detection
-  const tenantId = await getWalliamTenantId()
-  const isWalliam = !!tenantId
+  const tenantId = await getCurrentTenantId()
+  const isHero = await isHeroTenant()
 
   // C8a/D13 -- tenant for assistantName threading
   const _c8a_host = headers().get('host')
@@ -389,15 +389,15 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         isSale={isSale}
         status={status}
         isClosed={isClosed}
-        agent={isWalliam ? null : agent}
+        agent={isHero ? null : agent}
         building={building}
         development={development}
         investmentData={investmentData}
-        isWalliam={isWalliam}
+        isHero={isHero}
         walliamTenantId={tenantId}
         />
     </main>
-    {!isWalliam && (
+    {!isHero && (
     <ChatWidgetWrapper
       agent={{
         id: agent.id,

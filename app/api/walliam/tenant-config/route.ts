@@ -18,13 +18,14 @@ export async function GET(request: NextRequest) {
   const supabase = createServiceClient()
   const { data: tenant } = await supabase
     .from('tenants')
-    .select('ai_free_messages, estimator_free_attempts, plan_free_attempts')
+    .select('name, assistant_name, ai_free_messages, estimator_free_attempts, plan_free_attempts')
     .eq('id', tenantId)
     .single()
 
   if (!tenant) return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
 
   return NextResponse.json({
+    assistantName: (tenant as any).assistant_name || (tenant as any).name || '',
     chatFree:  tenant.ai_free_messages ?? 1,
     estFree:   tenant.estimator_free_attempts ?? 1,
     planFree:  tenant.plan_free_attempts ?? 1,

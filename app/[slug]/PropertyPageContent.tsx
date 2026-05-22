@@ -9,7 +9,7 @@ import BuildingInfo from '@/components/property/BuildingInfo'
 import { AgentCard } from '@/components/AgentCard'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
 import WalliamContactForm from '@/components/WalliamContactForm'
-import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+import { getCurrentTenantId, isHeroTenant } from '@/lib/utils/tenant-resolver'
 import { headers } from 'next/headers'
 import { getTenantByHost } from '@/lib/utils/tenant-brand'
 
@@ -25,8 +25,8 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
   const supabaseServer = createClient()
 
   // WALLiam tenant detection
-  const tenantId = await getWalliamTenantId()
-  const isWalliam = !!tenantId
+  const tenantId = await getCurrentTenantId()
+  const isHero = await isHeroTenant()
 
   // Fetch listing by MLS number
   const { data: listing, error } = await supabase
@@ -169,7 +169,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
         isSale={isSale}
         status={status}
         isClosed={isClosed}
-        isWalliam={isWalliam}
+        isHero={isHero}
       />
 
       {/* Server-rendered sidebar */}
@@ -178,7 +178,7 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
           <div className="lg:col-span-2"></div>
           <div className="lg:col-span-1 space-y-6">
             <div className="sticky top-24 space-y-6">
-              {isWalliam ? (
+              {isHero ? (
                 <>
                   <WalliamAgentCard
                     listing_id={listing.id}
