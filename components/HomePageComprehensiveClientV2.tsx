@@ -185,9 +185,12 @@ function TypingPlaceholder() {
 }
 
 // ── Animated Tagline ──────────────────────────────────────────
-const TAGLINE_WORDS = ['Hi,', 'I', 'am', 'WALLiam', '—', 'I', 'can', 'create', 'your', 'AI', 'real', 'estate', 'plan'];
+function buildTaglineWords(assistantName: string): string[] {
+  return ['Hi,', 'I', 'am', assistantName, '—', 'I', 'can', 'create', 'your', 'AI', 'real', 'estate', 'plan'];
+}
 
-function AnimatedTagline({ visible }: { visible: boolean }) {
+function AnimatedTagline({ visible, assistantName }: { visible: boolean; assistantName: string }) {
+  const TAGLINE_WORDS = buildTaglineWords(assistantName);
   const [wordCount, setWordCount] = useState(0);
   const [fading, setFading] = useState(false);
 
@@ -231,11 +234,11 @@ function AnimatedTagline({ visible }: { visible: boolean }) {
             : 'opacity 0.35s ease, transform 0.35s ease',
           display: 'inline-block',
           marginRight: 6,
-          color: word === 'WALLiam' ? '#f59e0b'
+          color: word === assistantName ? '#f59e0b'
             : word === 'AI' ? '#3b82f6'
             : word === 'plan' ? 'rgba(255,255,255,0.95)'
             : 'rgba(255,255,255,0.55)',
-          fontWeight: word === 'WALLiam' ? 700 : word === 'AI' || word === 'plan' ? 500 : 300,
+          fontWeight: word === assistantName ? 700 : word === 'AI' || word === 'plan' ? 500 : 300,
         }}>{word}</span>
       ))}
     </p>
@@ -286,7 +289,7 @@ function WalliamSearch({ assistantName }: { assistantName: string }) {
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
             fontWeight: 800, fontSize: 13, letterSpacing: '-0.02em',
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-          }}>WALL<span style={{ fontWeight: 300, fontSize: 12 }}>iam</span></span>
+          }}>{assistantName}</span>
 
           {/* Input */}
           <div style={{ flex: 1, position: 'relative', minHeight: 28 }}>
@@ -363,7 +366,7 @@ function HowItWorks({ assistantName }: { assistantName: string }) {
     {
       number: '01',
       icon: '💬',
-      title: 'Tell WALLiam',
+      title: `Tell ${assistantName}`,
       desc: 'Share what you\'re looking for — buying, selling, budget, area. Takes 30 seconds.',
       color: '#f59e0b',
     },
@@ -533,7 +536,7 @@ function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, acces
         transition: 'opacity 0.5s ease, transform 0.5s ease',
         marginBottom: 48,
       }}>
-        <AnimatedTagline visible={taglineVisible} />
+        <AnimatedTagline visible={taglineVisible} assistantName={assistantName} />
       </div>
 
 

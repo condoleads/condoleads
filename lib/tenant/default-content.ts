@@ -23,7 +23,7 @@ function currentDate(): string {
 
 // ─── ABOUT ────────────────────────────────────────────────────────────
 export function getDefaultAbout(tenant: Tenant): string {
-  const brand = f(tenant.brand_name, f(tenant.name, 'WALLiam'))
+  const brand = f(tenant.brand_name, tenant.name)
   const brokerage = f(tenant.brokerage_name, 'our licensed brokerage')
   const broker = f(tenant.broker_of_record, '')
   const reco = f(tenant.license_number, '')
@@ -81,7 +81,7 @@ Prefer to speak with someone first? [Contact us](/contact) and an agent will be 
 
 // ─── PRIVACY POLICY ───────────────────────────────────────────────────
 export function getDefaultPrivacy(tenant: Tenant): string {
-  const brand = f(tenant.brand_name, f(tenant.name, 'WALLiam'))
+  const brand = f(tenant.brand_name, tenant.name)
   const brokerage = f(tenant.brokerage_name, 'our licensed brokerage')
   const address = f(tenant.brokerage_address, '')
   const phone = f(tenant.brokerage_phone, '')
@@ -203,7 +203,7 @@ The trademarks REALTOR®, REALTORS®, and the REALTOR® logo are controlled by T
 
 // ─── TERMS OF USE ─────────────────────────────────────────────────────
 export function getDefaultTerms(tenant: Tenant): string {
-  const brand = f(tenant.brand_name, f(tenant.name, 'WALLiam'))
+  const brand = f(tenant.brand_name, tenant.name)
   const brokerage = f(tenant.brokerage_name, 'our licensed brokerage')
   const broker = f(tenant.broker_of_record, '')
   const reco = f(tenant.license_number, '')

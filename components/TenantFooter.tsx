@@ -59,9 +59,11 @@ export default async function TenantFooter() {
                 {brand}
               </div>
             )}
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 16 }}>
-              {tenant.footer_tagline || 'AI-powered real estate for the Greater Toronto Area'}
-            </div>
+            {tenant.footer_tagline && (
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 16 }}>
+                {tenant.footer_tagline}
+              </div>
+            )}
 
             {tenant.brokerage_address && (
               <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'flex-start' }}>

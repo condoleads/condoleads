@@ -201,6 +201,7 @@ export default async function AreaPage({ area }: AreaPageProps) {
   return (
     <div className="min-h-screen bg-white">
       <GeoHero
+        assistantName={assistantName}
         title={`${area.name} Real Estate`}
         breadcrumbs={[
           { label: 'Home', href: '/' },

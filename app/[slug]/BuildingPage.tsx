@@ -415,6 +415,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       
       {isHero && <div className="h-16 bg-[#060b18]" />}
       <BuildingHero 
+        assistantName={assistantName}
         building={building}
         slug={params.slug}
         activeSalesCount={activeSales.length}

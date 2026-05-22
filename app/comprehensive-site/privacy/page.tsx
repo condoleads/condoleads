@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 
 export async function generateMetadata() {
   const tenant = await getTenant()
-  const brand = tenant?.brand_name || tenant?.name || 'WALLiam'
+  const brand = tenant?.brand_name || tenant?.name || 'this site'
   return {
     title: `Privacy Policy - ${brand}`,
     description: `Privacy Policy for ${brand}.`,

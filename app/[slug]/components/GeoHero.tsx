@@ -25,7 +25,7 @@ interface GeoHeroProps {
   geoType: 'area' | 'municipality' | 'community' | 'neighbourhood'
 }
 
-export default function GeoHero({ title, subtitle, breadcrumbs, stats, geoType }: GeoHeroProps) {
+export default function GeoHero({ title, subtitle, breadcrumbs, stats, geoType, assistantName }: GeoHeroProps & { assistantName: string }) {
   return (
     <div className="relative w-full overflow-hidden" style={{ minHeight: '340px' }}>
 
@@ -117,7 +117,7 @@ export default function GeoHero({ title, subtitle, breadcrumbs, stats, geoType }
         )}
 
         {/* WALLiam CTA */}
-        <GeoHeroCTA />
+        <GeoHeroCTA assistantName={assistantName} />
         {/* Stat Pills */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '32px', justifyContent: 'center' }}>
           <GeoStatPill value={stats.active} label="Active" />

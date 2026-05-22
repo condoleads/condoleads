@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 export async function generateMetadata() {
   const tenant = await getTenant()
-  const brand = tenant?.brand_name || tenant?.name || 'WALLiam'
+  const brand = tenant?.brand_name || tenant?.name || 'this site'
   return {
     title: `Contact - ${brand}`,
     description: `Get in touch with ${brand}. A licensed agent will be in touch within one business day.`,
@@ -20,7 +20,7 @@ export default async function ContactPage() {
   const tenant = await getTenant()
   if (!tenant) notFound()
 
-  const brand = tenant.brand_name || tenant.name || 'WALLiam'
+  const brand = tenant.brand_name || tenant.name || 'this site'
   const brokerage = tenant.brokerage_name
   const address = tenant.brokerage_address
   const phone = tenant.brokerage_phone

@@ -193,6 +193,7 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   return (
     <div className="min-h-screen bg-white">
       <GeoHero
+        assistantName={assistantName}
         title={`${municipality.name} Real Estate`}
         subtitle={area ? `${area.name} Region` : undefined}
         breadcrumbs={[

@@ -149,6 +149,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
   return (
     <div className="min-h-screen bg-white">
       <GeoHero
+        assistantName={assistantName}
         title={`${community.name} Real Estate`}
         subtitle={municipality ? `${municipality.name}${area ? `, ${area.name}` : ""}` : undefined}
         breadcrumbs={[

@@ -197,6 +197,7 @@ export default async function NeighbourhoodPage({ params }: Props) {
   return (
     <div className="min-h-screen bg-white">
       <GeoHero
+        assistantName={assistantName}
         title={`${neighbourhood.name} Real Estate`}
         subtitle="Toronto Neighbourhood"
         breadcrumbs={[

@@ -1,6 +1,6 @@
 'use client'
 
-export default function GeoHeroCTA() {
+export default function GeoHeroCTA({ assistantName }: { assistantName: string }) {
   const openCharlie = (form?: 'buyer' | 'seller', msg?: string) => {
     window.dispatchEvent(new CustomEvent('charlie:open', { detail: { form, message: msg } }))
   }
@@ -9,7 +9,7 @@ export default function GeoHeroCTA() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 100, padding: '8px 8px 8px 20px', marginBottom: 14, maxWidth: 560 }}>
         <input
           type='text'
-          placeholder='Ask WALLiam about this area...'
+          placeholder={`Ask ${assistantName} about this area...`}
           onKeyDown={e => { if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) openCharlie(undefined, (e.target as HTMLInputElement).value.trim()) }}
           style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 14, fontFamily: 'inherit' }}
         />
