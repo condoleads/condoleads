@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { can } from '@/lib/admin-homes/permissions'
+import { deriveIsAdmin } from '@/lib/admin-homes/role-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +14,6 @@ interface AgentRow {
   id: string
   full_name: string | null
   role: string | null
-  is_admin: boolean | null
   is_selling: boolean | null
   parent_id: string | null
   tenant_id: string | null
@@ -63,7 +63,7 @@ export async function GET() {
 
   const { data: agents, error: agentsErr } = await supabase
     .from('agents')
-    .select('id, full_name, role, is_admin, is_selling, parent_id, tenant_id, profile_photo_url')
+    .select('id, full_name, role, is_selling, parent_id, tenant_id, profile_photo_url')
     .eq('tenant_id', user.tenantId)
     .order('full_name', { ascending: true })
 
@@ -96,7 +96,7 @@ export async function GET() {
     id: a.id,
     name: a.full_name || '(unnamed)',
     role: a.role || 'agent',
-    is_admin: a.is_admin === true,
+    is_admin: deriveIsAdmin(a.role),
     is_selling: a.is_selling === true,
     parent_id: a.parent_id,
     profile_photo_url: a.profile_photo_url,

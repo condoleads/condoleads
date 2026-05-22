@@ -33,10 +33,13 @@ const ALL_POSITIONS: AdminHomesPosition[] = [
 ]
 
 function normalizePosition(raw: string | null | undefined, isAdminCapability: boolean): AdminHomesPosition {
-  // Phase 3.3 W1 fix: is_admin = true must win.
-  // Previously a raw role string of 'agent' or 'managed' would short-circuit
-  // the admin capability check and lock real admins out of admin-only views
-  // (e.g., King Shah of WALLiam: role='agent', is_admin=true).
+  // D30 (2026-05-22) — comment refreshed; pre-P3.F5 narrative removed.
+  // The agents.is_admin column was dropped; admin capability is now derived
+  // from agents.role (see lib/admin-homes/role-helpers.ts: deriveIsAdmin).
+  // The isAdminCapability arg here continues to win over raw role bucketing
+  // so callers that pre-derive capability (e.g., role === 'tenant_admin' ||
+  // role === 'admin') get the position they expect, even when the raw role
+  // string is something narrow like 'agent' or 'managed'.
   const validRaw = raw && (ALL_POSITIONS as string[]).includes(raw) ? (raw as AdminHomesPosition) : null
   if (validRaw && validRaw !== 'agent' && validRaw !== 'managed') return validRaw
   if (isAdminCapability) return 'tenant_admin'
