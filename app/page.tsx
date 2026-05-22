@@ -15,7 +15,7 @@ import FeatureCards from '@/components/landing/FeatureCards'
 import DemoEmbed from '@/components/landing/DemoEmbed'
 import CommunityApplication from '@/components/landing/CommunityApplication'
 
-import { getWalliamTenantId } from '@/lib/utils/is-walliam'
+import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import { HomePageComprehensive } from '@/components/HomePageComprehensive'
 import { HomePageComprehensiveV2 } from '@/components/HomePageComprehensiveV2'
 import ZeroOneLeadsPage from './zerooneleads/page'
@@ -42,22 +42,33 @@ export default async function RootPage() {
   
   const subdomain = extractSubdomain(host);
   
-  // WALLiam tenant check — show WALLiam homepage
-  const walliamTenantId = await getWalliamTenantId()
-  if (walliamTenantId) {
-    const { createClient: _sc } = await import('@supabase/supabase-js')
-    const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
-    const [agentResult, tenantResult] = await Promise.all([
-      _db.from('agents').select('*').eq('id', 'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe').single(),
-      _db.from('tenants').select('homepage_layout').eq('id', walliamTenantId).single(),
-    ])
-    const walliamAgent = agentResult.data
-    const layout = tenantResult.data?.homepage_layout ?? 'v1'
-    if (walliamAgent) {
-      const agentProps = { ...walliamAgent, is_active: true }
-      return layout === 'v2'
-        ? <HomePageComprehensiveV2 agent={agentProps} />
-        : <HomePageComprehensive agent={agentProps} />
+  // MTB-DEF-2 + MTB-DEF-3 (2026-05-22) — generic per-tenant comprehensive homepage.
+  // Resolves tenant by host (with localhost/DEV_TENANT_DOMAIN fallback via
+  // getTenantByHost). If the tenant has a default_agent_id, renders the
+  // comprehensive homepage (v1 or v2 per tenants.homepage_layout) with that agent.
+  // Tenants without a default_agent_id fall through to legacy subdomain/landing paths.
+  const { createClient: _sc } = await import('@supabase/supabase-js')
+  const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+  const resolvedTenant = await getTenantByHost(_db, host)
+  if (resolvedTenant?.id) {
+    const { data: tenantConfig } = await _db
+      .from('tenants')
+      .select('default_agent_id, homepage_layout')
+      .eq('id', resolvedTenant.id)
+      .single()
+    if (tenantConfig?.default_agent_id) {
+      const { data: defaultAgent } = await _db
+        .from('agents')
+        .select('*')
+        .eq('id', tenantConfig.default_agent_id)
+        .single()
+      if (defaultAgent) {
+        const agentProps = { ...defaultAgent, is_active: true }
+        const layout = tenantConfig.homepage_layout ?? 'v1'
+        return layout === 'v2'
+          ? <HomePageComprehensiveV2 agent={agentProps} />
+          : <HomePageComprehensive agent={agentProps} />
+      }
     }
   }
 
