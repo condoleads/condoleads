@@ -199,6 +199,7 @@ export default async function SiteHeader({
       primaryColor={primaryColor}
       tenantId={tenant?.id}
       brandName={tenant?.brand_name ?? agentName}
+      wordmarkStyle={tenant?.wordmark_style ?? 'standard'}
     />
   )
 }

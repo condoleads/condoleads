@@ -36,6 +36,7 @@ export interface Tenant {
   google_analytics_id: string | null
   is_active: boolean | null
   homepage_layout: 'v1' | 'v2' | 'v3'
+  wordmark_style: string
 }
 
 /**
@@ -82,7 +83,8 @@ export async function getTenant(): Promise<Tenant | null> {
       brokerage_phone, broker_of_record, license_number,
       footer_tagline, about_content, privacy_content, terms_content,
       google_analytics_id, is_active,
-      homepage_layout
+      homepage_layout,
+      wordmark_style
     `)
     .eq('id', tenantId)
     .single()

@@ -20,6 +20,7 @@ export interface TenantContext {
   brandName: string
   domain: string
   name: string
+  wordmarkStyle: string
 }
 
 export async function getTenantContext(
@@ -30,7 +31,7 @@ export async function getTenantContext(
 
   const { data: tenant, error } = await supabase
     .from('tenants')
-    .select('id, source_key, brand_name, name, domain')
+    .select('id, source_key, brand_name, name, domain, wordmark_style')
     .eq('id', tenantId)
     .maybeSingle()
 
@@ -45,6 +46,7 @@ export async function getTenantContext(
     brandName,
     domain: tenant.domain,
     name: tenant.name || brandName,
+    wordmarkStyle: tenant.wordmark_style || 'standard',
   }
 }
 
@@ -69,7 +71,7 @@ export async function getTenantByHost(
 
   const { data: tenant, error } = await supabase
     .from('tenants')
-    .select('id, source_key, brand_name, name, domain')
+    .select('id, source_key, brand_name, name, domain, wordmark_style')
     .eq('domain', lookupDomain)
     .eq('is_active', true)
     .maybeSingle()
@@ -85,6 +87,7 @@ export async function getTenantByHost(
     brandName,
     domain: tenant.domain,
     name: tenant.name || brandName,
+    wordmarkStyle: tenant.wordmark_style || 'standard',
   }
 }
 

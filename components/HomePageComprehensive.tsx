@@ -57,6 +57,7 @@ export async function HomePageComprehensive({ agent }: HomePageComprehensiveProp
       <HomePageComprehensiveClient
         tenantId={tenantContext?.id ?? null}
         brandName={tenantContext?.name ?? null}
+        wordmarkStyle={tenantContext?.wordmarkStyle ?? 'standard'}
         assistantName={assistantName}
         agent={{
           id: agent.id,
