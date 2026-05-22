@@ -64,3 +64,6 @@ paddle_rollback*.json
 # W-LEADS-EMAIL T3b smoke artifacts
 app/api/t3b-smoke-leads-helper/
 dev-server.log
+
+# Session artifacts (archived scratch scripts, ad-hoc dev outputs)
+.session_artifacts_*/
