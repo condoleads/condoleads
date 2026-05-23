@@ -14,6 +14,9 @@ export interface AgentNodeData {
   profile_photo_url: string | null
   lead_count_30d: number
   dimmed?: boolean
+  // W-COCKPIT P-B-1: chart-side click feedback. In cockpit context driven
+  // by spine agentId; in standalone context driven by local selected node.
+  selected?: boolean
 }
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
@@ -38,8 +41,13 @@ export default function AgentNodeCard({ data }: { data: AgentNodeData }) {
 
   return (
     <div
-      className={`bg-white rounded-lg shadow-md border border-gray-200 px-3 py-2 min-w-[200px] transition ${
+      className={`bg-white rounded-lg shadow-md px-3 py-2 min-w-[200px] transition ${
         data.dimmed ? 'opacity-30' : 'opacity-100'
+      } ${
+        // W-COCKPIT P-B-1: ring on click for visual feedback.
+        data.selected
+          ? 'ring-2 ring-green-500 border border-green-500'
+          : 'border border-gray-200'
       }`}
     >
       <Handle type="target" position={Position.Top} className="!bg-gray-400" />

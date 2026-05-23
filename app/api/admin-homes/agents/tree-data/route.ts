@@ -2,7 +2,7 @@
 // Phase 3.3b — tree-data feed for the org chart
 // Returns { nodes, edges } scoped to the caller's tenant.
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { can } from '@/lib/admin-homes/permissions'
@@ -38,20 +38,32 @@ interface TreeEdge {
   type: 'parent'
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const user = await resolveAdminHomesUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (!user.tenantId) {
+  // W-COCKPIT P-B-1: platform admin in cockpit context has user.tenantId=null;
+  // accept ?tenant_id= override (same pattern as territory/coverage/audit-log/matrix).
+  // Tenant-scoped users (standalone /admin-homes/agents/tree route) pick up tenant
+  // from session as before -- query param ignored when present alongside user.tenantId.
+  const url = new URL(request.url)
+  const requestedTenantId = url.searchParams.get('tenant_id')
+  let tenantId: string | null = null
+  if (user.isPlatformAdmin) {
+    tenantId = requestedTenantId || user.tenantId
+  } else {
+    tenantId = user.tenantId
+  }
+  if (!tenantId) {
     return NextResponse.json({ nodes: [], edges: [] })
   }
 
   const decision = can(user.permissions, 'agent.read', {
     kind: 'agent',
     agentId: '00000000-0000-0000-0000-000000000000',
-    tenantId: user.tenantId,
+    tenantId,
     parentId: null,
     roleDb: 'agent',
   })
@@ -64,7 +76,7 @@ export async function GET() {
   const { data: agents, error: agentsErr } = await supabase
     .from('agents')
     .select('id, full_name, role, is_selling, parent_id, tenant_id, profile_photo_url')
-    .eq('tenant_id', user.tenantId)
+    .eq('tenant_id', tenantId)
     .order('full_name', { ascending: true })
 
   if (agentsErr) {

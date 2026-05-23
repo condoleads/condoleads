@@ -58,7 +58,18 @@ function applyDagreLayout(rfNodes: Node[], rfEdges: Edge[]): Node[] {
 
 const ALL_ROLES = ['tenant_admin', 'assistant', 'support', 'area_manager', 'manager', 'managed', 'agent']
 
-function ChartInner() {
+// W-COCKPIT P-B-1: optional props for cockpit context. When omitted (standalone
+// /admin-homes/agents/tree route), the chart falls back to its original behavior:
+// tenant from user session, node click opens detail drawer.
+interface Props {
+  tenantId?: string
+  onAgentSelect?: (agentId: string) => void
+  // W-COCKPIT P-B-1: parent-driven selection. When omitted (standalone), the
+  // local selectedAgentId state (drawer trigger) is used as the selection source.
+  selectedAgentId?: string | null
+}
+
+function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelectedAgentId }: Props) {
   const [api, setApi] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -72,6 +83,10 @@ function ChartInner() {
   const [reassigning, setReassigning] = useState(false)
   const { fitView } = useReactFlow()
 
+  // W-COCKPIT P-B-1: prefer external (spine) selection; fall back to local
+  // (drawer-driven) selection. Either source paints the ring on the matching node.
+  const effectiveSelectedAgentId = externalSelectedAgentId ?? selectedAgentId
+
   const nodeTypes = useMemo(() => ({ agent: AgentNodeCard }), [])
 
   // Load tree data
@@ -79,7 +94,10 @@ function ChartInner() {
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch('/api/admin-homes/agents/tree-data', { cache: 'no-store' })
+        // W-COCKPIT P-B-1: thread tenantId for platform-admin cockpit context.
+        const treeUrl = '/api/admin-homes/agents/tree-data'
+          + (tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '')
+        const res = await fetch(treeUrl, { cache: 'no-store' })
         if (!res.ok) throw new Error(`Failed to load (${res.status})`)
         const data: ApiResponse = await res.json()
         if (!cancelled) setApi(data)
@@ -90,7 +108,7 @@ function ChartInner() {
       }
     })()
     return () => { cancelled = true }
-  }, [])
+  }, [tenantId])
 
   // Build RF nodes + edges with layout + filters applied
   useEffect(() => {
@@ -115,6 +133,10 @@ function ChartInner() {
           profile_photo_url: n.profile_photo_url,
           lead_count_30d: n.lead_count_30d,
           dimmed,
+          // W-COCKPIT P-B-1: selected drives the green ring on the node.
+          // In cockpit context, parent passes selectedAgentId via prop; in
+          // standalone context, local selectedAgentId (drawer state) is used.
+          selected: n.id === effectiveSelectedAgentId,
         }
         return {
           id: n.id,
@@ -139,7 +161,7 @@ function ChartInner() {
     setNodes(laid)
     setEdges(rfEdges)
     setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 50)
-  }, [api, search, roleFilter, sellingOnly, fitView])
+  }, [api, search, roleFilter, sellingOnly, fitView, effectiveSelectedAgentId])
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes(ns => applyNodeChanges(changes, ns))
@@ -177,8 +199,14 @@ function ChartInner() {
   }, [api, nodes, edges])
 
   const onNodeClick: NodeMouseHandler = useCallback((_evt, node) => {
-    setSelectedAgentId(node.id)
-  }, [])
+    // W-COCKPIT P-B-1: in cockpit context, pipe clicks to spine setAgentId.
+    // In standalone context, open the existing detail drawer.
+    if (onAgentSelect) {
+      onAgentSelect(node.id)
+    } else {
+      setSelectedAgentId(node.id)
+    }
+  }, [onAgentSelect])
 
   async function confirmReassign() {
     if (!reassign) return
@@ -194,7 +222,10 @@ function ChartInner() {
         throw new Error(j.error || `Reassign failed (${res.status})`)
       }
       // Reload tree
-      const r2 = await fetch('/api/admin-homes/agents/tree-data', { cache: 'no-store' })
+      // W-COCKPIT P-B-1: same tenant_id pass-through as initial fetch.
+      const treeReloadUrl = '/api/admin-homes/agents/tree-data'
+        + (tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '')
+      const r2 = await fetch(treeReloadUrl, { cache: 'no-store' })
       const fresh: ApiResponse = await r2.json()
       setApi(fresh)
       setReassign(null)
@@ -303,10 +334,10 @@ function ChartInner() {
   )
 }
 
-export default function AgentOrgChart() {
+export default function AgentOrgChart(props: Props) {
   return (
     <ReactFlowProvider>
-      <ChartInner />
+      <ChartInner {...props} />
     </ReactFlowProvider>
   )
 }
