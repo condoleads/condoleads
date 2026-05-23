@@ -1,11 +1,10 @@
 // components/admin-homes/cockpit/CockpitSubHeader.tsx
-// W-COCKPIT P-A-2 — cockpit-local sub-header (Agent + Geo selectors + tab strip).
+// W-COCKPIT P-A-3 -- cockpit-local sub-header.
 //
-// Lives BELOW the global TenantHeader. Rendered only inside the cockpit
-// (i.e. /admin-homes/tenants/[id]). Other admin-homes pages do not see it.
-//
-// Phase A scope: Agent dropdown and Geo dropdown are wired but populated empty.
-// Phase B will populate them with real tenant-scoped agents + geo entries.
+// SD-4: Agent dropdown now populated from tenant-scoped agents passed in by
+// CockpitShell. Geo dropdown stays empty until Phase B (needs treb_areas /
+// municipalities / communities / neighbourhoods data path -- those are already
+// in the parent page, but Phase B chooses the right interaction shape).
 
 'use client'
 
@@ -21,7 +20,11 @@ const TABS: { id: CockpitTab; label: string; icon: typeof Users }[] = [
   { id: 'settings',   label: 'Settings',   icon: Settings },
 ]
 
-export default function CockpitSubHeader() {
+interface Props {
+  agents: { id: string; full_name: string }[]
+}
+
+export default function CockpitSubHeader({ agents }: Props) {
   const { activeTab, setActiveTab, agentId, setAgentId, geoScopeType, geoScopeId, setGeo } = useCockpit()
 
   return (
@@ -37,8 +40,10 @@ export default function CockpitSubHeader() {
             onChange={e => setAgentId(e.target.value || null)}
             className="text-sm border border-gray-200 rounded px-2 py-1 bg-white"
           >
-            <option value="">All agents</option>
-            {/* Phase B populates real options */}
+            <option value="">All agents ({agents.length})</option>
+            {agents.map(a => (
+              <option key={a.id} value={a.id}>{a.full_name}</option>
+            ))}
           </select>
         </div>
 

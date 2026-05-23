@@ -15,9 +15,16 @@
 //   GET /api/admin-homes/territory/matrix?scope=...     (T4c-2 Phase B route)
 //   POST /api/admin-homes/territory/bulk-assign         (T4c-1 route)
 //
-// Rule Zero -- multi-tenant: every fetch is tenant-scoped server-side; this
-// component takes tenantId for refetch on tenant change but never sends it
-// directly (the route reads it from the auth session).
+// Rule Zero -- multi-tenant: every fetch is tenant-scoped server-side.
+// W-COCKPIT P-A-3: this component mounts in two contexts:
+//   1. Standalone /admin-homes/territory -- user.tenantId is set; route
+//      picks tenant from auth session.
+//   2. Inside the cockpit (/admin-homes/tenants/[id]) -- user is platform
+//      admin with user.tenantId = null; route requires ?tenant_id=<id>
+//      override (documented in the route handler).
+// Reads pass tenant_id explicitly so both contexts work identically.
+// Writes (bulk-assign) read tenant from the target agent row, so they
+// remain cross-tenant-safe without a query param.
 
 'use client'
 
@@ -69,7 +76,10 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
       setError(null)
       setConflicts(null)
       try {
-        const res = await fetch(`/api/admin-homes/territory/matrix?scope=${scope}`)
+        // W-COCKPIT P-A-3: pass tenant_id explicitly for platform-admin cockpit context.
+        const matrixUrl = `/api/admin-homes/territory/matrix?scope=${scope}`
+          + (tenantId ? `&tenant_id=${encodeURIComponent(tenantId)}` : '')
+        const res = await fetch(matrixUrl)
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
           throw new Error(body.error || `matrix fetch failed: ${res.status}`)
@@ -215,7 +225,10 @@ export default function TerritoryMatrix({ tenantId, tenantName }: Props) {
         throw new Error(body.error || `Save failed: ${res.status}`)
       }
       // Success -- refetch + clear edits
-      const refetch = await fetch(`/api/admin-homes/territory/matrix?scope=${scope}`)
+      // W-COCKPIT P-A-3: same tenant_id pass-through as initial fetch.
+      const refetchUrl = `/api/admin-homes/territory/matrix?scope=${scope}`
+        + (tenantId ? `&tenant_id=${encodeURIComponent(tenantId)}` : '')
+      const refetch = await fetch(refetchUrl)
       if (refetch.ok) {
         const j = await refetch.json()
         setMatrix(j.matrix as TerritoryMatrixData)

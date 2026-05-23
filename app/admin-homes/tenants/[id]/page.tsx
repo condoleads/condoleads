@@ -1,15 +1,19 @@
 // app/admin-homes/tenants/[id]/page.tsx
-// W-COCKPIT P-A-2 — per-tenant cockpit entry point.
+// W-COCKPIT P-A-3 -- per-tenant cockpit entry point with real lens data.
 //
-// Server component: validates platform-admin access, fetches tenant + geo lists +
-// active restrictions, passes them to CockpitShell. The shell client component
-// owns selection state and renders the active lens.
+// Server component: validates platform-admin access, fetches everything the
+// cockpit's first three real lenses (People, Territory, Live) need, and the
+// existing Settings data, and passes it all to CockpitShell.
 //
-// Tenant-wide content (VIP Access Config + Tenant Restrictions) lives in the
-// Settings tab (lens 6) and is functionally identical to the prior page.
-// Lenses 1-5 ship placeholders in P-A-2 and are filled in Phase B/C.
+// Tenant scope is the URL param. Agents, leads, activities, tenant brand are
+// all fetched server-side scoped to that tenant. No client-side data fetching
+// for the real lenses (matches the existing /admin-homes/leads + /agents
+// pattern; SSR fast path; no loading state on tab switch).
+//
+// Inventory + Simulator stay placeholder (Phase B/C).
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createServerClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { notFound, redirect } from 'next/navigation'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import CockpitShell from '@/components/admin-homes/cockpit/CockpitShell'
@@ -17,13 +21,35 @@ import Link from 'next/link'
 
 export const dynamic = 'force-dynamic'
 
-export default async function TenantCockpitPage({ params }: { params: { id: string } }) {
+function createServiceRoleClient() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+}
+
+export default async function TenantCockpitPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string }
+  searchParams: { expanded?: string; showTerminal?: string }
+}) {
   const user = await resolveAdminHomesUser()
   if (!user) redirect(`/login?redirect=/admin-homes/tenants/${params.id}`)
   if (!user.isPlatformAdmin) redirect('/admin-homes')
 
-  const supabase = createClient()
+  // P-A-3: searchParams pass-through for Live lens (mirrors /admin-homes/leads).
+  const initialExpanded = searchParams?.expanded === '1'
+  const initialShowTerminal = searchParams?.showTerminal === '1'
 
+  // Two clients: server (cookie-based) for tenant + geo lists. Service role for
+  // leads + agents + activities (bypasses RLS for platform admin viewing any tenant).
+  const supabase = createServerClient()
+  const svc = createServiceRoleClient()
+
+  // ---- 1. Tenant row (gates the rest) ----------------------------------------
   const { data: tenant } = await supabase
     .from('tenants')
     .select('*')
@@ -32,6 +58,11 @@ export default async function TenantCockpitPage({ params }: { params: { id: stri
 
   if (!tenant) notFound()
 
+  const tenantName = tenant.brand_name || tenant.name
+  const tenantBrandName = tenant.brand_name || tenant.name || null
+  const tenantDomain = tenant.domain || null
+
+  // ---- 2. Settings tab data (existing) ---------------------------------------
   const [
     { data: areas },
     { data: municipalities },
@@ -49,8 +80,100 @@ export default async function TenantCockpitPage({ params }: { params: { id: stri
       .eq('is_active', true),
   ])
 
-  const tenantName = tenant.brand_name || tenant.name
+  // ---- 3. People tab data: tenant-scoped agents with per-agent enrichment ----
+  // Mirrors app/admin-homes/agents/page.tsx pattern (site_type filter +
+  // N+1 enrichment for leads/territories/buildings counts).
+  const { data: agentsRaw } = await svc
+    .from('agents')
+    .select('*')
+    .eq('site_type', 'comprehensive')
+    .eq('tenant_id', params.id)
+    .order('created_at', { ascending: false })
 
+  const agentsWithStats = await Promise.all(
+    (agentsRaw || []).map(async (agent) => {
+      const [
+        { data: agentLeads },
+        { data: geoAssignments },
+        { data: buildingAssignments },
+      ] = await Promise.all([
+        svc.from('leads').select('id, status, quality, temperature').eq('agent_id', agent.id),
+        svc.from('agent_property_access').select('id').eq('agent_id', agent.id).eq('is_active', true),
+        svc.from('agent_geo_buildings').select('id').eq('agent_id', agent.id),
+      ])
+      return {
+        ...agent,
+        total_leads: agentLeads?.length || 0,
+        new_leads: (agentLeads || []).filter(l => l.status === 'new').length,
+        hot_leads: (agentLeads || []).filter(l => l.temperature === 'hot').length,
+        geo_territories: geoAssignments?.length || 0,
+        assigned_buildings: buildingAssignments?.length || 0,
+      }
+    })
+  )
+
+  // AgentsManagementClient expects a tenants[] array even when scoped to one.
+  const tenantsForClient = [{ id: tenant.id, name: tenant.name, domain: tenant.domain }]
+
+  // ---- 4. Live tab data: tenant-scoped leads + activities --------------------
+  // Mirrors app/admin-homes/leads/page.tsx full select (all relations).
+  // Cockpit is always tenant-scoped (URL has tenant id), so seeAll = false here.
+  const { data: leads } = await svc
+    .from('leads')
+    .select(`
+      *,
+      agents!leads_agent_id_fkey ( id, full_name, email ),
+      manager:agents!leads_manager_id_fkey ( id, full_name, email ),
+      area_manager:agents!leads_area_manager_id_fkey ( id, full_name, email ),
+      tenant_admin:agents!leads_tenant_admin_id_fkey ( id, full_name, email ),
+      building:buildings!leads_building_id_fkey ( id, building_name, slug ),
+      listing:mls_listings!leads_listing_id_fkey ( id, unparsed_address ),
+      area:treb_areas!leads_area_id_fkey ( id, name, slug ),
+      municipality:municipalities!leads_municipality_id_fkey ( id, name, slug ),
+      community:communities!leads_community_id_fkey ( id, name, slug ),
+      neighbourhood:neighbourhoods!leads_neighbourhood_id_fkey ( id, name, slug )
+    `)
+    .eq('tenant_id', params.id)
+    .order('created_at', { ascending: false })
+    .limit(10000)
+
+  // Pre-fetch user_activities for engagement badge + last-2-activities preview.
+  // Same pattern as /admin-homes/leads/page.tsx.
+  const leadEmails = Array.from(
+    new Set((leads || []).map((l: any) => l.contact_email).filter(Boolean))
+  ) as string[]
+
+  const activitiesByLeadId: Record<string, Array<{
+    id: string; activity_type: string; activity_data: any; page_url: string | null; created_at: string
+  }>> = {}
+
+  if (leadEmails.length > 0) {
+    const { data: allActivities } = await svc
+      .from('user_activities')
+      .select('id, activity_type, activity_data, page_url, created_at, contact_email')
+      .eq('tenant_id', params.id)
+      .in('contact_email', leadEmails)
+      .order('created_at', { ascending: true })
+
+    const byEmail: Record<string, any[]> = {}
+    for (const a of (allActivities || [])) {
+      const email = (a as any).contact_email
+      if (!byEmail[email]) byEmail[email] = []
+      byEmail[email].push(a)
+    }
+    for (const lead of (leads || [])) {
+      activitiesByLeadId[(lead as any).id] = byEmail[(lead as any).contact_email] || []
+    }
+  }
+
+  // Agents-for-filter dropdown (lean shape required by AdminHomesLeadsClient).
+  const agentsForLeadsFilter = (agentsWithStats || []).map(a => ({
+    id: a.id,
+    full_name: a.full_name,
+    email: a.email,
+  }))
+
+  // ---- Render ----------------------------------------------------------------
   return (
     <div className="-m-6">
       {/* Page chrome above the cockpit shell */}
@@ -91,6 +214,21 @@ export default async function TenantCockpitPage({ params }: { params: { id: stri
       <CockpitShell
         tenantId={params.id}
         tenantName={tenantName}
+        tenantBrandName={tenantBrandName}
+        tenantDomain={tenantDomain}
+        currentRole={user.role || 'admin'}
+        currentAgentId={user.agentId || null}
+        people={{
+          agents: agentsWithStats,
+          tenants: tenantsForClient,
+        }}
+        live={{
+          leads: leads || [],
+          activities: activitiesByLeadId,
+          agents: agentsForLeadsFilter,
+          initialExpanded,
+          initialShowTerminal,
+        }}
         settings={{
           tenant: {
             id: tenant.id,

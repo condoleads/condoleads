@@ -71,10 +71,17 @@ export default function TerritoryClient({ tenantId, tenantName, seeAll }: Props)
     ;(async () => {
       setLoading(true); setError(null)
       try {
+        // W-COCKPIT P-A-3 fix: pass tenant_id explicitly so the platform-admin
+        // cockpit context (user.tenantId = null) hits the route's documented
+        // ?tenant_id= override path. Harmless for tenant-scoped users (route
+        // picks tenant from auth session when override is absent).
         const auditUrl = '/api/admin-homes/territory/audit-log?limit=100'
+          + (tenantId ? '&tenant_id=' + encodeURIComponent(tenantId) : '')
           + (changeTypeFilter ? '&change_type=' + encodeURIComponent(changeTypeFilter) : '')
+        const coverageUrl = '/api/admin-homes/territory/coverage'
+          + (tenantId ? '?tenant_id=' + encodeURIComponent(tenantId) : '')
         const [covRes, audRes] = await Promise.all([
-          fetch('/api/admin-homes/territory/coverage'),
+          fetch(coverageUrl),
           fetch(auditUrl),
         ])
         if (!covRes.ok) throw new Error('coverage fetch: ' + covRes.status)

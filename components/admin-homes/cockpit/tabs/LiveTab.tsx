@@ -1,23 +1,48 @@
 // components/admin-homes/cockpit/tabs/LiveTab.tsx
-// W-COCKPIT P-A-2 — Lens 4 placeholder. Phase B mounts the existing
-// AdminHomesLeadsClient scoped by tenantId and adds the "Why?" routing-chain
-// reveal on every lead row.
+// W-COCKPIT P-A-3 -- Lens 4 mounts AdminHomesLeadsClient with tenant-scoped
+// leads (full select w/ relations), activities map, agents filter list, and
+// tenant brand identity for display strings + CSV filename.
+//
+// Phase B will add the "Why?" routing-chain reveal per lead row.
 
 'use client'
 
-import { Activity } from 'lucide-react'
+import AdminHomesLeadsClient from '@/components/admin-homes/AdminHomesLeadsClient'
 
-interface Props { tenantId: string }
+export interface LiveTabProps {
+  leads: any[]
+  activities: Record<string, any[]>
+  agents: { id: string; full_name: string; email: string }[]
+  initialExpanded: boolean
+  initialShowTerminal: boolean
+  tenantBrandName: string | null
+  tenantDomain: string | null
+  currentRole: 'admin' | 'manager' | 'agent'
+  currentAgentId: string | null
+}
 
-export default function LiveTab({}: Props) {
+export default function LiveTab({
+  leads,
+  activities,
+  agents,
+  initialExpanded,
+  initialShowTerminal,
+  tenantBrandName,
+  tenantDomain,
+  currentRole,
+  currentAgentId,
+}: LiveTabProps) {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-      <Activity className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-      <h3 className="text-lg font-semibold text-gray-800 mb-1">Live leads</h3>
-      <p className="text-sm text-gray-500 max-w-md mx-auto">
-        Real-time lead stream + "Why?" routing-chain reveal per lead.
-        Phase B mounts the existing lead workbench scoped to this tenant.
-      </p>
-    </div>
+    <AdminHomesLeadsClient
+      initialLeads={leads}
+      initialActivities={activities}
+      agents={agents}
+      currentRole={currentRole}
+      currentAgentId={currentAgentId}
+      initialExpanded={initialExpanded}
+      initialShowTerminal={initialShowTerminal}
+      tenantBrandName={tenantBrandName}
+      tenantDomain={tenantDomain}
+    />
   )
 }
