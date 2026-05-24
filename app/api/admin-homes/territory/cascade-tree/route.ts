@@ -98,8 +98,10 @@ export async function GET(req: NextRequest) {
       .eq('is_active', true),
 
     // All building cards for agents in this tenant (join via agent.tenant_id).
+    // C2b: also pull building name + community + municipality chain so the
+    // chart's building strip can render real labels, not UUIDs.
     s.from('agent_geo_buildings')
-      .select('id, agent_id, building_id, assigned_by, created_at, agents!inner(tenant_id, full_name, is_selling)')
+      .select('id, agent_id, building_id, assigned_by, created_at, agents!agent_geo_buildings_agent_id_fkey!inner(tenant_id, full_name, is_selling), buildings(id, building_name, community_id, communities(id, name, municipality_id, municipalities(id, name)))')
       .eq('agents.tenant_id', effectiveTenantId),
 
     // All listing pins for agents in this tenant.
