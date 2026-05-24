@@ -30,7 +30,12 @@ const KNOWN_TENANT_DOMAINS: Record<string, string> = {
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  let supabaseResponse = NextResponse.next({ request })
+  // W-COCKPIT P-B-1 followup: forward pathname so server components can route-gate
+  // (specifically the public TenantHeader, which must skip on /admin-homes/*).
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-pathname', pathname)
+
+  let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
