@@ -14,9 +14,41 @@
 //     -> no switcher rendered
 
 import Link from 'next/link'
+import { headers } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import type { AdminHomesUser } from '@/lib/admin-homes/auth'
 import TenantSwitcher, { TenantOption } from './TenantSwitcher'
+
+// F-COCKPIT-HEADER-URL-SCOPE-MISMATCH: extract tenant UUID from cockpit URL
+// (/admin-homes/tenants/<uuid>) so header reflects URL-driven scope when a
+// platform admin browses into a specific tenant without setting the cookie.
+const COCKPIT_PATH_RE = /^\/admin-homes\/tenants\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i
+
+function tenantIdFromPathname(pathname: string | null): string | null {
+  if (!pathname) return null
+  const m = pathname.match(COCKPIT_PATH_RE)
+  return m ? m[1] : null
+}
+
+// Authorization gate for URL-derived tenant ID. Platform admins can view any
+// tenant; tenant_managers can only view tenants in their assignment list.
+async function userMayViewTenantId(
+  user: AdminHomesUser,
+  tenantId: string,
+): Promise<boolean> {
+  if (user.isPlatformAdmin) return true
+  const supabase = createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser) return false
+  const { data: row } = await supabase
+    .from('tenant_manager_assignments')
+    .select('tenant_id')
+    .eq('user_id', authUser.id)
+    .eq('tenant_id', tenantId)
+    .is('revoked_at', null)
+    .maybeSingle()
+  return !!row
+}
 
 interface TenantHeaderProps {
   user: AdminHomesUser
@@ -97,8 +129,18 @@ async function fetchSwitcherTenants(
 }
 
 export default async function TenantHeader({ user }: TenantHeaderProps) {
-  const tenantId = user.tenantId
   const isPlatformAdmin = user.isPlatformAdmin
+
+  // F-COCKPIT-HEADER-URL-SCOPE-MISMATCH: prefer URL-derived tenant ID on
+  // /admin-homes/tenants/[id] pages, gated by authorization. Falls back to
+  // existing user.tenantId (cookie > x-tenant-id > home tenant > null) when
+  // not on a cockpit page or when authorization fails.
+  const pathname = headers().get('x-pathname')
+  const urlTenantId = tenantIdFromPathname(pathname)
+  const urlTenantAllowed = urlTenantId
+    ? await userMayViewTenantId(user, urlTenantId)
+    : false
+  const tenantId = (urlTenantId && urlTenantAllowed) ? urlTenantId : user.tenantId
 
   // Fetch switcher options (empty -> no switcher rendered).
   const { tenants: switcherTenants, allowUniversal } = await fetchSwitcherTenants(user)
