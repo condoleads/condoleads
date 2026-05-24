@@ -30,14 +30,8 @@ import TerritoryCoverageSummary from './TerritoryCoverageSummary'
 interface Agent {
   id: string; full_name: string; email: string; is_selling: boolean; is_active: boolean
 }
-interface GeoCard {
-  id: string; agent_id: string; scope: string
-  area_id: string | null; municipality_id: string | null
-  community_id: string | null; neighbourhood_id: string | null
-  is_primary: boolean
-  condo_access: boolean; homes_access: boolean; buildings_access: boolean
-  buildings_mode: string
-}
+// C2c: GeoCard moved to cascade-types.ts (shared with walker)
+import type { GeoCard } from './cascade-types'
 interface CascadeData {
   tenant: { id: string; name: string; default_agent_id: string | null }
   agents: Agent[]
@@ -70,6 +64,9 @@ interface NodeData {
   accessBadges?: { condo: BadgeState; homes: BadgeState; bldg: BadgeState }
   highlightDim?: boolean
   highlightHit?: boolean
+  // C2c:
+  pulse?: boolean
+  onAddCard?: () => void
 }
 
 const NODE_W = 220
@@ -104,6 +101,7 @@ function GeoNode({ data }: { data: NodeData }) {
     : 'bg-white border-gray-300 border-2'
   const dimCls = data.highlightDim ? 'opacity-30' : ''
   const hitCls = data.highlightHit ? 'ring-2 ring-amber-500 ring-offset-1' : ''
+  const pulseCls = data.pulse ? 'ring-4 ring-blue-500 ring-offset-2 animate-pulse' : ''
   const Icon = data.kind === 'tenant' ? Home
     : data.kind === 'area' ? MapPin
     : data.kind === 'muni' ? Building2
@@ -123,7 +121,7 @@ function GeoNode({ data }: { data: NodeData }) {
   }
 
   return (
-    <div className={`rounded-md px-2.5 py-1.5 shadow-sm ${baseCls} ${dimCls} ${hitCls}`} style={{ width: NODE_W }}>
+    <div className={`relative group rounded-md px-2.5 py-1.5 shadow-sm ${baseCls} ${dimCls} ${hitCls} ${pulseCls}`} style={{ width: NODE_W }}>
       <div className="flex items-center gap-1.5 mb-0.5">
         <Icon className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
         <span className="text-xs font-semibold text-gray-800 truncate">{data.label}</span>
@@ -142,6 +140,14 @@ function GeoNode({ data }: { data: NodeData }) {
           <span className={`text-[9px] px-1 rounded border ${badgePillCls(data.accessBadges.homes)}`}>homes</span>
           <span className={`text-[9px] px-1 rounded border ${badgePillCls(data.accessBadges.bldg)}`}>bldg</span>
         </div>
+      )}
+      {data.onAddCard && data.kind !== 'tenant' && s === 'INHERITED' && (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); data.onAddCard?.() }}
+          className="absolute top-1 right-1 w-4 h-4 rounded-full bg-green-600 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-green-700 transition-opacity"
+          title="Add card at this level"
+        >+</button>
       )}
     </div>
   )
@@ -178,6 +184,21 @@ function ChartInner({ tenantId, tenantName }: Props) {
   // C2b additions: highlight toggles + summary + buildings (normalized).
   const [highlightPhantoms, setHighlightPhantoms] = useState(false)
   const [highlightOrphans, setHighlightOrphans] = useState(false)
+  // C2c: agent filter (empty string = all agents).
+  const [agentFilter, setAgentFilter] = useState<string>('')
+  // C2c: pulse a community node when its building is clicked. Cleared after 1.5s.
+  const [pulseNodeId, setPulseNodeId] = useState<string | null>(null)
+  // C2c: phantom cleanup modal + add-card modal
+  const [cleanupOpen, setCleanupOpen] = useState(false)
+  const [actionInFlight, setActionInFlight] = useState<Record<string, boolean>>({})
+  const [bulkInFlight, setBulkInFlight] = useState(false)
+  const [bulkDone, setBulkDone] = useState(0)
+  const [addCardFor, setAddCardFor] = useState<{ scope: string; geoId: string; geoLabel: string } | null>(null)
+  const [addCardAgentId, setAddCardAgentId] = useState<string>('')
+  const [addCardCondo, setAddCardCondo] = useState(true)
+  const [addCardHomes, setAddCardHomes] = useState(true)
+  const [addCardBldg, setAddCardBldg] = useState(true)
+  const [addCardSaving, setAddCardSaving] = useState(false)
   const [summary, setSummary] = useState<SummaryCounts | null>(null)
   const [normalizedBuildings, setNormalizedBuildings] = useState<Array<{
     id: string; agent_id: string; agent_name: string; agent_selling: boolean;
@@ -205,7 +226,7 @@ function ChartInner({ tenantId, tenantName }: Props) {
   }
 
   useEffect(() => () => { if (pollTimer.current) clearTimeout(pollTimer.current) }, [])
-  const { fitView } = useReactFlow()
+  const { fitView, setCenter } = useReactFlow()
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null)
@@ -306,8 +327,11 @@ function ChartInner({ tenantId, tenantName }: Props) {
       shownAreaIds.add(area.id)
       const aWalk = walkArea(area.id, ctx)
       const aAgent = aWalk.effectiveAgentId ? agentById.get(aWalk.effectiveAgentId) : null
-      const aHit = highlightPhantoms && aWalk.state === 'PHANTOM'
-      const aDim = (highlightPhantoms || highlightOrphans) && !aHit && false  // areas never orphan
+      // C2c: composite filter (agent + state). hit = matches all active filters; dim = filtered out.
+      const aMatchAgent = !agentFilter || aWalk.effectiveAgentId === agentFilter
+      const aMatchPhantom = !highlightPhantoms || aWalk.state === 'PHANTOM'
+      const aHit = (agentFilter && aMatchAgent && aWalk.state !== 'INHERITED') || (highlightPhantoms && aWalk.state === 'PHANTOM')
+      const aDim = (agentFilter && !aMatchAgent) || (highlightPhantoms && !aMatchPhantom)
       ns.push({
         id: 'area:' + area.id, type: 'geo', position: { x: 0, y: 0 },
         data: {
@@ -322,6 +346,7 @@ function ChartInner({ tenantId, tenantName }: Props) {
           accessBadges: aWalk.accessBadges,
           highlightHit: aHit,
           highlightDim: aDim,
+          onAddCard: aWalk.state === 'INHERITED' ? () => setAddCardFor({ scope: 'area', geoId: area.id, geoLabel: area.name }) : undefined,
           geoId: area.id, scope: 'area',
         },
       })
@@ -337,7 +362,10 @@ function ChartInner({ tenantId, tenantName }: Props) {
 
         const mWalk = walkMuni(muni.id, ctx)
         const mAgent = mWalk.effectiveAgentId ? agentById.get(mWalk.effectiveAgentId) : null
-        const mHit = highlightPhantoms && mWalk.state === 'PHANTOM'
+        const mMatchAgent = !agentFilter || mWalk.effectiveAgentId === agentFilter
+        const mMatchPhantom = !highlightPhantoms || mWalk.state === 'PHANTOM'
+        const mHit = (agentFilter && mMatchAgent && mWalk.state !== 'INHERITED') || (highlightPhantoms && mWalk.state === 'PHANTOM')
+        const mDim = (agentFilter && !mMatchAgent) || (highlightPhantoms && !mMatchPhantom)
         ns.push({
           id: 'muni:' + muni.id, type: 'geo', position: { x: 0, y: 0 },
           data: {
@@ -351,7 +379,8 @@ function ChartInner({ tenantId, tenantName }: Props) {
             sourceLevel: mWalk.sourceLevel,
             accessBadges: mWalk.accessBadges,
             highlightHit: mHit,
-            highlightDim: (highlightPhantoms && !mHit) || (highlightOrphans && false),
+            highlightDim: mDim,
+            onAddCard: mWalk.state === 'INHERITED' ? () => setAddCardFor({ scope: 'municipality', geoId: muni.id, geoLabel: muni.name }) : undefined,
             geoId: muni.id, scope: 'municipality',
           },
         })
@@ -364,7 +393,10 @@ function ChartInner({ tenantId, tenantName }: Props) {
           shownCommIds.add(comm.id)
           const cWalk = walkComm(comm.id, ctx)
           const cAgent = cWalk.effectiveAgentId ? agentById.get(cWalk.effectiveAgentId) : null
-          const cHit = highlightPhantoms && cWalk.state === 'PHANTOM'
+          const cMatchAgent = !agentFilter || cWalk.effectiveAgentId === agentFilter
+          const cMatchPhantom = !highlightPhantoms || cWalk.state === 'PHANTOM'
+          const cHit = (agentFilter && cMatchAgent && cWalk.state !== 'INHERITED') || (highlightPhantoms && cWalk.state === 'PHANTOM')
+          const cDim = (agentFilter && !cMatchAgent) || (highlightPhantoms && !cMatchPhantom)
           ns.push({
             id: 'comm:' + comm.id, type: 'geo', position: { x: 0, y: 0 },
             data: {
@@ -378,7 +410,9 @@ function ChartInner({ tenantId, tenantName }: Props) {
               sourceLevel: cWalk.sourceLevel,
               accessBadges: cWalk.accessBadges,
               highlightHit: cHit,
-              highlightDim: highlightPhantoms && !cHit,
+              highlightDim: cDim,
+              pulse: pulseNodeId === ('comm:' + comm.id),
+              onAddCard: cWalk.state === 'INHERITED' ? () => setAddCardFor({ scope: 'community', geoId: comm.id, geoLabel: comm.name }) : undefined,
               geoId: comm.id, scope: 'community',
             },
           })
@@ -443,7 +477,7 @@ function ChartInner({ tenantId, tenantName }: Props) {
     setNodes([...laidGeo, ...agentNodes])
     setEdges(es)
     setTimeout(() => fitView({ padding: 0.2 }), 50)
-  }, [data, tenantName, setNodes, setEdges, fitView, highlightPhantoms, highlightOrphans])
+  }, [data, tenantName, setNodes, setEdges, fitView, highlightPhantoms, highlightOrphans, agentFilter, pulseNodeId])
 
   // Drop detection: when a geo node is dropped near an agent node, propose reassign.
   const onNodeDragStop: NodeMouseHandler = useCallback((_evt, node) => {
@@ -503,6 +537,131 @@ function ChartInner({ tenantId, tenantName }: Props) {
     }
   }
 
+  // C2c: phantom cleanup action handlers.
+  async function cleanupPhantom(apaId: string, action: 'deactivate' | 'fix_flags'): Promise<boolean> {
+    setActionInFlight(p => ({ ...p, [apaId]: true }))
+    try {
+      const res = await fetch('/api/admin-homes/territory/cards/cleanup?tenant_id=' + encodeURIComponent(tenantId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apa_id: apaId, action }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(j.error || ('cleanup failed ' + res.status))
+        return false
+      }
+      if (j.queued) {
+        setQueueDepth(1)
+        if (pollTimer.current) clearTimeout(pollTimer.current)
+        pollTimer.current = setTimeout(drainQueue, 200)
+      }
+      return true
+    } catch (e: any) {
+      setError(e.message || 'cleanup failed')
+      return false
+    } finally {
+      setActionInFlight(p => { const n = { ...p }; delete n[apaId]; return n })
+    }
+  }
+
+  async function bulkDeactivatePhantoms(apaIds: string[]) {
+    setBulkInFlight(true)
+    setBulkDone(0)
+    let success = 0
+    for (const id of apaIds) {
+      const ok = await cleanupPhantom(id, 'deactivate')
+      if (ok) success++
+      setBulkDone(d => d + 1)
+    }
+    setBulkInFlight(false)
+    await fetchData()
+    if (success === apaIds.length) {
+      setCleanupOpen(false)
+    }
+  }
+
+  // C2c: inline add-card submit.
+  async function submitAddCard() {
+    if (!addCardFor || !addCardAgentId) return
+    setAddCardSaving(true)
+    try {
+      const body: any = {
+        scope: addCardFor.scope,
+        agent_id: addCardAgentId,
+        condo_access: addCardCondo,
+        homes_access: addCardHomes,
+        buildings_access: addCardBldg,
+      }
+      body[addCardFor.scope + '_id'] = addCardFor.geoId
+      const res = await fetch('/api/admin-homes/territory/cards?tenant_id=' + encodeURIComponent(tenantId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(j.error || ('save failed ' + res.status))
+      setAddCardFor(null)
+      setAddCardAgentId('')
+      await fetchData()
+      if (j.queued) {
+        setQueueDepth(1)
+        if (pollTimer.current) clearTimeout(pollTimer.current)
+        pollTimer.current = setTimeout(drainQueue, 200)
+      }
+    } catch (e: any) {
+      setError(e.message || 'add card failed')
+    } finally {
+      setAddCardSaving(false)
+    }
+  }
+
+  // C2c: compute phantom row list (for cleanup modal) from data.
+  const phantomRows = (() => {
+    if (!data) return [] as Array<{ apa_id: string; agent_id: string; agent_name: string; community_id: string | null; community_name: string; conflict_label: string | null }>
+    const agentById = new Map(data.agents.map(a => [a.id, a]))
+    const muniCardByGeo = new Map<string, GeoCard>()
+    const areaCardByGeo = new Map<string, GeoCard>()
+    for (const c of data.cards.geo) {
+      if (c.scope === 'municipality' && c.municipality_id) muniCardByGeo.set(c.municipality_id, c)
+      if (c.scope === 'area' && c.area_id) areaCardByGeo.set(c.area_id, c)
+    }
+    const result = []
+    for (const c of data.cards.geo) {
+      const isPhantom = !c.condo_access && !c.homes_access && !c.buildings_access
+      if (!isPhantom) continue
+      let commName = '(unknown)'
+      let conflictLabel: string | null = null
+      if (c.scope === 'community' && c.community_id) {
+        const co = data.geo.communities.find(x => x.id === c.community_id)
+        commName = co?.name || '(unknown)'
+        if (co) {
+          const muniCard = muniCardByGeo.get(co.municipality_id)
+          if (muniCard && (muniCard.condo_access || muniCard.homes_access || muniCard.buildings_access) && muniCard.agent_id !== c.agent_id) {
+            const m = data.geo.municipalities.find(x => x.id === co.municipality_id)
+            const otherAgent = agentById.get(muniCard.agent_id)?.full_name || '(unknown)'
+            conflictLabel = 'Fix flags would override ' + (m?.name || 'muni') + ' (' + otherAgent + ')'
+          }
+        }
+      } else if (c.scope === 'area' && c.area_id) {
+        const a = data.geo.areas.find(x => x.id === c.area_id)
+        commName = (a?.name || '(unknown)') + ' (area)'
+      } else if (c.scope === 'municipality' && c.municipality_id) {
+        const m = data.geo.municipalities.find(x => x.id === c.municipality_id)
+        commName = (m?.name || '(unknown)') + ' (muni)'
+      }
+      result.push({
+        apa_id: c.id,
+        agent_id: c.agent_id,
+        agent_name: agentById.get(c.agent_id)?.full_name || '(unknown)',
+        community_id: c.community_id,
+        community_name: commName,
+        conflict_label: conflictLabel,
+      })
+    }
+    return result
+  })()
+
   if (loading) return <div className="p-6 text-sm text-gray-500">Loading cascade...</div>
   if (error) return <div className="p-6 text-sm text-red-600">Error: {error}</div>
   if (!data) return null
@@ -516,7 +675,36 @@ function ChartInner({ tenantId, tenantName }: Props) {
           onHighlightOrphans={setHighlightOrphans}
           highlightPhantoms={highlightPhantoms}
           highlightOrphans={highlightOrphans}
+          onOpenCleanup={summary.health.phantomCount > 0 ? () => setCleanupOpen(true) : undefined}
         />
+      )}
+      {/* C2c: agent filter strip */}
+      {data && data.agents.length > 0 && (
+        <div className="flex items-center gap-2 mb-2 text-xs">
+          <span className="text-gray-600">Filter by agent:</span>
+          <select
+            value={agentFilter}
+            onChange={e => setAgentFilter(e.target.value)}
+            className="border border-gray-300 rounded px-2 py-1 text-xs"
+          >
+            <option value="">All agents</option>
+            {data.agents.filter(a => a.is_active).map(a => (
+              <option key={a.id} value={a.id}>{a.full_name}{a.is_selling ? '' : ' (not selling)'}</option>
+            ))}
+          </select>
+          {agentFilter && (
+            <button
+              type="button"
+              onClick={() => setAgentFilter('')}
+              className="text-xs text-gray-600 hover:text-gray-900 underline"
+            >Clear</button>
+          )}
+          {agentFilter && (
+            <span className="text-gray-500">
+              Showing routing for {data.agents.find(a => a.id === agentFilter)?.full_name || 'selected agent'} (others dimmed)
+            </span>
+          )}
+        </div>
       )}
     <div className="relative" style={{ height: '55vh' }}>
       <div className="absolute top-2 left-2 z-10 bg-white border border-gray-200 rounded px-3 py-1.5 text-xs text-gray-600 shadow-sm">
@@ -566,6 +754,126 @@ function ChartInner({ tenantId, tenantName }: Props) {
           </div>
         </div>
       )}
+
+      {/* C2c: phantom cleanup modal */}
+      {cleanupOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="p-5 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Phantom card cleanup</h3>
+              <p className="text-xs text-gray-600 mt-1">
+                {phantomRows.length} phantom card{phantomRows.length === 1 ? '' : 's'}. Each exists in DB but has no access flags so routes nothing.
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-2">
+              {phantomRows.length === 0 ? (
+                <div className="text-sm text-gray-500">No phantom cards remaining.</div>
+              ) : phantomRows.map(p => {
+                const inflight = !!actionInFlight[p.apa_id]
+                return (
+                  <div key={p.apa_id} className="border border-gray-200 rounded p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">{p.community_name} <span className="text-gray-500 font-normal">&middot; {p.agent_name}</span></div>
+                        {p.conflict_label && (
+                          <div className="text-xs text-amber-700 mt-0.5">&#9888; {p.conflict_label}</div>
+                        )}
+                      </div>
+                      <div className="flex gap-1.5 flex-shrink-0">
+                        <button
+                          type="button"
+                          disabled={inflight || bulkInFlight}
+                          onClick={async () => { const ok = await cleanupPhantom(p.apa_id, 'deactivate'); if (ok) await fetchData() }}
+                          className="px-2.5 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                        >{inflight ? 'Working...' : 'Deactivate'}</button>
+                        <button
+                          type="button"
+                          disabled={inflight || bulkInFlight}
+                          onClick={async () => { const ok = await cleanupPhantom(p.apa_id, 'fix_flags'); if (ok) await fetchData() }}
+                          className={'px-2.5 py-1 text-xs rounded border disabled:opacity-50 ' + (p.conflict_label ? 'border-amber-400 text-amber-700 hover:bg-amber-50' : 'border-gray-300 hover:bg-gray-50')}
+                        >Fix flags{p.conflict_label ? ' (conflict)' : ''}</button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="p-5 border-t border-gray-200 flex items-center justify-between">
+              <button
+                type="button"
+                disabled={phantomRows.length === 0 || bulkInFlight}
+                onClick={() => bulkDeactivatePhantoms(phantomRows.map(p => p.apa_id))}
+                className="px-3 py-2 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+              >{bulkInFlight ? `Deactivating ${bulkDone} / ${phantomRows.length}...` : `Deactivate all (${phantomRows.length})`}</button>
+              <button
+                type="button"
+                onClick={() => setCleanupOpen(false)}
+                disabled={bulkInFlight}
+                className="px-3 py-2 text-xs border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+              >Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* C2c: add-card modal */}
+      {addCardFor && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Add card</h3>
+            <p className="text-xs text-gray-600 mb-4">
+              <strong>{addCardFor.geoLabel}</strong> ({addCardFor.scope})
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-700 mb-1">Agent</label>
+                <select
+                  value={addCardAgentId}
+                  onChange={e => setAddCardAgentId(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"
+                >
+                  <option value="">Select agent...</option>
+                  {data && data.agents.filter(a => a.is_active).map(a => (
+                    <option key={a.id} value={a.id}>{a.full_name}{a.is_selling ? '' : ' (not selling)'}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-700 mb-1">Access</label>
+                <div className="flex gap-3 text-xs">
+                  <label className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={addCardCondo} onChange={e => setAddCardCondo(e.target.checked)} />
+                    Condo
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={addCardHomes} onChange={e => setAddCardHomes(e.target.checked)} />
+                    Homes
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={addCardBldg} onChange={e => setAddCardBldg(e.target.checked)} />
+                    Buildings
+                  </label>
+                </div>
+                {!addCardCondo && !addCardHomes && !addCardBldg && (
+                  <div className="text-[11px] text-amber-700 mt-1">&#9888; No access flags means this card will be a phantom (routes nothing).</div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end mt-5">
+              <button
+                onClick={() => { setAddCardFor(null); setAddCardAgentId('') }}
+                disabled={addCardSaving}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              >Cancel</button>
+              <button
+                onClick={submitAddCard}
+                disabled={addCardSaving || !addCardAgentId}
+                className="px-3 py-2 bg-green-600 text-white rounded-md text-sm disabled:opacity-50"
+              >{addCardSaving ? 'Creating...' : 'Create card'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     {/* C2b: building strip below the geo tree. */}
     {normalizedBuildings.length > 0 && (
@@ -579,15 +887,32 @@ function ChartInner({ tenantId, tenantName }: Props) {
               (c.scope === 'municipality' && c.municipality_id === b.municipality_id) ||
               (c.scope === 'area' && data.geo.municipalities.find(m => m.id === b.municipality_id)?.area_id === c.area_id)
             )
-            const dim = highlightOrphans && !isOrphan
-            const hit = highlightOrphans && isOrphan
+            const matchAgent = !agentFilter || b.agent_id === agentFilter
+            const dim = (highlightOrphans && !isOrphan) || (agentFilter && !matchAgent)
+            const hit = (highlightOrphans && isOrphan) || (agentFilter && matchAgent)
             return (
               <div
                 key={b.id}
-                className={'flex-shrink-0 w-56 border-2 rounded-md px-2.5 py-1.5 shadow-sm bg-white border-green-500 '
+                onClick={() => {
+                  // C2c: drill-down. Find the apa community node for this building.
+                  // If found, center the canvas on it and pulse for 1.5s.
+                  if (!b.community_id) return
+                  const hasCommCard = data.cards.geo.some(c =>
+                    c.scope === 'community' && c.community_id === b.community_id
+                  )
+                  if (!hasCommCard) return  // orphan -- no node to scroll to
+                  const targetId = 'comm:' + b.community_id
+                  const targetNode = nodes.find(n => n.id === targetId)
+                  if (targetNode) {
+                    setCenter(targetNode.position.x + NODE_W / 2, targetNode.position.y + NODE_H / 2, { zoom: 1, duration: 600 })
+                  }
+                  setPulseNodeId(targetId)
+                  setTimeout(() => setPulseNodeId(null), 1500)
+                }}
+                className={'flex-shrink-0 w-56 border-2 rounded-md px-2.5 py-1.5 shadow-sm bg-white border-green-500 cursor-pointer hover:shadow-md transition-shadow '
                   + (dim ? 'opacity-30 ' : '')
                   + (hit ? 'ring-2 ring-amber-500 ring-offset-1 ' : '')}
-                title={b.building_name}
+                title={b.community_id ? (b.building_name + ' (click to scroll to community)') : b.building_name}
               >
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <Building2 className="w-3.5 h-3.5 text-gray-600 flex-shrink-0" />

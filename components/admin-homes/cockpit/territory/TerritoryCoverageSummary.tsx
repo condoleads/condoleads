@@ -19,6 +19,8 @@ interface Props {
   onHighlightOrphans: (on: boolean) => void
   highlightPhantoms: boolean
   highlightOrphans: boolean
+  // C2c: clicking the phantom alert text opens the cleanup modal.
+  onOpenCleanup?: () => void
 }
 
 function Stat({ label, value, tone }: { label: string; value: number | string; tone?: 'normal' | 'warn' | 'good' }) {
@@ -45,7 +47,7 @@ function ScopeRow({ label, counts }: { label: string; counts: { assigned: number
 }
 
 export default function TerritoryCoverageSummary({
-  summary, onHighlightPhantoms, onHighlightOrphans, highlightPhantoms, highlightOrphans,
+  summary, onHighlightPhantoms, onHighlightOrphans, highlightPhantoms, highlightOrphans, onOpenCleanup,
 }: Props) {
   const healthy = summary.health.phantomCount === 0 && summary.health.orphanBuildings === 0
   return (
@@ -87,7 +89,17 @@ export default function TerritoryCoverageSummary({
             <div className="flex items-center justify-between">
               <div className="text-xs text-amber-700 flex items-center gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                <span><strong>{summary.health.phantomCount}</strong> PHANTOM card{summary.health.phantomCount === 1 ? '' : 's'} -- exists in DB but no access flags; routes nothing.</span>
+                {onOpenCleanup ? (
+                  <button
+                    type="button"
+                    onClick={onOpenCleanup}
+                    className="text-left hover:underline focus:underline cursor-pointer"
+                  >
+                    <strong>{summary.health.phantomCount}</strong> PHANTOM card{summary.health.phantomCount === 1 ? '' : 's'} -- exists in DB but no access flags; routes nothing. <span className="text-blue-700 underline">Clean up</span>
+                  </button>
+                ) : (
+                  <span><strong>{summary.health.phantomCount}</strong> PHANTOM card{summary.health.phantomCount === 1 ? '' : 's'} -- exists in DB but no access flags; routes nothing.</span>
+                )}
               </div>
               <label className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
                 <input

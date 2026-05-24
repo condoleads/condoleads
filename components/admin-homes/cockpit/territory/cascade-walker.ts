@@ -12,24 +12,9 @@
 // is true. A card with all three false is PHANTOM -- it occupies the slot
 // but routes nothing; the walker skips it and looks higher.
 
-export type NodeState = 'ASSIGNED' | 'PHANTOM' | 'INHERITED'
-export type SourceLevel = 'community' | 'municipality' | 'area' | 'tenant'
-export type BadgeState = 'active' | 'inherited' | 'phantom'
-
-export interface GeoCardLite {
-  id: string
-  agent_id: string
-  scope: string
-  area_id: string | null
-  municipality_id: string | null
-  community_id: string | null
-  neighbourhood_id: string | null
-  is_primary: boolean
-  condo_access: boolean
-  homes_access: boolean
-  buildings_access: boolean
-  buildings_mode: string  // C2b: structural match with chart's GeoCard (passthrough; walker does not read this)
-}
+import type { GeoCard, NodeState, SourceLevel, BadgeState } from './cascade-types'
+export type { NodeState, SourceLevel, BadgeState } from './cascade-types'
+export type { GeoCard } from './cascade-types'
 
 export interface AgentLite {
   id: string
@@ -45,9 +30,9 @@ export interface TenantLite {
 }
 
 export interface CardLookups {
-  areaCardByGeo: Map<string, GeoCardLite>
-  muniCardByGeo: Map<string, GeoCardLite>
-  commCardByGeo: Map<string, GeoCardLite>
+  areaCardByGeo: Map<string, GeoCard>
+  muniCardByGeo: Map<string, GeoCard>
+  commCardByGeo: Map<string, GeoCard>
 }
 
 export interface WalkResult {
@@ -55,14 +40,14 @@ export interface WalkResult {
   effectiveAgentName: string
   sourceLevel: SourceLevel
   state: NodeState
-  cardAtThisLevel: GeoCardLite | null    // the card at the node itself (may be phantom)
+  cardAtThisLevel: GeoCard | null    // the card at the node itself (may be phantom)
   accessBadges: { condo: BadgeState; homes: BadgeState; bldg: BadgeState }
 }
 
-export function buildLookups(cards: GeoCardLite[]): CardLookups {
-  const areaCardByGeo = new Map<string, GeoCardLite>()
-  const muniCardByGeo = new Map<string, GeoCardLite>()
-  const commCardByGeo = new Map<string, GeoCardLite>()
+export function buildLookups(cards: GeoCard[]): CardLookups {
+  const areaCardByGeo = new Map<string, GeoCard>()
+  const muniCardByGeo = new Map<string, GeoCard>()
+  const commCardByGeo = new Map<string, GeoCard>()
   for (const c of cards) {
     if (c.scope === 'area' && c.area_id) areaCardByGeo.set(c.area_id, c)
     if (c.scope === 'municipality' && c.municipality_id) muniCardByGeo.set(c.municipality_id, c)
@@ -71,7 +56,7 @@ export function buildLookups(cards: GeoCardLite[]): CardLookups {
   return { areaCardByGeo, muniCardByGeo, commCardByGeo }
 }
 
-export function isFunctional(card: GeoCardLite | null | undefined): boolean {
+export function isFunctional(card: GeoCard | null | undefined): boolean {
   if (!card) return false
   return card.condo_access || card.homes_access || card.buildings_access
 }
@@ -98,7 +83,7 @@ function tenantFallback(ctx: WalkContext): { agentId: string | null; name: strin
 
 function badgeStateFor(
   flagKey: 'condo_access' | 'homes_access' | 'buildings_access',
-  cardAtLevel: GeoCardLite | null,
+  cardAtLevel: GeoCard | null,
   parentEffective: WalkResult | null
 ): BadgeState {
   if (cardAtLevel) {
@@ -222,7 +207,7 @@ function walkAreaFallback(ctx: WalkContext): WalkResult {
 }
 
 export function buildContext(
-  cards: GeoCardLite[],
+  cards: GeoCard[],
   tenant: TenantLite,
   agents: AgentLite[],
   geo: {
@@ -252,7 +237,7 @@ export interface SummaryCounts {
 }
 
 export function computeSummary(
-  cards: GeoCardLite[],
+  cards: GeoCard[],
   buildings: Array<{ municipality_id: string | null }>,
   listings: Array<unknown>,
   ctx: WalkContext,
