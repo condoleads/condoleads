@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
   const limit = Math.max(1, Math.min(500, parseInt(limitRaw || '50', 10) || 50))
   const filterChangeType = url.searchParams.get('change_type')
   const filterAgentId = url.searchParams.get('agent_id')
+  const filterScope = url.searchParams.get('scope')
+  const filterScopeId = url.searchParams.get('scope_id')
 
   let tenantId: string | null = null
   if (user.isPlatformAdmin) {
@@ -37,6 +39,8 @@ export async function GET(request: NextRequest) {
     .limit(limit)
   if (filterChangeType) q = q.eq('change_type', filterChangeType)
   if (filterAgentId) q = q.eq('agent_id', filterAgentId)
+  if (filterScope) q = q.eq('scope', filterScope)
+  if (filterScopeId) q = q.eq('scope_id', filterScopeId)
 
   const { data: rows, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -44,14 +48,14 @@ export async function GET(request: NextRequest) {
   const agentIds = Array.from(new Set((rows || []).map(r => r.agent_id).filter(Boolean))) as string[]
   let agentMap = new Map<string, any>()
   if (agentIds.length) {
-    const { data: agents } = await supabase.from('agents').select('id, name').in('id', agentIds)
+    const { data: agents } = await supabase.from('agents').select('id, full_name').in('id', agentIds)
     agentMap = new Map<string, any>((agents || []).map((a: any) => [a.id, a]))
   }
 
   const decorated = (rows || []).map(r => ({
     id: r.id,
     agent_id: r.agent_id,
-    agent_name: r.agent_id ? (agentMap.get(r.agent_id)?.name ?? null) : null,
+    agent_name: r.agent_id ? (agentMap.get(r.agent_id)?.full_name ?? null) : null,
     scope: r.scope,
     scope_id: r.scope_id,
     change_type: r.change_type,

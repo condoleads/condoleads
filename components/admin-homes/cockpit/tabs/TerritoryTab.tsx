@@ -9,14 +9,16 @@ import { useState } from 'react'
 import TerritoryClient from '@/components/admin-homes/TerritoryClient'
 import HealthView from '@/components/admin-homes/cockpit/territory/HealthView'
 import AgentsView from '@/components/admin-homes/cockpit/territory/AgentsView'
+import CardsView from '@/components/admin-homes/cockpit/territory/CardsView'
 import { Activity, Table, Users } from 'lucide-react'
 
 interface Props { tenantId: string; tenantName: string }
 
-type View = 'agents' | 'health' | 'detail'
+type View = 'agents' | 'cards' | 'health' | 'detail'
 
 export default function TerritoryTab({ tenantId, tenantName }: Props) {
   const [view, setView] = useState<View>('agents')
+  const [cardsAgentFilter, setCardsAgentFilter] = useState<string | null>(null)
   const btn = (target: View, label: string, Icon: typeof Users, pos: 'l' | 'm' | 'r') => {
     const rounded = pos === 'l' ? 'rounded-l-md' : pos === 'r' ? 'rounded-r-md' : ''
     const border = pos === 'm' || pos === 'r' ? 'border-l border-gray-200' : ''
@@ -39,12 +41,15 @@ export default function TerritoryTab({ tenantId, tenantName }: Props) {
       <div className="flex justify-end mb-3">
         <div className="inline-flex rounded-md shadow-sm border border-gray-200 bg-white" role="group">
           {btn('agents', 'Agents', Users, 'l')}
+          {btn('cards', 'Cards', Table, 'm')}
           {btn('health', 'Health', Activity, 'm')}
           {btn('detail', 'Detail', Table, 'r')}
         </div>
       </div>
       {view === 'agents'
-        ? <AgentsView tenantId={tenantId} tenantName={tenantName} />
+        ? <AgentsView tenantId={tenantId} tenantName={tenantName} onViewCards={(agentId) => { setCardsAgentFilter(agentId); setView('cards') }} />
+        : view === 'cards'
+        ? <CardsView tenantId={tenantId} tenantName={tenantName} initialAgentFilter={cardsAgentFilter} onClearAgentFilter={() => setCardsAgentFilter(null)} />
         : view === 'health'
         ? <HealthView tenantId={tenantId} tenantName={tenantName} />
         : <TerritoryClient tenantId={tenantId} tenantName={tenantName} seeAll={false} />}

@@ -22,9 +22,9 @@ interface AgentRow {
   user_assignment_count: number
 }
 
-interface Props { tenantId: string; tenantName: string }
+interface Props { tenantId: string; tenantName: string; onViewCards?: (agentId: string) => void }
 
-export default function AgentsView({ tenantId, tenantName }: Props) {
+export default function AgentsView({ tenantId, tenantName, onViewCards }: Props) {
   const [rows, setRows] = useState<AgentRow[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -211,6 +211,15 @@ export default function AgentsView({ tenantId, tenantName }: Props) {
                   <td className="px-3 py-2 text-right tabular-nums">{r.user_assignment_count}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
+                      {onViewCards && (
+                        <button
+                          type="button"
+                          onClick={() => onViewCards(r.agent_id)}
+                          className="text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50"
+                        >
+                          View cards
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={r.assigned_card_count === 0 || isBusy}
