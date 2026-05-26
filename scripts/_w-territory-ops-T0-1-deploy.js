@@ -100,7 +100,7 @@ const sql = fs.readFileSync(MIGRATION, "utf8");
   // S2: Day-1-like, no card present at Mississauga muni (WALLiam doesn't have one).
   // Should return tenant default (King Shah) since WALLiam has default_agent_id set.
   const KING_SHAH = "fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe";
-  const NEO_SMITH = "f2ce3011-f8b0-4827-9d34-8fb7d7a9bb3f";
+  const NEO_SMITH = "f2ce3011-f8b0-4827-9d34-8fb7d7a9ba3f";
   const WHITBY_MUNI = "70103aef-1b32-4939-9ff8-264e859a5587";
   const BLUE_GRASS = "691943e2-b892-44b3-a437-e8d2e5b53119"; // phantom community
   const DURHAM_AREA = "03d4e133-d9f9-4a7e-ba9a-83e57269c1d4";

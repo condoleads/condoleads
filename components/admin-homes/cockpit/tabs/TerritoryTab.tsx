@@ -10,11 +10,12 @@ import TerritoryClient from '@/components/admin-homes/TerritoryClient'
 import HealthView from '@/components/admin-homes/cockpit/territory/HealthView'
 import AgentsView from '@/components/admin-homes/cockpit/territory/AgentsView'
 import CardsView from '@/components/admin-homes/cockpit/territory/CardsView'
-import { Activity, Table, Users } from 'lucide-react'
+import GeographyView from '@/components/admin-homes/cockpit/territory/GeographyView'
+import { Activity, Map, Table, Users } from 'lucide-react'
 
 interface Props { tenantId: string; tenantName: string }
 
-type View = 'agents' | 'cards' | 'health' | 'detail'
+type View = 'agents' | 'cards' | 'geography' | 'health' | 'detail'
 
 export default function TerritoryTab({ tenantId, tenantName }: Props) {
   const [view, setView] = useState<View>('agents')
@@ -42,6 +43,7 @@ export default function TerritoryTab({ tenantId, tenantName }: Props) {
         <div className="inline-flex rounded-md shadow-sm border border-gray-200 bg-white" role="group">
           {btn('agents', 'Agents', Users, 'l')}
           {btn('cards', 'Cards', Table, 'm')}
+          {btn('geography', 'Geography', Map, 'm')}
           {btn('health', 'Health', Activity, 'm')}
           {btn('detail', 'Detail', Table, 'r')}
         </div>
@@ -50,6 +52,8 @@ export default function TerritoryTab({ tenantId, tenantName }: Props) {
         ? <AgentsView tenantId={tenantId} tenantName={tenantName} onViewCards={(agentId) => { setCardsAgentFilter(agentId); setView('cards') }} />
         : view === 'cards'
         ? <CardsView tenantId={tenantId} tenantName={tenantName} initialAgentFilter={cardsAgentFilter} onClearAgentFilter={() => setCardsAgentFilter(null)} />
+        : view === 'geography'
+        ? <GeographyView tenantId={tenantId} tenantName={tenantName} onOpenCards={() => { setCardsAgentFilter(null); setView('cards') }} />
         : view === 'health'
         ? <HealthView tenantId={tenantId} tenantName={tenantName} />
         : <TerritoryClient tenantId={tenantId} tenantName={tenantName} seeAll={false} />}
