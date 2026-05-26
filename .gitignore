@@ -67,3 +67,10 @@ dev-server.log
 
 # Session artifacts (archived scratch scripts, ad-hoc dev outputs)
 .session_artifacts_*/
+
+p2-recon-output.txt
+p2-recon-2-output.txt
+p4-recon-output.txt
+p4-recon-2-output.txt
+p4-recon-3-output.txt
+

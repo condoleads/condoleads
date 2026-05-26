@@ -1,0 +1,4 @@
+{
+  "leads_agent_id_is_nullable": "NO",
+  "lead_ownership_changes_reason_check": "CHECK ((reason = ANY (ARRAY['reroll'::text, 'scope_shrink'::text, 'manual_reassign'::text, 'percentage_renormalize'::text, 'agent_removed'::text, 'agent_added'::text, 'pin_grant'::text, 'pin_revoke'::text, 'cascade_resolution'::text, 'other'::text])))"
+}
