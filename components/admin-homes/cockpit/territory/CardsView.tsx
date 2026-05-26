@@ -65,6 +65,8 @@ interface Props {
   tenantName: string
   initialAgentFilter?: string | null
   onClearAgentFilter?: () => void
+  initialGeoFilter?: { scope: string; scope_id: string; geo_name: string } | null
+  onClearGeoFilter?: () => void
 }
 
 const SCOPE_LABELS: Record<string, string> = {
@@ -76,7 +78,7 @@ const SCOPE_LABELS: Record<string, string> = {
 
 const PAGE_SIZE = 50
 
-export default function CardsView({ tenantId, tenantName, initialAgentFilter, onClearAgentFilter }: Props) {
+export default function CardsView({ tenantId, tenantName, initialAgentFilter, onClearAgentFilter, initialGeoFilter, onClearGeoFilter }: Props) {
   const [cards, setCards] = useState<CardRow[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [hasMore, setHasMore] = useState(false)
@@ -84,7 +86,9 @@ export default function CardsView({ tenantId, tenantName, initialAgentFilter, on
   const [err, setErr] = useState<string | null>(null)
 
   const [filterAgent, setFilterAgent] = useState<string | null>(initialAgentFilter || null)
-  const [filterScope, setFilterScope] = useState<string | null>(null)
+  const [filterScope, setFilterScope] = useState<string | null>(initialGeoFilter?.scope || null)
+  const [filterScopeId, setFilterScopeId] = useState<string | null>(initialGeoFilter?.scope_id || null)
+  const [filterGeoName, setFilterGeoName] = useState<string | null>(initialGeoFilter?.geo_name || null)
   const [includeInactive, setIncludeInactive] = useState(false)
   const [searchQ, setSearchQ] = useState('')
   const [searchQDebounced, setSearchQDebounced] = useState('')
@@ -115,6 +119,7 @@ export default function CardsView({ tenantId, tenantName, initialAgentFilter, on
     params.set('tenant_id', tenantId)
     if (filterAgent) params.set('agent_id', filterAgent)
     if (filterScope) params.set('scope', filterScope)
+    if (filterScopeId) params.set('scope_id', filterScopeId)
     if (includeInactive) params.set('include_inactive', 'true')
     if (searchQDebounced) params.set('q', searchQDebounced)
     params.set('limit', String(PAGE_SIZE))
@@ -135,7 +140,7 @@ export default function CardsView({ tenantId, tenantName, initialAgentFilter, on
       })
       .catch((e) => setErr(e?.message || 'failed to load'))
       .finally(() => setLoading(false))
-  }, [tenantId, filterAgent, filterScope, includeInactive, searchQDebounced, offset])
+  }, [tenantId, filterAgent, filterScope, filterScopeId, includeInactive, searchQDebounced, offset])
 
   // Fetch agents-summary once (for filter dropdown + reassign destination picker).
   useEffect(() => {
@@ -189,6 +194,7 @@ export default function CardsView({ tenantId, tenantName, initialAgentFilter, on
     params.set('tenant_id', tenantId)
     if (filterAgent) params.set('agent_id', filterAgent)
     if (filterScope) params.set('scope', filterScope)
+    if (filterScopeId) params.set('scope_id', filterScopeId)
     if (includeInactive) params.set('include_inactive', 'true')
     if (searchQDebounced) params.set('q', searchQDebounced)
     params.set('limit', String(PAGE_SIZE))
@@ -323,12 +329,15 @@ export default function CardsView({ tenantId, tenantName, initialAgentFilter, on
   const clearFilters = () => {
     setFilterAgent(null)
     setFilterScope(null)
+    setFilterScopeId(null)
+    setFilterGeoName(null)
     setIncludeInactive(false)
     setSearchQ('')
     setOffset(0)
     if (onClearAgentFilter) onClearAgentFilter()
+    if (onClearGeoFilter) onClearGeoFilter()
   }
-  const anyFilterActive = !!(filterAgent || filterScope || includeInactive || searchQDebounced)
+  const anyFilterActive = !!(filterAgent || filterScope || filterScopeId || includeInactive || searchQDebounced)
 
   const sellingActiveAgents = agents.filter((a) => a.is_selling && a.is_active)
 

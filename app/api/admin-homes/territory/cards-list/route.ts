@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const agentIdParam = url.searchParams.get('agent_id')
   const scopeParam = url.searchParams.get('scope')
+  const scopeIdParam = url.searchParams.get('scope_id')
   const includeInactiveParam = url.searchParams.get('include_inactive')
   const qParam = url.searchParams.get('q')
   const limitRaw = url.searchParams.get('limit')
@@ -66,6 +67,9 @@ export async function GET(req: NextRequest) {
   const ALLOWED_SCOPES = ['area', 'municipality', 'community', 'neighbourhood']
   if (scopeParam && !ALLOWED_SCOPES.includes(scopeParam)) {
     return NextResponse.json({ error: 'bad scope' }, { status: 400 })
+  }
+  if (scopeIdParam && !UUID_RE.test(scopeIdParam)) {
+    return NextResponse.json({ error: 'bad scope_id' }, { status: 400 })
   }
   const includeInactive = includeInactiveParam === 'true'
   const limit = Math.max(1, Math.min(200, parseInt(limitRaw || '50', 10) || 50))
@@ -114,6 +118,11 @@ export async function GET(req: NextRequest) {
           AND ($2::uuid IS NULL OR apa.agent_id = $2::uuid)
           AND ($3::text IS NULL OR apa.scope = $3::text)
           AND ($4::boolean = true OR apa.is_active = true)
+          AND ($8::uuid IS NULL OR 
+               (apa.scope = 'area' AND apa.area_id = $8::uuid) OR
+               (apa.scope = 'municipality' AND apa.municipality_id = $8::uuid) OR
+               (apa.scope = 'community' AND apa.community_id = $8::uuid) OR
+               (apa.scope = 'neighbourhood' AND apa.neighbourhood_id = $8::uuid))
       ),
       filtered AS (
         SELECT * FROM base
@@ -149,7 +158,7 @@ export async function GET(req: NextRequest) {
       ORDER BY f.scope, f.geo_name, f.agent_name
       LIMIT $6 OFFSET $7
     `
-    const params = [tenantId, agentIdParam, scopeParam, includeInactive, q, limit, offset]
+    const params = [tenantId, agentIdParam, scopeParam, includeInactive, q, limit, offset, scopeIdParam]
     const r = await c.query(sql, params)
 
     const total = r.rows.length > 0 ? (r.rows[0].total_count as number) : 0

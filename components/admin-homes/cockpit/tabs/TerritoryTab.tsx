@@ -11,6 +11,9 @@ import HealthView from '@/components/admin-homes/cockpit/territory/HealthView'
 import AgentsView from '@/components/admin-homes/cockpit/territory/AgentsView'
 import CardsView from '@/components/admin-homes/cockpit/territory/CardsView'
 import GeographyView from '@/components/admin-homes/cockpit/territory/GeographyView'
+import QueueIndicator from '@/components/admin-homes/cockpit/territory/QueueIndicator'
+import AuditSidebar from '@/components/admin-homes/cockpit/territory/AuditSidebar'
+import TerritorySearchBar, { type SearchResult } from '@/components/admin-homes/cockpit/territory/TerritorySearchBar'
 import { Activity, Map, Table, Users } from 'lucide-react'
 
 interface Props { tenantId: string; tenantName: string }
@@ -20,6 +23,20 @@ type View = 'agents' | 'cards' | 'geography' | 'health' | 'detail'
 export default function TerritoryTab({ tenantId, tenantName }: Props) {
   const [view, setView] = useState<View>('agents')
   const [cardsAgentFilter, setCardsAgentFilter] = useState<string | null>(null)
+  const [cardsGeoFilter, setCardsGeoFilter] = useState<{ scope: string; scope_id: string; geo_name: string } | null>(null)
+
+  function onSearchSelect(r: SearchResult) {
+    if (r.kind === 'agent') {
+      setCardsGeoFilter(null)
+      setCardsAgentFilter(r.id)
+      setView('cards')
+      return
+    }
+    // geo kinds -> Cards view filtered by scope + scope_id
+    setCardsAgentFilter(null)
+    setCardsGeoFilter({ scope: r.kind, scope_id: r.id, geo_name: r.name })
+    setView('cards')
+  }
   const btn = (target: View, label: string, Icon: typeof Users, pos: 'l' | 'm' | 'r') => {
     const rounded = pos === 'l' ? 'rounded-l-md' : pos === 'r' ? 'rounded-r-md' : ''
     const border = pos === 'm' || pos === 'r' ? 'border-l border-gray-200' : ''
@@ -39,7 +56,11 @@ export default function TerritoryTab({ tenantId, tenantName }: Props) {
   }
   return (
     <div>
-      <div className="flex justify-end mb-3">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <TerritorySearchBar tenantId={tenantId} onSelect={onSearchSelect} />
+          <QueueIndicator tenantId={tenantId} />
+        </div>
         <div className="inline-flex rounded-md shadow-sm border border-gray-200 bg-white" role="group">
           {btn('agents', 'Agents', Users, 'l')}
           {btn('cards', 'Cards', Table, 'm')}
@@ -51,12 +72,13 @@ export default function TerritoryTab({ tenantId, tenantName }: Props) {
       {view === 'agents'
         ? <AgentsView tenantId={tenantId} tenantName={tenantName} onViewCards={(agentId) => { setCardsAgentFilter(agentId); setView('cards') }} />
         : view === 'cards'
-        ? <CardsView tenantId={tenantId} tenantName={tenantName} initialAgentFilter={cardsAgentFilter} onClearAgentFilter={() => setCardsAgentFilter(null)} />
+        ? <CardsView tenantId={tenantId} tenantName={tenantName} initialAgentFilter={cardsAgentFilter} onClearAgentFilter={() => setCardsAgentFilter(null)} initialGeoFilter={cardsGeoFilter} onClearGeoFilter={() => setCardsGeoFilter(null)} />
         : view === 'geography'
-        ? <GeographyView tenantId={tenantId} tenantName={tenantName} onOpenCards={() => { setCardsAgentFilter(null); setView('cards') }} />
+        ? <GeographyView tenantId={tenantId} tenantName={tenantName} onOpenCards={(f) => { setCardsAgentFilter(null); setCardsGeoFilter({ scope: f.scope, scope_id: f.scope_id, geo_name: '' }); setView('cards') }} />
         : view === 'health'
         ? <HealthView tenantId={tenantId} tenantName={tenantName} />
         : <TerritoryClient tenantId={tenantId} tenantName={tenantName} seeAll={false} />}
+      <AuditSidebar tenantId={tenantId} />
     </div>
   )
 }
