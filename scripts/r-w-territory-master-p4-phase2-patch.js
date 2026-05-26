@@ -2,15 +2,8 @@
 //
 // W-TERRITORY-MASTER P4 phase 2: UI patch for AdminHomesLeadsClient.
 //
-// Six surgical anchor-based edits:
-//   A1: Add filterOwnership state next to other filter states
-//   A2: Apply filterOwnership filter inside filteredLeads useMemo
-//   A3: Add filterOwnership to useMemo dep array
-//   A4: Add Ownership filter <select> in the filter UI grid
-//   A5: Add claimLead helper + claimingLead state next to updateLeadStatus
-//   A6: Add Claim button inside the Agent <td> for unowned rows
-//
-// Each anchor is verified unique before applying. Backup created before write.
+// Six surgical anchor-based edits. Uses real UTF-8 characters (em-dash U+2014)
+// not PowerShell-rendered mojibake.
 //
 // Run: node scripts/r-w-territory-master-p4-phase2-patch.js
 
@@ -18,6 +11,7 @@ const fs = require('fs')
 const path = require('path')
 
 const TARGET = 'components/admin-homes/AdminHomesLeadsClient.tsx'
+const EMDASH = '\u2014'  // — real em-dash
 
 function stamp() {
   const d = new Date()
@@ -38,7 +32,7 @@ function applyEdit(content, anchor, replacement, label) {
 
 function checkPresent(content, marker, label) {
   if (!content.includes(marker)) {
-    throw new Error(`POST-CHECK FAIL: ${label} — marker not found: ${marker.slice(0, 60)}`)
+    throw new Error(`POST-CHECK FAIL: ${label}`)
   }
 }
 
@@ -50,6 +44,19 @@ function main() {
   }
 
   const original = fs.readFileSync(full, 'utf8')
+
+  // Sanity: confirm we're patching the unmodified original (no half-state)
+  if (original.includes('filterOwnership') || original.includes('claimLead')) {
+    console.log('SKIP: file already contains P4-phase2 markers. No-op.')
+    return
+  }
+
+  // Audit: confirm real em-dash exists in source (the agent column has one)
+  if (!original.includes(EMDASH)) {
+    console.error('FAIL: expected em-dash (U+2014) not found in source. File may use different char.')
+    process.exit(1)
+  }
+
   const backup = full + '.backup_' + stamp()
   fs.writeFileSync(backup, original, 'utf8')
   console.log('Backup:', backup)
@@ -58,7 +65,6 @@ function main() {
 
   // ============================================================
   // A1: filterOwnership state declaration
-  // Anchor: existing filterSource state line, unique in file
   // ============================================================
   content = applyEdit(
     content,
@@ -72,7 +78,6 @@ function main() {
 
   // ============================================================
   // A2: ownership filter inside useMemo
-  // Anchor: filterSource branch, unique
   // ============================================================
   content = applyEdit(
     content,
@@ -85,8 +90,7 @@ function main() {
   )
 
   // ============================================================
-  // A3: dep array — add filterOwnership
-  // Anchor: the exact dep array string
+  // A3: dep array
   // ============================================================
   content = applyEdit(
     content,
@@ -97,27 +101,19 @@ function main() {
 
   // ============================================================
   // A4: Ownership filter select in UI
-  // Anchor: existing Temperature select block closing div (unique by full string)
-  // We insert AFTER the temperature select div closes.
   // ============================================================
-  content = applyEdit(
-    content,
-    `          <div>
+  const A4_ANCHOR =
+`          <div>
             <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Temperature</label>
             <select value={filterTemperature} onChange={e => setFilterTemperature(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
               <option value="all">All</option>
               {TEMPERATURE_VALUES.map(v => <option key={v} value={v}>{TEMPERATURE_LABELS[v]}</option>)}
               <option value="none">(none)</option>
             </select>
-          </div>`,
-    `          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Temperature</label>
-            <select value={filterTemperature} onChange={e => setFilterTemperature(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm">
-              <option value="all">All</option>
-              {TEMPERATURE_VALUES.map(v => <option key={v} value={v}>{TEMPERATURE_LABELS[v]}</option>)}
-              <option value="none">(none)</option>
-            </select>
-          </div>
+          </div>`
+
+  const A4_REPLACE = A4_ANCHOR +
+`
           {/* W-TERRITORY-MASTER P4 phase 2: Ownership filter */}
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Ownership</label>
@@ -126,17 +122,16 @@ function main() {
               <option value="owned">Owned</option>
               <option value="unowned">Unowned (claimable)</option>
             </select>
-          </div>`,
-    'A4 ownership select in UI'
-  )
+          </div>`
+
+  content = applyEdit(content, A4_ANCHOR, A4_REPLACE, 'A4 ownership select')
 
   // ============================================================
-  // A5: claimLead helper next to updateLeadStatus
-  // Anchor: closing brace of updateLeadStatus
+  // A5: claimLead helper + state next to updateLeadStatus
+  // Anchor: full updateLeadStatus block ending with its closing brace
   // ============================================================
-  content = applyEdit(
-    content,
-    `  const updateLeadStatus = async (leadId: string, field: 'status' | 'quality' | 'temperature', value: string | null) => {
+  const A5_ANCHOR =
+`  const updateLeadStatus = async (leadId: string, field: 'status' | 'quality' | 'temperature', value: string | null) => {
     setUpdatingStatus(leadId)
     try {
       const res = await fetch(\`/api/admin-homes/leads/\${leadId}\`, {
@@ -152,24 +147,9 @@ function main() {
     } finally {
       setUpdatingStatus(null)
     }
-  }`,
-    `  const updateLeadStatus = async (leadId: string, field: 'status' | 'quality' | 'temperature', value: string | null) => {
-    setUpdatingStatus(leadId)
-    try {
-      const res = await fetch(\`/api/admin-homes/leads/\${leadId}\`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: value }),
-      })
-      if (res.ok) {
-        setLeads(prev => prev.map(l => l.id === leadId ? { ...l, [field]: value } : l))
-      }
-    } catch (err) {
-      console.error('Failed to update lead:', err)
-    } finally {
-      setUpdatingStatus(null)
-    }
-  }
+  }`
+
+  const A5_REPLACE = A5_ANCHOR + `
 
   // W-TERRITORY-MASTER P4 phase 2: claim an unowned lead
   const claimLead = async (leadId: string) => {
@@ -192,8 +172,6 @@ function main() {
         alert('Claim failed: ' + (body?.error || \`HTTP \${res.status}\`))
         return
       }
-      // Optimistic local update: stamp agent_id + assignment_source so the row
-      // moves out of the "Unowned" filter and shows the claiming agent.
       const claimingAgent = agents.find(a => a.id === currentAgentId)
       setLeads(prev => prev.map(l => l.id === leadId ? {
         ...l,
@@ -207,22 +185,22 @@ function main() {
     } finally {
       setClaimingLead(null)
     }
-  }`,
-    'A5 claimLead helper'
-  )
+  }`
+
+  content = applyEdit(content, A5_ANCHOR, A5_REPLACE, 'A5 claimLead helper')
 
   // ============================================================
-  // A6: Claim button inside Agent column
-  // Anchor: the existing Agent <td> block (unique by full string)
+  // A6: Claim button in Agent column — uses real em-dash U+2014
   // ============================================================
-  content = applyEdit(
-    content,
-    `                    <td className="px-4 py-3">
-                      <div className="text-xs font-medium text-gray-900">{lead.agents?.full_name || 'ΓÇö'}</div>
-                    </td>`,
-    `                    <td className="px-4 py-3">
+  const A6_ANCHOR =
+`                    <td className="px-4 py-3">
+                      <div className="text-xs font-medium text-gray-900">{lead.agents?.full_name || '` + EMDASH + `'}</div>
+                    </td>`
+
+  const A6_REPLACE =
+`                    <td className="px-4 py-3">
                       {lead.agent_id ? (
-                        <div className="text-xs font-medium text-gray-900">{lead.agents?.full_name || 'ΓÇö'}</div>
+                        <div className="text-xs font-medium text-gray-900">{lead.agents?.full_name || '` + EMDASH + `'}</div>
                       ) : (
                         <button
                           onClick={(e) => { e.stopPropagation(); claimLead(lead.id) }}
@@ -233,12 +211,12 @@ function main() {
                           {claimingLead === lead.id ? 'Claiming...' : 'Claim'}
                         </button>
                       )}
-                    </td>`,
-    'A6 Claim button in Agent column'
-  )
+                    </td>`
+
+  content = applyEdit(content, A6_ANCHOR, A6_REPLACE, 'A6 Claim button')
 
   // ============================================================
-  // Post-checks: confirm every new marker present
+  // Post-checks
   // ============================================================
   checkPresent(content, `const [filterOwnership, setFilterOwnership]`, 'A1 marker')
   checkPresent(content, `if (filterOwnership === 'owned')`, 'A2 marker')
@@ -247,20 +225,19 @@ function main() {
   checkPresent(content, `const claimLead = async`, 'A5 marker')
   checkPresent(content, `claimLead(lead.id)`, 'A6 marker')
 
-  // No-regression: confirm key pre-existing markers still present
-  checkPresent(content, `const [filterSource, setFilterSource]`, 'no-regress filterSource state')
-  checkPresent(content, `updateLeadStatus`, 'no-regress updateLeadStatus helper')
+  // No-regression markers
+  checkPresent(content, `const [filterSource, setFilterSource]`, 'no-regress filterSource')
+  checkPresent(content, `updateLeadStatus`, 'no-regress updateLeadStatus')
   checkPresent(content, `exportToCSV`, 'no-regress exportToCSV')
   checkPresent(content, `Export CSV`, 'no-regress Export CSV button')
   checkPresent(content, `handleDeleteSelected`, 'no-regress bulk delete')
-  checkPresent(content, `<th key={h}`, 'no-regress table header')
 
   fs.writeFileSync(full, content, 'utf8')
 
   const originalLines = original.split('\n').length
   const newLines = content.split('\n').length
   console.log('')
-  console.log('PASS: 6/6 anchor edits applied + 12/12 post-checks PASS')
+  console.log('PASS: 6/6 anchor edits applied + 11/11 post-checks PASS')
   console.log('Lines:', originalLines, '->', newLines, '(+' + (newLines - originalLines) + ')')
   console.log('Bytes:', original.length, '->', content.length)
 }

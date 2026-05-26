@@ -151,6 +151,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
   const [filterTemperature, setFilterTemperature] = useState('all')
   const [filterIntent, setFilterIntent] = useState('all')
   const [filterSource, setFilterSource] = useState('all')
+  // W-TERRITORY-MASTER P4 phase 2: ownership filter (all | owned | unowned)
+  const [filterOwnership, setFilterOwnership] = useState<'all' | 'owned' | 'unowned'>('all')
+  const [claimingLead, setClaimingLead] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'status'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
@@ -213,6 +216,42 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     }
   }
 
+  // W-TERRITORY-MASTER P4 phase 2: claim an unowned lead
+  const claimLead = async (leadId: string) => {
+    if (!currentAgentId) {
+      alert('Cannot claim: no agent identity in session.')
+      return
+    }
+    if (!confirm('Claim this lead? You become the primary contact and the listing (if any) is pinned to you.')) {
+      return
+    }
+    setClaimingLead(leadId)
+    try {
+      const res = await fetch(`/api/admin-homes/leads/${leadId}/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claiming_agent_id: currentAgentId }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        alert('Claim failed: ' + (body?.error || `HTTP ${res.status}`))
+        return
+      }
+      const claimingAgent = agents.find(a => a.id === currentAgentId)
+      setLeads(prev => prev.map(l => l.id === leadId ? {
+        ...l,
+        agent_id: currentAgentId,
+        assignment_source: 'claim',
+        agents: claimingAgent ? { id: claimingAgent.id, full_name: claimingAgent.full_name, email: claimingAgent.email } : l.agents,
+      } : l))
+    } catch (err: any) {
+      console.error('Claim failed:', err)
+      alert('Claim failed: ' + (err?.message || 'network error'))
+    } finally {
+      setClaimingLead(null)
+    }
+  }
+
   const filteredLeads = useMemo(() => {
     let f = [...leads]
     if (searchTerm) {
@@ -238,6 +277,9 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
     }
     if (filterIntent !== 'all') f = f.filter(l => l.intent === filterIntent)
     if (filterSource !== 'all') f = f.filter(l => deriveLeadOriginRoute(l.source) === filterSource)
+    // W-TERRITORY-MASTER P4 phase 2: ownership filter
+    if (filterOwnership === 'owned')   f = f.filter(l => l.agent_id !== null)
+    if (filterOwnership === 'unowned') f = f.filter(l => l.agent_id === null)
     f.sort((a, b) => {
       let cmp = 0
       if (sortBy === 'date') cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -246,7 +288,7 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
       return sortOrder === 'asc' ? cmp : -cmp
     })
     return f
-  }, [leads, searchTerm, filterAgent, filterStatus, filterQuality, filterTemperature, filterIntent, filterSource, sortBy, sortOrder, showTerminal])
+  }, [leads, searchTerm, filterAgent, filterStatus, filterQuality, filterTemperature, filterIntent, filterSource, filterOwnership, sortBy, sortOrder, showTerminal])
 
   type FlatRow =
     | { kind: 'primary'; lead: Lead; earlierCount: number; groupUserId: string | null }
@@ -506,6 +548,15 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
               <option value="none">(none)</option>
             </select>
           </div>
+          {/* W-TERRITORY-MASTER P4 phase 2: Ownership filter */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wider">Ownership</label>
+            <select value={filterOwnership} onChange={e => setFilterOwnership(e.target.value as 'all' | 'owned' | 'unowned')} className="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="all">All</option>
+              <option value="owned">Owned</option>
+              <option value="unowned">Unowned (claimable)</option>
+            </select>
+          </div>
         </div>
         <div className="flex justify-between items-center mt-4 pt-4 border-t">
           <div className="flex gap-3">
@@ -670,7 +721,18 @@ export default function AdminHomesLeadsClient({ initialLeads, initialActivities,
                     </td>
                     <td className="px-4 py-3 text-gray-700 text-xs">{lead.geo_name || '—'}</td>
                     <td className="px-4 py-3">
-                      <div className="text-xs font-medium text-gray-900">{lead.agents?.full_name || '—'}</div>
+                      {lead.agent_id ? (
+                        <div className="text-xs font-medium text-gray-900">{lead.agents?.full_name || '—'}</div>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); claimLead(lead.id) }}
+                          disabled={claimingLead === lead.id}
+                          className="px-2 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                          title="Claim this unowned lead"
+                        >
+                          {claimingLead === lead.id ? 'Claiming...' : 'Claim'}
+                        </button>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {(lead.manager || lead.area_manager || lead.tenant_admin) ? (
