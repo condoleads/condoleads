@@ -129,10 +129,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // P5.2c-followup-3: replace slow correlated COUNT(*) with MV-backed lookup.
+  // Semantic change from VOW-filter to 2-year filter (matches the rest of the
+  // system; the MVs are the canonical "recent listing count" source -- see
+  // mv_municipality_counts / mv_community_counts / area_listing_counts_mv).
   let listingCountExpr = "0::int"
-  if (mlsCol) {
-    listingCountExpr = "(SELECT COUNT(*)::int FROM mls_listings ml WHERE ml." + mlsCol + " = g.id AND ml.available_in_vow = true)"
+  if (level === 'area') {
+    listingCountExpr = "COALESCE((SELECT SUM(cnt)::int FROM area_listing_counts_mv WHERE area_id = g.id), 0)"
+  } else if (level === 'municipality') {
+    listingCountExpr = "COALESCE((SELECT listing_count::int FROM mv_municipality_counts WHERE municipality_id = g.id), 0)"
+  } else if (level === 'community') {
+    listingCountExpr = "COALESCE((SELECT listing_count::int FROM mv_community_counts WHERE community_id = g.id), 0)"
   }
+  // neighbourhood: mls_listings has no neighbourhood_id; listing_count stays 0.
 
   // buildings table has only community_id (verified probe 2026-05-26).
   // building_count is meaningful at community level only; 0 elsewhere.
