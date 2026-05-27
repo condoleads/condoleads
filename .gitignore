@@ -81,3 +81,6 @@ p?-*.txt
 p?-*-output.txt
 p?-*-recon.txt
 p?-*-state.txt
+
+# Patch script backups (timestamped)
+*.backup_*
