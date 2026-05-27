@@ -50,7 +50,7 @@ function CockpitInner({
       <CockpitSubHeader agents={agentsForDropdown} />
       <div className="p-6">
         {activeTab === 'people'    && <PeopleTab    {...people} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={tenantId} />}
-        {activeTab === 'territory' && <TerritoryTab tenantId={tenantId} tenantName={tenantName} />}
+        {activeTab === 'territory' && <TerritoryTab tenantId={tenantId} tenantName={tenantName} actingAgentId={currentAgentId} />}
         {activeTab === 'inventory' && <InventoryTab tenantId={tenantId} />}
         {activeTab === 'live'      && <LiveTab      {...live} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} currentRole={normalizeRole(currentRole)} currentAgentId={currentAgentId} />}
         {activeTab === 'simulator' && <SimulatorTab tenantId={tenantId} />}

@@ -11,16 +11,17 @@ import HealthView from '@/components/admin-homes/cockpit/territory/HealthView'
 import AgentsView from '@/components/admin-homes/cockpit/territory/AgentsView'
 import CardsView from '@/components/admin-homes/cockpit/territory/CardsView'
 import GeographyView from '@/components/admin-homes/cockpit/territory/GeographyView'
+import PinsView from '@/components/admin-homes/cockpit/territory/PinsView'
 import QueueIndicator from '@/components/admin-homes/cockpit/territory/QueueIndicator'
 import AuditSidebar from '@/components/admin-homes/cockpit/territory/AuditSidebar'
 import TerritorySearchBar, { type SearchResult } from '@/components/admin-homes/cockpit/territory/TerritorySearchBar'
-import { Activity, Map, Table, Users } from 'lucide-react'
+import { Activity, Map, Pin, Table, Users } from 'lucide-react'
 
-interface Props { tenantId: string; tenantName: string }
+interface Props { tenantId: string; tenantName: string; actingAgentId: string | null }
 
-type View = 'agents' | 'cards' | 'geography' | 'health' | 'detail'
+type View = 'agents' | 'cards' | 'geography' | 'pins' | 'health' | 'detail'
 
-export default function TerritoryTab({ tenantId, tenantName }: Props) {
+export default function TerritoryTab({ tenantId, tenantName, actingAgentId }: Props) {
   const [view, setView] = useState<View>('agents')
   const [cardsAgentFilter, setCardsAgentFilter] = useState<string | null>(null)
   const [cardsGeoFilter, setCardsGeoFilter] = useState<{ scope: string; scope_id: string; geo_name: string } | null>(null)
@@ -65,6 +66,7 @@ export default function TerritoryTab({ tenantId, tenantName }: Props) {
           {btn('agents', 'Agents', Users, 'l')}
           {btn('cards', 'Cards', Table, 'm')}
           {btn('geography', 'Geography', Map, 'm')}
+          {btn('pins', 'Pins', Pin, 'm')}
           {btn('health', 'Health', Activity, 'm')}
           {btn('detail', 'Detail', Table, 'r')}
         </div>
@@ -75,6 +77,8 @@ export default function TerritoryTab({ tenantId, tenantName }: Props) {
         ? <CardsView tenantId={tenantId} tenantName={tenantName} initialAgentFilter={cardsAgentFilter} onClearAgentFilter={() => setCardsAgentFilter(null)} initialGeoFilter={cardsGeoFilter} onClearGeoFilter={() => setCardsGeoFilter(null)} />
         : view === 'geography'
         ? <GeographyView tenantId={tenantId} tenantName={tenantName} onOpenCards={(f) => { setCardsAgentFilter(null); setCardsGeoFilter({ scope: f.scope, scope_id: f.scope_id, geo_name: '' }); setView('cards') }} />
+        : view === 'pins'
+        ? <PinsView tenantId={tenantId} actingAgentId={actingAgentId} />
         : view === 'health'
         ? <HealthView tenantId={tenantId} tenantName={tenantName} />
         : <TerritoryClient tenantId={tenantId} tenantName={tenantName} seeAll={false} />}
