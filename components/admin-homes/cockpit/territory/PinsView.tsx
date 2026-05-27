@@ -1,10 +1,11 @@
 'use client'
 // components/admin-homes/cockpit/territory/PinsView.tsx
 // W-TERRITORY-MASTER P5: Single-listing pins UI.
-// Operator can search MLS, pick an agent, pin (with reason), unpin, reactivate.
+// W-TERRITORY-MASTER P5.1: search combobox (MLS + address).
+// Operator can search MLS or address, pick an agent, pin (with reason), unpin, reactivate.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Pin, PinOff, Search, RotateCcw, AlertCircle, Loader2 } from 'lucide-react'
+import { Pin, PinOff, RotateCcw, AlertCircle, Loader2 } from 'lucide-react'
 
 interface PinRow {
   id: string
@@ -33,6 +34,14 @@ interface AgentOption {
   is_selling: boolean
 }
 
+interface SearchResult {
+  id: string
+  listing_key: string
+  unparsed_address: string | null
+  property_type: string | null
+  list_price: number | null
+}
+
 interface Props {
   tenantId: string
   actingAgentId: string | null // the operator's own agent_id; null = not logged in as an agent
@@ -52,6 +61,12 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
   const [pinSubmitting, setPinSubmitting] = useState(false)
   const [pinFormError, setPinFormError] = useState<string | null>(null)
   const [pinFormOk, setPinFormOk] = useState<string | null>(null)
+
+  // P5.1: search combobox state
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [resolvedListingId, setResolvedListingId] = useState<string | null>(null)
 
   // Action state
   const [actionRowId, setActionRowId] = useState<string | null>(null)
@@ -98,7 +113,37 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, showAll])
 
+  // P5.1: debounced search effect (300ms). Clears resolved-listing on input change.
+  useEffect(() => {
+    const q = pinMlsInput.trim()
+    setResolvedListingId(null)
+    if (q.length < 3) {
+      setSearchResults([])
+      setSearchLoading(false)
+      return
+    }
+    setSearchLoading(true)
+    const handle = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin-homes/listings/search?q=${encodeURIComponent(q)}&limit=10`)
+        if (!res.ok) {
+          setSearchResults([])
+          return
+        }
+        const body = await res.json()
+        setSearchResults(body.data || [])
+      } catch {
+        setSearchResults([])
+      } finally {
+        setSearchLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [pinMlsInput])
+
   async function resolveMlsToListingId(mls: string): Promise<string | null> {
+    // P5.1: prefer the listing the operator explicitly picked from the dropdown.
+    if (resolvedListingId) return resolvedListingId
     const trimmed = mls.trim()
     if (!trimmed) return null
     const res = await fetch(
@@ -117,7 +162,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
       return
     }
     if (!pinMlsInput.trim()) {
-      setPinFormError('Enter an MLS number')
+      setPinFormError('Enter an MLS number or pick from search')
       return
     }
     if (!pinAgentId) {
@@ -132,7 +177,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
     try {
       const listingId = await resolveMlsToListingId(pinMlsInput)
       if (!listingId) {
-        setPinFormError(`No listing found for MLS ${pinMlsInput}`)
+        setPinFormError(`No listing found for ${pinMlsInput}`)
         return
       }
       const res = await fetch('/api/admin-homes/territory/pins', {
@@ -155,9 +200,11 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
         }
         return
       }
-      setPinFormOk(`Pinned MLS ${pinMlsInput}`)
+      setPinFormOk(`Pinned ${pinMlsInput}`)
       setPinMlsInput('')
       setPinReason('')
+      setResolvedListingId(null)
+      setSearchResults([])
       await loadPins()
     } catch (e: any) {
       setPinFormError(e.message || 'Failed to pin')
@@ -171,7 +218,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
       alert('You must be logged in as an agent to unpin listings.')
       return
     }
-    if (!confirm(`Unpin MLS ${pin.listing_mls_number || pin.listing_id}? This routes the listing back to the geo cascade.`)) {
+    if (!confirm(`Unpin ${pin.listing_mls_number || pin.listing_id}? This routes the listing back to the geo cascade.`)) {
       return
     }
     setActionRowId(pin.id)
@@ -197,19 +244,11 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
       alert('You must be logged in as an agent to reactivate pins.')
       return
     }
-    if (!confirm(`Reactivate pin for MLS ${pin.listing_mls_number || pin.listing_id}? If another active pin exists for this listing, this will fail.`)) {
+    if (!confirm(`Reactivate pin for ${pin.listing_mls_number || pin.listing_id}? If another active pin exists for this listing, this will fail.`)) {
       return
     }
     setActionRowId(pin.id)
     try {
-      // Reactivation is a direct UPDATE; the API surface is a POST to the same
-      // pin id with action=reactivate. We use the bulk endpoint pattern by
-      // re-inserting via POST /pins, but for an existing soft-deleted row we
-      // need a dedicated path. The cleanest UX: surface this only if no active
-      // pin currently exists for the listing, then call POST /pins.
-      //
-      // Implementation: try POST /pins; the partial unique will reject if there's
-      // a clash, which is the correct behavior per spec.
       const res = await fetch('/api/admin-homes/territory/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -252,16 +291,49 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
           <h3 className="text-sm font-semibold text-gray-900">Pin a listing</h3>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-          <div className="md:col-span-1">
-            <label className="block text-xs text-gray-600 mb-1">MLS number</label>
+          <div className="md:col-span-1 relative">
+            <label className="block text-xs text-gray-600 mb-1">MLS or address</label>
             <input
               type="text"
               value={pinMlsInput}
-              onChange={e => setPinMlsInput(e.target.value)}
-              placeholder="e.g. C5678901"
+              onChange={e => { setPinMlsInput(e.target.value); setSearchOpen(true) }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+              placeholder="MLS or street name"
               className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
               disabled={pinSubmitting}
+              autoComplete="off"
             />
+            {resolvedListingId && (
+              <div className="mt-1 text-[10px] text-green-700">Listing selected</div>
+            )}
+            {searchOpen && pinMlsInput.trim().length >= 3 && (
+              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded shadow-md max-h-72 overflow-y-auto">
+                {searchLoading ? (
+                  <div className="px-3 py-2 text-xs text-gray-500">Searching...</div>
+                ) : searchResults.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-gray-500">No matches</div>
+                ) : (
+                  searchResults.map(r => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        setPinMlsInput(r.listing_key)
+                        setResolvedListingId(r.id)
+                        setSearchOpen(false)
+                      }}
+                      className="block w-full text-left px-3 py-2 text-xs hover:bg-green-50 border-b border-gray-100 last:border-b-0"
+                    >
+                      <div className="font-mono text-gray-900">{r.listing_key}</div>
+                      <div className="text-gray-600 truncate">{r.unparsed_address || '(no address)'}</div>
+                      <div className="text-[10px] text-gray-400">{r.property_type || ''}{r.list_price ? ' - $' + r.list_price.toLocaleString() : ''}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
           <div className="md:col-span-1">
             <label className="block text-xs text-gray-600 mb-1">Agent</label>
@@ -271,7 +343,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
               className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
               disabled={pinSubmitting}
             >
-              <option value="">— pick agent —</option>
+              <option value="">- pick agent -</option>
               {activeAgents.map(a => (
                 <option key={a.id} value={a.id}>{a.full_name}</option>
               ))}
@@ -296,7 +368,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
               className="w-full px-3 py-1.5 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
             >
               {pinSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pin className="w-3.5 h-3.5" />}
-              {pinSubmitting ? 'Pinning…' : 'Pin'}
+              {pinSubmitting ? 'Pinning...' : 'Pin'}
             </button>
           </div>
         </div>
@@ -329,7 +401,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
       <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
         {loading ? (
           <div className="p-6 text-center text-gray-500 text-sm flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> Loading pins…
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading pins...
           </div>
         ) : error ? (
           <div className="p-6 text-center text-red-700 text-sm flex items-center justify-center gap-2">
@@ -355,15 +427,15 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
               <tbody>
                 {pins.map(p => {
                   const truncated = p.pin_reason && p.pin_reason.length > 60
-                    ? p.pin_reason.slice(0, 60) + '…'
+                    ? p.pin_reason.slice(0, 60) + '...'
                     : (p.pin_reason || '')
                   return (
                     <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-2 font-medium text-gray-900">{p.agent_name || p.agent_id.slice(0, 8)}</td>
-                      <td className="px-3 py-2 font-mono text-gray-700">{p.listing_mls_number || '—'}</td>
-                      <td className="px-3 py-2 text-gray-700">{p.listing_address || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600">{p.listing_property_type || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600" title={p.pin_reason || ''}>{truncated || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-gray-700">{p.listing_mls_number || '-'}</td>
+                      <td className="px-3 py-2 text-gray-700">{p.listing_address || '-'}</td>
+                      <td className="px-3 py-2 text-gray-600">{p.listing_property_type || '-'}</td>
+                      <td className="px-3 py-2 text-gray-600" title={p.pin_reason || ''}>{truncated || '-'}</td>
                       <td className="px-3 py-2 text-gray-500">{new Date(p.created_at).toLocaleDateString()}</td>
                       <td className="px-3 py-2">
                         {p.is_active ? (
