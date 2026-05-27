@@ -5,6 +5,7 @@
 // Operator can search MLS or address, pick an agent, pin (with reason), unpin, reactivate.
 
 import { useEffect, useMemo, useState } from 'react'
+import ActAsAgentPicker from '@/components/admin-homes/cockpit/territory/ActAsAgentPicker'
 import { Pin, PinOff, RotateCcw, AlertCircle, Loader2 } from 'lucide-react'
 
 interface PinRow {
@@ -67,6 +68,9 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchLoading, setSearchLoading] = useState(false)
   const [resolvedListingId, setResolvedListingId] = useState<string | null>(null)
+  // P5.2c-followup-2: platform admin act-as-agent picker
+  const [actAsAgentId, setActAsAgentId] = useState('')
+  const effectiveActingAgentId: string | null = actingAgentId || actAsAgentId || null
 
   // Action state
   const [actionRowId, setActionRowId] = useState<string | null>(null)
@@ -157,7 +161,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
   async function submitPin() {
     setPinFormError(null)
     setPinFormOk(null)
-    if (!actingAgentId) {
+    if (!effectiveActingAgentId) {
       setPinFormError('You must be logged in as an agent to pin listings.')
       return
     }
@@ -187,7 +191,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
           tenant_id: tenantId,
           agent_id: pinAgentId,
           listing_id: listingId,
-          assigned_by: actingAgentId,
+          assigned_by: effectiveActingAgentId,
           pin_reason: pinReason || null
         })
       })
@@ -214,7 +218,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
   }
 
   async function deactivatePin(pin: PinRow) {
-    if (!actingAgentId) {
+    if (!effectiveActingAgentId) {
       alert('You must be logged in as an agent to unpin listings.')
       return
     }
@@ -226,7 +230,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
       const res = await fetch(`/api/admin-homes/territory/pins/${pin.id}/deactivate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deactivated_by: actingAgentId })
+        body: JSON.stringify({ deactivated_by: effectiveActingAgentId })
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -240,7 +244,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
   }
 
   async function reactivatePin(pin: PinRow) {
-    if (!actingAgentId) {
+    if (!effectiveActingAgentId) {
       alert('You must be logged in as an agent to reactivate pins.')
       return
     }
@@ -256,7 +260,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
           tenant_id: tenantId,
           agent_id: pin.agent_id,
           listing_id: pin.listing_id,
-          assigned_by: actingAgentId,
+          assigned_by: effectiveActingAgentId,
           pin_reason: pin.pin_reason
             ? `Reactivated (was: ${pin.pin_reason.slice(0, 200)})`
             : 'Reactivated'
@@ -284,6 +288,9 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
 
   return (
     <div className="space-y-4">
+      {!actingAgentId && (
+        <ActAsAgentPicker tenantId={tenantId} value={actAsAgentId} onChange={setActAsAgentId} />
+      )}
       {/* Create form */}
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -364,7 +371,7 @@ export default function PinsView({ tenantId, actingAgentId }: Props) {
           <div className="md:col-span-1 flex items-end">
             <button
               onClick={submitPin}
-              disabled={pinSubmitting || !pinMlsInput.trim() || !pinAgentId || !actingAgentId}
+              disabled={pinSubmitting || !pinMlsInput.trim() || !pinAgentId || !effectiveActingAgentId}
               className="w-full px-3 py-1.5 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
             >
               {pinSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Pin className="w-3.5 h-3.5" />}

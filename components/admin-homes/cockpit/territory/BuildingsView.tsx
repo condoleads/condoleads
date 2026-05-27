@@ -5,6 +5,7 @@
 // Multi-select buildings, bulk-assign to one agent.
 
 import { useEffect, useMemo, useState } from 'react'
+import ActAsAgentPicker from '@/components/admin-homes/cockpit/territory/ActAsAgentPicker'
 import { Building2, Search as SearchIcon, AlertCircle, Loader2, Check, X } from 'lucide-react'
 
 interface AgentOption {
@@ -75,6 +76,9 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
 
   // Deactivate state
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
+  // P5.2c-followup-2: platform admin act-as-agent picker
+  const [actAsAgentId, setActAsAgentId] = useState('')
+  const effectiveActingAgentId: string | null = actingAgentId || actAsAgentId || null
 
   // Load agents once
   useEffect(() => {
@@ -179,7 +183,7 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
   async function submitAssign() {
     setAssignResult(null)
     setAssignError(null)
-    if (!actingAgentId) {
+    if (!effectiveActingAgentId) {
       setAssignError('You must be logged in as an agent to assign buildings.')
       return
     }
@@ -204,7 +208,7 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
           tenant_id: tenantId,
           agent_id: assignAgentId,
           building_ids: Array.from(selected),
-          assigned_by: actingAgentId,
+          assigned_by: effectiveActingAgentId,
           reason: assignReason || null
         })
       })
@@ -227,7 +231,7 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
 
   async function deactivateCard(building: BuildingRow) {
     if (!building.card) return
-    if (!actingAgentId) {
+    if (!effectiveActingAgentId) {
       alert('You must be logged in as an agent to unassign buildings.')
       return
     }
@@ -239,7 +243,7 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
       const res = await fetch(`/api/admin-homes/territory/buildings/${building.card.id}/deactivate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deactivated_by: actingAgentId })
+        body: JSON.stringify({ deactivated_by: effectiveActingAgentId })
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -263,6 +267,9 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
 
   return (
     <div className="space-y-4">
+      {!actingAgentId && (
+        <ActAsAgentPicker tenantId={tenantId} value={actAsAgentId} onChange={setActAsAgentId} />
+      )}
       {/* Filters: Tree + Search compose */}
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
@@ -329,7 +336,7 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
           <div className="md:col-span-1 flex items-end">
             <button
               onClick={submitAssign}
-              disabled={assignSubmitting || selected.size === 0 || !assignAgentId || !actingAgentId}
+              disabled={assignSubmitting || selected.size === 0 || !assignAgentId || !effectiveActingAgentId}
               className="w-full px-3 py-1.5 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
             >
               {assignSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
