@@ -13,8 +13,21 @@
 // Returns: { rows: [...] }. Each row:
 //   id, name, slug, level, parent_id, has_own_card,
 //   listing_count, building_count, child_count,
-//   primary_card_holder_agent_id?, primary_card_holder_name?,
-//   inherited_from_level?, inherited_from_id?
+//   condo_owner_id?, condo_owner_name?, condo_source_tier,
+//   homes_owner_id?, homes_owner_name?, homes_source_tier
+//
+// W-TERRITORY-MASTER P5.3: per-property-type resolved owner + source tier.
+// Source tier values: area | municipality | community | neighbourhood | tenant_default | unresolved.
+// "Own scope" tier value equals the row level (e.g. row.level=community AND a primary
+// apa row exists at that community with the property flag true -> source_tier = community).
+// "Ancestor" tier values are the level where the cascade walk found a primary apa row
+// with the property flag true (community -> municipality -> area; neighbourhood -> area).
+// "tenant_default" means no apa row matched at any level for this property type and the
+// row falls back to tenants.default_agent_id. "unresolved" means the tenant has no default.
+//
+// Replaces the v1 single-owner resolve_geo_primary call. resolve_geo_primary is NOT
+// property-type-aware (verified 2026-05-27 oid 24991104) so P5.3 does the apa walk inline
+// with a property-type filter. The canonical resolver chain is intentionally untouched.
 //
 // Multi-tenant safe: tenant_id resolved per request and applied to every query.
 // Verified RPC signature (pre-flight 2026-05-26): resolve_geo_primary(
@@ -180,61 +193,97 @@ export async function GET(req: NextRequest) {
     if (parentFk && parentIdParam) geoParams.push(parentIdParam)
     const geoRes = await c.query(geoSql, geoParams)
 
+    // P5.3: load tenant default once outside the per-row loop. Used as the
+    // terminal fallback when no apa row matches at any level for a property type.
+    const defaultRes = await c.query(
+      'SELECT default_agent_id FROM tenants WHERE id = $1::uuid LIMIT 1',
+      [tenantId]
+    )
+    const tenantDefaultAgentId: string | null = defaultRes.rows[0]?.default_agent_id || null
+
+    // Resolve agent name for the tenant default once (avoid N queries when many
+    // rows fall back to the same default).
+    let tenantDefaultName: string | null = null
+    if (tenantDefaultAgentId) {
+      const dnRes = await c.query(
+        'SELECT full_name FROM agents WHERE id = $1::uuid LIMIT 1',
+        [tenantDefaultAgentId]
+      )
+      tenantDefaultName = dnRes.rows[0]?.full_name || null
+    }
+
+    // Local cache: agent_id -> full_name. Avoids re-fetching the same agent name
+    // across rows that resolve to the same owner.
+    const agentNameCache = new Map<string, string | null>()
+    if (tenantDefaultAgentId) agentNameCache.set(tenantDefaultAgentId, tenantDefaultName)
+
+    async function nameFor(agentId: string | null): Promise<string | null> {
+      if (!agentId) return null
+      if (agentNameCache.has(agentId)) return agentNameCache.get(agentId) || null
+      const nRes = await c.query(
+        'SELECT full_name FROM agents WHERE id = $1::uuid LIMIT 1',
+        [agentId]
+      )
+      const nm = nRes.rows[0]?.full_name || null
+      agentNameCache.set(agentId, nm)
+      return nm
+    }
+
+    // Per-property-type primary lookup at a single scope. Returns agent_id or null.
+    // propertyCol must be one of the whitelisted access flag columns.
+    async function lookupPrimary(scopeLevel: Level, scopeRowId: string, propertyCol: 'condo_access' | 'homes_access'): Promise<string | null> {
+      const apaCol = APA_SCOPE_COL[scopeLevel]
+      const sql =
+        'SELECT agent_id FROM agent_property_access ' +
+        ' WHERE tenant_id = $1::uuid ' +
+        '   AND scope = $2::text ' +
+        '   AND ' + apaCol + ' = $3::uuid ' +
+        '   AND is_primary = true ' +
+        '   AND is_active = true ' +
+        '   AND ' + propertyCol + ' = true ' +
+        ' LIMIT 1'
+      const res = await c.query(sql, [tenantId, scopeLevel, scopeRowId])
+      return res.rows[0]?.agent_id || null
+    }
+
+    // Walk own-scope -> ancestor chain for a single property type. Returns
+    // { ownerId, sourceTier }. Falls back to tenant_default, then unresolved.
+    async function resolveForProperty(row: any, propertyCol: 'condo_access' | 'homes_access'): Promise<{ ownerId: string | null; sourceTier: string }> {
+      // Step 1: own scope
+      const ownHit = await lookupPrimary(level, row.id, propertyCol)
+      if (ownHit) return { ownerId: ownHit, sourceTier: level }
+
+      // Step 2: walk ancestors
+      let cursorLevel: Level | null = PARENT_LEVEL_BY_LEVEL[level]
+      let cursorId: string | null = row.parent_id
+      while (cursorLevel && cursorId) {
+        const hit = await lookupPrimary(cursorLevel, cursorId, propertyCol)
+        if (hit) return { ownerId: hit, sourceTier: cursorLevel }
+        const nextParentLevel: Level | null = PARENT_LEVEL_BY_LEVEL[cursorLevel]
+        const nextParentFk = PARENT_FK_BY_LEVEL[cursorLevel]
+        if (!nextParentLevel || !nextParentFk) break
+        const cursorTable = TABLE_BY_LEVEL[cursorLevel]
+        const parentLookup = await c.query(
+          'SELECT ' + nextParentFk + ' AS pid FROM ' + cursorTable + ' WHERE id = $1::uuid LIMIT 1',
+          [cursorId]
+        )
+        cursorLevel = nextParentLevel
+        cursorId = parentLookup.rows[0]?.pid || null
+      }
+
+      // Step 3: tenant default
+      if (tenantDefaultAgentId) return { ownerId: tenantDefaultAgentId, sourceTier: 'tenant_default' }
+
+      // Step 4: unresolved
+      return { ownerId: null, sourceTier: 'unresolved' }
+    }
+
     const rows: any[] = []
     for (const r of geoRes.rows) {
-      const holderRes = await c.query(
-        'SELECT resolve_geo_primary($1::text, $2::uuid, $3::uuid) AS holder_id',
-        [level, r.id, tenantId]
-      )
-      const holderId: string | null = holderRes.rows[0]?.holder_id || null
-
-      let holderName: string | null = null
-      if (holderId) {
-        const aRes = await c.query(
-          'SELECT full_name FROM agents WHERE id = $1::uuid LIMIT 1',
-          [holderId]
-        )
-        holderName = aRes.rows[0]?.full_name || null
-      }
-
-      let inheritedFromLevel: Level | null = null
-      let inheritedFromId: string | null = null
-      if (holderId && !r.has_own_card) {
-        let cursorLevel: Level | null = PARENT_LEVEL_BY_LEVEL[level]
-        let cursorId: string | null = r.parent_id
-        while (cursorLevel && cursorId) {
-          const cursorApaCol = APA_SCOPE_COL[cursorLevel]
-          const hasSql =
-            'SELECT EXISTS( ' +
-            'SELECT 1 FROM agent_property_access apa ' +
-            ' WHERE apa.tenant_id = $1::uuid ' +
-            '   AND apa.scope = $2::text ' +
-            '   AND apa.' + cursorApaCol + ' = $3::uuid ' +
-            '   AND apa.agent_id = $4::uuid ' +
-            '   AND apa.is_active = true ' +
-            ') AS hit'
-          const hasRes = await c.query(hasSql, [tenantId, cursorLevel, cursorId, holderId])
-          if (hasRes.rows[0]?.hit === true) {
-            inheritedFromLevel = cursorLevel
-            inheritedFromId = cursorId
-            break
-          }
-          const nextParentLevel: Level | null = PARENT_LEVEL_BY_LEVEL[cursorLevel]
-          const nextParentFk = PARENT_FK_BY_LEVEL[cursorLevel]
-          if (!nextParentLevel || !nextParentFk) {
-            cursorLevel = null
-            cursorId = null
-            break
-          }
-          const cursorTable = TABLE_BY_LEVEL[cursorLevel]
-          const parentLookup = await c.query(
-            'SELECT ' + nextParentFk + ' AS pid FROM ' + cursorTable + ' WHERE id = $1::uuid LIMIT 1',
-            [cursorId]
-          )
-          cursorLevel = nextParentLevel
-          cursorId = parentLookup.rows[0]?.pid || null
-        }
-      }
+      const condo = await resolveForProperty(r, 'condo_access')
+      const homes = await resolveForProperty(r, 'homes_access')
+      const condoName = await nameFor(condo.ownerId)
+      const homesName = await nameFor(homes.ownerId)
 
       rows.push({
         id: r.id,
@@ -246,10 +295,12 @@ export async function GET(req: NextRequest) {
         building_count: r.building_count,
         child_count: r.child_count,
         has_own_card: r.has_own_card,
-        primary_card_holder_agent_id: holderId,
-        primary_card_holder_name: holderName,
-        inherited_from_level: inheritedFromLevel,
-        inherited_from_id: inheritedFromId,
+        condo_owner_id: condo.ownerId,
+        condo_owner_name: condoName,
+        condo_source_tier: condo.sourceTier,
+        homes_owner_id: homes.ownerId,
+        homes_owner_name: homesName,
+        homes_source_tier: homes.sourceTier,
       })
     }
 

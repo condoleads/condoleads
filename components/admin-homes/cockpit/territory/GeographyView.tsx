@@ -25,6 +25,9 @@ import {
 
 type Level = 'area' | 'municipality' | 'community' | 'neighbourhood'
 
+// P5.3: per-property-type owner + source tier. Replaces the v1 single-owner shape.
+type SourceTier = 'area' | 'municipality' | 'community' | 'neighbourhood' | 'tenant_default' | 'unresolved'
+
 interface GeoRow {
   id: string
   name: string
@@ -35,10 +38,12 @@ interface GeoRow {
   building_count: number
   child_count: number
   has_own_card: boolean
-  primary_card_holder_agent_id: string | null
-  primary_card_holder_name: string | null
-  inherited_from_level: Level | null
-  inherited_from_id: string | null
+  condo_owner_id: string | null
+  condo_owner_name: string | null
+  condo_source_tier: SourceTier
+  homes_owner_id: string | null
+  homes_owner_name: string | null
+  homes_source_tier: SourceTier
 }
 
 interface AgentOption {
@@ -150,11 +155,12 @@ export default function GeographyView({ tenantId, tenantName, onOpenCards }: Pro
   const filtered = useMemo(() => {
     if (!rows) return null
     if (!conflictOnly) return rows
-    // Conflict definition: has_own_card=true (own card exists) OR no holder at all.
-    // The own-card case is flagged because operators want to verify whether the
-    // own card is functional vs phantom (full functional-vs-phantom requires the
-    // Cards view; this is the entry point).
-    return rows.filter(r => r.has_own_card || !r.primary_card_holder_agent_id)
+    // Conflict definition (P5.3): has_own_card=true OR either property type is
+    // unresolved (no apa match at any level AND no tenant default). The own-card
+    // case is flagged because operators want to verify whether the own card is
+    // functional vs phantom (full functional-vs-phantom requires the Cards view;
+    // this is the entry point).
+    return rows.filter(r => r.has_own_card || r.condo_source_tier === 'unresolved' || r.homes_source_tier === 'unresolved')
   }, [rows, conflictOnly])
 
   return (
@@ -202,21 +208,22 @@ export default function GeographyView({ tenantId, tenantName, onOpenCards }: Pro
               <th className='px-3 py-2 text-right'>Listings</th>
               <th className='px-3 py-2 text-right'>Buildings</th>
               <th className='px-3 py-2 text-right'>Children</th>
-              <th className='px-3 py-2 text-left'>Holder</th>
+              <th className='px-3 py-2 text-left'>Condo</th>
+              <th className='px-3 py-2 text-left'>Homes</th>
               <th className='px-3 py-2 text-right'>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={6} className='px-3 py-6 text-center text-gray-500'>
+                <td colSpan={7} className='px-3 py-6 text-center text-gray-500'>
                   <RefreshCw className='w-4 h-4 animate-spin inline-block mr-2' /> Loading {LEVEL_LABEL[currentLevel].toLowerCase()}...
                 </td>
               </tr>
             )}
             {!loading && filtered && filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className='px-3 py-6 text-center text-gray-500'>
+                <td colSpan={7} className='px-3 py-6 text-center text-gray-500'>
                   No rows match the current filter.
                 </td>
               </tr>
@@ -224,15 +231,27 @@ export default function GeographyView({ tenantId, tenantName, onOpenCards }: Pro
             {!loading && filtered && filtered.map(r => {
               const childLevel = CHILD_LEVEL[r.level]
               const canDrill = childLevel !== null && r.child_count > 0
-              const holderState = r.has_own_card
-                ? 'ASSIGNED'
-                : r.primary_card_holder_agent_id
-                  ? 'INHERITED'
-                  : 'NONE'
-              const stateClass =
-                holderState === 'ASSIGNED' ? 'bg-green-50 text-green-700 border-green-200' :
-                holderState === 'INHERITED' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                'bg-amber-50 text-amber-700 border-amber-200'
+              // P5.3: derive owner-cell state per property type from source_tier.
+              // ASSIGNED  = source_tier equals this row's own level (own card)
+              // INHERITED = source_tier is an ancestor level or tenant_default
+              // NONE      = source_tier is unresolved
+              function ownerState(tier: SourceTier): 'ASSIGNED' | 'INHERITED' | 'NONE' {
+                if (tier === 'unresolved') return 'NONE'
+                if (tier === r.level) return 'ASSIGNED'
+                return 'INHERITED'
+              }
+              function ownerClass(state: string): string {
+                if (state === 'ASSIGNED') return 'bg-green-50 text-green-700 border-green-200'
+                if (state === 'INHERITED') return 'bg-blue-50 text-blue-700 border-blue-200'
+                return 'bg-amber-50 text-amber-700 border-amber-200'
+              }
+              function tierHint(tier: SourceTier, state: string): string | null {
+                if (state !== 'INHERITED') return null
+                if (tier === 'tenant_default') return 'tenant default'
+                return tier
+              }
+              const condoState = ownerState(r.condo_source_tier)
+              const homesState = ownerState(r.homes_source_tier)
               return (
                 <tr key={r.id} className='border-t border-gray-100 hover:bg-gray-50'>
                   <td className='px-3 py-2'>
@@ -248,15 +267,28 @@ export default function GeographyView({ tenantId, tenantName, onOpenCards }: Pro
                   <td className='px-3 py-2 text-right tabular-nums'>{r.building_count.toLocaleString()}</td>
                   <td className='px-3 py-2 text-right tabular-nums'>{r.child_count.toLocaleString()}</td>
                   <td className='px-3 py-2'>
-                    <span className={'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ' + stateClass}>
-                      {holderState === 'ASSIGNED' && <CheckCircle2 className='w-3 h-3' />}
-                      {holderState === 'INHERITED' && <ChevronDown className='w-3 h-3' />}
-                      {holderState === 'NONE' && <AlertTriangle className='w-3 h-3' />}
-                      {r.primary_card_holder_name || "no holder"}
+                    <span className={'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ' + ownerClass(condoState)}>
+                      {condoState === 'ASSIGNED' && <CheckCircle2 className='w-3 h-3' />}
+                      {condoState === 'INHERITED' && <ChevronDown className='w-3 h-3' />}
+                      {condoState === 'NONE' && <AlertTriangle className='w-3 h-3' />}
+                      {r.condo_owner_name || 'unresolved'}
                     </span>
-                    {holderState === 'INHERITED' && r.inherited_from_level && (
+                    {tierHint(r.condo_source_tier, condoState) && (
                       <span className='ml-2 text-xs text-gray-500'>
-                        from {LEVEL_LABEL[r.inherited_from_level].toLowerCase()}
+                        from {tierHint(r.condo_source_tier, condoState)}
+                      </span>
+                    )}
+                  </td>
+                  <td className='px-3 py-2'>
+                    <span className={'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ' + ownerClass(homesState)}>
+                      {homesState === 'ASSIGNED' && <CheckCircle2 className='w-3 h-3' />}
+                      {homesState === 'INHERITED' && <ChevronDown className='w-3 h-3' />}
+                      {homesState === 'NONE' && <AlertTriangle className='w-3 h-3' />}
+                      {r.homes_owner_name || 'unresolved'}
+                    </span>
+                    {tierHint(r.homes_source_tier, homesState) && (
+                      <span className='ml-2 text-xs text-gray-500'>
+                        from {tierHint(r.homes_source_tier, homesState)}
                       </span>
                     )}
                   </td>
@@ -417,7 +449,7 @@ function CarveUpModal({ tenantId, parentRow, agents, onClose, onSuccess }: Carve
             <Plus className='w-4 h-4 text-purple-600' />
             <h3 className='font-semibold'>Carve up {parentRow.name}</h3>
             <span className='text-xs text-gray-500'>
-              → {childLevel ? LEVEL_LABEL[childLevel].toLowerCase() : "(no children)"} 
+              {'->'} {childLevel ? LEVEL_LABEL[childLevel].toLowerCase() : "(no children)"} 
               ({parentRow.child_count})
             </span>
           </div>
