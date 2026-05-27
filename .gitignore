@@ -74,3 +74,10 @@ p4-recon-output.txt
 p4-recon-2-output.txt
 p4-recon-3-output.txt
 
+
+# Session debug artifacts
+backups/
+p?-*.txt
+p?-*-output.txt
+p?-*-recon.txt
+p?-*-state.txt
