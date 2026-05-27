@@ -1,4 +1,25 @@
-'use client'
+// scripts/write-buildingsview-followup-1.js
+// W-TERRITORY-MASTER P5.2c-followup-1.
+// Full-file rewrite of BuildingsView.tsx removing the mode toggle.
+// Tree + Search filters are always visible and compose at the API.
+//
+// Behavior changes from v1:
+//   - `mode` state and toggle buttons removed
+//   - Both tree panel and search panel always rendered
+//   - loadBuildings sends both scope/scope_id AND q when each is populated
+//   - Empty-fetch guard: no area AND no 3+ char search -> no fetch
+//   - Empty-state message unified
+//
+// Everything else preserved from v1 byte-identically.
+// Pre-write: refuse to run unless v1 baseline markers are present.
+// Post-write: verify all v2 markers and zero v1 toggle markers remain.
+
+const fs = require('fs')
+const path = require('path')
+
+const TARGET = 'components/admin-homes/cockpit/territory/BuildingsView.tsx'
+
+const NEW_CONTENT = `'use client'
 // components/admin-homes/cockpit/territory/BuildingsView.tsx
 // W-TERRITORY-MASTER P5.2 + P5.2c-followup-1: Building-tier assignments UI.
 // Tree (drill by geo) and Search (address/name) filters compose at the API.
@@ -80,7 +101,7 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/admin-homes/territory/pins/agents-for-pinning?tenant_id=${encodeURIComponent(tenantId)}`)
+        const res = await fetch(\`/api/admin-homes/territory/pins/agents-for-pinning?tenant_id=\${encodeURIComponent(tenantId)}\`)
         if (!res.ok) return
         const body = await res.json()
         setAgents(body.data || [])
@@ -147,9 +168,9 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
     setBuildingsError(null)
     try {
       const qs = new URLSearchParams({ tenant_id: tenantId, limit: '500', ...params })
-      const res = await fetch(`/api/admin-homes/territory/buildings?${qs.toString()}`)
+      const res = await fetch(\`/api/admin-homes/territory/buildings?\${qs.toString()}\`)
       const body = await res.json()
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`)
+      if (!res.ok) throw new Error(body.error || \`HTTP \${res.status}\`)
       setBuildings(body.data || [])
     } catch (e: any) {
       setBuildingsError(e.message || 'Failed to load buildings')
@@ -210,11 +231,11 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setAssignError(body.error || `HTTP ${res.status}`)
+        setAssignError(body.error || \`HTTP \${res.status}\`)
         return
       }
       const d = body.data
-      setAssignResult(`Assigned ${d.total_created} of ${d.total_requested}. Skipped ${d.total_skipped}.`)
+      setAssignResult(\`Assigned \${d.total_created} of \${d.total_requested}. Skipped \${d.total_skipped}.\`)
       setSelected(new Set())
       setAssignReason('')
       await loadBuildings()
@@ -231,19 +252,19 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
       alert('You must be logged in as an agent to unassign buildings.')
       return
     }
-    if (!confirm(`Unassign ${building.canonical_address} from ${building.card.agent_name || 'this agent'}? Listings in this building re-route via the geo cascade.`)) {
+    if (!confirm(\`Unassign \${building.canonical_address} from \${building.card.agent_name || 'this agent'}? Listings in this building re-route via the geo cascade.\`)) {
       return
     }
     setDeactivatingId(building.id)
     try {
-      const res = await fetch(`/api/admin-homes/territory/buildings/${building.card.id}/deactivate`, {
+      const res = await fetch(\`/api/admin-homes/territory/buildings/\${building.card.id}/deactivate\`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deactivated_by: actingAgentId })
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        alert(body.error || `HTTP ${res.status}`)
+        alert(body.error || \`HTTP \${res.status}\`)
         return
       }
       await loadBuildings()
@@ -333,7 +354,7 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
               className="w-full px-3 py-1.5 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
             >
               {assignSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              {assignSubmitting ? 'Assigning...' : `Assign ${selected.size}`}
+              {assignSubmitting ? 'Assigning...' : \`Assign \${selected.size}\`}
             </button>
           </div>
         </div>
@@ -388,7 +409,7 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
                   const checked = selected.has(b.id)
                   const owned = !!b.card
                   return (
-                    <tr key={b.id} className={`border-t border-gray-100 ${owned ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
+                    <tr key={b.id} className={\`border-t border-gray-100 \${owned ? 'bg-gray-50' : 'hover:bg-gray-50'}\`}>
                       <td className="px-3 py-2">
                         <input
                           type="checkbox"
@@ -433,3 +454,105 @@ export default function BuildingsView({ tenantId, actingAgentId }: Props) {
     </div>
   )
 }
+`
+
+console.log('=== Pre-write: ASCII purity check on NEW_CONTENT ===')
+let nonAscii = 0
+for (let i = 0; i < NEW_CONTENT.length; i++) {
+  if (NEW_CONTENT.charCodeAt(i) > 127) nonAscii++
+}
+console.log('  non-ASCII char count:', nonAscii)
+if (nonAscii > 0) {
+  throw new Error('NEW_CONTENT has ' + nonAscii + ' non-ASCII chars. ABORT.')
+}
+
+console.log('')
+console.log('=== Pre-write: verify v1 baseline markers in current file ===')
+const v1Markers = [
+  "type Mode = 'tree' | 'search'",
+  "const [mode, setMode] = useState<Mode>('tree')",
+  "if (mode === 'tree') {",
+  "{mode === 'tree' && (",
+  "{mode === 'search' && (",
+  "onClick={() => setMode('tree')}",
+  "onClick={() => setMode('search')}",
+]
+const current = fs.readFileSync(TARGET, 'utf8')
+for (const m of v1Markers) {
+  if (!current.includes(m)) {
+    throw new Error('v1 baseline marker missing: ' + m + '. File is not in expected pre-rewrite state. ABORT.')
+  }
+  console.log('  PRESENT (v1):', m.slice(0, 70))
+}
+
+console.log('')
+console.log('=== Pre-write: verify v2 expected markers in NEW_CONTENT ===')
+const v2Markers = [
+  "// W-TERRITORY-MASTER P5.2 + P5.2c-followup-1",
+  "// Tree (drill by geo) and Search (address/name) filters compose at the API.",
+  "// Compositional filters: scope (any of area/muni/community) and q can each",
+  "if (!scope && !q) return",
+  "if (scope && scopeId) {",
+  "if (q) {",
+  "}, [areaId, muniId, communityId, searchDebounced])",
+  "Pick a geo (area / muni / community) or type 3+ chars to search.",
+  "Filters compose. Pick a geo, type a search, or both.",
+]
+const v2Forbidden = [
+  "type Mode = ",
+  "useState<Mode>",
+  "setMode(",
+  "{mode === 'tree'",
+  "{mode === 'search'",
+  "if (mode === 'tree')",
+]
+for (const m of v2Markers) {
+  if (!NEW_CONTENT.includes(m)) {
+    throw new Error('v2 expected marker missing in NEW_CONTENT: ' + m + '. ABORT.')
+  }
+  console.log('  PRESENT (v2):', m.slice(0, 70))
+}
+for (const m of v2Forbidden) {
+  if (NEW_CONTENT.includes(m)) {
+    throw new Error('v2 forbidden marker still in NEW_CONTENT: ' + m + '. ABORT.')
+  }
+  console.log('  ABSENT (forbidden):', m.slice(0, 70))
+}
+
+console.log('')
+console.log('=== Backup + write ===')
+const ts = new Date().toISOString().replace(/[:.]/g, '-')
+const backupPath = TARGET + '.backup_' + ts
+fs.writeFileSync(backupPath, current, 'utf8')
+console.log('  backed up to:', backupPath)
+
+fs.writeFileSync(TARGET, NEW_CONTENT, 'utf8')
+console.log('  wrote:', TARGET)
+console.log('  bytes:', Buffer.byteLength(NEW_CONTENT, 'utf8'))
+
+console.log('')
+console.log('=== Read-back verification ===')
+const readBack = fs.readFileSync(TARGET, 'utf8')
+
+let rbNonAscii = 0
+for (let i = 0; i < readBack.length; i++) {
+  if (readBack.charCodeAt(i) > 127) rbNonAscii++
+}
+console.log('  read-back bytes:', Buffer.byteLength(readBack, 'utf8'))
+console.log('  read-back non-ASCII:', rbNonAscii)
+if (rbNonAscii !== 0) throw new Error('Read-back has non-ASCII chars. RESTORE FROM BACKUP: ' + backupPath)
+
+for (const m of v2Markers) {
+  if (!readBack.includes(m)) {
+    throw new Error('Read-back missing v2 marker: ' + m + '. RESTORE FROM BACKUP: ' + backupPath)
+  }
+}
+for (const m of v2Forbidden) {
+  if (readBack.includes(m)) {
+    throw new Error('Read-back still has v1 forbidden marker: ' + m + '. RESTORE FROM BACKUP: ' + backupPath)
+  }
+}
+console.log('  all v2 markers present, all v1 markers absent')
+
+console.log('')
+console.log('=== REWRITE COMPLETE ===')
