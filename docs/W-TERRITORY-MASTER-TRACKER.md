@@ -237,6 +237,48 @@ Output to a single `r-p-model-recon-output.txt`. One script, one run. Use explic
 
 A and B are DECIDED (see above) — do not pause to re-ask. C is confirmed. Pause for operator review at the write-phases per the EXECUTION PROTOCOL, not for already-decided design questions.
 
+### Phase 1 migration package — FINALIZED (2026-05-28, pending execution)
+
+Three files on disk in final reviewed form (NOT executed, NOT committed):
+- `supabase/migrations/20260528_phase1_routing_set_and_revert.sql` (561 lines) — up-migration
+- `supabase/migrations/20260528_phase1_down.sql` (129 lines) — down-migration (GAP-3)
+- `scripts/apply-phase1-routing-set.js` (427 lines) — apply-runner
+
+Locked Phase 1 / Phase 2 split: Phase 1 corrects the cache in one atomic transaction; Phase 2 (separate, after Phase 1 smoke confirms cache is correct) wires the 9 `resolve_agent_for_context` callers to read `assigned_agent_id` first. Readers must NOT trust the cache until Phase 1 has corrected it — wiring before correction would route real leads to wrong agents silently.
+
+Locked design decisions:
+1. `assigned_source_id` for floor picks: set to `tenant_floor_pool.id` (load-bearing for precedence-by-stored-scope).
+2. aily fixture: REMOVED from migration (no synthetic agent inserts into credentials-bearing tables); V6 stays vacuous-but-correct; real isolation smoke deferred (F-AILY-CROSS-TENANT-SMOKE-DEFERRED).
+3. Transaction: `DISABLE_STATEMENT_TIMEOUT=1`, Medium compute, downgrade to Micro as non-skippable closing step.
+4. `tenant_floor_alerts` writes inside same transaction.
+5. Revert scope ~1.29M (495,428 condos + 799,688 homes) — confirmed v15 backfill picks (F-HOMES-FILLED-UNEXPECTEDLY).
+6. Per-cache-change audit table: WAIT for reconcile work (GAP-4); provenance covers per-row "what set this."
+
+Pre-execution requirements:
+- `DATABASE_URL` = direct connection (`db.<project>.supabase.co:5432`), NOT pooler
+- `DISABLE_STATEMENT_TIMEOUT=1` in `.env.local`
+- Supabase compute upgraded to Medium before run
+- Closing step (manual, non-skippable): downgrade compute Medium → Micro in dashboard after successful COMMIT
+
+Verification coverage (V1–V8 + V7d):
+- V1: provenance columns + CHECK constraints exist
+- V2: slot-constraint swap (`uq_apa_active_slot` → `uq_apa_active_slot_per_agent`)
+- V3: coupled-state invariant
+- V7d (diagnostic, runs BEFORE V4a): WALLiam floor pool has effective condo + homes coverage
+- V4a (PRIMARY): zero condo/home NULLs after re-materialize
+- V4b sanity: total filled in 1,297,000–1,299,000
+- V4c: coupled-state re-check
+- V5a: Whitby-muni-outside-carves → Neo Smith @ municipality (NOT EXISTS, disjoint from V5b)
+- V5b: King Shah's 11 communities @ scope=community (COUNT DISTINCT = 11)
+- V5c: 2 Commercial pins preserved
+- V6: cross-tenant isolation (vacuous against aily today)
+- V7a: floor > 1,200,000 / V7b community > 0 / V7c municipality > 0
+- V8: zero `empty_floor_pool` alerts in the window
+
+Failure/recovery:
+- ASSERT failure inside transaction → automatic ROLLBACK, no DB state changed, snapshots remain on disk
+- Post-COMMIT regression → run down-migration: STEP 1 `psql -f` both rollback-snapshot files, STEP 2 `psql -f 20260528_phase1_down.sql`. Default leaves cache at v16-correct values; D.6 hard-restore optional and not run by default.
+
 ---
 
 # PART 4 — CONDENSED HISTORY
@@ -246,6 +288,7 @@ A and B are DECIDED (see above) — do not pause to re-ask. C is confirmed. Paus
 - **v15 (2026-05-27):** Narrow floor migration APPLIED (18/18 verification checks, committed): `tenant_floor_pool`, `tenant_floor_alerts`, `pick_floor_agent`, resolver floor branch, `reroll_listings_at_floor`, audit/queue triggers, RLS, CHECK extensions. WALLiam pool seeded (3 agents; audit fired 3×; queue deduped to 1). Condo backfill ran (493,827 rows, even 3-way split) — to be reverted under v16. Homes backfill died mid-run (connection drop). BOM-strip fix applied to apply-runner.
 - **v16 (2026-05-28):** Comprehensive long-term model LOCKED (Part 1). Narrow floor reframed as the unified routing-set primitive. Materialized-on-demand chosen over live-resolver. Sticky bindings, precedence-by-stored-scope, 7-event lifecycle defined. Two diagrams produced (resolution hierarchy, routing lifecycle). v15 reconciliation recorded (Part 2). GAP guards 2–6 added; cold-start checklist + mandatory tracker-update step (7) added to the EXECUTION PROTOCOL. Launch-readiness checklist (Part 7) and dashboard/launch-readiness gaps (GAP-7, GAP-8) recorded.
 - **v17 (2026-05-28):** Cold-start investigation found the v15 homes backfill DB-committed despite the client logging "connection died mid-run" — a client-disconnect-after-commit. 799,688 homes were filled by `reroll_listings_at_floor`, not NULL as v15 recorded. P-REVERT-BACKFILL scope corrected to ~1.29M (495,428 condos + 799,688 homes). LESSON: a committed-server-side / failed-client-side transaction is why tracker memory and live DB diverged — the cold-start DB check is what caught it.
+- **v18 (2026-05-28):** Phase 1 migration package finalized after recon + plan + 4 plan-review fixes + 3 SQL fixes (em-dashes, V7a tightened, V7d coverage diagnostic) + 2 down-migration fixes (em-dashes, NULL-safe NOT EXISTS). Three files on disk: up-migration (561 lines), down-migration (129 lines), apply-runner (427 lines). All reviewed, ASCII-clean, gated by `Bash(node scripts/apply-*)` ask permission. Pre-execution credential leak surfaced via Grep output_mode on `.env.local` — password rotated, lesson captured. NOT executed yet; pending operator approval after Supabase compute upgrade.
 
 ---
 
@@ -255,6 +298,7 @@ A and B are DECIDED (see above) — do not pause to re-ask. C is confirmed. Paus
 - **F-CASCADE-BUILDINGS-ACCESS-IGNORED** — `pick_routing_agent_for_type` honours condo/homes flags but has no buildings parameter; `buildings_access` on apa rows is currently decorative. Decide whether building-tier carving needs the flag wired (relevant to P-ROUTING-SET).
 - **F-AUDIT-ORIGINATOR-WRITE-GAP** — partially fixed for the floor-pool surface (`handle_tenant_floor_pool_change` writes `changed_by = auth.uid()`). Other mutation surfaces may still not record originator. Sweep before launch.
 - **F-HOMES-FILLED-UNEXPECTEDLY (RESOLVED 2026-05-28 — confirmed v15 backfill committed despite client disconnect)** — Cold-start check 2026-05-28 found 799,688 of 801,325 homes (99.8%) have `assigned_agent_id` filled, contradicting the tracker's claim that homes were never backfilled ("connection died mid-run — already clean NULL"). ~787K filled home rows are unaccounted for. Source unknown — three candidates: (a) the v15 homes backfill actually completed/partial-committed further than logged, (b) an unrecorded later backfill ran, (c) a trigger or the nightly sync is filling homes on insert/update. Changes P-REVERT-BACKFILL scope: currently ~493,827 condos; if homes are also listing-level picks, scope is ~1.29M, and GAP-3's down-migration must account for them. RESOLUTION: read-only investigation FIRST. Do NOT write any migration, amend the revert scope, or correct PART 2's homes number until the source is identified. RESOLVED: source is the v15 reroll_listings_at_floor homes run; same listing-level pick_floor_agent picks as condos. Revert scope corrected to ~1.29M (495,428 condos + 799,688 homes).
+- **F-AILY-CROSS-TENANT-SMOKE-DEFERRED** — V6 cross-tenant isolation assertion is structurally correct but vacuous because aily has no routing data today. Real smoke deferred until aily has actual agents + routing-set rows. Do NOT add synthetic aily agents to the production agents table via migration SQL (credentials-bearing table).
 
 - **GAP-7-DASHBOARD-UNDERSPECIFIED** — P-DASHBOARD is currently a wish ("run distributions, view coverage, assignment-vs-default per geo, see floor alerts"), not a spec. It needs its own design pass BEFORE building — what views, what operator actions, what the day-to-day workflow is — the same way the routing model needed one. When Claude Code reaches P-DASHBOARD, it should NOT guess the UI; it should stop and request a design pass (operator returns to design discussion, produces a dashboard spec, adds it here). Do not build the dashboard from this one-line description.
 
@@ -274,6 +318,7 @@ A and B are DECIDED (see above) — do not pause to re-ask. C is confirmed. Paus
 - **Recon over memory** — prior tracker text is hypothesis until verified against the live DB. Probe before designing.
 - **JSX:** raw `->` is invalid (TS1382); use `{'->'}`. Anchors must be ASCII; detect CRLF vs LF.
 - **Client disconnect ≠ DB rollback (v17 lesson, 2026-05-28)** — a committed-server-side / failed-client-side transaction is why tracker memory and live DB diverged — the cold-start DB check is what caught it.
+- **Credential leak via Grep output_mode (v18 lesson, 2026-05-28)** — Grepping `^DATABASE_URL=` with `output_mode=content` echoed the full DB password into the chat transcript despite an explicit "do not print" instruction. Safe pattern for credential checks: a Node script that reads, classifies, and prints ONLY a binary verdict (e.g. "direct"/"pooler"/"missing") — never the raw value. Never grep with content output on `.env.local` or any credentials file.
 
 ---
 
