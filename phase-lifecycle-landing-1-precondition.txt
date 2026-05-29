@@ -1,0 +1,140 @@
+================================================================================
+P-LIFECYCLE Landing 1 preconditions — SECURITY DEFINER fix for pick_floor_agent
+Run: 2026-05-29
+Goal: Close F-FLOOR-POOL-PERMISSION-DENIED with minimal blast radius.
+Read-only verification only.
+================================================================================
+
+================================================================================
+PRECONDITION 1 — caller security contract
+================================================================================
+
+QUESTION: every caller of pick_floor_agent passes p_tenant_id from a validated
+request context, never from raw user input or untrusted source.
+
+--- DB-side callers of pick_floor_agent ---
+(query: pg_proc WHERE prosrc ILIKE '%pick_floor_agent%' AND proname != 'pick_floor_agent')
+
+Found 2:
+
+  public.reroll_listings_at_floor(p_tenant_id uuid, p_is_condo boolean, p_is_home boolean)
+    owner:    postgres
+    security: INVOKER
+    -> Operator-only entry point. Phase 1 apply-runner is the sole producer;
+       p_tenant_id comes from a runner constant + the operator's reviewed
+       migration SQL.
+
+  public.resolve_agent_for_context(p_listing_id uuid, p_building_id uuid,
+                                   p_neighbourhood_id uuid, p_community_id uuid,
+                                   p_municipality_id uuid, p_area_id uuid,
+                                   p_user_id uuid, p_tenant_id uuid)
+    owner:    postgres
+    security: INVOKER
+    -> The 13+1 callers audited in Phase 2 EDIT D. Every one of them sources
+       p_tenant_id from one of:
+         (a) x-tenant-id request header (set by middleware after host->tenant lookup)
+         (b) request body field validated by the route's strict-fail guard
+             (e.g. walliam/contact: `if (!tenant_id) return 400`)
+         (c) getCurrentTenantId() which resolves from request host
+       NEVER from a query string, NEVER user-typed.
+
+--- Code-side callers of pick_floor_agent ---
+(grep across all .ts/.js/.tsx/.sql files; head_limit raised to 50)
+
+Zero application code calls pick_floor_agent directly. Matches are:
+  - Migration files (DDL CREATE/COMMENT only):
+      supabase/migrations/20260527_p_floor_schema_and_resolver.sql:137
+      supabase/migrations/20260528_phase1_routing_set_and_revert.sql:237
+  - Rollback snapshots (frozen function bodies — historical, never executed):
+      supabase/migrations/rollback-snapshots/_phase1_reroll_listings_at_floor_*.sql
+  - Read-only probe / recon scripts:
+      scripts/p-lifecycle-db-recon.js
+      scripts/probe-orphan-revert-precheck.js
+      scripts/r-p-floor-latency-test.js
+      scripts/r-p-floor-backfill-walliam.js
+      scripts/r-p-floor-apply.js
+      scripts/r-p-model-recon.js
+  - Documentation:
+      docs/W-TERRITORY-MASTER-TRACKER.md
+      phase-lifecycle-recon-output.txt
+      r-p-model-recon-output.txt
+      investigate-homes-filled-source-output.txt
+
+No route handler, no lib helper, no server action, no client component calls
+pick_floor_agent. It is only reachable via the two DB function callers above.
+
+VERDICT — PRECONDITION 1: PASS.
+The function security contract (caller passes validated tenant_id) is preserved.
+SECURITY DEFINER does NOT widen the attack surface because the only invocation
+paths are tenant-validated already.
+
+================================================================================
+PRECONDITION 2 — chain security check (SECURITY DEFINER won't break callers)
+================================================================================
+
+QUESTION: do the callers of pick_floor_agent rely on auth context inside the
+pick_floor_agent body that flipping to SECURITY DEFINER would break?
+
+--- pick_floor_agent body inspection ---
+(full body captured in DB recon Section B)
+
+Body length: 1764 chars. Auth-context probe results:
+  body uses auth.uid()?      NO
+  body uses current_user?    NO
+  body uses session_user?    NO
+  body uses current_setting? NO
+
+The function body is PURELY PARAMETER-DRIVEN:
+  - Reads its 4 input parameters (p_listing_id, p_tenant_id, p_is_condo, p_is_home)
+  - SELECTs from tenant_floor_pool + agents (filtered by p_tenant_id, is_active, is_selling)
+  - INSERTs into tenant_floor_alerts on empty-pool
+  - Returns the hash-RR picked agent_id
+
+No path reads the calling role's identity, JWT, or session state. Switching
+from INVOKER to DEFINER changes only WHICH role's grants/RLS apply during the
+function's own queries — it does not change the function's outputs given the
+same inputs.
+
+--- Callers' security model (both INVOKER) ---
+
+reroll_listings_at_floor   SECURITY INVOKER
+resolve_agent_for_context  SECURITY INVOKER
+
+Postgres semantics for INVOKER -> DEFINER call:
+  1. Caller's auth/role context is preserved up to the call.
+  2. Inside pick_floor_agent body, role temporarily becomes the function's
+     OWNER (postgres) for the duration of the body.
+  3. Body returns; control returns to caller; caller's role context resumes
+     unchanged.
+  4. Subsequent SQL in the caller still runs as the original invoker.
+
+No "chain break" — INVOKER->DEFINER->INVOKER chaining is the standard
+Supabase pattern (helper functions with SECURITY DEFINER for trusted DB
+operations called from RLS-bound INVOKER functions). resolve_agent_for_context
+continues to operate as INVOKER, sees the caller's auth.uid() correctly,
+enforces tenant scoping via its p_tenant_id parameter. Only the floor-branch
+SELECT inside pick_floor_agent's body runs with elevated privs.
+
+VERDICT — PRECONDITION 2: PASS.
+SECURITY DEFINER on pick_floor_agent is surgical. The two callers don't rely
+on the failing privilege path; they delegate the floor-resolution entirely.
+
+================================================================================
+LIVE VERIFICATION PROBE — current behavior under postgres (Section C of DB recon)
+================================================================================
+
+  pick_floor_agent(
+    p_listing_id := '68c88ce3-21e6-4189-8a43-ac86017a8f9d',
+    p_tenant_id  := 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9' (WALLiam),
+    p_is_condo   := true,
+    p_is_home    := false
+  ) -> f2ce3011-f8b0-4827-9d34-8fb7d7a9ba3f  (Neo Smith)
+
+Function works correctly when called as postgres (which bypasses both the
+grant and RLS issues). This is the EXPECTED post-migration behavior under
+service_role too: SECURITY DEFINER body runs with postgres privileges, gets
+the same result.
+
+================================================================================
+PRECONDITION VERDICT: BOTH PASS. Cleared to draft Landing 1 migration package.
+================================================================================
