@@ -84,3 +84,9 @@ p?-*-state.txt
 
 # Patch script backups (timestamped)
 *.backup_*
+
+# Claude Code per-machine settings (personal tool-permission overrides).
+# Currently holds only settings.local.json. If a team-shared
+# .claude/settings.json arrives later, narrow this to
+# .claude/settings.local.json at that point.
+.claude/
