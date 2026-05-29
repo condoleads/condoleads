@@ -138,6 +138,20 @@ export async function resolveAgentForContext(params: {
 }): Promise<string | null> {
   try {
     const supabase = createClient()
+    // Phase 2 cache-first: when listing_id is provided, read the materialized
+    // mls_listings.assigned_agent_id before falling through to the resolver RPC.
+    // v16 model: the cache holds the v16-correct agent (populated by Phase 1,
+    // maintained by P-LIFECYCLE going forward). On NULL cache (new listing without
+    // resolve-at-insert -- see F-RESOLVE-AT-INSERT-PRIORITY), fall through to the
+    // RPC for a live geo-chain resolution.
+    if (params.listing_id) {
+      const { data: cached } = await supabase
+        .from('mls_listings')
+        .select('assigned_agent_id')
+        .eq('id', params.listing_id)
+        .maybeSingle()
+      if (cached?.assigned_agent_id) return cached.assigned_agent_id
+    }
     const { data } = await supabase.rpc('resolve_agent_for_context', {
       p_listing_id: params.listing_id || null,
       p_building_id: params.building_id || null,
