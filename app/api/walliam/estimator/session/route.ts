@@ -81,16 +81,29 @@ export async function POST(request: NextRequest) {
     // C3/D3 -- p_tenant_id added; resolver now scopes to the calling tenant.
     // Was: missing param caused resolver to potentially match agents from any
     // tenant whose territory covered the geo (cross-tenant agent leak risk).
-    const { data: resolvedAgentId } = await supabase.rpc('resolve_agent_for_context', {
-      p_listing_id: listingId || null,
-      p_building_id: buildingId || null,
-      p_neighbourhood_id: null,
-      p_community_id: communityId || null,
-      p_municipality_id: municipalityId || null,
-      p_area_id: areaId || null,
-      p_user_id: userId || null,
-      p_tenant_id: tenantId,
-    })
+    // Phase 2 cache-first: try the materialized cache when listingId is in scope.
+    let resolvedAgentId: string | null = null
+    if (listingId) {
+      const { data: cached } = await supabase
+        .from('mls_listings')
+        .select('assigned_agent_id')
+        .eq('id', listingId)
+        .maybeSingle()
+      resolvedAgentId = cached?.assigned_agent_id ?? null
+    }
+    if (!resolvedAgentId) {
+      const { data: rpcAgentId } = await supabase.rpc('resolve_agent_for_context', {
+        p_listing_id: listingId || null,
+        p_building_id: buildingId || null,
+        p_neighbourhood_id: null,
+        p_community_id: communityId || null,
+        p_municipality_id: municipalityId || null,
+        p_area_id: areaId || null,
+        p_user_id: userId || null,
+        p_tenant_id: tenantId,
+      })
+      resolvedAgentId = rpcAgentId || null
+    }
     const agentId = resolvedAgentId || null
 
     // Get agent name for display only

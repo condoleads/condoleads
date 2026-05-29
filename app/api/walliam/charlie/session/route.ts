@@ -58,26 +58,41 @@ export async function POST(request: NextRequest) {
     const sourceKey = sourceTenant.source_key
 
     // Step 1: Resolve agent via priority chain
-    console.log("[session] calling rpc")
-    const { data: resolvedAgentId, error: resolveError } = await supabase
-      .rpc('resolve_agent_for_context', {
-        p_listing_id: listing_id || null,
-        p_building_id: building_id || null,
-        p_neighbourhood_id: null,
-        p_community_id: community_id || null,
-        p_municipality_id: municipality_id || null,
-        p_area_id: area_id || null,
-        p_user_id: userId || null,
-        p_tenant_id: tenantId || null,
-      })
-
-    if (resolveError) {
-      console.error('[charlie/session] resolve_agent_for_context error:', resolveError)
+    // Phase 2 cache-first: try the materialized cache when listing_id is in scope.
+    let resolvedAgentId: string | null = null
+    if (listing_id) {
+      const { data: cached } = await supabase
+        .from('mls_listings')
+        .select('assigned_agent_id')
+        .eq('id', listing_id)
+        .maybeSingle()
+      resolvedAgentId = cached?.assigned_agent_id ?? null
     }
 
-    console.log("[session] rpc result:", resolvedAgentId, resolveError)
-    // Fall back to tenant default_agent_id if RPC returns null
-    let agentId = resolvedAgentId || null
+    if (!resolvedAgentId) {
+      console.log("[session] calling rpc")
+      const { data: rpcAgentId, error: resolveError } = await supabase
+        .rpc('resolve_agent_for_context', {
+          p_listing_id: listing_id || null,
+          p_building_id: building_id || null,
+          p_neighbourhood_id: null,
+          p_community_id: community_id || null,
+          p_municipality_id: municipality_id || null,
+          p_area_id: area_id || null,
+          p_user_id: userId || null,
+          p_tenant_id: tenantId || null,
+        })
+
+      if (resolveError) {
+        console.error('[charlie/session] resolve_agent_for_context error:', resolveError)
+      }
+
+      console.log("[session] rpc result:", rpcAgentId, resolveError)
+      resolvedAgentId = rpcAgentId || null
+    }
+
+    // Fall back to tenant default_agent_id if cache + RPC both returned null
+    let agentId = resolvedAgentId
     if (!agentId && tenantId) {
       const { data: tenantDefault } = await supabase.from('tenants').select('default_agent_id').eq('id', tenantId).single()
       if (tenantDefault?.default_agent_id) agentId = tenantDefault.default_agent_id

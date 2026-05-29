@@ -81,16 +81,29 @@ export async function POST(req: NextRequest) {
     const sourceKey = _t6fcCtx.sourceKey
 
     // Resolve agent
-    const { data: agentId } = await supabase.rpc('resolve_agent_for_context', {
-      p_listing_id: listing_id || null,
-      p_building_id: building_id || null,
-      p_neighbourhood_id: null,
-      p_community_id: community_id || null,
-      p_municipality_id: municipality_id || null,
-      p_area_id: area_id || null,
-      p_user_id: null,
-      p_tenant_id: tenant_id,
-    })
+    // Phase 2 cache-first: try the materialized cache when listing_id is in scope.
+    let agentId: string | null = null
+    if (listing_id) {
+      const { data: cached } = await supabase
+        .from('mls_listings')
+        .select('assigned_agent_id')
+        .eq('id', listing_id)
+        .maybeSingle()
+      agentId = cached?.assigned_agent_id ?? null
+    }
+    if (!agentId) {
+      const { data: rpcAgentId } = await supabase.rpc('resolve_agent_for_context', {
+        p_listing_id: listing_id || null,
+        p_building_id: building_id || null,
+        p_neighbourhood_id: null,
+        p_community_id: community_id || null,
+        p_municipality_id: municipality_id || null,
+        p_area_id: area_id || null,
+        p_user_id: null,
+        p_tenant_id: tenant_id,
+      })
+      agentId = rpcAgentId || null
+    }
 
     // Get agent details + walk hierarchy
     let agent: any = null
