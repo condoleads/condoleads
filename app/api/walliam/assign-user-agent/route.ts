@@ -113,23 +113,42 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Resolve agent via priority chain (tenant-scoped RPC)
-    const { data: agentId, error: rpcError } = await supabase.rpc('resolve_agent_for_context', {
-      p_listing_id: listing_id || null,
-      p_building_id: building_id || null,
-      p_neighbourhood_id: null,
-      p_community_id: community_id || null,
-      p_municipality_id: municipality_id || null,
-      p_area_id: area_id || null,
-      p_user_id: null, // user has no prior relationship in this tenant; resolve fresh
-      p_tenant_id: tenantId,
-    })
-
-    if (rpcError) {
-      console.error('[assign-user-agent] RPC error:', rpcError)
-      return NextResponse.json({ success: false, error: rpcError.message }, { status: 500 })
+    // Phase 2 cache-first: try the materialized cache when listing_id is in scope.
+    // Captures (agent_id, scope) on hit so the source label can be derived from
+    // provenance (Complication 1) without auxiliary table reads.
+    let resolvedAgentId: string | null = null
+    let cachedScope: string | null = null
+    if (listing_id) {
+      const { data: cached } = await supabase
+        .from('mls_listings')
+        .select('assigned_agent_id, assigned_scope')
+        .eq('id', listing_id)
+        .maybeSingle()
+      if (cached?.assigned_agent_id) {
+        resolvedAgentId = cached.assigned_agent_id
+        cachedScope = cached.assigned_scope ?? null
+      }
     }
 
-    const resolvedAgentId = agentId as string | null
+    if (!resolvedAgentId) {
+      const { data: rpcAgentId, error: rpcError } = await supabase.rpc('resolve_agent_for_context', {
+        p_listing_id: listing_id || null,
+        p_building_id: building_id || null,
+        p_neighbourhood_id: null,
+        p_community_id: community_id || null,
+        p_municipality_id: municipality_id || null,
+        p_area_id: area_id || null,
+        p_user_id: null, // user has no prior relationship in this tenant; resolve fresh
+        p_tenant_id: tenantId,
+      })
+
+      if (rpcError) {
+        console.error('[assign-user-agent] RPC error:', rpcError)
+        return NextResponse.json({ success: false, error: rpcError.message }, { status: 500 })
+      }
+
+      resolvedAgentId = (rpcAgentId as string) || null
+    }
 
     if (!resolvedAgentId) {
       // No agent found — leave unassigned (leads will route to admin)
@@ -141,18 +160,36 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // 4. Determine assignment source label
+    // 4. Determine assignment source label.
+    // Cache-hit path: derive from provenance (assigned_scope). Skips the auxiliary
+    // agent_listing_assignments / agent_geo_buildings reads because the v16 cache
+    // already records WHICH scope set the agent. See Complication 1 in the Phase
+    // 2 wiring plan + provenance model in PART 1 of the territory tracker.
+    // Cache-miss path: fall back to the original auxiliary-table reads.
     let source = 'geo_assignment'
-    if (listing_id) {
-      const { data: la } = await supabase
-        .from('agent_listing_assignments')
-        .select('id').eq('listing_id', listing_id).maybeSingle()
-      if (la) source = 'manual_property'
-    } else if (building_id) {
-      const { data: ba } = await supabase
-        .from('agent_geo_buildings')
-        .select('id').eq('building_id', building_id).maybeSingle()
-      if (ba) source = 'manual_building'
+    if (cachedScope) {
+      switch (cachedScope) {
+        case 'pin':          source = 'manual_property'; break
+        case 'building':     source = 'manual_building'; break
+        case 'community':
+        case 'municipality':
+        case 'area':         source = 'geo_assignment'; break
+        case 'floor':        source = 'auto_floor'; break
+        default:             source = 'geo_assignment'  // unknown scope -> geo default
+      }
+    } else {
+      // Cache-miss: original auxiliary-read logic.
+      if (listing_id) {
+        const { data: la } = await supabase
+          .from('agent_listing_assignments')
+          .select('id').eq('listing_id', listing_id).maybeSingle()
+        if (la) source = 'manual_property'
+      } else if (building_id) {
+        const { data: ba } = await supabase
+          .from('agent_geo_buildings')
+          .select('id').eq('building_id', building_id).maybeSingle()
+        if (ba) source = 'manual_building'
+      }
     }
 
     const now = new Date().toISOString()
