@@ -69,6 +69,19 @@ async function resolveAgentForLead(
 ): Promise<string | null> {
   if (params.agentId) return params.agentId
 
+  // Phase 2 cache-first: read materialized mls_listings.assigned_agent_id when
+  // a listing context is supplied. v16 model: the cache holds the v16-correct
+  // agent. Falls through to the RPC on NULL cache (new listing without resolve-
+  // at-insert -- see F-RESOLVE-AT-INSERT-PRIORITY).
+  if (params.listingId) {
+    const { data: cached, error: cacheError } = await supabase
+      .from('mls_listings')
+      .select('assigned_agent_id')
+      .eq('id', params.listingId)
+      .maybeSingle()
+    if (!cacheError && cached?.assigned_agent_id) return cached.assigned_agent_id
+  }
+
   const { data: agentId, error } = await supabase.rpc('resolve_agent_for_context', {
     p_listing_id: params.listingId || null,
     p_building_id: params.buildingId || null,
