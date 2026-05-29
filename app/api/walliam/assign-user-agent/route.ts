@@ -121,8 +121,9 @@ export async function POST(req: NextRequest) {
     if (listing_id) {
       const { data: cached } = await supabase
         .from('mls_listings')
-        .select('assigned_agent_id, assigned_scope')
+        .select('assigned_agent_id, assigned_scope, agents!mls_listings_assigned_agent_id_fkey!inner(tenant_id)')
         .eq('id', listing_id)
+        .eq('agents.tenant_id', tenantId)
         .maybeSingle()
       if (cached?.assigned_agent_id) {
         resolvedAgentId = cached.assigned_agent_id
