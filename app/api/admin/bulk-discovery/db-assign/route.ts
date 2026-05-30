@@ -1,6 +1,8 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { refreshMaterializedViews } from '@/lib/db/refresh-views';
+// Landing 2 sync-hook import (additive, never aborts the route on error).
+import { WALLIAM_TENANT_ID } from '@/lib/utils/territory-constants';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -120,29 +122,59 @@ async function assignBuildingThumbnails(buildingId: string) {
   }
 }
 
-async function backfillListingGeoIds(buildingId: string) {
+async function backfillListingGeoIds(buildingId: string): Promise<string[]> {
   try {
     const { data: building } = await supabase
       .from('buildings').select('community_id').eq('id', buildingId).single();
-    if (!building?.community_id) return;
+    if (!building?.community_id) return [];
 
     const { data: community } = await supabase
       .from('communities').select('id, municipality_id').eq('id', building.community_id).single();
-    if (!community?.municipality_id) return;
+    if (!community?.municipality_id) return [];
 
     const { data: municipality } = await supabase
       .from('municipalities').select('area_id').eq('id', community.municipality_id).single();
-    if (!municipality?.area_id) return;
+    if (!municipality?.area_id) return [];
 
-    await supabase.from('mls_listings').update({
+    // Landing 2: .select('id') returns affected ids for the Event 6 reresolve below.
+    const { data: updatedRows, error: updErr } = await supabase.from('mls_listings').update({
       area_id: municipality.area_id,
       municipality_id: community.municipality_id,
       community_id: building.community_id
-    }).eq('building_id', buildingId);
+    }).eq('building_id', buildingId).select('id');
 
-    console.log(`[DBAssign] Geo IDs backfilled for building ${buildingId}`);
-  } catch (err) {
-    console.error(`[DBAssign] Geo backfill failed for ${buildingId}:`, err);
+    if (updErr) {
+      console.error(`[DBAssign] Geo backfill error for ${buildingId}: ${updErr.message}`);
+      return [];
+    }
+    const ids = (updatedRows ?? []).map((r: any) => r.id).filter(Boolean);
+    console.log(`[DBAssign] Geo IDs backfilled for building ${buildingId} (${ids.length} listings)`);
+
+    // ===== Landing 2 hook: Event 6 reresolve =====
+    // ADDITIVE: any error is caught and logged; the backfill UPDATE above
+    // is already committed. The hook NEVER throws and NEVER aborts the
+    // caller. If reresolve fails, the cache stays as-is and Phase 2 readers
+    // fall through to the live resolver.
+    if (ids.length > 0) {
+      try {
+        const { error: rrErr } = await supabase.rpc('reresolve_listings_in_set', {
+          p_listing_ids: ids,
+          p_tenant_id:   WALLIAM_TENANT_ID,
+        });
+        if (rrErr) {
+          console.error('[reresolve_listings_in_set/backfill] error (additive, not thrown):', rrErr.message);
+        } else {
+          console.log(`[reresolve_listings_in_set/backfill] processed ${ids.length} ids for building ${buildingId}`);
+        }
+      } catch (err: any) {
+        console.error('[reresolve_listings_in_set/backfill] unexpected error (additive, not thrown):', err.message);
+        // intentionally not rethrown
+      }
+    }
+    return ids;
+  } catch (err: any) {
+    console.error(`[DBAssign] Geo backfill failed for ${buildingId}: ${err?.message ?? err}`);
+    return [];
   }
 }
 

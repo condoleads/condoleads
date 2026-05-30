@@ -2,6 +2,9 @@
 // Direct save function with COMPLETE 470+ DLA field mapping - no HTTP overhead
 
 import { createClient } from '@supabase/supabase-js';
+// Landing 2 sync-hook imports (additive, never abort the sync on error).
+import { readPreviousGeo, collectIdsForResolve } from '../utils/geo-diff';
+import { WALLIAM_TENANT_ID } from '../utils/territory-constants';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -286,6 +289,12 @@ async function saveListings(buildingId: string, listingsData: any[]) {
     const batch = listingsData.slice(i, i + batchSize);
     const records = batch.map(listing => mapCompleteDLAFields(listing, buildingId));
 
+    // Landing 2 hook (pre-upsert): capture pre-state geo so the post-upsert
+    // reresolve can skip unchanged rows (Event 6 diff). Empty map degrades
+    // gracefully -- treat all as Event 5 candidates; sticky guard no-ops.
+    const listingKeys = records.map((r: any) => r.listing_key).filter(Boolean);
+    const previousByKey = await readPreviousGeo(supabase, listingKeys);
+
     const { data, error } = await supabase
       .from('mls_listings')
       .upsert(records, { onConflict: 'listing_key', ignoreDuplicates: false })
@@ -298,6 +307,29 @@ async function saveListings(buildingId: string, listingsData: any[]) {
     });
 
     console.log(`[DirectSave] Listings batch ${Math.floor(i / batchSize) + 1}: ${data?.length || 0}`);
+
+    // ===== Landing 2 hook: reresolve_listings_in_set =====
+    // ADDITIVE: see lib/homes-sync/save.ts for the full pattern doc.
+    try {
+      const idsToResolve = collectIdsForResolve({
+        upsertedRows: (data ?? []) as any,
+        previousByKey,
+      });
+      if (idsToResolve.length > 0) {
+        const { error: rrErr } = await supabase.rpc('reresolve_listings_in_set', {
+          p_listing_ids: idsToResolve,
+          p_tenant_id:   WALLIAM_TENANT_ID,
+        });
+        if (rrErr) {
+          console.error('[reresolve_listings_in_set/buildings] error (additive, not thrown):', rrErr.message);
+        } else {
+          console.log(`[reresolve_listings_in_set/buildings] processed ${idsToResolve.length} ids`);
+        }
+      }
+    } catch (err: any) {
+      console.error('[reresolve_listings_in_set/buildings] unexpected error (additive, not thrown):', err.message);
+      // intentionally not rethrown -- never aborts the sync
+    }
   }
 
   return savedListings;
@@ -1139,7 +1171,7 @@ async function linkBuildingToHierarchy(buildingId: string, listingsData: any[]):
 // This prevents geo sync from losing building association and vice versa
 // =====================================================
 
-export async function backfillListingGeoIds(buildingId: string): Promise<void> {
+export async function backfillListingGeoIds(buildingId: string): Promise<string[]> {
   try {
     // Get building community chain
     const { data: building } = await supabase
@@ -1150,7 +1182,7 @@ export async function backfillListingGeoIds(buildingId: string): Promise<void> {
 
     if (!building?.community_id) {
       console.log('[DirectSave] No community_id on building, skipping geo backfill');
-      return;
+      return [];
     }
 
     // Get municipality and area from community
@@ -1160,7 +1192,7 @@ export async function backfillListingGeoIds(buildingId: string): Promise<void> {
       .eq('id', building.community_id)
       .single();
 
-    if (!community?.municipality_id) return;
+    if (!community?.municipality_id) return [];
 
     const { data: municipality } = await supabase
       .from('municipalities')
@@ -1168,25 +1200,53 @@ export async function backfillListingGeoIds(buildingId: string): Promise<void> {
       .eq('id', community.municipality_id)
       .single();
 
-    if (!municipality?.area_id) return;
+    if (!municipality?.area_id) return [];
 
-    // Update all listings for this building with geo IDs
-    const { error, count } = await supabase
+    // Update all listings for this building with geo IDs.
+    // Landing 2: append .select('id') so we get the affected listing ids
+    // (RETURNING id under the hood) for the Event 6 reresolve call below.
+    const { data: updatedRows, error } = await supabase
       .from('mls_listings')
       .update({
         area_id: municipality.area_id,
         municipality_id: community.municipality_id,
         community_id: building.community_id
       })
-      .eq('building_id', buildingId);
+      .eq('building_id', buildingId)
+      .select('id');
 
     if (error) {
       console.error('[DirectSave] Geo backfill error:', error.message);
-    } else {
-      console.log(`[DirectSave] Geo IDs backfilled for building ${buildingId}`);
+      return [];
     }
+    const ids = (updatedRows ?? []).map((r: any) => r.id).filter(Boolean);
+    console.log(`[DirectSave] Geo IDs backfilled for building ${buildingId} (${ids.length} listings)`);
+
+    // ===== Landing 2 hook: Event 6 reresolve =====
+    // ADDITIVE: any error is caught and logged; the backfill UPDATE above
+    // is already committed. The hook NEVER throws and NEVER aborts the
+    // caller. If reresolve fails, the cache stays as-is and Phase 2 readers
+    // fall through to the live resolver.
+    if (ids.length > 0) {
+      try {
+        const { error: rrErr } = await supabase.rpc('reresolve_listings_in_set', {
+          p_listing_ids: ids,
+          p_tenant_id:   WALLIAM_TENANT_ID,
+        });
+        if (rrErr) {
+          console.error('[reresolve_listings_in_set/backfill] error (additive, not thrown):', rrErr.message);
+        } else {
+          console.log(`[reresolve_listings_in_set/backfill] processed ${ids.length} ids for building ${buildingId}`);
+        }
+      } catch (err: any) {
+        console.error('[reresolve_listings_in_set/backfill] unexpected error (additive, not thrown):', err.message);
+        // intentionally not rethrown
+      }
+    }
+    return ids;
   } catch (err: any) {
     console.error('[DirectSave] Geo backfill failed:', err.message);
+    return [];
   }
 }
 

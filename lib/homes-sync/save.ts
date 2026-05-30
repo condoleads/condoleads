@@ -4,6 +4,9 @@
 // Difference: No building creation, building_id = null, direct geo UUID assignment, upsert-based
 
 import { createClient } from '@supabase/supabase-js';
+// Landing 2 sync-hook imports (additive, never abort the sync on error).
+import { readPreviousGeo, collectIdsForResolve } from '../utils/geo-diff';
+import { WALLIAM_TENANT_ID } from '../utils/territory-constants';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -194,6 +197,12 @@ async function saveListings(
       return mapCompleteDLAFields(listing, areaId, municipalityId, communityId);
     });
 
+    // Landing 2 hook (pre-upsert): capture pre-state geo so the post-upsert
+    // reresolve can skip unchanged rows (Event 6 diff). Empty map degrades
+    // gracefully -- treat all as Event 5 candidates; sticky guard no-ops.
+    const listingKeys = records.map((r: any) => r.listing_key).filter(Boolean);
+    const previousByKey = await readPreviousGeo(supabase, listingKeys);
+
     const { data, error } = await supabase
       .from('mls_listings')
       .upsert(records, { onConflict: 'listing_key', ignoreDuplicates: false })
@@ -209,6 +218,32 @@ async function saveListings(
     });
 
     console.log(`[HomesSave] Listings batch ${Math.floor(i / batchSize) + 1}: ${data?.length || 0}`);
+
+    // ===== Landing 2 hook: reresolve_listings_in_set =====
+    // ADDITIVE: any error is caught and logged. The upsert above is already
+    // committed (separate RPC). If reresolve fails, the batch stays saved,
+    // the cache stays NULL for these rows, and Phase 2 readers fall through
+    // to the live resolver. The hook NEVER throws and NEVER aborts the sync.
+    try {
+      const idsToResolve = collectIdsForResolve({
+        upsertedRows: (data ?? []) as any,
+        previousByKey,
+      });
+      if (idsToResolve.length > 0) {
+        const { error: rrErr } = await supabase.rpc('reresolve_listings_in_set', {
+          p_listing_ids: idsToResolve,
+          p_tenant_id:   WALLIAM_TENANT_ID,
+        });
+        if (rrErr) {
+          console.error('[reresolve_listings_in_set/homes] error (additive, not thrown):', rrErr.message);
+        } else {
+          console.log(`[reresolve_listings_in_set/homes] processed ${idsToResolve.length} ids`);
+        }
+      }
+    } catch (err: any) {
+      console.error('[reresolve_listings_in_set/homes] unexpected error (additive, not thrown):', err.message);
+      // intentionally not rethrown -- never aborts the sync
+    }
   }
 
   return savedListings;

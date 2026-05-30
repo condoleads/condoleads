@@ -7,6 +7,8 @@
 import { supabase, testConnection } from './lib/supabase-client';
 import { validateConfig, getBaseUrl, getHeaders, delay } from './lib/proptx-client';
 import { log, warn, error } from './lib/sync-logger';
+// Landing 2 sync-hook import (additive, never aborts the sync on error).
+import { WALLIAM_TENANT_ID } from '../lib/utils/territory-constants';
 
 const TAG = 'BULK-DISCOVER';
 
@@ -300,27 +302,58 @@ function generateSlug(name: string, streetNum: string, streetName: string, stree
   return parts.join('-').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-async function backfillListingGeoIds(buildingId: string) {
+async function backfillListingGeoIds(buildingId: string): Promise<string[]> {
   try {
     const { data: building } = await supabase
       .from('buildings').select('community_id').eq('id', buildingId).single();
-    if (!building?.community_id) return;
+    if (!building?.community_id) return [];
 
     const { data: community } = await supabase
       .from('communities').select('id, municipality_id').eq('id', building.community_id).single();
-    if (!community?.municipality_id) return;
+    if (!community?.municipality_id) return [];
 
     const { data: municipality } = await supabase
       .from('municipalities').select('area_id').eq('id', community.municipality_id).single();
-    if (!municipality?.area_id) return;
+    if (!municipality?.area_id) return [];
 
-    await supabase.from('mls_listings').update({
+    // Landing 2: .select('id') returns affected ids for the Event 6 reresolve below.
+    const { data: updatedRows, error: updErr } = await supabase.from('mls_listings').update({
       area_id: municipality.area_id,
       municipality_id: community.municipality_id,
       community_id: building.community_id
-    }).eq('building_id', buildingId);
+    }).eq('building_id', buildingId).select('id');
+
+    if (updErr) {
+      error(TAG, `Geo backfill error for ${buildingId}: ${updErr.message}`);
+      return [];
+    }
+    const ids = (updatedRows ?? []).map((r: any) => r.id).filter(Boolean);
+
+    // ===== Landing 2 hook: Event 6 reresolve =====
+    // ADDITIVE: any error is caught and logged; the backfill UPDATE above
+    // is already committed. The hook NEVER throws and NEVER aborts the
+    // caller. If reresolve fails, the cache stays as-is and Phase 2 readers
+    // fall through to the live resolver.
+    if (ids.length > 0) {
+      try {
+        const { error: rrErr } = await supabase.rpc('reresolve_listings_in_set', {
+          p_listing_ids: ids,
+          p_tenant_id:   WALLIAM_TENANT_ID,
+        });
+        if (rrErr) {
+          error(TAG, `[reresolve_listings_in_set/backfill] error (additive, not thrown): ${rrErr.message}`);
+        } else {
+          log(TAG, `[reresolve_listings_in_set/backfill] processed ${ids.length} ids for building ${buildingId}`);
+        }
+      } catch (err: any) {
+        error(TAG, `[reresolve_listings_in_set/backfill] unexpected error (additive, not thrown): ${err.message}`);
+        // intentionally not rethrown
+      }
+    }
+    return ids;
   } catch (err: any) {
     error(TAG, `Geo backfill failed for ${buildingId}: ${err.message}`);
+    return [];
   }
 }
 
