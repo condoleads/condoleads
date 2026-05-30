@@ -1,0 +1,94 @@
+name: Reroll Worker Cron
+
+# Drains territory_reroll_queue every 5 minutes. Closes
+# F-REROLL-WORKER-OPERATOR-PULL-ONLY: previously the queue was drained only by
+# browser polling from the territory cockpit chart (10s cadence while mounted).
+# When no operator had the cockpit open, the queue piled up (evidence: 1 row
+# stuck pending since 2026-05-27). Event 4 async-handoff enqueues
+# scope='agent' rows on agent deactivation; without an autonomous drainer
+# those would stay pending indefinitely.
+#
+# Separate workflow from nightly-sync.yml on purpose. nightly-sync.yml is
+# currently subject to F-NIGHTLY-SYNC-TIMEOUT-6H (fixes 1+2+4 applied but
+# unverified pending the first-night confirmation); coupling the reroll
+# worker to it would expose the worker to the sync's timeout failures.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes, UTC
+  workflow_dispatch:
+    inputs:
+      max_iterations_per_tenant:
+        description: 'Max claim+drain iterations per tenant (safety cap)'
+        type: number
+        default: 50
+
+env:
+  WORKER_BASE: ${{ secrets.REROLL_WORKER_BASE_URL }}
+  CRON_TOKEN:  ${{ secrets.REROLL_WORKER_CRON_TOKEN }}
+  # Tenant ids are documented in CLAUDE.md (Verified key IDs) -- not secret.
+  WALLIAM_TENANT_ID: b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+  AILY_TENANT_ID:    e2619717-6401-4159-8d4c-d5f87651c8d6
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Drain reroll queue per tenant
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${WORKER_BASE:-}" ]; then
+            echo "FATAL: REROLL_WORKER_BASE_URL secret is unset."
+            exit 1
+          fi
+          if [ -z "${CRON_TOKEN:-}" ]; then
+            echo "FATAL: REROLL_WORKER_CRON_TOKEN secret is unset."
+            exit 1
+          fi
+
+          MAX_ITER="${{ inputs.max_iterations_per_tenant || 50 }}"
+
+          drain_tenant() {
+            local TENANT_ID="$1"
+            local i=0
+            echo ""
+            echo "=== draining tenant=${TENANT_ID} (max iter=${MAX_ITER}) ==="
+            while [ "$i" -lt "$MAX_ITER" ]; do
+              # POST claims one pending row, runs the work, returns new depth.
+              # 401/403/5xx surface as curl failure or non-2xx -- the workflow
+              # fails loudly rather than silently looping.
+              local RES
+              RES=$(curl -sS --fail \
+                -X POST \
+                -H "Authorization: Bearer ${CRON_TOKEN}" \
+                -H "Content-Type: application/json" \
+                "${WORKER_BASE}/api/admin-homes/territory/reroll-worker?tenant_id=${TENANT_ID}")
+              echo "  iter=${i} tenant=${TENANT_ID} ${RES}"
+
+              local PENDING
+              local PROCESSED
+              PENDING=$(echo "$RES"   | jq -r '.pending   // 0')
+              PROCESSED=$(echo "$RES" | jq -r '.processed // null')
+
+              # Done when no row was claimed (.processed is null) AND no
+              # rows remain pending. Either alone is insufficient -- a
+              # concurrent producer could have just enqueued one.
+              if [ "${PROCESSED}" = "null" ] && [ "${PENDING}" = "0" ]; then
+                echo "  tenant=${TENANT_ID} fully drained."
+                break
+              fi
+              i=$((i + 1))
+            done
+            if [ "$i" -ge "$MAX_ITER" ]; then
+              echo "  WARN: tenant=${TENANT_ID} hit max iterations (${MAX_ITER}); remaining work for next cron tick."
+            fi
+          }
+
+          drain_tenant "${WALLIAM_TENANT_ID}"
+          drain_tenant "${AILY_TENANT_ID}"
+
+          echo ""
+          echo "drain complete."

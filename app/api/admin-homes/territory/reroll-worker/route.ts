@@ -15,6 +15,23 @@ export const dynamic = 'force-dynamic'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 async function resolveTenantId(req: NextRequest): Promise<string | null> {
+  // CRON BYPASS (Event 4 async handoff, 2026-05-30): a Bearer token matching
+  // process.env.REROLL_WORKER_CRON_TOKEN unlocks tenant_id-scoped drain
+  // without an admin session. Used by .github/workflows/reroll-worker.yml.
+  // The token is supplied via GH Actions secret and matched against the
+  // server-side env var. If REROLL_WORKER_CRON_TOKEN is unset (local dev /
+  // any environment without the secret) the bypass is disabled and only
+  // the user-session path applies.
+  const cronToken = process.env.REROLL_WORKER_CRON_TOKEN
+  if (cronToken && cronToken.length >= 32) {
+    const auth = req.headers.get('authorization')
+    if (auth === `Bearer ${cronToken}`) {
+      const override = req.nextUrl.searchParams.get('tenant_id')
+      if (override && UUID_RE.test(override)) return override
+      return null
+    }
+  }
+
   const user = await resolveAdminHomesUser()
   if (!user) return null
   const override = req.nextUrl.searchParams.get('tenant_id')
@@ -90,17 +107,35 @@ export async function POST(req: NextRequest) {
 
   const job = claim.rows[0]
   try {
-    const r = await c.query(
-      'SELECT reroll_listings_at_geo($1::text, $2::uuid, $3::uuid) AS n',
-      [job.scope, job.scope_id, tenantId]
-    )
+    let rowsUpdated: number
+    if (job.scope === 'agent') {
+      // Event 4 async handoff (2026-05-30). scope='agent' rows are enqueued
+      // by handle_agent_deactivate on agent is_active/is_selling -> false.
+      // reflow_deactivated_agent is SECURITY DEFINER + locked search_path;
+      // it collects the agent's listings, NULLs the coupled trio, and
+      // re-walks the cascade via reresolve_listings_in_set. The pg-direct
+      // statement_timeout=0 already SET above (line 68 of the original
+      // route) bypasses the 8s authenticator cap that blocked the sync
+      // path -- this is the entire reason the work is async.
+      const r = await c.query(
+        'SELECT (reflowed_count + null_count)::int AS n FROM reflow_deactivated_agent($1::uuid, $2::uuid)',
+        [job.scope_id, tenantId]
+      )
+      rowsUpdated = r.rows[0].n
+    } else {
+      const r = await c.query(
+        'SELECT reroll_listings_at_geo($1::text, $2::uuid, $3::uuid) AS n',
+        [job.scope, job.scope_id, tenantId]
+      )
+      rowsUpdated = r.rows[0].n
+    }
     await c.query(
       `UPDATE territory_reroll_queue SET status='done', processed_at=now(), rows_updated=$1 WHERE id=$2`,
-      [r.rows[0].n, job.id]
+      [rowsUpdated, job.id]
     )
     const d = await depth(c, tenantId)
     await c.end()
-    return NextResponse.json({ ok: true, processed: { ...job, rows_updated: r.rows[0].n }, ...d })
+    return NextResponse.json({ ok: true, processed: { ...job, rows_updated: rowsUpdated }, ...d })
   } catch (e: any) {
     await c.query(
       `UPDATE territory_reroll_queue SET status='error', processed_at=now(), error_message=$1 WHERE id=$2`,

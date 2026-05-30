@@ -147,9 +147,11 @@ export async function resolveAgentForContext(params: {
     if (params.listing_id) {
       const { data: cached } = await supabase
         .from('mls_listings')
-        .select('assigned_agent_id, agents!mls_listings_assigned_agent_id_fkey!inner(tenant_id)')
+        .select('assigned_agent_id, agents!mls_listings_assigned_agent_id_fkey!inner(tenant_id, is_active, is_selling)')
         .eq('id', params.listing_id)
         .eq('agents.tenant_id', params.tenant_id)
+        .eq('agents.is_active', true)
+        .eq('agents.is_selling', true)
         .maybeSingle()
       if (cached?.assigned_agent_id) return cached.assigned_agent_id
     }
