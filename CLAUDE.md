@@ -39,6 +39,8 @@ If you cannot point to the verification command run this session that produced a
 
 ### Backup before touching existing files
 
+**This is the number-one safety guarantee. It is never skipped, never batched away, never traded for speed — including on any fast-path.**
+
 Before any modification to an existing file:
 ```
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -62,6 +64,45 @@ Before any change ships: identify every existing feature touched (direct + trans
 ### Comprehensive work only
 
 No half-fixes, no stop-gaps, no defer-to-later. Address the root cause, not the symptom. A fix is comprehensive when the bug cannot recur via the same mechanism AND the architecture prevents new instances of the same class of bug. If identified this session, it ships this session. The only valid deferral is an external blocker (waiting for human action or third-party quota) — logged and resumed when it clears.
+
+---
+
+## Execution rhythm — full path vs fast path
+
+The goal is the fewest round-trips that still catch real bugs. Time is lost to unnecessary *review gates between turns*, not to the checks themselves. So: collapse turns that bought no safety; keep every gate that does.
+
+### Two HARD GATES — never collapsed, never skipped, on any path
+
+1. **Production-DB write.** The actual `node scripts/apply-*.js` execution against the live DB always pauses for explicit operator approval. Showing the migration SQL + apply-runner before running is mandatory.
+2. **Multi-tenant function review.** Any new or changed function that resolves, routes, or writes tenant-scoped data gets an explicit tenant-isolation review (every predicate scopes by `p_tenant_id`; both anchor table AND `agents` join) before it is applied.
+
+Plus the always-on RULE ZERO constraints — especially **backup before touching existing files**, which is the number-one safety rule and applies on every path without exception.
+
+### FAST PATH (3 gates) — for pattern-proven phases
+
+A phase qualifies as **pattern-proven** when ALL are true:
+- It mirrors the structure of a phase already shipped this workstream (same migration shape, same runner pattern, same smoke shape).
+- It introduces no new multi-tenant function (or the tenant scoping is identical to one already reviewed and shipped).
+- It touches no frozen contract (`resolve_agent_for_context` signature, System 1, the 12 apa carves).
+
+For a pattern-proven phase, run this in THREE operator-facing steps:
+1. **RECON (autonomous).** One read-only probe confirming the deltas from the proven pattern. Run without asking; report the output.
+2. **BUILD + SHOW (one gate).** Author the migration, the apply-runner, the down-migration, and the smoke harness together. Show all of them once. Operator reviews and approves. (Batch all fixes from review into one diff set, not one diff per finding.)
+3. **APPLY + SMOKE (the hard gate).** On approval, run the apply-runner (HARD GATE — production write), then the smoke harness, in one turn. Report results.
+
+Then update the tracker and commit. The plan-doc-as-separate-artifact step is dropped for pattern-proven phases — the recon + the shown build IS the plan.
+
+### FULL PATH (7 steps) — for novel phases
+
+Anything not pattern-proven (new architecture, new multi-tenant primitive, a destructive operation, a frozen-contract change) uses the full rhythm: recon → propose + wait → baseline → apply (transactional) → smoke + diff → commit → update tracker. Do not fast-path a phase whose failure mode you haven't seen before.
+
+### Always autonomous (no "may I", on either path)
+
+Read-only recon probes (`BEGIN READ ONLY`), smoke scripts that use `BEGIN/ROLLBACK`, `git status` / `git log` / `cat` / `ls`, cold-start state checks, and tracker reads. These never change state; running them and reporting is the work, not a thing to ask permission for.
+
+### When in doubt
+
+If unsure whether a phase is pattern-proven, treat it as novel. The fast path is an earned shortcut, not a default.
 
 ---
 
@@ -91,6 +132,7 @@ No half-fixes, no stop-gaps, no defer-to-later. Address the root cause, not the 
 - **Local smoke first, never Vercel preview.** All smoke testing runs locally via `npm run dev` before commit+push. Local URL: `http://localhost:3000/<path>`. For WALLiam tenant testing locally, `DEV_TENANT_DOMAIN=walliam.ca` must be in `.env.local`.
 - Deploy pattern: Node.js patch script → backup → apply → verify → `git add` + commit after each phase group.
 - Completed work commits to `origin/main`.
+- **Commit applied migrations the same session they are applied.** The DB COMMIT is not the git commit. A migration applied to production but left untracked in git is drift — a cold-start session reading git sees no migration and assumes a clean slate that does not match the live DB. Both commits happen before the phase closes.
 
 ---
 
@@ -130,6 +172,7 @@ Geo tables: `treb_areas`, `municipalities`, `communities`, `neighbourhoods`, `mu
 ## Working style
 
 - Make decisions and propose, rather than asking for direction at every step. Momentum over process — but PLAN before applying any production-touching change, and let the user review the diff first.
+- **Use the fast path for pattern-proven phases** (see Execution rhythm above) — fewer round-trips, same hard gates. Read-only and `BEGIN/ROLLBACK` operations run autonomously without asking.
 - Trackers drive development. Every W-* system has a markdown tracker in `docs/`. Work proceeds phase-by-phase; update the tracker at each phase close.
 - Decisions, once locked in a tracker, are not silently revisited.
 - The user communicates in short commands ("go", "its ready"). That is not permission to skip verification or backups.
