@@ -19,19 +19,57 @@ env:
   PROPTX_RESO_API_URL: ${{ secrets.PROPTX_API_URL }}
   PROPTX_VOW_TOKEN: ${{ secrets.PROPTX_VOW_TOKEN }}
 
+# F-NIGHTLY-SYNC-TIMEOUT-6H fix 4: split the original single 360-min sync job
+# into homes + buildings jobs. Each gets its own 360-min budget. Buildings runs
+# AFTER homes (needs: homes-sync) - SEQUENTIAL, not parallel - because:
+#   1. Both phases UPSERT into mls_listings on the same listing_key (condos
+#      appear in both feeds). Row-level locking would serialize them anyway.
+#   2. Running parallel would double the PropTx call rate, increasing 429
+#      pressure (currently the only documented reason for any throttle).
+#   3. Matches the existing orchestrator semantic (homes then buildings).
+# The always() guard on buildings-sync lets it run even if homes-sync was
+# cancelled at its 6h cap (Landing-2 acceptance signal depends on buildings
+# completing, so it must not be skipped when homes times out).
+#
+# TIMING NOTE — deliberate change: with sequential jobs, total wall-clock spans
+# BOTH budgets back-to-back. Worst case ~12h end-to-end (homes hits its 6h cap,
+# then buildings starts and runs up to its own 6h cap). The previous single-job
+# design had a single 6h ceiling for the whole run. This is acceptable for a
+# 2 AM cron — buildings-sync may still be running into the morning on a bad
+# night — but a future session reading this must NOT assume the jobs run
+# concurrently. They do not.
 jobs:
-  sync:
+  homes-sync:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    if: ${{ inputs.skip_homes != true }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - run: npm ci
-      - name: Run nightly sync
+      - name: Run homes sync (buildings skipped, runs in next job)
         run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/nightly-sync.ts
         env:
-          SKIP_HOMES: ${{ inputs.skip_homes }}
-          SKIP_BUILDINGS: ${{ inputs.skip_buildings }}
+          SKIP_HOMES: 'false'
+          SKIP_BUILDINGS: 'true'
 
+  buildings-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    needs: homes-sync
+    # always() so buildings runs even if homes-sync was cancelled at the 6h cap;
+    # the operator's skip_buildings input still takes precedence.
+    if: ${{ always() && inputs.skip_buildings != true }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run buildings sync (homes skipped, was done in prior job)
+        run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/nightly-sync.ts
+        env:
+          SKIP_HOMES: 'true'
+          SKIP_BUILDINGS: 'false'

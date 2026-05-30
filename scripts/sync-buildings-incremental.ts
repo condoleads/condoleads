@@ -14,7 +14,16 @@ import { log, warn, error, writeBuildingSyncHistory } from './lib/sync-logger';
 import { WALLIAM_TENANT_ID } from '../lib/utils/territory-constants';
 
 const TAG = 'BUILDINGS';
-const DELAY_BETWEEN_BUILDINGS_MS = 2000;
+// Rate-limit defense between PropTx calls per building. fetchWithRetry
+// (scripts/lib/proptx-client.ts:69-74) already handles HTTP 429 with the
+// server's Retry-After header; this constant is a redundant safety
+// margin, not a corrective for a documented 429 incident (git blame:
+// introduced 2026-02-18 in commit 0a104af, bulk Phase 3 script, no
+// incident citation in code or PR description).
+// Was 2000ms; relaxed to 200ms because the 2000ms blanket alone
+// consumed 5.46h on 9,835 buildings, eating the 6h GH Actions budget
+// before buildings could complete (F-NIGHTLY-SYNC-TIMEOUT-6H).
+const DELAY_BETWEEN_BUILDINGS_MS = 200;
 
 // =====================================================
 // PARSING HELPERS (EXACT from buildings/incremental-sync)
@@ -926,7 +935,13 @@ export async function runBuildingsIncremental(triggeredBy = 'github-nightly'): P
     const { data: buildings, error: bldgErr } = await supabase
       .from('buildings')
       .select('id, building_name, street_number, street_name, city_district')
-      .order('building_name');
+      // F-NIGHTLY-SYNC-TIMEOUT-6H fix 2: rotate fairly via last_synced_at.
+      // Old (`.order('building_name')`) sorted alphabetically, so when the
+      // 6h cap hit mid-loop, late-alphabet buildings starved every night
+      // (sync_history shows zero buildings completions over 7 days even
+      // though all 9,835 rows have last_synced_at set). ASC + NULLS FIRST
+      // = never-synced first, then oldest-synced.
+      .order('last_synced_at', { ascending: true, nullsFirst: true });
 
     if (bldgErr || !buildings) {
       error(TAG, `Failed to fetch buildings: ${bldgErr?.message}`);
