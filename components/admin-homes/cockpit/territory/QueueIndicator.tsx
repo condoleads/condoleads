@@ -26,6 +26,25 @@ interface Props {
 interface QueueState {
   pending: number
   processing: number
+  // P-DASHBOARD GAP-C: cron observability fields (optional -- the legacy
+  // reroll-worker GET predates these and may not return them; UI degrades
+  // to "no cron history available" tooltip).
+  last_done_at?: string | null
+  last_error?: { message: string | null; at: string | null } | null
+  recent_done_count?: number
+  recent_error_count?: number
+}
+
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return 'never'
+  const t = new Date(iso).getTime()
+  if (!Number.isFinite(t)) return 'unknown'
+  const diff = Math.floor((Date.now() - t) / 1000)
+  if (diff < 0) return 'just now'
+  if (diff < 60) return diff + 's ago'
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago'
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago'
+  return Math.floor(diff / 86400) + 'd ago'
 }
 
 export default function QueueIndicator({ tenantId, cadenceMs = 10000 }: Props) {
@@ -44,7 +63,14 @@ export default function QueueIndicator({ tenantId, cadenceMs = 10000 }: Props) {
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j?.error || 'poll failed')
-      setState({ pending: j.pending || 0, processing: j.processing || 0 })
+      setState({
+        pending: j.pending || 0,
+        processing: j.processing || 0,
+        last_done_at: j.last_done_at ?? null,
+        last_error: j.last_error ?? null,
+        recent_done_count: j.recent_done_count ?? 0,
+        recent_error_count: j.recent_error_count ?? 0,
+      })
       setError(null)
     } catch (e: any) {
       setError(e.message || 'poll failed')
@@ -91,11 +117,22 @@ export default function QueueIndicator({ tenantId, cadenceMs = 10000 }: Props) {
     )
   }
 
-  const { pending, processing } = state
+  const { pending, processing, last_done_at, last_error, recent_done_count, recent_error_count } = state
+
+  // P-DASHBOARD GAP-C: cron observability tooltip. Operators want to see WHY
+  // a pending queue is OK (cron just ran, will run again in <5min) vs WHY
+  // it's worrying (no done jobs in the last hour, last error 2 minutes ago).
+  // The Event 4 cron drains every 5min; recent_done_count > 0 within the
+  // last hour is the "cron is healthy" signal.
+  const cronTooltip = [
+    `Last drain: ${relativeTime(last_done_at)}` + (last_done_at ? ' (' + new Date(last_done_at).toISOString().slice(0, 19).replace('T', ' ') + 'Z)' : ''),
+    `Last 1h: ${recent_done_count ?? 0} done` + ((recent_error_count ?? 0) > 0 ? ', ' + recent_error_count + ' error(s)' : ''),
+    last_error?.at ? `Last error: ${relativeTime(last_error.at)} - ${(last_error.message || '').slice(0, 80)}` : null,
+  ].filter(Boolean).join('\n')
 
   if (processing > 0) {
     return (
-      <div className='inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200' title='reroll worker actively processing'>
+      <div className='inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200' title={'reroll worker actively processing\n' + cronTooltip}>
         <Loader2 className='w-3 h-3 animate-spin' />
         {processing} processing
         {pending > 0 ? <span className="ml-1 text-blue-500">+ {pending} pending</span> : null}
@@ -104,18 +141,29 @@ export default function QueueIndicator({ tenantId, cadenceMs = 10000 }: Props) {
   }
 
   if (pending > 0) {
+    // Pending + recent drain success = cron is healthy, just briefly behind.
+    // Pending + zero recent drains = cron stalled, real concern.
+    const cronOk = (recent_done_count ?? 0) > 0
     return (
-      <div className='inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700 border border-amber-200' title='reroll jobs waiting; cache may lag behind cards'>
+      <div
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${cronOk ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'}`}
+        title={(cronOk ? 'reroll jobs waiting; cron drained ' + recent_done_count + ' job(s) in last hour' : 'pending jobs but NO cron drains in last hour -- cron may be stalled') + '\n' + cronTooltip}
+      >
         <Clock className='w-3 h-3' />
         {pending} pending
       </div>
     )
   }
 
+  // Synced: still surface cron-error tooltip if anything errored recently.
+  const errBadge = (recent_error_count ?? 0) > 0
   return (
-    <div className='inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-50 text-green-700 border border-green-200' title='listing cache fully synced with cards'>
-      <CheckCircle2 className='w-3 h-3' />
-      Synced
+    <div
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${errBadge ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-green-50 text-green-700 border-green-200'}`}
+      title={(errBadge ? 'queue synced but ' + recent_error_count + ' cron error(s) in last hour' : 'listing cache fully synced with cards') + '\n' + cronTooltip}
+    >
+      {errBadge ? <AlertCircle className='w-3 h-3' /> : <CheckCircle2 className='w-3 h-3' />}
+      {errBadge ? `Synced, ${recent_error_count} recent err` : 'Synced'}
     </div>
   )
 }

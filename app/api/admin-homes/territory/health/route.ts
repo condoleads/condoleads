@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
+import { Client } from 'pg'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,5 +63,94 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'rpc returned no data' }, { status: 500 })
   }
 
-  return NextResponse.json(data, { status: 200 })
+  // P-DASHBOARD GAP-B + GAP-D (revised after the post-build smoke surfaced
+  // false-green): both reads now use pg-direct as postgres. Bypasses two
+  // separate service_role failure modes confirmed by recon:
+  //   - tenant_floor_alerts has postgres-only grants (third sibling table
+  //     after tenant_floor_pool [Landing 1] and territory_reroll_queue
+  //     [Event 4]). PostgREST under service_role returns 42501 permission
+  //     denied.
+  //   - mls_listings COUNT(*) WHERE assigned_agent_id IS NULL via PostgREST
+  //     returns status 500 with empty error body (likely the 8s authenticator
+  //     statement_timeout on a 1.3M-row scan). Direct SQL under service_role
+  //     SUCCEEDS in <100ms; the issue is PostgREST-specific.
+  // pg-direct as postgres has full grants on both tables, no 8s ceiling.
+  //
+  // FALSE-GREEN FIX: on query failure, return `null` (NOT [] / {0,0,0,0}).
+  // The frontend distinguishes "could not read" (null) from "confirmed
+  // empty" ([] or 0). Healthy zero must not be visually identical to a
+  // failed query. See F-FALSE-GREEN-VIA-SILENT-SOFT-FAIL.
+  const warnings: string[] = []
+  let floor_alerts: Array<{ id: string; tenant_id: string; property_type: string | null; listing_id: string | null; alert_type: string; created_at: string }> | null = null
+  let null_cache_count: { total: number; condo: number; home: number; other: number } | null = null
+
+  const connStr = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.POSTGRES_URL || process.env.POSTGRES_URL_NON_POOLING
+  if (!connStr) {
+    warnings.push('db env not configured (DATABASE_URL missing); floor_alerts + null_cache_count unavailable')
+  } else {
+    const c = new Client({ connectionString: connStr })
+    c.on('error', (e) => console.error('health pg-direct client error:', e.message))
+    try {
+      await c.connect()
+
+      // (1) tenant_floor_alerts: tenant-scoped, explicit column allow-list,
+      //     ORDER BY created_at DESC LIMIT 50.
+      try {
+        const fa = await c.query(
+          `SELECT id, tenant_id, property_type, listing_id, alert_type, created_at
+             FROM public.tenant_floor_alerts
+            WHERE tenant_id = $1
+            ORDER BY created_at DESC
+            LIMIT 50`,
+          [tenantId]
+        )
+        floor_alerts = fa.rows.map(r => ({
+          id: r.id,
+          tenant_id: r.tenant_id,
+          property_type: r.property_type,
+          listing_id: r.listing_id,
+          alert_type: r.alert_type,
+          created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+        }))
+      } catch (e: any) {
+        warnings.push('floor_alerts: ' + (e?.message || 'unknown'))
+        // floor_alerts stays null -> frontend renders "could not read" state
+      }
+
+      // (2) NULL-cache count: single aggregate query with FILTER per
+      //     property_type (one round-trip, not three). mls_listings is
+      //     tenant-agnostic (no tenant_id column); the count is system-wide.
+      try {
+        const nc = await c.query(`
+          SELECT
+            COUNT(*) FILTER (WHERE property_type = 'Residential Condo & Other')::int AS condo,
+            COUNT(*) FILTER (WHERE property_type = 'Residential Freehold')::int AS home,
+            COUNT(*)::int AS total
+          FROM public.mls_listings
+          WHERE assigned_agent_id IS NULL
+        `)
+        const row = nc.rows[0]
+        if (row) {
+          const total = row.total ?? 0
+          const condo = row.condo ?? 0
+          const home  = row.home  ?? 0
+          null_cache_count = { total, condo, home, other: Math.max(0, total - condo - home) }
+        } else {
+          warnings.push('null_cache_count: aggregate returned no rows (unexpected)')
+        }
+      } catch (e: any) {
+        warnings.push('null_cache_count: ' + (e?.message || 'unknown'))
+        // null_cache_count stays null -> frontend renders "could not read" state
+      }
+    } catch (e: any) {
+      warnings.push('db connect: ' + (e?.message || 'unknown'))
+    } finally {
+      await c.end().catch(() => {})
+    }
+  }
+
+  return NextResponse.json(
+    { ...(data as Record<string, unknown>), floor_alerts, null_cache_count, warnings },
+    { status: 200 }
+  )
 }

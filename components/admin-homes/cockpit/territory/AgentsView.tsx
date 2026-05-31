@@ -20,6 +20,9 @@ interface AgentRow {
   building_pin_count: number
   listing_pin_count: number
   user_assignment_count: number
+  // P-DASHBOARD GAP-E: actual mls_listings.assigned_agent_id row count
+  // (Event 4 reflow footprint -- e.g. King Shah = 11 cards but 441,066 listings).
+  mls_listings_footprint: number
 }
 
 interface Props { tenantId: string; tenantName: string; onViewCards?: (agentId: string) => void }
@@ -61,7 +64,12 @@ export default function AgentsView({ tenantId, tenantName, onViewCards }: Props)
 
   async function doBulkReassign(to: AgentRow) {
     if (!reassignFrom) return
-    if (!confirm(`Move all ${reassignFrom.assigned_card_count} card(s) from ${reassignFrom.full_name} to ${to.full_name}?`)) {
+    // GAP-E: surface the listing-footprint impact before the operator confirms.
+    // assigned_card_count = APA cards (often single-digit); mls_listings_footprint
+    // = actual cache rows that will reflow via the Event 4 queue.
+    const fp = reassignFrom.mls_listings_footprint
+    const fpNote = fp > 0 ? ` This will reflow ${fp.toLocaleString()} listing(s) via the reroll queue.` : ''
+    if (!confirm(`Move all ${reassignFrom.assigned_card_count} card(s) from ${reassignFrom.full_name} to ${to.full_name}?${fpNote}`)) {
       setReassignFrom(null)
       return
     }
@@ -88,7 +96,16 @@ export default function AgentsView({ tenantId, tenantName, onViewCards }: Props)
 
   async function doBulkDeactivate(row: AgentRow) {
     if (row.assigned_card_count === 0) return
-    if (!confirm(`Deactivate all ${row.assigned_card_count} card(s) held by ${row.full_name}? This is reversible via the Cards view.`)) return
+    // GAP-E: prominent footprint warning -- deactivating a heavy agent enqueues
+    // a multi-100k-row reflow via Event 4's territory_reroll_queue. Operators
+    // must see this BEFORE clicking through.
+    const fp = row.mls_listings_footprint
+    const fpWarn = fp >= 10000
+      ? ` WARNING: this agent currently routes ${fp.toLocaleString()} listing(s); deactivation will enqueue a reflow that size via territory_reroll_queue (drained every 5 min by cron). Empty-pool fallthrough may fire tenant_floor_alerts.`
+      : fp > 0
+      ? ` This will reflow ${fp.toLocaleString()} listing(s) via the reroll queue.`
+      : ''
+    if (!confirm(`Deactivate all ${row.assigned_card_count} card(s) held by ${row.full_name}? This is reversible via the Cards view.${fpWarn}`)) return
     // Fetch the agent's active card IDs, then deactivate them.
     setBusy(row.agent_id)
     try {
@@ -171,6 +188,7 @@ export default function AgentsView({ tenantId, tenantName, onViewCards }: Props)
               <th className="px-3 py-2 text-left font-medium">Role</th>
               <th className="px-3 py-2 text-left font-medium">Status</th>
               <th className="px-3 py-2 text-right font-medium">Cards</th>
+              <th className="px-3 py-2 text-right font-medium" title="Actual mls_listings rows routed to this agent (Event 4 reflow footprint)">Footprint</th>
               <th className="px-3 py-2 text-right font-medium">Buildings</th>
               <th className="px-3 py-2 text-right font-medium">Listings</th>
               <th className="px-3 py-2 text-right font-medium">Users</th>
@@ -206,6 +224,12 @@ export default function AgentsView({ tenantId, tenantName, onViewCards }: Props)
                     )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.assigned_card_count}</td>
+                  <td
+                    className={`px-3 py-2 text-right tabular-nums ${r.mls_listings_footprint >= 10000 ? 'font-semibold text-amber-700' : ''}`}
+                    title={r.mls_listings_footprint >= 10000 ? `Heavy footprint: deactivation will reflow ${r.mls_listings_footprint.toLocaleString()} listings via the reroll queue` : undefined}
+                  >
+                    {r.mls_listings_footprint.toLocaleString()}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.building_pin_count}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.listing_pin_count}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{r.user_assignment_count}</td>
@@ -258,6 +282,11 @@ export default function AgentsView({ tenantId, tenantName, onViewCards }: Props)
             <p className="text-sm font-semibold text-gray-900 mb-1">
               Reassign {reassignFrom.assigned_card_count} card(s) from {reassignFrom.full_name}
             </p>
+            {reassignFrom.mls_listings_footprint > 0 && (
+              <p className="text-xs text-amber-700 mb-2">
+                Footprint: <strong>{reassignFrom.mls_listings_footprint.toLocaleString()}</strong> listing(s) will reflow to the destination agent via the reroll queue.
+              </p>
+            )}
             <p className="text-xs text-gray-600 mb-3">Pick the destination agent:</p>
             <div className="space-y-1 max-h-64 overflow-y-auto">
               {rows

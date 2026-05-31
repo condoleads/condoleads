@@ -67,10 +67,46 @@ export async function GET(req: NextRequest) {
   const connStr = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.POSTGRES_URL || process.env.POSTGRES_URL_NON_POOLING
   if (!connStr) return NextResponse.json({ error: 'no db env' }, { status: 500 })
   const c = new Client({ connectionString: connStr })
+  c.on('error', (e) => console.error('reroll-worker GET client error:', e.message))
   await c.connect()
   const d = await depth(c, tenantId)
+  // P-DASHBOARD GAP-C: cron observability fields (additive, backward-compatible).
+  // pg-direct as postgres (this route already uses pg-direct, so the same
+  // postgres-owner grants on territory_reroll_queue apply -- no service_role
+  // grant wall). Single round-trip with 4 scalar subqueries.
+  let last_done_at: string | null = null
+  let last_error: { message: string | null; at: string | null } | null = null
+  let recent_done_count = 0
+  let recent_error_count = 0
+  try {
+    const h = await c.query(
+      `SELECT
+         (SELECT processed_at FROM territory_reroll_queue
+            WHERE tenant_id = $1 AND status = 'done'
+            ORDER BY processed_at DESC NULLS LAST LIMIT 1) AS last_done_at,
+         (SELECT json_build_object('message', error_message, 'at', processed_at)
+            FROM territory_reroll_queue
+            WHERE tenant_id = $1 AND status = 'error'
+            ORDER BY processed_at DESC NULLS LAST LIMIT 1) AS last_error,
+         (SELECT COUNT(*)::int FROM territory_reroll_queue
+            WHERE tenant_id = $1 AND status = 'done'
+              AND processed_at > now() - interval '1 hour') AS recent_done_count,
+         (SELECT COUNT(*)::int FROM territory_reroll_queue
+            WHERE tenant_id = $1 AND status = 'error'
+              AND processed_at > now() - interval '1 hour') AS recent_error_count`,
+      [tenantId]
+    )
+    const r = h.rows[0] || {}
+    last_done_at = r.last_done_at ? new Date(r.last_done_at).toISOString() : null
+    last_error = r.last_error || null
+    recent_done_count = r.recent_done_count || 0
+    recent_error_count = r.recent_error_count || 0
+  } catch (e: any) {
+    console.error('reroll-worker GET observability query failed:', e?.message)
+    // Soft-fail: depth + ok still returned even if observability query errored.
+  }
   await c.end()
-  return NextResponse.json({ ok: true, ...d })
+  return NextResponse.json({ ok: true, ...d, last_done_at, last_error, recent_done_count, recent_error_count })
 }
 
 export async function POST(req: NextRequest) {

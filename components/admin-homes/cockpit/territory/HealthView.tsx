@@ -31,6 +31,22 @@ interface TenantDefault {
   is_healthy: boolean
 }
 
+interface FloorAlert {
+  id: string
+  tenant_id: string
+  property_type: string | null
+  listing_id: string | null
+  alert_type: string
+  created_at: string
+}
+
+interface NullCacheCount {
+  total: number
+  condo: number
+  home: number
+  other: number
+}
+
 interface HealthPayload {
   tenant_id: string
   selling_agent_count: number
@@ -42,6 +58,18 @@ interface HealthPayload {
   orphan_buildings: number
   disaster_state: boolean
   health_grade: 'critical' | 'warning' | 'caution' | 'healthy'
+  // P-DASHBOARD GAP-B: floor-pool alerts (tenant-scoped). Event 4's
+  // reflow + Landing 1's pick_floor_agent both INSERT here when a
+  // listing's cascade reaches L9/L10 floor with no eligible agent.
+  // null = the route's extension query failed (could not read);
+  // [] = confirmed zero alerts (healthy); these must render distinctly.
+  floor_alerts?: FloorAlert[] | null
+  // P-DASHBOARD GAP-D: NULL-cache count (global -- mls_listings has no
+  // tenant_id column, so this is system-wide drift visibility).
+  // null = the route's extension query failed (could not read);
+  // {total: 0, ...} = genuinely zero unrouted (healthy); render distinctly.
+  null_cache_count?: NullCacheCount | null
+  warnings?: string[]
 }
 
 interface Props {
@@ -249,7 +277,105 @@ export default function HealthView({ tenantId, tenantName }: Props) {
           description="Building cards whose surrounding municipality has no apa coverage. The building routes via its pin, but everything else in the municipality cascades to the tenant default."
           ok="No orphan buildings detected."
         />
+        {/* P-DASHBOARD GAP-B: floor-pool alerts (tenant-scoped).
+            F-FALSE-GREEN-VIA-SILENT-SOFT-FAIL fix: null = could-not-read
+            renders as a RED error row, NEVER as the green/gray healthy "0". */}
+        {data.floor_alerts == null ? (
+          <div className="rounded-md border border-red-300 bg-red-50 p-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 text-sm">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-red-900">Floor-pool alerts: could not read</p>
+                  <span className="text-sm font-semibold text-red-900">—</span>
+                </div>
+                <p className="mt-1 text-xs text-red-800">
+                  The extension query failed at the route. This is NOT "no alerts" — it means tenant_floor_alerts could not be read. See Diagnostics warnings panel below for the underlying error. Common cause: grant gap (postgres-only) or a pg-direct connection failure.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <ProblemRow
+            icon={<AlertCircle className="w-4 h-4 text-red-600" />}
+            tone={data.floor_alerts.length > 0 ? 'orange' : 'gray'}
+            count={data.floor_alerts.length}
+            title="Floor-pool alerts"
+            description="tenant_floor_alerts rows recorded by Landing 1's pick_floor_agent or Event 4's reflow when a listing's cascade reached the floor (L9/L10) and the floor pool had no eligible agent. Restore floor-pool members or carve coverage at a higher scope."
+            ok="No floor-pool alerts."
+          />
+        )}
       </div>
+
+      {/* P-DASHBOARD GAP-D: NULL-cache drift visibility (global).
+          F-FALSE-GREEN fix: null = could-not-read renders as a RED error
+          panel with "—" instead of a green "0" that would look healthy. */}
+      {data.null_cache_count == null ? (
+        <div className="rounded-md border border-red-300 bg-red-50 p-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 text-sm">
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-red-900">Unrouted listings (global): could not read</p>
+                <span className="text-sm font-semibold text-red-900 tabular-nums">—</span>
+              </div>
+              <p className="mt-1 text-xs text-red-800">
+                The extension query for mls_listings NULL-cache count failed at the route. This is NOT "0 unrouted" — it means the cache health is unknown. See Diagnostics warnings panel below for the underlying error. Common cause: PostgREST 8s timeout on the 1.3M-row scan (the recon ran the same query under postgres in &lt;100ms) or a pg-direct connection failure.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-md border border-gray-200 bg-white p-3">
+          <div className="flex items-start gap-3">
+            <Activity className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 text-sm">
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-gray-900">Unrouted listings (global)</p>
+                <span className="text-sm font-semibold text-gray-900 tabular-nums">
+                  {data.null_cache_count.total.toLocaleString()}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-gray-700">
+                mls_listings rows with NULL assigned_agent_id, system-wide (the cache table has no tenant_id; this surfaces F-RESOLVE-AT-INSERT-PRIORITY's drift). Landing 2's sync hooks resolve at insert; any remaining NULL accumulation indicates either an unwired ingestion path or a tenant with no eligible floor-pool member.
+              </p>
+              <div className="mt-2 flex gap-4 text-xs text-gray-600">
+                <span>Condos: <strong className="tabular-nums">{data.null_cache_count.condo.toLocaleString()}</strong></span>
+                <span>Homes: <strong className="tabular-nums">{data.null_cache_count.home.toLocaleString()}</strong></span>
+                <span>Other: <strong className="tabular-nums">{data.null_cache_count.other.toLocaleString()}</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GAP-B: floor-alerts detail list (only when read succeeded AND non-empty).
+          Array.isArray gate ensures null does not throw on .length access. */}
+      {Array.isArray(data.floor_alerts) && data.floor_alerts.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-semibold text-amber-900 mb-2">Recent floor-pool alerts ({data.floor_alerts.length})</p>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {data.floor_alerts.slice(0, 50).map(a => (
+              <div key={a.id} className="text-xs text-amber-900 flex items-center gap-2">
+                <span className="font-mono">{new Date(a.created_at).toISOString().replace('T', ' ').slice(0, 19)}</span>
+                <span className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px] font-semibold uppercase">{a.alert_type}</span>
+                {a.property_type && <span>property_type: {a.property_type}</span>}
+                {a.listing_id && <span className="font-mono">listing: {a.listing_id.slice(0, 8)}…</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Warnings panel (e.g. floor_alerts/null_cache_count query soft-failed) */}
+      {data.warnings && data.warnings.length > 0 && (
+        <div className="rounded-md border border-gray-300 bg-gray-50 p-3 text-xs text-gray-700">
+          <p className="font-semibold mb-1">Diagnostics warnings (extended fields):</p>
+          <ul className="list-disc pl-4 space-y-0.5">
+            {data.warnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
