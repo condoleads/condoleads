@@ -36,6 +36,7 @@ export async function findComparables(specs: UnitSpecs, customValues?: Adjustmen
     .from('mls_listings')
     .select('id, unit_number, listing_key, close_price, list_price, bedrooms_total, bathrooms_total_integer, living_area_range, parking_total, locker, days_on_market, close_date, tax_annual_amount, square_foot_source, association_fee, unparsed_address')
     .eq('building_id', specs.buildingId)
+    .eq('transaction_type', 'For Sale')
     .eq('standard_status', 'Closed')
     .not('close_price', 'is', null)
     .gte('close_date', twoYearsAgo.toISOString())
