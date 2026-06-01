@@ -1,0 +1,80 @@
+◇ injected env (37) from .env.local // tip: ◈ secrets for agents [www.dotenvx.com]
+GAP-6 read-path scale test
+=========================
+Master-protocol target: <50ms p95 for the read path
+Runs per probe: 10 (after 1 warmup)
+
+Fixture geos (runtime-picked):
+  WALLiam community : {
+  id: '628216c5-d57c-4584-b20c-d8a409a3c2e7',
+  name: 'Rural Whitby',
+  n: 1873
+}
+  Whitby muni       : {
+  id: '70103aef-1b32-4939-9ff8-264e859a5587',
+  name: 'Whitby',
+  n: 12656
+}
+  Largest TREB area : {
+  id: '9d0d6843-b16f-42b6-911c-5887a143866e',
+  name: 'Toronto',
+  n: 378385
+}
+
+
+============================================================
+Results (ms, lower = better). Target <50ms p95.
+============================================================
+  SLOW  A1 CommunityPage grid (community, LIMIT 24)             p50= 203.59 ms  p95= 256.26 ms  max= 256.26 ms
+  SLOW  A2 MunicipalityPage grid (Whitby muni, LIMIT 24)        p50= 158.55 ms  p95= 205.96 ms  max= 205.96 ms
+  SLOW  A3 AreaPage grid (largest area, LIMIT 24)               p50= 194.83 ms  p95= 204.70 ms  max= 204.70 ms
+  SLOW  B1 Lead-path cache-first resolve (1 listing)            p50= 201.86 ms  p95= 215.90 ms  max= 215.90 ms
+  SLOW  C1 Bulk cache read (1000 listings)                      p50= 203.37 ms  p95= 304.06 ms  max= 304.06 ms
+
+Per-probe samples (ms):
+  A1 CommunityPage grid (community, LIMIT 24): 152.01, 256.26, 203.59, 206.18, 205.86, 203.00, 202.37, 205.12, 202.92, 205.33
+  A2 MunicipalityPage grid (Whitby muni, LIMIT 24): 204.27, 158.55, 169.31, 183.35, 152.86, 154.02, 205.96, 153.28, 153.10, 204.09
+  A3 AreaPage grid (largest area, LIMIT 24): 203.16, 193.14, 198.80, 197.27, 194.83, 190.26, 192.11, 189.55, 195.53, 204.70
+  B1 Lead-path cache-first resolve (1 listing): 211.91, 203.98, 144.33, 165.64, 145.69, 148.04, 215.90, 207.66, 201.86, 204.33
+  C1 Bulk cache read (1000 listings): 214.21, 195.81, 203.37, 209.20, 304.06, 166.89, 245.59, 201.04, 232.57, 182.23
+
+VERDICT: 5 / 5 PROBE(S) EXCEEDED 50ms p95:
+  - A1 CommunityPage grid (community, LIMIT 24) -> p95=256.26ms
+  - A2 MunicipalityPage grid (Whitby muni, LIMIT 24) -> p95=205.96ms
+  - A3 AreaPage grid (largest area, LIMIT 24) -> p95=204.70ms
+  - B1 Lead-path cache-first resolve (1 listing) -> p95=215.90ms
+  - C1 Bulk cache read (1000 listings) -> p95=304.06ms
+
+============================================================
+EXPLAIN ANALYZE -- DB-side cost (excludes network RTT)
+============================================================
+  A1 CommunityPage grid (community, LIMIT 24)
+    DB-side execution: 0.412 ms
+  A2 MunicipalityPage grid (Whitby muni, LIMIT 24)
+    DB-side execution: 1.923 ms
+  A3 AreaPage grid (largest area, LIMIT 24)
+    DB-side execution: 43.972 ms
+  B1 Lead-path cache-first resolve (1 listing)
+    DB-side execution: 0.061 ms
+  C1 Bulk cache read (1000 listings)
+    DB-side execution: 410.596 ms
+
+DB-SIDE VERDICT: 1 / 5 PROBE(S) ABOVE 50ms DB-side:
+  - C1 410.596ms
+
+============================================================
+Index sanity (cheap EXPLAIN without ANALYZE)
+============================================================
+-- A1 plan --
+  Limit  (cost=30.99..31.05 rows=23 width=394)
+    ->  Sort  (cost=30.99..31.05 rows=23 width=394)
+          Sort Key: list_price DESC NULLS LAST
+          ->  Index Scan using index_listings_by_community on mls_listings  (cost=0.43..30.47 rows=23 width=394)
+                Index Cond: ((community_id = '628216c5-d57c-4584-b20c-d8a409a3c2e7'::uuid) AND ((standard_status)::text = ANY ('{Active,"Active Under Contract",Pending}'::text[])) AND ((transaction_type)::text = 'For Sale'::text) AND (available_in_vow = true))
+-- B1 plan --
+  Nested Loop  (cost=0.56..5.89 rows=1 width=34)
+    ->  Index Scan using mls_listings_pkey on mls_listings ml  (cost=0.43..2.65 rows=1 width=16)
+          Index Cond: (id = '7e21974a-a9a8-4233-b82f-56956f22f0e9'::uuid)
+    ->  Index Scan using agents_pkey on agents a  (cost=0.14..2.36 rows=1 width=34)
+          Index Cond: (id = ml.assigned_agent_id)
+          Filter: (is_active AND is_selling AND (tenant_id = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'::uuid))
