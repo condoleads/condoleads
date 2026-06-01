@@ -271,3 +271,74 @@ equivalent enforcement. Surfaced in CV-CROSS D3.
   stamp on `leads` is a SNAPSHOT, not a reference — re-parenting an agent doesn't
   re-walk existing leads.
 
+---
+
+## 8 — REOPEN v5 (2026-06-01) — real-key end-to-end proof
+
+The original CV-GUARANTEE verdict (§6) closed with **one conditional**: terminal
+email arrival blocked until WALLiam's `tenants.resend_api_key` left placeholder
+state. The operator wired real keys this turn:
+- `tenants.resend_api_key` (WALLiam + aily) → real Resend key (fingerprint
+  `re_BJJ...cqSr`, len 36). Verified-live against `GET /domains` (200 OK).
+- `tenants.anthropic_api_key` (WALLiam + aily) → real Anthropic key
+  (fingerprint `sk-ant...zwAA`, len 108). Verified-live against `GET /v1/models`
+  (200 OK).
+- Per-agent: King Shah / Neo Smith / WALLiam seed each have
+  `ai_estimator_enabled = TRUE` + agent-level `anthropic_api_key` populated
+  (closes F-ESTIMATOR-AI-READS-AGENT-KEY-NOT-TENANT-KEY for WALLiam — the
+  estimator's AI path reads from `agents.anthropic_api_key`, NOT
+  `tenants.anthropic_api_key`).
+
+### v5 phase results (against LIVE WALLiam, b16e1039-…)
+
+| Phase | Result | Real-API evidence |
+|---|---|---|
+| **CV-EMAIL** (`smoke-cv-email.js`) | **7/7 PASS** | Real Resend send to `delivered@resend.dev`; message ID `0a05149f-7429-4da4-ad8e-8b6a90449b58`. Pre-flight passes cleanly with real key (no longer falsely-truthy on placeholder). Envelope = TO `kingshah@live.ca` / CC `[]` / BCC `[kingshahone@gmail.com, condoleads.ca@gmail.com]`. logEmailRecipients audit rows INSERTed inside BEGIN/ROLLBACK. |
+| **CV-CHARLIE** (`smoke-cv-charlie.js`) | **8/8 PASS** | 1 real Anthropic Haiku call (28 in + 23 out tokens, $0.000143); appointment lead INSERT with full chain (BEGIN/ROLLBACK); general lead capture INSERT with plan_data + agent_id + chain stamp (BEGIN/ROLLBACK). |
+| **CV-EST** (`smoke-cv-est.js`) | **8/8 PASS** | Real WALLiam Whitby listing (`712 Rossland Road #814`); 13 same-building-same-bedroom comparable solds in last 12 months; statistical estimate **$561,000** (BINGO tier, range $470K-$630K); 1 real Anthropic Sonnet 4 call (246 in + 194 out tokens, $0.003648) returning valid `{summary, keyFactors, marketTrend}` JSON; real Resend send for vip-request (msg ID `70bdb36d-fb81-4584-ad5e-d89f53b1bba5`); lead INSERT with full chain (BEGIN/ROLLBACK). |
+
+**Aggregate real-API cost** for the full v5 reopen: **~$0.004 (~half a cent)**
+across 2 Anthropic calls + 2 Resend sends. Frugal-budget achieved.
+
+### v5 fixture lifecycle
+
+Fresh fixture rebuilt + torn down: primary `e3dda894-ca03-4cbc-bcd3-50597cfc3f4c`,
+secondary `727ceb63-ea60-4933-aac2-d3dd544b58c3`. Same apply-runner
+(`apply-cv-fixture-build.js`), same V1c WALLiam-untouched assertion (12 active
+apa rows), baseline-diff CLEAN before AND after. Per-agent AI wiring is PERSISTENT
+launch config and explicitly verified to survive teardown (3/3 agents kept
+`ai_estimator_enabled=TRUE` + matching key fingerprint).
+
+### v5 finding (new, P1)
+
+**F-ESTIMATOR-MIXES-RENT-INTO-SALE-COMPS** (production-latent). The estimator's
+comparable-matching SQL filters on `close_date IS NOT NULL` but doesn't filter
+on `transaction_type='For Sale'` (or equivalent). For a Whitby 2BR condo, the
+first CV-EST run pulled in lease-end records with `close_price=$2,500` into the
+sale comparable set, yielding a meaningless $116,755 estimate with a $2,500-$573,000
+range. The Sonnet 4 AI insights commentary actually caught the inconsistency
+("Data inconsistency between rental and sale prices"). Fix: audit
+`lib/estimator/comparable-matcher-sales.ts` and `home-comparable-matcher-sales.ts`
+to add `AND transaction_type = 'For Sale'` (or equivalent guard) to the
+comparable-matching predicates. The CV-EST smoke applies the fix locally;
+production still has the bug. **Surfaced in CV-EST Phase A (first run).**
+
+### Closed in v5
+- **F-WALLIAM-CREDS-PLACEHOLDER-IN-DB** → **CLOSED for WALLiam.** Real keys
+  wired in `tenants` + `.env.local` + per-agent. Real Resend send + real
+  Anthropic AI call both proven end-to-end against live WALLiam. The one
+  conditional in the original CV-GUARANTEE verdict (§6) is removed for WALLiam.
+- **F-ESTIMATOR-AI-READS-AGENT-KEY-NOT-TENANT-KEY** → **CLOSED for WALLiam** via
+  per-agent wiring on all 3 WALLiam agents. (Architectural finding: the
+  estimator reads `agents.anthropic_api_key` not `tenants.anthropic_api_key`;
+  recorded so other tenants know to wire per-agent before AI insights can fire.)
+
+### Verdict update (v5)
+
+The CV-GUARANTEE verdict in §6 is **updated**: the single conditional
+(terminal email arrival pending WALLiam credential restore) is **removed for
+WALLiam**. Email send + AI call paths are now proven end-to-end against the
+live production tenant with real keys + real API responses + real Resend
+message IDs. The verdict still applies to **future tenants** at credential-
+restore time (the same pattern: tenant Resend domain verified, per-agent
+anthropic key wired for the estimator AI path).
