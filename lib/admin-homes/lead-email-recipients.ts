@@ -205,10 +205,18 @@ export async function getLeadEmailRecipients(
   // Two-step query (cleaner than nested-join type inference):
   //   1. Find platform_admin_ids assigned to this tenant
   //   2. Read those rows from platform_admins, filter active + tier='manager'
-  const { data: assignmentRows } = await supabase
+  // Error-capture mirrors the Layer-6 pattern at L233 (v27 false-green lesson).
+  // Layer-5 is graceful fall-through (NOT unconditional like Layer-6) -- log
+  // the error so operators see "could not read" instead of silently dropping
+  // Layer-5 BCC.
+  const { data: assignmentRows, error: assignmentError } = await supabase
     .from('platform_manager_tenants')
     .select('platform_admin_id')
     .eq('tenant_id', tenantId)
+
+  if (assignmentError) {
+    console.error('[getLeadEmailRecipients] Layer-5 platform_manager_tenants read failed:', assignmentError)
+  }
 
   const assignedAdminIds = (assignmentRows || []).map(r => (r as { platform_admin_id: string }).platform_admin_id)
   const managerPlatformEmails: string[] = []

@@ -1,0 +1,14 @@
+-- F-PLATFORM-MANAGER-TENANTS-SERVICE-ROLE-GRANT -- PRE-FIX SNAPSHOT
+-- Captured: 2026-06-01T13-02-29-763Z
+-- relrowsecurity=true  relforcerowsecurity=false
+-- Pre-fix grants (information_schema.role_table_grants):
+--   postgres -> DELETE
+--   postgres -> INSERT
+--   postgres -> REFERENCES
+--   postgres -> SELECT
+--   postgres -> TRIGGER
+--   postgres -> TRUNCATE
+--   postgres -> UPDATE
+
+-- Forensic only. Down-migration at 20260601_f_pmt_grant_fix_down.sql does
+-- REVOKE SELECT ON public.platform_manager_tenants FROM service_role;
