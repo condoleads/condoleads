@@ -123,6 +123,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
               src={displayPhotos[0].media_url}
               alt="Property photo"
               fill
+              sizes="100vw"
               className="object-cover"
               priority
             />
@@ -165,6 +166,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
                 src={displayPhotos[0].media_url}
                 alt="Full size photo"
                 fill
+                sizes="100vw"
                 className="object-contain"
               />
             </div>
@@ -199,6 +201,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
               src={displayPhotos[currentIndex].media_url}
               alt={`Property photo ${currentIndex + 1}`}
               fill
+              sizes="(max-width: 639px) 100vw, 50vw"
               className="object-cover"
               priority
             />
@@ -221,6 +224,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
               src={displayPhotos[secondPhotoIndex].media_url}
               alt={`Property photo ${secondPhotoIndex + 1}`}
               fill
+              sizes="(max-width: 639px) 100vw, 50vw"
               className="object-cover"
               priority={currentIndex === 0}
             />
@@ -364,6 +368,7 @@ export default function PropertyGallery({ photos, shouldBlur = false, maxPhotos,
               src={displayPhotos[currentIndex].media_url}
               alt={`Full size ${currentIndex + 1}`}
               fill
+              sizes="100vw"
               className="object-contain"
             />
           </div>
