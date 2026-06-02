@@ -70,7 +70,10 @@ const getNeighbourhoodData = unstable_cache(
 
   // FIX: run all queries in parallel
   // FIX: initialTotal and forSaleCount were identical queries — merged into one
-  // FIX: sold/leased counts deferred — not needed on initial SSR render, fetched by tabs on demand
+  // W-HOME-AND-NEIGHBOURHOOD Fix 2 (2026-06-02): sold/leased counts are now
+  // computed at SSR (Option B) so they appear in initial HTML with no client
+  // flicker. Matches the CommunityPage/MunicipalityPage filter pattern:
+  //   available_in_vow=true + standard_status='Closed' + transaction_type.
   const [
     { count: activeCount },
     { count: condoCount },
@@ -79,6 +82,8 @@ const getNeighbourhoodData = unstable_cache(
     { data: initialListingsRaw },
     { count: forSaleCount },
     { count: forLeaseCount },
+    { count: soldCount },
+    { count: leasedCount },
   ] = await Promise.all([
     supabase.from('mls_listings')
       .select('id', { count: 'exact', head: true })
@@ -133,15 +138,27 @@ const getNeighbourhoodData = unstable_cache(
       .eq('available_in_vow', true)
       .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('transaction_type', 'For Lease'),
+    // W-HOME-AND-NEIGHBOURHOOD Fix 2 (2026-06-02): Closed/Sold count.
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .eq('standard_status', 'Closed')
+      .eq('transaction_type', 'For Sale'),
+    // W-HOME-AND-NEIGHBOURHOOD Fix 2 (2026-06-02): Closed/Leased count.
+    supabase.from('mls_listings')
+      .select('id', { count: 'exact', head: true })
+      .in('municipality_id', municipalityIds)
+      .eq('available_in_vow', true)
+      .eq('standard_status', 'Closed')
+      .eq('transaction_type', 'For Lease'),
   ])
 
-  // FIX: sold/leased counts removed from SSR — NeighbourhoodPageTabs fetches them
-  // when the user clicks those tabs via the API route
   const initialCounts = {
     forSale: forSaleCount ?? 0,
     forLease: forLeaseCount ?? 0,
-    sold: 0,
-    leased: 0,
+    sold: soldCount ?? 0,
+    leased: leasedCount ?? 0,
   }
 
   // Process media thumbnails
@@ -162,6 +179,8 @@ const getNeighbourhoodData = unstable_cache(
       condos: condoCount ?? 0,
       homes: homeCount ?? 0,
       buildings: buildingCount ?? 0,
+      sold: soldCount ?? 0,
+      leased: leasedCount ?? 0,
     },
     initialListings,
     initialTotal: forSaleCount ?? 0,
@@ -207,8 +226,8 @@ export default async function NeighbourhoodPage({ params }: Props) {
         ]}
         stats={{
           active: stats?.active ?? 0,
-          sold: 0,
-          leased: 0,
+          sold: stats?.sold ?? 0,
+          leased: stats?.leased ?? 0,
           buildings: stats?.buildings ?? 0,
         }}
         geoType="neighbourhood"
