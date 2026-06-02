@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { isPropertySlug, parsePropertySlug, isHomePropertySlug, parseHomePropertySlug } from '@/lib/utils/slugs'
 import DevelopmentPage, { generateDevelopmentMetadata } from '@/app/[slug]/DevelopmentPage'
@@ -109,6 +109,16 @@ export default async function ComprehensiveSlugPage({
   const { data: community } = await supabase
     .from('communities').select('id, name, slug, municipality_id').eq('slug', params.slug).single()
   if (community) return <CommunityPage community={community} />
+
+  // W-CHIP-SLUG (2026-06-02): bare neighbourhood slugs (e.g. /north-york,
+  // /etobicoke) are Toronto sub-districts stored in the neighbourhoods table.
+  // Their canonical page is at /toronto/<slug>. 308-redirect to the canonical
+  // path so the dead-URL class is killed for all 9 Toronto neighbourhoods
+  // (not just the chip ones), preserving SEO. Genuinely-unknown slugs still
+  // fall through to BuildingPage / notFound() below.
+  const { data: neighbourhood } = await supabase
+    .from('neighbourhoods').select('slug').eq('slug', params.slug).eq('is_active', true).single()
+  if (neighbourhood) permanentRedirect(`/toronto/${neighbourhood.slug}`)
 
   // Building
   return <BuildingPage params={params} />

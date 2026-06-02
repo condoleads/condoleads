@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { isPropertySlug, parsePropertySlug, isHomePropertySlug, parseHomePropertySlug } from '@/lib/utils/slugs'
 import DevelopmentPage, { generateDevelopmentMetadata } from './DevelopmentPage'
@@ -185,6 +185,13 @@ export default async function DynamicSlugPage({
   if (community) {
     return <CommunityPage community={community} />
   }
+
+  // W-CHIP-SLUG (2026-06-02): bare neighbourhood slugs -> /toronto/<slug>.
+  // See app/comprehensive-site/[slug]/page.tsx for rationale. Genuinely-
+  // unknown slugs still fall through to BuildingPage below.
+  const { data: neighbourhood } = await supabase
+    .from('neighbourhoods').select('slug').eq('slug', params.slug).eq('is_active', true).single()
+  if (neighbourhood) permanentRedirect(`/toronto/${neighbourhood.slug}`)
 
   // Building URL: /x2-condos-101-charles-st-e-toronto
   return <BuildingPage params={params} />

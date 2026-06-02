@@ -20,15 +20,19 @@ interface BrowseListingsViewProps {
   neighbourhoods: NeighbourhoodMenuItem[];
 }
 
-// Popular GTA quick-chip targets - links to municipality slugs
+// Popular GTA quick-chip targets. Some entries are Toronto sub-district
+// neighbourhoods (North York, Etobicoke) -- stored in the neighbourhoods
+// table, accessed at /toronto/<slug> (NOT a flat /<slug>). The /[slug] router
+// also redirects bare neighbourhood slugs to /toronto/<slug>, but linking the
+// chips directly to the canonical path avoids the redirect hop.
 const QUICK_CHIPS = [
-  { name: 'Downtown Toronto', slug: 'toronto' },
-  { name: 'North York', slug: 'north-york' },
-  { name: 'Mississauga', slug: 'mississauga' },
-  { name: 'Whitby', slug: 'whitby' },
-  { name: 'Etobicoke', slug: 'etobicoke' },
-  { name: 'Oakville', slug: 'oakville' },
-  { name: 'Markham', slug: 'markham' },
+  { name: 'Downtown Toronto', href: '/toronto' },
+  { name: 'North York', href: '/toronto/north-york' },
+  { name: 'Mississauga', href: '/mississauga' },
+  { name: 'Whitby', href: '/whitby' },
+  { name: 'Etobicoke', href: '/toronto/etobicoke' },
+  { name: 'Oakville', href: '/oakville' },
+  { name: 'Markham', href: '/markham' },
 ];
 
 export default function BrowseListingsView({ neighbourhoods }: BrowseListingsViewProps) {
@@ -83,8 +87,8 @@ export default function BrowseListingsView({ neighbourhoods }: BrowseListingsVie
       }}>
         {QUICK_CHIPS.map((chip) => (
           <a
-            key={chip.slug}
-            href={`/${chip.slug}`}
+            key={chip.href}
+            href={chip.href}
             target="_blank"
             rel="noopener noreferrer"
             style={{
