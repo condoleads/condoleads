@@ -26,7 +26,16 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   const isClosed = status === 'Closed'
-  
+
+  // Home pages: h1 already shows the street segment (substring before the first
+  // comma). Render only the REMAINDER (city, region, postal) below to avoid
+  // repeating the street. Condo pages: h1 is "Unit N" -- no overlap with the
+  // full address, so render unparsed_address as-is.
+  const fullAddress = listing.unparsed_address || listing.buildings?.address || ''
+  const displayAddress = isHome
+    ? (fullAddress.includes(',') ? fullAddress.slice(fullAddress.indexOf(',') + 1).trim() : '')
+    : fullAddress
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -63,9 +72,11 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
                 transactionType={listing.transaction_type as 'For Sale' | 'For Lease'}
               />
             </div>
-            <p className={`text-lg text-slate-600 mb-2 ${shouldBlur ? 'blur-sm' : ''}`}>
-              {listing.unparsed_address || listing.buildings?.address}
-            </p>
+            {displayAddress && (
+              <p className={`text-lg text-slate-600 mb-2 ${shouldBlur ? 'blur-sm' : ''}`}>
+                {displayAddress}
+              </p>
+            )}
             {!isHome && listing.buildings?.name && (
               <p className={`text-base text-slate-700 mb-2 font-semibold ${shouldBlur ? 'blur-sm' : ''}`}>
                 {listing.buildings.name}
