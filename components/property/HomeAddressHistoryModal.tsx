@@ -138,9 +138,9 @@ export default function HomeAddressHistoryModal({
                         </span>
                         <span className="text-sm text-slate-500">
                           {item.close_date
-                            ? new Date(item.close_date).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })
+                            ? new Date(item.close_date).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'America/Toronto' })
                             : item.listing_contract_date
-                            ? `Listed ${new Date(item.listing_contract_date).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}`
+                            ? `Listed ${new Date(item.listing_contract_date).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'America/Toronto' })}`
                             : ''}
                         </span>
                       </div>

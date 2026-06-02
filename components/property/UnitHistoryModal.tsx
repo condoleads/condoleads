@@ -160,7 +160,8 @@ export default function UnitHistoryModal({
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'America/Toronto'
     })
   }
 

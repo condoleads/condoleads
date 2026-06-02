@@ -26,8 +26,8 @@ export default function InvestmentAnalysis({
   // Need minimum data to show anything useful
   if (!data.listingPsf && !data.estimatedMonthlyRent) return null
   
-  const formatCurrency = (val: number) => `$${val.toLocaleString()}`
-  const formatPsf = (val: number) => `$${Math.round(val).toLocaleString()}`
+  const formatCurrency = (val: number) => `$${val.toLocaleString('en-CA')}`
+  const formatPsf = (val: number) => `$${Math.round(val).toLocaleString('en-CA')}`
   
   // Determine if this is a good deal
   const isGoodDeal = data.psfVsBuildingPct !== null && data.psfVsBuildingPct < -5
@@ -132,7 +132,7 @@ export default function InvestmentAnalysis({
           <span className="font-semibold">Net Yield:</span> After deducting 
           {data.monthlyMaintenance && ` maintenance ($${Math.round(data.monthlyMaintenance)}/mo)`}
           {data.monthlyMaintenance && data.annualTax && ' and'}
-          {data.annualTax && ` property tax ($${Math.round(data.annualTax).toLocaleString()}/yr)`}
+          {data.annualTax && ` property tax ($${Math.round(data.annualTax).toLocaleString('en-CA')}/yr)`}
           {!data.monthlyMaintenance && !data.annualTax && ' expenses'}
           . Does not include insurance, vacancy, or repairs.
         </div>

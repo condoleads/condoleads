@@ -34,7 +34,8 @@ export default function PriceHistory({
                 Listed on {new Date(listingDate).toLocaleDateString('en-US', { 
                   year: 'numeric', 
                   month: 'short', 
-                  day: 'numeric' 
+                  day: 'numeric', 
+                  timeZone: 'America/Toronto' 
                 })}
               </p>
             )}
@@ -52,7 +53,8 @@ export default function PriceHistory({
                   Sold on {new Date(closeDate).toLocaleDateString('en-US', { 
                     year: 'numeric', 
                     month: 'short', 
-                    day: 'numeric' 
+                    day: 'numeric', 
+                    timeZone: 'America/Toronto' 
                   })}
                 </p>
               )}

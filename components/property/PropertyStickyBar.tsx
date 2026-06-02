@@ -41,7 +41,7 @@ export default function PropertyStickyBar({
 
   const formatPrice = (price: number, isRental: boolean = false) => {
     if (isRental) {
-      return `$${price.toLocaleString()}`
+      return `$${price.toLocaleString('en-CA')}`
     }
     if (price >= 1000000) {
       return `$${(price / 1000000).toFixed(2)}M`

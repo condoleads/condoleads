@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { formatPrice } from '@/lib/utils/formatters'
 import StatusBadge from './StatusBadge'
 import { MLSListing } from '@/lib/types/building'
@@ -19,13 +19,20 @@ interface PropertyHeaderProps {
 
 export default function PropertyHeader({ listing, status, isSale, shouldBlur = false, buildingId, onEstimateClick, onOfferClick, isHome = false }: PropertyHeaderProps) {
   const [showRegister, setShowRegister] = useState(false)
+  // W-PROPERTY-HYDRATION pattern C: defer formatTimeAgo (which reads new Date()
+  // at render) to post-mount. First paint renders the absolute close_date; the
+  // relative "X months ago" appears after hydration. Eliminates the SSR vs
+  // client clock-skew hydration mismatch.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
   const isClosed = status === 'Closed'
   
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'America/Toronto'
     })
   }
   
@@ -125,7 +132,7 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
                   {isSale ? 'Sold' : 'Leased'} on {formatDate(listing.close_date!)}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  {formatTimeAgo(listing.close_date!)}
+                  {mounted ? formatTimeAgo(listing.close_date!) : formatDate(listing.close_date!)}
                 </p>
                 {listing.list_price && (
                   <p className="text-xs text-slate-500 mt-2">
