@@ -78,6 +78,11 @@ const getAreaData = unstable_cache(
       homeForLeaseCount,
       condoForSaleCount,
       condoForLeaseCount,
+      // W-HOME-AND-NEIGHBOURHOOD Fix 2 part-2 (2026-06-02): split-type sold/leased.
+      homeSoldCount,
+      homeLeasedCount,
+      condoSoldCount,
+      condoLeasedCount,
     ] = await Promise.all([
       communityIds.length > 0
         ? supabase.from('buildings').select('id', { count: 'exact', head: true }).in('community_id', communityIds)
@@ -136,6 +141,37 @@ const getAreaData = unstable_cache(
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Lease')
         .in('property_subtype', CONDO_SUBTYPES),
+      // W-HOME-AND-NEIGHBOURHOOD Fix 2 part-2 (2026-06-02): Closed counts
+      // by property type. Matches existing Active home/condo filter pattern,
+      // flipping standard_status -> 'Closed'.
+      // home Sold
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Closed')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Sale')
+        .in('property_subtype', HOME_SUBTYPES),
+      // home Leased
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Closed')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Lease')
+        .in('property_subtype', HOME_SUBTYPES),
+      // condo Sold
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Closed')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Sale')
+        .in('property_subtype', CONDO_SUBTYPES),
+      // condo Leased
+      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
+        .eq(geoFilter.column, geoFilter.value)
+        .eq('standard_status', 'Closed')
+        .eq('available_in_vow', true)
+        .eq('transaction_type', 'For Lease')
+        .in('property_subtype', CONDO_SUBTYPES),
     ])
 
     const initialListings = (initialListingsResult.data || []).map((l: any) => ({
@@ -155,15 +191,15 @@ const getAreaData = unstable_cache(
     const homeCounts = {
       forSale: homeForSaleCount.count || 0,
       forLease: homeForLeaseCount.count || 0,
-      sold: 0,
-      leased: 0,
+      sold: homeSoldCount.count || 0,
+      leased: homeLeasedCount.count || 0,
     }
 
     const condoCounts = {
       forSale: condoForSaleCount.count || 0,
       forLease: condoForLeaseCount.count || 0,
-      sold: 0,
-      leased: 0,
+      sold: condoSoldCount.count || 0,
+      leased: condoLeasedCount.count || 0,
     }
 
     const buildingCount = (buildingCountResult as any)?.count || 0
