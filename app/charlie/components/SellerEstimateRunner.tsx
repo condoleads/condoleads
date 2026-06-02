@@ -7,12 +7,12 @@ import { estimateHomeSale } from '@/app/estimator/actions/estimate-home-sale'
 import { estimateHomeRent } from '@/app/estimator/actions/estimate-home-rent'
 import { UnitSpecs } from '@/lib/estimator/types'
 import { HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase/client'
 
 
 async function fetchMediaForComparables(listingKeys: string[]) {
   if (!listingKeys.length) return {}
-  const supabase = createClient()
+  // singleton -- W-PROPERTY-HYDRATION root cause 1
   const { data: listings } = await supabase
     .from('mls_listings')
     .select('id, listing_key')

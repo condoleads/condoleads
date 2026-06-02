@@ -104,9 +104,10 @@ export default function WalliamAgentCard({
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Read user_id from Supabase auth client-side
-    import('@/lib/supabase/client').then(({ createClient }) => {
-      const supabase = createClient()
+    // Read user_id from Supabase auth client-side (singleton from
+    // @/lib/supabase/client to avoid the "Multiple GoTrueClient instances"
+    // warning -- W-PROPERTY-HYDRATION root cause 1).
+    import('@/lib/supabase/client').then(({ supabase }) => {
       supabase.auth.getUser().then(({ data }) => {
         const userId = data?.user?.id || null
         fetch('/api/walliam/resolve-agent', {

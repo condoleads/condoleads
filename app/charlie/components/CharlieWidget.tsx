@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useCharlie } from '../hooks/useCharlie'
 import CharlieOverlay from './CharlieOverlay'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase/client'
 import RegisterModal from '@/components/auth/RegisterModal'
 import { useAuth } from '@/components/auth/AuthContext'
 import { useCreditSession } from '@/components/credits/CreditSessionContext'
@@ -180,7 +180,7 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
             setShowRegisterModal(false)
             // W-RECOVERY A1.7 — retry getUser to handle Supabase cookie propagation race after register.
             // Without this, getUser() can return null immediately post-register, skipping initSession.
-            const supabase = createClient()
+            // singleton -- W-PROPERTY-HYDRATION root cause 1
             let attempts = 0
             const tryInit = () => {
               supabase.auth.getUser().then(({ data }) => {

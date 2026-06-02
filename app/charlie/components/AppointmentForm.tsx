@@ -6,7 +6,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { supabase } from '@/lib/supabase/client'
 import { useTenantId } from '@/hooks/useTenantId'
 
 interface Props {
@@ -58,7 +58,7 @@ export default function AppointmentForm({ type, listings = [], userId, sessionId
   // Pre-fill user data
   useEffect(() => {
     if (!userId || profileLoaded) return
-    const supabase = createClient()
+    // singleton -- W-PROPERTY-HYDRATION root cause 1
     Promise.all([
       supabase.auth.getUser(),
       supabase.from('user_profiles').select('full_name, phone').eq('id', userId).single()
