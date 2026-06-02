@@ -87,8 +87,13 @@ export type GeoSelector =
 
 export interface CountDirectFilter {
   geo: GeoSelector
-  // Currently only Closed-status counts route here; expandable.
-  standard_status: 'Closed'
+  // Exactly ONE of standard_status (single) or standard_status_in (array) must
+  // be provided. TS can't enforce "exactly one of two optionals" -- checked at
+  // runtime by countDirect. The array form is for the Active class which uses
+  // .in(['Active','Active Under Contract','Pending']); the single form is for
+  // the Closed class which uses .eq('Closed').
+  standard_status?: 'Closed' | 'Active' | 'Active Under Contract' | 'Pending'
+  standard_status_in?: string[]
   transaction_type: 'For Sale' | 'For Lease'
   // VOW distribution-channel gate (RESO standard, not a tenant filter).
   available_in_vow: true
@@ -109,17 +114,27 @@ export interface CountDirectFilter {
  * request rather than serving a cached 0 for 5 minutes.
  */
 export async function countDirect (filter: CountDirectFilter): Promise<number> {
-  const where: string[] = [
-    'available_in_vow = $1',
-    'standard_status = $2',
-    'transaction_type = $3',
-  ]
-  const params: unknown[] = [
-    filter.available_in_vow,
-    filter.standard_status,
-    filter.transaction_type,
-  ]
-  let idx = 4
+  // Runtime mutex: exactly one of standard_status / standard_status_in.
+  const hasEq = filter.standard_status !== undefined
+  const hasIn = filter.standard_status_in !== undefined && filter.standard_status_in.length > 0
+  if (!hasEq && !hasIn) {
+    throw new Error('countDirect: must specify standard_status or standard_status_in')
+  }
+  if (hasEq && hasIn) {
+    throw new Error('countDirect: cannot specify both standard_status and standard_status_in')
+  }
+
+  const where: string[] = ['available_in_vow = $1', 'transaction_type = $2']
+  const params: unknown[] = [filter.available_in_vow, filter.transaction_type]
+  let idx = 3
+
+  if (hasEq) {
+    where.push(`standard_status = $${idx++}`)
+    params.push(filter.standard_status)
+  } else {
+    where.push(`standard_status = ANY($${idx++}::text[])`)
+    params.push(filter.standard_status_in)
+  }
 
   switch (filter.geo.kind) {
     case 'area_id':

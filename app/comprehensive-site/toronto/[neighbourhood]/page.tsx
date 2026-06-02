@@ -76,35 +76,77 @@ const getNeighbourhoodData = unstable_cache(
   // flicker. Matches the CommunityPage/MunicipalityPage filter pattern:
   //   available_in_vow=true + standard_status='Closed' + transaction_type.
   const [
-    { count: activeCount },
-    { count: condoCount },
-    { count: homeCount },
+    activeCount,
+    condoCount,
+    homeCount,
     { count: buildingCount },
     { data: initialListingsRaw },
-    { count: forSaleCount },
-    { count: forLeaseCount },
+    forSaleCount,
+    forLeaseCount,
     soldCount,
     leasedCount,
   ] = await Promise.all([
-    supabase.from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds)
-      .eq('available_in_vow', true)
-      .in('standard_status', ['Active', 'Active Under Contract', 'Pending']),
-    supabase.from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds)
-      .eq('available_in_vow', true)
-      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-      .in('property_subtype', ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
-        'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']),
-    supabase.from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds)
-      .eq('available_in_vow', true)
-      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-      .in('property_subtype', ['Detached', 'Semi-Detached', 'Att/Row/Townhouse',
-        'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']),
+    // W-GEO-COUNT-FIX-2 (2026-06-02): Active overall -- pg-direct (same
+    // contention class as Closed; see lib/db/pg.ts anti-poisoning invariant).
+    // No transaction_type filter here -- we want both For Sale + For Lease.
+    // BUT countDirect requires transaction_type. We sum two pg-direct calls
+    // for forSale+forLease below instead of one combined call. To avoid an
+    // extra query for the overall, we keep the existing "active = forSale +
+    // forLease" derivation downstream via the two main count calls.
+    // For now, satisfy the Promise.all shape with an array-of-two-counts via
+    // both transaction types using the multi-status countDirect.
+    Promise.all([
+      countDirect({
+        geo: { kind: 'municipality_ids', values: municipalityIds },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+      }),
+      countDirect({
+        geo: { kind: 'municipality_ids', values: municipalityIds },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+      }),
+    ]).then(([s, l]) => s + l),
+    // Active condos (For Sale + For Lease combined to match prior semantics).
+    Promise.all([
+      countDirect({
+        geo: { kind: 'municipality_ids', values: municipalityIds },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+        property_subtype_in: ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
+          'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment'],
+      }),
+      countDirect({
+        geo: { kind: 'municipality_ids', values: municipalityIds },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+        property_subtype_in: ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
+          'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment'],
+      }),
+    ]).then(([s, l]) => s + l),
+    // Active homes (For Sale + For Lease combined).
+    Promise.all([
+      countDirect({
+        geo: { kind: 'municipality_ids', values: municipalityIds },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+        property_subtype_in: ['Detached', 'Semi-Detached', 'Att/Row/Townhouse',
+          'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'],
+      }),
+      countDirect({
+        geo: { kind: 'municipality_ids', values: municipalityIds },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+        property_subtype_in: ['Detached', 'Semi-Detached', 'Att/Row/Townhouse',
+          'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'],
+      }),
+    ]).then(([s, l]) => s + l),
     communityIds.length
       ? supabase.from('buildings')
           .select('id', { count: 'exact', head: true })
@@ -126,19 +168,19 @@ const getNeighbourhoodData = unstable_cache(
       .eq('transaction_type', 'For Sale')
       .order('list_price', { ascending: false })
       .range(0, 23),
-    // FIX: forSaleCount and initialTotal were duplicated — now one query serves both
-    supabase.from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds)
-      .eq('available_in_vow', true)
-      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-      .eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds)
-      .eq('available_in_vow', true)
-      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-      .eq('transaction_type', 'For Lease'),
+    // W-GEO-COUNT-FIX-2 (2026-06-02): Active forSale + forLease via pg-direct.
+    countDirect({
+      geo: { kind: 'municipality_ids', values: municipalityIds },
+      standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+      transaction_type: 'For Sale',
+      available_in_vow: true,
+    }),
+    countDirect({
+      geo: { kind: 'municipality_ids', values: municipalityIds },
+      standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+      transaction_type: 'For Lease',
+      available_in_vow: true,
+    }),
     // W-GEO-COUNT-FIX (2026-06-02): Closed/Sold via pg-direct.
     // High-volume geos exceeded the PostgREST 8s authenticator timeout on
     // exact counts (silently degraded to null then to 0 via ?? 0, cached
@@ -160,8 +202,8 @@ const getNeighbourhoodData = unstable_cache(
   ])
 
   const initialCounts = {
-    forSale: forSaleCount ?? 0,
-    forLease: forLeaseCount ?? 0,
+    forSale: forSaleCount,
+    forLease: forLeaseCount,
     sold: soldCount,
     leased: leasedCount,
   }
@@ -180,15 +222,15 @@ const getNeighbourhoodData = unstable_cache(
     municipalityIds,
     communities,
     stats: {
-      active: activeCount ?? 0,
-      condos: condoCount ?? 0,
-      homes: homeCount ?? 0,
+      active: activeCount,
+      condos: condoCount,
+      homes: homeCount,
       buildings: buildingCount ?? 0,
       sold: soldCount,
       leased: leasedCount,
     },
     initialListings,
-    initialTotal: forSaleCount ?? 0,
+    initialTotal: forSaleCount,
     initialCounts,
   }
   },

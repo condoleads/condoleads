@@ -61,16 +61,19 @@ const getCommunityData = unstable_cache(
       .eq('transaction_type', 'For Sale')
       .order('list_price', { ascending: false })
       .limit(24),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq(geoFilter.column, geoFilter.value)
-      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq(geoFilter.column, geoFilter.value)
-      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Lease'),
+    // W-GEO-COUNT-FIX-2 (2026-06-02): Active counts via pg-direct.
+    countDirect({
+      geo: { kind: 'community_id', value: communityId },
+      standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+      transaction_type: 'For Sale',
+      available_in_vow: true,
+    }),
+    countDirect({
+      geo: { kind: 'community_id', value: communityId },
+      standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+      transaction_type: 'For Lease',
+      available_in_vow: true,
+    }),
     // W-GEO-COUNT-FIX (2026-06-02): Closed counts via pg-direct (see lib/db/pg.ts).
     countDirect({
       geo: { kind: 'community_id', value: communityId },
@@ -96,8 +99,8 @@ const getCommunityData = unstable_cache(
   }))
 
   const counts = {
-    forSale: forSaleCount.count || 0,
-    forLease: forLeaseCount.count || 0,
+    forSale: forSaleCount,
+    forLease: forLeaseCount,
     sold: soldCount,
     leased: leasedCount,
   }

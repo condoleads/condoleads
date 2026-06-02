@@ -95,16 +95,19 @@ const getAreaData = unstable_cache(
         .eq('transaction_type', 'For Sale')
         .order('list_price', { ascending: false })
         .limit(24),
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Sale'),
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Lease'),
+      // W-GEO-COUNT-FIX-2 (2026-06-02): Active counts via pg-direct.
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+      }),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+      }),
       // W-GEO-COUNT-FIX (2026-06-02): Closed counts via pg-direct (see lib/db/pg.ts).
       countDirect({
         geo: { kind: 'area_id', value: geoFilter.value },
@@ -119,32 +122,37 @@ const getAreaData = unstable_cache(
         available_in_vow: true,
       }),
       supabase.from('treb_areas').select('id, name, slug').order('name'),
+      // W-GEO-COUNT-FIX-2 (2026-06-02): split-type Active counts via pg-direct.
       // homeCounts
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Sale')
-        .in('property_subtype', HOME_SUBTYPES),
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Lease')
-        .in('property_subtype', HOME_SUBTYPES),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+        property_subtype_in: HOME_SUBTYPES,
+      }),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+        property_subtype_in: HOME_SUBTYPES,
+      }),
       // condoCounts
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Sale')
-        .in('property_subtype', CONDO_SUBTYPES),
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Lease')
-        .in('property_subtype', CONDO_SUBTYPES),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+        property_subtype_in: CONDO_SUBTYPES,
+      }),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status_in: ['Active', 'Active Under Contract', 'Pending'],
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+        property_subtype_in: CONDO_SUBTYPES,
+      }),
       // W-GEO-COUNT-FIX (2026-06-02): split-type Closed counts via pg-direct
       // (same threshold concern as main sold/leased; see lib/db/pg.ts).
       // home Sold
@@ -189,22 +197,22 @@ const getAreaData = unstable_cache(
     }))
 
     const counts = {
-      forSale: forSaleCount.count || 0,
-      forLease: forLeaseCount.count || 0,
+      forSale: forSaleCount,
+      forLease: forLeaseCount,
       sold: soldCount,
       leased: leasedCount,
     }
 
     const homeCounts = {
-      forSale: homeForSaleCount.count || 0,
-      forLease: homeForLeaseCount.count || 0,
+      forSale: homeForSaleCount,
+      forLease: homeForLeaseCount,
       sold: homeSoldCount,
       leased: homeLeasedCount,
     }
 
     const condoCounts = {
-      forSale: condoForSaleCount.count || 0,
-      forLease: condoForLeaseCount.count || 0,
+      forSale: condoForSaleCount,
+      forLease: condoForLeaseCount,
       sold: condoSoldCount,
       leased: condoLeasedCount,
     }
