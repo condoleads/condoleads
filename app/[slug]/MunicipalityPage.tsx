@@ -4,6 +4,7 @@ import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import { unstable_cache } from 'next/cache'
+import { countDirect } from '@/lib/db/pg'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
@@ -83,16 +84,19 @@ const getMunicipalityData = unstable_cache(
       .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('available_in_vow', true)
       .eq('transaction_type', 'For Lease'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Closed')
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Sale'),
-    supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-      .eq(geoFilter.column, geoFilter.value)
-      .eq('standard_status', 'Closed')
-      .eq('available_in_vow', true)
-      .eq('transaction_type', 'For Lease'),
+    // W-GEO-COUNT-FIX (2026-06-02): Closed counts via pg-direct (see lib/db/pg.ts).
+    countDirect({
+      geo: { kind: 'municipality_id', value: municipalityId },
+      standard_status: 'Closed',
+      transaction_type: 'For Sale',
+      available_in_vow: true,
+    }),
+    countDirect({
+      geo: { kind: 'municipality_id', value: municipalityId },
+      standard_status: 'Closed',
+      transaction_type: 'For Lease',
+      available_in_vow: true,
+    }),
     supabase.from('municipalities').select('id, name, slug').eq('area_id', areaId).order('name'),
   ])
   const area = areaResult.data
@@ -107,8 +111,8 @@ const getMunicipalityData = unstable_cache(
   const counts = {
     forSale: forSaleCount.count || 0,
     forLease: forLeaseCount.count || 0,
-    sold: soldCount.count || 0,
-    leased: leasedCount.count || 0,
+    sold: soldCount,
+    leased: leasedCount,
   }
 
   const buildingCount = (buildingCountResult as any)?.count || 0
@@ -171,11 +175,27 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   const headersList = headers()
   const host = headersList.get('host') || ''
   const { getCurrentTenantId, isHeroTenant, resolveAgentForContext } = await import('@/lib/utils/tenant-resolver')
-  const [data, agent, tenantId] = await Promise.all([
-    getMunicipalityData(municipality.id, municipality.area_id),
+  // W-GEO-COUNT-FIX (2026-06-02): graceful degrade outside the cache boundary.
+  const dataPromise = getMunicipalityData(municipality.id, municipality.area_id).catch((err) => {
+    console.error('[MunicipalityPage] data fetch failed:', err)
+    return null
+  })
+  const [dataMaybe, agent, tenantId] = await Promise.all([
+    dataPromise,
     getAgentFromHost(host),
     getCurrentTenantId(),
   ])
+  if (dataMaybe === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8 text-center">
+        <div>
+          <h1 className="text-2xl font-semibold mb-2">Counts temporarily unavailable</h1>
+          <p className="text-gray-600">Please refresh in a moment.</p>
+        </div>
+      </div>
+    )
+  }
+  const data = dataMaybe
   const isHero = await isHeroTenant()
   let walliamAgentId: string | null = null
   if (isHero && tenantId) {

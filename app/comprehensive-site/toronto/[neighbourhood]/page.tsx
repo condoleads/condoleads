@@ -6,6 +6,7 @@ import { Metadata } from 'next'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { unstable_cache } from 'next/cache'
+import { countDirect } from '@/lib/db/pg'
 import NeighbourhoodPageTabs from '@/app/[slug]/components/NeighbourhoodPageTabs'
 import GeoHero from '@/app/[slug]/components/GeoHero'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
@@ -82,8 +83,8 @@ const getNeighbourhoodData = unstable_cache(
     { data: initialListingsRaw },
     { count: forSaleCount },
     { count: forLeaseCount },
-    { count: soldCount },
-    { count: leasedCount },
+    soldCount,
+    leasedCount,
   ] = await Promise.all([
     supabase.from('mls_listings')
       .select('id', { count: 'exact', head: true })
@@ -138,27 +139,31 @@ const getNeighbourhoodData = unstable_cache(
       .eq('available_in_vow', true)
       .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('transaction_type', 'For Lease'),
-    // W-HOME-AND-NEIGHBOURHOOD Fix 2 (2026-06-02): Closed/Sold count.
-    supabase.from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds)
-      .eq('available_in_vow', true)
-      .eq('standard_status', 'Closed')
-      .eq('transaction_type', 'For Sale'),
-    // W-HOME-AND-NEIGHBOURHOOD Fix 2 (2026-06-02): Closed/Leased count.
-    supabase.from('mls_listings')
-      .select('id', { count: 'exact', head: true })
-      .in('municipality_id', municipalityIds)
-      .eq('available_in_vow', true)
-      .eq('standard_status', 'Closed')
-      .eq('transaction_type', 'For Lease'),
+    // W-GEO-COUNT-FIX (2026-06-02): Closed/Sold via pg-direct.
+    // High-volume geos exceeded the PostgREST 8s authenticator timeout on
+    // exact counts (silently degraded to null then to 0 via ?? 0, cached
+    // by unstable_cache for 5 minutes). pg-direct (30s ceiling) returns
+    // the real number or throws; a thrown timeout is not cached.
+    countDirect({
+      geo: { kind: 'municipality_ids', values: municipalityIds },
+      standard_status: 'Closed',
+      transaction_type: 'For Sale',
+      available_in_vow: true,
+    }),
+    // W-GEO-COUNT-FIX (2026-06-02): Closed/Leased via pg-direct.
+    countDirect({
+      geo: { kind: 'municipality_ids', values: municipalityIds },
+      standard_status: 'Closed',
+      transaction_type: 'For Lease',
+      available_in_vow: true,
+    }),
   ])
 
   const initialCounts = {
     forSale: forSaleCount ?? 0,
     forLease: forLeaseCount ?? 0,
-    sold: soldCount ?? 0,
-    leased: leasedCount ?? 0,
+    sold: soldCount,
+    leased: leasedCount,
   }
 
   // Process media thumbnails
@@ -179,8 +184,8 @@ const getNeighbourhoodData = unstable_cache(
       condos: condoCount ?? 0,
       homes: homeCount ?? 0,
       buildings: buildingCount ?? 0,
-      sold: soldCount ?? 0,
-      leased: leasedCount ?? 0,
+      sold: soldCount,
+      leased: leasedCount,
     },
     initialListings,
     initialTotal: forSaleCount ?? 0,
@@ -192,7 +197,23 @@ const getNeighbourhoodData = unstable_cache(
 )
 
 export default async function NeighbourhoodPage({ params }: Props) {
-  const data = await getNeighbourhoodData(params.neighbourhood)
+  // W-GEO-COUNT-FIX (2026-06-02): graceful degrade outside the cache boundary.
+  // A pg-direct count timeout throws; unstable_cache does not cache rejected
+  // promises, so the next request retries fresh rather than serving a stale 0.
+  let data: Awaited<ReturnType<typeof getNeighbourhoodData>>
+  try {
+    data = await getNeighbourhoodData(params.neighbourhood)
+  } catch (err) {
+    console.error('[NeighbourhoodPage] data fetch failed:', err)
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8 text-center">
+        <div>
+          <h1 className="text-2xl font-semibold mb-2">Counts temporarily unavailable</h1>
+          <p className="text-gray-600">Please refresh in a moment.</p>
+        </div>
+      </div>
+    )
+  }
   if (!data) notFound()
 
   const headersList = headers()

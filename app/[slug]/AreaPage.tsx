@@ -4,6 +4,7 @@ import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import { createClient } from '@/lib/supabase/server'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import { unstable_cache } from 'next/cache'
+import { countDirect } from '@/lib/db/pg'
 import GeoPageTabs from './components/GeoPageTabs'
 import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
@@ -104,16 +105,19 @@ const getAreaData = unstable_cache(
         .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Lease'),
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Closed')
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Sale'),
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Closed')
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Lease'),
+      // W-GEO-COUNT-FIX (2026-06-02): Closed counts via pg-direct (see lib/db/pg.ts).
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status: 'Closed',
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+      }),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status: 'Closed',
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+      }),
       supabase.from('treb_areas').select('id, name, slug').order('name'),
       // homeCounts
       supabase.from('mls_listings').select('id', { count: 'exact', head: true })
@@ -141,37 +145,40 @@ const getAreaData = unstable_cache(
         .eq('available_in_vow', true)
         .eq('transaction_type', 'For Lease')
         .in('property_subtype', CONDO_SUBTYPES),
-      // W-HOME-AND-NEIGHBOURHOOD Fix 2 part-2 (2026-06-02): Closed counts
-      // by property type. Matches existing Active home/condo filter pattern,
-      // flipping standard_status -> 'Closed'.
+      // W-GEO-COUNT-FIX (2026-06-02): split-type Closed counts via pg-direct
+      // (same threshold concern as main sold/leased; see lib/db/pg.ts).
       // home Sold
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Closed')
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Sale')
-        .in('property_subtype', HOME_SUBTYPES),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status: 'Closed',
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+        property_subtype_in: HOME_SUBTYPES,
+      }),
       // home Leased
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Closed')
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Lease')
-        .in('property_subtype', HOME_SUBTYPES),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status: 'Closed',
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+        property_subtype_in: HOME_SUBTYPES,
+      }),
       // condo Sold
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Closed')
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Sale')
-        .in('property_subtype', CONDO_SUBTYPES),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status: 'Closed',
+        transaction_type: 'For Sale',
+        available_in_vow: true,
+        property_subtype_in: CONDO_SUBTYPES,
+      }),
       // condo Leased
-      supabase.from('mls_listings').select('id', { count: 'exact', head: true })
-        .eq(geoFilter.column, geoFilter.value)
-        .eq('standard_status', 'Closed')
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Lease')
-        .in('property_subtype', CONDO_SUBTYPES),
+      countDirect({
+        geo: { kind: 'area_id', value: geoFilter.value },
+        standard_status: 'Closed',
+        transaction_type: 'For Lease',
+        available_in_vow: true,
+        property_subtype_in: CONDO_SUBTYPES,
+      }),
     ])
 
     const initialListings = (initialListingsResult.data || []).map((l: any) => ({
@@ -184,22 +191,22 @@ const getAreaData = unstable_cache(
     const counts = {
       forSale: forSaleCount.count || 0,
       forLease: forLeaseCount.count || 0,
-      sold: soldCount.count || 0,
-      leased: leasedCount.count || 0,
+      sold: soldCount,
+      leased: leasedCount,
     }
 
     const homeCounts = {
       forSale: homeForSaleCount.count || 0,
       forLease: homeForLeaseCount.count || 0,
-      sold: homeSoldCount.count || 0,
-      leased: homeLeasedCount.count || 0,
+      sold: homeSoldCount,
+      leased: homeLeasedCount,
     }
 
     const condoCounts = {
       forSale: condoForSaleCount.count || 0,
       forLease: condoForLeaseCount.count || 0,
-      sold: condoSoldCount.count || 0,
-      leased: condoLeasedCount.count || 0,
+      sold: condoSoldCount,
+      leased: condoLeasedCount,
     }
 
     const buildingCount = (buildingCountResult as any)?.count || 0
@@ -216,11 +223,30 @@ export default async function AreaPage({ area }: AreaPageProps) {
   const headersList = headers()
   const host = headersList.get('host') || ''
   const { getCurrentTenantId, isHeroTenant, resolveAgentForContext } = await import('@/lib/utils/tenant-resolver')
-  const [data, agent, tenantId] = await Promise.all([
-    getAreaData(area.id),
+  // W-GEO-COUNT-FIX (2026-06-02): graceful degrade outside the cache boundary.
+  // unstable_cache does not cache rejected promises (Next.js skips caching
+  // on rejection), so a thrown pg-direct timeout is retried on the next
+  // request rather than serving a stale 0.
+  const dataPromise = getAreaData(area.id).catch((err) => {
+    console.error('[AreaPage] data fetch failed:', err)
+    return null
+  })
+  const [dataMaybe, agent, tenantId] = await Promise.all([
+    dataPromise,
     getAgentFromHost(host),
     getCurrentTenantId(),
   ])
+  if (dataMaybe === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8 text-center">
+        <div>
+          <h1 className="text-2xl font-semibold mb-2">Counts temporarily unavailable</h1>
+          <p className="text-gray-600">Please refresh in a moment.</p>
+        </div>
+      </div>
+    )
+  }
+  const data = dataMaybe
   const isHero = await isHeroTenant()
   let walliamAgentId: string | null = null
   if (isHero && tenantId) {
