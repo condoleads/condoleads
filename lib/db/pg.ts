@@ -5,6 +5,12 @@
 // (then to 0 via `?? 0`/`|| 0`), which was getting cached for 5 minutes by
 // unstable_cache as a successful 0.
 //
+// LAZY VALIDATION: module IMPORT must have zero throwing side effects --
+// next build collects page data without DATABASE_URL present and would crash
+// on a top-level throw. Validation + Pool construction happen inside
+// getPool(), so the import is safe and the throw only fires when a count is
+// actually requested at runtime.
+//
 // Critical invariant: countDirect DOES NOT catch its own errors. A query
 // timeout (Postgres code 57014 "query_canceled") propagates out and rejects
 // the caller's Promise.all, which rejects the wrapped unstable_cache
@@ -14,58 +20,59 @@
 
 import { Pool } from 'pg'
 
-const CONNECTION_STRING =
-  process.env.DATABASE_URL ||
-  process.env.SUPABASE_DB_URL ||
-  process.env.POSTGRES_URL ||
-  process.env.POSTGRES_URL_NON_POOLING
-
-if (!CONNECTION_STRING) {
-  throw new Error(
-    'lib/db/pg.ts: no DATABASE_URL/SUPABASE_DB_URL/POSTGRES_URL/POSTGRES_URL_NON_POOLING in env'
-  )
-}
-
-// Reject port 6543 (Supabase transaction pooler). Per
-// scripts/apply-phase-lifecycle-landing-2.js: the transaction pooler does
-// not support session-scoped features (SET LOCAL, prepared statements with
-// state) that we rely on for setting a per-query statement_timeout.
-const portMatch = CONNECTION_STRING.match(/:(\d+)\//)
-if (portMatch) {
-  const port = parseInt(portMatch[1], 10)
-  if (port === 6543) {
-    throw new Error(
-      'lib/db/pg.ts: DATABASE_URL points at port 6543 (transaction pooler). ' +
-        'Switch to session pooler (5432) or direct host.'
-    )
-  }
-}
-
-// Module-scoped singleton. In Next.js dev with HMR the module can be
-// re-evaluated; preserve the pool on globalThis so we do not leak pools.
+// HMR-safe singleton storage on globalThis. In Next.js dev the module can be
+// re-evaluated; preserve the pool to avoid leaking connections.
 type GlobalWithPool = typeof globalThis & { __wGeoCountFixPool?: Pool }
 const g = globalThis as GlobalWithPool
 
-export const pool: Pool =
-  g.__wGeoCountFixPool ||
-  new Pool({
-    connectionString: CONNECTION_STRING,
+function resolveConnectionString (): string {
+  const cs =
+    process.env.DATABASE_URL ||
+    process.env.SUPABASE_DB_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_URL_NON_POOLING
+  if (!cs) {
+    throw new Error(
+      'lib/db/pg.ts: no DATABASE_URL/SUPABASE_DB_URL/POSTGRES_URL/POSTGRES_URL_NON_POOLING in env'
+    )
+  }
+  // Reject port 6543 (Supabase transaction pooler). Per
+  // scripts/apply-phase-lifecycle-landing-2.js: the transaction pooler does
+  // not support session-scoped features (SET LOCAL, statement_timeout via
+  // connection options) that we rely on.
+  const portMatch = cs.match(/:(\d+)\//)
+  if (portMatch) {
+    const port = parseInt(portMatch[1], 10)
+    if (port === 6543) {
+      throw new Error(
+        'lib/db/pg.ts: DATABASE_URL points at port 6543 (transaction pooler). ' +
+          'Switch to session pooler (5432) or direct host.'
+      )
+    }
+  }
+  return cs
+}
+
+function getPool (): Pool {
+  if (g.__wGeoCountFixPool) return g.__wGeoCountFixPool
+  const connectionString = resolveConnectionString()
+  const pool = new Pool({
+    connectionString,
     max: 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
-    // Per-query 30s statement_timeout via the connect-time options string.
-    // 30s is well above the 8.4s observed worst-case (Toronto-area leased)
-    // but bounded so a worker never blocks indefinitely. Postgres throws
-    // error code 57014 ("query_canceled") on hit.
+    // Per-query 30s statement_timeout via the pg client options. 30s is well
+    // above the 8.4s observed worst-case (Toronto-area leased) but bounded
+    // so a worker never blocks indefinitely. Postgres throws error code
+    // 57014 ("query_canceled") on hit.
     statement_timeout: 30_000,
   } as any)
-
-if (!g.__wGeoCountFixPool) {
   pool.on('error', (err) => {
     // eslint-disable-next-line no-console
     console.error('[lib/db/pg] idle client error:', err.message)
   })
   g.__wGeoCountFixPool = pool
+  return pool
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +99,7 @@ export interface CountDirectFilter {
 /**
  * Count rows in mls_listings matching the filter, via pg-direct.
  *
- * MULTI-TENANT NOTE: mls_listings has no tenant_id (verified — global PropTx
+ * MULTI-TENANT NOTE: mls_listings has no tenant_id (verified -- global PropTx
  * VOW feed shared across all tenants). Counts are tenant-agnostic by design.
  *
  * ERROR CONTRACT: throws on timeout or DB error. DO NOT catch and return 0
@@ -101,7 +108,7 @@ export interface CountDirectFilter {
  * cache rejected promises, so a thrown timeout is retried on the next
  * request rather than serving a cached 0 for 5 minutes.
  */
-export async function countDirect(filter: CountDirectFilter): Promise<number> {
+export async function countDirect (filter: CountDirectFilter): Promise<number> {
   const where: string[] = [
     'available_in_vow = $1',
     'standard_status = $2',
@@ -139,6 +146,6 @@ export async function countDirect(filter: CountDirectFilter): Promise<number> {
   }
 
   const sql = `SELECT count(*)::int AS n FROM mls_listings WHERE ${where.join(' AND ')}`
-  const res = await pool.query(sql, params)
+  const res = await getPool().query(sql, params)
   return res.rows[0].n as number
 }
