@@ -85,6 +85,8 @@ export default function BrowseListingsView({ neighbourhoods }: BrowseListingsVie
           <a
             key={chip.slug}
             href={`/${chip.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
             style={{
               padding: '9px 18px',
               borderRadius: 999,
