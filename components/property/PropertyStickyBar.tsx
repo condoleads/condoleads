@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface PropertyStickyBarProps {
   listing: {
@@ -26,6 +26,7 @@ export default function PropertyStickyBar({
   isHome = false
 }: PropertyStickyBarProps) {
   const [isVisible, setIsVisible] = useState(false)
+  const barRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -36,6 +37,30 @@ export default function PropertyStickyBar({
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // W-MOBILE-RESPONSIVE Fix B (2026-06-02): publish this bar's measured pixel
+  // height to documentElement as --sticky-bar-height so the global Charlie bar
+  // (CharlieWidget, mounted by ConditionalLayout) can read it via
+  // calc(var(--sticky-bar-height, 0px) + 24px) and stack ABOVE this bar.
+  // Cleared on hide/unmount; re-measured on resize.
+  useEffect(() => {
+    if (!isVisible) {
+      document.documentElement.style.removeProperty('--sticky-bar-height')
+      return
+    }
+    const measure = () => {
+      if (barRef.current) {
+        const h = Math.round(barRef.current.getBoundingClientRect().height)
+        document.documentElement.style.setProperty('--sticky-bar-height', h + 'px')
+      }
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('resize', measure)
+      document.documentElement.style.removeProperty('--sticky-bar-height')
+    }
+  }, [isVisible])
 
   if (!isVisible) return null
 
@@ -50,7 +75,7 @@ export default function PropertyStickyBar({
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] transform transition-transform duration-300">
+    <div ref={barRef} className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] transform transition-transform duration-300">
       <div className="max-w-7xl mx-auto px-4 py-3">
         {/* Mobile Layout */}
         <div className="flex md:hidden items-center justify-between gap-3">

@@ -102,7 +102,12 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
       {!state.isOpen && !isHomepage && (
         <div style={{
           position: 'fixed',
-          bottom: 24,
+          // W-MOBILE-RESPONSIVE Fix B (2026-06-02): clear PropertyStickyBar when
+          // present. PropertyStickyBar publishes its measured height as
+          // --sticky-bar-height on document.documentElement. Var unset = 24px
+          // (current default behavior). Var set = sticky_height + 24px = bar
+          // stacks above sticky.
+          bottom: 'calc(var(--sticky-bar-height, 0px) + 24px)',
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 9998,

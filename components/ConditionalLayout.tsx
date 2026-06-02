@@ -56,7 +56,14 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   return (
     <>
       {showPublicLayout && <UniversalNav siteName={siteName} agentData={agentData} />}
-      {children}
+      {/* W-MOBILE-RESPONSIVE Fix A (2026-06-02): reserve bottom space for the
+          global Charlie bar so content never renders under it. Gated to the
+          exact scope where the bar appears: Charlie visible (not admin/dashboard
+          /login/01leads) AND not on the homepage (the bar self-hides on '/' per
+          CharlieWidget.tsx:60-62 + 102). */}
+      <div style={isCharlieVisible && pathname !== '/' ? { paddingBottom: 'var(--charlie-bar-clearance)' } : undefined}>
+        {children}
+      </div>
       {showPublicLayout && <Footer agentData={agentData} />}
       {isCharlieVisible && <CharlieWidget />}
     </>

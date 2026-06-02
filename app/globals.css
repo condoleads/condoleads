@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* W-MOBILE-RESPONSIVE Fix A+B (2026-06-02): global clearance for the Charlie bar.
+ * Base 72px = bar bottom-offset (24) + bar height (~48).
+ * + var(--sticky-bar-height, 0px) covers PropertyStickyBar when visible.
+ *   (PropertyStickyBar sets this var on documentElement on mount, clears on unmount.)
+ * + env(safe-area-inset-bottom) covers iOS home-indicator notch.
+ * + 16px breathing room.
+ * Applied via padding-bottom on the ConditionalLayout {children} wrapper,
+ * gated to the same scope where the bar renders (isCharlieVisible && !isHomepage).
+ */
+:root {
+  --charlie-bar-clearance: calc(72px + var(--sticky-bar-height, 0px) + env(safe-area-inset-bottom, 0px) + 16px);
+}
+
 /* CRITICAL: Prevent horizontal scroll on mobile */
 html {
   overflow-x: hidden;
