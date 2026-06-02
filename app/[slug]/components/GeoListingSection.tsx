@@ -271,13 +271,16 @@ export default function GeoListingSection({
         />
       )}
 
-      {/* Status Tabs */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-4 px-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+      {/* Status Tabs -- W-MOBILE-RESPONSIVE Fix C (2026-06-02): wrap instead
+          of horizontal-scroll on mobile. Was full-bleed overflow-x-auto with
+          flex-shrink-0/whitespace-nowrap tabs that overflowed 358px (390 viewport
+          - 32 px-4 padding) and presented as a clipped right edge. */}
+      <div className="flex flex-wrap gap-2 mb-4">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => handleTabChange(tab.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 transition-colors ${
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.key
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'

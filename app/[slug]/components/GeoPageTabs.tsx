@@ -48,13 +48,15 @@ export default function GeoPageTabs({
 
   return (
     <div>
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto overflow-x-auto pb-px">
+      {/* Tab bar -- W-MOBILE-RESPONSIVE Fix C (2026-06-02): wrap instead of
+          horizontal-scroll on mobile. Also cleans up the duplicate
+          overflow-x-auto class token. */}
+      <div className="flex flex-wrap gap-1 mb-6 border-b border-gray-200 pb-px">
         {visibleTabs.map(tab => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-3 sm:px-5 py-3 text-sm font-semibold border-b-2 transition-all whitespace-nowrap flex-shrink-0 ${
+            className={`flex items-center gap-2 px-3 sm:px-5 py-3 text-sm font-semibold border-b-2 transition-all ${
               activeTab === tab.key
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
