@@ -34,11 +34,20 @@ interface AreaData { id: string; name: string; slug: string }
 interface AreaPageProps { area: AreaData }
 
 export async function generateAreaMetadata(area: AreaData) {
+  // W-FUNNEL Batch 1: tenant-aware canonical href. Resolves the current host's
+  // tenant via the working public-page resolver (matches OG/twitter pipeline);
+  // falls back to platform domain when no tenant matches (e.g. condoleads.ca
+  // root). Prevents WALLiam/aily pages from telling search engines they're
+  // aliases of condoleads.ca.
+  const _canonicalHost = headers().get('host') || ''
+  const _canonicalSupabase = createTenantClient()
+  const _canonicalTenant = await getTenantByHost(_canonicalSupabase, _canonicalHost)
+  const canonicalDomain = _canonicalTenant?.domain || 'www.condoleads.ca'
   return {
     title: `${area.name} Real Estate | Condos & Homes for Sale`,
     description: `Browse condos and homes for sale in ${area.name}. Explore municipalities, communities, and condo buildings.`,
     alternates: {
-      canonical: `https://www.condoleads.ca/${area.slug}`,
+      canonical: `https://${canonicalDomain}/${area.slug}`,
     },
   }
 }

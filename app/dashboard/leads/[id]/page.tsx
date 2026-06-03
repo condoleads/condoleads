@@ -6,6 +6,8 @@ import LeadDetailClient from '@/components/dashboard/LeadDetailClient'
 import ActivityTimeline from '@/components/dashboard/ActivityTimeline'
 import { getUserActivities, calculateEngagementScore } from '@/lib/actions/user-activity'
 import { canAgentSeeLead } from '@/lib/hierarchy/agent-tree'
+// W-FUNNEL Batch 1: tenant-aware brand for the sidebar h1.
+import { getTenantBrand } from '@/lib/tenant/getTenantBrand'
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { error, agent } = await requireAgent()
@@ -13,6 +15,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   if (error || !agent) {
     redirect('/login')
   }
+  const brand = await getTenantBrand(agent.tenant_id)
 
   // Fetch lead details with building info
   const supabase = createClient()
@@ -83,7 +86,7 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       <aside className="fixed top-0 left-0 z-40 h-full w-64 bg-white border-r border-gray-200 hidden lg:block">
         <div className="flex flex-col h-full">
           <div className="h-16 px-6 border-b border-gray-200 flex items-center">
-            <h1 className="text-xl font-bold text-blue-600">CondoLeads</h1>
+            <h1 className="text-xl font-bold text-blue-600">{brand}</h1>
           </div>
 
           <div className="px-6 py-4 border-b border-gray-200">

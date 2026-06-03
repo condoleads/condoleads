@@ -3,6 +3,8 @@ import { requireAgent } from '@/lib/auth/helpers'
 import { getAgentLeads, getAllLeadsForAdmin } from '@/lib/actions/leads'
 import { getVisibleLeads } from '@/lib/hierarchy/agent-tree'
 import LeadsTable from '@/components/dashboard/LeadsTable'
+// W-FUNNEL Batch 1: tenant-aware brand for the sidebar h1.
+import { getTenantBrand } from '@/lib/tenant/getTenantBrand'
 
 export default async function LeadsPage() {
   const { error, agent } = await requireAgent()
@@ -10,6 +12,7 @@ export default async function LeadsPage() {
   if (error || !agent) {
     redirect('/login')
   }
+  const brand = await getTenantBrand(agent.tenant_id)
 
   // Fetch leads based on admin status
   const leadsResult = agent.is_admin 
@@ -25,7 +28,7 @@ export default async function LeadsPage() {
       <aside className="fixed top-0 left-0 z-40 h-full w-64 bg-white border-r border-gray-200 hidden lg:block">
         <div className="flex flex-col h-full">
           <div className="h-16 px-6 border-b border-gray-200 flex items-center">
-            <h1 className="text-xl font-bold text-blue-600">CondoLeads</h1>
+            <h1 className="text-xl font-bold text-blue-600">{brand}</h1>
           </div>
 
           <div className="px-6 py-4 border-b border-gray-200">
