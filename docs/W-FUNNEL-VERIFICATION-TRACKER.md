@@ -54,8 +54,8 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 | 3.4 | Appointment confirmation arrives | ☐ | ☐ | |
 | 3.5 | Estimator VIP request → agent email | ☐ | ☐ | |
 | 3.6 | VIP approve → user approval email | ☐ | ☐ | |
-| 3.7 | BCC / platform-manager copy arrives | ☐ | ☐ | **F-PLATFORM-MANAGER-TENANTS (P1) — silent BCC drop** |
-| 3.8 | No email silently dropped | ☐ | ☐ | **F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY (P1)** |
+| 3.7 | BCC / platform-manager copy arrives | ◐ | ◐ | F-PLATFORM-MANAGER-TENANTS **CLOSED-VERIFIED**: grant + logging in place (see Findings). Live send-pass arrival still requires §3 live email pass |
+| 3.8 | No email silently dropped | ◐ | ◐ | F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY **CODE-FIXED**: placeholder/malformed keys now rejected at preflight (typed `TenantEmailNotConfigured`). **Caller-side false-green still OPEN** — see Findings + new F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL |
 
 ---
 
@@ -114,8 +114,9 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 
 | Finding | Pri | Status | Note |
 |---------|-----|--------|------|
-| F-PLATFORM-MANAGER-TENANTS-SERVICE-ROLE-GRANT | P1 | OPEN | service_role lacks SELECT on platform_manager_tenants → silent BCC drop (§3.7) |
-| F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY | P1 | OPEN | email preflight accepts placeholder key without error (§3.8) |
+| F-PLATFORM-MANAGER-TENANTS-SERVICE-ROLE-GRANT | P1 | **CLOSED-VERIFIED 2026-06-03** | Verified `service_role` has SELECT grant on `platform_manager_tenants` (DB scan); Layer-5 error-capture present at `lib/admin-homes/lead-email-recipients.ts:217-219`. Both pieces of the prior P1 FIX 3 are in place. Table currently has 0 rows (no platform-managers assigned yet — config state, not a bug). |
+| F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY | P1 | **CODE-FIXED 2026-06-03** | `looksLikeValidResendKey()` added to `lib/email/sendTenantEmail.ts` — rejects missing/short/placeholder keys at preflight via typed `TenantEmailNotConfigured`. Shared with `verify-resend/route.ts`. Smoke 17/17 PASS (placeholders rejected, real WALLiam+Aily keys accepted). |
+| F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL | P1 | **OPEN — NEW** | All 5 `sendTenantEmail` callers (`plan-email`, `lead`, `appointment`, `walliam/charlie/vip-request`, `walliam/estimator/vip-request`) catch `TenantEmailNotConfigured` / `TenantEmailFailed`, log to console, then return `{ success: true }` to the user. User sees "plan generated" but email demonstrably won't arrive — false-green. The §3.8 preflight fix gives the caller a TYPED signal; callers need to propagate it (e.g. include `emailSent: false` in response, or distinct status code). Surfaced during the §3.8 fix; reported, NOT fixed silently. |
 | F-CV-LEADS-INSERT-NO-TENANT-AGENT-FK | P2 | OPEN | leads table no FK/CHECK tying agent_id tenant to row tenant_id (§7) |
 | F-DASHBOARD-HARDCODED-CONDOLEADS-BRAND | Low | OPEN | dashboard sidebar hardcoded "CondoLeads" h1 — wrong brand for tenant agents (§6.3) |
 | F-ESTIMATOR-BUILDING-NO-COMPARABLES-LOG-LIES | P3 | OPEN | "Error fetching comparables: null" logs on empty-result; estimator falls back to contact-agent (§8.3) |
@@ -156,6 +157,16 @@ Script: `scripts/verify-w-funnel-code-sections.js`. Read-only, SAVEPOINT-wrapped
 
 **Open observations:**
 - WALLiam + Aily share the same `anthropic_api_key` and `resend_api_key` fingerprints. May be intentional (platform-shared billing) or may want per-tenant separation as Aily scales — worth a separate decision, not a finding.
+
+### 2026-06-03 — §3 P1 gate (Findings 1 + 2 resolution)
+
+**Finding 1 (F-PLATFORM-MANAGER-TENANTS-SERVICE-ROLE-GRANT)**: **CLOSED-VERIFIED, no migration.**
+DB scan confirms `service_role` already has `SELECT` on `platform_manager_tenants`; `SET LOCAL ROLE service_role; SELECT count(*) FROM platform_manager_tenants` succeeds inside SAVEPOINT. Layer-5 error-capture present at `lib/admin-homes/lead-email-recipients.ts:217-219`. Both halves of the prior P1 FIX 3 (commit `5bcbea9` lineage) are in place. Tracker entry stale; updated to CLOSED-VERIFIED.
+
+**Finding 2 (F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY)**: **CODE-FIXED.**
+Added exported `looksLikeValidResendKey()` to `lib/email/sendTenantEmail.ts`: rejects keys missing `re_` prefix, length < 16, or matching placeholder patterns `[...] / <...> / REPLACE_ME / YOUR_RESEND / placeholder / TODO / xxxx`. Preflight in `sendTenantEmail` now throws typed `TenantEmailNotConfigured` with reason `'resend_api_key invalid (placeholder or malformed)'` instead of letting a placeholder reach `new Resend(key)` and 401 at send. `app/api/admin-homes/tenants/[id]/verify-resend/route.ts:38-40` updated to use the shared validator (single source of truth, replacing prior inline `re_`-only check). Smoke (`scripts/smoke-w-funnel-resend-key-validator.js`): 17/17 PASS — 13 placeholder/malformed inputs rejected, 2 synthetic real-shape + 2 live tenant keys (WALLiam, Aily, fingerprint `re_BJJ...cqSr` len=36) accepted.
+
+**Finding 3 (NEW — F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL)**: surfaced during §3.8 work. All 5 `sendTenantEmail` callers catch the typed error + log it but still return `{ success: true }` to the user. The §3.8 fix delivers a *typed signal*; the callers need to *propagate* it. Logged as new P1 finding, NOT fixed silently this round.
 
 ---
 

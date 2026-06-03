@@ -12,6 +12,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { createServiceClient } from '@/lib/admin-homes/service-client'
 import { can } from '@/lib/admin-homes/permissions'
+// W-FUNNEL-VERIFICATION §3.8: shared Resend key shape validator. Used here
+// at config-time AND by sendTenantEmail at send-time -- single source of truth.
+import { looksLikeValidResendKey } from '@/lib/email/sendTenantEmail'
 
 export async function POST(
   request: NextRequest,
@@ -35,8 +38,10 @@ export async function POST(
   if (!apiKey) {
     return NextResponse.json({ valid: false, error: 'No API key provided', lastCheckedAt })
   }
-  if (!apiKey.startsWith('re_')) {
-    return NextResponse.json({ valid: false, error: 'Invalid format (expected re_...)', lastCheckedAt })
+  // W-FUNNEL-VERIFICATION §3.8: use shared validator (re_ prefix + length +
+  // placeholder rejection). Replaces previous inline re_-prefix-only check.
+  if (!looksLikeValidResendKey(apiKey)) {
+    return NextResponse.json({ valid: false, error: 'Invalid key shape (expected re_... with valid length, not a placeholder)', lastCheckedAt })
   }
   if (!fromDomain) {
     return NextResponse.json({ valid: false, error: 'No from-domain provided', lastCheckedAt })

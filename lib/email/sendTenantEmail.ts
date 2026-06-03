@@ -7,6 +7,33 @@
 import { Resend } from 'resend'
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * W-FUNNEL-VERIFICATION §3.8 (2026-06-03):
+ * Shape-validate a Resend API key BEFORE attempting a send. Previously
+ * the preflight only checked presence (null / empty); a placeholder string
+ * like `REPLACE_ME` or `[YOUR_RESEND_API_KEY]` would pass preflight, then
+ * the Resend SDK would 401 at send time. Callers catch TenantEmailFailed
+ * and log it but still return success to the user -- emails silently fail.
+ *
+ * This validator catches placeholders + malformed keys at preflight so
+ * the typed TenantEmailNotConfigured surfaces instead. The companion route
+ * app/api/admin-homes/tenants/[id]/verify-resend/route.ts also uses this
+ * helper (was inline `apiKey.startsWith('re_')` check) -- single source of
+ * truth, no divergent copies.
+ *
+ * Real Resend keys: `re_` prefix, ~36 chars, alphanumeric+underscore.
+ * WALLiam's real key (re_BJJ...cqSr, len 36) passes; placeholders fail.
+ */
+const RESEND_KEY_PLACEHOLDER_RX = /\[|\]|<|>|REPLACE_ME|YOUR_RESEND|placeholder|TODO|xxxx/i
+
+export function looksLikeValidResendKey(key: string | null | undefined): boolean {
+  if (!key) return false
+  if (!key.startsWith('re_')) return false
+  if (key.length < 16) return false
+  if (RESEND_KEY_PLACEHOLDER_RX.test(key)) return false
+  return true
+}
+
 export class TenantEmailNotConfigured extends Error {
   constructor(public tenantId: string, public missing: string[]) {
     super(`Tenant ${tenantId} cannot send email — missing/invalid: ${missing.join(', ')}`)
@@ -69,7 +96,13 @@ export async function sendTenantEmail(
   }
 
   const missing: string[] = []
-  if (!tenant.resend_api_key) missing.push('resend_api_key')
+  if (!tenant.resend_api_key) {
+    missing.push('resend_api_key')
+  } else if (!looksLikeValidResendKey(tenant.resend_api_key)) {
+    // W-FUNNEL-VERIFICATION §3.8: catch placeholder / malformed keys at
+    // preflight instead of after a wasted 401 round-trip to Resend.
+    missing.push('resend_api_key invalid (placeholder or malformed)')
+  }
   if (!tenant.email_from_domain) missing.push('email_from_domain')
   if (!tenant.send_from) missing.push('send_from')
   if (tenant.resend_verification_status !== 'verified') {
