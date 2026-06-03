@@ -4,6 +4,10 @@ import { findHomeComparables, HomeSpecs } from '@/lib/estimator/home-comparable-
 import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
 import { EstimateResult } from '@/lib/estimator/types'
 import { createClient } from '@/lib/supabase/server'
+// W-FUNNEL §9.2 Step 1: resolve current request's tenant. Non-null = System 2
+// (walliam.ca / aily.ca / future tenants); null = System 1 (condoleads.ca
+// legacy subdomains). Branch determined here gates which row owns the AI key.
+import { getCurrentTenantId } from '@/lib/utils/tenant-resolver'
 
 /**
  * Server action to estimate home sale price
@@ -51,18 +55,44 @@ export async function estimateHomeSale(
     // Step 2: Calculate estimate using existing statistical calculator
     const estimate = calculateEstimate(matchResult)
 
-    // Step 3: AI insights (if enabled and agent has API key)
+    // Step 3: AI insights (if enabled).
+    // W-FUNNEL §9.2 Step 1: AI key + opt-in toggle now resolve per system.
     let aiInsights = undefined
-    if (includeAI && estimate.showPrice && estimate.estimatedPrice > 0 && specs.agentId) {
+    if (includeAI && estimate.showPrice && estimate.estimatedPrice > 0) {
       try {
+        const tenantId = await getCurrentTenantId()
         const supabase = createClient()
-        const { data: agent } = await supabase
-          .from('agents')
-          .select('ai_estimator_enabled, anthropic_api_key')
-          .eq('id', specs.agentId)
-          .single()
+        let key: string | null = null
 
-        if (agent?.ai_estimator_enabled && agent?.anthropic_api_key) {
+        if (tenantId) {
+          // SYSTEM 2 (walliam.ca / aily.ca / future tenants): tenant-resolved
+          // billing key + per-tenant opt-in toggle. `estimator_ai_enabled ??
+          // false` enforces opt-in-by-operator; null/unset = off.
+          const { data: tenant } = await supabase
+            .from('tenants')
+            .select('anthropic_api_key, estimator_ai_enabled')
+            .eq('id', tenantId)
+            .single()
+          if ((tenant?.estimator_ai_enabled ?? false) && tenant?.anthropic_api_key) {
+            key = tenant.anthropic_api_key
+          }
+        } else if (specs.agentId) {
+          // SYSTEM 1 (legacy condoleads.ca subdomains): per-agent key + toggle.
+          // Untouched by §9.2 ruling -- maintenance-only legacy system per
+          // CLAUDE.md. Unreachable from any System 2 host (R1 proved
+          // getCurrentTenantId() returns non-null for every registered tenant).
+          const { data: agent } = await supabase
+            .from('agents')
+            .select('ai_estimator_enabled, anthropic_api_key')
+            .eq('id', specs.agentId)
+            .single()
+          if (agent?.ai_estimator_enabled && agent?.anthropic_api_key) {
+            key = agent.anthropic_api_key
+          }
+        }
+        // tenantId null AND no specs.agentId -> no key -> base valuation, no AI
+
+        if (key) {
           const { getAIInsights } = await import('@/lib/estimator/ai-insights')
           // Convert HomeSpecs to UnitSpecs-like for AI insights
           const unitSpecs = {
@@ -75,7 +105,7 @@ export async function estimateHomeSale(
             agentId: specs.agentId,
             exactSqft: specs.exactSqft || undefined,
           }
-          aiInsights = await getAIInsights(unitSpecs, estimate.estimatedPrice, matchResult.comparables, agent.anthropic_api_key)
+          aiInsights = await getAIInsights(unitSpecs, estimate.estimatedPrice, matchResult.comparables, key)
         }
       } catch (aiError) {
         console.log('[estimateHomeSale] AI insights unavailable:', aiError)
