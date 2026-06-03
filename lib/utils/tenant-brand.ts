@@ -92,13 +92,24 @@ export async function getTenantByHost(
 }
 
 /**
- * Build the canonical base URL for outbound links. Respects the
- * NEXT_PUBLIC_APP_URL env override (used in dev / staging) and falls back
- * to https://<tenant.domain> for production tenant traffic.
+ * Build the canonical base URL for outbound links.
+ *
+ * W-EMAIL-TENANT-URL (2026-06-03): precedence is now TENANT-DOMAIN FIRST,
+ * env-override second. Previously the order was inverted -- NEXT_PUBLIC_APP_URL
+ * (set to the platform domain in production Vercel env) won over the
+ * resolved tenant.domain, causing WALLiam/aily emails to link to
+ * https://www.condoleads.ca/... -> 404 on a non-tenant host + wrong brand.
+ *
+ * New behavior:
+ *   - If a tenant domain is provided (walliam.ca, aily.ca, ...): use it.
+ *     Every callsite already resolves the correct tenant.domain from the DB
+ *     via validateSession() or getTenantContext(); honoring it here means
+ *     WALLiam leads link to walliam.ca, aily leads link to aily.ca.
+ *   - If no tenant domain is in scope (dev/preview where the host doesn't
+ *     resolve to any tenant): fall back to NEXT_PUBLIC_APP_URL.
+ *   - Last resort: empty string (caller should guard).
  */
 export function buildBaseUrl(domain: string | null | undefined): string {
-  const envOverride = process.env.NEXT_PUBLIC_APP_URL
-  if (envOverride) return envOverride
-  if (!domain) return ''
-  return `https://${domain}`
+  if (domain) return `https://${domain}`
+  return process.env.NEXT_PUBLIC_APP_URL || ''
 }

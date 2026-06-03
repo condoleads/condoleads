@@ -21,6 +21,8 @@ import {
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+// W-EMAIL-TENANT-URL (2026-06-03): single source of truth for tenant URL resolution.
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 
 
 function createServiceClient() {
@@ -198,7 +200,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create request' }, { status: 500 })
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`
+    // W-EMAIL-TENANT-URL (2026-06-03): use buildBaseUrl -- tenant domain first,
+    // env fallback only when no tenant in scope. Prevents the platform-domain
+    // leak that sent WALLiam approval links to www.condoleads.ca.
+    const baseUrl = buildBaseUrl(tenantDomain)
     const approveUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=approve`
     const denyUrl = `${baseUrl}/api/walliam/charlie/vip-approve?token=${vipRequest.approval_token}&action=deny`
 
@@ -520,7 +525,7 @@ function buildUserApprovalEmailHtml(data: {
           Head back to ${brandName} to generate your personalized real estate plan. Your agent may also reach out directly.
         </p>
         <div style="text-align: center;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || `https://${tenantDomain}`}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
+          <a href="${buildBaseUrl(tenantDomain)}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
             ✦ Back to ${brandName}
           </a>
         </div>
