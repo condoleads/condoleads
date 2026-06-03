@@ -55,7 +55,7 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 | 3.5 | Estimator VIP request → agent email | ☐ | ☐ | |
 | 3.6 | VIP approve → user approval email | ☐ | ☐ | |
 | 3.7 | BCC / platform-manager copy arrives | ◐ | ◐ | F-PLATFORM-MANAGER-TENANTS **CLOSED-VERIFIED**: grant + logging in place (see Findings). Live send-pass arrival still requires §3 live email pass |
-| 3.8 | No email silently dropped | ◐ | ◐ | F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY **CODE-FIXED**: placeholder/malformed keys now rejected at preflight (typed `TenantEmailNotConfigured`). **Caller-side false-green still OPEN** — see Findings + new F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL |
+| 3.8 | No email silently dropped | ✅ | ✅ | F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY (commit `6e3c07b`) **+** F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL Phase 1 (`d5fd517`) + Phase 2 (`bdd3be7` migration + `fe96be0` routes/dashboard). Email layer rejects placeholders at preflight; callers propagate `userEmailSent`/`chainEmailSent`; lead row persists chain delivery status; dashboard surfaces "not yet alerted" badge on `'failed'`. Browser-confirm of banner + badge rendering pending live-verify (see Live-verify once below). |
 
 ---
 
@@ -87,6 +87,7 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 | 6.1 | Lead appears in agent dashboard, correct tenant | ☐ | ☐ | |
 | 6.2 | Plan data / appointment data renders | ☐ | ☐ | |
 | 6.3 | Brand correct (NOT "CondoLeads") | ☐ | ☐ | **F-DASHBOARD-HARDCODED-CONDOLEADS-BRAND** (logged) |
+| 6.4 | "Not yet alerted" badge renders on `lead_email_delivery_status='failed'` | ◐ | ◐ | **Code-complete** (commit `fe96be0`): LeadsTable + LeadDetailClient render amber pill on `'failed'`; smoke green; browser-confirm pending live-verify |
 
 ---
 
@@ -116,7 +117,7 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 |---------|-----|--------|------|
 | F-PLATFORM-MANAGER-TENANTS-SERVICE-ROLE-GRANT | P1 | **CLOSED-VERIFIED 2026-06-03** | Verified `service_role` has SELECT grant on `platform_manager_tenants` (DB scan); Layer-5 error-capture present at `lib/admin-homes/lead-email-recipients.ts:217-219`. Both pieces of the prior P1 FIX 3 are in place. Table currently has 0 rows (no platform-managers assigned yet — config state, not a bug). |
 | F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY | P1 | **CODE-FIXED 2026-06-03** | `looksLikeValidResendKey()` added to `lib/email/sendTenantEmail.ts` — rejects missing/short/placeholder keys at preflight via typed `TenantEmailNotConfigured`. Shared with `verify-resend/route.ts`. Smoke 17/17 PASS (placeholders rejected, real WALLiam+Aily keys accepted). |
-| F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL | P1 | **OPEN — NEW (systemic)** | **Systemic pattern across 5 routes**, not a one-off: all `sendTenantEmail` callers (`plan-email`, `lead`, `appointment`, `walliam/charlie/vip-request`, `walliam/estimator/vip-request`) catch `TenantEmailNotConfigured` / `TenantEmailFailed`, log to console, then return `{ success: true }` to the user. Each route has TWO sendTenantEmail calls (user-facing + agent-chain) — even if BOTH fail, response is `success: true`. User sees "plan generated"/"booked!" but no email arrives; brokerage sees no lead alert. **Launch-critical funnel-integrity issue**: a lead the brokerage thinks landed but never got notified about. The §3.8 preflight fix gives callers a typed signal; **callers need to propagate it via a uniform response contract** (one helper, not 5 bespoke fixes). See Pending spec decisions for diagnosis matrix + response-contract options. Surfaced during the §3.8 fix; reported, NOT fixed silently. |
+| F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL | P1 | **SHIPPED 2026-06-03** | **Phase 1** (`d5fd517`): added shared `attemptTenantEmail` helper to `lib/email/sendTenantEmail.ts`; 5 routes propagate `userEmailSent` + `userEmailReason` + `chainEmailSent` + `chainEmailReason` in JSON response; 6 client consumers (useCharlie plan-email + vip-request, AppointmentForm, PlanDocument, EstimatorBuyerModal, HomeEstimatorBuyerModal, EstimatorVipWrapper) read fields + render honest amber "couldn't email" banner. **Phase 2 Commit A** (`bdd3be7`): added `lead_email_delivery_status` column (text NOT NULL DEFAULT 'pending', CHECK enum) via apply-runner, in-tx verified + post-COMMIT re-verified. **Phase 2 Commit B** (`fe96be0`): 5 routes UPDATE the lead row AFTER `chainOutcome` resolves (`'sent'`/`'failed'`); LeadsTable + LeadDetailClient render "⚠ not yet alerted" badge on `'failed'`. NO backfill (existing 184 test rows land on `'pending'` → no dashboard noise). NO retry queue. Smoke green: response-shape (17/17 + 5 live-verify cases) + delivery-status (Phase 2 smoke ALL PASS, SAVEPOINT-isolated). Browser-confirm of banner + badge rendering pending live-verify (see Live-verify once). |
 | F-CV-LEADS-INSERT-NO-TENANT-AGENT-FK | P2 | OPEN | leads table no FK/CHECK tying agent_id tenant to row tenant_id (§7) |
 | F-DASHBOARD-HARDCODED-CONDOLEADS-BRAND | Low | OPEN | dashboard sidebar hardcoded "CondoLeads" h1 — wrong brand for tenant agents (§6.3) |
 | F-ESTIMATOR-BUILDING-NO-COMPARABLES-LOG-LIES | P3 | OPEN | "Error fetching comparables: null" logs on empty-result; estimator falls back to contact-agent (§8.3) |
@@ -167,6 +168,40 @@ DB scan confirms `service_role` already has `SELECT` on `platform_manager_tenant
 Added exported `looksLikeValidResendKey()` to `lib/email/sendTenantEmail.ts`: rejects keys missing `re_` prefix, length < 16, or matching placeholder patterns `[...] / <...> / REPLACE_ME / YOUR_RESEND / placeholder / TODO / xxxx`. Preflight in `sendTenantEmail` now throws typed `TenantEmailNotConfigured` with reason `'resend_api_key invalid (placeholder or malformed)'` instead of letting a placeholder reach `new Resend(key)` and 401 at send. `app/api/admin-homes/tenants/[id]/verify-resend/route.ts:38-40` updated to use the shared validator (single source of truth, replacing prior inline `re_`-only check). Smoke (`scripts/smoke-w-funnel-resend-key-validator.js`): 17/17 PASS — 13 placeholder/malformed inputs rejected, 2 synthetic real-shape + 2 live tenant keys (WALLiam, Aily, fingerprint `re_BJJ...cqSr` len=36) accepted.
 
 **Finding 3 (NEW — F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL)**: surfaced during §3.8 work. All 5 `sendTenantEmail` callers catch the typed error + log it but still return `{ success: true }` to the user. The §3.8 fix delivers a *typed signal*; the callers need to *propagate* it. Logged as new P1 finding, NOT fixed silently this round.
+
+### 2026-06-03 — F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL **SHIPPED**
+
+The systemic Finding 3 (above) is now closed end-to-end.
+
+**Phase 1 — response contract + client banners (commit `d5fd517`):**
+- `lib/email/sendTenantEmail.ts` exports `attemptTenantEmail(params, context)` returning typed `{ sent, reason, messageId? }`; preserves console logging.
+- 5 routes (`plan-email`, `lead`, `appointment`, `walliam/charlie/vip-request`, `walliam/estimator/vip-request`) use the helper + include `userEmailSent`/`userEmailReason`/`chainEmailSent`/`chainEmailReason` in JSON response.
+- 6 client consumers read the fields + render honest amber "couldn't email" banner where applicable. AppointmentForm specifically keeps the form open on user-email failure so the banner is actually visible.
+- Live-verify (`scripts/live-verify-w-funnel-email-caller.js`): 5/5 cases against a throwaway DB row — placeholder, NULL, REPLACE_ME, too-short, synthetic-real. Real WALLiam + Aily keys untouched (fingerprint pre+post identical).
+
+**Phase 2 Commit A — migration (commit `bdd3be7`):**
+- `supabase/migrations/20260603_w_funnel_phase_2_lead_email_delivery_status.sql`: adds `lead_email_delivery_status text NOT NULL DEFAULT 'pending'` + CHECK enum (`'pending'`/`'sent'`/`'failed'`).
+- `scripts/apply-w-funnel-phase-2-lead-email-status.js`: idempotency precheck + pre-snapshot + transactional apply + in-tx verify + post-COMMIT re-verify.
+- Applied: 50 columns + 8 CHECK constraints snapshot saved; in-tx verify ALL PASS (type=text, NOT NULL, default `'pending'`, constraint predicate, row_count=184 unchanged, sample reads all `'pending'`); COMMITted; post-COMMIT re-verify on fresh connection confirmed both column + constraint live.
+- NO backfill: tracker decision — 184 existing test rows land on DEFAULT `'pending'` which yields no badge (badge fires only on `'failed'`).
+
+**Phase 2 Commit B — route UPDATEs + dashboard badges + smoke (commit `fe96be0`):**
+- 5 routes: 10-line UPDATE block per route, all placed AFTER `chainOutcome` resolves. Smoke verified ordering via assign-index < update-index check (5/5).
+- LeadsTable + LeadDetailClient: amber "⚠ not yet alerted" pill gated on `lead.lead_email_delivery_status === 'failed'`.
+- `scripts/smoke-w-funnel-phase-2-delivery-status.js`: SAVEPOINT-isolated, zero production state change. Cases: INSERT → default `'pending'`, UPDATE → `'sent'`, UPDATE → `'failed'`, CHECK rejects `'bogus'` (code 23514), dashboard SELECT returns column, static checks for badge JSX + ordering. ALL PASS for both tenants.
+
+**Caveats / next steps**: see "Live-verify once" below.
+
+---
+
+## Live-verify once (when convenient — browser click-through, no code change)
+
+Code-complete + statically smoke-green; these are the visual confirmations a code agent can't do from CLI:
+
+- [ ] **Phase 1 banner — emailSent:false live-exercise.** Temporarily corrupt a test tenant's `resend_api_key` (or use the throwaway-tenant pattern from `scripts/live-verify-w-funnel-email-caller.js`), exercise plan-email + appointment + vip-request from the browser, confirm the amber "we couldn't email it" banner renders with the right copy AND the action result (plan/booked/granted) still appears. Restore the key; fingerprint-check before+after.
+- [ ] **Phase 2 badge — `'failed'` browser click-through.** UPDATE a test lead's `lead_email_delivery_status` to `'failed'` in a SAVEPOINT-wrapped session (or insert + cleanup), open `/dashboard/leads` and `/dashboard/leads/[id]`, confirm the amber "⚠ not yet alerted" pill renders on both views. Roll back the test row.
+
+These don't gate anything else — the funnel is verified-correct in code + smoke. They're final visual checks before considering the email-delivery integrity of the §3 row fully trustworthy in the launch-readiness sense.
 
 ---
 
