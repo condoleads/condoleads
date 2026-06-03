@@ -43,8 +43,21 @@ export async function findComparables(specs: UnitSpecs, customValues?: Adjustmen
     .gt('close_price', 100000)
     .order('close_date', { ascending: false })
 
-  if (error || !allSales || allSales.length === 0) {
-    console.error('Error fetching comparables:', error)
+  // W-FUNNEL Batch 2b: split the three pre-CONTACT exit paths so logs are
+  // honest. Previously all three branches collapsed into one
+  // `console.error('Error fetching comparables:', error)` -- which logged
+  // 'Error: null' on the common empty-result case, making routine
+  // "no recent sales in this building" noise look like infrastructure errors.
+  if (error) {
+    console.error('[comparable-matcher-sales] Supabase error fetching comparables for building', specs.buildingId, ':', error)
+    return { tier: 'CONTACT', comparables: [] }
+  }
+  if (!allSales) {
+    console.warn('[comparable-matcher-sales] Query returned undefined (anomaly, not empty) for building', specs.buildingId)
+    return { tier: 'CONTACT', comparables: [] }
+  }
+  if (allSales.length === 0) {
+    console.log('[comparable-matcher-sales] No closed sales in last 2y for building', specs.buildingId, '-- CONTACT tier')
     return { tier: 'CONTACT', comparables: [] }
   }
 

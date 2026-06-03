@@ -42,8 +42,20 @@ export async function findComparablesRentals(specs: UnitSpecs, customValues?: Ad
     .gte('close_date', twoYearsAgo.toISOString())
     .order('close_date', { ascending: false })
 
-  if (error || !allLeases || allLeases.length === 0) {
-    console.error('Error fetching comparable leases:', error)
+  // W-FUNNEL Batch 2b: split the three pre-CONTACT exit paths so logs are
+  // honest. Previously all three branches collapsed into one
+  // `console.error('Error fetching comparable leases:', error)` -- which
+  // logged 'Error: null' on the common empty-result case.
+  if (error) {
+    console.error('[comparable-matcher-rentals] Supabase error fetching comparable leases for building', specs.buildingId, ':', error)
+    return { tier: 'CONTACT', comparables: [] }
+  }
+  if (!allLeases) {
+    console.warn('[comparable-matcher-rentals] Query returned undefined (anomaly, not empty) for building', specs.buildingId)
+    return { tier: 'CONTACT', comparables: [] }
+  }
+  if (allLeases.length === 0) {
+    console.log('[comparable-matcher-rentals] No closed leases in last 2y for building', specs.buildingId, '-- CONTACT tier')
     return { tier: 'CONTACT', comparables: [] }
   }
 
