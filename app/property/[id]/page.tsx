@@ -351,6 +351,23 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const _c8a_tenant = await getTenantByHost(_c8a_supabase, _c8a_host)
   const assistantName = _c8a_tenant?.name || 'Charlie'
 
+  // W-FUNNEL §9.2 Step 2: chat-widget has_api_key reflects the system's owner
+  // of the AI key. System 2 (tenantId non-null) -> tenants.anthropic_api_key;
+  // System 1 (tenantId null, legacy condoleads.ca subdomain) ->
+  // agents.anthropic_api_key unchanged. Only fetched when ChatWidgetWrapper
+  // would render (!isHero && agent); skipped otherwise.
+  let chatHasApiKey = false
+  if (!isHero && agent) {
+    if (tenantId) {
+      const { data: _chatTenantKey } = await _c8a_supabase
+        .from('tenants').select('anthropic_api_key').eq('id', tenantId).maybeSingle()
+      chatHasApiKey = !!_chatTenantKey?.anthropic_api_key
+    } else {
+      // SYSTEM 1 legacy condoleads.ca subdomain -- per-agent key (CLAUDE.md untouchable)
+      chatHasApiKey = !!agent.anthropic_api_key
+    }
+  }
+
   return (
     <>
       <script
@@ -403,7 +420,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         id: agent.id,
         full_name: agent.full_name,
         ai_chat_enabled: agent.ai_chat_enabled,
-        has_api_key: !!agent.anthropic_api_key,
+        has_api_key: chatHasApiKey,
         ai_welcome_message: agent.ai_welcome_message,
         ai_free_messages: agent.ai_free_messages
       }}
