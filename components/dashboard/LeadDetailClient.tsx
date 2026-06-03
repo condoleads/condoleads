@@ -105,6 +105,13 @@ export default function LeadDetailClient({ lead, agent, initialNotes, engagement
               <span className={'px-3 py-1 rounded-full text-sm font-semibold ' + (status === 'new' ? 'bg-green-100 text-green-700' : status === 'contacted' ? 'bg-blue-100 text-blue-700' : status === 'qualified' ? 'bg-purple-100 text-purple-700' : status === 'closed' ? 'bg-gray-100 text-gray-700' : 'bg-red-100 text-red-700')}>
                 {status.toUpperCase()}
               </span>
+              {/* W-FUNNEL Phase 2: chain-email delivery indicator. Fires only on 'failed';
+                  'pending' (default for new + historical rows) yields no badge. */}
+              {lead.lead_email_delivery_status === 'failed' && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                  ⚠ not yet alerted
+                </span>
+              )}
             </div>
             <p className="text-gray-600">{lead.contact_email}</p>
             {lead.contact_phone && <p className="text-gray-600">{lead.contact_phone}</p>}

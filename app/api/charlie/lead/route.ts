@@ -319,6 +319,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // W-FUNNEL Phase 2 Commit B: persist chain-email delivery status for the
+    // dashboard "not yet alerted" indicator. Runs AFTER chainOutcome resolves
+    // (above) -- never writes 'sent' on a path that hasn't actually sent.
+    if (leadId) {
+      await supabase
+        .from('leads')
+        .update({ lead_email_delivery_status: chainOutcome.sent ? 'sent' : 'failed' })
+        .eq('id', leadId)
+    }
+
     return NextResponse.json({
       success: true,
       leadId,

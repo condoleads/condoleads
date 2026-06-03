@@ -203,6 +203,13 @@ export default function LeadsTable({ leads, agentId, isAdmin = false, isManager 
                     <p className="text-sm font-medium text-gray-900">{lead.contact_name}</p>
                     <p className="text-sm text-gray-500">{lead.contact_email}</p>
                     {lead.contact_phone && <p className="text-xs text-gray-400">{lead.contact_phone}</p>}
+                    {/* W-FUNNEL Phase 2: chain-email delivery indicator. Fires only on 'failed';
+                        'pending' (default for new + historical rows) yields no badge. */}
+                    {lead.lead_email_delivery_status === 'failed' && (
+                      <p className="mt-1 inline-flex items-center text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                        ⚠ not yet alerted
+                      </p>
+                    )}
                   </td>
                   {(isAdmin || isManager) && (
                     <td className="px-6 py-4">
