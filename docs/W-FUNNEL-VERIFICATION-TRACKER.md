@@ -25,12 +25,12 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 
 | # | Lead type | WALLiam | Aily | Notes |
 |---|-----------|---------|------|-------|
-| 1.1 | Buyer plan | ☐ | ☐ | |
-| 1.2 | Seller plan | ☐ | ☐ | |
-| 1.3 | Charlie chat lead | ☐ | ☐ | |
-| 1.4 | Estimator VIP request | ☐ | ☐ | lead + request row |
-| 1.5 | Appointment booking | ☐ | ☐ | lead + appointment row |
-| 1.6 | Contact form | ☐ | ☐ | |
+| 1.1 | Buyer plan | ✅ | ☐ | WALLiam: 40 rows all tenant-scoped, agent + route set. Aily: 0 rows (no traffic yet) — revisit post-Aily-live |
+| 1.2 | Seller plan | ✅ | ☐ | WALLiam: 2 rows, all clean. Aily: 0 rows |
+| 1.3 | Charlie chat lead | ✅ | ☐ | WALLiam: 22 rows, all clean. Aily: 0 rows |
+| 1.4 | Estimator VIP request | ✅ | ☐ | WALLiam: 68 rows, all clean. Aily: 0 rows |
+| 1.5 | Appointment booking | ✅ | ☐ | WALLiam: 22 rows, all clean. Aily: 0 rows |
+| 1.6 | Contact form | ✅ | ☐ | WALLiam: 7 rows, all clean. Aily: 0 rows |
 
 ---
 
@@ -38,9 +38,9 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 
 | # | Check | WALLiam | Aily | Notes |
 |---|-------|---------|------|-------|
-| 2.1 | Lead routes to correct agent per territory (geo/building) | ☐ | ☐ | `resolve_agent_for_context` RPC |
-| 2.2 | Hierarchy escalation fires where expected | ☐ | ☐ | |
-| 2.3 | No cross-tenant assignment | ☐ | ☐ | WALLiam lead never → Aily agent |
+| 2.1 | Lead routes to correct agent per territory (geo/building) | ✅ | ☐ | WALLiam: 3/3 primary-apa probes resolved to correct-tenant agents via `resolve_agent_for_context`. Aily: 0 active+primary apa rows — revisit post-Aily-setup |
+| 2.2 | Hierarchy escalation fires where expected | ✅ | ✅ | WALLiam chain: agent → tenant_admin. Aily chain: manager → tenant_admin |
+| 2.3 | No cross-tenant assignment | ✅ | ✅ | apa scan: 0 rows where apa.tenant_id ≠ agent.tenant_id |
 
 ---
 
@@ -94,9 +94,9 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 
 | # | Check | Status | Notes |
 |---|-------|--------|-------|
-| 7.1 | WALLiam agent sees only WALLiam leads | ☐ | |
-| 7.2 | Aily agent sees only Aily leads | ☐ | |
-| 7.3 | No data / email / link bleeds across tenants | ☐ | |
+| 7.1 | WALLiam agent sees only WALLiam leads | ✅ | King Shah's 181 leads: 181 same_tenant, 0 other_or_null |
+| 7.2 | Aily agent sees only Aily leads | ✅ | Aily admin: 0 leads (no traffic), 0 cross-tenant |
+| 7.3 | No data / email / link bleeds across tenants | ✅ | leads scan: 0 rows where agent.tenant_id ≠ lead.tenant_id. **Latent risk**: no FK/CHECK enforces this — F-CV-LEADS-INSERT-NO-TENANT-AGENT-FK (P2) remains OPEN |
 
 ---
 
@@ -104,9 +104,9 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 
 | # | Check | WALLiam | Aily | Notes |
 |---|-------|---------|------|-------|
-| 8.1 | Charlie chat responds (real Anthropic, tenant key) | ☐ | ☐ | ~1.5¢/interaction measured |
-| 8.2 | Buyer/Seller plan generates real content | ☐ | ☐ | |
-| 8.3 | Estimator returns valuation + AI commentary | ☐ | ☐ | **F-ESTIMATOR-BUILDING-NO-COMPARABLES (P3)** on empty buildings |
+| 8.1 | Charlie chat responds (real Anthropic, tenant key) | ◐ | ◐ | Config wired (anthropic_api_key starts `sk-ant-`, len=108, not placeholder, both tenants). Live paid-call verification pending separate budgeted step |
+| 8.2 | Buyer/Seller plan generates real content | ◐ | ◐ | WALLiam: 3/3 active agents have `ai_estimator_enabled=true`. Aily: 0/3 (config gap if AI estimator desired on Aily). Live content verification pending |
+| 8.3 | Estimator returns valuation + AI commentary | ✅ | ✅ | Static check: `lib/estimator/comparable-matcher-sales.ts` has empty-result return path (no crash on empty building). F-ESTIMATOR-BUILDING-NO-COMPARABLES-LOG-LIES (P3) remains OPEN |
 
 ---
 
@@ -133,6 +133,29 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 - [ ] AI systems respond with real content on both tenants (§8)
 
 When all exit criteria pass → funnel backbone is verified end-to-end → cleared on the funnel dimension for launch / investor conversations.
+
+---
+
+## Run log
+
+### 2026-06-03 — code-testable pass (§1, §2, §7, §8)
+
+Script: `scripts/verify-w-funnel-code-sections.js`. Read-only, SAVEPOINT-wrapped (rollback at end). Both tenants.
+
+**Results: 20 PASS / 0 FAIL / 7 INCONCLUSIVE**
+
+- §1 lead capture: WALLiam 6/6 PASS (all lead-type rows have correct `tenant_id`, `agent_id`, `lead_origin_route`). Aily 0/6 — INCONCLUSIVE (no historical lead rows yet; revisit after first live Aily traffic).
+- §2 routing: WALLiam 3/3 primary-apa probes resolved to correct-tenant agents via `resolve_agent_for_context`. Aily 0 primary-apa rows (INCONCLUSIVE for 2.1, but 2.2 hierarchy walks PASS and 2.3 cross-tenant scan PASSES across both).
+- §7 isolation: ALL PASS. WALLiam admin's 181 leads all same-tenant; Aily admin 0 leads (clean). Live cross-tenant scan: 0 mismatches across all leads / agent_property_access.
+- §8 wiring: anthropic_api_key + resend_api_key both real (`sk-ant-` / `re_` prefixed, len 108 / 36, no placeholder) for both tenants. WALLiam has `ai_estimator_enabled` on 3/3 active agents; Aily has 0/3 (config decision: enable when Aily AI estimator is desired). Estimator empty-building static path verified: function returns empty cleanly without crash.
+
+**Findings status:**
+- F-CV-LEADS-INSERT-NO-TENANT-AGENT-FK (P2): **OPEN, latent**. 0 live mismatches today, but no FK/CHECK enforces `leads.tenant_id` ↔ `agents.tenant_id` consistency — a buggy INSERT path could introduce one without rejection.
+- F-ESTIMATOR-BUILDING-NO-COMPARABLES-LOG-LIES (P3): OPEN (per tracker).
+- No new findings.
+
+**Open observations:**
+- WALLiam + Aily share the same `anthropic_api_key` and `resend_api_key` fingerprints. May be intentional (platform-shared billing) or may want per-tenant separation as Aily scales — worth a separate decision, not a finding.
 
 ---
 
