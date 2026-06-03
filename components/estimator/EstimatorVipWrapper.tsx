@@ -80,6 +80,8 @@ export default function EstimatorVipWrapper({
   const [vipLoading, setVipLoading] = useState(false)
   const [prefillPhone, setPrefillPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): honest delivery warning.
+  const [emailWarning, setEmailWarning] = useState<string | null>(null)
 
   // Initialize session on mount
   useEffect(() => {
@@ -272,6 +274,11 @@ export default function EstimatorVipWrapper({
       })
       const vipResult = await vipRes.json()
       if (!vipResult.success) { setError(vipResult.error || 'Failed to submit'); return }
+      // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): if agent-chain email
+      // didn't reach the agent, surface a soft note. Request row still saved.
+      if (vipResult.chainEmailSent === false) {
+        setEmailWarning("Request submitted — but we couldn't email your agent directly. They may not see it until they check the dashboard.")
+      }
       const requestId = vipResult.requestId
       const newStatus = vipResult.status === 'approved' ? 'approved' : 'pending'
       setSession(prev => ({ ...prev, vipRequestId: requestId, vipRequestStatus: newStatus }))
@@ -413,6 +420,12 @@ export default function EstimatorVipWrapper({
   return (
     <EstimatorContext.Provider value={{ requestEstimate, session }}>
       <div className="relative">
+        {/* F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): honest email-delivery note */}
+        {emailWarning && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+            <p className="text-amber-800 text-sm">{emailWarning}</p>
+          </div>
+        )}
         {children}
         
         {/* VIP Prompt Overlay */}

@@ -53,6 +53,9 @@ export default function AppointmentForm({ type, listings = [], userId, sessionId
   })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): warn the user when the
+  // booking was saved but the confirmation email did not actually send.
+  const [emailWarning, setEmailWarning] = useState('')
   const [profileLoaded, setProfileLoaded] = useState(false)
 
   // Pre-fill user data
@@ -142,7 +145,15 @@ export default function AppointmentForm({ type, listings = [], userId, sessionId
       })
       const data = await res.json()
       if (data.success) {
-        onBooked()
+        // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): if confirmation
+        // email didn't reach the user, show an honest note + keep the form
+        // visible so they can read it. Booking row was still saved.
+        if (data.userEmailSent === false) {
+          setEmailWarning("Booked — we couldn't email you a confirmation. Please save these details or contact your agent directly. Tap outside to close.")
+          // Intentionally do NOT auto-call onBooked() so the warning stays visible.
+        } else {
+          onBooked()
+        }
       } else {
         setError(data.error || 'Something went wrong. Please try again.')
       }
@@ -282,6 +293,9 @@ export default function AppointmentForm({ type, listings = [], userId, sessionId
 
       {/* Error */}
       {error && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 12 }}>{error}</div>}
+
+      {/* F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): honest email-delivery note */}
+      {emailWarning && <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 12, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '8px 12px' }}>{emailWarning}</div>}
 
       {/* Submit */}
       <button

@@ -14,12 +14,11 @@ import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
-  sendTenantEmail,
-  TenantEmailNotConfigured,
-  TenantEmailFailed,
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+// F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): propagate email-delivery outcome.
+import { attemptTenantEmail } from '@/lib/email/sendTenantEmail'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { validateSession } from '@/lib/utils/validate-session'
 import { buildBaseUrl } from '@/lib/utils/tenant-brand'
@@ -181,8 +180,9 @@ export async function POST(req: NextRequest) {
     const rescheduleUrl = `${BASE_URL}/reschedule?token=${lead.reschedule_token}`
 
     // Step 4: Confirmation email → user (single recipient, no chain)
-    try {
-      await sendTenantEmail({
+    // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): capture user-email outcome.
+    const userOutcome = await attemptTenantEmail(
+      {
         tenantId: tenantId || '',
         to: email,
         subject: `Your ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${formattedDate} at ${appointment_time}`,
@@ -192,17 +192,9 @@ export async function POST(req: NextRequest) {
           brandName, domain, baseUrl: BASE_URL,
           sourceUrl: pageUrl,
         }),
-      })
-    } catch (err) {
-      // F67 standard try/catch
-      if (err instanceof TenantEmailNotConfigured) {
-        console.warn('[charlie/appointment] tenant email not configured (user confirmation):', err.message)
-      } else if (err instanceof TenantEmailFailed) {
-        console.error('[charlie/appointment] resend send failed (user confirmation):', err.message)
-      } else {
-        console.error('[charlie/appointment] unexpected user email error:', err)
-      }
-    }
+      },
+      '[charlie/appointment] user'
+    )
 
     // Step 5: Notification email → full chain (helper resolves all layers)
     let recipients
@@ -218,10 +210,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let chainOutcome: { sent: boolean; reason: 'delivered' | 'not_configured' | 'send_failed' | 'no_recipients' } =
+      { sent: false, reason: 'no_recipients' }
     if (recipients) {
-      try {
-        const subject = `📅 New ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${name} — ${formattedDate}`
-        const sendResult = await sendTenantEmail({
+      const subject = `📅 New ${intent === 'buyer' ? 'Viewing' : 'Consultation'} Request — ${name} — ${formattedDate}`
+      const outcome = await attemptTenantEmail(
+        {
           tenantId: tenantId || '',
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
@@ -233,28 +227,21 @@ export async function POST(req: NextRequest) {
             brandName, domain, baseUrl: BASE_URL,
             sourceUrl: pageUrl,
           }),
+        },
+        '[charlie/appointment] chain'
+      )
+      chainOutcome = { sent: outcome.sent, reason: outcome.reason }
+      if (outcome.sent && outcome.messageId && lead?.id) {
+        await logEmailRecipients({
+          supabase,
+          tenantId: tenantId || '',
+          leadId: lead.id,
+          agentId,
+          recipients,
+          subject,
+          templateKey: 'charlie_appointment_chain',
+          resendMessageId: outcome.messageId,
         })
-        if (lead?.id) {
-          await logEmailRecipients({
-            supabase,
-            tenantId: tenantId || '',
-            leadId: lead.id,
-            agentId,
-            recipients,
-            subject,
-            templateKey: 'charlie_appointment_chain',
-            resendMessageId: sendResult.id,
-          })
-        }
-      } catch (err) {
-        // F67 standard try/catch
-        if (err instanceof TenantEmailNotConfigured) {
-          console.warn('[charlie/appointment] tenant email not configured (chain notification):', err.message)
-        } else if (err instanceof TenantEmailFailed) {
-          console.error('[charlie/appointment] resend send failed (chain notification):', err.message)
-        } else {
-          console.error('[charlie/appointment] unexpected chain email error:', err)
-        }
       }
     }
 
@@ -267,7 +254,14 @@ export async function POST(req: NextRequest) {
       appointmentTime: appointment_time,
     })
 
-    return NextResponse.json({ success: true, leadId: lead.id })
+    return NextResponse.json({
+      success: true,
+      leadId: lead.id,
+      userEmailSent: userOutcome.sent,
+      userEmailReason: userOutcome.reason,
+      chainEmailSent: chainOutcome.sent,
+      chainEmailReason: chainOutcome.reason,
+    })
 
   } catch (error) {
     console.error('[charlie/appointment] error:', error)

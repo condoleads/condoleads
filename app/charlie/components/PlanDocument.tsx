@@ -84,6 +84,8 @@ export default function PlanDocument(props: PlanDocumentProps) {
   const [phone, setPhone] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): honest delivery warning.
+  const [emailWarning, setEmailWarning] = useState('')
 
   const seasonal = analytics?.insight_seasonal
   const bestMonth = seasonal?.best_months?.[0]
@@ -147,6 +149,12 @@ export default function PlanDocument(props: PlanDocumentProps) {
 
       const data = await res.json()
       if (data.success) {
+        // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): if the plan email
+        // didn't actually reach the user, surface an honest note. The plan is
+        // already on screen; the user can save the page.
+        if (data.userEmailSent === false) {
+          setEmailWarning("Plan generated — we couldn't email it to you. Save this page or contact your agent.")
+        }
         onLeadCaptured?.()
       } else {
         setSubmitError(data.error || 'Something went wrong. Please try again.')

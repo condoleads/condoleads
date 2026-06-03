@@ -134,3 +134,50 @@ export async function sendTenantEmail(
 
   return { id: data.id, from: tenant.send_from! }
 }
+
+// ---------------------------------------------------------------------------
+// attemptTenantEmail -- F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL fix (Phase 1).
+// ---------------------------------------------------------------------------
+// Wraps sendTenantEmail with try/catch that returns a typed outcome instead
+// of throwing. Callers use this to PROPAGATE the email-delivery result into
+// their JSON response so the client can show an honest state -- previously
+// every caller swallowed the typed exception, logged to console, and still
+// returned `success: true`, telling users their plan was "emailed" when it
+// demonstrably wasn't.
+//
+// `success` (action-level) is independent: the lead/plan/appointment row was
+// saved, AI cost was spent, override granted, etc. -- the work succeeded.
+// Only the email DELIVERY may have failed. Surfacing both lets the UI render
+// the action result + a small "couldn't email it" banner where applicable.
+//
+// Logging behavior preserved: `not_configured` -> console.warn,
+// `send_failed` -> console.error -- so Vercel logs read the same as before.
+
+export type EmailDeliveryReason = 'delivered' | 'not_configured' | 'send_failed'
+
+export interface EmailDeliveryOutcome {
+  sent: boolean
+  reason: EmailDeliveryReason
+  messageId?: string  // Resend message id when sent === true
+}
+
+export async function attemptTenantEmail (
+  params: SendTenantEmailParams,
+  context: string,
+): Promise<EmailDeliveryOutcome> {
+  try {
+    const result = await sendTenantEmail(params)
+    return { sent: true, reason: 'delivered', messageId: result.id }
+  } catch (err) {
+    if (err instanceof TenantEmailNotConfigured) {
+      console.warn(`${context} tenant email not configured: ${err.message}`)
+      return { sent: false, reason: 'not_configured' }
+    }
+    if (err instanceof TenantEmailFailed) {
+      console.error(`${context} resend send failed: ${err.message}`)
+      return { sent: false, reason: 'send_failed' }
+    }
+    console.error(`${context} unexpected error:`, err)
+    return { sent: false, reason: 'send_failed' }
+  }
+}

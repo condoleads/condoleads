@@ -78,6 +78,8 @@ export default function EstimatorBuyerModal({
   const [showBlocked, setShowBlocked] = useState(false)
   const [vipLoading, setVipLoading] = useState(false)
   const [prefillPhone, setPrefillPhone] = useState('')
+  // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): honest delivery warning.
+  const [emailWarning, setEmailWarning] = useState<string | null>(null)
 
   const isSale = type === 'sale'
 
@@ -393,6 +395,12 @@ export default function EstimatorBuyerModal({
       })
       const vipResult = await vipRes.json()
       if (!vipResult.success) { setError(vipResult.error || 'Failed to submit request'); return }
+      // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): if agent-chain email
+      // didn't reach the agent, log a soft note for the user. The request row
+      // was still saved.
+      if (vipResult.chainEmailSent === false) {
+        setEmailWarning("Request submitted — but we couldn't email your agent directly. They may not see it until they check the dashboard.")
+      }
       const requestId = vipResult.requestId
       const newStatus = vipResult.status === 'approved' ? 'approved' : 'pending'
       setSession(prev => ({ ...prev, vipRequestId: requestId, vipRequestStatus: newStatus }))
@@ -537,6 +545,13 @@ export default function EstimatorBuyerModal({
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
               <p className="text-red-800 font-semibold mb-1">Unable to Generate Estimate</p>
               <p className="text-red-600 text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): honest email-delivery note */}
+          {emailWarning && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+              <p className="text-amber-800 text-sm">{emailWarning}</p>
             </div>
           )}
 

@@ -14,14 +14,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
-  sendTenantEmail,
-  TenantEmailNotConfigured,
-  TenantEmailFailed,
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+// F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): propagate email-delivery outcome.
+import { attemptTenantEmail } from '@/lib/email/sendTenantEmail'
 import { entityIdsFromSession } from '@/lib/admin-homes/extract-entity-ids'
 
 
@@ -244,38 +243,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): capture chain outcome.
+    let chainOutcome: { sent: boolean; reason: 'delivered' | 'not_configured' | 'send_failed' | 'no_recipients' } =
+      { sent: false, reason: 'no_recipients' }
     if (recipients) {
-      try {
-        const subject = `${brandName} Estimator VIP Request: ${phone}`
-        const sendResult = await sendTenantEmail({
+      const subject = `${brandName} Estimator VIP Request: ${phone}`
+      const outcome = await attemptTenantEmail(
+        {
           tenantId: tenantId || '',
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
           subject,
           html: emailHtml,
+        },
+        '[walliam/estimator/vip-request] chain'
+      )
+      chainOutcome = { sent: outcome.sent, reason: outcome.reason }
+      if (outcome.sent && outcome.messageId && lead?.id) {
+        await logEmailRecipients({
+          supabase,
+          tenantId: tenantId || '',
+          leadId: lead.id,
+          agentId: agent?.id || null,
+          recipients,
+          subject,
+          templateKey: 'walliam_estimator_vip_request_chain',
+          resendMessageId: outcome.messageId,
         })
-        if (lead?.id) {
-          await logEmailRecipients({
-            supabase,
-            tenantId: tenantId || '',
-            leadId: lead.id,
-            agentId: agent?.id || null,
-            recipients,
-            subject,
-            templateKey: 'walliam_estimator_vip_request_chain',
-            resendMessageId: sendResult.id,
-          })
-        }
-      } catch (err) {
-        // F67 standard try/catch
-        if (err instanceof TenantEmailNotConfigured) {
-          console.warn('[walliam/estimator/vip-request] tenant email not configured:', err.message)
-        } else if (err instanceof TenantEmailFailed) {
-          console.error('[walliam/estimator/vip-request] resend send failed:', err.message)
-        } else {
-          console.error('[walliam/estimator/vip-request] unexpected email error:', err)
-        }
       }
     }
 
@@ -326,25 +321,20 @@ export async function POST(request: NextRequest) {
           }, { onConflict: 'user_id,tenant_id' })
       }
 
-      // User-confirmation email (single recipient, not chain)
+      // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): capture user-approval outcome.
+      let userOutcome: { sent: boolean; reason: 'delivered' | 'not_configured' | 'send_failed' | 'no_user_email' } =
+        { sent: false, reason: 'no_user_email' }
       if (userEmail) {
-        try {
-          await sendTenantEmail({
+        const outcome = await attemptTenantEmail(
+          {
             tenantId: tenantId || '',
             to: userEmail,
             subject: `${brandName} Estimator Access Approved`,
             html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, domain, baseUrl, pageUrl),
-          })
-        } catch (err) {
-          // F67 standard try/catch
-          if (err instanceof TenantEmailNotConfigured) {
-            console.warn('[walliam/estimator/vip-request] tenant email not configured (user approval):', err.message)
-          } else if (err instanceof TenantEmailFailed) {
-            console.error('[walliam/estimator/vip-request] resend send failed (user approval):', err.message)
-          } else {
-            console.error('[walliam/estimator/vip-request] unexpected user approval email error:', err)
-          }
-        }
+          },
+          '[walliam/estimator/vip-request] user approval'
+        )
+        userOutcome = { sent: outcome.sent, reason: outcome.reason }
       }
 
       return NextResponse.json({
@@ -353,14 +343,23 @@ export async function POST(request: NextRequest) {
         status: 'approved',
         messagesGranted: autoApproveMessages,
         message: 'VIP access automatically approved',
+        userEmailSent: userOutcome.sent,
+        userEmailReason: userOutcome.reason,
+        chainEmailSent: chainOutcome.sent,
+        chainEmailReason: chainOutcome.reason,
       })
     }
 
+    // Pending: no user email sent yet (agent will trigger via approve).
     return NextResponse.json({
       success: true,
       requestId: vipRequest.id,
       status: 'pending',
       message: 'Request submitted successfully',
+      userEmailSent: false,
+      userEmailReason: 'not_attempted' as const,
+      chainEmailSent: chainOutcome.sent,
+      chainEmailReason: chainOutcome.reason,
     })
 
   } catch (error) {

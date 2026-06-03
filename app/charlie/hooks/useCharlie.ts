@@ -189,11 +189,20 @@ export function useCharlie() {
       })
       const data = await res.json()
       if (data.success) {
+        // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): if the request's
+        // agent-chain email or the user-approval email (auto-approve branch)
+        // didn't reach the recipient, surface a soft note. Request row saved.
+        const vipWarning = data.chainEmailSent === false
+          ? "Request submitted — but we couldn't email your agent directly. They may not see it until they check the dashboard."
+          : (data.userEmailSent === false
+            ? "Access approved — we couldn't email confirmation. You can return to your plan anytime."
+            : null)
         setState(s => ({
           ...s,
           vipRequestId: data.requestId,
           vipRequestStatus: data.status,
           gateActive: false,
+          ...(vipWarning ? { vipEmailWarning: vipWarning } : {}),
         }))
       }
     } catch (err) {
@@ -441,6 +450,9 @@ export function useCharlie() {
     if (tool === 'generate_plan' && data.planReady) {
       setState(s => ({ ...s, planReady: true, plan: data, blocks: [...s.blocks, { type: 'plan', data, analyticsSnapshot: analyticsRef.current, listingsSnapshot: stateRef.current.listingGroups.flatMap(g => g.listings), geoContext: stateRef.current.geoContext }], activePanel: 'results' }))
       creditsRef.current.incrementPlansUsed(data.type === 'seller' ? 'seller' : 'buyer')
+        // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): READ the response so
+        // we know whether the plan email actually reached the user. If it
+        // didn't, set planEmailWarning so the UI can show an honest banner.
         fetch('/api/charlie/plan-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -459,7 +471,14 @@ export function useCharlie() {
             sellerEstimate: stateRef.current.sellerEstimate,
             blocks: stateRef.current.blocks.filter(b => b.type !== 'plan').slice(0, 20),
           }),
-        }).catch(err => console.error('[useCharlie] plan email error:', err))
+        })
+          .then(r => r.json())
+          .then(planEmailData => {
+            if (planEmailData?.userEmailSent === false) {
+              setState(s => ({ ...s, planEmailWarning: "Plan generated — we couldn't email it to you. Save this page or contact your agent." }))
+            }
+          })
+          .catch(err => console.error('[useCharlie] plan email error:', err))
     }
     if (tool === 'search_buildings' && data.buildings) {
       const mapped = (data.buildings || []).map((b: any) => ({

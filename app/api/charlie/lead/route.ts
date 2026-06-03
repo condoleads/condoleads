@@ -24,12 +24,11 @@ import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
-  sendTenantEmail,
-  TenantEmailNotConfigured,
-  TenantEmailFailed,
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+// F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): propagate email-delivery outcome.
+import { attemptTenantEmail } from '@/lib/email/sendTenantEmail'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { validateSession } from '@/lib/utils/validate-session'
 import { buildBaseUrl } from '@/lib/utils/tenant-brand'
@@ -266,23 +265,16 @@ export async function POST(req: NextRequest) {
         .eq('id', sessionId)
     }
 
-    // Step: Send rich plan email → USER (single recipient, not chain)
-    try {
-      await sendTenantEmail({
+    // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): capture user-email outcome.
+    const userOutcome = await attemptTenantEmail(
+      {
         tenantId,
         to: authEmail,
         subject: `Your ${brandName} ${intent === 'buyer' ? 'Buyer' : 'Seller'} Plan — ${profile?.geoName || 'GTA'}`,
         html: buildUserPlanEmail({ name, intent, buyerProfile, sellerProfile, listings, analytics, agent, brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl }),
-      })
-    } catch (err) {
-      if (err instanceof TenantEmailNotConfigured) {
-        console.warn('[charlie/lead] tenant email not configured (user):', err.message)
-      } else if (err instanceof TenantEmailFailed) {
-        console.error('[charlie/lead] resend send failed (user):', err.message)
-      } else {
-        console.error('[charlie/lead] unexpected user email error:', err)
-      }
-    }
+      },
+      '[charlie/lead] user'
+    )
 
     // Step: Chain notification — single helper-driven send (replaces inline manager-CC + ADMIN_EMAIL)
     let recipients
@@ -297,41 +289,44 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let chainOutcome: { sent: boolean; reason: 'delivered' | 'not_configured' | 'send_failed' | 'no_recipients' } =
+      { sent: false, reason: 'no_recipients' }
     if (recipients) {
-      try {
-        const subject = `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead — ${name} — ${profile?.geoName || 'GTA'}`
-        const sendResult = await sendTenantEmail({
+      const subject = `🏠 New ${intent === 'buyer' ? 'Buyer' : 'Seller'} Lead — ${name} — ${profile?.geoName || 'GTA'}`
+      const outcome = await attemptTenantEmail(
+        {
           tenantId,
           to: recipients.to,
           cc: recipients.cc.length > 0 ? recipients.cc : undefined,
           bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
           subject,
           html: buildAgentLeadEmail({ name, email: authEmail, phone, intent, buyerProfile, sellerProfile, listings, analytics, brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl }),
+        },
+        '[charlie/lead] chain'
+      )
+      chainOutcome = { sent: outcome.sent, reason: outcome.reason }
+      if (outcome.sent && outcome.messageId && leadId) {
+        await logEmailRecipients({
+          supabase,
+          tenantId,
+          leadId,
+          agentId,
+          recipients,
+          subject,
+          templateKey: 'charlie_lead_enrichment_chain',
+          resendMessageId: outcome.messageId,
         })
-        if (leadId) {
-          await logEmailRecipients({
-            supabase,
-            tenantId,
-            leadId,
-            agentId,
-            recipients,
-            subject,
-            templateKey: 'charlie_lead_enrichment_chain',
-            resendMessageId: sendResult.id,
-          })
-        }
-      } catch (err) {
-        if (err instanceof TenantEmailNotConfigured) {
-          console.warn('[charlie/lead] tenant email not configured (chain):', err.message)
-        } else if (err instanceof TenantEmailFailed) {
-          console.error('[charlie/lead] resend send failed (chain):', err.message)
-        } else {
-          console.error('[charlie/lead] unexpected chain email error:', err)
-        }
       }
     }
 
-    return NextResponse.json({ success: true, leadId })
+    return NextResponse.json({
+      success: true,
+      leadId,
+      userEmailSent: userOutcome.sent,
+      userEmailReason: userOutcome.reason,
+      chainEmailSent: chainOutcome.sent,
+      chainEmailReason: chainOutcome.reason,
+    })
 
   } catch (error) {
     console.error('[charlie/lead] error:', error)
