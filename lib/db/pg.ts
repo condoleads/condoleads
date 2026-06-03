@@ -21,25 +21,33 @@
 import { Pool } from 'pg'
 
 // HMR-safe singleton storage on globalThis. In Next.js dev the module can be
-// re-evaluated; preserve the pool to avoid leaking connections.
-type GlobalWithPool = typeof globalThis & { __wGeoCountFixPool?: Pool }
+// re-evaluated; preserve pools to avoid leaking connections.
+//
+// TWO POOLS:
+//   __wGeoCountFixPool    = session pool   (port 5432, Supavisor session mode)
+//                           Used by anything needing session state: SET LOCAL,
+//                           multi-statement transactions, migration scripts.
+//                           Supabase project ceiling: 15 sessions (Micro tier).
+//   __wGeoCountFixTxnPool = transaction pool (port 6543, Supavisor txn mode)
+//                           Used by countDirect (read-only single-statement
+//                           SELECTs -- ideal for txn-mode multiplexing).
+//                           Supabase project ceiling: 200 concurrent clients
+//                           on Micro -- ~13x more headroom than the session
+//                           pool, which is what closes the EMAXCONNSESSION /
+//                           pool-wait timeout class of failures we saw under
+//                           concurrent geo-page renders.
+type GlobalWithPool = typeof globalThis & {
+  __wGeoCountFixPool?: Pool
+  __wGeoCountFixTxnPool?: Pool
+}
 const g = globalThis as GlobalWithPool
 
+// Session-pool connection string. Rejects port 6543 (txn pooler) because
+// the session pool is used by callers that need session state -- SET LOCAL,
+// multi-statement transactions, etc. -- which transaction-mode Supavisor
+// doesn't preserve across statements.
 function resolveConnectionString (): string {
-  const cs =
-    process.env.DATABASE_URL ||
-    process.env.SUPABASE_DB_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.POSTGRES_URL_NON_POOLING
-  if (!cs) {
-    throw new Error(
-      'lib/db/pg.ts: no DATABASE_URL/SUPABASE_DB_URL/POSTGRES_URL/POSTGRES_URL_NON_POOLING in env'
-    )
-  }
-  // Reject port 6543 (Supabase transaction pooler). Per
-  // scripts/apply-phase-lifecycle-landing-2.js: the transaction pooler does
-  // not support session-scoped features (SET LOCAL, statement_timeout via
-  // connection options) that we rely on.
+  const cs = resolveConnectionStringRaw()
   const portMatch = cs.match(/:(\d+)\//)
   if (portMatch) {
     const port = parseInt(portMatch[1], 10)
@@ -69,9 +77,97 @@ function getPool (): Pool {
   } as any)
   pool.on('error', (err) => {
     // eslint-disable-next-line no-console
-    console.error('[lib/db/pg] idle client error:', err.message)
+    console.error('[lib/db/pg] session-pool idle client error:', err.message)
   })
   g.__wGeoCountFixPool = pool
+  return pool
+}
+
+// ---------------------------------------------------------------------------
+// Transaction pool (port 6543) -- W-GEO-COUNT-FIX-3 final.
+// ---------------------------------------------------------------------------
+// countDirect routes through this pool. Supavisor in transaction mode
+// multiplexes upstream Postgres connections per-transaction, so the same
+// upstream conn can serve many short-lived client checkouts. This raises
+// Supabase's concurrent-client ceiling from 15 (session-mode pool) to 200
+// (txn-mode default on Micro), enough that even AreaPage's 12 concurrent
+// pg-direct queries plus multiple simultaneous geo-page renders fit well
+// under the ceiling.
+//
+// SAFETY (verified): countDirect runs a SINGLE parameterized SELECT via
+// node-pg's pool.query(sql, params), which uses anonymous prepared statements
+// (Parse+Bind+Execute in one round-trip) -- safe in txn-mode Supavisor. No
+// SET / cursors / multi-statement transactions / temp tables.
+//
+// STATEMENT_TIMEOUT CAVEAT: node-pg's pool.statement_timeout option runs
+// `SET statement_timeout = ...` AFTER connect. In txn-mode the upstream
+// connection is per-transaction, so the SET does not persist across
+// checkouts; falls back to Supabase's role-default 2min server-side. This
+// is acceptable -- slowest observed count is ~10s (Toronto-area leased),
+// 2min is ample safety headroom; a 2min query indicates a real problem
+// worth letting Postgres kill. (Optional future: pass
+// `?options=-c%20statement_timeout%3D30000` in the URL -- not verified that
+// Supavisor honors it, deferred.)
+
+function resolveTxnConnectionString (): string {
+  // Derive from the same DATABASE_URL by swapping port 5432 -> 6543. No
+  // separate env var; the session and txn poolers share credentials and
+  // host on Supabase (same Supavisor endpoint, different port = different
+  // mode).
+  const base = resolveConnectionStringRaw()
+  // resolveConnectionStringRaw is the same fallback chain but skips the
+  // port-6543 reject (that reject guards the session pool only).
+  const portMatch = base.match(/:(\d+)\//)
+  if (!portMatch || portMatch[1] !== '5432') {
+    throw new Error(
+      'lib/db/pg.ts: cannot derive txn-pool URL -- expected base ' +
+        'DATABASE_URL with port 5432 (session pooler), got port ' +
+        (portMatch ? portMatch[1] : '(unparseable)')
+    )
+  }
+  return base.replace(':5432/', ':6543/')
+}
+
+// Internal helper used by both session and txn resolvers.
+function resolveConnectionStringRaw (): string {
+  const cs =
+    process.env.DATABASE_URL ||
+    process.env.SUPABASE_DB_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_URL_NON_POOLING
+  if (!cs) {
+    throw new Error(
+      'lib/db/pg.ts: no DATABASE_URL/SUPABASE_DB_URL/POSTGRES_URL/POSTGRES_URL_NON_POOLING in env'
+    )
+  }
+  return cs
+}
+
+function getTxnPool (): Pool {
+  if (g.__wGeoCountFixTxnPool) return g.__wGeoCountFixTxnPool
+  const connectionString = resolveTxnConnectionString()
+  const pool = new Pool({
+    connectionString,
+    // max:30 = comfortably above AreaPage's 12 concurrent pg-direct queries +
+    // headroom for parallel renders. Well below Supabase's txn-mode ceiling
+    // of 200 on Micro, so multiple warm Vercel instances can each have a
+    // full max:30 without collectively exhausting the upstream pool.
+    max: 30,
+    idleTimeoutMillis: 30_000,
+    // 15s queue wait: each count is ~10s in the worst case (Toronto-area
+    // leased). When local pool is full, queued queries need >10s headroom
+    // to wait for an in-flight one to finish rather than throwing.
+    connectionTimeoutMillis: 15_000,
+    // statement_timeout caveat above: not persisted in txn mode; relies on
+    // Supabase's 2min role default. Still pass the option for the session-
+    // initial SET, harmless if reset.
+    statement_timeout: 30_000,
+  } as any)
+  pool.on('error', (err) => {
+    // eslint-disable-next-line no-console
+    console.error('[lib/db/pg] txn-pool idle client error:', err.message)
+  })
+  g.__wGeoCountFixTxnPool = pool
   return pool
 }
 
@@ -161,6 +257,9 @@ export async function countDirect (filter: CountDirectFilter): Promise<number> {
   }
 
   const sql = `SELECT count(*)::int AS n FROM mls_listings WHERE ${where.join(' AND ')}`
-  const res = await getPool().query(sql, params)
+  // W-GEO-COUNT-FIX-3 (final): route through TXN pool (port 6543) to escape
+  // the session-mode pool_size:15 project ceiling that caused EMAXCONNSESSION
+  // and pool-wait timeouts under concurrent geo-page renders.
+  const res = await getTxnPool().query(sql, params)
   return res.rows[0].n as number
 }
