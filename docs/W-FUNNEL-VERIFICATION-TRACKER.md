@@ -116,7 +116,7 @@ For each lead type: lead row created, correct `tenant_id`, correct `assigned_age
 |---------|-----|--------|------|
 | F-PLATFORM-MANAGER-TENANTS-SERVICE-ROLE-GRANT | P1 | **CLOSED-VERIFIED 2026-06-03** | Verified `service_role` has SELECT grant on `platform_manager_tenants` (DB scan); Layer-5 error-capture present at `lib/admin-homes/lead-email-recipients.ts:217-219`. Both pieces of the prior P1 FIX 3 are in place. Table currently has 0 rows (no platform-managers assigned yet — config state, not a bug). |
 | F-EMAIL-PREFLIGHT-ACCEPTS-PLACEHOLDER-KEY | P1 | **CODE-FIXED 2026-06-03** | `looksLikeValidResendKey()` added to `lib/email/sendTenantEmail.ts` — rejects missing/short/placeholder keys at preflight via typed `TenantEmailNotConfigured`. Shared with `verify-resend/route.ts`. Smoke 17/17 PASS (placeholders rejected, real WALLiam+Aily keys accepted). |
-| F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL | P1 | **OPEN — NEW** | All 5 `sendTenantEmail` callers (`plan-email`, `lead`, `appointment`, `walliam/charlie/vip-request`, `walliam/estimator/vip-request`) catch `TenantEmailNotConfigured` / `TenantEmailFailed`, log to console, then return `{ success: true }` to the user. User sees "plan generated" but email demonstrably won't arrive — false-green. The §3.8 preflight fix gives the caller a TYPED signal; callers need to propagate it (e.g. include `emailSent: false` in response, or distinct status code). Surfaced during the §3.8 fix; reported, NOT fixed silently. |
+| F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL | P1 | **OPEN — NEW (systemic)** | **Systemic pattern across 5 routes**, not a one-off: all `sendTenantEmail` callers (`plan-email`, `lead`, `appointment`, `walliam/charlie/vip-request`, `walliam/estimator/vip-request`) catch `TenantEmailNotConfigured` / `TenantEmailFailed`, log to console, then return `{ success: true }` to the user. Each route has TWO sendTenantEmail calls (user-facing + agent-chain) — even if BOTH fail, response is `success: true`. User sees "plan generated"/"booked!" but no email arrives; brokerage sees no lead alert. **Launch-critical funnel-integrity issue**: a lead the brokerage thinks landed but never got notified about. The §3.8 preflight fix gives callers a typed signal; **callers need to propagate it via a uniform response contract** (one helper, not 5 bespoke fixes). See Pending spec decisions for diagnosis matrix + response-contract options. Surfaced during the §3.8 fix; reported, NOT fixed silently. |
 | F-CV-LEADS-INSERT-NO-TENANT-AGENT-FK | P2 | OPEN | leads table no FK/CHECK tying agent_id tenant to row tenant_id (§7) |
 | F-DASHBOARD-HARDCODED-CONDOLEADS-BRAND | Low | OPEN | dashboard sidebar hardcoded "CondoLeads" h1 — wrong brand for tenant agents (§6.3) |
 | F-ESTIMATOR-BUILDING-NO-COMPARABLES-LOG-LIES | P3 | OPEN | "Error fetching comparables: null" logs on empty-result; estimator falls back to contact-agent (§8.3) |
@@ -167,6 +167,48 @@ DB scan confirms `service_role` already has `SELECT` on `platform_manager_tenant
 Added exported `looksLikeValidResendKey()` to `lib/email/sendTenantEmail.ts`: rejects keys missing `re_` prefix, length < 16, or matching placeholder patterns `[...] / <...> / REPLACE_ME / YOUR_RESEND / placeholder / TODO / xxxx`. Preflight in `sendTenantEmail` now throws typed `TenantEmailNotConfigured` with reason `'resend_api_key invalid (placeholder or malformed)'` instead of letting a placeholder reach `new Resend(key)` and 401 at send. `app/api/admin-homes/tenants/[id]/verify-resend/route.ts:38-40` updated to use the shared validator (single source of truth, replacing prior inline `re_`-only check). Smoke (`scripts/smoke-w-funnel-resend-key-validator.js`): 17/17 PASS — 13 placeholder/malformed inputs rejected, 2 synthetic real-shape + 2 live tenant keys (WALLiam, Aily, fingerprint `re_BJJ...cqSr` len=36) accepted.
 
 **Finding 3 (NEW — F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL)**: surfaced during §3.8 work. All 5 `sendTenantEmail` callers catch the typed error + log it but still return `{ success: true }` to the user. The §3.8 fix delivers a *typed signal*; the callers need to *propagate* it. Logged as new P1 finding, NOT fixed silently this round.
+
+---
+
+## Pending spec decisions
+
+### F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL — diagnosis + response-contract options
+
+**Systemic pattern across 5 routes** (diagnosed 2026-06-03, read-only). Each row's response goes to a UI that interprets `data.success` as full success — when in reality the email send may have failed.
+
+| Route | sendTenantEmail calls | Response on email failure | UI consumer | What user sees on failure |
+|---|---|---|---|---|
+| `app/api/charlie/plan-email/route.ts` | 2 (user + chain) | `{ success: true }` | `useCharlie.ts:444` — `.catch(err => console.error)`; **return value ignored** | Plan renders on screen; no email arrives; no banner |
+| `app/api/charlie/lead/route.ts` | 2 (user + chain) | `{ success: true, leadId }` | Charlie lead-capture form — checks `data.success` | Confirmation shown; no email |
+| `app/api/charlie/appointment/route.ts` | 2 (user-confirmation + chain) | `{ success: true, leadId }` | `AppointmentForm.tsx:144` — `if (data.success) onBooked()` | "Booked!" UI; no confirmation email; agent never alerted |
+| `app/api/walliam/charlie/vip-request/route.ts` | 2 (agent + user approval on auto-approve) | `{ success: true, requestId, status, messagesGranted, message: 'VIP plan access automatically approved' }` | `useCharlie.ts:191` — closes gate, sets `vipRequestStatus` | Gate dismissed, credits granted, but agent has no inbox notification |
+| `app/api/walliam/estimator/vip-request/route.ts` | 2 (chain + user confirmation) | `{ success: true, requestId, status, ... }` | Estimator runner — checks `data.success` | "Access approved" UI; no email |
+
+**Anti-pattern** (verbatim across all 5):
+```ts
+try { await sendTenantEmail({ ... }) }
+catch (err) {
+  if (err instanceof TenantEmailNotConfigured) { console.warn(...) }
+  else if (err instanceof TenantEmailFailed)   { console.error(...) }
+}
+// then unconditionally:
+return NextResponse.json({ success: true, ... })
+```
+
+No route sets a variable like `userEmailSent` / `chainEmailSent` to propagate the failure.
+
+**Response-contract options** (decision pending, not picked):
+
+- **(a) Booleans in JSON response — least disruption.** Add `emailSent: false` (or `userEmailSent` + `chainEmailSent` for the 2-call routes) + `emailFailReason: 'not_configured' | 'send_failed'`. UI shows "Plan generated — but we couldn't email it to you" banner. Backwards-compatible. Requires 5 route + 5+ client updates. Easy to forget on the client side.
+- **(b) Distinct HTTP status / partial result shape — most explicit.** Return `207 Multi-Status` (or `200` + `partial: true`) when action succeeded but email failed. HTTP-level signal surfaces in monitoring. Forces clients to handle the partial-success case explicitly. More invasive; some frameworks treat non-2xx as error.
+- **(c) Background retry queue — best UX, most engineering.** Return `success: true` immediately, enqueue the email, dashboard surfaces `email_delivery_status enum('pending','sent','failed','retry_exhausted')` on the lead row. Doesn't fix first-attempt false-green; requires queue infra (BullMQ / pg-boss / Vercel Queues) + dashboard.
+
+**Hybrid recommendation**: ship (a) immediately as the floor (kills false-green), follow up with (c) as the polished long-term answer. (b) adds monitoring teeth on top of (a).
+
+**Open product questions for the spec round**:
+1. Should the user see "couldn't deliver to your inbox" on the first attempt (a/b), or only after retry exhaustion (c)?
+2. Agent-chain failure: surface in dashboard as "lead not yet alerted" indicator (requires lead-row column), or accept as quiet ops alert?
+3. Uniform contract (one helper across 5 routes) or per-route bespoke?
 
 ---
 
