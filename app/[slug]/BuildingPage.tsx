@@ -672,7 +672,8 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       buildingName={building.building_name}
       buildingAddress={building.canonical_address}
     />}
-    {!isHero && agent && (
+    {/* W-FUNNEL §9.2 Step 3: System 2 uses CharlieWidget (global, ConditionalLayout); System 1 keeps ChatWidgetWrapper. */}
+    {!isHero && !tenantId && agent && (
       <ChatWidgetWrapper
         agent={{
           id: agent.id,

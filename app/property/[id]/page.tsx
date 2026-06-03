@@ -414,7 +414,8 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         walliamTenantId={tenantId}
         />
     </main>
-    {!isHero && (
+    {/* W-FUNNEL §9.2 Step 3: System 2 uses CharlieWidget (global, ConditionalLayout); System 1 keeps ChatWidgetWrapper. */}
+    {!isHero && !tenantId && (
     <ChatWidgetWrapper
       agent={{
         id: agent.id,

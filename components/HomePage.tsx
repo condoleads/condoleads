@@ -133,8 +133,8 @@ export async function HomePage({ agent, buildings, developments = [], isTeamSite
 
       {/* Contact Section */}
       <ContactSection agent={{ id: agent.id, full_name: agent.full_name, email: agent.email, cell_phone: agent.phone }} />
-      {/* AI Chat Widget */}
-      {!isHero && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
+      {/* AI Chat Widget — W-FUNNEL §9.2 Step 3: System 2 uses CharlieWidget (global, ConditionalLayout); System 1 keeps ChatWidgetWrapper. */}
+      {!isHero && !tenantId && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
       
       {/* Mobile Contact Bar */}
       <MobileContactBar 

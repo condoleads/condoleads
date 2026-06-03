@@ -82,7 +82,8 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
           homes_access: access.homes_access,
         }}
       />
-      {!isHero && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
+      {/* W-FUNNEL §9.2 Step 3: System 2 uses CharlieWidget (global, ConditionalLayout); System 1 keeps ChatWidgetWrapper. */}
+      {!isHero && !tenantId && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
     </>
   );
 }
