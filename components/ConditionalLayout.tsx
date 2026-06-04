@@ -15,7 +15,12 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   const isDashboardPage = pathname.startsWith('/dashboard')
   const isLoginPage = pathname === '/login'
   const is01Leads = mounted && window.location.hostname.replace(/^www\./, '') === '01leads.com'
-  const isCharlieVisible = !isAdminPage && !isDashboardPage && !isLoginPage && !is01Leads
+  // W-FUNNEL: do not render Charlie on System 1 hosts (condoleads.ca + subdomains).
+  // Charlie is a System 2 surface; on System 1 the API returns 401 anyway (middleware
+  // doesn't set x-tenant-id for condoleads.ca subdomains), so showing the widget chrome
+  // is cosmetic stray UI -- hide it. Same client-side host-gate pattern as is01Leads.
+  const isSystem1 = mounted && window.location.hostname.replace(/^www\./, '').endsWith('condoleads.ca')
+  const isCharlieVisible = !isAdminPage && !isDashboardPage && !isLoginPage && !is01Leads && !isSystem1
   const [isComprehensiveSite, setIsComprehensiveSite] = useState(false)
   
 
