@@ -6,8 +6,8 @@ import { createBrowserClient } from '@supabase/ssr'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail] = useState('mary@condoleads.ca')
-  const [password, setPassword] = useState('Agent123!')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -15,8 +15,6 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-
-    console.log(' Attempting login with:', email)
 
     try {
       const supabase = createBrowserClient(
@@ -45,20 +43,11 @@ export default function LoginPage() {
         password,
       })
 
-      console.log(' Login response:', { 
-        hasSession: !!data.session, 
-        userId: data.user?.id,
-        error: error?.message 
-      })
-
       if (error) {
-        console.error(' Login error:', error)
         throw error
       }
 
       if (data.session) {
-        console.log(' Login successful, redirecting...')
-        
         // Wait a bit for cookies to be set
         await new Promise(resolve => setTimeout(resolve, 500))
         
@@ -72,7 +61,6 @@ export default function LoginPage() {
         }
       }
     } catch (error: any) {
-      console.error(' Catch block error:', error)
       setError(error.message || 'Invalid login credentials')
       setLoading(false)
     }
@@ -136,10 +124,6 @@ export default function LoginPage() {
           <a href="/" className="text-sm text-blue-600 hover:text-blue-700">
              Back to website
           </a>
-        </div>
-
-        <div className="mt-4 text-xs text-gray-500 text-center">
-          Test credentials pre-filled. Check browser console for debug info.
         </div>
       </div>
     </div>
