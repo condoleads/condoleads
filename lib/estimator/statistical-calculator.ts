@@ -62,13 +62,26 @@ export function calculateEstimate(
     (a, b) => new Date(b.closeDate).getTime() - new Date(a.closeDate).getTime()
   )
 
-  // Get prices (use adjustedPrice for ADJUSTED tier, closePrice for others)
-  const prices = sortedComparables.map(comp => 
-    (tier === 'BINGO-ADJ' || tier === 'RANGE-ADJ' || tier === 'MAINT-ADJ') ? (comp.adjustedPrice || comp.closePrice) : comp.closePrice
-  )
+  // Get prices (use adjustedPrice for ADJUSTED tier, closePrice for others).
+  // Floor: a non-positive adjustedPrice (additive adjustments overshooting a low
+  // closePrice) is never a valid comp price - fall back to the real sale price
+  // rather than averaging in an impossible negative or zero.
+  const prices = sortedComparables.map(comp => {
+    const useAdjusted = tier === 'BINGO-ADJ' || tier === 'RANGE-ADJ' || tier === 'MAINT-ADJ'
+    if (useAdjusted && comp.adjustedPrice && comp.adjustedPrice > 0) {
+      return comp.adjustedPrice
+    }
+    return comp.closePrice
+  })
 
-  // Calculate average
-  const averagePrice = Math.round(prices.reduce((sum, p) => sum + p, 0) / prices.length)
+  // B1: score-weighted mean. Higher-scoring comps pull the estimate more.
+  // Condo + lease comps have no matchScore -> fallback constant degenerates to
+  // unweighted mean (provable identity: sum(p*100)/sum(100) = sum(p)/n).
+  const FALLBACK_SCORE = 100
+  const weights = sortedComparables.map(c => c.matchScore ?? FALLBACK_SCORE)
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0)
+  const weightedSum = prices.reduce((sum, p, i) => sum + p * weights[i], 0)
+  const averagePrice = Math.round(weightedSum / totalWeight)
 
   // Most recent sale price
   const currentMarketPrice = prices[0]

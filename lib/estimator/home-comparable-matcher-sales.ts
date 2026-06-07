@@ -7,6 +7,14 @@ import {
   extractExactSqft,
   assignTemperature,
 } from './types'
+import {
+  DEFAULT_ADJUSTMENTS,
+  parseBasement,
+  getBasementAdjustment,
+  getGarageValue,
+  hasIngroundPool,
+  isAdjacentRange,
+} from './home-adjustment-math'
 
 // ============ INTERFACES ============
 
@@ -29,6 +37,8 @@ export interface HomeSpecs {
   architecturalStyle?: string | null // First element from JSONB array: "Bungalow", "2-Storey", etc.
   approximateAge?: string | null   // Pre-bracketed: "0-5", "6-15", "16-30", "31-50", "51-99", "100+", "New"
   agentId?: string
+  asOfDate?: Date              // backtest/historical use only - defaults to live (now) when absent
+  subjectListingKey?: string   // backtest/historical use only - exclude-self; no effect in live estimates
 }
 
 interface HomeMatchResult {
@@ -39,31 +49,10 @@ interface HomeMatchResult {
 }
 
 // ============ DEFAULT ADJUSTMENT VALUES ============
-// These will be replaced by admin-configurable values per geo level in Phase 2
-
-const DEFAULT_ADJUSTMENTS = {
-  LOT_FRONTAGE_PER_FOOT: 40000,
-  LOT_DEPTH_PER_10FT: 5000,
-  LOT_DEPTH_MAX: 30000,
-  BASEMENT_FINISHED: 50000,
-  BASEMENT_SEP_ENTRANCE: 80000,
-  BASEMENT_WALKOUT_BONUS: 30000,
-  GARAGE_DETACHED_SINGLE: 30000,
-  GARAGE_ATTACHED_SINGLE: 45000,
-  GARAGE_BUILTIN: 60000,
-  GARAGE_ATTACHED_DOUBLE: 70000,
-  POOL_ABOVE_GROUND: 0,
-  POOL_INGROUND: 30000,
-  PARKING_PER_SPACE: 0,
-  BATHROOM_FULL: 20000,
-  BATHROOM_HALF: 10000,
-  RECENCY_PCT_0_6: 1.0,     // 1% per month for 0-6 months
-  RECENCY_PCT_6_12: 0.5,    // 0.5% per month for 6-12 months
-  RECENCY_PCT_12_24: 0.3,   // 0.3% per month for 12-24 months
-}
+// DEFAULT_ADJUSTMENTS moved to ./home-adjustment-math.js (shared with backtest).
+// Phase 2 / build-step-3: replace these flat constants with admin-configurable per-geo values.
 
 // ============ SELECT QUERY ============
-
 const HOME_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
   bathrooms_total_integer, living_area_range, parking_total, locker,
   days_on_market, close_date, tax_annual_amount, square_foot_source,
@@ -116,104 +105,8 @@ function isAdjacentAgeBracket(a: string | null, b: string | null): boolean {
   return Math.abs(idxA - idxB) <= 1
 }
 
-// ============ BASEMENT HELPERS ============
-
-interface BasementProfile {
-  hasBasement: boolean
-  isFinished: boolean
-  hasSepEntrance: boolean
-  hasWalkout: boolean
-  isUnfinished: boolean
-  score: number // 0=none, 1=unfinished/crawl, 2=partial, 3=finished, 4=finished+sep, 5=finished+walkout+sep
-}
-
-function parseBasement(basementArr: string[] | null): BasementProfile {
-  if (!basementArr || basementArr.length === 0 || basementArr.includes('None')) {
-    return { hasBasement: false, isFinished: false, hasSepEntrance: false, hasWalkout: false, isUnfinished: false, score: 0 }
-  }
-
-  const hasFinished = basementArr.some(b => b === 'Finished' || b === 'Finished with Walk-Out')
-  const hasPartial = basementArr.includes('Partially Finished')
-  const hasSep = basementArr.includes('Separate Entrance') || basementArr.includes('Apartment')
-  const hasWalkout = basementArr.some(b => b.includes('Walk-Out') || b.includes('Walk-Up'))
-  const isUnfinished = basementArr.includes('Unfinished') || basementArr.includes('Full') ||
-    basementArr.includes('Crawl Space') || basementArr.includes('Half')
-  const hasDevPotential = basementArr.includes('Development Potential')
-
-  let score = 1 // has basement but unfinished
-  if (hasPartial) score = 2
-  if (hasFinished) score = 3
-  if (hasFinished && hasSep) score = 4
-  if (hasFinished && hasWalkout && hasSep) score = 5
-  if (hasDevPotential && !hasFinished && !hasPartial) score = 1
-
-  return {
-    hasBasement: true,
-    isFinished: hasFinished || hasPartial,
-    hasSepEntrance: hasSep,
-    hasWalkout,
-    isUnfinished: isUnfinished && !hasFinished && !hasPartial,
-    score,
-  }
-}
-
-function getBasementAdjustment(subjectArr: string[] | null, compArr: string[] | null): number {
-  const subject = parseBasement(subjectArr)
-  const comp = parseBasement(compArr)
-  const adj = DEFAULT_ADJUSTMENTS
-
-  let subjectValue = 0
-  let compValue = 0
-
-  // Calculate subject basement value
-  if (subject.isFinished && subject.hasSepEntrance && subject.hasWalkout) {
-    subjectValue = adj.BASEMENT_SEP_ENTRANCE + adj.BASEMENT_WALKOUT_BONUS
-  } else if (subject.isFinished && subject.hasSepEntrance) {
-    subjectValue = adj.BASEMENT_SEP_ENTRANCE
-  } else if (subject.isFinished && subject.hasWalkout) {
-    subjectValue = adj.BASEMENT_FINISHED + adj.BASEMENT_WALKOUT_BONUS
-  } else if (subject.isFinished) {
-    subjectValue = adj.BASEMENT_FINISHED
-  }
-
-  // Calculate comp basement value
-  if (comp.isFinished && comp.hasSepEntrance && comp.hasWalkout) {
-    compValue = adj.BASEMENT_SEP_ENTRANCE + adj.BASEMENT_WALKOUT_BONUS
-  } else if (comp.isFinished && comp.hasSepEntrance) {
-    compValue = adj.BASEMENT_SEP_ENTRANCE
-  } else if (comp.isFinished && comp.hasWalkout) {
-    compValue = adj.BASEMENT_FINISHED + adj.BASEMENT_WALKOUT_BONUS
-  } else if (comp.isFinished) {
-    compValue = adj.BASEMENT_FINISHED
-  }
-
-  return subjectValue - compValue
-}
-
-// ============ GARAGE HELPERS ============
-
-function getGarageValue(garageType: string | null): number {
-  const adj = DEFAULT_ADJUSTMENTS
-  switch (garageType) {
-    case 'Detached': return adj.GARAGE_DETACHED_SINGLE
-    case 'Attached': return adj.GARAGE_ATTACHED_SINGLE
-    case 'Built-In': return adj.GARAGE_BUILTIN
-    case 'Carport': return 15000 // half of detached
-    default: return 0 // 'None', 'Lane', 'Street', 'Unknown', etc.
-  }
-}
-
-// ============ POOL HELPERS ============
-
-function hasIngroundPool(poolFeatures: string[] | null): boolean {
-  if (!poolFeatures) return false
-  return poolFeatures.includes('Inground')
-}
-
-function hasAboveGroundPool(poolFeatures: string[] | null): boolean {
-  if (!poolFeatures) return false
-  return poolFeatures.includes('Above Ground')
-}
+// Home adjustment helpers (DEFAULT_ADJUSTMENTS, parseBasement, getBasementAdjustment,
+// getGarageValue, hasIngroundPool) moved to ./home-adjustment-math.js (shared with backtest).
 
 // ============ STREET EXTRACTION ============
 
@@ -284,19 +177,11 @@ function scoreMatch(sale: any, specs: HomeSpecs, sameStreet: boolean, sameOddEve
     else if (isAdjacentAgeBracket(saleAge, specAge)) score += 10
   }
 
-  // Sqft: 30 pts
-  if (specs.exactSqft && specs.exactSqft > 0) {
-    const compSqft = extractExactSqft(sale.square_foot_source)
-    if (compSqft) {
-      const pct = Math.abs(compSqft - specs.exactSqft) / specs.exactSqft
-      if (pct <= 0.05) score += 30
-      else if (pct <= 0.10) score += 20
-      else if (pct <= 0.15) score += 10
-      else if (pct <= 0.20) score += 5
-    }
-  } else if (specs.livingAreaRange) {
+  // Sqft: 30 pts - LAR is the only real home size signal (SFS ~0% parseable on homes).
+  // Same bucket = 30, adjacent bucket (+/-1 on canonical ladder) = 15, else 0.
+  if (specs.livingAreaRange && sale.living_area_range) {
     if (sale.living_area_range === specs.livingAreaRange) score += 30
-    else score += 0
+    else if (isAdjacentRange(sale.living_area_range, specs.livingAreaRange)) score += 15
   }
 
   // Lot Frontage: 25 pts
@@ -341,7 +226,8 @@ function scoreMatch(sale: any, specs: HomeSpecs, sameStreet: boolean, sameOddEve
 
   // Recency: 30 pts
   if (sale.close_date) {
-    const monthsAgo = (Date.now() - new Date(sale.close_date).getTime()) / (1000 * 60 * 60 * 24 * 30)
+    const referenceMs = specs.asOfDate ? specs.asOfDate.getTime() : Date.now()
+    const monthsAgo = (referenceMs - new Date(sale.close_date).getTime()) / (1000 * 60 * 60 * 24 * 30)
     if (monthsAgo <= 1) score += 30
     else if (monthsAgo <= 3) score += 25
     else if (monthsAgo <= 6) score += 20
@@ -479,6 +365,12 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
     })
   }
 
+  // A1b: cap aggregate adjustment magnitude. Six additive adjustments can stack
+  // catastrophically when the matcher pooled a dissimilar comp; clamp to +/-50%
+  // of close_price keeps adjustedPrice within sanity (symmetric counterpart to
+  // the A1 negative-price floor in statistical-calculator.ts).
+  adjustedPrice = Math.max(sale.close_price * 0.5, Math.min(sale.close_price * 1.5, adjustedPrice))
+
   // Determine match quality from score
   let matchQuality: 'Perfect' | 'Excellent' | 'Good' | 'Fair' = 'Fair'
   if (matchScore >= 160) matchQuality = 'Perfect'
@@ -514,8 +406,16 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
 // ============ MAIN FUNCTION ============
 
 export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchResult> {
+  // Multi-unit subtypes cannot be priced on the home spine (33.4% backtest MAPE,
+  // 1.6x single-family). Income axis unavailable (NOI fill 7.6%, 0% in 90d
+  // freshness window, pool survival 9-44%). Route to agent.
+  if (['Duplex', 'Triplex', 'Fourplex', 'Multiplex'].includes(specs.propertySubtype)) {
+    return { tier: 'CONTACT', comparables: [], geoLevel: 'none' }
+  }
+
   const supabase = createClient()
-  const twoYearsAgo = new Date()
+  const referenceDate = specs.asOfDate ?? new Date()
+  const twoYearsAgo = new Date(referenceDate)
   twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
 
   const subtypes = getCompatibleSubtypes(specs.propertySubtype)
@@ -524,7 +424,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
 
   // ===== TIER 1: SAME STREET (within community) =====
   if (specs.communityId) {
-    const { data: communitySales } = await supabase
+    let qCommunity = supabase
       .from('mls_listings')
       .select(HOME_SELECT)
       .eq('community_id', specs.communityId)
@@ -536,6 +436,8 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       .gte('close_date', twoYearsAgo.toISOString())
       .order('close_date', { ascending: false })
       .limit(300)
+    if (specs.asOfDate) qCommunity = qCommunity.lt('close_date', referenceDate.toISOString())
+    const { data: communitySales } = await qCommunity
 
     if (communitySales && communitySales.length > 0) {
       // Filter out "as is" properties
@@ -583,7 +485,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
 
   // ===== TIER 2: MUNICIPALITY =====
   if (specs.municipalityId) {
-    const { data: muniSales } = await supabase
+    let qMuni = supabase
       .from('mls_listings')
       .select(HOME_SELECT)
       .eq('municipality_id', specs.municipalityId)
@@ -595,6 +497,8 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       .gte('close_date', twoYearsAgo.toISOString())
       .order('close_date', { ascending: false })
       .limit(500)
+    if (specs.asOfDate) qMuni = qMuni.lt('close_date', referenceDate.toISOString())
+    const { data: muniSales } = await qMuni
 
     if (muniSales && muniSales.length > 0) {
       const cleanSales = muniSales.filter(s => !isAsIs(s.public_remarks))
@@ -619,10 +523,18 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       }
 
       // Last resort: just bed+bath match at municipality
-      const bedBathOnly = cleanSales.filter(s =>
-        s.bedrooms_total === specs.bedrooms &&
-        Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) <= 1
-      )
+      const bedBathOnly = cleanSales.filter(s => {
+        if (s.bedrooms_total !== specs.bedrooms) return false
+        if (Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) > 1) return false
+        // Product-gate the last resort too: never pool dissimilar style/size.
+        const saleStyle = s.architectural_style?.[0] || null
+        if (specs.architecturalStyle && saleStyle &&
+            saleStyle !== specs.architecturalStyle &&
+            !isSameStyleFamily(saleStyle, specs.architecturalStyle || null)) return false
+        if (specs.livingAreaRange && s.living_area_range !== specs.livingAreaRange &&
+            !isAdjacentRange(s.living_area_range, specs.livingAreaRange)) return false
+        return true
+      })
       if (bedBathOnly.length >= 2) {
         const scored = bedBathOnly.map(s => ({
           sale: s,
@@ -666,16 +578,8 @@ function applyFunnel(sales: any[], specs: HomeSpecs): any[] {
     // Filter 3: Bedrooms must match exactly
     if (s.bedrooms_total !== specs.bedrooms) return false
 
-    // Filter 4: Size — same range or ±10% exact sqft
-    if (specs.exactSqft && specs.exactSqft > 0) {
-      const compSqft = extractExactSqft(s.square_foot_source)
-      if (compSqft) {
-        const pct = Math.abs(compSqft - specs.exactSqft) / specs.exactSqft
-        if (pct > 0.10) return false
-      }
-    } else if (specs.livingAreaRange) {
-      if (s.living_area_range !== specs.livingAreaRange) return false
-    }
+    // Filter 4: Size - strict = exact LAR bucket (only real home size signal).
+    if (specs.livingAreaRange && s.living_area_range !== specs.livingAreaRange) return false
 
     return true
   })
@@ -704,15 +608,10 @@ function applyRelaxedFunnel(sales: any[], specs: HomeSpecs): any[] {
     // Filter 3: Bedrooms must still match
     if (s.bedrooms_total !== specs.bedrooms) return false
 
-    // Filter 4: Size ±20% or adjacent range (relaxed)
-    if (specs.exactSqft && specs.exactSqft > 0) {
-      const compSqft = extractExactSqft(s.square_foot_source)
-      if (compSqft) {
-        const pct = Math.abs(compSqft - specs.exactSqft) / specs.exactSqft
-        if (pct > 0.20) return false
-      }
-    }
-    // For range: accept any range when relaxed (don't filter)
+    // Filter 4: Size (relaxed) - same OR +/-1 adjacent LAR bucket. Closes the prior
+    // 'accept any range' hole that pooled dissimilar-size comps into RANGE-ADJ.
+    if (specs.livingAreaRange && s.living_area_range !== specs.livingAreaRange &&
+        !isAdjacentRange(s.living_area_range, specs.livingAreaRange)) return false
 
     // Filter 5: Bathrooms ±1 (relaxed)
     if (Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) > 1) return false
