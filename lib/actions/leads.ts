@@ -121,13 +121,21 @@ export async function getOrCreateLead(params: CreateLeadParams & { forceNew?: bo
     return await createLead(params)
   }
 
-  // Per-tenant duplicate check
-  const { data: existingLead, error: searchError } = await supabase
+  // Per-tenant duplicate check.
+  // When listingId is provided, narrow the key to (email, tenant, listing_id) so
+  // the same person inquiring about DIFFERENT subjects produces distinct leads.
+  // When listingId is absent, key falls back to (email, tenant) — preserves
+  // existing behavior for callers without a listing context (registration,
+  // homepage contact form, building-level evaluation/visit, etc.).
+  let query = supabase
     .from('leads')
-    .select('id, contact_email, agent_id, tenant_id')
+    .select('id, contact_email, agent_id, tenant_id, listing_id')
     .eq('contact_email', params.contactEmail)
     .eq('tenant_id', params.tenantId)
-    .maybeSingle()
+  if (params.listingId) {
+    query = query.eq('listing_id', params.listingId)
+  }
+  const { data: existingLead, error: searchError } = await query.maybeSingle()
 
   if (existingLead && !searchError) {
     // Option A: silent re-engagement bump. No email fires on dup.

@@ -18,17 +18,19 @@ interface EstimatorResultsProps {
   buildingAddress?: string
   unitNumber?: string
   agentId?: string
+  listingId?: string
   propertySpecs: any
 }
 
 export default function HomeEstimatorResults({
-  result, 
+  result,
   type = 'sale',
   buildingId,
   buildingName,
   buildingAddress,
   unitNumber,
   agentId,
+  listingId,
   propertySpecs
 }: EstimatorResultsProps) {
   const isSale = type === 'sale' || type === 'estimator'
@@ -138,6 +140,7 @@ export default function HomeEstimatorResults({
         contactPhone: contactForm.phone,
         source: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
         buildingId,
+        listingId,
         message,
         estimatedValueMin: result.showPrice ? result.priceRange.low : undefined,
         estimatedValueMax: result.showPrice ? result.priceRange.high : undefined,
@@ -150,8 +153,7 @@ export default function HomeEstimatorResults({
           confidence: result.confidence,
           matchTier: result.matchTier,
           marketSpeed: result.marketSpeed?.status
-        },
-        forceNew: true
+        }
       })
 
       console.log('🎯 Lead creation result:', leadResult)

@@ -101,6 +101,7 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
         buildingAddress={listing.unparsed_address || ''}
         unitNumber=""
         agentId={agentId}
+        listingId={listing.id}
         propertySpecs={{
           bedrooms: listing.bedrooms_total,
           bathrooms: parseFloat(listing.bathrooms_total_integer) || 0,

@@ -588,6 +588,7 @@ export default function HomeEstimatorBuyerModal({
               buildingId=""
               buildingName={displayAddress}
               agentId={agentId}
+              listingId={listing?.id}
               propertySpecs={{
                 bedrooms: listing.bedrooms_total || 0,
                 bathrooms: listing.bathrooms_total_integer || 0,
