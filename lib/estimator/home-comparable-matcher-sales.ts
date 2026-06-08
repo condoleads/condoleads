@@ -455,6 +455,22 @@ function notAsIs(row: any): boolean {
   return !isAsIs(row.public_remarks)
 }
 
+// F-MLS-SUBTYPE-TRAILING-SPACE-SEMI defensive normalization. MLS stores
+// 'Semi-Detached ' with ONE trailing space on 100% of that subtype (67481
+// rows, measured 2026-06-08); all 37 other subtypes clean. This returns the
+// clean value + the single-trailing-space variant so .in()/.eq() match both.
+// NOTE: keyed to the MEASURED single-trailing-space pattern — if MLS data
+// later carries other whitespace (leading, double, tab) this silently misses
+// again. The permanent fix is the deferred data-cleanup + sync-btrim
+// workstream (F-MLS-DATA-CLEANUP-TRAILING-SPACE); this is the defensive code
+// guard until then. ALWAYS use this helper instead of writing raw .eq()/.in()
+// against property_subtype.
+function propertySubtypeVariants(subtype: string): string[] {
+  return subtype === subtype.trim()
+    ? [subtype, subtype + ' ']
+    : [subtype, subtype.trim()]
+}
+
 // ============ MULTI-UNIT CONTACT (g1) ============
 
 // Plex-comp builder — populates only the fields the CONTACT-branch tile at
@@ -533,7 +549,7 @@ async function findMultiUnitContactComparables(specs: HomeSpecs): Promise<HomeMa
       .from('mls_listings')
       .select(HOME_SELECT)
       .eq('community_id', specs.communityId)
-      .in('property_subtype', MULTI_UNIT_SUBTYPES)
+      .in('property_subtype', MULTI_UNIT_SUBTYPES.flatMap(propertySubtypeVariants))
       .eq('transaction_type', 'For Sale')
       .eq('standard_status', 'Closed')
       .not('close_price', 'is', null)
@@ -559,7 +575,7 @@ async function findMultiUnitContactComparables(specs: HomeSpecs): Promise<HomeMa
       .from('mls_listings')
       .select(HOME_SELECT)
       .eq('municipality_id', specs.municipalityId)
-      .in('property_subtype', MULTI_UNIT_SUBTYPES)
+      .in('property_subtype', MULTI_UNIT_SUBTYPES.flatMap(propertySubtypeVariants))
       .eq('transaction_type', 'For Sale')
       .eq('standard_status', 'Closed')
       .not('close_price', 'is', null)
@@ -638,7 +654,7 @@ async function runPlexPricingPath(specs: HomeSpecs): Promise<HomeMatchResult> {
       .from('mls_listings')
       .select(HOME_SELECT)
       .eq(geoColumn, geoValue)
-      .eq('property_subtype', specs.propertySubtype)  // SAME-subtype (NOT class-wide)
+      .in('property_subtype', propertySubtypeVariants(specs.propertySubtype))  // SAME-subtype (NOT class-wide)
       .eq('transaction_type', 'For Sale')
       .eq('standard_status', 'Closed')
       .not('close_price', 'is', null)
@@ -681,7 +697,7 @@ async function runPlexPricingPath(specs: HomeSpecs): Promise<HomeMatchResult> {
         .from('mls_listings')
         .select(`${HOME_SELECT}, municipalities!inner(area_id)`)
         .eq('municipalities.area_id', muni.area_id)
-        .eq('property_subtype', specs.propertySubtype)
+        .in('property_subtype', propertySubtypeVariants(specs.propertySubtype))
         .eq('transaction_type', 'For Sale')
         .eq('standard_status', 'Closed')
         .not('close_price', 'is', null)
@@ -735,7 +751,7 @@ async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promi
       .from('mls_listings')
       .select(COMPETING_SELECT)
       .eq(geoCol, geoVal)
-      .eq('property_subtype', specs.propertySubtype)  // same-subtype (NOT class-wide)
+      .in('property_subtype', propertySubtypeVariants(specs.propertySubtype))  // same-subtype (NOT class-wide)
       .eq('transaction_type', 'For Sale')
       .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('available_in_vow', true)
@@ -762,7 +778,7 @@ async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promi
         .from('mls_listings')
         .select(`${COMPETING_SELECT}, municipalities!inner(area_id)`)
         .eq('municipalities.area_id', muni.area_id)
-        .eq('property_subtype', specs.propertySubtype)
+        .in('property_subtype', propertySubtypeVariants(specs.propertySubtype))
         .eq('transaction_type', 'For Sale')
         .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
         .eq('available_in_vow', true)
@@ -806,7 +822,7 @@ async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise
       .from('mls_listings')
       .select(COMPETING_SELECT)
       .eq('community_id', specs.communityId)
-      .in('property_subtype', subtypes)
+      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
       .eq('transaction_type', 'For Sale')
       .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('available_in_vow', true)
@@ -823,7 +839,7 @@ async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise
       .from('mls_listings')
       .select(COMPETING_SELECT)
       .eq('municipality_id', specs.municipalityId)
-      .in('property_subtype', subtypes)
+      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
       .eq('transaction_type', 'For Sale')
       .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
       .eq('available_in_vow', true)
@@ -896,7 +912,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       .from('mls_listings')
       .select(HOME_SELECT)
       .eq('community_id', specs.communityId)
-      .in('property_subtype', subtypes)
+      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
       .eq('transaction_type', 'For Sale')
       .eq('standard_status', 'Closed')
       .not('close_price', 'is', null)
@@ -961,7 +977,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       .from('mls_listings')
       .select(HOME_SELECT)
       .eq('municipality_id', specs.municipalityId)
-      .in('property_subtype', subtypes)
+      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
       .eq('transaction_type', 'For Sale')
       .eq('standard_status', 'Closed')
       .not('close_price', 'is', null)
