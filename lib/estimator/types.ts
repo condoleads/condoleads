@@ -79,6 +79,10 @@ export interface ComparableSale {
   netOperatingIncome?: number | null
   grossRevenue?: number | null
 
+  // h3: thumbnail URL attached by the matcher's media batch join. Used by
+  // the Charlie-style plex tile (photo column). SF tiles do not render it.
+  mediaUrl?: string | null
+
   // Match classification
   temperature?: Temperature
   matchTier?: MatchTier

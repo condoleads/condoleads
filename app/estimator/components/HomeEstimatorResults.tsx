@@ -11,6 +11,38 @@ import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 import { useAuth } from '@/components/auth/AuthContext'
 import { MULTI_UNIT_SUBTYPES } from '@/lib/estimator/home-comparable-matcher-sales'
 
+// h3: relative-time helper for the Charlie-style plex tile's stats row. Mirrors
+// app/charlie/components/ComparableCard.tsx:timeAgo verbatim — the duplication
+// is flagged in the tracker (theme-mismatch makes cross-import of the dark-mode
+// Charlie cards unsafe for the light-mode estimator surface).
+function plexTimeAgo(dateStr: string | undefined | null): string {
+  if (!dateStr) return ''
+  const months = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24 * 30))
+  if (months <= 0) return 'this month'
+  if (months === 1) return '1 mo ago'
+  return `${months} mo ago`
+}
+
+// h3: DOM-tinted pill color, mirrors app/charlie/components/ActiveListingCard.tsx
+// :domColor verbatim. Light-mode adapts the alpha-on-dark token to a Tailwind
+// class set.
+function plexDomTone(dom: number | null | undefined): string {
+  if (dom == null) return 'bg-slate-100 text-slate-500'
+  if (dom <= 21) return 'bg-emerald-50 text-emerald-700'
+  if (dom <= 45) return 'bg-amber-50 text-amber-700'
+  return 'bg-red-50 text-red-700'
+}
+
+// h4: unified status·subtype badge text. 'Att/Row/Townhouse' shortens to
+// 'TOWNHOUSE' for the pill. Other subtypes uppercase as-is. Applied
+// consistently across SOLD tiles + FOR SALE tiles, plex + SF.
+function badgeSubtype(s: string | null | undefined): string {
+  if (!s) return ''
+  const t = s.trim().toUpperCase()
+  if (t === 'ATT/ROW/TOWNHOUSE') return 'TOWNHOUSE'
+  return t
+}
+
 // h2 finish — Competing-For-Sale rail tile shape (LOCKED v11 Option C, same
 // tile as the sold-comp rail). Shape mirrors the /api/charlie/competing-
 // listings response (home path), trimmed to the fields the tile renders.
@@ -544,54 +576,160 @@ export default function HomeEstimatorResults({
             {result.comparables.map((comp, idx) => {
               const hasAdjustments = comp.adjustments && comp.adjustments.length > 0
 
-              return (
-                <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        {comp.unparsedAddress && (
-                          <span className="text-sm font-semibold text-slate-500">{comp.unparsedAddress.split(',')[0]}</span>
+              // h3: plex subjects render the Charlie-style horizontal card (compact,
+              // photo + facts row + elevated income block). SF subjects fall through
+              // to the existing tall vertical tile unchanged — REGRESSION GUARD.
+              if (isMultiUnitSubject) {
+                const noi   = comp.netOperatingIncome ?? 0
+                const gross = comp.grossRevenue ?? 0
+                const cp    = comp.closePrice ?? 0
+                // h3 refinement: income panel is plex-only (subject-level gate, NOT
+                // just row-level). Stray NOI on a non-plex subject row never triggers
+                // it. Subject gate `isMultiUnitSubject` is already enforced by the
+                // outer branch — but kept explicit on the tile gate for clarity.
+                const showIncome = isMultiUnitSubject && (noi > 0 || gross > 0)
+                const slug = comp.listingKey && comp.unparsedAddress
+                  ? generateHomePropertySlug({
+                      unparsed_address: comp.unparsedAddress,
+                      listing_key: comp.listingKey,
+                    })
+                  : null
+                const Inner = (
+                  <>
+                    {/* Photo column — 96x96, mediaUrl with 🏠 fallback.
+                        h4: unified SOLD · SUBTYPE pill top-left (slate-700 = sold). */}
+                    <div className="w-24 h-24 flex-shrink-0 bg-slate-100 relative overflow-hidden">
+                      {comp.mediaUrl ? (
+                        <img src={comp.mediaUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl">🏠</div>
+                      )}
+                      <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-700 text-white">
+                        SOLD{comp.propertySubtype ? ` · ${badgeSubtype(comp.propertySubtype)}` : ''}
+                      </span>
+                    </div>
+
+                    {/* Info column */}
+                    <div className="flex-1 px-3 py-2 min-w-0">
+                      <div className="flex justify-between items-start mb-0.5">
+                        <span className="text-base font-bold text-slate-900">
+                          {isSale ? formatPrice(comp.closePrice) : formatPrice(comp.closePrice) + '/mo'}
+                        </span>
+                        {comp.daysOnMarket != null && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${plexDomTone(comp.daysOnMarket)}`}>
+                            {comp.daysOnMarket}d DOM
+                          </span>
                         )}
-                        <p className="font-bold text-slate-900 text-lg">
-                          {comp.bedrooms} bed, {comp.bathrooms} bath
-                        </p>
-                        {/* Temperature Badge */}
+                      </div>
+                      <div className="text-[11px] text-slate-500 truncate mb-0.5">
+                        {comp.unparsedAddress?.split(',')[0] || '—'}
+                      </div>
+
+                      {/* h4: plex match-basis — one muted line stating WHY this is
+                          a comp (parallel to SF Match-Details panel). Plex axis =
+                          same-subtype + LAR-adjacent (per runPlexPricingPath). */}
+                      <div className="text-[10px] text-slate-400 italic mb-0.5">
+                        Same {comp.propertySubtype || 'plex'} · similar size
+                      </div>
+
+                      {/* h3 refinement: ELEVATED income panel for plex-with-data.
+                          Indigo-50 bg + indigo-700 cap headline. Sits ABOVE the
+                          stats so it reads as the primary fact. Silent-omits per
+                          field; entire panel silent-omits when no income data. */}
+                      {showIncome && (
+                        <div className="mt-1 mb-1 px-2 py-1 rounded bg-indigo-50 border border-indigo-100 flex flex-wrap gap-x-2 gap-y-0 items-baseline text-[11px]">
+                          {noi > 0 && cp > 0 && (
+                            <span className="text-sm font-bold text-indigo-700">{((noi / cp) * 100).toFixed(1)}%<span className="text-[10px] font-medium text-indigo-600"> cap</span></span>
+                          )}
+                          {noi > 0 && (
+                            <span className="text-slate-700"><span className="font-semibold text-slate-900">NOI</span> {formatPrice(noi)}</span>
+                          )}
+                          {gross > 0 && (
+                            <span className="text-slate-700"><span className="font-semibold text-slate-900">Gross</span> {formatPrice(gross)}</span>
+                          )}
+                          {gross > 0 && cp > 0 && (
+                            <span className="text-slate-700"><span className="font-semibold text-slate-900">GRM</span> {(cp / gross).toFixed(1)}</span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
+                        {comp.bedrooms != null && <span>{comp.bedrooms} bed</span>}
+                        {comp.bathrooms != null && <span>{comp.bathrooms} bath</span>}
+                        {comp.livingAreaRange && <span>{comp.livingAreaRange} sqft</span>}
+                        {comp.closeDate && <span className="ml-auto text-slate-300">{isSale ? 'Sold' : 'Leased'} {plexTimeAgo(comp.closeDate)}</span>}
+                      </div>
+                    </div>
+                  </>
+                )
+                // h3 refinement: tiles WITH income data get an indigo left-accent
+                // border (2px). Tiles without — neutral slate border. The two
+                // states are visually distinct: rich vs compact.
+                const baseClasses = "flex bg-white border border-slate-200 hover:border-slate-300 rounded-xl overflow-hidden transition-colors"
+                const accentClass = showIncome ? ' border-l-2 border-l-indigo-500' : ''
+                const tileClasses = baseClasses + accentClass
+                return slug ? (
+                  <a key={idx} href={slug} target="_blank" rel="noopener noreferrer" className={tileClasses + ' cursor-pointer'}>
+                    {Inner}
+                  </a>
+                ) : (
+                  <div key={idx} className={tileClasses}>
+                    {Inner}
+                  </div>
+                )
+              }
+
+              return (
+                <div key={idx} className="bg-white border border-slate-200 hover:border-slate-300 rounded-xl overflow-hidden transition-colors">
+                  {/* h4: SHARED FRAME (photo column + horizontal header) — same
+                      skeleton as the plex tile. SF datums (bedrooms, bathrooms,
+                      exactSqft/livingAreaRange, parking, closeDate, daysOnMarket,
+                      temperature, unparsedAddress, closePrice) all rendered here
+                      in the new layout. */}
+                  <div className="flex">
+                    <div className="w-24 h-24 flex-shrink-0 bg-slate-100 relative overflow-hidden">
+                      {comp.mediaUrl ? (
+                        <img src={comp.mediaUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl">🏠</div>
+                      )}
+                      {/* h4: unified SOLD · SUBTYPE pill (slate-700 = sold). */}
+                      <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-700 text-white">
+                        SOLD{comp.propertySubtype ? ` · ${badgeSubtype(comp.propertySubtype)}` : ''}
+                      </span>
+                    </div>
+
+                    <div className="flex-1 px-3 py-2 min-w-0">
+                      <div className="flex justify-between items-start mb-0.5 gap-2">
+                        <span className="text-base font-bold text-slate-900">
+                          {isSale ? formatPrice(comp.closePrice) : formatPrice(comp.closePrice) + '/mo'}
+                        </span>
+                        {/* Temperature pill — preserved from prior SF tile (HOT/WARM/COLD/FROZEN with icon). */}
                         {comp.temperature && (
-                          <span className={`px-3 py-1 rounded-full text-xs font-bold border ${temperatureDisplay[comp.temperature].color}`}>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${temperatureDisplay[comp.temperature].color} flex-shrink-0`}>
                             {temperatureDisplay[comp.temperature].icon} {temperatureDisplay[comp.temperature].label}
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-slate-600">
-                        {comp.exactSqft ? `${comp.exactSqft} sqft` : comp.livingAreaRange + ' sqft'} • {comp.parking} parking spot(s)
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <div className="text-[11px] text-slate-500 truncate mb-0.5">
+                        {comp.unparsedAddress?.split(',')[0] || '—'}
+                      </div>
+                      <div className="text-[11px] text-slate-400 mb-0.5">
+                        {comp.bedrooms} bed · {comp.bathrooms} bath · {comp.exactSqft ? `${comp.exactSqft} sqft` : `${comp.livingAreaRange} sqft`} · {comp.parking} parking spot(s)
+                      </div>
+                      <div className="text-[10px] text-slate-400">
                         {isSale ? 'Sold' : 'Leased'}: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} • {comp.daysOnMarket} days on market
-                      </p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* h2 Phase 2: per-tile income signals (plex only). Each signal silent-omits when null/<=0.
-                      Cap Rate derived = NOI ÷ closePrice × 100 (annualized %). Fill is sparse (7-15% Duplex/Triplex/
-                      Fourplex, 0% Multiplex) — tiles without data simply skip this row. */}
-                  {isMultiUnitSubject && (
-                    ((comp.netOperatingIncome ?? 0) > 0 || (comp.grossRevenue ?? 0) > 0) && (
-                      <div className="bg-indigo-50 rounded-lg p-3 mb-3 border border-indigo-200">
-                        <p className="text-xs font-semibold text-indigo-900 mb-1.5">💰 Income</p>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
-                          {(comp.netOperatingIncome ?? 0) > 0 && (
-                            <span><span className="font-semibold">NOI:</span> {formatPrice(comp.netOperatingIncome as number)}/yr</span>
-                          )}
-                          {(comp.grossRevenue ?? 0) > 0 && (
-                            <span><span className="font-semibold">Gross Rent:</span> {formatPrice(comp.grossRevenue as number)}/yr</span>
-                          )}
-                          {(comp.netOperatingIncome ?? 0) > 0 && comp.closePrice > 0 && (
-                            <span><span className="font-semibold">Cap Rate:</span> {(((comp.netOperatingIncome as number) / comp.closePrice) * 100).toFixed(1)}%</span>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  )}
+                  {/* h4: SF type-specific enrichment below the shared frame.
+                      Match-Details panels + Price section + adjustments + originally-
+                      listed + View Details link — PRESERVED EXACTLY from prior SF
+                      tile. Every existing datum (BINGO/RANGE/MAINT checkmarks,
+                      adjustment reason/amount, adjustedPrice, listPrice, listingKey,
+                      unitNumber, associationFee, userExactSqft) still renders. */}
+                  <div className="px-4 pb-4 pt-3">
 
                   {/* Match Details for BINGO / BINGO-ADJ (SF only — SF axes panel; hidden for plex per h2) */}
                   {!isMultiUnitSubject && (result.matchTier === 'BINGO' || result.matchTier === 'BINGO-ADJ') && (
@@ -718,98 +856,113 @@ export default function HomeEstimatorResults({
                       </a>
                     )}
                   </div>
+                  </div>{/* h4: close px-4 SF enrichment wrapper */}
                 </div>
               )
             })}
           </div>
         </div>
 
-        {/* h2 finish — Competing-For-Sale rail (LOCKED v11 Option C, Principle 5).
-            Plex-only. Same plex tile shape as the sold-comp rail: bed/bath/sqft
-            header, no SF chrome, income block (NOI/Gross/Cap) silent-omits per
-            field. Cap rate here uses list_price as denominator (asking-cap, not
-            sold-cap). Header is framed forward with count + price range as the
-            tracker spec. SF surfaces never receive competingListings so this
-            entire block stays inert on Detached/Semi/Town/Link. */}
-        {isMultiUnitSubject && competingListings && competingListings.length > 0 && (() => {
+        {/* h3 refinement — Competing-For-Sale rail (LOCKED v11 Option C,
+            Principle 5). Now shows for ALL home subjects (SF + plex), each
+            matched on its type's sold-comp criteria (server-side via
+            findActiveCompetition). Income panel is PLEX-ONLY (subject gate
+            isMultiUnitSubject) — SF tiles never render the income panel
+            even if a stray row carries NOI. Tiles WITH income data get an
+            indigo left-accent border + raised indigo-50 income panel. */}
+        {competingListings && competingListings.length > 0 && (() => {
           const sortedByPrice = [...competingListings].sort((a, b) => a.list_price - b.list_price)
           const low = sortedByPrice[0].list_price
           const high = sortedByPrice[sortedByPrice.length - 1].list_price
+          const noun = isMultiUnitSubject ? 'plex listing' : 'home'
           return (
             <div className="mt-8">
               <h3 className="text-lg font-bold text-slate-900 mb-1">
                 Competing For Sale ({competingListings.length})
               </h3>
               <p className="text-sm text-slate-600 mb-4">
-                {competingListings.length} similar plex listing{competingListings.length === 1 ? '' : 's'} on the market now, {formatPrice(low)}–{formatPrice(high)} — your competition.
+                {competingListings.length} similar {noun}{competingListings.length === 1 ? '' : 's'} on the market now, {formatPrice(low)}–{formatPrice(high)} — your competition.
               </p>
-              <div className="space-y-4 max-h-[600px] overflow-y-auto">
+              <div className="space-y-3 max-h-[600px] overflow-y-auto">
                 {competingListings.map((cl, idx) => {
+                  // h3 refinement: same Charlie horizontal card. Income panel
+                  // PLEX-ONLY — gated on isMultiUnitSubject, not just row data.
                   const noi   = cl.net_operating_income ?? 0
                   const gross = cl.gross_revenue ?? 0
-                  const showIncomeBlock = noi > 0 || gross > 0
-                  return (
-                    <div key={cl.id ?? idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            {cl.unparsed_address && (
-                              <span className="text-sm font-semibold text-slate-500">{cl.unparsed_address.split(',')[0]}</span>
-                            )}
-                            <p className="font-bold text-slate-900 text-lg">
-                              {cl.bedrooms_total ?? 0} bed, {cl.bathrooms_total_integer ?? 0} bath
-                            </p>
-                            {cl.property_subtype && (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                                {cl.property_subtype}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-slate-600">
-                            {cl.living_area_range || 'Unknown'} sqft
-                          </p>
-                          <p className="text-xs text-slate-500 mt-1">
-                            Listed: {cl.days_on_market != null ? `${cl.days_on_market} days on market` : 'recently listed'}
-                          </p>
-                        </div>
+                  const lp    = cl.list_price ?? 0
+                  const showIncome = isMultiUnitSubject && (noi > 0 || gross > 0)
+                  const slug = cl.listing_key && cl.unparsed_address
+                    ? generateHomePropertySlug({
+                        unparsed_address: cl.unparsed_address,
+                        listing_key: cl.listing_key,
+                      })
+                    : null
+                  const Inner = (
+                    <>
+                      <div className="w-24 h-24 flex-shrink-0 bg-slate-100 relative overflow-hidden">
+                        {cl.mediaUrl ? (
+                          <img src={cl.mediaUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-2xl">🏠</div>
+                        )}
+                        {/* h4: unified FOR SALE · SUBTYPE pill (blue-600 = for-sale). */}
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-600 text-white">
+                          FOR SALE{cl.property_subtype ? ` · ${badgeSubtype(cl.property_subtype)}` : ''}
+                        </span>
                       </div>
 
-                      {showIncomeBlock && (
-                        <div className="bg-indigo-50 rounded-lg p-3 mb-3 border border-indigo-200">
-                          <p className="text-xs font-semibold text-indigo-900 mb-1.5">💰 Income</p>
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
+                      <div className="flex-1 px-3 py-2 min-w-0">
+                        <div className="flex justify-between items-start mb-0.5">
+                          <span className="text-base font-bold text-slate-900">
+                            {formatPrice(lp)}
+                          </span>
+                          {cl.days_on_market != null && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${plexDomTone(cl.days_on_market)}`}>
+                              {cl.days_on_market}d on market
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate mb-0.5">
+                          {cl.unparsed_address?.split(',')[0] || '—'}
+                        </div>
+
+                        {/* h3 refinement: ELEVATED income panel — plex-only. Cap
+                            rate at asking (NOI / list_price). */}
+                        {showIncome && (
+                          <div className="mt-1 mb-1 px-2 py-1 rounded bg-indigo-50 border border-indigo-100 flex flex-wrap gap-x-2 gap-y-0 items-baseline text-[11px]">
+                            {noi > 0 && lp > 0 && (
+                              <span className="text-sm font-bold text-indigo-700">{((noi / lp) * 100).toFixed(1)}%<span className="text-[10px] font-medium text-indigo-600"> cap</span></span>
+                            )}
                             {noi > 0 && (
-                              <span><span className="font-semibold">NOI:</span> {formatPrice(noi)}/yr</span>
+                              <span className="text-slate-700"><span className="font-semibold text-slate-900">NOI</span> {formatPrice(noi)}</span>
                             )}
                             {gross > 0 && (
-                              <span><span className="font-semibold">Gross Rent:</span> {formatPrice(gross)}/yr</span>
+                              <span className="text-slate-700"><span className="font-semibold text-slate-900">Gross</span> {formatPrice(gross)}</span>
                             )}
-                            {noi > 0 && cl.list_price > 0 && (
-                              <span><span className="font-semibold">Cap Rate (at asking):</span> {((noi / cl.list_price) * 100).toFixed(1)}%</span>
+                            {gross > 0 && lp > 0 && (
+                              <span className="text-slate-700"><span className="font-semibold text-slate-900">GRM</span> {(lp / gross).toFixed(1)}</span>
                             )}
                           </div>
-                        </div>
-                      )}
-
-                      <div className="bg-white rounded-lg p-4 mt-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-slate-600">Asking Price:</span>
-                          <span className="text-lg font-bold text-slate-900">{formatPrice(cl.list_price)}</span>
-                        </div>
-                        {cl.listing_key && cl.unparsed_address && (
-                          <a
-                            href={generateHomePropertySlug({
-                              unparsed_address: cl.unparsed_address,
-                              listing_key: cl.listing_key
-                            })}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
-                          >
-                            View Property Details →
-                          </a>
                         )}
+
+                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
+                          {cl.bedrooms_total != null && <span>{cl.bedrooms_total} bed</span>}
+                          {cl.bathrooms_total_integer != null && <span>{cl.bathrooms_total_integer} bath</span>}
+                          {cl.living_area_range && <span>{cl.living_area_range} sqft</span>}
+                        </div>
                       </div>
+                    </>
+                  )
+                  const baseClasses = "flex bg-white border border-slate-200 hover:border-slate-300 rounded-xl overflow-hidden transition-colors"
+                  const accentClass = showIncome ? ' border-l-2 border-l-indigo-500' : ''
+                  const tileClasses = baseClasses + accentClass
+                  return slug ? (
+                    <a key={cl.id ?? idx} href={slug} target="_blank" rel="noopener noreferrer" className={tileClasses + ' cursor-pointer'}>
+                      {Inner}
+                    </a>
+                  ) : (
+                    <div key={cl.id ?? idx} className={tileClasses}>
+                      {Inner}
                     </div>
                   )
                 })}

@@ -5,9 +5,9 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { estimateHomeSale } from '../actions/estimate-home-sale'
 import { EstimateResult } from '@/lib/estimator/types'
-import HomeEstimatorResults, { CompetingListing } from './HomeEstimatorResults'
+import HomeEstimatorResults from './HomeEstimatorResults'
 import { MLSListing } from '@/lib/types/building'
-import { MULTI_UNIT_SUBTYPES } from '@/lib/estimator/home-comparable-matcher-sales'
+import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
 import { useAuth } from '@/components/auth/AuthContext'
 import VipPrompt from '@/components/chat/VipPrompt'
 import VipRequestForm, { VipRequestData } from '@/components/chat/VipRequestForm'
@@ -52,11 +52,11 @@ export default function HomeEstimatorBuyerModal({
   const [error, setError] = useState<string | null>(null)
   const [geoLevel, setGeoLevel] = useState<string | null>(null)
   const [showRegister, setShowRegister] = useState(false)
-  // h2 finish — Principle 5 "Competing For Sale" rail: live active plex listings
-  // shown alongside the sold-comp rail in the SAME result panel (LOCKED v11
-  // Option C). Plex-only — fetch is gated on isMultiUnit at handleEstimate.
-  // SF surfaces stay byte-identical because they never trigger the fetch.
-  const [competingListings, setCompetingListings] = useState<CompetingListing[]>([])
+  // h3 fix — Competing-For-Sale fetch state now lives in a shared hook
+  // (useCompetingListings) consumed by BOTH this modal AND the auto-run CTA
+  // on the single-property page. Prior copy-paste drift left the CTA un-
+  // wired; centralizing prevents that recurring.
+  const { competingListings, fetchCompetingListings, resetCompetingListings } = useCompetingListings()
 
   // VIP flow states
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -92,9 +92,9 @@ export default function HomeEstimatorBuyerModal({
       setShowWalliamForm(false)
       setShowWaiting(false)
       setShowBlocked(false)
-      setCompetingListings([])
+      resetCompetingListings()
     }
-  }, [isOpen])
+  }, [isOpen, resetCompetingListings])
 
   // Check session and run estimate when modal opens
   useEffect(() => {
@@ -278,32 +278,20 @@ export default function HomeEstimatorBuyerModal({
           setResult(response.data)
           setGeoLevel(response.geoLevel || null)
 
-          // h2 finish — fire-and-forget Competing-For-Sale fetch for plex
-          // subjects only (LOCKED v11 Option C two-rail spec, Principle 5).
-          // Fails silent: empty list keeps the rail hidden so the sold-comp
-          // result still renders cleanly. SF subjects never hit this path.
-          const subjectSubtype = listing.property_subtype?.trim()
-          const isMultiUnit = !!subjectSubtype && MULTI_UNIT_SUBTYPES.includes(subjectSubtype)
-          if (isMultiUnit && homeSpecs.municipalityId) {
-            fetch('/api/charlie/competing-listings', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                path: 'home',
-                municipalityId: homeSpecs.municipalityId,
-                bedrooms: homeSpecs.bedrooms,
-                livingAreaRange: homeSpecs.livingAreaRange,
-                propertySubtype: subjectSubtype,
-              }),
-            })
-              .then(r => r.json())
-              .then(d => {
-                if (d?.success && Array.isArray(d.listings)) {
-                  setCompetingListings(d.listings as CompetingListing[])
-                }
-              })
-              .catch(err => console.error('competing-listings fetch failed:', err))
-          }
+          // h3 refinement — Competing-For-Sale fetch. Hook delegates to
+          // findActiveCompetition which mirrors the sold-comp matching for
+          // the subject's type (plex axis or SF funnel). Thread the full
+          // specs the matcher needs.
+          fetchCompetingListings({
+            propertySubtype: listing.property_subtype,
+            communityId: homeSpecs.communityId,
+            municipalityId: homeSpecs.municipalityId,
+            bedrooms: homeSpecs.bedrooms,
+            bathrooms: homeSpecs.bathrooms,
+            livingAreaRange: homeSpecs.livingAreaRange,
+            architecturalStyle: homeSpecs.architecturalStyle,
+            approximateAge: homeSpecs.approximateAge,
+          })
         } else {
           setError(response.error || 'Failed to calculate estimate')
         }

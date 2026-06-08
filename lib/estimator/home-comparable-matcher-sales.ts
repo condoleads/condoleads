@@ -426,7 +426,33 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
     matchScore,
     adjustments: adjustments.length > 0 ? adjustments : undefined,
     adjustedPrice: adjustments.length > 0 ? adjustedPrice : undefined,
+    // h4: thumbnail attached by attachMediaUrls (same batched join used for
+    // plex). Allows SF converged tile to render a photo. Null when MLS has
+    // no thumbnail for this listing.
+    mediaUrl: sale.mediaUrl ?? null,
   }
+}
+
+// ============ SHARED COMPARABILITY PREDICATES (h3 refinement) ============
+
+// h3 refinement: shared predicates so the COMPETING-FOR-SALE rail uses the
+// same comparability criteria as the SOLD pool, per type. Pure functions on
+// already-fetched rows — no DB, no async. Pre-existing logic, just lifted to
+// named helpers so findActiveCompetition (h3) and the sold pipeline call ONE
+// implementation. Byte-identical behavior to inline call sites.
+
+// Plex predicate: the SAME-subtype gate lives in the SELECT (.eq('property_
+// subtype', subjectSubtype)), so this just enforces LAR same-or-adjacent.
+// Used by runPlexPricingPath.tierQuery + findActiveCompetition (plex branch).
+function plexComparablePredicate(row: any, subjectLAR: string): boolean {
+  return isAdjacentRange(row.living_area_range, subjectLAR)
+}
+
+// SF "is this a clean comp" predicate: excludes "as is"/power-of-sale.
+// Used by findHomeComparables's cleanSales filters + findActiveCompetition
+// (SF branch). Thin inversion of isAsIs to clarify intent at call sites.
+function notAsIs(row: any): boolean {
+  return !isAsIs(row.public_remarks)
 }
 
 // ============ MULTI-UNIT CONTACT (g1) ============
@@ -458,7 +484,35 @@ function createMultiUnitContactComparable(sale: any): ComparableSale {
     // per-tile when these are null/0.
     netOperatingIncome: sale.net_operating_income,
     grossRevenue: sale.gross_revenue,
+    // h3: thumbnail URL — set by attachMediaUrls before this builder runs.
+    // The competing-listings route uses the same media join pattern.
+    mediaUrl: sale.mediaUrl ?? null,
   }
+}
+
+// h3: batch-fetch thumbnail media for plex sales rows so the Charlie-style
+// tile can render a photo. Mirrors app/api/charlie/competing-listings/route.ts
+// media join (same variant_type='thumbnail' + order_number=0). One query per
+// rail (community OR muni OR area returns at most 10 rows). Returns the same
+// shape, with a mediaUrl prop added to each sale. Empty input → no-op.
+//
+// h4: renamed from attachPlexMediaUrls to attachMediaUrls — same logic, now
+// also used by the SF matcher returns so SF tiles get photos too (converged
+// tile design).
+async function attachMediaUrls(sales: any[]): Promise<any[]> {
+  if (!sales || sales.length === 0) return sales
+  const ids = sales.map(s => s.id).filter(Boolean)
+  if (ids.length === 0) return sales
+  const supabase = createClient()
+  const { data: media } = await supabase
+    .from('media')
+    .select('listing_id, media_url')
+    .in('listing_id', ids)
+    .eq('variant_type', 'thumbnail')
+    .eq('order_number', 0)
+  const map: Record<string, string> = {}
+  ;(media || []).forEach((m: any) => { map[m.listing_id] = m.media_url })
+  return sales.map(s => ({ ...s, mediaUrl: map[s.id] || null }))
 }
 
 // Multi-unit CONTACT cascade. Class-contained via MULTI_UNIT_SUBTYPES at the
@@ -490,9 +544,10 @@ async function findMultiUnitContactComparables(specs: HomeSpecs): Promise<HomeMa
     if (specs.asOfDate) qC = qC.lt('close_date', referenceDate.toISOString())
     const { data: cSales } = await qC
     if (cSales && cSales.length > 0) {
+      const enriched = await attachMediaUrls(cSales)
       return {
         tier: 'CONTACT',
-        comparables: cSales.map(createMultiUnitContactComparable),
+        comparables: enriched.map(createMultiUnitContactComparable),
         geoLevel: 'community',
       }
     }
@@ -515,9 +570,10 @@ async function findMultiUnitContactComparables(specs: HomeSpecs): Promise<HomeMa
     if (specs.asOfDate) qM = qM.lt('close_date', referenceDate.toISOString())
     const { data: mSales } = await qM
     if (mSales && mSales.length > 0) {
+      const enriched = await attachMediaUrls(mSales)
       return {
         tier: 'CONTACT',
-        comparables: mSales.map(createMultiUnitContactComparable),
+        comparables: enriched.map(createMultiUnitContactComparable),
         geoLevel: 'municipality',
       }
     }
@@ -592,14 +648,15 @@ async function runPlexPricingPath(specs: HomeSpecs): Promise<HomeMatchResult> {
       .order('close_date', { ascending: false })
     if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
     const { data } = await q
-    return (data || []).filter(s => isAdjacentRange(s.living_area_range, subjectLAR))
+    return (data || []).filter(s => plexComparablePredicate(s, subjectLAR))
   }
 
   // Community tier
   if (specs.communityId) {
     const cComps = await tierQuery('community_id', specs.communityId)
     if (cComps.length >= 3) {
-      return buildPricedPlexResult(cComps, 'community')
+      const enriched = await attachMediaUrls(cComps)
+      return buildPricedPlexResult(enriched, 'community')
     }
   }
 
@@ -607,7 +664,8 @@ async function runPlexPricingPath(specs: HomeSpecs): Promise<HomeMatchResult> {
   if (specs.municipalityId) {
     const mComps = await tierQuery('municipality_id', specs.municipalityId)
     if (mComps.length >= 3) {
-      return buildPricedPlexResult(mComps, 'municipality')
+      const enriched = await attachMediaUrls(mComps)
+      return buildPricedPlexResult(enriched, 'municipality')
     }
   }
 
@@ -633,15 +691,176 @@ async function runPlexPricingPath(specs: HomeSpecs): Promise<HomeMatchResult> {
         .order('close_date', { ascending: false })
       if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
       const { data } = await q
-      const aComps = (data || []).filter(s => isAdjacentRange(s.living_area_range, subjectLAR))
+      const aComps = (data || []).filter(s => plexComparablePredicate(s, subjectLAR))
       if (aComps.length >= 3) {
-        return buildPricedPlexResult(aComps, 'area')
+        const enriched = await attachMediaUrls(aComps)
+        return buildPricedPlexResult(enriched, 'area')
       }
     }
   }
 
   // Thin pool — enrich-only fallback (no bad price)
   return await findMultiUnitContactComparables(specs)
+}
+
+// ============ COMPETING-FOR-SALE (h3 refinement) ============
+
+// Active-rows SELECT — supports both plex predicates (LAR-adjacent) and SF
+// funnels (architectural_style + approximate_age + public_remarks for notAsIs).
+// Includes income fields for the plex tile's elevated income panel.
+const COMPETING_SELECT = `id, listing_key, list_price, unparsed_address,
+  bedrooms_total, bathrooms_total_integer, living_area_range,
+  days_on_market, approximate_age, property_subtype, frontage_length,
+  lot_size_area, net_operating_income, gross_revenue, architectural_style,
+  public_remarks`
+
+// h3 refinement: competing-for-sale rail uses the SAME comparability criteria
+// as the sold-comp pool, for the subject's type. Plex → same-subtype + LAR-
+// adjacent + community→muni→area cascade (mirrors runPlexPricingPath). SF →
+// getCompatibleSubtypes + notAsIs + applyFunnel→applyRelaxedFunnel→
+// last-resort-bed-bath + community→muni cascade (mirrors findHomeComparables).
+// Threshold: ≥1 to show (sold path needs ≥3 to PRICE; competing just needs
+// 1 to SHOW). Order: list_price asc (cheapest competition first).
+//
+// Both rails consume identical predicate logic — the shared helpers
+// plexComparablePredicate, notAsIs, applyFunnel, applyRelaxedFunnel,
+// getCompatibleSubtypes — so a future change to "what counts as comparable"
+// propagates to both rails automatically.
+async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promise<any[]> {
+  const subjectLAR = specs.livingAreaRange
+  if (!subjectLAR) return []  // plex axis requires LAR; without it, no competition pool
+
+  const tierQuery = async (geoCol: 'community_id' | 'municipality_id', geoVal: string) => {
+    const { data } = await supabase
+      .from('mls_listings')
+      .select(COMPETING_SELECT)
+      .eq(geoCol, geoVal)
+      .eq('property_subtype', specs.propertySubtype)  // same-subtype (NOT class-wide)
+      .eq('transaction_type', 'For Sale')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .eq('available_in_vow', true)
+      .gt('list_price', 100000)
+      .not('living_area_range', 'is', null)
+      .order('list_price', { ascending: true })
+      .limit(10)
+    return (data || []).filter((s: any) => plexComparablePredicate(s, subjectLAR))
+  }
+
+  if (specs.communityId) {
+    const c = await tierQuery('community_id', specs.communityId)
+    if (c.length > 0) return c
+  }
+  if (specs.municipalityId) {
+    const m = await tierQuery('municipality_id', specs.municipalityId)
+    if (m.length > 0) return m
+  }
+  // Area tier fallback (same as runPlexPricingPath area cascade)
+  if (specs.municipalityId) {
+    const { data: muni } = await supabase.from('municipalities').select('area_id').eq('id', specs.municipalityId).single()
+    if (muni?.area_id) {
+      const { data } = await supabase
+        .from('mls_listings')
+        .select(`${COMPETING_SELECT}, municipalities!inner(area_id)`)
+        .eq('municipalities.area_id', muni.area_id)
+        .eq('property_subtype', specs.propertySubtype)
+        .eq('transaction_type', 'For Sale')
+        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+        .eq('available_in_vow', true)
+        .gt('list_price', 100000)
+        .not('living_area_range', 'is', null)
+        .order('list_price', { ascending: true })
+        .limit(10)
+      const a = (data || []).filter((s: any) => plexComparablePredicate(s, subjectLAR))
+      if (a.length > 0) return a
+    }
+  }
+  return []
+}
+
+async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise<any[]> {
+  const subtypes = getCompatibleSubtypes(specs.propertySubtype)
+
+  const runFunnels = (clean: any[]): any[] => {
+    const strict = applyFunnel(clean, specs)
+    if (strict.length > 0) return strict.slice(0, 10)
+    const relaxed = applyRelaxedFunnel(clean, specs)
+    if (relaxed.length > 0) return relaxed.slice(0, 10)
+    // Last resort: bed+bath only with style-family + LAR-adjacent product gate
+    // (mirrors findHomeComparables muni-tier fallback).
+    const bedBath = clean.filter(s => {
+      if (s.bedrooms_total !== specs.bedrooms) return false
+      if (Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) > 1) return false
+      const saleStyle = s.architectural_style?.[0] || null
+      if (specs.architecturalStyle && saleStyle &&
+          saleStyle !== specs.architecturalStyle &&
+          !isSameStyleFamily(saleStyle, specs.architecturalStyle || null)) return false
+      if (specs.livingAreaRange && s.living_area_range !== specs.livingAreaRange &&
+          !isAdjacentRange(s.living_area_range, specs.livingAreaRange)) return false
+      return true
+    })
+    return bedBath.slice(0, 10)
+  }
+
+  if (specs.communityId) {
+    const { data: comm } = await supabase
+      .from('mls_listings')
+      .select(COMPETING_SELECT)
+      .eq('community_id', specs.communityId)
+      .in('property_subtype', subtypes)
+      .eq('transaction_type', 'For Sale')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .eq('available_in_vow', true)
+      .gt('list_price', 100000)
+      .order('list_price', { ascending: true })
+      .limit(300)
+    if (comm && comm.length > 0) {
+      const pool = runFunnels(comm.filter(notAsIs))
+      if (pool.length > 0) return pool
+    }
+  }
+  if (specs.municipalityId) {
+    const { data: muni } = await supabase
+      .from('mls_listings')
+      .select(COMPETING_SELECT)
+      .eq('municipality_id', specs.municipalityId)
+      .in('property_subtype', subtypes)
+      .eq('transaction_type', 'For Sale')
+      .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
+      .eq('available_in_vow', true)
+      .gt('list_price', 100000)
+      .order('list_price', { ascending: true })
+      .limit(500)
+    if (muni && muni.length > 0) {
+      const pool = runFunnels(muni.filter(notAsIs))
+      if (pool.length > 0) return pool
+    }
+  }
+  return []
+}
+
+// Public entry. Branches per type and attaches media thumbnails (same shape
+// as competing-listings/route.ts previously did). The /api/charlie/competing-
+// listings home path delegates to this function for all types.
+export async function findActiveCompetition(specs: HomeSpecs): Promise<any[]> {
+  const supabase = createClient()
+  const isPlex = MULTI_UNIT_SUBTYPES.includes(specs.propertySubtype)
+  const results = isPlex
+    ? await findActiveCompetitionPlex(specs, supabase)
+    : await findActiveCompetitionSF(specs, supabase)
+  if (results.length === 0) return []
+
+  // Media thumbnail join (mirrors the existing pattern; same SELECT + join).
+  const ids = results.map(r => r.id).filter(Boolean)
+  if (ids.length === 0) return results.map(r => ({ ...r, mediaUrl: null }))
+  const { data: media } = await supabase
+    .from('media')
+    .select('listing_id, media_url')
+    .in('listing_id', ids)
+    .eq('variant_type', 'thumbnail')
+    .eq('order_number', 0)
+  const mediaMap: Record<string, string> = {}
+  ;(media || []).forEach((m: any) => { mediaMap[m.listing_id] = m.media_url })
+  return results.map(r => ({ ...r, mediaUrl: mediaMap[r.id] || null }))
 }
 
 // ============ MAIN FUNCTION ============
@@ -690,7 +909,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
 
     if (communitySales && communitySales.length > 0) {
       // Filter out "as is" properties
-      const cleanSales = communitySales.filter(s => !isAsIs(s.public_remarks))
+      const cleanSales = communitySales.filter(notAsIs)
 
       // Apply funnel: style + age + size
       const funneled = applyFunnel(cleanSales, specs)
@@ -710,7 +929,9 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
 
         const bestScore = scored[0].score
         const tier = tierFromScore(bestScore, scored.length)
-        const comps = scored.slice(0, 10).map(s => createHomeComparable(s.sale, specs, s.score))
+        const top = scored.slice(0, 10)
+        const withMedia = await attachMediaUrls(top.map(s => s.sale))
+        const comps = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
 
         return { tier, comparables: comps, geoLevel: 'community', bestMatchScore: bestScore }
       }
@@ -725,7 +946,9 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
 
         const bestScore = scored[0].score
         const tier = tierFromScore(bestScore, scored.length)
-        const comps = scored.slice(0, 10).map(s => createHomeComparable(s.sale, specs, s.score))
+        const top = scored.slice(0, 10)
+        const withMedia = await attachMediaUrls(top.map(s => s.sale))
+        const comps = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
 
         return { tier, comparables: comps, geoLevel: 'community', bestMatchScore: bestScore }
       }
@@ -750,7 +973,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
     const { data: muniSales } = await qMuni
 
     if (muniSales && muniSales.length > 0) {
-      const cleanSales = muniSales.filter(s => !isAsIs(s.public_remarks))
+      const cleanSales = muniSales.filter(notAsIs)
 
       // Try strict funnel first
       let pool = applyFunnel(cleanSales, specs)
@@ -766,7 +989,9 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
 
         const bestScore = scored[0].score
         const tier = tierFromScore(bestScore, scored.length)
-        const comps = scored.slice(0, 10).map(s => createHomeComparable(s.sale, specs, s.score))
+        const top = scored.slice(0, 10)
+        const withMedia = await attachMediaUrls(top.map(s => s.sale))
+        const comps = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
 
         return { tier, comparables: comps, geoLevel: 'municipality', bestMatchScore: bestScore }
       }
@@ -791,7 +1016,9 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
         })).sort((a, b) => b.score - a.score)
 
         const bestScore = scored[0].score
-        const comps = scored.slice(0, 10).map(s => createHomeComparable(s.sale, specs, s.score))
+        const top = scored.slice(0, 10)
+        const withMedia = await attachMediaUrls(top.map(s => s.sale))
+        const comps = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
 
         return { tier: 'CONTACT', comparables: comps, geoLevel: 'municipality', bestMatchScore: bestScore }
       }

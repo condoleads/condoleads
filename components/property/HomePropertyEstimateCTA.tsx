@@ -6,6 +6,7 @@ import { EstimateResult } from '@/lib/estimator/types'
 import HomeEstimatorResults from '@/app/estimator/components/HomeEstimatorResults'
 import { extractExactSqft } from '@/lib/estimator/types'
 import type { HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
+import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
 
 interface HomePropertyEstimateCTAProps {
   listing: any
@@ -19,6 +20,12 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
   const [error, setError] = useState<string | null>(null)
 
   const exactSqft = extractExactSqft(listing.square_foot_source)
+
+  // h3 fix — Competing-For-Sale fetch (shared hook with HomeEstimatorBuyerModal).
+  // Plex-only — SF subjects never hit the fetch. This component is the
+  // auto-run estimator on /property URLs; previously the competing rail
+  // never populated here because the fetch was wired only to the modal.
+  const { competingListings, fetchCompetingListings } = useCompetingListings()
 
   useEffect(() => {
     // Only estimate for sale listings (rent estimation not yet built for homes)
@@ -54,6 +61,20 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
         const response = await estimateHomeSale(specs, false)
         if (response.success && response.data) {
           setResult(response.data)
+          // h3 refinement — Competing-For-Sale fetch. The server's
+          // findActiveCompetition mirrors the sold-comp matching for the
+          // subject's type (plex axis or SF funnel). Thread the full
+          // specs the matcher needs.
+          fetchCompetingListings({
+            propertySubtype: listing.property_subtype,
+            communityId: listing.community_id,
+            municipalityId: listing.municipality_id,
+            bedrooms: specs.bedrooms,
+            bathrooms: specs.bathrooms,
+            livingAreaRange: specs.livingAreaRange,
+            architecturalStyle: specs.architecturalStyle,
+            approximateAge: specs.approximateAge,
+          })
         } else {
           setError(response.error || 'Failed to calculate estimate')
         }
@@ -64,7 +85,7 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
     }
 
     runEstimate()
-  }, [listing, isSale, exactSqft, agentId])
+  }, [listing, isSale, exactSqft, agentId, fetchCompetingListings])
 
   if (!isSale) return null
 
@@ -105,6 +126,7 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
         subjectSubtype={listing.property_subtype?.trim() || null}
         subjectNoi={(listing as any).net_operating_income}
         subjectListPrice={listing.list_price}
+        competingListings={competingListings}
         propertySpecs={{
           bedrooms: listing.bedrooms_total,
           bathrooms: parseFloat(listing.bathrooms_total_integer) || 0,

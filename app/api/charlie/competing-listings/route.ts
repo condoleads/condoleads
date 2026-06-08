@@ -1,17 +1,29 @@
 // app/api/charlie/competing-listings/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { MULTI_UNIT_SUBTYPES } from '@/lib/estimator/home-comparable-matcher-sales'
+import { findActiveCompetition, type HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
 
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const body = await req.json()
-  const { path, communityId, municipalityId, bedrooms, livingAreaRange, propertySubtype } = body
+  const {
+    path,
+    communityId,
+    municipalityId,
+    bedrooms,
+    bathrooms,
+    livingAreaRange,
+    propertySubtype,
+    // h3 refinement — SF funnels need these for same-as-sold matching
+    architecturalStyle,
+    approximateAge,
+  } = body
 
   try {
     let listings: any[] = []
 
     if (path === 'condo' && communityId) {
+      // Condo path unchanged — separate matcher, bed+LAR exact at community.
       let query = supabase
         .from('mls_listings')
         .select('id, listing_key, list_price, unparsed_address, bedrooms_total, bathrooms_total_integer, living_area_range, days_on_market, approximate_age, association_fee, property_subtype, unit_number')
@@ -20,7 +32,7 @@ export async function POST(req: NextRequest) {
         .eq('transaction_type', 'For Sale')
         .eq('community_id', communityId)
         .eq('bedrooms_total', bedrooms)
-        .gt('list_price', 100000)  // h2 F-PLEX-TILE-JUNK-PRICE: exclude $1 call-for-price placeholders
+        .gt('list_price', 100000)
         .order('list_price', { ascending: true })
         .limit(10)
 
@@ -30,70 +42,39 @@ export async function POST(req: NextRequest) {
 
       const { data, error } = await query
       if (error) throw error
-      listings = data || []
-    }
-
-    if (path === 'home' && municipalityId) {
-      // For homes: match on bedrooms + subtype only — livingAreaRange too restrictive
-      const isMultiUnit = !!propertySubtype && MULTI_UNIT_SUBTYPES.includes(propertySubtype)
-
-      let query = supabase
-        .from('mls_listings')
-        .select('id, listing_key, list_price, unparsed_address, bedrooms_total, bathrooms_total_integer, living_area_range, days_on_market, approximate_age, property_subtype, frontage_length, lot_size_area, net_operating_income, gross_revenue')
-        .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
-        .eq('available_in_vow', true)
-        .eq('transaction_type', 'For Sale')
-        .eq('municipality_id', municipalityId)
-        .gt('list_price', 100000)  // h2 F-PLEX-TILE-JUNK-PRICE: exclude $1 call-for-price placeholders
-        .order('list_price', { ascending: true })
-        .limit(10)
-
-      // g2: for multi-unit subjects, widen subtype to class (Duplex/Triplex/
-      // Fourplex/Multiplex) for orange-to-orange containment; single-family
-      // subjects preserve exact-subtype behavior unchanged.
-      if (propertySubtype) {
-        if (isMultiUnit) {
-          query = query.in('property_subtype', MULTI_UNIT_SUBTYPES)
-        } else {
-          query = query.eq('property_subtype', propertySubtype)
-        }
+      const rows = data || []
+      // Condo path: attach media inline (no shared helper yet).
+      if (rows.length > 0) {
+        const ids = rows.map((l: any) => l.id)
+        const { data: media } = await supabase
+          .from('media').select('listing_id, media_url').in('listing_id', ids)
+          .eq('variant_type', 'thumbnail').eq('order_number', 0)
+        const mediaMap: Record<string, string> = {}
+        media?.forEach((m: any) => { mediaMap[m.listing_id] = m.media_url })
+        listings = rows.map((l: any) => ({ ...l, mediaUrl: mediaMap[l.id] || null }))
       }
+    }
 
-      // g2: bedrooms_total exact-match for SINGLE-FAMILY only. On plex,
-      // bedrooms_total is a cross-unit SUM (wrong axis for comparability) —
-      // gating competition on it reintroduces the single-family-scoring
-      // error that g1's gate switch just removed.
-      if (!isMultiUnit) {
-        query = query.eq('bedrooms_total', bedrooms)
+    if (path === 'home') {
+      // h3 refinement: delegate to findActiveCompetition — same matching
+      // criteria as the SOLD-comp pipeline, branched per subject type.
+      // Plex: same-subtype + LAR-adjacent + community→muni→area.
+      // SF:   getCompatibleSubtypes + notAsIs + applyFunnel/relaxed/last-resort
+      //       + community→muni. Both attach media thumbnails.
+      const specs: HomeSpecs = {
+        bedrooms: bedrooms || 0,
+        bathrooms: bathrooms || 0,
+        propertySubtype: propertySubtype?.trim() || 'Detached',
+        communityId: communityId || null,
+        municipalityId: municipalityId || null,
+        livingAreaRange: livingAreaRange || '',
+        architecturalStyle: architecturalStyle || null,
+        approximateAge: approximateAge || null,
       }
-
-      const { data, error } = await query
-      if (error) throw error
-      listings = data || []
+      listings = await findActiveCompetition(specs)
     }
 
-    if (!listings.length) {
-      return NextResponse.json({ success: true, listings: [] })
-    }
-
-    // Fetch thumbnail media
-    const listingIds = listings.map((l: any) => l.id)
-    const { data: media } = await supabase
-      .from('media')
-      .select('listing_id, media_url')
-      .in('listing_id', listingIds)
-      .eq('variant_type', 'thumbnail')
-      .eq('order_number', 0)
-
-    const mediaMap: Record<string, string> = {}
-    media?.forEach((m: any) => { mediaMap[m.listing_id] = m.media_url })
-
-    const enriched = listings.map((l: any) => ({
-      ...l,
-      mediaUrl: mediaMap[l.id] || null,
-    }))
-
-    return NextResponse.json({ success: true, listings: enriched })
+    return NextResponse.json({ success: true, listings })
   } catch (err: any) {
     console.error('[competing-listings]', err)
     return NextResponse.json({ success: false, error: err.message, listings: [] })

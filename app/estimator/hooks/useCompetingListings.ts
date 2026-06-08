@@ -1,0 +1,77 @@
+// h3 fix — single source of truth for the Competing-For-Sale fetch.
+//
+// Both estimator surfaces (HomeEstimatorBuyerModal — modal trigger from geo
+// pages + property-page secondary CTA; HomePropertyEstimateCTA — auto-run on
+// the single-property page) need IDENTICAL fetch behavior. h2-finish wired
+// only the modal; the CTA stayed un-wired and the competing rail never
+// rendered on /property URLs. The drift root cause: two places to keep in
+// sync. This hook collapses that to one.
+//
+// h3 refinement: gate is now "has municipalityId" — the server-side
+// findActiveCompetition branches on subject type and applies the correct
+// matching criteria (plex same-subtype+LAR-adjacent vs SF funnel pipeline).
+// Client doesn't decide whether to fetch by type; the server returns the
+// right pool for any home subject.
+'use client'
+
+import { useState, useCallback } from 'react'
+import type { CompetingListing } from '@/app/estimator/components/HomeEstimatorResults'
+
+interface FetchParams {
+  propertySubtype?: string | null
+  // h3 refinement: communityId added so the competing rail can cascade
+  // community → muni → area (mirrors the sold pool's geography).
+  communityId?: string | null
+  municipalityId?: string | null
+  bedrooms?: number | null
+  bathrooms?: number | null
+  livingAreaRange?: string | null
+  // h3 refinement: SF funnels need style + age to match the sold-comp pool.
+  architecturalStyle?: string | null
+  approximateAge?: string | null
+}
+
+export function useCompetingListings() {
+  const [competingListings, setCompetingListings] = useState<CompetingListing[]>([])
+
+  const fetchCompetingListings = useCallback(async (params: FetchParams) => {
+    const subtype = params.propertySubtype?.trim() || null
+    // h3 refinement: gate is no longer plex-only — SF subjects ALSO get a
+    // competing rail (same matching criteria as their sold-comp pool). Both
+    // types need municipalityId for the cascade. Subjects without it skip.
+    if (!subtype || !params.municipalityId) {
+      setCompetingListings([])
+      return
+    }
+    try {
+      const res = await fetch('/api/charlie/competing-listings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: 'home',
+          communityId: params.communityId,
+          municipalityId: params.municipalityId,
+          bedrooms: params.bedrooms,
+          bathrooms: params.bathrooms,
+          livingAreaRange: params.livingAreaRange,
+          propertySubtype: subtype,
+          architecturalStyle: params.architecturalStyle,
+          approximateAge: params.approximateAge,
+        }),
+      })
+      const d = await res.json()
+      if (d?.success && Array.isArray(d.listings)) {
+        setCompetingListings(d.listings as CompetingListing[])
+      } else {
+        setCompetingListings([])
+      }
+    } catch (err) {
+      console.error('competing-listings fetch failed:', err)
+      setCompetingListings([])
+    }
+  }, [])
+
+  const resetCompetingListings = useCallback(() => setCompetingListings([]), [])
+
+  return { competingListings, fetchCompetingListings, resetCompetingListings }
+}
