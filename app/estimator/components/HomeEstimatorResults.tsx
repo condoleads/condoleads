@@ -9,6 +9,27 @@ import { MessageSquare, AlertTriangle, Phone } from 'lucide-react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 import { useAuth } from '@/components/auth/AuthContext'
+import { MULTI_UNIT_SUBTYPES } from '@/lib/estimator/home-comparable-matcher-sales'
+
+// h2 finish — Competing-For-Sale rail tile shape (LOCKED v11 Option C, same
+// tile as the sold-comp rail). Shape mirrors the /api/charlie/competing-
+// listings response (home path), trimmed to the fields the tile renders.
+// Income signals carried for plex tiles only — silent-omit per-field.
+export interface CompetingListing {
+  id: string
+  listing_key: string
+  list_price: number
+  unparsed_address: string | null
+  bedrooms_total: number | null
+  bathrooms_total_integer: number | null
+  living_area_range: string | null
+  days_on_market: number | null
+  approximate_age: number | null
+  property_subtype: string | null
+  net_operating_income?: number | null
+  gross_revenue?: number | null
+  mediaUrl?: string | null
+}
 
 interface EstimatorResultsProps {
   result: EstimateResult
@@ -19,6 +40,10 @@ interface EstimatorResultsProps {
   unitNumber?: string
   agentId?: string
   listingId?: string
+  subjectSubtype?: string | null
+  subjectNoi?: number | null
+  subjectListPrice?: number | null
+  competingListings?: CompetingListing[]
   propertySpecs: any
 }
 
@@ -31,6 +56,10 @@ export default function HomeEstimatorResults({
   unitNumber,
   agentId,
   listingId,
+  subjectSubtype,
+  subjectNoi,
+  subjectListPrice,
+  competingListings,
   propertySpecs
 }: EstimatorResultsProps) {
   const isSale = type === 'sale' || type === 'estimator'
@@ -86,6 +115,11 @@ export default function HomeEstimatorResults({
     'MAINT-ADJ': { label: 'Similar Homes (Adjusted)', description: 'Similar homes with lot & feature adjustments' },
     'CONTACT': { label: 'Market Reference', description: 'Recent sales for context only' }
   }
+
+  // g4: class-aware copy flag for the CONTACT branch. Single-family strings
+  // stay byte-identical to pre-g4; multi-unit subjects see class-appropriate
+  // variants on the comp-rail header, sub-heading, and footer.
+  const isMultiUnitSubject = !!subjectSubtype && MULTI_UNIT_SUBTYPES.includes(subjectSubtype)
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -184,6 +218,21 @@ export default function HomeEstimatorResults({
             <p className="text-lg text-blue-100 max-w-lg mx-auto">
               {result.confidenceMessage || 'Your home has unique characteristics that require professional analysis for accurate pricing.'}
             </p>
+            {/* g3: cap-rate context line — multi-unit only, renders ONLY when
+                the subject listing carries multi-unit subtype + NOI > 0 +
+                list_price > 0. Geo-page entry omits silently (loader doesn't
+                select NOI). Single-family / condo / mixed-use suppressed by
+                the subtype guard even if NOI happens to be non-null. No "—%",
+                no "N/A", no zero — silent omission per accurate-or-nothing.
+                One-decimal precision matches input honesty (single reported
+                NOI ÷ asking is not 2-decimal-accurate). */}
+            {subjectSubtype && MULTI_UNIT_SUBTYPES.includes(subjectSubtype)
+              && subjectNoi != null && subjectNoi > 0
+              && subjectListPrice != null && subjectListPrice > 0 && (
+              <div className="mt-4 inline-block bg-white/10 rounded-lg px-4 py-2 text-sm text-blue-100">
+                Reported NOI {formatPrice(subjectNoi)} — implied ~{((subjectNoi / subjectListPrice) * 100).toFixed(1)}% cap at asking
+              </div>
+            )}
           </div>
 
           {/* Contact Form */}
@@ -263,9 +312,15 @@ export default function HomeEstimatorResults({
             <div className="flex items-start gap-3 mb-6">
               <AlertTriangle className="w-6 h-6 text-amber-500 flex-shrink-0 mt-1" />
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Market Reference (Not Direct Comparables)</h3>
+                <h3 className="text-lg font-bold text-slate-900">
+                  {isMultiUnitSubject
+                    ? 'Recent Multi-Unit Sales (Reference Context)'
+                    : 'Market Reference (Not Direct Comparables)'}
+                </h3>
                 <p className="text-sm text-slate-600 mt-1">
-                  These recent sales in your area differ from your home but provide market context.
+                  {isMultiUnitSubject
+                    ? 'These recent multi-unit sales in your area provide context for the valuation conversation with your agent.'
+                    : 'These recent sales in your area differ from your home but provide market context.'}
                 </p>
               </div>
             </div>
@@ -327,7 +382,7 @@ export default function HomeEstimatorResults({
             </div>
 
             <p className="text-xs text-slate-500 mt-4 text-center">
-              ⚠️ These are for reference only. Contact agent for accurate valuation of your home.
+              ⚠️ These are for reference only. Contact agent for accurate valuation of your {isMultiUnitSubject ? 'property' : 'home'}.
             </p>
           </div>
         )}
@@ -467,14 +522,24 @@ export default function HomeEstimatorResults({
         {/* Comparables with Temperature */}
         <div>
           <h3 className="text-lg font-bold text-slate-900 mb-4">
-            {result.matchTier === 'BINGO' ? 'Perfect Matches' : 
-             result.matchTier === 'BINGO-ADJ' ? 'Perfect Matches (Adjusted)' : 
-             result.matchTier === 'RANGE' ? 'Comparable Homes' :
-             result.matchTier === 'RANGE-ADJ' ? 'Comparable Homes (Adjusted)' :
-             result.matchTier === 'MAINT' ? 'Similar Homes' :
-             result.matchTier === 'MAINT-ADJ' ? 'Similar Homes (Adjusted)' :
-             'Comparables'} ({result.comparables.length})
+            {isMultiUnitSubject
+              ? `Recent ${subjectSubtype} Sales (Plex Reference)`
+              : (
+                result.matchTier === 'BINGO' ? 'Perfect Matches' :
+                result.matchTier === 'BINGO-ADJ' ? 'Perfect Matches (Adjusted)' :
+                result.matchTier === 'RANGE' ? 'Comparable Homes' :
+                result.matchTier === 'RANGE-ADJ' ? 'Comparable Homes (Adjusted)' :
+                result.matchTier === 'MAINT' ? 'Similar Homes' :
+                result.matchTier === 'MAINT-ADJ' ? 'Similar Homes (Adjusted)' :
+                'Comparables'
+              )} ({result.comparables.length})
           </h3>
+          {/* h2 Phase 2: plex educational one-liner — these properties price on income, not on bed/bath/sqft */}
+          {isMultiUnitSubject && (
+            <p className="text-xs text-slate-600 mb-3 italic">
+              Multi-unit properties are valued on rental income, not size — figures below show each comp&apos;s income where reported.
+            </p>
+          )}
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
             {result.comparables.map((comp, idx) => {
               const hasAdjustments = comp.adjustments && comp.adjustments.length > 0
@@ -506,8 +571,30 @@ export default function HomeEstimatorResults({
                     </div>
                   </div>
 
-                  {/* Match Details for BINGO / BINGO-ADJ */}
-                  {(result.matchTier === 'BINGO' || result.matchTier === 'BINGO-ADJ') && (
+                  {/* h2 Phase 2: per-tile income signals (plex only). Each signal silent-omits when null/<=0.
+                      Cap Rate derived = NOI ÷ closePrice × 100 (annualized %). Fill is sparse (7-15% Duplex/Triplex/
+                      Fourplex, 0% Multiplex) — tiles without data simply skip this row. */}
+                  {isMultiUnitSubject && (
+                    ((comp.netOperatingIncome ?? 0) > 0 || (comp.grossRevenue ?? 0) > 0) && (
+                      <div className="bg-indigo-50 rounded-lg p-3 mb-3 border border-indigo-200">
+                        <p className="text-xs font-semibold text-indigo-900 mb-1.5">💰 Income</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
+                          {(comp.netOperatingIncome ?? 0) > 0 && (
+                            <span><span className="font-semibold">NOI:</span> {formatPrice(comp.netOperatingIncome as number)}/yr</span>
+                          )}
+                          {(comp.grossRevenue ?? 0) > 0 && (
+                            <span><span className="font-semibold">Gross Rent:</span> {formatPrice(comp.grossRevenue as number)}/yr</span>
+                          )}
+                          {(comp.netOperatingIncome ?? 0) > 0 && comp.closePrice > 0 && (
+                            <span><span className="font-semibold">Cap Rate:</span> {(((comp.netOperatingIncome as number) / comp.closePrice) * 100).toFixed(1)}%</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  )}
+
+                  {/* Match Details for BINGO / BINGO-ADJ (SF only — SF axes panel; hidden for plex per h2) */}
+                  {!isMultiUnitSubject && (result.matchTier === 'BINGO' || result.matchTier === 'BINGO-ADJ') && (
                     <div className="bg-emerald-50 rounded-lg p-4 mb-3 border border-emerald-200">
                       <p className="text-xs font-semibold text-emerald-900 mb-2">🎯 {result.matchTier === 'BINGO' ? 'Perfect Match' : 'Perfect Match (Adjusted)'}:</p>
                       <div className="space-y-1 text-xs">
@@ -527,8 +614,8 @@ export default function HomeEstimatorResults({
                     </div>
                   )}
 
-                  {/* Match Details for RANGE / RANGE-ADJ */}
-                  {(result.matchTier === 'RANGE' || result.matchTier === 'RANGE-ADJ') && (
+                  {/* Match Details for RANGE / RANGE-ADJ (SF only — SF axes panel; hidden for plex per h2) */}
+                  {!isMultiUnitSubject && (result.matchTier === 'RANGE' || result.matchTier === 'RANGE-ADJ') && (
                     <div className="bg-blue-50 rounded-lg p-4 mb-3 border border-blue-200">
                       <p className="text-xs font-semibold text-blue-900 mb-2">📊 {result.matchTier === 'RANGE' ? 'Same Size Match' : 'Same Size Match (Adjusted)'}:</p>
                       <div className="space-y-1 text-xs">
@@ -548,8 +635,8 @@ export default function HomeEstimatorResults({
                     </div>
                   )}
 
-                  {/* Match Details for MAINT / MAINT-ADJ */}
-                  {(result.matchTier === 'MAINT' || result.matchTier === 'MAINT-ADJ') && (
+                  {/* Match Details for MAINT / MAINT-ADJ (SF only — SF axes panel; hidden for plex per h2) */}
+                  {!isMultiUnitSubject && (result.matchTier === 'MAINT' || result.matchTier === 'MAINT-ADJ') && (
                     <div className="bg-amber-50 rounded-lg p-4 mb-3 border border-amber-200">
                       <p className="text-xs font-semibold text-amber-900 mb-2">🔧 {result.matchTier === 'MAINT' ? 'Similar Size Match' : 'Similar Size Match (Adjusted)'}:</p>
                       <div className="space-y-1 text-xs">
@@ -636,6 +723,100 @@ export default function HomeEstimatorResults({
             })}
           </div>
         </div>
+
+        {/* h2 finish — Competing-For-Sale rail (LOCKED v11 Option C, Principle 5).
+            Plex-only. Same plex tile shape as the sold-comp rail: bed/bath/sqft
+            header, no SF chrome, income block (NOI/Gross/Cap) silent-omits per
+            field. Cap rate here uses list_price as denominator (asking-cap, not
+            sold-cap). Header is framed forward with count + price range as the
+            tracker spec. SF surfaces never receive competingListings so this
+            entire block stays inert on Detached/Semi/Town/Link. */}
+        {isMultiUnitSubject && competingListings && competingListings.length > 0 && (() => {
+          const sortedByPrice = [...competingListings].sort((a, b) => a.list_price - b.list_price)
+          const low = sortedByPrice[0].list_price
+          const high = sortedByPrice[sortedByPrice.length - 1].list_price
+          return (
+            <div className="mt-8">
+              <h3 className="text-lg font-bold text-slate-900 mb-1">
+                Competing For Sale ({competingListings.length})
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                {competingListings.length} similar plex listing{competingListings.length === 1 ? '' : 's'} on the market now, {formatPrice(low)}–{formatPrice(high)} — your competition.
+              </p>
+              <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                {competingListings.map((cl, idx) => {
+                  const noi   = cl.net_operating_income ?? 0
+                  const gross = cl.gross_revenue ?? 0
+                  const showIncomeBlock = noi > 0 || gross > 0
+                  return (
+                    <div key={cl.id ?? idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            {cl.unparsed_address && (
+                              <span className="text-sm font-semibold text-slate-500">{cl.unparsed_address.split(',')[0]}</span>
+                            )}
+                            <p className="font-bold text-slate-900 text-lg">
+                              {cl.bedrooms_total ?? 0} bed, {cl.bathrooms_total_integer ?? 0} bath
+                            </p>
+                            {cl.property_subtype && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                {cl.property_subtype}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-600">
+                            {cl.living_area_range || 'Unknown'} sqft
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Listed: {cl.days_on_market != null ? `${cl.days_on_market} days on market` : 'recently listed'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {showIncomeBlock && (
+                        <div className="bg-indigo-50 rounded-lg p-3 mb-3 border border-indigo-200">
+                          <p className="text-xs font-semibold text-indigo-900 mb-1.5">💰 Income</p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
+                            {noi > 0 && (
+                              <span><span className="font-semibold">NOI:</span> {formatPrice(noi)}/yr</span>
+                            )}
+                            {gross > 0 && (
+                              <span><span className="font-semibold">Gross Rent:</span> {formatPrice(gross)}/yr</span>
+                            )}
+                            {noi > 0 && cl.list_price > 0 && (
+                              <span><span className="font-semibold">Cap Rate (at asking):</span> {((noi / cl.list_price) * 100).toFixed(1)}%</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="bg-white rounded-lg p-4 mt-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-slate-600">Asking Price:</span>
+                          <span className="text-lg font-bold text-slate-900">{formatPrice(cl.list_price)}</span>
+                        </div>
+                        {cl.listing_key && cl.unparsed_address && (
+                          <a
+                            href={generateHomePropertySlug({
+                              unparsed_address: cl.unparsed_address,
+                              listing_key: cl.listing_key
+                            })}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                          >
+                            View Property Details →
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Standard Disclaimer */}
         <div className="text-xs text-slate-500 pt-4 border-t">

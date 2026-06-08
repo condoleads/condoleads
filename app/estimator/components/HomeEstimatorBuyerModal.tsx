@@ -5,8 +5,9 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { estimateHomeSale } from '../actions/estimate-home-sale'
 import { EstimateResult } from '@/lib/estimator/types'
-import HomeEstimatorResults from './HomeEstimatorResults'
+import HomeEstimatorResults, { CompetingListing } from './HomeEstimatorResults'
 import { MLSListing } from '@/lib/types/building'
+import { MULTI_UNIT_SUBTYPES } from '@/lib/estimator/home-comparable-matcher-sales'
 import { useAuth } from '@/components/auth/AuthContext'
 import VipPrompt from '@/components/chat/VipPrompt'
 import VipRequestForm, { VipRequestData } from '@/components/chat/VipRequestForm'
@@ -51,6 +52,11 @@ export default function HomeEstimatorBuyerModal({
   const [error, setError] = useState<string | null>(null)
   const [geoLevel, setGeoLevel] = useState<string | null>(null)
   const [showRegister, setShowRegister] = useState(false)
+  // h2 finish — Principle 5 "Competing For Sale" rail: live active plex listings
+  // shown alongside the sold-comp rail in the SAME result panel (LOCKED v11
+  // Option C). Plex-only — fetch is gated on isMultiUnit at handleEstimate.
+  // SF surfaces stay byte-identical because they never trigger the fetch.
+  const [competingListings, setCompetingListings] = useState<CompetingListing[]>([])
 
   // VIP flow states
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -86,6 +92,7 @@ export default function HomeEstimatorBuyerModal({
       setShowWalliamForm(false)
       setShowWaiting(false)
       setShowBlocked(false)
+      setCompetingListings([])
     }
   }, [isOpen])
 
@@ -270,6 +277,33 @@ export default function HomeEstimatorBuyerModal({
         if (response.success && response.data) {
           setResult(response.data)
           setGeoLevel(response.geoLevel || null)
+
+          // h2 finish — fire-and-forget Competing-For-Sale fetch for plex
+          // subjects only (LOCKED v11 Option C two-rail spec, Principle 5).
+          // Fails silent: empty list keeps the rail hidden so the sold-comp
+          // result still renders cleanly. SF subjects never hit this path.
+          const subjectSubtype = listing.property_subtype?.trim()
+          const isMultiUnit = !!subjectSubtype && MULTI_UNIT_SUBTYPES.includes(subjectSubtype)
+          if (isMultiUnit && homeSpecs.municipalityId) {
+            fetch('/api/charlie/competing-listings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                path: 'home',
+                municipalityId: homeSpecs.municipalityId,
+                bedrooms: homeSpecs.bedrooms,
+                livingAreaRange: homeSpecs.livingAreaRange,
+                propertySubtype: subjectSubtype,
+              }),
+            })
+              .then(r => r.json())
+              .then(d => {
+                if (d?.success && Array.isArray(d.listings)) {
+                  setCompetingListings(d.listings as CompetingListing[])
+                }
+              })
+              .catch(err => console.error('competing-listings fetch failed:', err))
+          }
         } else {
           setError(response.error || 'Failed to calculate estimate')
         }
@@ -589,6 +623,10 @@ export default function HomeEstimatorBuyerModal({
               buildingName={displayAddress}
               agentId={agentId}
               listingId={listing?.id}
+              subjectSubtype={listing?.property_subtype?.trim() || null}
+              subjectNoi={(listing as any)?.net_operating_income}
+              subjectListPrice={listing?.list_price}
+              competingListings={competingListings}
               propertySpecs={{
                 bedrooms: listing.bedrooms_total || 0,
                 bathrooms: listing.bathrooms_total_integer || 0,

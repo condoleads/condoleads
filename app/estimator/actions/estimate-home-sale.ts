@@ -1,6 +1,6 @@
 // app/estimator/actions/estimate-home-sale.ts
 'use server'
-import { findHomeComparables, HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
+import { findHomeComparables, HomeSpecs, PLEX_PRICE_BAND_FRACTION } from '@/lib/estimator/home-comparable-matcher-sales'
 import { calculateEstimate } from '@/lib/estimator/statistical-calculator'
 import { EstimateResult } from '@/lib/estimator/types'
 import { createClient } from '@/lib/supabase/server'
@@ -54,6 +54,26 @@ export async function estimateHomeSale(
 
     // Step 2: Calculate estimate using existing statistical calculator
     const estimate = calculateEstimate(matchResult)
+
+    // h1: plex-axis pricing override. runPlexPricingPath sets matchResult.
+    // estimatedPrice as the MEDIAN of matched same-subtype LAR-adjacent
+    // comps (per backtest 2026-06-08). The calculator's score-weighted mean
+    // would differ from the measured median on plex pools; override to keep
+    // production aligned with the 17.4% Duplex / 22.1% Triplex measurements.
+    // Band is subtype-aware, derived from the measured median APE — NOT a
+    // fixed 8%. An ±8% band would claim confidence we measured ourselves
+    // NOT to have. PLEX_PRICE_BAND_FRACTION is the single source of truth
+    // for the band (matcher constant, exported).
+    if (matchResult.estimatedPrice !== undefined && matchResult.estimatedPrice > 0) {
+      const bandFraction = PLEX_PRICE_BAND_FRACTION[specs.propertySubtype]
+      if (bandFraction !== undefined) {
+        estimate.estimatedPrice = matchResult.estimatedPrice
+        estimate.priceRange = {
+          low:  Math.round(matchResult.estimatedPrice * (1 - bandFraction)),
+          high: Math.round(matchResult.estimatedPrice * (1 + bandFraction)),
+        }
+      }
+    }
 
     // Step 3: AI insights (if enabled).
     // W-FUNNEL §9.2 Step 1: AI key + opt-in toggle now resolve per system.

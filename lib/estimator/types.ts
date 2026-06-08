@@ -72,7 +72,13 @@ export interface ComparableSale {
   buildingSlug?: string
   unparsedAddress?: string
 
-  
+  // h2: income signals for plex comp tiles. Silent-omit when null/0 — fill
+  // rates are 7-15% on plex (per recon), so most tiles will not carry these.
+  // Cap-rate is derived per-tile from netOperatingIncome ÷ closePrice in the
+  // render layer; not stored on the comparable itself.
+  netOperatingIncome?: number | null
+  grossRevenue?: number | null
+
   // Match classification
   temperature?: Temperature
   matchTier?: MatchTier

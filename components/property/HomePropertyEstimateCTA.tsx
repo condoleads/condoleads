@@ -102,6 +102,9 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
         unitNumber=""
         agentId={agentId}
         listingId={listing.id}
+        subjectSubtype={listing.property_subtype?.trim() || null}
+        subjectNoi={(listing as any).net_operating_income}
+        subjectListPrice={listing.list_price}
         propertySpecs={{
           bedrooms: listing.bedrooms_total,
           bathrooms: parseFloat(listing.bathrooms_total_integer) || 0,

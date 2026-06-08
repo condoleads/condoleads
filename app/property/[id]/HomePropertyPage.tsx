@@ -181,6 +181,7 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
           .eq('transaction_type', listing.transaction_type)
           .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
           .eq('available_in_idx', true)
+          .gt('list_price', 100000)  // h2 F-PLEX-TILE-JUNK-PRICE: exclude $1 call-for-price placeholders
           .neq('id', listing.id)
           .order('list_price', { ascending: true })
           .limit(8)

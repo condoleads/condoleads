@@ -44,8 +44,29 @@ export interface HomeSpecs {
 interface HomeMatchResult {
   tier: MatchTier
   comparables: ComparableSale[]
-  geoLevel: 'street' | 'community' | 'municipality' | 'none'
+  geoLevel: 'street' | 'community' | 'municipality' | 'area' | 'none'
   bestMatchScore?: number
+  // h1: when set, server-action short-circuits calculateEstimate's mean
+  // aggregation and uses this value (the plex-axis median per backtest).
+  // Production must mirror the measurement; the calculator's mean would
+  // differ from the backtest's median on plex pools.
+  estimatedPrice?: number
+}
+
+// h1: per-subtype price-band fractions, keyed to the MEASURED median APE
+// from scripts-output/backtest-plex-axis.txt (2026-06-08). NOT a magic
+// number — the band is an honest reflection of the subtype's measured
+// error. Tightening below this would claim confidence we measured
+// ourselves NOT to have. h2/h4 may refine the band shape but the
+// floor stays at-or-above the measured median APE.
+//
+//   Duplex   median APE 17.4%  →  ±0.17
+//   Triplex  median APE 22.1%  →  ±0.22
+//
+// Fourplex/Multiplex are enrich-only (no priced path) — no band needed.
+export const PLEX_PRICE_BAND_FRACTION: Record<string, number> = {
+  Duplex:  0.17,
+  Triplex: 0.22,
 }
 
 // ============ DEFAULT ADJUSTMENT VALUES ============
@@ -58,7 +79,8 @@ const HOME_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
   days_on_market, close_date, tax_annual_amount, square_foot_source,
   association_fee, unparsed_address, property_subtype, architectural_style,
   approximate_age, lot_width, lot_depth, lot_size_area, basement,
-  garage_type, pool_features, public_remarks`
+  garage_type, pool_features, public_remarks,
+  net_operating_income, gross_revenue`
 
 // ============ STYLE FAMILIES ============
 
@@ -146,16 +168,20 @@ function isAsIs(remarks: string | null): boolean {
 
 // ============ PROPERTY TYPE MATCHING ============
 
+// Module-level multi-unit subtype set. Referenced by getCompatibleSubtypes (for
+// cascade .in() class-gating) AND by the (j) multi-unit CONTACT gate +
+// findMultiUnitContactComparables helper. Single source of truth.
+export const MULTI_UNIT_SUBTYPES = ['Duplex', 'Triplex', 'Fourplex', 'Multiplex']
+
 function getCompatibleSubtypes(subtype: string): string[] {
   const detachedTypes = ['Detached']
   const semiTypes = ['Semi-Detached']
   const townTypes = ['Att/Row/Townhouse', 'Link']
-  const multiTypes = ['Duplex', 'Triplex', 'Fourplex', 'Multiplex']
 
   if (detachedTypes.includes(subtype)) return detachedTypes
   if (semiTypes.includes(subtype)) return semiTypes
   if (townTypes.includes(subtype)) return townTypes
-  if (multiTypes.includes(subtype)) return multiTypes
+  if (MULTI_UNIT_SUBTYPES.includes(subtype)) return MULTI_UNIT_SUBTYPES
   return [subtype]
 }
 
@@ -403,14 +429,237 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
   }
 }
 
+// ============ MULTI-UNIT CONTACT (g1) ============
+
+// Plex-comp builder — populates only the fields the CONTACT-branch tile at
+// HomeEstimatorResults reads (closePrice/bedrooms/bathrooms/livingAreaRange/
+// parking/closeDate/unparsedAddress/listingKey/unitNumber). Intentionally
+// OMITS single-family-derived signals: temperature (recency datum, but the
+// 🔥/❄ badge presentation reads as match-quality), matchTier, matchQuality,
+// matchScore, adjustments, adjustedPrice. Plex tiles are honest reference,
+// not match-scored.
+function createMultiUnitContactComparable(sale: any): ComparableSale {
+  return {
+    closePrice: sale.close_price,
+    listPrice: sale.list_price,
+    bedrooms: sale.bedrooms_total,
+    bathrooms: sale.bathrooms_total_integer || 0,
+    livingAreaRange: sale.living_area_range || 'Unknown',
+    parking: sale.parking_total || 0,
+    locker: sale.locker || null,
+    daysOnMarket: sale.days_on_market || 0,
+    closeDate: sale.close_date,
+    unitNumber: sale.unit_number || undefined,
+    propertySubtype: sale.property_subtype,
+    listingKey: sale.listing_key,
+    unparsedAddress: sale.unparsed_address,
+    // h2 Phase 2: income signals for plex tile enrichment. Sparse (7-15% on
+    // Duplex/Triplex/Fourplex, 0% on Multiplex) — render layer silent-omits
+    // per-tile when these are null/0.
+    netOperatingIncome: sale.net_operating_income,
+    grossRevenue: sale.gross_revenue,
+  }
+}
+
+// Multi-unit CONTACT cascade. Class-contained via MULTI_UNIT_SUBTYPES at the
+// DB layer (orange-to-orange guaranteed). Community → muni → STATE-C empty.
+// Skips the single-family funnels (style/age/LAR are wrong axes for plex) and
+// skips the isAsIs filter (1.7-3.3% prevalence on plex; investor-flip sales
+// are legitimate plex comps). Returns CONTACT tier regardless of pool size;
+// no pricing computed; no bestMatchScore field (per g-build-recon).
+async function findMultiUnitContactComparables(specs: HomeSpecs): Promise<HomeMatchResult> {
+  const supabase = createClient()
+  const referenceDate = specs.asOfDate ?? new Date()
+  const twoYearsAgo = new Date(referenceDate)
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
+
+  // Community tier
+  if (specs.communityId) {
+    let qC = supabase
+      .from('mls_listings')
+      .select(HOME_SELECT)
+      .eq('community_id', specs.communityId)
+      .in('property_subtype', MULTI_UNIT_SUBTYPES)
+      .eq('transaction_type', 'For Sale')
+      .eq('standard_status', 'Closed')
+      .not('close_price', 'is', null)
+      .gt('close_price', 100000)
+      .gte('close_date', twoYearsAgo.toISOString())
+      .order('close_date', { ascending: false })
+      .limit(10)
+    if (specs.asOfDate) qC = qC.lt('close_date', referenceDate.toISOString())
+    const { data: cSales } = await qC
+    if (cSales && cSales.length > 0) {
+      return {
+        tier: 'CONTACT',
+        comparables: cSales.map(createMultiUnitContactComparable),
+        geoLevel: 'community',
+      }
+    }
+  }
+
+  // Muni tier fallback
+  if (specs.municipalityId) {
+    let qM = supabase
+      .from('mls_listings')
+      .select(HOME_SELECT)
+      .eq('municipality_id', specs.municipalityId)
+      .in('property_subtype', MULTI_UNIT_SUBTYPES)
+      .eq('transaction_type', 'For Sale')
+      .eq('standard_status', 'Closed')
+      .not('close_price', 'is', null)
+      .gt('close_price', 100000)
+      .gte('close_date', twoYearsAgo.toISOString())
+      .order('close_date', { ascending: false })
+      .limit(10)
+    if (specs.asOfDate) qM = qM.lt('close_date', referenceDate.toISOString())
+    const { data: mSales } = await qM
+    if (mSales && mSales.length > 0) {
+      return {
+        tier: 'CONTACT',
+        comparables: mSales.map(createMultiUnitContactComparable),
+        geoLevel: 'municipality',
+      }
+    }
+  }
+
+  // STATE-C honest empty
+  return { tier: 'CONTACT', comparables: [], geoLevel: 'none' }
+}
+
+// ============ PLEX PRICING (h1) ============
+
+// h1 helper: build a priced HomeMatchResult from matched plex comps.
+// MEDIAN of close_price (per v12 "median, not mean" — robust to outliers
+// in the noisy plex pool). Top 10 most-recent comps surfaced as tiles via
+// createMultiUnitContactComparable (g1 builder; omits SF-derived signals).
+function buildPricedPlexResult(
+  comps: any[],
+  geoLevel: 'community' | 'municipality' | 'area'
+): HomeMatchResult {
+  const prices = comps.map(s => parseFloat(s.close_price)).sort((a, b) => a - b)
+  const mid = Math.floor(prices.length / 2)
+  const median = prices.length % 2 === 0
+    ? (prices[mid - 1] + prices[mid]) / 2
+    : prices[mid]
+  return {
+    tier: 'RANGE',  // h2 will refine to plex-specific tier labels
+    comparables: comps.slice(0, 10).map(createMultiUnitContactComparable),
+    geoLevel,
+    estimatedPrice: Math.round(median),
+  }
+}
+
+// h1: plex-axis pricing path — MIRRORS scripts/backtest-plex-axis.js EXACTLY.
+// Same-subtype + LAR-adjacent + community→muni→area cascade + median-of-
+// matched-comp close_price. The backtest measured Duplex 17.4% median,
+// Triplex 22.1% median on this logic; production must match.
+//
+// Thin pool (<3 comps in any tier) → falls back to enrich-only CONTACT via
+// findMultiUnitContactComparables (no bad-price leak).
+//
+// NO single-family axes: no style/age/LAR-via-style funnels, no frontage
+// adjustment, no bedrooms_total gate (bedrooms_total sums across plex units).
+async function runPlexPricingPath(specs: HomeSpecs): Promise<HomeMatchResult> {
+  const supabase = createClient()
+  const referenceDate = specs.asOfDate ?? new Date()
+  const twoYearsAgo = new Date(referenceDate)
+  twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
+  const subjectLAR = specs.livingAreaRange
+
+  // The plex axis REQUIRES LAR for adjacency match. No LAR → cannot price
+  // on this axis → fall back to enrich-only.
+  if (!subjectLAR) {
+    return await findMultiUnitContactComparables(specs)
+  }
+
+  // Cascade query for one geo tier, filtered post-query to LAR same-or-adjacent.
+  const tierQuery = async (
+    geoColumn: 'community_id' | 'municipality_id',
+    geoValue: string
+  ) => {
+    let q = supabase
+      .from('mls_listings')
+      .select(HOME_SELECT)
+      .eq(geoColumn, geoValue)
+      .eq('property_subtype', specs.propertySubtype)  // SAME-subtype (NOT class-wide)
+      .eq('transaction_type', 'For Sale')
+      .eq('standard_status', 'Closed')
+      .not('close_price', 'is', null)
+      .gt('close_price', 100000)
+      .gte('close_date', twoYearsAgo.toISOString())
+      .not('living_area_range', 'is', null)
+      .order('close_date', { ascending: false })
+    if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
+    const { data } = await q
+    return (data || []).filter(s => isAdjacentRange(s.living_area_range, subjectLAR))
+  }
+
+  // Community tier
+  if (specs.communityId) {
+    const cComps = await tierQuery('community_id', specs.communityId)
+    if (cComps.length >= 3) {
+      return buildPricedPlexResult(cComps, 'community')
+    }
+  }
+
+  // Muni tier fallback
+  if (specs.municipalityId) {
+    const mComps = await tierQuery('municipality_id', specs.municipalityId)
+    if (mComps.length >= 3) {
+      return buildPricedPlexResult(mComps, 'municipality')
+    }
+  }
+
+  // Area tier fallback (cascade from muni→area requires the muni's area_id)
+  if (specs.municipalityId) {
+    const { data: muni } = await supabase
+      .from('municipalities')
+      .select('area_id')
+      .eq('id', specs.municipalityId)
+      .single()
+    if (muni?.area_id) {
+      let q = supabase
+        .from('mls_listings')
+        .select(`${HOME_SELECT}, municipalities!inner(area_id)`)
+        .eq('municipalities.area_id', muni.area_id)
+        .eq('property_subtype', specs.propertySubtype)
+        .eq('transaction_type', 'For Sale')
+        .eq('standard_status', 'Closed')
+        .not('close_price', 'is', null)
+        .gt('close_price', 100000)
+        .gte('close_date', twoYearsAgo.toISOString())
+        .not('living_area_range', 'is', null)
+        .order('close_date', { ascending: false })
+      if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
+      const { data } = await q
+      const aComps = (data || []).filter(s => isAdjacentRange(s.living_area_range, subjectLAR))
+      if (aComps.length >= 3) {
+        return buildPricedPlexResult(aComps, 'area')
+      }
+    }
+  }
+
+  // Thin pool — enrich-only fallback (no bad price)
+  return await findMultiUnitContactComparables(specs)
+}
+
 // ============ MAIN FUNCTION ============
 
 export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchResult> {
-  // Multi-unit subtypes cannot be priced on the home spine (33.4% backtest MAPE,
-  // 1.6x single-family). Income axis unavailable (NOI fill 7.6%, 0% in 90d
-  // freshness window, pool survival 9-44%). Route to agent.
-  if (['Duplex', 'Triplex', 'Fourplex', 'Multiplex'].includes(specs.propertySubtype)) {
-    return { tier: 'CONTACT', comparables: [], geoLevel: 'none' }
+  // h1: subtype-aware plex routing (supersedes prior unconditional-CONTACT (j)
+  // gate). The 33.4% wrong-axis MAPE was measured on SF axes (style/age/LAR-
+  // via-style/frontage); the plex-axis backtest (2026-06-08) measured:
+  //   Duplex   median APE 17.4%  → PRICE (in operator's ≤20% band)
+  //   Triplex  median APE 22.1%  → PRICE WITH STRONG DISCLAIMER (20-30% band)
+  //   Fourplex median APE 35.0%  → ENRICH-ONLY (>30% band + 47% CONTACT)
+  //   Multiplex median APE 21.1% → ENRICH-ONLY (subtype-label-vs-unit-count fuzzy)
+  // Disclaimer copy is client-side concern (h4); helper just routes.
+  if (specs.propertySubtype === 'Duplex' || specs.propertySubtype === 'Triplex') {
+    return await runPlexPricingPath(specs)
+  }
+  if (specs.propertySubtype === 'Fourplex' || specs.propertySubtype === 'Multiplex') {
+    return await findMultiUnitContactComparables(specs)
   }
 
   const supabase = createClient()

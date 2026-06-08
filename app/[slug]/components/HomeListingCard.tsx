@@ -8,6 +8,7 @@ import { generateHomePropertySlug } from '@/lib/utils/slugs'
 import { useState, useCallback, useRef } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import HomeAddressHistoryModal from '@/components/property/HomeAddressHistoryModal'
+import { MULTI_UNIT_SUBTYPES } from '@/lib/estimator/home-comparable-matcher-sales'
 
 const STYLES = `
 @keyframes shimmer { 0% { background-position:-400px 0 } 100% { background-position:400px 0 } }
@@ -106,6 +107,11 @@ export default function HomeListingCard({
   const isNew        = dom !== null && dom <= 3
   const propLabel    = getPropertyLabel(listing.property_subtype)
   const totalDots    = Math.min(photos.length, 7)
+  // h2 F-PLEX-TILE-SF-CHROME: gate single-family-only chrome (Frontage / Lot /
+  // Garage / Style / Basement) on plex subtypes. Plex is priced on income, not
+  // lot/style/basement; rendering those fields on a plex tile reads as wrong-
+  // axis to the user. Tax + bed/bath/sqft/price/address stay universal.
+  const isPlex = !!listing.property_subtype && MULTI_UNIT_SUBTYPES.includes(listing.property_subtype.trim())
 
   const shadowHover = `0 16px 40px rgba(${status.rgb},0.18), 0 4px 14px rgba(${status.rgb},0.12), 0 1px 3px rgba(0,0,0,0.06)`
 
@@ -264,8 +270,8 @@ export default function HomeListingCard({
                   ))}
                 </div>
 
-                {/* Stats row 2 — lot/frontage/garage */}
-                {(listing.lot_width || lotDisplay || garageDisplay) && (
+                {/* Stats row 2 — lot/frontage/garage (SF only — hidden for plex) */}
+                {!isPlex && (listing.lot_width || lotDisplay || garageDisplay) && (
                   <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:5, flexWrap:'wrap' }}>
                     {listing.lot_width && parseFloat(String(listing.lot_width)) > 0 && (
                       <span style={{ fontSize:12, color:'#64748b' }}>
@@ -294,10 +300,10 @@ export default function HomeListingCard({
                   </div>
                 )}
 
-                {/* Stats row 3 — style/basement/tax */}
+                {/* Stats row 3 — style/basement (SF only — hidden for plex) / tax (universal) */}
                 <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:10, flexWrap:'wrap' }}>
-                  {styleDisplay && <span style={{ fontSize:11, color:'#94a3b8' }}>{styleDisplay}</span>}
-                  {basementDisplay && (
+                  {!isPlex && styleDisplay && <span style={{ fontSize:11, color:'#94a3b8' }}>{styleDisplay}</span>}
+                  {!isPlex && basementDisplay && (
                     <>
                       {styleDisplay && <span style={{ color:'#e2e8f0', fontSize:11 }}>·</span>}
                       <span style={{ fontSize:11, color:'#94a3b8' }}>Bsmt: {basementDisplay}</span>
@@ -305,7 +311,7 @@ export default function HomeListingCard({
                   )}
                   {type==='sale' && listing.tax_annual_amount && Number(listing.tax_annual_amount) > 0 && (
                     <>
-                      {(styleDisplay||basementDisplay) && <span style={{ color:'#e2e8f0', fontSize:11 }}>·</span>}
+                      {!isPlex && (styleDisplay||basementDisplay) && <span style={{ color:'#e2e8f0', fontSize:11 }}>·</span>}
                       <span style={{ fontSize:11, color:'#94a3b8' }}>${Math.round(Number(listing.tax_annual_amount)).toLocaleString()} tax</span>
                     </>
                   )}
