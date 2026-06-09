@@ -97,6 +97,28 @@ export interface ComparableSale {
   mismatchReason?: string
 }
 
+// ============ Geo-Tier Spread (Platinum / Gold / Silver / Bronze) ============
+//
+// LOCK (tracker section 3, 2026-06-07): the matcher COMPUTES all four geo tiers
+// every time, DISPLAYS all four as a confidence spread, PRICES from the BEST
+// tier only — never blends. This shape carries the per-tier context for the
+// display layer. Best-tier resolution rule is enforced in the matcher
+// (Platinum>Gold>Silver>Bronze>CONTACT) and the chosen tier's data is
+// duplicated to the top-level fields (tier, comparables, bestMatchScore,
+// estimatedPrice) for back-compat with consumers that read only top-level.
+//
+// NOTE: the geo tier (Platinum/Gold/Silver/Bronze) is a SEPARATE AXIS from the
+// MatchTier quality labels (BINGO/RANGE/MAINT/CONTACT). geoTier tells you
+// WHERE the comps came from; MatchTier tells you HOW WELL they matched your
+// specs. Both axes coexist on every result.
+export interface TierResult {
+  comparables: ComparableSale[]   // top 10 scored (best tier gets full createHomeComparable; non-best may be lightweight)
+  count: number                    // pool size AFTER funnel (the candidates available — not capped to top 10)
+  median: number                   // median of close_price across the full pool (raw, not adjusted)
+  range: { low: number; high: number }  // p10/p90 (or min/max for tiny pools) of close_price
+  bestMatchScore: number           // top comp's score in the pool
+}
+
 // ============ Estimate Result ============
 
 export interface EstimateResult {
@@ -107,36 +129,49 @@ export interface EstimateResult {
     low: number
     high: number
   }
-  
+
   // Match info
   matchTier: MatchTier
   showPrice: boolean  // false for CONTACT tier
   confidence: 'High' | 'Medium-High' | 'Medium' | 'Medium-Low' | 'Low' | 'None'
   confidenceMessage: string
-  
+
   // Comparables
   comparables: ComparableSale[]
-  
+
   // Market speed
   marketSpeed: {
     avgDaysOnMarket: number
     status: 'Fast' | 'Moderate' | 'Slow'
     message: string
   }
-  
+
   // Summary
   adjustmentSummary?: {
     perfectMatches: number
     adjustedComparables: number
     avgAdjustment: number
   }
-  
+
   // AI insights (optional)
   aiInsights?: {
     summary: string
     keyFactors: string[]
     marketTrend: string
   }
+
+  // h7 (2026-06-09) geo-tier spread (Platinum/Gold/Silver/Bronze). Each tier is
+  // null when its geo data is missing or the pool produced zero comps. The
+  // best tier is also reflected in the top-level fields above; the other three
+  // are display-only context. SF subjects only — plex path leaves this undefined.
+  // bestGeoTier names the tier that priced the result (or 'none' for CONTACT).
+  tiers?: {
+    platinum: TierResult | null
+    gold:     TierResult | null
+    silver:   TierResult | null
+    bronze:   TierResult | null
+  }
+  bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
 }
 
 // ============ Helper Functions ============

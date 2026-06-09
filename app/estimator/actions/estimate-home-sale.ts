@@ -45,7 +45,12 @@ export async function estimateHomeSale(
             avgDaysOnMarket: 0,
             status: 'Moderate' as const,
             message: 'Not enough data to determine market speed'
-          }
+          },
+          // h7: surface geo-tier context even on CONTACT — caller may want to
+          // show "we have N comps in your area, just not similar enough" via
+          // the bronze/silver tiles. Plex CONTACT returns leave tiers undefined.
+          tiers: matchResult.tiers,
+          bestGeoTier: matchResult.bestGeoTier,
         },
         geoLevel: matchResult.geoLevel,
         error: 'Not enough comparable sales in this area to generate an estimate. Try contacting the agent directly.'
@@ -137,6 +142,10 @@ export async function estimateHomeSale(
       data: {
         ...estimate,
         aiInsights,
+        // h7: thread the four-tier spread through to the display layer.
+        // Plex returns leave these undefined; SF returns populate both.
+        tiers: matchResult.tiers,
+        bestGeoTier: matchResult.bestGeoTier,
       },
       geoLevel: matchResult.geoLevel,
     }

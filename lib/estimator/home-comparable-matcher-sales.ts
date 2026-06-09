@@ -4,6 +4,7 @@ import {
   ComparableSale,
   PriceAdjustment,
   MatchTier,
+  TierResult,
   extractExactSqft,
   assignTemperature,
 } from './types'
@@ -65,6 +66,16 @@ interface HomeMatchResult {
   // Production must mirror the measurement; the calculator's mean would
   // differ from the backtest's median on plex pools.
   estimatedPrice?: number
+  // h7 (2026-06-09) Platinum/Gold/Silver/Bronze geo-tier spread. SF path only;
+  // plex returns leave these undefined. Best tier mirrors the top-level
+  // tier/comparables/bestMatchScore; the others are display-only context.
+  tiers?: {
+    platinum: TierResult | null   // same-street subset of community pool
+    gold:     TierResult | null   // community pool
+    silver:   TierResult | null   // municipality pool
+    bronze:   TierResult | null   // area pool (new for SF; mirrors plex area cascade)
+  }
+  bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
 }
 
 // h1: per-subtype price-band fractions, keyed to the MEASURED median APE
@@ -942,6 +953,115 @@ export async function findActiveCompetition(specs: HomeSpecs): Promise<any[]> {
   return results.map(r => ({ ...r, mediaUrl: mediaMap[r.id] || null }))
 }
 
+// ============ h7 — 4-TIER (PLATINUM/GOLD/SILVER/BRONZE) HELPERS ============
+//
+// Per tracker section 3 lock (2026-06-07):
+//   - Compute all four geo tiers every time.
+//   - Display all four as the confidence spread (display layer).
+//   - Price from the BEST tier only — NEVER blend.
+//   - Class containment: every tier .in() uses the same SF subtype family
+//     (getCompatibleSubtypes + propertySubtypeVariants) — no cross-class leak.
+//
+// Platinum is a DERIVED SUBSET of Gold's already-funneled community pool — no
+// extra DB query. Bronze is a new query that lifts the plex area-cascade
+// pattern (runPlexPricingPath:752-779) with SF subtypes.
+
+// Median + min/max range of close_price over a pool. Pure. Used for the
+// display spread on each tier (not for the priced best-tier number — that
+// still flows through calculateEstimate's weighted-mean with adjustments).
+function medianRangeOf(prices: number[]): { median: number; range: { low: number; high: number } } {
+  if (prices.length === 0) return { median: 0, range: { low: 0, high: 0 } }
+  const sorted = [...prices].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  const median = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid]
+  return {
+    median: Math.round(median),
+    range: { low: Math.round(sorted[0]), high: Math.round(sorted[sorted.length - 1]) },
+  }
+}
+
+// Score a funneled pool, take top 10, attach media, run createHomeComparable.
+// Each TierResult carries the same shape regardless of whether this tier is
+// the best — keeps the parity probe + display layer uniform.
+//
+// PARITY RULE: when the funneledPool here matches what today's matcher would
+// have built (community-strict, community-relaxed, muni-strict, muni-relaxed,
+// muni-bedBath) the resulting `comparables` array is byte-identical to today
+// — same scoring, same top-10, same enrichment, same media join.
+async function buildSFTierResult(
+  funneledPool: any[],
+  specs: HomeSpecs,
+  subjName: string | null,
+  subjNum: number | null,
+): Promise<TierResult | null> {
+  if (funneledPool.length === 0) return null
+  const scored = funneledPool.map(s => {
+    const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
+    return { sale: s, score: scoreMatch(s, specs, sameStreet, sameOddEven) }
+  }).sort((a, b) => b.score - a.score)
+  const top = scored.slice(0, 10)
+  const withMedia = await attachMediaUrls(top.map(s => s.sale))
+  const comparables = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
+  const prices = funneledPool
+    .map(s => parseFloat(s.close_price))
+    .filter(p => Number.isFinite(p) && p > 0)
+  const mr = medianRangeOf(prices)
+  return {
+    comparables,
+    count: funneledPool.length,
+    median: mr.median,
+    range: mr.range,
+    bestMatchScore: scored[0]?.score ?? 0,
+  }
+}
+
+// SF Bronze area-cascade query. The plex matcher uses a `municipalities!inner`
+// embedded join (runPlexPricingPath:752-779), but that pattern times out on SF
+// because the SF row count under one area is ~50× plex (Durham alone holds
+// ~250K closed listings vs ~1K plex). Two-query pattern instead:
+//   1) fetch the area's municipality_ids (8 munis for Durham, sub-second);
+//   2) .in('municipality_id', muniIds) on mls_listings — same selectivity as
+//      Silver's .eq() but spread across multiple munis.
+// Class-contained via getCompatibleSubtypes + propertySubtypeVariants.
+async function runSFAreaQuery(
+  specs: HomeSpecs,
+  supabase: any,
+  referenceDate: Date,
+  twoYearsAgo: Date,
+): Promise<any[]> {
+  if (!specs.municipalityId) return []
+  const { data: muni } = await supabase
+    .from('municipalities')
+    .select('area_id')
+    .eq('id', specs.municipalityId)
+    .single()
+  if (!muni?.area_id) return []
+  const { data: areaMunis } = await supabase
+    .from('municipalities')
+    .select('id')
+    .eq('area_id', muni.area_id)
+  const muniIds = (areaMunis || []).map((m: any) => m.id)
+  if (muniIds.length === 0) return []
+  const subtypes = getCompatibleSubtypes(specs.propertySubtype)
+  let q = supabase
+    .from('mls_listings')
+    .select(HOME_SELECT)
+    .in('municipality_id', muniIds)
+    .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', twoYearsAgo.toISOString())
+    .order('close_date', { ascending: false })
+    .limit(500)
+  if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
+  const { data } = await q
+  return data || []
+}
+
 // ============ MAIN FUNCTION ============
 
 export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchResult> {
@@ -979,7 +1099,28 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
     ? specs.subjectStreetNumber
     : null
 
-  // ===== TIER 1: SAME STREET (within community) =====
+  // ===== h7: ACCUMULATE ALL FOUR GEO TIERS (no early returns) =====
+  //
+  // Per tracker section 3 lock: compute every tier always, display every tier
+  // always, price from BEST tier only. The MatchTier quality axis (BINGO/
+  // RANGE/MAINT/CONTACT) is a separate axis from this geo-tier axis and is
+  // still computed by tierFromScore on the best-tier's bestMatchScore.
+  //
+  // PARITY: for any subject whose best geo tier resolves to the SAME tier
+  // today's matcher would have chosen (the typical case — community-priced
+  // or muni-priced), the top-level tier/comparables/geoLevel/bestMatchScore
+  // are byte-identical to today. The new behavior surfaces only when
+  // Platinum's same-street subset has >=3 comps (then Platinum anchors;
+  // expected-platinum-anchor) OR when today returned CONTACT but the new
+  // Bronze area pool has >=3 (expected-bronze-fill).
+
+  let goldTier: TierResult | null = null
+  let platinumTier: TierResult | null = null
+  let silverTier: TierResult | null = null
+  let silverUsedBedBath = false
+  let bronzeTier: TierResult | null = null
+
+  // ----- GOLD: community pool (mirrors today's TIER 1 funnel sequence) -----
   if (specs.communityId) {
     let qCommunity = supabase
       .from('mls_listings')
@@ -997,57 +1138,26 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
     const { data: communitySales } = await qCommunity
 
     if (communitySales && communitySales.length > 0) {
-      // Filter out "as is" properties
       const cleanSales = communitySales.filter(notAsIs)
-
-      // Apply funnel: style + age + size
-      const funneled = applyFunnel(cleanSales, specs)
-
-      if (funneled.length >= 3) {
-        // Score all and sort. h5: street bonus now active — subject side
-        // computed once at top of findHomeComparables, comp side parsed per
-        // sale via streetBonusFor. Un-plumbed callers: subjName=null →
-        // sameStreet=false → byte-identical to pre-h5.
-        const scored = funneled.map(s => {
-          const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
-          return {
-            sale: s,
-            score: scoreMatch(s, specs, sameStreet, sameOddEven),
-          }
-        }).sort((a, b) => b.score - a.score)
-
-        const bestScore = scored[0].score
-        const tier = tierFromScore(bestScore, scored.length)
-        const top = scored.slice(0, 10)
-        const withMedia = await attachMediaUrls(top.map(s => s.sale))
-        const comps = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
-
-        return { tier, comparables: comps, geoLevel: 'community', bestMatchScore: bestScore }
+      // Strict-first, fall through to relaxed if strict <3 — mirrors today's
+      // sequence at lines 1004-1046 (pre-h7). Whichever pool today would have
+      // returned IS the gold pool here.
+      let goldPool = applyFunnel(cleanSales, specs)
+      if (goldPool.length < 3) {
+        goldPool = applyRelaxedFunnel(cleanSales, specs)
       }
+      goldTier = await buildSFTierResult(goldPool, specs, subjName, subjNum)
 
-      // If funnel is too strict, try relaxed (style family + adjacent age)
-      const relaxed = applyRelaxedFunnel(cleanSales, specs)
-      if (relaxed.length >= 3) {
-        const scored = relaxed.map(s => ({
-          sale: s,
-          score: (() => {
-            const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
-            return scoreMatch(s, specs, sameStreet, sameOddEven)
-          })(),
-        })).sort((a, b) => b.score - a.score)
-
-        const bestScore = scored[0].score
-        const tier = tierFromScore(bestScore, scored.length)
-        const top = scored.slice(0, 10)
-        const withMedia = await attachMediaUrls(top.map(s => s.sale))
-        const comps = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
-
-        return { tier, comparables: comps, geoLevel: 'community', bestMatchScore: bestScore }
+      // Platinum: same-street subset of Gold's already-funneled pool.
+      // No extra DB query. Subject without street data → null.
+      if (subjName && subjNum != null && goldPool.length > 0) {
+        const platinumPool = goldPool.filter(s => streetBonusFor(s, subjName, subjNum).sameStreet)
+        platinumTier = await buildSFTierResult(platinumPool, specs, subjName, subjNum)
       }
     }
   }
 
-  // ===== TIER 2: MUNICIPALITY =====
+  // ----- SILVER: municipality pool (mirrors today's TIER 2 sequence) -----
   if (specs.municipalityId) {
     let qMuni = supabase
       .from('mls_listings')
@@ -1066,65 +1176,86 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
 
     if (muniSales && muniSales.length > 0) {
       const cleanSales = muniSales.filter(notAsIs)
-
-      // Try strict funnel first
-      let pool = applyFunnel(cleanSales, specs)
-      if (pool.length < 3) {
-        pool = applyRelaxedFunnel(cleanSales, specs)
+      let silverPool = applyFunnel(cleanSales, specs)
+      if (silverPool.length < 3) silverPool = applyRelaxedFunnel(cleanSales, specs)
+      if (silverPool.length < 2) {
+        // bedBathOnly fallback — today's last-resort that returns tier=CONTACT
+        // with muni comps (lines 1095-1106). We track usedBedBath so the
+        // best-tier resolution can force tier='CONTACT' to match pre-h7.
+        const bedBathOnly = cleanSales.filter(s => {
+          if (s.bedrooms_total !== specs.bedrooms) return false
+          if (Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) > 1) return false
+          const saleStyle = s.architectural_style?.[0] || null
+          if (specs.architecturalStyle && saleStyle &&
+              saleStyle !== specs.architecturalStyle &&
+              !isSameStyleFamily(saleStyle, specs.architecturalStyle || null)) return false
+          if (specs.livingAreaRange && s.living_area_range !== specs.livingAreaRange &&
+              !isAdjacentRange(s.living_area_range, specs.livingAreaRange)) return false
+          return true
+        })
+        if (bedBathOnly.length >= 2) {
+          silverPool = bedBathOnly
+          silverUsedBedBath = true
+        } else {
+          silverPool = []
+        }
       }
-
-      if (pool.length >= 2) {
-        const scored = pool.map(s => ({
-          sale: s,
-          score: (() => {
-            const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
-            return scoreMatch(s, specs, sameStreet, sameOddEven)
-          })(),
-        })).sort((a, b) => b.score - a.score)
-
-        const bestScore = scored[0].score
-        const tier = tierFromScore(bestScore, scored.length)
-        const top = scored.slice(0, 10)
-        const withMedia = await attachMediaUrls(top.map(s => s.sale))
-        const comps = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
-
-        return { tier, comparables: comps, geoLevel: 'municipality', bestMatchScore: bestScore }
-      }
-
-      // Last resort: just bed+bath match at municipality
-      const bedBathOnly = cleanSales.filter(s => {
-        if (s.bedrooms_total !== specs.bedrooms) return false
-        if (Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) > 1) return false
-        // Product-gate the last resort too: never pool dissimilar style/size.
-        const saleStyle = s.architectural_style?.[0] || null
-        if (specs.architecturalStyle && saleStyle &&
-            saleStyle !== specs.architecturalStyle &&
-            !isSameStyleFamily(saleStyle, specs.architecturalStyle || null)) return false
-        if (specs.livingAreaRange && s.living_area_range !== specs.livingAreaRange &&
-            !isAdjacentRange(s.living_area_range, specs.livingAreaRange)) return false
-        return true
-      })
-      if (bedBathOnly.length >= 2) {
-        const scored = bedBathOnly.map(s => ({
-          sale: s,
-          score: (() => {
-            const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
-            return scoreMatch(s, specs, sameStreet, sameOddEven)
-          })(),
-        })).sort((a, b) => b.score - a.score)
-
-        const bestScore = scored[0].score
-        const top = scored.slice(0, 10)
-        const withMedia = await attachMediaUrls(top.map(s => s.sale))
-        const comps = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
-
-        return { tier: 'CONTACT', comparables: comps, geoLevel: 'municipality', bestMatchScore: bestScore }
-      }
+      silverTier = await buildSFTierResult(silverPool, specs, subjName, subjNum)
     }
   }
 
-  // ===== TIER 3: CONTACT =====
-  return { tier: 'CONTACT', comparables: [], geoLevel: 'none' }
+  // ----- BRONZE: area pool (NEW for SF — lifts plex pattern) -----
+  const areaSales = await runSFAreaQuery(specs, supabase, referenceDate, twoYearsAgo)
+  if (areaSales.length > 0) {
+    const cleanSales = areaSales.filter(notAsIs)
+    let bronzePool = applyFunnel(cleanSales, specs)
+    if (bronzePool.length < 3) bronzePool = applyRelaxedFunnel(cleanSales, specs)
+    bronzeTier = await buildSFTierResult(bronzePool, specs, subjName, subjNum)
+  }
+
+  // ===== h7: BEST-TIER RESOLUTION (drives top-level fields) =====
+  // Order: Platinum>Gold>Silver>Bronze>CONTACT. Thresholds mirror today:
+  //   - Gold meets threshold at >=3 funneled (strict OR relaxed)
+  //   - Silver meets threshold at >=2 funneled OR bedBathOnly (forces CONTACT)
+  //   - Bronze meets threshold at >=3 funneled (no bedBathOnly fallback — area
+  //     pool is already wider, last-resort doesn't add useful signal)
+  //   - Platinum meets threshold at >=3 (same threshold as Gold; tighter pool)
+  const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: bronzeTier }
+
+  let bestGeoTier: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
+  let best: TierResult | null
+  let geoLevel: HomeMatchResult['geoLevel']
+  if (platinumTier && platinumTier.count >= 3) {
+    best = platinumTier; bestGeoTier = 'platinum'; geoLevel = 'street'
+  } else if (goldTier && goldTier.count >= 3) {
+    best = goldTier; bestGeoTier = 'gold'; geoLevel = 'community'
+  } else if (silverTier && silverTier.count >= 2) {
+    best = silverTier; bestGeoTier = 'silver'; geoLevel = 'municipality'
+  } else if (bronzeTier && bronzeTier.count >= 3) {
+    best = bronzeTier; bestGeoTier = 'bronze'; geoLevel = 'area'
+  } else {
+    best = null; bestGeoTier = 'none'; geoLevel = 'none'
+  }
+
+  if (!best) {
+    return { tier: 'CONTACT', comparables: [], geoLevel: 'none', tiers, bestGeoTier }
+  }
+
+  // MatchTier (quality axis) from best tier's top score + count.
+  // PARITY: when best=silver AND silver was bedBathOnly, force CONTACT to
+  // match today's hardcoded `tier: 'CONTACT'` return at the bedBathOnly path.
+  const matchTier: MatchTier = (bestGeoTier === 'silver' && silverUsedBedBath)
+    ? 'CONTACT'
+    : tierFromScore(best.bestMatchScore, best.count)
+
+  return {
+    tier: matchTier,
+    comparables: best.comparables,
+    geoLevel,
+    bestMatchScore: best.bestMatchScore,
+    tiers,
+    bestGeoTier,
+  }
 }
 
 // ============ FUNNEL FILTERS ============

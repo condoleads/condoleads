@@ -500,6 +500,74 @@ export default function HomeEstimatorResults({
           </div>
         )}
 
+        {/* h7: Geographic Confidence Spread (Platinum / Gold / Silver / Bronze).
+            Lock: COMPUTE all four every time, DISPLAY all four every time,
+            price from the BEST tier only (NEVER blend). The spread itself IS
+            the confidence display — narrow Platinum→Bronze convergence = high
+            confidence; wide divergence = "your block sold differently than
+            your community, talk to an agent." Best tier highlighted; missing
+            tiers grayed out as honest "no data here" rather than hidden. */}
+        {!isMultiUnitSubject && result.tiers && (
+          <div className="bg-white rounded-xl p-5 border border-slate-200">
+            <h3 className="text-sm font-bold text-slate-900 mb-1">Geographic Confidence Spread</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Same home, four geographic scopes. The price above comes from the highlighted tier; the others are context.
+            </p>
+            <div className="space-y-2">
+              {(['platinum', 'gold', 'silver', 'bronze'] as const).map(slot => {
+                const tr = result.tiers![slot]
+                const isBest = result.bestGeoTier === slot
+                const labelMap = {
+                  platinum: { name: 'Platinum', sub: 'Same street',     emoji: '◆' },
+                  gold:     { name: 'Gold',     sub: 'Community',       emoji: '●' },
+                  silver:   { name: 'Silver',   sub: 'Municipality',    emoji: '●' },
+                  bronze:   { name: 'Bronze',   sub: 'Area',            emoji: '●' },
+                } as const
+                const tierColor = isBest
+                  ? 'bg-emerald-50 border-emerald-300'
+                  : tr ? 'bg-slate-50 border-slate-200' : 'bg-slate-50/40 border-slate-100'
+                const tierTextStrong = isBest ? 'text-emerald-900' : tr ? 'text-slate-900' : 'text-slate-400'
+                const tierTextMuted  = isBest ? 'text-emerald-700' : tr ? 'text-slate-600' : 'text-slate-400'
+                return (
+                  <div key={slot} className={`flex items-center justify-between px-3 py-2 rounded-lg border ${tierColor}`}>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`text-sm font-bold ${tierTextStrong}`}>
+                        {labelMap[slot].emoji} {labelMap[slot].name}
+                      </span>
+                      <span className={`text-xs ${tierTextMuted}`}>
+                        {labelMap[slot].sub}
+                      </span>
+                      {isBest && (
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                          Anchor
+                        </span>
+                      )}
+                    </div>
+                    {tr ? (
+                      <div className="flex items-center gap-4 text-right flex-shrink-0">
+                        <div className={`text-sm font-bold ${tierTextStrong}`}>
+                          {formatPrice(tr.median)}
+                        </div>
+                        <div className={`text-[11px] ${tierTextMuted}`}>
+                          {tr.count} comp{tr.count === 1 ? '' : 's'}
+                        </div>
+                        <div className={`text-[10px] hidden sm:block ${tierTextMuted}`}>
+                          {formatPrice(tr.range.low)} – {formatPrice(tr.range.high)}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className={`text-[11px] italic ${tierTextMuted}`}>no data</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-3">
+              Narrow spread Platinum→Bronze = high confidence. Wide spread = your block sold differently than your community — worth a conversation with the agent.
+            </p>
+          </div>
+        )}
+
         {/* Market Speed */}
         <div className="bg-slate-50 rounded-xl p-6">
           <h3 className="text-lg font-bold text-slate-900 mb-3">Market Conditions</h3>

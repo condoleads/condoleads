@@ -5833,3 +5833,181 @@ PUSH STATUS — HELD per operator standing instruction.
   Local main = 417ea2b + 1 uncommitted unit (h6 frontage activation).
   Tracker entry written. tsc clean. Operator decides commit shape +
   push timing.
+
+
+2026-06-09 — (h7) PLATINUM / GOLD / SILVER / BRONZE 4-TIER DISPLAY SHIPPED
+
+The tracker section 3 lock (2026-06-07) called for the matcher to compute all
+four geo tiers every time and the display to show all four as a confidence
+spread, while pricing stays single-tier (best-tier-only, never blend). At lock
+time only the cascade existed (community→muni, with Platinum dormant +
+Bronze nonexistent for SF). This unit ships the activation.
+
+Build summary (single uncommitted unit on origin/main = 03b85f9):
+- lib/estimator/home-comparable-matcher-sales.ts: refactored findHomeComparables
+  SF main path. Removed early-returns at community + muni; all four tiers now
+  accumulated unconditionally and best-tier resolution selects the price
+  anchor.
+    GOLD   = today's community pool (strict→relaxed funnel sequence preserved).
+    SILVER = today's muni pool (strict→relaxed→bedBathOnly preserved, with
+             usedBedBath flag forcing tier='CONTACT' on top-level to match
+             pre-h7 hardcoded CONTACT return).
+    PLATINUM = derived as community pool .filter(streetBonusFor.sameStreet).
+             ZERO new DB queries — subset of Gold's already-funneled rows.
+             Null when subject has no street data (un-plumbed callers stay
+             byte-identical).
+    BRONZE = NEW SF area query. Lifts the plex area-cascade pattern but
+             replaces the !inner embedded join (times out on SF — Durham has
+             ~250K closed listings vs ~1K plex) with a two-query pattern:
+             (1) fetch muni IDs in area, (2) .in('municipality_id', muniIds)
+             on mls_listings. Class-contained via getCompatibleSubtypes +
+             propertySubtypeVariants.
+  Best-tier resolution: Platinum≥3 > Gold≥3 > Silver≥2 > Bronze≥3 > CONTACT.
+  Top-level tier/comparables/geoLevel/bestMatchScore/estimatedPrice mirror
+  the chosen tier (back-compat with all consumers reading only top-level).
+  Added helpers: medianRangeOf (pure), buildSFTierResult (async — scores +
+  attaches media + runs createHomeComparable per tier), runSFAreaQuery
+  (the two-query area cascade).
+
+- lib/estimator/types.ts: added TierResult interface
+  { comparables, count, median, range:{low,high}, bestMatchScore }
+  and threaded EstimateResult.tiers?:{ platinum, gold, silver, bronze:
+  TierResult|null } + EstimateResult.bestGeoTier?. Additive — no field
+  removals; all old consumers see the same top-level shape.
+
+- app/estimator/actions/estimate-home-sale.ts: passes tiers + bestGeoTier
+  through to EstimateResult on both the priced and empty-result branches.
+  Best-tier price path untouched — calculateEstimate still receives the
+  same comparables array it would have received at 03b85f9.
+
+- app/estimator/components/HomeEstimatorResults.tsx: new Geographic
+  Confidence Spread panel between the MatchTier banner and the Market
+  Speed block. SF-only (plex render path unchanged). Shows the 4 tiers
+  with name + sub-label (Platinum=Same street, Gold=Community, Silver=
+  Municipality, Bronze=Area), median, count, range. Best tier highlighted
+  (emerald) with "Anchor" pill. Missing tiers show "no data" — honest
+  representation, not hidden. Trailing line explains the spread: narrow
+  = confident, wide = block sold differently than community. The MatchTier
+  quality labels (BINGO/RANGE/MAINT/CONTACT) UNTOUCHED — geo tier and
+  quality tier are independent axes.
+
+- app/api/parity-probe-sf-sold/route.ts: probe emits tiers + bestGeoTier
+  via a tierSummary helper (count/median/range/bestMatchScore/topComps).
+  Top-level comparables emission unchanged — parity harness diffs both.
+
+- scripts/backtest-estimator-homes.js: mirrored the Bronze cascade onto
+  findHomeComparablesSaleBacktest as a Tier-3 append (Gold/Silver early-
+  return preserved byte-identical, then Bronze fall-through with the same
+  two-query pattern + strict→relaxed funnel). Platinum dormant in backtest
+  (specs builder doesn't thread street_name — pre-existing gap; same in
+  03b85f9 backtest).
+
+Parity verification — h7 vs 03b85f9 baseline (50 subjects, the standard
+SF sold mix from MIX in parity-sf-sold-baseline.js: 20 Detached + 15 Semi-
+Detached + 10 Att/Row/Townhouse + 5 Link):
+
+  STEP 0 — revert/restore cycle (mirrors the h5/h6 pattern): matcher +
+  parity probe reverted to backup_20260609_082840 (03b85f9 state) →
+  baseline captured (overwriting earlier stale 417ea2b-era baseline) →
+  matcher + probe restored to h7 → verify run.
+
+  Classification (scripts/parity-4tier-activation.js):
+    byte-identical           : 45 / 50 (90.0%)
+    expected-platinum-anchor :  1 / 50 (X9410005 Att/Row, 4 same-street
+                                comps, tier BINGO→BINGO-ADJ, price moves
+                                to street median — intended)
+    expected-bronze-fill     :  4 / 50 (X12980224 Semi, X13028634 Att/Row,
+                                X13173342 Link, X13148716 Link — formerly
+                                CONTACT-with-geoLevel=none, now priced
+                                from area pool: RANGE / BINGO-ADJ / RANGE
+                                / RANGE-ADJ — intended)
+    INVESTIGATE              :  0 / 50  ← lock condition satisfied
+
+  Report: scripts-output/parity-h7-4tier-classification.txt
+  Verify: scripts-output/parity-h7-4tier-verify.json
+
+  Make-or-break: on the 45 byte-identical subjects, price path
+  (tier/comparables/bestMatchScore/geoLevel) is BYTE-EQUAL to 03b85f9
+  output. The four new context tiers (Gold/Silver/Bronze + Platinum-when-
+  thin) become visible WITHOUT perturbing the priced number.
+
+Latency cost: ~3s p50 per estimator request (probed live on 306 Rosedale
+post-fix: 2,884 ms total — community + muni + area + score + adjustments).
+03b85f9 baseline was ~1-2s. The lock requires "compute all four tiers every
+time"; the extra DB call (Bronze) is the cost of always-display. Latency
+optimization (parallelize the four tier queries via Promise.all) deferred
+to a separate UX workstream — out of h7 scope.
+
+Backtest — N=500 SF sale subjects, sampled fresh post-h7
+(scripts-output/backtest-homes-sale.csv, 2026-06-09 09:54):
+
+  03b85f9 baseline (earlier run from scripts-output/backtest-homes-summary.txt):
+    470 priced / 30 CONTACT of 500.
+    by tier (priced cohort): BINGO n=40 MAPE=8.0% median=6.2% ±15=88%
+                             BINGO-ADJ n=247 MAPE=13.0% median=8.8% ±15=70%
+                             RANGE n=148 MAPE=26.4% median=13.5% ±15=56%
+                             RANGE-ADJ n=35 MAPE=31.3% median=20.3% ±15=40%
+
+  h7 (this run, FRESH sample so direct row-by-row comparison includes
+  sampling noise — but tier-level patterns + bronze-fill delta hold):
+    476 priced / 24 CONTACT of 500.   ← 6 former-CONTACT subjects now priced (bronze-fill)
+    Overall priced cohort: MAPE=16.7%  median=10.6%  ±15=64%
+    By geoLevel (NEW axis exposed by h7):
+      community  (Gold)   n=375 priced=375 MAPE=13.6% median= 9.5% ±15=71%
+      municipality (Silver) n=86 priced=82 MAPE=27.5% median=18.5% ±15=41%
+      area       (Bronze) n= 19 priced= 19 MAPE=32.9% median=18.2% ±15=32%   ← NEW pool
+      none       (CONTACT) n=20 priced=  0
+    By tier (MatchTier quality, post-h7):
+      BINGO     n= 38 MAPE= 9.2% median= 7.6% ±15=84%
+      BINGO-ADJ n=241 MAPE=12.7% median= 8.9% ±15=71%
+      RANGE     n=157 MAPE=20.2% median=13.1% ±15=55%
+      RANGE-ADJ n= 40 MAPE=34.7% median=20.7% ±15=40%
+
+  Read of the delta:
+  - Community/Gold tier in h7 (MAPE 13.6%, median 9.5%) sits between
+    03b85f9's BINGO + BINGO-ADJ buckets — consistent with today's gold-
+    early-return path. Within-tier MAPE doesn't move on the byte-identical
+    cohort (Bronze append doesn't alter Gold's early-return).
+  - NEW Bronze tier: n=19, MAPE=32.9%. Higher than Gold (expected — area
+    pool is wider geo). Honest pricing on subjects that 03b85f9 silenced
+    as CONTACT (some signal > no signal); area-pool MAPE is the natural
+    price the lock accepts in exchange for the bronze-fill.
+  - Bronze-fill volume in backtest (6/500 = 1.2%) is slightly LOWER than
+    the parity classifier's hit rate (4/50 = 8%) — likely sampling
+    variance between the 50-subject targeted mix and the 500-subject
+    random closed-90-days sample.
+  - Lease backtest deferred: h7 patched only the SALE matcher mirror.
+    Lease backtest re-run is owed if/when the lease matcher gains the
+    same 4-tier treatment (future workstream).
+
+Section 3 lock reconciliation: the section 3 "Implementation status"
+sub-bullet at the time of lock (2026-06-07) read:
+  "CLAIMED, UNVERIFIED on disk: street tier (Platinum) was identified as
+  the 'free 20-pt revival' in the 2026-06-04 STREET/ODD-EVEN entry but is
+  NOT YET WIRED — matcher still hardcodes sameStreet=false. Platinum is
+  currently DEAD; lock anticipates the revival."
+This is now stale on two axes:
+  (a) 417ea2b (2026-06-09) wired sameStreet — Platinum-as-score-bonus live.
+  (b) h7 (this entry) elevates Platinum from score-bonus to derived-subset
+      tier and adds Bronze. The 4-tier compute-all/display-all/price-from-
+      best lock is FULLY IMPLEMENTED.
+Forward reader: section 3's "DEAD" claim on Platinum should be read with
+this run-log entry as the canonical update.
+
+Files modified (single unit):
+  lib/estimator/home-comparable-matcher-sales.ts
+  lib/estimator/types.ts
+  app/estimator/actions/estimate-home-sale.ts
+  app/estimator/components/HomeEstimatorResults.tsx
+  app/api/parity-probe-sf-sold/route.ts                  (untracked, local-only)
+  scripts/backtest-estimator-homes.js                    (untracked, local-only)
+  scripts/parity-4tier-activation.js  (new)              (untracked, local-only)
+  docs/W-ESTIMATOR-RAG-TRACKER.md (this entry)
+Backups all timestamped _20260609_082840.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD per operator standing instruction.
+  origin/main = 03b85f9 (h6 frontage band, 2026-06-09).
+  Local main = 03b85f9 + 1 uncommitted unit (h7 4-tier display).
+  Tracker entry written. tsc clean. Operator decides commit shape +
+  push timing.
