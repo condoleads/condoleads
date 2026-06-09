@@ -265,6 +265,9 @@ export default function HomeEstimatorBuyerModal({
         lotWidth: listing.lot_width ? parseFloat(String(listing.lot_width)) : null,
         lotDepth: listing.lot_depth ? parseFloat(String(listing.lot_depth)) : null,
         lotArea: listing.lot_size_area ? parseFloat(String(listing.lot_size_area)) : null,
+        // h6: lot_size_units flag drives metres→feet normalization. Listing
+        // table column. Absent → defaults to feet (dominant regime).
+        lotSizeUnits: (listing as any).lot_size_units || null,
         garageType: listing.garage_type || null,
         basement: Array.isArray(listing.basement) ? listing.basement.join(', ') : listing.basement || null,
         basementRaw: Array.isArray(listing.basement) ? listing.basement : listing.basement ? [listing.basement] : null,

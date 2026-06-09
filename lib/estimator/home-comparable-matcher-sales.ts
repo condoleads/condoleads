@@ -14,6 +14,7 @@ import {
   getGarageValue,
   hasIngroundPool,
   isAdjacentRange,
+  normalizeFrontageFeet,
 } from './home-adjustment-math'
 
 // ============ INTERFACES ============
@@ -30,6 +31,10 @@ export interface HomeSpecs {
   lotWidth?: number | null         // DB field: lot_width (this IS frontage)
   lotDepth?: number | null
   lotArea?: number | null
+  // h6 (frontage-as-gate): when present, the matcher normalizes Metres→Feet.
+  // 'Feet'/'Acres'/null all treated as feet. When absent (un-plumbed caller),
+  // defaults to feet — same as null (the 90.8% dominant regime).
+  lotSizeUnits?: string | null
   garageType?: string | null       // 'Attached', 'Detached', 'Built-In', 'None', etc.
   basement?: string | null         // Will receive parsed string from JSONB array
   basementRaw?: string[] | null    // Raw JSONB array from DB: ["Finished", "Separate Entrance"]
@@ -87,7 +92,7 @@ const HOME_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
   bathrooms_total_integer, living_area_range, parking_total, locker,
   days_on_market, close_date, tax_annual_amount, square_foot_source,
   association_fee, unparsed_address, property_subtype, architectural_style,
-  approximate_age, lot_width, lot_depth, lot_size_area, basement,
+  approximate_age, lot_width, lot_depth, lot_size_area, lot_size_units, basement,
   garage_type, pool_features, public_remarks,
   net_operating_income, gross_revenue,
   street_number, street_name`
@@ -335,21 +340,33 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
   const adjustments: PriceAdjustment[] = []
   let adjustedPrice = sale.close_price
 
-  // 1. Lot Frontage adjustment
-  const saleFrontage = parseFloat(sale.lot_width) || null
-  const specFrontage = specs.lotWidth || null
-  if (saleFrontage && specFrontage) {
-    const diff = specFrontage - saleFrontage
-    if (Math.abs(diff) >= 1) {
-      const amount = Math.round(diff * DEFAULT_ADJUSTMENTS.LOT_FRONTAGE_PER_FOOT)
+  // 1. Lot Frontage adjustment — h6 (frontage-as-gate, 2026-06-09):
+  // Previously a flat $40k/ft additive (LOT_FRONTAGE_PER_FOOT) that produced
+  // catastrophic mispredictions on large diffs. Now proportional ±20% of
+  // comp close_price, capped — bounded by construction.
+  // Both sides go through normalizeFrontageFeet so Metres rows convert
+  // (×3.28084) and guard cases (negative / >1000 / non-finite) become null
+  // (no adjustment — honest skip, not fabricated dollar amount).
+  const subjFt = normalizeFrontageFeet(specs.lotWidth, specs.lotSizeUnits)
+  const compFt = normalizeFrontageFeet(sale.lot_width, sale.lot_size_units)
+  if (subjFt != null && compFt != null) {
+    const diffFt = subjFt - compFt
+    if (Math.abs(diffFt) >= 1) {
+      const pct = Math.min(
+        Math.abs(diffFt) * DEFAULT_ADJUSTMENTS.LOT_FRONTAGE_PER_FOOT_PCT,
+        DEFAULT_ADJUSTMENTS.LOT_FRONTAGE_MAX_PCT,
+      )
+      const sign = diffFt > 0 ? 1 : -1
+      const amount = Math.round(sign * pct * sale.close_price)
       adjustedPrice += amount
+      const pctLabel = (pct * 100).toFixed(1)
       adjustments.push({
         type: 'lot_frontage' as any,
-        difference: parseFloat(diff.toFixed(1)),
+        difference: parseFloat(diffFt.toFixed(1)),
         adjustmentAmount: amount,
-        reason: diff > 0
-          ? `Your lot is ${Math.abs(diff).toFixed(1)}ft wider (+$${Math.abs(amount).toLocaleString()})`
-          : `Comparable lot is ${Math.abs(diff).toFixed(1)}ft wider (-$${Math.abs(amount).toLocaleString()})`,
+        reason: diffFt > 0
+          ? `Your lot is ${Math.abs(diffFt).toFixed(1)}ft wider (+${pctLabel}% of comp price = +$${Math.abs(amount).toLocaleString()})`
+          : `Comparable lot is ${Math.abs(diffFt).toFixed(1)}ft wider (-${pctLabel}% of comp price = -$${Math.abs(amount).toLocaleString()})`,
       })
     }
   }

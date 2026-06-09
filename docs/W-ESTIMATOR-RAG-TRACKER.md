@@ -5589,3 +5589,247 @@ PUSH STATUS — HELD per standing instruction.
   NOT committed this turn. Tracker entry written. Operator decides whether
   this ships as standalone feat commit, bundles with the next workstream,
   or is held for further verification (e.g., the missing browser walk).
+
+
+================================================================================
+FRONTAGE-AS-GATE ACTIVATION (RANGE-ADJ Pattern 2)
+2026-06-09 (W-ESTIMATOR-RAG)
+================================================================================
+
+OPERATOR DIRECTIVE (verbatim, condensed):
+  "ACTIVATE frontage-as-gate (RANGE-ADJ Pattern 2). Replace flat $40k/ft
+   additive with proportional ±20% band on close_price. Unit normalization
+   metres→feet. Defensive guards on lot_width. Scope lock: scoreMatch 25-pt
+   frontage SCORE band stays byte-identical."
+
+WHAT WAS BROKEN:
+  lib/estimator/home-adjustment-math.js:16 — LOT_FRONTAGE_PER_FOOT: 40000.
+  At $40k/ft flat × 10ft frontage diff = $400k adjustment (≈47% of Detached
+  median $850k); 15ft = $600k (≈71%); 20ft = $800k (≈94%). Bounded only by
+  the outer ±50%-of-close_price clamp at createHomeComparable line ~398 — so
+  the predicted price for a RANGE-ADJ comp could flip sign or move catastro-
+  phically far. Recon showed this as the "RANGE-ADJ catastrophe class."
+
+  Plus the wrong-units defect: 1,794 'Metres'-flagged rows (0.8% of inventory)
+  had lot_width interpreted as feet. A townhouse 6.10m stored value → matcher
+  read it as 6.10ft → $40k × Δ(20-6.10) = $556k adjustment vs a 20ft subject.
+
+WHAT THIS BUILD DID (unit of work, on top of pushed 417ea2b):
+
+  STEP 0 — DATA-HYGIENE GATE (scripts/diag-frontage-hygiene-gate.js + the
+  Acres-cohort follow-up scripts/diag-frontage-acres-cohort.js, read-only):
+    lot_size_units on 2y-closed HOME_SUBTYPES (n=212,792):
+      Feet     193,129 (90.8%)
+      (null)    14,178 ( 6.7%)
+      Acres      3,691 ( 1.7%)  ← gate triggered; characterized below
+      Metres     1,794 ( 0.8%)
+    Acres-cohort `lot_width` characterization (operator decision: OPTION A):
+      'Acres' flag refers to lot_size_AREA, NOT lot_width. Proven via
+      lot_size_dimensions strings ("75.00 x 133.00") + area cross-check
+      (220×263 ≈ 1.33 acres matches the 1.11 lot_size_area, etc.). Acres
+      cohort lot_width IS feet, same regime as 'Feet' and null. The
+      normalizer's default-to-feet branch correctly handles it.
+    Guard counts (rows that the normalizer null-returns):
+      lw <= 0       Detached 944, Semi 48, Att/Row 351, Link 3, Dup 1, Tri 1
+      lw > 1000     Detached 952, Semi 5, Att/Row 10  (data-error class
+                    like the 274,033 max in recon — keep blocking)
+      200-1000 band Detached 10,491  ← KEPT (rural acreage frontages,
+                                          Acres-cohort p90 = 400ft).
+                                          Proportional ±20% cap bounds
+                                          their adjustment regardless of
+                                          width — safe to keep.
+
+  STEP 1 — NORMALIZER + GUARDS (lib/estimator/home-adjustment-math.js):
+    Exported function normalizeFrontageFeet(rawWidth, lotSizeUnits) → number|null
+      - parseFloat, isFinite, > 0          (guards: NaN / negatives / zero → null)
+      - <= 1000                            (guard: data errors → null)
+      - 'Metres' → × 3.28084               (conversion)
+      - else 'Feet' / 'Acres' / null       (treat as feet — dominant 99.2% regime)
+    NEW constants (DEFAULT_ADJUSTMENTS):
+      LOT_FRONTAGE_PER_FOOT: 40000     (LEGACY — left in place for any local
+                                        recon script that still references
+                                        it; production reads *_PCT pair)
+      LOT_FRONTAGE_PER_FOOT_PCT: 0.008 (0.8% of close_price per foot diff)
+      LOT_FRONTAGE_MAX_PCT: 0.20       (hard cap)
+    Cap engages at |diffFt| = 0.20 / 0.008 = 25 ft (half the Detached median
+    lot p50=50; defensible threshold per operator spec).
+
+  STEP 1b — THREADING (HomeSpecs + HOME_SELECT + 3 callers + probe):
+    HomeSpecs gained `lotSizeUnits?: string | null`.
+    HOME_SELECT (matcher) + backtest HOME_SELECT both gained `lot_size_units`.
+    Threaded into specs:
+      HomeEstimatorBuyerModal.tsx — (listing as any).lot_size_units
+      HomePropertyEstimateCTA.tsx — listing.lot_size_units
+      parity-probe-sf-sold/route.ts — listing.lot_size_units
+      backtest-estimator-homes.js  — subj.lot_size_units
+    SellerEstimateRunner (Charlie seller form) — the form has frontage as
+    plain number (no units field). Defaults to feet (undefined → normalizer's
+    else branch → feet). Documented in inline matcher comment.
+
+  STEP 2 — PROPORTIONAL BAND (lib/estimator/home-comparable-matcher-sales.ts
+  lines 338-368, createHomeComparable):
+    Old:  amount = Math.round(diff * LOT_FRONTAGE_PER_FOOT)
+    New:  subjFt = normalizeFrontageFeet(specs.lotWidth, specs.lotSizeUnits)
+          compFt = normalizeFrontageFeet(sale.lot_width, sale.lot_size_units)
+          if subjFt != null && compFt != null:
+            diffFt = subjFt - compFt
+            if |diffFt| >= 1:
+              pct = min(|diffFt| * PER_FOOT_PCT, MAX_PCT)
+              amount = sign(diffFt) * pct * sale.close_price
+              reason = "Your lot is N.Nft wider (+X.X% of comp price = +$Y)"
+    Null-side handling: if EITHER side normalizes to null, NO adjustment
+    (no adjustments[] entry, amount = 0). Honest skip — missing > fabricated.
+    Outer ±50%-of-close_price clamp at line ~398 stays as backstop (the new
+    ±20% sits well inside it; clamp rarely engages).
+
+  STEP 3 — BACKTEST MIRROR (scripts/backtest-estimator-homes.js):
+    Import normalizeFrontageFeet from shared adjustment-math.
+    adjustedPriceFor() function (line 258-273): same proportional formula
+    using same constants from DEFAULT_ADJUSTMENTS — lockstep with production.
+    Subject specs builder (line ~616): thread subj.lot_size_units.
+
+  STEP 4 — PARITY CLASSIFICATION (scripts/parity-frontage-activation.js,
+  50 SF subjects, baseline captured against 417ea2b state via the standard
+  revert→baseline→restore cycle):
+    SUMMARY: 14 byte-identical, 36 expected-proportional, 0 expected-units-
+             fix, 0 INVESTIGATE, 0 errors.
+    Per-subject highlights:
+      Byte-identical (14): subjects with CONTACT tier (no comps to adjust)
+        OR subjects where every top-10 comp had |frontage diff| < 1 ft
+        AND no guard-affected comps. Includes #36 W13176994 (subjFt=null —
+        subject's own frontage couldn't be normalized → no adjustment
+        either before or after, byte-identical by construction).
+      Expected-proportional (36): every subject with ≥1 top-10 comp at a
+        meaningful frontage delta. The adj_delta_max column shows the
+        biggest per-comp adjusted_price movement; ranges from $70k (modest
+        diff in a low-frontage cohort) to $787,500 (rural 305-ft Detached
+        with a 20ft+ comp diff).
+      Specifically the catastrophe-class subjects:
+        #17 X13127080 Detached subj_ft=305  adj_delta_max=$787,500
+        #10 C13128016 Detached subj_ft=50.2 adj_delta_max=$689,800
+        #19 N13145154 Detached subj_ft=69.3 adj_delta_max=$639,500
+        Pre-h6 the flat $40k/ft was producing ±$1M+ adjustments on a 25ft
+        diff; post-h6 the cap bounds these to ±20% × close_price.
+      One Metres/guard-affected comp on subject #41 X13235560 (n_guard=1):
+        normalizer correctly skipped or converted; no INVESTIGATE.
+    Zero divergences on no-frontage-diff non-guard subjects.
+
+  STEP 5 — BACKTEST (scripts/backtest-estimator-homes.js + scripts/backtest-
+  plex-axis.js, fresh runs):
+
+    SF SALE — POST-h6 vs POST-STREET BASELINE:
+      Per-tier:
+        BINGO     n=40  MAPE 8.0%  median 6.2%   ±15 88%  bias +$31,635
+        BINGO-ADJ n=247 MAPE 13.0% median 8.8%   ±15 70%  bias +$21,204
+        RANGE     n=148 MAPE 26.4% median 13.5%  ±15 56%  bias +$23,660
+        RANGE-ADJ n=35  MAPE 31.3% median 20.3%  ±15 40%  bias +$27,946
+        RANGE-ADJ delta vs pre-h6 (n=33 35.3%/24.9%/30):
+          MAPE -4.0pp, median -4.6pp, ±15 +10pp   ← CATASTROPHE TIER UNBROKEN
+      OVERALL: MAPE 18.1%, median 9.8%, ±15 65%, bias +$23,367
+        Δ vs post-street (20.5% / 12.6% / 57%): MAPE -2.4pp, median -2.8pp,
+        ±15 +8pp. Material improvement on the central tendency and hit rate.
+
+    PLEX-AXIS (runPlexPricingPath path is NOT touched by h6 — it doesn't
+    call createHomeComparable or scoreMatch):
+      Duplex   sampled 200, priced 189, MAPE 24.2%, median 19.3%, ±15% 38%
+      Triplex  sampled 110, priced 89,  MAPE 30.1%, median 22.1%, ±15% 34%
+      Fourplex sampled 48,  priced 26,  MAPE 33.9%, median 34.5%, ±15% 35%
+      Multiplex sampled 92, priced 59,  MAPE 27.9%, median 20.0%, ±15% 39%
+      Triplex 22.1% byte-exact to locked anchor. Fourplex 34.5% byte-exact.
+      Duplex 17.4% → 19.3% (+1.9pp): this is SAMPLING NOISE, not h6 effect.
+      backtest-plex-axis.js uses ORDER BY random() per-subtype sample (line
+      67); n=189 means ±2pp swings are expected between runs. h6 cannot have
+      moved the plex matcher because runPlexPricingPath has its own median-
+      of-comps aggregator that never enters createHomeComparable's adjustment
+      chain. Mathematically guaranteed unchanged. Empirically confirmed by
+      Triplex/Fourplex byte-match + sampling-noise model on Duplex.
+
+  STEP 6 — tsc --noEmit clean (exit 0, full project).
+
+FILES MODIFIED (5 + tracker, 8 backups at .backup_20260609_061322):
+  lib/estimator/home-adjustment-math.js                       +40/-1
+  lib/estimator/home-comparable-matcher-sales.ts              +27/-12
+  app/api/parity-probe-sf-sold/route.ts                       +3/-1
+  components/property/HomePropertyEstimateCTA.tsx             +3/-1
+  app/estimator/components/HomeEstimatorBuyerModal.tsx        +4/-1
+  scripts/backtest-estimator-homes.js                         +21/-7
+  docs/W-ESTIMATOR-RAG-TRACKER.md                             +this run-log
+  Plus scripts/parity-frontage-activation.js                  NEW (parity harness)
+       scripts/diag-frontage-hygiene-gate.js                  NEW (STEP-0 gate)
+       scripts/diag-frontage-acres-cohort.js                  NEW (gate follow-up)
+       scripts/diag-frontage-recon.js                         (was created during recon turn)
+
+SCOPE LOCK MAINTAINED:
+  scoreMatch lines 259-268 (the 25-pt frontage SCORE band) untouched.
+  The score-side tier-membership stays byte-identical — only the dollar
+  adjustment chain moves. Verified: parity classifier reports `bestScoreSame`
+  on every subject (no score deltas; only adjusted_price deltas).
+
+VALUES VERIFIED THIS SESSION (Rule Zero — every claim from a command):
+  - 10 guard-class rows + 1,794 Metres rows + 3,691 Acres rows (gate counts)
+  - 14/50 byte-identical + 36/50 expected-proportional + 0 INVESTIGATE
+  - SF backtest OVERALL 20.5% → 18.1% MAPE (-2.4pp), 12.6% → 9.8% median (-2.8pp), 57% → 65% ±15% (+8pp)
+  - RANGE-ADJ 35.3% → 31.3% MAPE, 24.9% → 20.3% median, 30% → 40% ±15
+  - Triplex 22.1% byte-exact; Fourplex 34.5% byte-exact (sampling)
+  - Duplex 17.4% → 19.3% = sampling noise (random sampling confirmed at
+    backtest-plex-axis.js:67; h6 doesn't touch runPlexPricingPath)
+
+
+================================================================================
+F-MLS-LOT-UNITS-MIXED — NAMED, OPEN (deferred companion to h6)
+2026-06-09 (W-ESTIMATOR-RAG)
+================================================================================
+
+NAMED:  F-MLS-LOT-UNITS-MIXED
+STATUS: OPEN — deferred per CLAUDE.md "comprehensive work only" discipline.
+        Code-side defense shipped 2026-06-09; data + sync cleanup is a
+        separate workstream akin to F-MLS-DATA-CLEANUP-TRAILING-SPACE.
+
+DESCRIPTION:
+  The 'Metres' / negative / >1000 / null-units defect classes on
+  mls_listings.lot_width that the h6 normalizer defensively handles
+  (1,794 Metres rows + ~1,300 negative-or-zero rows + ~960 >1000 rows
+  across SF + plex subtypes). The matcher now does the right thing on
+  each cohort, but the underlying data is still mixed.
+
+WHY THIS IS A SEPARATE WORKSTREAM:
+  - PropTx is upstream. Even if we one-time UPDATE-normalize all rows
+    to feet, the next nightly sync re-introduces the unit mixing unless
+    the sync code path is also patched (mirrors F-MLS-DATA-CLEANUP-TRAILING-
+    SPACE-SEMI's PropTx-recurrence concern).
+  - The 'Metres' rows have legitimately different SOURCE data — they're
+    not data errors, they're a legitimate alternate measurement regime.
+    The decision is whether to FORCE-NORMALIZE in storage (lose source-
+    fidelity) or keep the indicator and require all consumers to normalize
+    at read time (current state, achieved by h6).
+  - Audit needed across other PropTx string/numeric mixed-unit columns:
+    lot_depth, lot_size_area, frontage_length (varchar — already messy).
+    Same audit class as F-MLS-DATA-CLEANUP-TRAILING-SPACE-SEMI's
+    "other string columns" follow-up.
+
+PROPOSED REMEDIATION (not this turn):
+  1. RECON the breadth across PropTx numeric columns: which carry units
+     metadata, which are stored in mixed regimes, which produce the same
+     class of catastrophic matcher behavior if read raw.
+  2. Decide policy: NORMALIZE-AT-WRITE (sync converts everything to feet,
+     loses source fidelity, simplifies all readers) vs NORMALIZE-AT-READ
+     (current — every consumer must normalize, defensive helpers required).
+     Recommended: NORMALIZE-AT-WRITE, since most consumers (admin UI,
+     reports, audits, future ML) should not each maintain their own
+     normalizer.
+  3. If NORMALIZE-AT-WRITE: one-time UPDATE migration with rollback
+     snapshot + sync-side patch. Hard gate per CLAUDE.md production-DB-
+     write protocol.
+
+CODE-SIDE DEFENSE STAYS regardless of data fix. normalizeFrontageFeet
+remains in lib/estimator/home-adjustment-math.js as a guard against
+future contamination on the matcher hot path.
+
+OUT OF SCOPE FOR THIS TURN's h6 activation. Logged so the operational
+follow-up isn't lost.
+
+PUSH STATUS — HELD per operator standing instruction.
+  origin/main = 417ea2b (street-level matching activation, 2026-06-09).
+  Local main = 417ea2b + 1 uncommitted unit (h6 frontage activation).
+  Tracker entry written. tsc clean. Operator decides commit shape +
+  push timing.

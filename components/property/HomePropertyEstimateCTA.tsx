@@ -51,6 +51,8 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
         parking: listing.parking_total || 0,
         lotWidth: listing.lot_width ? parseFloat(listing.lot_width) : null,
         lotDepth: listing.lot_depth ? parseFloat(listing.lot_depth) : null,
+        // h6: lot_size_units drives metres→feet normalization in the matcher.
+        lotSizeUnits: listing.lot_size_units || null,
         garageType: listing.garage_type || null,
         basementRaw: listing.basement || null,
         poolFeatures: listing.pool_features || null,
