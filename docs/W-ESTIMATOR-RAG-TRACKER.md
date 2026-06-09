@@ -6583,3 +6583,141 @@ APPLY STATUS — MIGRATION STILL HELD (separate gate, re-attempt is the next
     supabase/migrations/rollback-snapshots/home_adjustments_pre_2026-06-09T17-05-39-589Z.json
   origin/main = 6ae7f55 (apply-runner audit-fix, 2026-06-09).
   Local main = 6ae7f55 + 1 uncommitted fix unit (verifier polcmd branch).
+
+
+2026-06-09 — APPLY ATTEMPT #2: CLEAN COMMIT — home_adjustments table LIVE
+
+Operator invoked `APPLY_CONFIRMED=1 node scripts/apply-home-adjustments-
+migration.js` against the post-ed0cd76 verifier-fix runner. Runner log:
+
+  connected to postgresql:***@aws-1-ca-central-1.pooler.supabase.com:5432/postgres
+  pre-snapshot: …/rollback-snapshots/home_adjustments_pre_2026-06-09T17-33-30-752Z.json
+  pre_table_exists: null
+  BEGIN issued by runner — transaction open
+  applying migration DDL...
+  DDL applied (within open txn — not yet committed)
+  verifying post-DDL state (name-level, INSIDE txn)...
+  COMMIT issued — migration finalized.
+  OK — home_adjustments table live.
+    policies: 5
+    indexes:  8
+    columns:  24
+    rows:     0  (should be 0)
+  runner exit code: 0
+
+Live verification (independent post-commit confirmation):
+
+  to_regclass(public.home_adjustments) = home_adjustments  ✓
+  relrowsecurity                       = true              ✓
+  relforcerowsecurity                  = true              ✓
+
+  Policies (5 by name + per-command expressions confirmed correct
+  per the polcmd branching in the ed0cd76 verifier):
+
+    home_adjustments_tenant_isolation_select  [SELECT]
+      USING:      (tenant_id IN (SELECT a.tenant_id FROM agents a WHERE a.user_id = auth.uid()))
+    home_adjustments_tenant_isolation_insert  [INSERT]
+      USING:      (null — PG design)
+      WITH CHECK: (tenant_id IN (SELECT a.tenant_id FROM agents a WHERE a.user_id = auth.uid()))
+    home_adjustments_tenant_isolation_update  [UPDATE]
+      USING:      (tenant_id IN (SELECT a.tenant_id FROM agents a WHERE a.user_id = auth.uid()))
+      WITH CHECK: (tenant_id IN (SELECT a.tenant_id FROM agents a WHERE a.user_id = auth.uid()))
+    home_adjustments_tenant_isolation_delete  [DELETE]
+      USING:      (tenant_id IN (SELECT a.tenant_id FROM agents a WHERE a.user_id = auth.uid()))
+    home_adjustments_service_role             [ALL]
+      USING:      true   (deliberately permissive — matcher anonymous-buyer read path)
+      WITH CHECK: true
+
+  Indexes (8): home_adjustments_pkey + 4 partial-unique (community /
+                municipality / area / generic) + 3 read-path (idx_…_tenant_*).
+  CHECK: home_adjustments_at_most_one_scope (the at-most-1-scope FK guard)
+         + an extra type_check that PG auto-created from the type column's
+         CHECK clause (not in the EXPECTED_CHECK assert list but additive,
+         not a regression).
+  FKs: 4 expected (tenant_id, area_id, municipality_id, community_id) +
+         bonus updated_by_fkey → auth.users (declared in the migration,
+         not in the EXPECTED_FKS list; the runner asserts presence-of-named
+         FKs, doesn't cap the total count, so additional FKs are accepted).
+  Trigger: trg_home_adjustments_updated_at.
+  Row count: 0 (no overrides yet — every estimator call falls through to
+  DEFAULT_ADJUSTMENTS via the resolver's empty-resultset path).
+
+Pre-snapshot from attempt #2 (kept as audit artifact, alongside attempt #1):
+  supabase/migrations/rollback-snapshots/home_adjustments_pre_2026-06-09T17-33-30-752Z.json
+
+PARITY VERIFICATION (post-migration-applied, table empty):
+
+  Re-ran scripts/parity-4tier-activation.js against the 03b85f9 baseline
+  TWICE. Both runs returned the SAME outcome: 44 byte-identical /
+  1 expected-platinum-anchor / 4 expected-bronze-fill / 1 INVESTIGATE.
+
+  Diff vs the pre-apply 45/1/4/0 result:
+    - The +1 INVESTIGATE is on subject W13176994 (id 00124887-…), an Att/
+      Row/Townhouse in Mississauga muni / "Halton" or Peel area. Probed
+      live 3× sequentially:
+        try 1: tier=CONTACT, ALL tiers null            (5 concurrent DB
+                                                         queries all timed out)
+        try 2: tier=RANGE,   silver=22 best=115        (silver succeeded,
+               bronze=null                              bronze timed out)
+        try 3: tier=RANGE,   silver=22 best=115,       (full success —
+               bronze=50  best=120                      matches baseline EXACTLY)
+    - This subject's muni-tier query is heavy (Att/Row+Link in Mississauga
+      over 2y = ~thousands of rows filtered to top 500). Under the
+      4-tier-concurrent load (gold + silver + bronze + resolver +
+      attachMediaUrls) the silver query occasionally times out on
+      pgBouncer. When that happens, bronze wins on best-tier resolution
+      (which is CORRECT fallback behavior, just not the baseline).
+    - The parity classifier has retry-on-empty (CONTACT/0-comps) but no
+      retry-on-tier-mismatch. So it captured a flake-state result as
+      "INVESTIGATE" rather than retrying for a clean result.
+
+  THE NO-OP GUARANTEE IS PRESERVED BY CONSTRUCTION:
+  - With the table existing-but-empty, the resolver hits the
+    `if (!data || data.length === 0) return emptyResolved()` branch.
+  - emptyResolved() returns { sources: {} } — zero keys set.
+  - Every caller's customValues?.X ?? <theirDefault> resolves to
+    <theirDefault>.
+  - For the sale path: <theirDefault> = DEFAULT_ADJUSTMENTS.X. Identical
+    to f7f3c6e by construction.
+  - For the lease path: <theirDefault> = HOME_RENTAL_ADJUSTMENTS.X.
+    Identical to f7f3c6e by construction.
+  - Proven on W13176994's clean run (try 3): silver=22 bestScore=115
+    matches baseline EXACTLY (same tier, same comps, same scoring).
+
+  The 1 INVESTIGATE is environmental noise on a single subject's specific
+  load profile — NOT a v10-step-3 regression. The matcher's empty-table
+  behavior is byte-identical to f7f3c6e by construction.
+
+NAMED-OPEN (process finding, low priority, separate from any commit):
+  - The parity classifier could benefit from a 2nd retry that detects
+    tier-mismatch (in addition to CONTACT/0-comps). On W13176994 the
+    flake is reproducible (consistently the silver query times out under
+    load), so a retry-on-mismatch would likely succeed on the 2nd try.
+    Filed as future refinement to scripts/parity-4tier-activation.js —
+    NOT part of this commit / unit.
+
+  - The matcher's 4-tier concurrent compute hits ~5 sequential queries
+    per estimate request (gold + muni + area + resolver + media batch).
+    A second look at parallelization via Promise.all to reduce wall-clock
+    latency (already filed as a UX item post-h7) might also reduce the
+    pgBouncer-timeout flake rate. Existing named-open; this experience
+    adds weight to prioritizing it.
+
+CURRENT STATE:
+- Migration: APPLIED. Table live. Empty. RLS enforced.
+- Behavior: byte-identical to pre-apply (f7f3c6e) by construction;
+  proven on a clean probe.
+- Operator can now write per-community override rows via the admin UI at
+  /admin-homes/home-adjustments (currently deployed at ed0cd76 — live).
+- Each populated value takes effect on the next estimator call.
+
+FILES MODIFIED THIS RUN-LOG ENTRY:
+  MOD docs/W-ESTIMATOR-RAG-TRACKER.md (this entry)
+  No code changes — this is documentation of the production apply.
+Backup timestamped _$(date)$.
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — APPLIED. Both gates cleared for THIS migration.
+  origin/main = ed0cd76 (verifier polcmd branch, 2026-06-09).
+  Local main = ed0cd76 + 1 uncommitted unit (this tracker run-log).
+  Operator decides commit shape + push timing for the tracker entry.
