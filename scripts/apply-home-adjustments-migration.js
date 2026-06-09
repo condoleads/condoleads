@@ -118,9 +118,25 @@ async function verify(c, failures) {
     if (!colSet.has(expected)) failures.push(`column missing: ${expected}`)
   }
 
-  // ----- policies by NAME + USING clause for tenant_isolation -----
+  // ----- policies by NAME + per-command expression check -----
+  // Fix 2026-06-09 (apply attempt #1 verifier false-positive): PG stores
+  // RLS policy expressions in two columns: polqual (USING) and polwithcheck
+  // (WITH CHECK). Which one is populated depends on polcmd:
+  //   'r' SELECT  → USING only         (polqual set, polwithcheck NULL)
+  //   'a' INSERT  → WITH CHECK only    (polqual NULL, polwithcheck set)
+  //   'w' UPDATE  → BOTH               (both set)
+  //   'd' DELETE  → USING only         (polqual set, polwithcheck NULL)
+  //   '*' ALL     → BOTH               (covers all commands)
+  // The original verifier asserted USING on all 4 tenant_isolation policies,
+  // which gave a false positive on the INSERT policy (legit NULL USING).
+  // Fix: query both columns, branch the content check by polcmd, assert
+  // tenant-scoping on whichever expression(s) that command actually uses.
+  // The tenant-leak guard is PRESERVED — every command checks the right
+  // expression(s); none are skipped.
   const polRows = (await c.query(`
-    SELECT polname, polcmd, pg_get_expr(polqual, polrelid) AS using_expr
+    SELECT polname, polcmd,
+           pg_get_expr(polqual, polrelid)      AS using_expr,
+           pg_get_expr(polwithcheck, polrelid) AS with_check_expr
       FROM pg_policy WHERE polrelid = 'public.home_adjustments'::regclass
   `)).rows
   const polByName = {}
@@ -128,19 +144,54 @@ async function verify(c, failures) {
   for (const name of EXPECTED_POLICIES) {
     if (!polByName[name]) failures.push(`policy missing: ${name}`)
   }
-  // Tenant-isolation policies MUST contain the auth.uid()-joined agents
-  // lookup. A wrong USING here is a tenant-leak. Match conservatively on the
-  // function calls actually compiled into the expression: auth.uid() + the
-  // tenant_id IN (SELECT … FROM agents …) pattern. Reject anything that
-  // looks permissive (USING true, USING null, etc).
+
+  // Helper: assert a single expression is the tenant-scoped agents-joined
+  // pattern. Rejects permissive `true` outright (the tenant-leak shape on
+  // an RLS table). Tag = "USING" or "WITH CHECK" for the failure message.
+  function assertTenantScopedExpr(name, tag, expr, failures) {
+    if (!expr) {
+      // The branching logic must guarantee we only call this for an
+      // expression the policy SHOULD have declared. A null here means
+      // either the policy is missing it (defect in the migration) OR
+      // the verifier's branch is wrong (defect in the runner). Fail loud.
+      failures.push(`policy ${name}: ${tag} expression unexpectedly null — migration or verifier defect`)
+      return
+    }
+    const e = expr.toLowerCase()
+    if (e === 'true' || e.trim() === '(true)') {
+      failures.push(`policy ${name}: PERMISSIVE ${tag} (true) detected — tenant leak`)
+      return  // permissive supersedes the other content checks; one strong signal is enough
+    }
+    if (!e.includes('auth.uid()')) failures.push(`policy ${name}: ${tag} does not reference auth.uid() (got: ${expr})`)
+    if (!e.includes('agents'))     failures.push(`policy ${name}: ${tag} does not join agents table (got: ${expr})`)
+    if (!e.includes('tenant_id'))  failures.push(`policy ${name}: ${tag} does not scope by tenant_id (got: ${expr})`)
+  }
+
+  // Per-command branching for tenant_isolation policies. The service_role
+  // policy is checked by name only — it's deliberately permissive (USING
+  // true / WITH CHECK true) because the matcher read path runs in
+  // anonymous-buyer context. App-side .eq('tenant_id', ...) enforces that
+  // path. Asserting tenant-scoping on service_role would fail by design.
   for (const name of TENANT_ISOLATION_POLICIES) {
     const r = polByName[name]
-    if (!r) continue  // already reported missing above
-    const expr = (r.using_expr || '').toLowerCase()
-    if (!expr.includes('auth.uid()')) failures.push(`policy ${name}: USING expression does not reference auth.uid() (got: ${r.using_expr})`)
-    if (!expr.includes('agents')) failures.push(`policy ${name}: USING expression does not join agents table (got: ${r.using_expr})`)
-    if (!expr.includes('tenant_id')) failures.push(`policy ${name}: USING expression does not scope by tenant_id (got: ${r.using_expr})`)
-    if (expr === 'true' || expr.trim() === '(true)') failures.push(`policy ${name}: PERMISSIVE USING true detected — tenant leak`)
+    if (!r) continue  // missing-policy already reported above
+    switch (r.polcmd) {
+      case 'r': // SELECT — USING only
+        assertTenantScopedExpr(name, 'USING', r.using_expr, failures)
+        break
+      case 'a': // INSERT — WITH CHECK only; USING is NULL by PG design
+        assertTenantScopedExpr(name, 'WITH CHECK', r.with_check_expr, failures)
+        break
+      case 'w': // UPDATE — BOTH expressions must scope (existing row AND new row)
+        assertTenantScopedExpr(name, 'USING', r.using_expr, failures)
+        assertTenantScopedExpr(name, 'WITH CHECK', r.with_check_expr, failures)
+        break
+      case 'd': // DELETE — USING only
+        assertTenantScopedExpr(name, 'USING', r.using_expr, failures)
+        break
+      default:
+        failures.push(`policy ${name}: unexpected polcmd '${r.polcmd}' — verifier branch not defined`)
+    }
   }
 
   // ----- indexes: partial-unique by NAME + predicate; read-path by NAME -----

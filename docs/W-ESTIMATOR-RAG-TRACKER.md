@@ -6489,3 +6489,97 @@ APPLY STATUS — MIGRATION STILL HELD (separate gate, unchanged).
   APPLY_CONFIRMED=1 node scripts/apply-home-adjustments-migration.js.
   origin/main = 34e1db6 (v10 step 3 Phase 1+1.1 — pushed earlier this turn-set).
   Local main = 34e1db6 + 1 uncommitted fix unit (this audit fix).
+
+
+2026-06-09 — APPLY ATTEMPT #1: ROLLBACK CLEAN, VERIFIER FALSE-POSITIVE, FIXED
+
+Operator invoked `APPLY_CONFIRMED=1 node scripts/apply-home-adjustments-
+migration.js` against the post-6ae7f55 SOUND runner. The runner went through
+its full cycle and produced this exact log:
+
+  connected to postgresql:***@aws-1-ca-central-1.pooler.supabase.com:5432/postgres
+  pre-snapshot: …/rollback-snapshots/home_adjustments_pre_2026-06-09T17-05-39-589Z.json
+  pre_table_exists: null
+  BEGIN issued by runner — transaction open
+  applying migration DDL...
+  DDL applied (within open txn — not yet committed)
+  verifying post-DDL state (name-level, INSIDE txn)...
+  VERIFY FAILED — 3 assertion(s) failed. Rolling back.
+    ✗ policy home_adjustments_tenant_isolation_insert: USING expression does not reference auth.uid() (got: null)
+    ✗ policy home_adjustments_tenant_isolation_insert: USING expression does not join agents table (got: null)
+    ✗ policy home_adjustments_tenant_isolation_insert: USING expression does not scope by tenant_id (got: null)
+  ROLLBACK issued — zero persisted state.
+  runner exit code: 4
+
+  Post-runner: to_regclass(public.home_adjustments) = null  ✓ clean rollback.
+  Pre-snapshot file persists as audit artifact.
+
+ROOT CAUSE — verifier defect (not a migration defect):
+
+PostgreSQL stores RLS policy expressions in two columns of pg_policy:
+  polqual       — the USING expression. Populated for SELECT/UPDATE/DELETE.
+                  NULL for INSERT policies (PG design: there's no existing row
+                  to check against for an INSERT, only the to-be-inserted row).
+  polwithcheck  — the WITH CHECK expression. Populated for INSERT/UPDATE.
+                  NULL for SELECT/DELETE.
+
+The 6ae7f55 verifier queried only `pg_get_expr(polqual, polrelid) AS using_expr`
+and asserted all 4 tenant_isolation policies have a tenant-scoped USING clause.
+The INSERT policy legitimately returned NULL USING — the verifier interpreted
+that as a tenant-leak risk and rolled back.
+
+The migration SQL is CORRECT — the INSERT policy at line 152-154 declares
+`WITH CHECK (tenant_id IN (SELECT a.tenant_id FROM agents a WHERE
+a.user_id = auth.uid()))` which is the proper INSERT-time tenant scope.
+What broke was the verifier checking the wrong column for INSERT.
+
+VALIDATES 6ae7f55 TRANSACTION-FIX IN PRODUCTION:
+
+This is the proof that the Node-managed txn fix from 6ae7f55 works. A false-
+positive at the verifier triggered the ROLLBACK path. The DDL had executed
+inside the open txn; the verify-fail caused `await c.query('ROLLBACK')`;
+post-runner inspection confirmed `to_regclass = null` — zero persisted state.
+If the prior runner's transaction-boundary defect had still been live, this
+exact verifier false-positive would have left a fully-applied table with
+RLS, 5 policies, 8 indexes, FKs, and a trigger in production, requiring
+manual `DROP TABLE … CASCADE` cleanup. Instead: nothing persisted, snapshot
+preserved, table absent, no cleanup needed.
+
+VERIFIER FIX — branches per polcmd, preserves tenant-leak guard:
+
+The fix extends the policy query to fetch BOTH polqual and polwithcheck,
+and branches the content assertion by polcmd. Mapping (verified against
+the 5 CREATE POLICY statements in the migration SQL — lines 148-171):
+
+  Policy name                                   polcmd  Checks                  SQL declares
+  ───────────────────────────────────────────── ──────  ─────────────────────── ───────────────────
+  home_adjustments_tenant_isolation_select      r       USING only              USING (scope)
+  home_adjustments_tenant_isolation_insert      a       WITH CHECK only         WITH CHECK (scope)
+  home_adjustments_tenant_isolation_update      w       BOTH                    USING (scope) + WC (scope)
+  home_adjustments_tenant_isolation_delete      d       USING only              USING (scope)
+  home_adjustments_service_role                 *       name-presence only      USING (true) WC (true)
+
+For each tenant_isolation policy, the relevant expression must contain
+`auth.uid()` AND `agents` AND `tenant_id`, and must not be permissive
+`true`. The service_role policy is deliberately permissive (matcher read
+path runs anonymous-buyer; tenant scoping enforced app-side via
+.eq('tenant_id', …)); verifier asserts presence by name only.
+
+Tenant-leak guard PRESERVED — no policy is skipped, every policy's
+relevant expression(s) are checked. Just checking the right column per
+command. A future false-positive can no longer be caused by "wrong PG
+column for that command type" because the branch is now polcmd-driven.
+
+Files modified (single fix commit):
+  MOD scripts/apply-home-adjustments-migration.js
+  MOD docs/W-ESTIMATOR-RAG-TRACKER.md (this entry)
+Backups timestamped _20260609_132034.
+node --check scripts/apply-home-adjustments-migration.js exit 0.
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — MIGRATION STILL HELD (separate gate, re-attempt is the next
+  operator go AFTER this verifier fix lands on origin/main).
+  Pre-snapshot from attempt #1 preserved at:
+    supabase/migrations/rollback-snapshots/home_adjustments_pre_2026-06-09T17-05-39-589Z.json
+  origin/main = 6ae7f55 (apply-runner audit-fix, 2026-06-09).
+  Local main = 6ae7f55 + 1 uncommitted fix unit (verifier polcmd branch).
