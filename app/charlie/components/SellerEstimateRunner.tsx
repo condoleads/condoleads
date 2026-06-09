@@ -56,6 +56,8 @@ interface Props {
     locker: string
     frontage: string
     propertySubtype: string
+    streetNumber: string
+    streetName: string
   }
   onEstimateReady: (data: any) => void
 }
@@ -95,6 +97,11 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
       }
 
       if (resolvedData.path === 'home' && resolvedData.municipalityId) {
+        // h5: thread subject street into HomeSpecs so the matcher can score
+        // the same-street + odd/even bonus. Null-guard parseInt — NaN never
+        // reaches specs (would silently disable the bonus anyway, but explicit
+        // guard avoids weirdness if subjectStreetNumber ever feeds arithmetic).
+        const streetNumParsed = parseInt(formData.streetNumber, 10)
         const specs: HomeSpecs = {
           bedrooms: bedsNum,
           bathrooms: bathsNum,
@@ -103,6 +110,8 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
           communityId: resolvedData.communityId || null,
           ...(livingAreaRange && { livingAreaRange }),
           lotWidth: formData.frontage ? parseFloat(formData.frontage) : null,
+          ...(formData.streetName ? { subjectStreetName: formData.streetName } : {}),
+          ...(!Number.isNaN(streetNumParsed) ? { subjectStreetNumber: streetNumParsed } : {}),
         }
         result = formData.intent === 'lease'
           ? await estimateHomeRent(specs, false)

@@ -39,6 +39,15 @@ export interface HomeSpecs {
   agentId?: string
   asOfDate?: Date              // backtest/historical use only - defaults to live (now) when absent
   subjectListingKey?: string   // backtest/historical use only - exclude-self; no effect in live estimates
+
+  // Street-level matching activation (2026-06-08): when present, the matcher
+  // computes sameStreet (15 pts) and sameOddEven (5 pts) bonuses against each
+  // comp's parsed unparsed_address. When absent (undefined) the bonuses are
+  // skipped, preserving exact pre-activation behavior for un-plumbed callers.
+  // Subject name must pass through normalizePlaceName so it matches the
+  // (lowercased + suffix-stripped) parse from comp's unparsed_address.
+  subjectStreetName?: string
+  subjectStreetNumber?: number
 }
 
 interface HomeMatchResult {
@@ -80,7 +89,8 @@ const HOME_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
   association_fee, unparsed_address, property_subtype, architectural_style,
   approximate_age, lot_width, lot_depth, lot_size_area, basement,
   garage_type, pool_features, public_remarks,
-  net_operating_income, gross_revenue`
+  net_operating_income, gross_revenue,
+  street_number, street_name`
 
 // ============ STYLE FAMILIES ============
 
@@ -132,6 +142,23 @@ function isAdjacentAgeBracket(a: string | null, b: string | null): boolean {
 
 // ============ STREET EXTRACTION ============
 
+// h5: shared street-name normalizer. Used by BOTH:
+//   (a) extractStreetName(address) for the comp side (parses unparsed_address)
+//   (b) the SUBJECT side, where we already have a clean dedicated street_name
+//       column and only need to strip whitespace + lowercase + unit suffixes.
+// Without a shared normalizer, a clean dedicated column subject value will
+// never equal the parsed-from-address comp value (e.g. "Main St" vs "main st"
+// or "Westcroft Drive" vs "westcroft drive"). Both sides MUST converge here.
+// STEP-0 hygiene: btrim is built in via .trim() — covers the 10 contaminated
+// rows the hygiene scan found.
+function normalizePlaceName(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  // Strip unit suffixes ("Main", "BSMT", "Upper", "Lower", "Rear", "Apt", "Unit")
+  // and any leading/trailing whitespace, then lowercase.
+  const cleaned = raw.replace(/\s+(Main|BSMT|Upper|Lower|Rear|Apt|Unit)\s*$/i, '').trim().toLowerCase()
+  return cleaned.length > 0 ? cleaned : null
+}
+
 function extractStreetName(address: string | null): string | null {
   if (!address) return null
   // Format: "22 Westcroft Drive, Toronto E10, ON M1E 3A3"
@@ -140,10 +167,9 @@ function extractStreetName(address: string | null): string | null {
   // Remove the street number (first word if it's a number)
   const parts = streetPart.split(' ')
   if (parts.length < 2) return null
-  // Remove leading number
-  const numberRemoved = parts.slice(1).join(' ')
-  // Remove unit suffixes like "Main", "BSMT", "Upper", "Lower"
-  return numberRemoved.replace(/\s+(Main|BSMT|Upper|Lower|Rear|Apt|Unit)\s*$/i, '').trim().toLowerCase()
+  // Remove leading number, then pass to the shared normalizer so subject side
+  // (which uses normalizePlaceName directly on dedicated street_name) matches.
+  return normalizePlaceName(parts.slice(1).join(' '))
 }
 
 function extractStreetNumber(address: string | null): number | null {
@@ -156,6 +182,26 @@ function extractStreetNumber(address: string | null): number | null {
 
 function isOdd(n: number): boolean {
   return n % 2 !== 0
+}
+
+// h5: per-comp street bonus computation. Used at all 4 scoreMatch call sites.
+// Guards: if subject street data is absent (caller didn't plumb yet), both
+// flags are false — preserves byte-identical behavior for un-plumbed callers.
+// Comp-side name is parsed from unparsed_address via extractStreetName; both
+// subject + comp names go through normalizePlaceName so a clean dedicated-
+// column subject value can match a parsed-from-address comp value. Same with
+// numbers: parse to int, null-guard the parity check.
+function streetBonusFor(
+  sale: any,
+  subjName: string | null,
+  subjNum: number | null,
+): { sameStreet: boolean; sameOddEven: boolean } {
+  if (!subjName || subjNum == null) return { sameStreet: false, sameOddEven: false }
+  const saleStreet = extractStreetName(sale.unparsed_address)
+  if (!saleStreet || saleStreet !== subjName) return { sameStreet: false, sameOddEven: false }
+  const saleNum = extractStreetNumber(sale.unparsed_address)
+  const sameOddEven = saleNum != null && isOdd(saleNum) === isOdd(subjNum)
+  return { sameStreet: true, sameOddEven }
 }
 
 // ============ "AS IS" DETECTION ============
@@ -903,8 +949,18 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
   twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2)
 
   const subtypes = getCompatibleSubtypes(specs.propertySubtype)
-  const subjectStreet = extractStreetName(null) // We don't have subject address in specs
-  const subjectStreetNum = extractStreetNumber(null)
+
+  // h5: subject-side street normalization. Computed ONCE per matcher call, not
+  // per comp. Subject's dedicated street_name goes through the SAME normalizer
+  // (normalizePlaceName) that extractStreetName applies after parsing the
+  // comp's unparsed_address — so a clean DB value can equal a parsed value.
+  // When subjectStreetName/Number are undefined (un-plumbed caller), both
+  // remain null and streetBonusFor returns sameStreet=false → no behavior
+  // change vs pre-activation.
+  const subjName = normalizePlaceName(specs.subjectStreetName ?? null)
+  const subjNum = (specs.subjectStreetNumber != null && Number.isInteger(specs.subjectStreetNumber))
+    ? specs.subjectStreetNumber
+    : null
 
   // ===== TIER 1: SAME STREET (within community) =====
   if (specs.communityId) {
@@ -931,12 +987,12 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       const funneled = applyFunnel(cleanSales, specs)
 
       if (funneled.length >= 3) {
-        // Score all and sort
+        // Score all and sort. h5: street bonus now active — subject side
+        // computed once at top of findHomeComparables, comp side parsed per
+        // sale via streetBonusFor. Un-plumbed callers: subjName=null →
+        // sameStreet=false → byte-identical to pre-h5.
         const scored = funneled.map(s => {
-          const saleStreet = extractStreetName(s.unparsed_address)
-          const saleNum = extractStreetNumber(s.unparsed_address)
-          const sameStreet = false // We don't have subject address — street matching needs address passed in
-          const sameOddEven = false
+          const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
           return {
             sale: s,
             score: scoreMatch(s, specs, sameStreet, sameOddEven),
@@ -957,7 +1013,10 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       if (relaxed.length >= 3) {
         const scored = relaxed.map(s => ({
           sale: s,
-          score: scoreMatch(s, specs, false, false),
+          score: (() => {
+            const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
+            return scoreMatch(s, specs, sameStreet, sameOddEven)
+          })(),
         })).sort((a, b) => b.score - a.score)
 
         const bestScore = scored[0].score
@@ -1000,7 +1059,10 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       if (pool.length >= 2) {
         const scored = pool.map(s => ({
           sale: s,
-          score: scoreMatch(s, specs, false, false),
+          score: (() => {
+            const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
+            return scoreMatch(s, specs, sameStreet, sameOddEven)
+          })(),
         })).sort((a, b) => b.score - a.score)
 
         const bestScore = scored[0].score
@@ -1028,7 +1090,10 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       if (bedBathOnly.length >= 2) {
         const scored = bedBathOnly.map(s => ({
           sale: s,
-          score: scoreMatch(s, specs, false, false),
+          score: (() => {
+            const { sameStreet, sameOddEven } = streetBonusFor(s, subjName, subjNum)
+            return scoreMatch(s, specs, sameStreet, sameOddEven)
+          })(),
         })).sort((a, b) => b.score - a.score)
 
         const bestScore = scored[0].score

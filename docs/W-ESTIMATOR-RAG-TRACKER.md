@@ -5378,3 +5378,214 @@ DECISION OWED:
 
 OUT OF SCOPE FOR F-MLS-SUBTYPE-TRAILING-SPACE-SEMI (the code fix shipped
 2026-06-08). Logged here so the operational follow-up isn't lost.
+
+
+================================================================================
+STREET-LEVEL MATCHING ACTIVATION — the dead 20-pt bonus is alive
+2026-06-08 → 2026-06-09 (W-ESTIMATOR-RAG)
+================================================================================
+
+OPERATOR DIRECTIVE (verbatim, condensed):
+  "ACTIVATE street-level matching. Recon already done; this is the build.
+   Rule Zero: backup every existing file before edit. Every value verified
+   this session — no guessing. tsc clean before any commit. Tracker write
+   is part of this unit of work. HOLD push."
+
+WHAT WAS DEAD (from prior recon):
+  - lib/estimator/home-comparable-matcher-sales.ts line 938-939 (community-
+    strict tier of findHomeComparables) hardcoded `sameStreet=false,
+    sameOddEven=false`. 3 other scoreMatch call sites (lines 960, 1003,
+    1031) passed `false, false` inline. All 4 callers dead.
+  - HomeSpecs interface had NO subjectStreetName/Number field.
+  - 20-pt bonus code (scoreMatch lines 266-270: `if (sameStreet) score+=15;
+    if (sameOddEven) score+=5`) was present but unreachable.
+  - extractStreetName / extractStreetNumber / isOdd helpers existed.
+
+WHAT THIS BUILD DID (the unit of work, on top of pushed e501e0a):
+
+  STEP 0 — DATA-HYGIENE GATE (scripts/diag-street-whitespace.js, read-only):
+    SELECT
+      COUNT(*) FILTER (WHERE street_name <> btrim(street_name))   AS name_ws,
+      COUNT(*) FILTER (WHERE street_number <> btrim(street_number)) AS num_ws
+    FROM mls_listings WHERE standard_status='Closed' AND
+      close_date >= NOW() - INTERVAL '2 years'
+    →  name_ws = 9    (out of 560,241 closed-2y rows)
+    →  num_ws  = 1
+    VERDICT: NON-ZERO. The normalizer MUST btrim both sides. Built in via
+    .trim() inside normalizePlaceName — covers all 10 contaminated rows.
+
+  STEP 1 — HomeSpecs + shared normalizer:
+    Added to HomeSpecs interface:
+      subjectStreetName?: string      // h5: street-level matching
+      subjectStreetNumber?: number    // h5: street-level matching
+    NEW helper normalizePlaceName(raw):
+      - .trim() (the STEP-0 hygiene btrim)
+      - strip suffix /\s+(Main|BSMT|Upper|Lower|Rear|Apt|Unit)\s*$/i
+      - .toLowerCase()
+      - return null if empty after cleanup
+    Refactored extractStreetName(address) to use normalizePlaceName on the
+    parsed-out name portion — both subject and comp sides now go through
+    the SAME normalizer. A clean dedicated subject street_name can match a
+    parsed-from-unparsed_address comp name.
+    NEW helper streetBonusFor(sale, subjName, subjNum):
+      - if subjName==null || subjNum==null: { sameStreet:false, sameOddEven:false }
+      - compute saleStreet via extractStreetName(sale.unparsed_address)
+      - sameStreet = saleStreet === subjName
+      - sameOddEven = sameStreet && isOdd(saleNum) === isOdd(subjNum)
+    Top of findHomeComparables: subjName + subjNum computed ONCE per matcher
+    call (not per comp). Number.isInteger guard ensures NaN never enters the
+    parity check.
+
+  STEP 2 — HOME_SELECT extended:
+    Added `street_number, street_name` to the SELECT list (used by all SF
+    tier queries + findActiveCompetition + findMultiUnitContactComparables).
+    Even though the matcher continues to parse the comp street from
+    unparsed_address (so the parse path stays canonical), having the
+    dedicated columns selected enables a future direct-column switch and
+    lets backtests cross-check extract vs dedicated on a sample.
+    4 DEAD SITES NOW LIVE:
+      - line ~998 (community-strict): uses streetBonusFor
+      - line ~1018 (community-relaxed): uses streetBonusFor
+      - line ~1064 (muni-pool): uses streetBonusFor
+      - line ~1095 (muni-bedBathOnly last-resort): uses streetBonusFor
+    Guard: if subjName == null (un-plumbed caller), both flags are false →
+    pre-h5 byte-identical behavior preserved.
+
+  STEP 3 — PLUMBED 3 production callers + parity probe:
+    - app/charlie/components/SellerEstimateRunner.tsx (Charlie seller form):
+      `formData.streetName` + parseInt(formData.streetNumber). Type was
+      missing — added streetName/streetNumber to the local props type.
+    - components/property/HomePropertyEstimateCTA.tsx (auto-run on
+      /property/[slug]): `listing.street_name` + parseInt(listing.street_number).
+    - app/estimator/components/HomeEstimatorBuyerModal.tsx (modal entry from
+      geo pages): same fields via (listing as any).street_*.
+    - app/api/parity-probe-sf-sold/route.ts (local test surface): forwarded
+      listing.street_name + parseInt(listing.street_number) so the probe
+      exercises the activated path the same way production CTAs do.
+    Every plumber null-guards parseInt → NaN never reaches specs.
+
+  STEP 4 — PARITY CLASSIFICATION (scripts/parity-street-activation.js,
+  50 SF subjects from the c57c2dd/e501e0a sample):
+    Baseline re-captured at e501e0a state (the pre-activation state) by
+    reverting matcher + probe to the .backup_20260608_160347 snapshot,
+    running parity-sf-sold-baseline.js --mode=baseline, then restoring the
+    post-activation versions. Isolates this build's effect from the e501e0a
+    Semi unbreak that shipped earlier.
+
+    DETERMINISTIC VERDICT (2026-06-09 final pass):
+      49/50 byte-identical (every subject without a same-street comp in
+                            pool returned identical tier/comps/score)
+       1/50 expected-unbreak — Att/Row/Townhouse X9410005:
+                               2 same-street comps; comp X10413409's score
+                               rose by EXACTLY +15 (street-only bonus,
+                               different-parity number) → tier stayed BINGO,
+                               bestMatchScore moved upward
+       0 INVESTIGATE, 0 errors
+
+    The earlier 2026-06-08 pass reported 47 byte-identical + 1 expected +
+    2 anomalies (1 baseline-stale, 1 HTTP error). ROOT CAUSE characterized:
+    sequential-pass load against a dev server + Supabase pooler occasionally
+    drops a single response (webpack cache rename hiccup; pooler transient).
+    Matcher itself is fully deterministic — direct isolated re-probes of
+    both subjects (X13167624 + W13176994) returned identical results 3/3
+    times each.
+    REMEDIATION: both parity scripts (parity-sf-sold-baseline.js +
+    parity-street-activation.js) now wrap the per-subject probe in a
+    retry-on-empty / retry-on-error pattern: if the first call returns
+    HTTP non-200 OR tier=CONTACT/comps=0 (the empirical flake signature),
+    a 750ms-spaced second call decides. Single retry suffices to flush the
+    transient; with that in place the classifier reports zero anomalies
+    deterministically. The retry is sequential-pass-only — it does NOT
+    mask real CONTACT/0 results (which agree with the first call after the
+    retry runs).
+
+  STEP 5 — BACKTEST (scripts/backtest-estimator-homes.js updated):
+    Updated the inlined scoreMatch to mirror the now-LIVE bonus + added
+    normalizePlaceName/extractStreetNameBT/extractStreetNumberBT/_isOdd as
+    JS mirrors of the production helpers. Threaded subject street into the
+    backtest specs builder (subj.street_name + parseInt(subj.street_number)).
+    Added street_number, street_name to backtest's HOME_SELECT.
+
+    SF SALE BACKTEST (n=500 subjects, 90-day sample, 465 priced):
+      OPERATOR-STATED PRE-h5 BASELINE: MAPE ~20%, median ~14.4%, ±15 ~52%
+      POST-h5 RESULT:                  MAPE 20.5%, median 12.6%,  ±15 57%
+      Δ vs baseline:                   ~flat,    -1.8pp,           +5pp
+      Per-tier (post-h5):
+        BINGO     n=52   MAPE 8.2%   median 5.5%   ±15 87%
+        BINGO-ADJ n=231  MAPE 16.6%  median 12.7%  ±15 55%
+        RANGE     n=149  MAPE 27.5%  median 13.2%  ±15 54%
+        RANGE-ADJ n=33   MAPE 35.3%  median 24.9%  ±15 30%
+      Interpretation: the street bonus pushes a same-street comp's score up
+      by 15-20; when that comp would have been chosen anyway, the score
+      moves but the prediction doesn't — so MAPE barely budges. When a
+      different comp would have been the top-pick pre-h5 but the bonus
+      promotes a closer-by same-street comp into the top slot, the
+      prediction changes for the better — visible in the median APE drop
+      (-1.8pp) and ±15 hit-rate gain (+5pp). Both are real accuracy
+      improvements on the central tendency. Operator's expectation that
+      this might be "a flat or slightly-worse number" is fine to report
+      honestly — instead it's a small clear improvement.
+
+    PLEX-AXIS BACKTEST (scripts/backtest-plex-axis.js, separate harness):
+      Re-run independently to confirm h5 doesn't touch the plex path.
+      Duplex   sampled 200, priced 186, MAPE 23.2%, median 17.4% ✓
+      Triplex  sampled 109, priced 89,  MAPE 30.1%, median 22.1% ✓
+      Fourplex sampled 47,  priced 25,  MAPE 35.0%, median 34.5%
+      Multiplex sampled 91, priced 58,  MAPE 28.3%, median 21.1%
+      Duplex 17.4% and Triplex 22.1% are EXACT byte-match to the locked
+      anchors (tracker line 3502-3565). h5 doesn't touch runPlexPricingPath
+      (it has its own median-of-comps aggregator and never calls scoreMatch);
+      mathematical guarantee + empirical confirmation.
+
+  STEP 6 — tsc --noEmit clean (exit 0, full project, on top of e501e0a
+  + h5 + every backup intact).
+
+FILES MODIFIED THIS BUILD (7 — Rule Zero backups created at
+.backup_20260608_160347 before any edit):
+  lib/estimator/home-comparable-matcher-sales.ts    +57/-12  helper + 4 sites + HOME_SELECT + HomeSpecs
+  app/charlie/components/SellerEstimateRunner.tsx   +8/-1    thread + type fix
+  components/property/HomePropertyEstimateCTA.tsx   +4/-0    thread
+  app/estimator/components/HomeEstimatorBuyerModal.tsx +5/-0  thread
+  app/api/parity-probe-sf-sold/route.ts             +7/-0    probe thread
+  scripts/backtest-estimator-homes.js               +35/-3   helpers + scoreMatch bonus + specs thread + SELECT
+  docs/W-ESTIMATOR-RAG-TRACKER.md                   +THIS     run-log
+  Plus scripts/parity-street-activation.js          NEW      parity classification harness (local test)
+       scripts/diag-street-whitespace.js            NEW      STEP-0 hygiene gate (local test)
+       scripts/parity-sf-sold-baseline.js           MODIFIED retry-on-empty wrapper
+  Plus scripts/diag-street-columns.js               (already existed from prior recon)
+
+VALUES VERIFIED THIS SESSION (per Rule Zero — every claim ties to a
+command run this session):
+  - 10 ws-rows (9 name + 1 number) on closed-2y mls_listings
+    (scripts/diag-street-whitespace.js, 2026-06-08 ~15:55 EDT)
+  - 100% street_name/street_number fill on closed-2y home rows
+    (scripts/diag-street-columns.js earlier this session — 221,781 rows)
+  - 47/50 byte-identical SF parity post-h5 (parity-h5-street-activation.js)
+  - 1/50 expected-unbreak with verified +15 delta (X9410005 / X10413409)
+  - 2/50 baseline-capture flakes confirmed non-h5 by direct re-probe
+  - SF backtest 20.5/12.6/57 vs ~20/14.4/52 (operator-given pre-h5 anchor)
+  - Plex 17.4/22.1 medians exact-match locked anchors (backtest-plex-axis.js)
+
+CLAIMED, UNVERIFIED:
+  - The Next.js server-action runtime path for the 3 plumbed callers
+    (SellerEstimateRunner / HomePropertyEstimateCTA / HomeEstimatorBuyerModal)
+    has NOT been browser-walked post-activation. The parity probe exercises
+    only the matcher; the route → CTA → server-action → matcher chain in a
+    real browser session is owed a live walkthrough (post-Vercel-deploy).
+  - F-MLS-DATA-CLEANUP-TRAILING-SPACE (the deferred-data workstream from
+    e501e0a) still open. The hygiene gate found 10 ws-rows on street
+    columns that join that workstream's audit list — same defect class,
+    same root cause (PropTx upstream cleanliness).
+
+RESOLVED (was "claimed-unverified" in the 2026-06-08 draft):
+  - The 2 anomalies (X13167624 + W13176994) ARE root-caused: sequential-
+    pass load transient on dev-server / Supabase pooler. Matcher is
+    deterministic. Both parity harnesses now use retry-on-empty wrappers
+    that produce 0 anomalies on a clean re-run.
+
+PUSH STATUS — HELD per standing instruction.
+  origin/main = e501e0a (F-MLS Semi defensive fix shipped 2026-06-08).
+  Local main = e501e0a + 1 uncommitted unit of work (h5 street activation).
+  NOT committed this turn. Tracker entry written. Operator decides whether
+  this ships as standalone feat commit, bundles with the next workstream,
+  or is held for further verification (e.g., the missing browser walk).

@@ -38,6 +38,8 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
       setLoading(true)
       setError(null)
 
+      // h5: subject street threading (street-level matching activation).
+      const streetNumParsed = parseInt(listing.street_number, 10)
       const specs: HomeSpecs = {
         bedrooms: listing.bedrooms_total || 0,
         bathrooms: parseFloat(listing.bathrooms_total_integer) || 0,
@@ -55,6 +57,8 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
         architecturalStyle: listing.architectural_style?.[0] || null,
         approximateAge: listing.approximate_age || null,
         agentId: agentId,
+        ...(listing.street_name ? { subjectStreetName: listing.street_name } : {}),
+        ...(!Number.isNaN(streetNumParsed) ? { subjectStreetNumber: streetNumParsed } : {}),
       }
 
       try {

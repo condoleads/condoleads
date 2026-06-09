@@ -251,6 +251,9 @@ export default function HomeEstimatorBuyerModal({
     setResult(null)
 
     try {
+      // h5: subject street threading (street-level matching activation).
+      const streetNumParsed = parseInt(String((listing as any).street_number ?? ''), 10)
+      const subjectStreetNameRaw = (listing as any).street_name as string | undefined
       const homeSpecs = {
         bedrooms: listing.bedrooms_total || 0,
         bathrooms: listing.bathrooms_total_integer || 0,
@@ -270,6 +273,8 @@ export default function HomeEstimatorBuyerModal({
         approximateAge: listing.approximate_age || null,
         agentId,
         ...(exactSqft !== null && { exactSqft }),
+        ...(subjectStreetNameRaw ? { subjectStreetName: subjectStreetNameRaw } : {}),
+        ...(!Number.isNaN(streetNumParsed) ? { subjectStreetNumber: streetNumParsed } : {}),
       }
 
       if (isSale) {
