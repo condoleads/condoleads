@@ -26,8 +26,13 @@
 -- Column set mirrors lib/estimator/home-adjustment-math.js:DEFAULT_ADJUSTMENTS
 -- PRICE keys exactly. Recency bands (RECENCY_PCT_*) intentionally NOT mirrored
 -- — they're score-only signals in scoreMatch, never applied to price.
-
-BEGIN;
+--
+-- TRANSACTION CONTROL: this file is pure DDL — NO BEGIN; / COMMIT; here.
+-- The apply-runner (scripts/apply-home-adjustments-migration.js) wraps the
+-- whole apply+verify in ONE Node-managed transaction so a verify-fail can
+-- ROLLBACK the migration cleanly. Putting BEGIN/COMMIT here would self-commit
+-- the DDL before verification, leaving a verify-fail with no rollback path —
+-- that's the prior-runner defect class. Audit 2026-06-09 caught + fixed.
 
 CREATE TABLE IF NOT EXISTS home_adjustments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -88,29 +93,29 @@ CREATE TABLE IF NOT EXISTS home_adjustments (
 -- {a,b,c} is non-null" as a single UNIQUE — we partition by which scope FK
 -- is non-null and apply UNIQUE within each partition.
 
-CREATE UNIQUE INDEX home_adjustments_unique_community
+CREATE UNIQUE INDEX IF NOT EXISTS home_adjustments_unique_community
   ON home_adjustments (tenant_id, community_id, type)
   WHERE community_id IS NOT NULL;
 
-CREATE UNIQUE INDEX home_adjustments_unique_municipality
+CREATE UNIQUE INDEX IF NOT EXISTS home_adjustments_unique_municipality
   ON home_adjustments (tenant_id, municipality_id, type)
   WHERE municipality_id IS NOT NULL AND community_id IS NULL;
 
-CREATE UNIQUE INDEX home_adjustments_unique_area
+CREATE UNIQUE INDEX IF NOT EXISTS home_adjustments_unique_area
   ON home_adjustments (tenant_id, area_id, type)
   WHERE area_id IS NOT NULL AND municipality_id IS NULL AND community_id IS NULL;
 
-CREATE UNIQUE INDEX home_adjustments_unique_generic
+CREATE UNIQUE INDEX IF NOT EXISTS home_adjustments_unique_generic
   ON home_adjustments (tenant_id, type)
   WHERE area_id IS NULL AND municipality_id IS NULL AND community_id IS NULL;
 
 -- Read-path indexes (the resolver does .eq('tenant_id', x).in(scope, [...])
 -- to cascade. Tenant-first index covers all scope variants).
-CREATE INDEX idx_home_adjustments_tenant_community
+CREATE INDEX IF NOT EXISTS idx_home_adjustments_tenant_community
   ON home_adjustments (tenant_id, community_id) WHERE community_id IS NOT NULL;
-CREATE INDEX idx_home_adjustments_tenant_municipality
+CREATE INDEX IF NOT EXISTS idx_home_adjustments_tenant_municipality
   ON home_adjustments (tenant_id, municipality_id) WHERE municipality_id IS NOT NULL;
-CREATE INDEX idx_home_adjustments_tenant_area
+CREATE INDEX IF NOT EXISTS idx_home_adjustments_tenant_area
   ON home_adjustments (tenant_id, area_id) WHERE area_id IS NOT NULL;
 
 -- updated_at trigger (mirrors the pattern used on other recent System 2
@@ -169,4 +174,6 @@ USING (true) WITH CHECK (true);
 COMMENT ON TABLE home_adjustments IS
   'Per-tenant, per-geo, per-type (sale|lease) override values for the home estimator''s adjustment math. Empty table => resolver falls through to lib/estimator/home-adjustment-math.js:DEFAULT_ADJUSTMENTS (byte-identical to pre-v10-step-3 behavior). v10 step 3 Phase 1 (2026-06-09).';
 
-COMMIT;
+-- No COMMIT here — transaction is owned by the apply-runner (see top-of-file
+-- TRANSACTION CONTROL note). Runner issues COMMIT only after name-level
+-- verification passes; ROLLBACK on any failure leaves zero persisted state.

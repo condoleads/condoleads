@@ -6392,3 +6392,100 @@ APPLY STATUS — MIGRATION HELD per operator standing instruction (separate gate
   Operator decides commit shape: bundle 1+1.1 OR ship as separate commits.
   Migration apply still gated on APPLY_CONFIRMED=1 env var — separate gate.
   Empty-table no-op parity proven 50/50 across both Phase 1 and Phase 1.1.
+
+
+2026-06-09 — APPLY-RUNNER AUDIT FOUND + FIXED (transaction boundary + name-level verification)
+
+Before invoking the home_adjustments apply-runner, operator-directed audit
+identified two defects in the runner committed as part of 34e1db6. Both
+fixed in this unit; commit is a `fix(estimator)` against the still-HELD
+migration, so the runner is sound before any apply.
+
+DEFECT 1 — TRANSACTION BOUNDARY (the prior-runner defect class, recurred):
+- The original migration SQL carried its own BEGIN; ... COMMIT;.
+- The original runner did `await c.query(sql)` then verified AFTER the SQL
+  returned — but `await c.query(sql)` blocks until the SQL's internal
+  BEGIN..COMMIT batch had already finalized in PG.
+- A verify-fail at that point couldn't roll back: the migration was
+  already persisted (table + 8 indexes + 5 policies + trigger live).
+- Pattern (b) in audit nomenclature: SQL self-commits, verification too
+  late. Same shape as the prior-runner defect the project documented.
+
+DEFECT 1 — FIX (Pattern (a) — Node-managed txn):
+- Removed `BEGIN;` (line 32) and trailing `COMMIT;` (line 177) from the
+  migration SQL. Added 7× `IF NOT EXISTS` to the index DDL (re-run safety
+  belt-and-suspenders).
+- Runner now does the txn dance itself:
+    await c.query('BEGIN')
+    await c.query(sql)           // pure DDL body
+    await verify(c, failures)    // name-level asserts (see Defect 2 fix)
+    if (failures.length) { await c.query('ROLLBACK'); exit 4 }
+    else                 { await c.query('COMMIT') }
+  And the catch block does explicit ROLLBACK on any mid-flight error.
+- Added a SQL sanity guard: runner scans the SQL for top-of-line BEGIN; /
+  COMMIT; / ROLLBACK; before connecting; aborts at exit 5 if any found.
+  This prevents the defect from being re-introduced by a future SQL edit.
+
+DEFECT 2 — COUNT-ONLY VERIFICATION (tenant-leak risk on RLS table):
+- The original runner asserted `policy_count === 5 AND index_count >= 8`.
+- A migration that created 5 policies but with `USING (true)` instead of
+  `USING (tenant_id IN (SELECT tenant_id FROM agents WHERE user_id =
+  auth.uid()))` would pass — and would leak every tenant's
+  home_adjustments to every other tenant's authenticated user.
+- This is exactly the wrong assertion for an RLS table where the USING
+  clause IS the security boundary.
+
+DEFECT 2 — FIX (name-level verification):
+- Runner now verifies by NAME for every artifact + USING-clause for the
+  4 tenant_isolation policies + WHERE-predicate for the 4 partial-unique
+  indexes:
+    columns         24 expected names present (information_schema.columns)
+    policies        5 expected names present (pg_policy.polname); plus
+                    4 tenant_isolation policies must have USING expressions
+                    containing auth.uid() AND agents AND tenant_id, and
+                    must NOT be permissive USING true / (true).
+    partial indexes 4 names + UNIQUE flag + specific WHERE predicate string
+                    for each scope shape (community/municipality/area/generic)
+    read-path idx   3 names present
+    CHECK           home_adjustments_at_most_one_scope by conname
+    FKs             4 by conname (tenant_id, area_id, municipality_id,
+                    community_id → respective parent tables)
+    trigger         trg_home_adjustments_updated_at by tgname
+- Any single mismatch → ROLLBACK + exit 4 with the list of failures.
+
+RE-AUDIT VERDICT (read-only, 5 steps, post-fix):
+  STEP 1 transaction boundary: PATTERN (a) — verify inside Node txn. ✓
+  STEP 2 N/A (no defect).
+  STEP 3 pre-snapshot + idempotency:
+         - pre-snapshot to disk BEFORE txn ✓
+         - pre-state guard at exit 2 ✓
+         - defect-1 sanity guard at exit 5 ✓
+         - 7× IF NOT EXISTS on indexes ✓
+         - clean no-APPLY_CONFIRMED exit 1 ✓
+  STEP 4 verification: comprehensive name-level + USING-clause checks ✓
+  STEP 5 verdict: SOUND.
+
+Files modified (single fix commit):
+  MOD scripts/apply-home-adjustments-migration.js
+  MOD supabase/migrations/20260609_create_home_adjustments.sql
+  MOD docs/W-ESTIMATOR-RAG-TRACKER.md (this entry)
+Backups timestamped _20260609_124914.
+node --check scripts/apply-home-adjustments-migration.js exit 0.
+
+STANDING-TEMPLATE NOTE (process finding):
+This is the SECOND time the project has shipped a runner with the
+"verification-after-self-committed-DDL" defect class. The pattern is
+seductive because the SQL file looks complete with its own BEGIN/COMMIT
+and the runner's verify "looks like" a sanity check. The fix is always:
+transaction control lives in the runner, never in the SQL file. Worth
+codifying as a standing apply-runner template (or a pre-commit lint) so
+the same defect class stops landing in fresh migrations. Filed as
+NAMED-OPEN — not blocking this commit, but worth attention before the
+next apply-runner gets written.
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — MIGRATION STILL HELD (separate gate, unchanged).
+  Runner is now SOUND. Operator decides when to invoke
+  APPLY_CONFIRMED=1 node scripts/apply-home-adjustments-migration.js.
+  origin/main = 34e1db6 (v10 step 3 Phase 1+1.1 — pushed earlier this turn-set).
+  Local main = 34e1db6 + 1 uncommitted fix unit (this audit fix).
