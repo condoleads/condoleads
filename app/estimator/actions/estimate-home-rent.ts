@@ -27,8 +27,14 @@ export async function estimateHomeRent(
   })
 
   try {
+    // v10 step 3 Phase 1 (2026-06-09): thread tenantId so the lease matcher
+    // can resolve per-tenant lease-rate overrides. Null tenantId → DEFAULT
+    // fallback (= f7f3c6e behavior).
+    const resolvedTenantId = await getCurrentTenantId()
+    const specsWithTenant: HomeSpecs = { ...specs, tenantId: resolvedTenantId }
+
     // Step 1: Find comparable home leases using geographic cascading
-    const matchResult = await findHomeComparablesRentals(specs)
+    const matchResult = await findHomeComparablesRentals(specsWithTenant)
     console.log(`[HomeRentalEstimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}, geo: ${matchResult.geoLevel}`)
 
     if (matchResult.comparables.length === 0) {

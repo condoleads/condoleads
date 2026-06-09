@@ -8,6 +8,10 @@ import {
   assignTemperature,
 } from './types'
 import { HomeSpecs } from './home-comparable-matcher-sales'
+import {
+  resolveHomeAdjustments,
+  type ResolvedHomeAdjustments,
+} from './resolve-home-adjustments'
 
 interface HomeRentalMatchResult {
   tier: MatchTier
@@ -38,6 +42,20 @@ export async function findHomeComparablesRentals(specs: HomeSpecs): Promise<Home
 
   const subtypes = getCompatibleSubtypes(specs.propertySubtype)
 
+  // v10 step 3 Phase 1 (2026-06-09): resolve per-tenant lease overrides once
+  // at the top. Anonymous / System 1 / no-tenantId callers get DEFAULT
+  // fallback (= f7f3c6e behavior). Lease side reads PARKING_PER_SPACE and
+  // BATHROOM_FULL from the resolved object (mapped to HOME_RENTAL_ADJUSTMENTS
+  // semantics inside createHomeRentalComparable).
+  const customValues = await resolveHomeAdjustments(
+    {
+      communityId: specs.communityId,
+      municipalityId: specs.municipalityId,
+      tenantId: specs.tenantId ?? null,
+    },
+    'lease',
+  )
+
   // TIER 1: Community level
   if (specs.communityId) {
     const { data: communityLeases } = await supabase
@@ -53,7 +71,7 @@ export async function findHomeComparablesRentals(specs: HomeSpecs): Promise<Home
       .limit(200)
 
     if (communityLeases && communityLeases.length > 0) {
-      const result = matchWithinPool(communityLeases, specs)
+      const result = matchWithinPool(communityLeases, specs, customValues)
       if (result.comparables.length >= 3) {
         return { ...result, geoLevel: 'community' }
       }
@@ -75,7 +93,7 @@ export async function findHomeComparablesRentals(specs: HomeSpecs): Promise<Home
       .limit(300)
 
     if (muniLeases && muniLeases.length > 0) {
-      const result = matchWithinPool(muniLeases, specs)
+      const result = matchWithinPool(muniLeases, specs, customValues)
       if (result.comparables.length > 0) {
         return { ...result, geoLevel: 'municipality' }
       }
@@ -85,7 +103,11 @@ export async function findHomeComparablesRentals(specs: HomeSpecs): Promise<Home
   return { tier: 'CONTACT', comparables: [], geoLevel: 'none' }
 }
 
-function matchWithinPool(leases: any[], specs: HomeSpecs): { tier: MatchTier; comparables: ComparableSale[] } {
+function matchWithinPool(
+  leases: any[],
+  specs: HomeSpecs,
+  customValues?: ResolvedHomeAdjustments,
+): { tier: MatchTier; comparables: ComparableSale[] } {
   const bedBathMatches = leases.filter(l =>
     l.bedrooms_total === specs.bedrooms &&
     l.bathrooms_total_integer === specs.bathrooms
@@ -101,7 +123,7 @@ function matchWithinPool(leases: any[], specs: HomeSpecs): { tier: MatchTier; co
     if (sqftMatches.length >= 3) {
       return {
         tier: 'BINGO',
-        comparables: sqftMatches.slice(0, 10).map(l => createHomeRentalComparable(l, specs))
+        comparables: sqftMatches.slice(0, 10).map(l => createHomeRentalComparable(l, specs, customValues))
       }
     }
   }
@@ -112,7 +134,7 @@ function matchWithinPool(leases: any[], specs: HomeSpecs): { tier: MatchTier; co
     if (rangeMatches.length >= 3) {
       return {
         tier: 'RANGE',
-        comparables: rangeMatches.slice(0, 10).map(l => createHomeRentalComparable(l, specs))
+        comparables: rangeMatches.slice(0, 10).map(l => createHomeRentalComparable(l, specs, customValues))
       }
     }
   }
@@ -131,7 +153,7 @@ function matchWithinPool(leases: any[], specs: HomeSpecs): { tier: MatchTier; co
     scored.sort((a, b) => b.score - a.score)
     return {
       tier: 'RANGE-ADJ',
-      comparables: scored.slice(0, 10).map(s => createHomeRentalComparable(s.lease, specs))
+      comparables: scored.slice(0, 10).map(s => createHomeRentalComparable(s.lease, specs, customValues))
     }
   }
 
@@ -145,14 +167,14 @@ function matchWithinPool(leases: any[], specs: HomeSpecs): { tier: MatchTier; co
     scored.sort((a, b) => b.score - a.score)
     return {
       tier: 'MAINT',
-      comparables: scored.slice(0, 10).map(s => createHomeRentalComparable(s.lease, specs))
+      comparables: scored.slice(0, 10).map(s => createHomeRentalComparable(s.lease, specs, customValues))
     }
   }
 
   if (leases.length > 0) {
     return {
       tier: 'CONTACT',
-      comparables: leases.slice(0, 5).map(l => createHomeRentalComparable(l, specs))
+      comparables: leases.slice(0, 5).map(l => createHomeRentalComparable(l, specs, customValues))
     }
   }
 
@@ -197,15 +219,23 @@ function scoreRentalSimilarity(lease: any, specs: HomeSpecs): number {
   return score
 }
 
-function createHomeRentalComparable(lease: any, specs: HomeSpecs): ComparableSale {
+function createHomeRentalComparable(
+  lease: any,
+  specs: HomeSpecs,
+  customValues?: ResolvedHomeAdjustments,
+): ComparableSale {
   const adjustments: PriceAdjustment[] = []
 
+  // v10 step 3 Phase 1 (2026-06-09): lease-side overrides. BATHROOM_FULL maps
+  // to the lease bathroom $/mo value; PARKING_PER_SPACE maps to lease parking
+  // $/mo. ?? fallback preserves f7f3c6e behavior when no override row exists.
   const bathDiff = specs.bathrooms - (lease.bathrooms_total_integer || 0)
   if (bathDiff !== 0) {
+    const bathAmt = customValues?.BATHROOM_FULL ?? HOME_RENTAL_ADJUSTMENTS.BATHROOM
     adjustments.push({
       type: 'bathroom' as any,
       difference: bathDiff,
-      adjustmentAmount: bathDiff * HOME_RENTAL_ADJUSTMENTS.BATHROOM,
+      adjustmentAmount: bathDiff * bathAmt,
       reason: bathDiff > 0
         ? `Your home has ${Math.abs(bathDiff)} more bathroom${Math.abs(bathDiff) > 1 ? 's' : ''}`
         : `Comparable has ${Math.abs(bathDiff)} more bathroom${Math.abs(bathDiff) > 1 ? 's' : ''}`
@@ -214,10 +244,11 @@ function createHomeRentalComparable(lease: any, specs: HomeSpecs): ComparableSal
 
   const parkDiff = (specs.parking || 0) - (lease.parking_total || 0)
   if (parkDiff !== 0) {
+    const parkAmt = customValues?.PARKING_PER_SPACE ?? HOME_RENTAL_ADJUSTMENTS.PARKING_PER_SPACE
     adjustments.push({
       type: 'parking',
       difference: parkDiff,
-      adjustmentAmount: parkDiff * HOME_RENTAL_ADJUSTMENTS.PARKING_PER_SPACE,
+      adjustmentAmount: parkDiff * parkAmt,
       reason: parkDiff > 0
         ? `Your home has ${Math.abs(parkDiff)} more parking space${Math.abs(parkDiff) > 1 ? 's' : ''}`
         : `Comparable has ${Math.abs(parkDiff)} more parking space${Math.abs(parkDiff) > 1 ? 's' : ''}`

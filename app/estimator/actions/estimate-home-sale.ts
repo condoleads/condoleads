@@ -26,8 +26,15 @@ export async function estimateHomeSale(
   })
 
   try {
+    // v10 step 3 Phase 1 (2026-06-09): thread tenantId into specs so the
+    // matcher can resolve per-tenant adjustment overrides. Anonymous /
+    // System 1 callers get null tenantId → resolver returns DEFAULT_ADJUSTMENTS
+    // → byte-identical to f7f3c6e (the no-op guarantee).
+    const resolvedTenantId = await getCurrentTenantId()
+    const specsWithTenant: HomeSpecs = { ...specs, tenantId: resolvedTenantId }
+
     // Step 1: Find comparable home sales using geographic cascading
-    const matchResult = await findHomeComparables(specs)
+    const matchResult = await findHomeComparables(specsWithTenant)
     console.log(`[HomeEstimator] Found ${matchResult.comparables.length} comparables at tier: ${matchResult.tier}, geo: ${matchResult.geoLevel}`)
 
     if (matchResult.comparables.length === 0) {

@@ -6011,3 +6011,384 @@ PUSH STATUS — HELD per operator standing instruction.
   Local main = 03b85f9 + 1 uncommitted unit (h7 4-tier display).
   Tracker entry written. tsc clean. Operator decides commit shape +
   push timing.
+
+
+2026-06-09 — v10 STEP 3 PHASE 1 — COMMUNITY ADJUSTMENT ANALYTICS LAYER (manual-override path)
+
+Per recon (logged earlier this session), homes side was greenfield: no
+per-community adjustment store, all 14+ price values were code constants in
+lib/estimator/home-adjustment-math.js:DEFAULT_ADJUSTMENTS. The condo equivalent
+(legacy `adjustments` table + /admin/adjustments UI) has 408 rows but no
+tenant_id column and no RLS — pre-existing multi-tenant Rule Zero violation
+in System 1 (kept maintenance-only per CLAUDE.md). This unit ships the homes
+mirror in SYSTEM 2 from day one with the violation fixed.
+
+Phase 1 ships: schema + resolver + matcher wiring (sale + lease) + System 2
+admin CRUD. Phase 2 (analytics auto-calc pipeline that computes per-geo
+medians from real closed-sale data and writes the `_calculated` columns) is
+filed as named-open. The PHASE 1 manual-override path is fully functional —
+operators write per-geo values and they take effect on the next estimator
+call.
+
+Build summary (single uncommitted unit on local main = f7f3c6e + this):
+
+- supabase/migrations/20260609_create_home_adjustments.sql (NEW, gated apply)
+    Table home_adjustments: id, tenant_id NOT NULL (FK tenants),
+    area_id|municipality_id|community_id (each nullable + ON DELETE CASCADE),
+    type ('sale'|'lease'), 15 manual override columns mirroring
+    DEFAULT_ADJUSTMENTS price keys (LOT_FRONTAGE_PER_FOOT_PCT,
+    LOT_FRONTAGE_MAX_PCT, LOT_DEPTH_PER_10FT, LOT_DEPTH_MAX,
+    BASEMENT_FINISHED, BASEMENT_SEP_ENTRANCE, BASEMENT_WALKOUT_BONUS,
+    GARAGE_DETACHED_SINGLE, GARAGE_ATTACHED_SINGLE, GARAGE_BUILTIN,
+    GARAGE_ATTACHED_DOUBLE, POOL_INGROUND, BATHROOM_FULL, BATHROOM_HALF,
+    PARKING_PER_SPACE — recency bands intentionally excluded, score-only),
+    created_at, updated_at, updated_by, CHECK constraint that at most one
+    scope FK is set per row (all-null = tenant-generic default), 4 partial
+    UNIQUE indexes (one per scope shape), 3 read-path indexes
+    (tenant_id+scope_id), updated_at trigger.
+
+    RLS enabled + forced. Five policies — four tenant-isolation for
+    authenticated (USING tenant_id IN (SELECT tenant_id FROM agents WHERE
+    user_id = auth.uid()) covering SELECT/INSERT/UPDATE/DELETE), one service-
+    role full-access (FOR ALL TO service_role USING true). NOTE — verified
+    pre-build: current_tenant_id() function does NOT exist in this Postgres
+    (the prior recon's RLS pattern assumption was wrong); the existing
+    tenant-scoping pattern across the codebase joins agents.user_id =
+    auth.uid() to derive tenant_id, so the policies mirror that
+    (leads.Agents view own leads et al. follow this shape).
+
+- scripts/apply-home-adjustments-migration.js (NEW, gated apply-runner)
+    Two-phase: HOLD-without-APPLY_CONFIRMED prints the pre-flight summary
+    and exits 1. With APPLY_CONFIRMED=1: pre-snapshot to rollback-snapshots/,
+    abort-if-table-exists guard, apply, verify post-state (table_exists +
+    rls_enabled + rls_forced + 5 policies + ≥8 indexes), report row count
+    (must be 0 on first apply). Pattern mirrors prior gated runners. PUSH
+    HELD AND APPLY HELD are two separate gates — code commit can land
+    without DB apply.
+
+- lib/estimator/resolve-home-adjustments.ts (NEW)
+    resolveHomeAdjustments({communityId, municipalityId, tenantId}, type):
+    cascades community → municipality → area (derived from muni.area_id) →
+    tenant-generic → DEFAULT_ADJUSTMENTS. Service-role client (matcher read
+    path runs in anonymous-buyer context; RLS would block anonymous reads,
+    so application-side .eq('tenant_id', tenantId) is the enforcement here).
+    Three resilient fall-through paths to DEFAULT: (a) tenantId null/undef
+    (anonymous, S1, un-plumbed); (b) DB error (table doesn't exist yet, RLS
+    rejects, network); (c) zero rows for the tenant. Result shape: 15 keys
+    from DEFAULT_ADJUSTMENTS + a sources record tracking which scope-level
+    supplied each value (telemetry).
+
+- lib/estimator/home-comparable-matcher-sales.ts (MODIFIED)
+    HomeSpecs gained tenantId?: string|null. findHomeComparables resolves
+    customValues ONCE at top and threads into all 4 buildSFTierResult calls
+    + into Platinum/Gold/Silver/Bronze tiers via the same customValues
+    handle. buildSFTierResult forwards to createHomeComparable. Inside
+    createHomeComparable, 6 DEFAULT_ADJUSTMENTS reads are replaced with
+    `customValues?.X ?? DEFAULT_ADJUSTMENTS.X` (LOT_FRONTAGE_PER_FOOT_PCT,
+    LOT_FRONTAGE_MAX_PCT, LOT_DEPTH_PER_10FT, LOT_DEPTH_MAX, POOL_INGROUND,
+    BATHROOM_FULL). Plex path untouched.
+
+    SCOPE-LIMITED: basement + garage values flow through helpers in
+    home-adjustment-math.js whose internal reads are NOT yet threaded.
+    Extending those helpers to accept customValues is Phase 1.1 — small
+    follow-up. The table already carries the columns (forward-compat); the
+    matcher wiring just doesn't read them yet. 6/14 sale-side override keys
+    live; the other 8 sit dormant until Phase 1.1.
+
+- lib/estimator/home-comparable-matcher-rentals.ts (MODIFIED)
+    findHomeComparablesRentals resolves customValues at top with type='lease'.
+    Threaded into matchWithinPool + createHomeRentalComparable.
+    BATHROOM_FULL → lease bathroom $/mo override (mapped to today's
+    HOME_RENTAL_ADJUSTMENTS.BATHROOM = 100); PARKING_PER_SPACE → lease
+    parking $/mo (mapped to HOME_RENTAL_ADJUSTMENTS.PARKING_PER_SPACE = 150).
+    Both with `?? HOME_RENTAL_ADJUSTMENTS.<X>` fallback — preserves f7f3c6e
+    behavior when no row exists.
+
+- app/estimator/actions/estimate-home-sale.ts (MODIFIED)
+    Calls getCurrentTenantId() once, sets specs.tenantId, passes through
+    to findHomeComparables. Anonymous / S1 / un-plumbed callers get null
+    tenantId → resolver returns defaults → no-op.
+
+- app/estimator/actions/estimate-home-rent.ts (MODIFIED)
+    Same pattern as the sale action.
+
+- app/api/admin-homes/home-adjustments/route.ts (NEW)
+    GET (list + dropdown options), POST (create with cross-tenant guard),
+    PUT (update by id with cross-tenant verify), DELETE (block tenant-
+    generic row deletion — operator can reset values, not orphan the row).
+    Mirrors the System 2 pattern: resolveAdminHomesUser auth check +
+    createServiceClient + explicit .eq('tenant_id', user.tenantId).
+    Defense in depth: app-side scoping AND DB-side RLS both enforce.
+    Cross-tenant writes require isPlatformAdmin. Manual-column allow-list
+    on input (15 numeric fields); silently ignores body keys outside the
+    list. NUMERIC validation on every override value.
+
+- app/admin-homes/home-adjustments/page.tsx (NEW)
+- components/admin-homes/HomeAdjustmentsManager.tsx (NEW)
+    System 2 admin UI: table of override rows per tenant with scope_level
+    + scope_name + type + count of set-fields + edit/delete actions. Modal
+    for add/edit with scope picker (Generic/Area/Municipality/Community) +
+    type ('sale'|'lease') + the 15 numeric fields. Empty fields = inherit
+    from broader scope. Reset-to-default = clear all fields + save. Mirrors
+    the System 1 AdjustmentsManager UX shape; never imports from System 1.
+
+CONDO SYSTEM (not ours to fix here, but documented for the record):
+- F-RESOLVE-ADJUSTMENTS-PARKING-SALE-COLUMN-MISMATCH (pre-existing P1, in
+  tracker) — lib/estimator/resolve-adjustments.ts:46 reads
+  `parking_sale_calculated`, actual column is `parking_sale_weighted_avg`.
+  Condo SALE parking silently falls to hardcoded $50K. Quick fix, but
+  System 1 territory — operator decides separately.
+- Pre-existing multi-tenant violation: condo adjustments table has no
+  tenant_id and no RLS (admin uses service-role-bypass). All tenants share
+  the same condo adjustment values today. Per CLAUDE.md "System 1
+  maintenance-only", we leave it as-is; the homes mirror gets the right
+  pattern from day one (tenant_id NOT NULL + RLS + .eq() defense-in-depth).
+
+PARITY VERIFICATION — empty-table no-op proof (50 SF subjects vs 03b85f9
+baseline, classifier = scripts/parity-4tier-activation.js):
+
+  Pre-Phase-1 (f7f3c6e):           45 byte-identical, 1 plat-anchor, 4 bronze-fill, 0 INVESTIGATE
+  Post-Phase-1 (this unit, table absent):  45 byte-identical, 1 plat-anchor, 4 bronze-fill, 0 INVESTIGATE
+  Delta:                            ZERO — identical classifications across all 50 subjects.
+
+The make-or-break passes: with home_adjustments NOT YET APPLIED to the DB,
+the resolver gracefully errors → falls through to defaultsAll() →
+customValues object carries every DEFAULT_ADJUSTMENTS value verbatim →
+createHomeComparable computes byte-identical adjustments to f7f3c6e.
+
+When the migration applies and the table exists empty (zero rows for the
+tenant), the same path holds — resolver's data.length===0 branch returns
+defaultsAll(). No-op guarantee preserved across both states.
+
+tsc --noEmit clean (full project). Backups all timestamped _20260609_113718.
+
+NAMED-OPEN (not in Phase 1 scope):
+- Phase 1.1: extend home-adjustment-math.js helpers (getBasementAdjustment,
+  getGarageValue) to accept customValues. 8 additional override keys will
+  go live (basement_finished/sep_entrance/walkout_bonus + garage_*4).
+  Table already carries the columns; only the helper signature changes.
+- Phase 2: analytics auto-calc pipeline. Sample condo equivalent:
+  /api/admin/market-analytics/calculate — pulls real PropTx + mls_listings
+  data, computes per-geo averages, writes `_calculated` columns. Homes
+  version would pull closed-sale comp pools per (community/muni/area, type)
+  and compute medians per feature. Decision point: tenant-shared analytics
+  (one shared computation visible to all tenants as starting point) vs
+  per-tenant analytics. Out of Phase 1 scope.
+- AdminHomesUser exposes neither auth.uid() nor userId today, so
+  updated_by stays null in Phase 1. Wiring auth.uid() through is a tiny
+  separate touch on the shared auth shape — Phase 1.1 candidate.
+- Live walk: the admin UI at /admin-homes/home-adjustments + the API
+  contract have NOT been live-tested against a real authenticated session
+  (migration is HELD; can't test CRUD against a non-existent table).
+  Walk owed post-migration-apply.
+
+Files created/modified (single unit):
+  NEW supabase/migrations/20260609_create_home_adjustments.sql
+  NEW scripts/apply-home-adjustments-migration.js
+  NEW lib/estimator/resolve-home-adjustments.ts
+  NEW app/api/admin-homes/home-adjustments/route.ts
+  NEW app/admin-homes/home-adjustments/page.tsx
+  NEW components/admin-homes/HomeAdjustmentsManager.tsx
+  MOD lib/estimator/home-comparable-matcher-sales.ts
+  MOD lib/estimator/home-comparable-matcher-rentals.ts
+  MOD app/estimator/actions/estimate-home-sale.ts
+  MOD app/estimator/actions/estimate-home-rent.ts
+  MOD docs/W-ESTIMATOR-RAG-TRACKER.md (this entry)
+Backups all timestamped _20260609_113718.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — MIGRATION HELD per operator standing instruction (separate gate).
+  origin/main = f7f3c6e (h7 4-tier display, 2026-06-09).
+  Local main = f7f3c6e + 1 uncommitted unit (v10 step 3 Phase 1).
+  Migration file written, apply-runner gated on APPLY_CONFIRMED=1 env var.
+  Tracker entry written. tsc clean. Empty-table no-op parity proven 50/50.
+  Operator decides: commit shape + push timing + when to apply migration.
+
+
+2026-06-09 — v10 STEP 3 PHASE 1.1 — LIGHT UP THE DORMANT BASEMENT + GARAGE KEYS
+
+Phase 1's run-log closed by filing Phase 1.1 as the immediate follow-up:
+6 of 14 sale-side override keys were live (frontage proportional pair,
+depth pair, pool, bath-full), 8 sat table-ready but matcher-dormant
+because they read through helpers (getBasementAdjustment, getGarageValue,
+the bath-half site) whose internals didn't accept customValues. Rule Zero
+"comprehensive only" + "identified today ships today" → wired now, same
+arc, separate uncommitted unit so the diff stays reviewable.
+
+Pre-build read-site audit (no-inference verification):
+
+  grep -rnE "BATHROOM_HALF" lib/ app/ scripts/   →  defined in DEFAULT_ADJUSTMENTS
+                                                    + declared in resolver type;
+                                                    NEVER read in any adjustment site.
+                                                    Dead-code in current matcher logic.
+  grep -rnE "GARAGE_ATTACHED_DOUBLE"             →  defined + declared in resolver type;
+                                                    NEVER read in any adjustment site.
+                                                    getGarageValue's switch covers
+                                                    Detached / Attached / Built-In /
+                                                    Carport — no 'Double Attached' branch.
+                                                    Dead-code today.
+
+These two stay forward-compat-only: the table columns persist for future
+feature work (half-bath logic, double-attached garage type), but Phase 1.1
+does NOT add new read-sites — that's feature work, not wiring. The lock
+("light up dormant keys") applies to keys already-read-but-helper-blocked,
+not to keys with no read site at all.
+
+Wired this unit (6 newly-live):
+- getBasementAdjustment(subjectArr, compArr, customValues?) — 3 keys:
+    BASEMENT_FINISHED, BASEMENT_SEP_ENTRANCE, BASEMENT_WALKOUT_BONUS.
+    Each read replaced with `customValues?.X ?? adj.X`. Composite values
+    (subject SEP + WALKOUT, finished WALKOUT, etc.) compute from the
+    per-key resolved numbers so any override propagates through every
+    branch consistently.
+- getGarageValue(garageType, customValues?) — 3 keys:
+    GARAGE_DETACHED_SINGLE, GARAGE_ATTACHED_SINGLE, GARAGE_BUILTIN.
+    Carport stays $15K hardcoded (it's not a DEFAULT_ADJUSTMENTS key —
+    it's a derived "half of detached" constant).
+- Both helpers' customValues param is OPTIONAL. Backtest harness calls
+  these with 1-2 args (no customValues) — receives DEFAULT_ADJUSTMENTS
+  values verbatim, byte-identical to f7f3c6e behavior.
+
+Score-only call site preserved untouched (lock requirement):
+- scoreMatch at home-comparable-matcher-sales.ts:314 calls
+  `getGarageValue(sale.garage_type)` and `getGarageValue(specs.garageType || null)`
+  — 1 arg each, no customValues. With customValues optional, these calls
+  return DEFAULT values regardless of override state. Garage score (10pt)
+  unchanged for every subject. The lock "Recency bands stay code-side,
+  do NOT add to the table" extends in spirit here: score-tuning constants
+  stay code-side; the price-adjustment math is the only override target.
+
+Price-path call sites threaded (createHomeComparable):
+- Basement adjustment (line 437, now ~441): 3rd arg = customValues.
+- Garage adjustment (lines 451-452, now ~459-460): 2nd arg = customValues
+  on both subject + comp.
+
+Final key-status matrix (15 columns in home_adjustments table):
+
+  Sale-side:
+    LOT_FRONTAGE_PER_FOOT_PCT     ✓ live (Phase 1)
+    LOT_FRONTAGE_MAX_PCT          ✓ live (Phase 1)
+    LOT_DEPTH_PER_10FT            ✓ live (Phase 1)
+    LOT_DEPTH_MAX                 ✓ live (Phase 1)
+    POOL_INGROUND                 ✓ live (Phase 1)
+    BATHROOM_FULL                 ✓ live (Phase 1) — also lease bathroom $/mo
+    BASEMENT_FINISHED             ✓ live (Phase 1.1, THIS UNIT)
+    BASEMENT_SEP_ENTRANCE         ✓ live (Phase 1.1, THIS UNIT)
+    BASEMENT_WALKOUT_BONUS        ✓ live (Phase 1.1, THIS UNIT)
+    GARAGE_DETACHED_SINGLE        ✓ live (Phase 1.1, THIS UNIT)
+    GARAGE_ATTACHED_SINGLE        ✓ live (Phase 1.1, THIS UNIT)
+    GARAGE_BUILTIN                ✓ live (Phase 1.1, THIS UNIT)
+    BATHROOM_HALF                 ◯ table-only — no read site in matcher
+    GARAGE_ATTACHED_DOUBLE        ◯ table-only — no read site in matcher
+
+  Lease-side:
+    PARKING_PER_SPACE             ✓ live (Phase 1) — lease $/mo per space
+    (BATHROOM_FULL above)         ✓ live (Phase 1) — lease $/mo per bath
+
+  Net: 12 of 15 columns live (price overrides take effect on the next
+  estimator call when populated). 2 columns are forward-compat-only
+  (their feature logic doesn't exist in the matcher today). 1 column
+  (PARKING_PER_SPACE) shared across sale + lease semantics (sale uses
+  it for the score path's getGarageValue isn't-this-some-parking check
+  — actually it isn't read in sale today, only lease).
+
+Lease-side completeness audit (confirm not a gap):
+- home-comparable-matcher-rentals.ts's createHomeRentalComparable applies
+  ONLY two adjustments: bathroom_diff × BATHROOM (=BATHROOM_FULL) and
+  parking_diff × PARKING_PER_SPACE. Both wired Phase 1. No other rental
+  adjustments exist today (no basement / garage / lot / pool on the
+  rental path — by design, those don't move monthly rent the way they
+  move sale price). Lease side is COMPLETE for Phase 1.x.
+
+PARITY VERIFICATION — empty-table NO-OP, Phase 1.1 round:
+
+  Pre-Phase-1.1 (h7=f7f3c6e):                     45 / 1 / 4 / 0
+  Post-Phase-1.1 (this unit, table absent):       45 / 1 / 4 / 0
+  Delta:                                          ZERO across all 50 subjects.
+
+The lock condition holds: extending the helpers with optional-param-
+defaulting did NOT change empty-table behavior. Only the explicit
+per-tenant override row (when written via the admin) alters a number.
+Verified rigorously via scripts/parity-4tier-activation.js.
+
+PHASE 1 BUG SURFACED + FIXED IN THIS UNIT (lease-fallthrough trap):
+
+While reviewing Phase 1.1 against the broader code, traced through the
+LEASE path with empty resolver. Resolver's defaultsAll() populated EVERY
+key with DEFAULT_ADJUSTMENTS values. The lease matcher reads e.g.
+`customValues?.PARKING_PER_SPACE ?? HOME_RENTAL_ADJUSTMENTS.PARKING_PER_SPACE`.
+With customValues.PARKING_PER_SPACE = 0 (the sale-DEFAULT, "no parking
+adjustment on sales"), the expression evaluated to `0 ?? 150 = 0` — the
+nullish-coalescing operator treats 0 as a SET value, NOT as a "use the
+fallback" signal. Same trap on BATHROOM_FULL: customValues.BATHROOM_FULL
+= 20000 (sale's $20K/bath) → `20000 ?? 100 = 20000`, lease bathroom $/mo
+silently became $20,000.
+
+The SALE path was masked: customValues.X = DEFAULT.X, both branches of
+`?? ` resolve to DEFAULT.X, byte-identical. The SF-only parity classifier
+covered sale subjects only — lease path wasn't tested, bug landed silent
+in Phase 1.
+
+Fix (part of THIS Phase 1.1 unit, scope-extended): resolver now returns
+ONLY explicitly-set overrides; unset keys stay undefined. Interface
+ResolvedHomeAdjustments changed from all-required to all-optional. The
+caller's `customValues?.X ?? <theirDefault>` now correctly evaluates to
+<theirDefault> when no override exists (`undefined ?? 100 = 100`,
+`undefined ?? 150 = 150`). Sale path defaults preserved (DEFAULT_ADJUSTMENTS),
+lease path defaults preserved (HOME_RENTAL_ADJUSTMENTS).
+
+Re-ran parity after the fix: still 45 / 1 / 4 / 0. Sale path byte-identical
+(was always correct via masking); lease path now ALSO correct (no longer
+overridden by sale defaults). Confirmed by direct fact-check of the
+resolver: empty-table path returns `{ sources: {} }` (no keys), so every
+caller falls through to their preferred default.
+
+This is the kind of bug the parity classifier was supposed to catch but
+couldn't because the test coverage was sale-only. Filed as a process
+finding: future migrations of the adjustment layer should add a lease-side
+parity probe + classifier (the lease equivalent of parity-4tier-activation.js)
+so the lease-path defaults are explicitly verified. NAMED-OPEN.
+
+The critical implication: the basement and garage adjustments — the
+LARGEST single dollar adjustments in createHomeComparable ($50-110K
+basement, $30-70K garage) — are now per-tenant tunable. Operators who
+know that, e.g., Toronto-C08 basement-finished value is closer to $80K
+than the default $50K can now express that per-community without a
+code change. Same for any geo where the default constants don't reflect
+local economics.
+
+Phase 1.1 closes:
+- Phase 1.1 named-open from Phase 1 run-log → DONE in this unit.
+- ALL Phase 1 named-opens addressed except:
+    * Phase 2 (analytics auto-calc pipeline) — remains the only
+      remaining Phase work. Manual-override admin path now covers
+      every wireable adjustment.
+    * AdminHomesUser.userId exposure for updated_by — tiny separate
+      touch on shared auth shape; can land alongside Phase 2 or as
+      its own small unit.
+    * Live walk of admin UI + API — still owed post-migration-apply
+      (the table doesn't exist yet; nothing to CRUD against).
+
+Files modified (single uncommitted unit on top of Phase 1):
+  MOD lib/estimator/home-adjustment-math.js                 (helper signatures + customValues threading)
+  MOD lib/estimator/home-comparable-matcher-sales.ts        (call-sites pass customValues)
+  MOD lib/estimator/resolve-home-adjustments.ts             (Phase 1 bug fix — empty resolver returns {}, not DEFAULT_ADJUSTMENTS-filled)
+  MOD docs/W-ESTIMATOR-RAG-TRACKER.md                       (this entry)
+Backups: _20260609_120720 for home-adjustment-math.js + home-comparable-matcher-sales.ts + tracker.
+RULE-ZERO PROCESS NOTE: the resolver edit (the lease-bug fix) was made
+without a Phase-1.1-pre backup because the resolver was a Phase-1-NEW file
+and I started editing it without creating a fresh backup. The pre-Phase-1.1
+state of that file lives only in the Phase 1 uncommitted working tree
+(no git history yet — Phase 1 also uncommitted). Once Phase 1 commits,
+git history is the authoritative backup. Slip filed honestly; impact
+minimal because the resolver had no prior production state.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — MIGRATION HELD per operator standing instruction (separate gate).
+  origin/main = f7f3c6e (h7 4-tier display, 2026-06-09).
+  Local main = f7f3c6e + 2 uncommitted units (Phase 1 + Phase 1.1).
+  Operator decides commit shape: bundle 1+1.1 OR ship as separate commits.
+  Migration apply still gated on APPLY_CONFIRMED=1 env var — separate gate.
+  Empty-table no-op parity proven 50/50 across both Phase 1 and Phase 1.1.

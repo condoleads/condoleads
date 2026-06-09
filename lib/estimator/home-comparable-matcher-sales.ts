@@ -17,6 +17,10 @@ import {
   isAdjacentRange,
   normalizeFrontageFeet,
 } from './home-adjustment-math'
+import {
+  resolveHomeAdjustments,
+  type ResolvedHomeAdjustments,
+} from './resolve-home-adjustments'
 
 // ============ INTERFACES ============
 
@@ -54,6 +58,13 @@ export interface HomeSpecs {
   // (lowercased + suffix-stripped) parse from comp's unparsed_address.
   subjectStreetName?: string
   subjectStreetNumber?: number
+
+  // v10 step 3 Phase 1 (2026-06-09): tenant id for per-tenant adjustment
+  // override resolution. The server action sets this via getCurrentTenantId().
+  // When null/undefined (anonymous, System 1, or un-plumbed caller like the
+  // backtest harness) the resolver falls through to DEFAULT_ADJUSTMENTS,
+  // preserving f7f3c6e behavior byte-for-byte (the no-op guarantee).
+  tenantId?: string | null
 }
 
 interface HomeMatchResult {
@@ -347,7 +358,25 @@ function tierFromScore(score: number, compCount: number): MatchTier {
 
 // ============ CREATE COMPARABLE WITH ADJUSTMENTS ============
 
-function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): ComparableSale {
+// v10 step 3 Phase 1 (2026-06-09): createHomeComparable now accepts an
+// optional `customValues` (per-tenant + per-geo resolved overrides). Every
+// DEFAULT_ADJUSTMENTS read is replaced with `customValues?.X ?? DEFAULT.X`
+// — the `??` pattern means a null/undefined override falls through to the
+// hardcoded default. Empty home_adjustments table => customValues=undefined
+// => byte-identical to f7f3c6e (the no-op guarantee).
+//
+// Phase 1 scope: only the inline-read constants in this function are
+// overridable (LOT_FRONTAGE_*, LOT_DEPTH_*, POOL_INGROUND, BATHROOM_FULL).
+// Basement + garage adjustments flow through helpers in home-adjustment-
+// math.js whose internal DEFAULT_ADJUSTMENTS reads are NOT yet threaded;
+// extending those helpers is a Phase 1.1 follow-up (table already carries
+// the columns so the data model is forward-compatible).
+function createHomeComparable(
+  sale: any,
+  specs: HomeSpecs,
+  matchScore: number,
+  customValues?: ResolvedHomeAdjustments,
+): ComparableSale {
   const adjustments: PriceAdjustment[] = []
   let adjustedPrice = sale.close_price
 
@@ -364,8 +393,8 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
     const diffFt = subjFt - compFt
     if (Math.abs(diffFt) >= 1) {
       const pct = Math.min(
-        Math.abs(diffFt) * DEFAULT_ADJUSTMENTS.LOT_FRONTAGE_PER_FOOT_PCT,
-        DEFAULT_ADJUSTMENTS.LOT_FRONTAGE_MAX_PCT,
+        Math.abs(diffFt) * (customValues?.LOT_FRONTAGE_PER_FOOT_PCT ?? DEFAULT_ADJUSTMENTS.LOT_FRONTAGE_PER_FOOT_PCT),
+        (customValues?.LOT_FRONTAGE_MAX_PCT ?? DEFAULT_ADJUSTMENTS.LOT_FRONTAGE_MAX_PCT),
       )
       const sign = diffFt > 0 ? 1 : -1
       const amount = Math.round(sign * pct * sale.close_price)
@@ -388,8 +417,10 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
   if (saleDepth && specDepth) {
     const diff = specDepth - saleDepth
     if (Math.abs(diff) > 10) {
-      let amount = Math.round((diff / 10) * DEFAULT_ADJUSTMENTS.LOT_DEPTH_PER_10FT)
-      amount = Math.max(-DEFAULT_ADJUSTMENTS.LOT_DEPTH_MAX, Math.min(DEFAULT_ADJUSTMENTS.LOT_DEPTH_MAX, amount))
+      const perTen = customValues?.LOT_DEPTH_PER_10FT ?? DEFAULT_ADJUSTMENTS.LOT_DEPTH_PER_10FT
+      const cap = customValues?.LOT_DEPTH_MAX ?? DEFAULT_ADJUSTMENTS.LOT_DEPTH_MAX
+      let amount = Math.round((diff / 10) * perTen)
+      amount = Math.max(-cap, Math.min(cap, amount))
       adjustedPrice += amount
       adjustments.push({
         type: 'lot_depth' as any,
@@ -402,8 +433,15 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
     }
   }
 
-  // 3. Basement adjustment
-  const basementAdj = getBasementAdjustment(specs.basementRaw || (specs.basement ? [specs.basement] : null), sale.basement)
+  // 3. Basement adjustment — Phase 1.1: customValues threaded so per-tenant
+  // BASEMENT_FINISHED / BASEMENT_SEP_ENTRANCE / BASEMENT_WALKOUT_BONUS take
+  // effect. Score-only paths (scoreMatch) keep DEFAULT — only price-path
+  // adjustment uses overrides.
+  const basementAdj = getBasementAdjustment(
+    specs.basementRaw || (specs.basement ? [specs.basement] : null),
+    sale.basement,
+    customValues,
+  )
   if (basementAdj !== 0) {
     adjustedPrice += basementAdj
     adjustments.push({
@@ -416,9 +454,12 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
     })
   }
 
-  // 4. Garage adjustment
-  const subjectGarageVal = getGarageValue(specs.garageType || null)
-  const compGarageVal = getGarageValue(sale.garage_type)
+  // 4. Garage adjustment — Phase 1.1: per-tenant GARAGE_DETACHED_SINGLE /
+  // GARAGE_ATTACHED_SINGLE / GARAGE_BUILTIN take effect on the price path.
+  // scoreMatch's getGarageValue calls (line ~314) stay customValues-less to
+  // preserve score-only semantics.
+  const subjectGarageVal = getGarageValue(specs.garageType || null, customValues)
+  const compGarageVal = getGarageValue(sale.garage_type, customValues)
   const garageAdj = subjectGarageVal - compGarageVal
   if (garageAdj !== 0) {
     adjustedPrice += garageAdj
@@ -436,9 +477,8 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
   const subjectHasInground = hasIngroundPool(specs.poolFeatures || null)
   const compHasInground = hasIngroundPool(sale.pool_features)
   if (subjectHasInground !== compHasInground) {
-    const poolAdj = subjectHasInground
-      ? DEFAULT_ADJUSTMENTS.POOL_INGROUND
-      : -DEFAULT_ADJUSTMENTS.POOL_INGROUND
+    const poolAmt = customValues?.POOL_INGROUND ?? DEFAULT_ADJUSTMENTS.POOL_INGROUND
+    const poolAdj = subjectHasInground ? poolAmt : -poolAmt
     adjustedPrice += poolAdj
     adjustments.push({
       type: 'pool' as any,
@@ -453,7 +493,7 @@ function createHomeComparable(sale: any, specs: HomeSpecs, matchScore: number): 
   // 6. Bathroom adjustment
   const bathDiff = specs.bathrooms - (sale.bathrooms_total_integer || 0)
   if (bathDiff !== 0) {
-    const bathAdj = bathDiff * DEFAULT_ADJUSTMENTS.BATHROOM_FULL
+    const bathAdj = bathDiff * (customValues?.BATHROOM_FULL ?? DEFAULT_ADJUSTMENTS.BATHROOM_FULL)
     adjustedPrice += bathAdj
     adjustments.push({
       type: 'bathroom' as any,
@@ -995,6 +1035,7 @@ async function buildSFTierResult(
   specs: HomeSpecs,
   subjName: string | null,
   subjNum: number | null,
+  customValues?: ResolvedHomeAdjustments,
 ): Promise<TierResult | null> {
   if (funneledPool.length === 0) return null
   const scored = funneledPool.map(s => {
@@ -1003,7 +1044,7 @@ async function buildSFTierResult(
   }).sort((a, b) => b.score - a.score)
   const top = scored.slice(0, 10)
   const withMedia = await attachMediaUrls(top.map(s => s.sale))
-  const comparables = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score))
+  const comparables = withMedia.map((sale, i) => createHomeComparable(sale, specs, top[i].score, customValues))
   const prices = funneledPool
     .map(s => parseFloat(s.close_price))
     .filter(p => Number.isFinite(p) && p > 0)
@@ -1099,6 +1140,20 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
     ? specs.subjectStreetNumber
     : null
 
+  // v10 step 3 Phase 1 (2026-06-09): resolve per-tenant + per-geo adjustment
+  // overrides ONCE at the top of the matcher call, then thread the resolved
+  // object into every buildSFTierResult call. Empty home_adjustments table
+  // OR missing tenantId => customValues falls through to DEFAULT_ADJUSTMENTS
+  // (no-op guarantee — byte-identical to f7f3c6e).
+  const customValues = await resolveHomeAdjustments(
+    {
+      communityId: specs.communityId,
+      municipalityId: specs.municipalityId,
+      tenantId: specs.tenantId ?? null,
+    },
+    'sale',
+  )
+
   // ===== h7: ACCUMULATE ALL FOUR GEO TIERS (no early returns) =====
   //
   // Per tracker section 3 lock: compute every tier always, display every tier
@@ -1146,13 +1201,13 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
       if (goldPool.length < 3) {
         goldPool = applyRelaxedFunnel(cleanSales, specs)
       }
-      goldTier = await buildSFTierResult(goldPool, specs, subjName, subjNum)
+      goldTier = await buildSFTierResult(goldPool, specs, subjName, subjNum, customValues)
 
       // Platinum: same-street subset of Gold's already-funneled pool.
       // No extra DB query. Subject without street data → null.
       if (subjName && subjNum != null && goldPool.length > 0) {
         const platinumPool = goldPool.filter(s => streetBonusFor(s, subjName, subjNum).sameStreet)
-        platinumTier = await buildSFTierResult(platinumPool, specs, subjName, subjNum)
+        platinumTier = await buildSFTierResult(platinumPool, specs, subjName, subjNum, customValues)
       }
     }
   }
@@ -1200,7 +1255,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
           silverPool = []
         }
       }
-      silverTier = await buildSFTierResult(silverPool, specs, subjName, subjNum)
+      silverTier = await buildSFTierResult(silverPool, specs, subjName, subjNum, customValues)
     }
   }
 
@@ -1210,7 +1265,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
     const cleanSales = areaSales.filter(notAsIs)
     let bronzePool = applyFunnel(cleanSales, specs)
     if (bronzePool.length < 3) bronzePool = applyRelaxedFunnel(cleanSales, specs)
-    bronzeTier = await buildSFTierResult(bronzePool, specs, subjName, subjNum)
+    bronzeTier = await buildSFTierResult(bronzePool, specs, subjName, subjNum, customValues)
   }
 
   // ===== h7: BEST-TIER RESOLUTION (drives top-level fields) =====
