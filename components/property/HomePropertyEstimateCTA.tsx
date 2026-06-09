@@ -61,6 +61,9 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
         agentId: agentId,
         ...(listing.street_name ? { subjectStreetName: listing.street_name } : {}),
         ...(!Number.isNaN(streetNumParsed) ? { subjectStreetNumber: streetNumParsed } : {}),
+        // h8: subject tax for tax-similarity score band (silent-omit when missing)
+        ...(listing.tax_annual_amount != null ? { subjectTaxAnnualAmount: parseFloat(String(listing.tax_annual_amount)) } : {}),
+        ...(listing.tax_year != null ? { subjectTaxYear: parseInt(String(listing.tax_year), 10) } : {}),
       }
 
       try {

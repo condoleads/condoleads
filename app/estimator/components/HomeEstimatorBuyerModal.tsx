@@ -278,6 +278,9 @@ export default function HomeEstimatorBuyerModal({
         ...(exactSqft !== null && { exactSqft }),
         ...(subjectStreetNameRaw ? { subjectStreetName: subjectStreetNameRaw } : {}),
         ...(!Number.isNaN(streetNumParsed) ? { subjectStreetNumber: streetNumParsed } : {}),
+        // h8: subject tax for tax-similarity score band (silent-omit when missing)
+        ...((listing as any).tax_annual_amount != null ? { subjectTaxAnnualAmount: parseFloat(String((listing as any).tax_annual_amount)) } : {}),
+        ...((listing as any).tax_year != null ? { subjectTaxYear: parseInt(String((listing as any).tax_year), 10) } : {}),
       }
 
       if (isSale) {

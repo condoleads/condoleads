@@ -6721,3 +6721,126 @@ APPLY STATUS — APPLIED. Both gates cleared for THIS migration.
   origin/main = ed0cd76 (verifier polcmd branch, 2026-06-09).
   Local main = ed0cd76 + 1 uncommitted unit (this tracker run-log).
   Operator decides commit shape + push timing for the tracker entry.
+
+
+2026-06-09 — h8 PROPERTY-TAX SIMILARITY SCORE BAND (SALE-only) — SHIPS at 20%
+
+The earlier recon proved per-community close/tax ratios are tight (16-23% IQR
+within Whitby Detached communities, 138-160x median range Rural→Pringle Creek
+within the muni) and consistent across cohorts — the signal is real. Lock from
+operator: SALE-only score band, SAME-muni gated, ±1 tax_year gated, silent-
+omit, sliding 0→15 pts, sweep band width 15%/20%/25%/30% on backtest.
+
+Build:
+- lib/estimator/home-comparable-matcher-sales.ts:
+  * HomeSpecs +subjectTaxAnnualAmount? +subjectTaxYear? (mirrors h5/h6 thread).
+  * HOME_SELECT +tax_year, +municipality_id (was missing on comp side — needed
+    for the SAME-muni gate).
+  * taxSimilarityScore(sale, specs) helper: gates on subjectTax>500 +
+    subjectYear present + same municipality_id (subject vs comp) + comp tax>500
+    + comp tax_year within ±1 of subject. All silent-omit on miss → returns 0
+    (neutral, never penalizes).
+  * Sliding band: closeness = 1 - (|comp_tax - subj_tax|/subj_tax) / TAX_BAND_PCT;
+    score = 15 * closeness. fracDiff >= TAX_BAND_PCT → 0.
+  * TAX_BAND_PCT env-driven (default 0.20). Default unchanged in production.
+  * scoreMatch += taxSimilarityScore(sale, specs) as the new band (after
+    street/odd-even). Pool unchanged; reorders only.
+- scripts/backtest-estimator-homes.js (untracked local-only): mirror of the
+  same helper + threading subj.tax_annual_amount + subj.tax_year into specs.
+  HOME_SELECT +tax_year, SKIP_LEASE=1 env added so the sweep runs SALE-only.
+- app/api/parity-probe-sf-sold/route.ts (untracked local-only): threads
+  subject tax into the probed HomeSpecs.
+- app/estimator/components/HomeEstimatorBuyerModal.tsx + components/property/
+  HomePropertyEstimateCTA.tsx: production callers thread subject tax (same
+  shape as the h5 street thread).
+- DO NOT TOUCH: home-comparable-matcher-rentals.ts (lease has no assessment
+  semantic; out of scope per design lock). condo matcher untouched. The
+  community adjustment layer (home_adjustments table) untouched.
+
+Backtest sweep — SF SALE, N=500 per width (fresh sample each run; sampling
+noise applies row-to-row but the trend is robust across widths):
+
+  width                  priced   MAPE     median   pct<=15%   delta-baseline
+  baseline (band off)    479/500  16.33%   11.11%   61.0%      —
+  15% band               478/500  16.30%   10.72%   62.6%      Δmape=-0.03 Δmed=-0.39 Δ±15=+1.6
+  20% band               482/500  14.88%   10.14%   67.0%      Δmape=-1.46 Δmed=-0.97 Δ±15=+6.1   ← WINNER on ±15
+  25% band               469/500  14.64%   10.34%   65.7%      Δmape=-1.69 Δmed=-0.77 Δ±15=+4.7
+  30% band               470/500  14.67%    9.94%   65.1%      Δmape=-1.66 Δmed=-1.17 Δ±15=+4.1
+
+  ALL 4 widths improve baseline — signal is real. 20% wins on the ±15%
+  cohort (the "good estimate" bucket consumers care about most) with a
+  +6.1pp jump while keeping near-best MAPE and median improvements. 25%
+  edges MAPE by 0.24pp; 30% edges median by 0.20pp — both within sampling
+  noise on a fresh-sample backtest. 20% is the operator's start value and
+  the sweep winner. SHIPS at 20%.
+
+  Decision rule met (operator spec): every band width improves OR holds
+  within noise; the chosen width improves both MAPE and ±15. Keep, commit,
+  proceed.
+
+Parity classifier (50 SF subjects vs 02118df baseline, h8 wired):
+
+  byte-identical           14 / 50
+  expected-platinum-anchor  1 / 50 (X9410005 — same as prior runs)
+  expected-bronze-fill      4 / 50 (same as prior runs)
+  INVESTIGATE              31 / 50
+
+  Operator-anticipated divergence pattern: a tax-similarity score band
+  reorders comps within-pool. Programmatic verification of all 31
+  INVESTIGATE rows confirmed the pattern:
+  - 25/31: 100% pool overlap, same geo level, bestScore increased (tax
+    band only adds points) — pure tax-reorder.
+  - 6/31: 90% pool overlap, same geo, same length, bestScore increased
+    — same pattern, but the band promoted 1-3 new comps into top-10
+    that knocked out 1-3 cutoff comps. Still pure tax-reorder.
+  - 0/31: unexplained / regression-shaped.
+
+  Tier upgrades observed (RANGE→BINGO-ADJ, RANGE-ADJ→RANGE) where bestScore
+  crossed the 130/100 threshold — by design, the band can promote a comp
+  through a quality-tier boundary.
+
+  Verdict: the 31 INVESTIGATE rows are "expected-tax-reorder" — a new
+  classification class not currently natively recognized by the parity
+  classifier. Filed as a tiny classifier-refinement (add the verdict
+  detection) — NAMED-OPEN, not blocking this commit.
+
+Coverage / scope:
+- Tax fill on the backtest cohort: 93-99% on Whitby/Oshawa 90d closed
+  sales (recon-confirmed pre-build). The signal is testable.
+- Lease side intentionally NOT touched. Tax dollars represent assessed
+  PROPERTY VALUE expressed via the mill rate; the rental price isn't
+  driven by that signal in any well-known way. Condo equivalent
+  (parking/locker via /admin condo adjustments path) is a separate
+  workstream — not included here.
+- Recency: tax_year ±1 catches the dominant 2025/2026 cohort (98.7% of
+  recent Whitby/Oshawa closed home sales). Older assessments silent-omit.
+- Dirty-data: tax <= $500 floor catches the placeholder/$1 cohort
+  (Whitby Detached: 2 of 2168 = 0.09%).
+
+NAMED-OPEN (process findings):
+- Parity classifier refinement: add "expected-tax-reorder" verdict
+  (sameLen + ≥90% pool overlap + sameGeo + bestScore ≥ baseline →
+  classify as tax-reorder, not INVESTIGATE). Small surgical change to
+  scripts/parity-4tier-activation.js.
+- Backtest determinism: each run draws a different random sample of 500.
+  Cross-run absolute comparisons carry sampling noise; the SWEEP across
+  4 widths is robust to this because the TREND across widths is more
+  reliable than pp-level differences. A fixed-seed sample option in the
+  backtest harness would tighten future A/B measurements.
+- Condo tax-similarity equivalent (condo matcher): same design,
+  separate workstream — filed but not in this unit.
+
+Files modified (single uncommitted unit):
+  MOD lib/estimator/home-comparable-matcher-sales.ts        (HomeSpecs + HOME_SELECT + scoreMatch)
+  MOD app/estimator/components/HomeEstimatorBuyerModal.tsx  (CTA thread)
+  MOD components/property/HomePropertyEstimateCTA.tsx       (CTA thread)
+  MOD scripts/backtest-estimator-homes.js                   (untracked local-only — sweep harness)
+  MOD app/api/parity-probe-sf-sold/route.ts                 (untracked local-only — probe thread)
+  MOD docs/W-ESTIMATOR-RAG-TRACKER.md                       (this entry)
+Backups all timestamped _20260609_152714.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — N/A (no DB change in this unit).
+  origin/main = 02118df (apply attempt #2 run-log, 2026-06-09).
+  Local main = 02118df + 1 uncommitted unit (h8 tax-similarity score band).

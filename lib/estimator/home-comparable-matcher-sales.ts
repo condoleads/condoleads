@@ -65,6 +65,16 @@ export interface HomeSpecs {
   // backtest harness) the resolver falls through to DEFAULT_ADJUSTMENTS,
   // preserving f7f3c6e behavior byte-for-byte (the no-op guarantee).
   tenantId?: string | null
+
+  // h8 tax-similarity score band (2026-06-09, SALE-only): subject's MLS
+  // tax_annual_amount + tax_year. The matcher awards up to 15 score points
+  // when comp's tax sits within the subject's tax band (% diff), gated on
+  // SAME municipality (mill-rate constancy) AND tax_year within ±1.
+  // Silent-omit when missing — never penalize. Un-plumbed callers (null/
+  // undefined) get neutral 0 contribution → score path stays byte-identical
+  // for callers that don't thread this.
+  subjectTaxAnnualAmount?: number | null
+  subjectTaxYear?: number | null
 }
 
 interface HomeMatchResult {
@@ -112,12 +122,12 @@ export const PLEX_PRICE_BAND_FRACTION: Record<string, number> = {
 // ============ SELECT QUERY ============
 const HOME_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
   bathrooms_total_integer, living_area_range, parking_total, locker,
-  days_on_market, close_date, tax_annual_amount, square_foot_source,
+  days_on_market, close_date, tax_annual_amount, tax_year, square_foot_source,
   association_fee, unparsed_address, property_subtype, architectural_style,
   approximate_age, lot_width, lot_depth, lot_size_area, lot_size_units, basement,
   garage_type, pool_features, public_remarks,
   net_operating_income, gross_revenue,
-  street_number, street_name`
+  street_number, street_name, municipality_id`
 
 // ============ STYLE FAMILIES ============
 
@@ -258,7 +268,62 @@ function getCompatibleSubtypes(subtype: string): string[] {
   return [subtype]
 }
 
-// ============ MATCH SCORING (200 POINT SYSTEM) ============
+// ============ h8 TAX-SIMILARITY SCORE BAND (SALE-only, 2026-06-09) ============
+//
+// Per-comp tax similarity gates the band on TWO conditions before scoring:
+//   (1) SAME municipality_id (subject + comp) — tax-to-tax comparison is only
+//       valid where mill rate is constant. Cross-muni comp → neutral 0.
+//   (2) tax_year within ±1 year of the subject's tax_year — Whitby/Oshawa data
+//       confirms 2025/2026 dominate (98.7% of 90d closed); ±1 catches the
+//       legitimate cohort, rejects stale assessments.
+// Plus silent-omits on missing subject tax, missing comp tax, or tax ≤ 500
+// (placeholder data — Whitby Detached 0.09% of populated rows are < $500).
+// Never penalize: zero contribution → no rank change for the missing-data subjects.
+//
+// Band width is parameterized via TAX_BAND_PCT env var (default 0.20 = 20%).
+// The backtest sweeps 0.15/0.20/0.25/0.30 to pick the width that most improves
+// median APE on the SF sale backtest.
+//
+// Points: 15 max at exact match, linearly sliding to 0 at the band edge.
+// Sliding (not stepped) so the signal differentiates comps inside the band.
+
+const TAX_BAND_PCT = (() => {
+  // Env override for backtest sweeps. TAX_BAND_PCT=0 disables the band
+  // entirely (taxSimilarityScore returns 0 — required for the sweep's
+  // no-band baseline). Production runs leave the env unset → default 0.20.
+  const raw = process.env.TAX_BAND_PCT
+  if (raw === undefined) return 0.20
+  const v = parseFloat(raw)
+  return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0.20
+})()
+const TAX_BAND_MAX_POINTS = 15
+const TAX_MIN_VALUE = 500  // filter $1-placeholder + obvious dirty rows
+
+function taxSimilarityScore(sale: any, specs: HomeSpecs): number {
+  const subjectTax = specs.subjectTaxAnnualAmount
+  const subjectYear = specs.subjectTaxYear
+  if (subjectTax == null || subjectTax <= TAX_MIN_VALUE) return 0
+  if (subjectYear == null) return 0
+
+  // Gate 1: same municipality (mill-rate constancy)
+  const subjectMuni = specs.municipalityId
+  const compMuni = sale.municipality_id
+  if (!subjectMuni || !compMuni || subjectMuni !== compMuni) return 0
+
+  // Gate 2: comp tax + year present + clean + within ±1 year
+  const compTax = parseFloat(sale.tax_annual_amount)
+  if (!Number.isFinite(compTax) || compTax <= TAX_MIN_VALUE) return 0
+  const compYear = sale.tax_year
+  if (compYear == null || Math.abs(compYear - subjectYear) > 1) return 0
+
+  // Sliding band: 1.0 at exact match, 0 at band edge.
+  const fracDiff = Math.abs(compTax - subjectTax) / subjectTax
+  if (fracDiff >= TAX_BAND_PCT) return 0
+  const closeness = 1 - (fracDiff / TAX_BAND_PCT)
+  return TAX_BAND_MAX_POINTS * closeness
+}
+
+// ============ MATCH SCORING (200 POINT SYSTEM + h8 tax band → 215 max) ============
 
 function scoreMatch(sale: any, specs: HomeSpecs, sameStreet: boolean, sameOddEven: boolean): number {
   let score = 0
@@ -341,6 +406,11 @@ function scoreMatch(sale: any, specs: HomeSpecs, sameStreet: boolean, sameOddEve
     score += 15
     if (sameOddEven) score += 5
   }
+
+  // h8 tax similarity: up to 15 pts sliding, SAME-muni gated, ±1 year gated,
+  // silent-omit on missing/dirty. Never penalizes — un-plumbed callers
+  // (subject tax/year null) return 0 → score path byte-identical for those.
+  score += taxSimilarityScore(sale, specs)
 
   return score
 }
