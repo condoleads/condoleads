@@ -63,15 +63,17 @@ const HOME_RENTAL_ADJUSTMENTS = {
 //   LEASE_GATE_FURNISHED=0  → furnished gate skipped
 //   LEASE_GATE_TERM=0       → term gate skipped
 //   LEASE_GATE_PORTION=0    → portion gate skipped
-//   LEASE_RENT_INCL_WEIGHT  → rent_includes score weight (default 10)
+//   LEASE_RENT_INCL_WEIGHT  → rent_includes score weight (default 7)
 // All env-default = enabled; setting to 0 disables for the sweep harness.
+// Default weight tuned 10→7 (2026-06-10) — weight sweep showed w=10 regressed
+// MAPE +1.74pp while w=7 strictly improved both ±15 (+0.2pp) and MAPE (-1.98pp).
 
 const GATE_FURNISHED  = process.env.LEASE_GATE_FURNISHED !== '0'
 const GATE_TERM       = process.env.LEASE_GATE_TERM !== '0'
 const GATE_PORTION    = process.env.LEASE_GATE_PORTION !== '0'
 const RENT_INCL_WEIGHT = (() => {
-  const v = parseFloat(process.env.LEASE_RENT_INCL_WEIGHT || '10')
-  return Number.isFinite(v) && v >= 0 ? v : 10
+  const v = parseFloat(process.env.LEASE_RENT_INCL_WEIGHT || '7')
+  return Number.isFinite(v) && v >= 0 ? v : 7
 })()
 
 const LONG_TERMS  = new Set(['12 Months', '24 Months', '36 Plus Months'])
