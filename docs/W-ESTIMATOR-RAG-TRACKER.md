@@ -7066,3 +7066,153 @@ APPLY STATUS — N/A.
   origin/main = 02118df.
   Local main = 47a89a0 (h9 gates committed) + 1 uncommitted unit (this
   rent_includes weight tune).
+
+
+2026-06-10 — SIMILARLISTINGS DEAD-BUTTON FIX (single-property pages, S2 only)
+
+ROOT CAUSE (recon-confirmed):
+components/property/SimilarListings.tsx rendered Active listing cards
+(ListingCard / HomeListingCard) whose Sale Offer / Lease Offer button
+is gated only on {!isClosed}. The cards render the button on every
+Active listing and dispatch onEstimateClick?.(...). SimilarListings
+never threaded the handler, held no modal state, and didn't import
+either EstimatorBuyerModal. Result: live button, silent no-op, on:
+- app/property/[id]/PropertyPageClient.tsx:168
+  ("Available For Sale/Lease in This Building", Active condo)
+- app/property/[id]/HomePropertyPageClient.tsx:162
+  ("Available Sale/Lease Nearby", Active home)
+Closed rails ("Recently Sold") correctly hide the button via the
+card's {!isClosed} guard — pre-fix behavior preserved on those.
+
+PATTERN COPIED EXACTLY from the known-good wiring at
+app/[slug]/components/NeighbourhoodListingSection.tsx:
+- isHomeProperty(listing) detector — verbatim from lines 27-30.
+- handleEstimateClick(listing, type, sqft) — verbatim from line 191.
+- Modal state quadruple (modalOpen/selectedListing/modalType/
+  modalExactSqft) + selectedIsHome flag.
+- Both modals rendered (EstimatorBuyerModal + HomeEstimatorBuyerModal)
+  selected by selectedIsHome.
+
+TENANT-GATED ADDITIVE PATTERN (System 1 untouched):
+SimilarListings is reached only from app/property/[id]/{Property,
+HomeProperty}PageClient.tsx — verified via repo-wide grep:
+  grep -rnE "SimilarListings|from.*property/SimilarListings"
+  → only those two clients import it; no app/admin or app/api/chat reach.
+The property detail page is a documented shared S1/S2 surface (legacy
+condoleads.ca subdomain agent traffic AND walliam.ca tenant traffic).
+Fix is gated on tenantId presence:
+- tenantId present (S2 Walliam) → onEstimateClick threaded to cards;
+  both modals rendered in the tree; button works.
+- tenantId undefined (S1 legacy subdomain) → onEstimateClick stays
+  undefined; modals not rendered; button stays dead — EXACTLY as
+  pre-fix behavior. Mirrors the c1/c2 PropertyEstimateCTA pattern.
+
+MODAL GEO-CONTEXT (unchanged, confirmed sufficient):
+HomeEstimatorBuyerModal reads community_id/municipality_id off the
+listing object (lines 261-262). mls_listings carries both columns
+(100% on recent active home cohort per c1 recon), so the 4-tier home
+cascade (Platinum/Gold/Silver/Bronze) resolves for building-less homes
+with no new props. Do NOT add explicit communityId/municipalityId
+props (per operator spec). Verified by code inspection — not patched.
+
+DEVELOPMENTLISTINGS DECISION (Rule Zero — verified by DB query, not
+guessed):
+Query (probe-dev-homes.js, run this session):
+  SELECT COUNT(*) FROM mls_listings l
+   JOIN buildings b ON b.id = l.building_id
+   WHERE b.development_id IS NOT NULL
+     AND (l.property_type = 'Residential Freehold'
+          OR TRIM(l.property_subtype) IN
+             ('Detached','Semi-Detached','Att/Row/Townhouse','Link',
+              'Duplex','Triplex','Fourplex','Multiplex'))
+Result:
+  developments: 7
+  buildings in developments: 16
+  development listings with property_type='Residential Freehold': 0
+  development listings with home property_subtype: 0
+  (Subtype distribution: Condo Apartment 3223, Common Element Condo 117,
+   Condo Townhouse 64, Parking Space 25, Co-op Apartment 6, Commercial
+   Retail 2 — all condo subtypes.)
+Decision: DO NOT patch DevelopmentListings. Logged as named-open with
+explicit trigger.
+
+FILES PATCHED (3 tracked):
+- components/property/SimilarListings.tsx
+  - Added 'use client' (already present, kept).
+  - Added imports: EstimatorBuyerModal, HomeEstimatorBuyerModal,
+    extractExactSqft.
+  - Added isHomeProperty (verbatim from NeighbourhoodListingSection).
+  - Added prop: tenantId?: string.
+  - Added state: modalOpen, selectedListing, modalType (sale|rent),
+    modalExactSqft, selectedIsHome.
+  - Added handleEstimateClick (verbatim from NeighbourhoodListingSection).
+  - Cards now receive onEstimateClick = tenantId ? handler : undefined
+    (tenant-gated; null-tenant cards stay inert).
+  - Card branch now uses isHome || isHomeProperty(listing) so mixed
+    cohorts resolve per-listing.
+  - Both modals rendered conditionally on tenantId AND selectedIsHome.
+- app/property/[id]/PropertyPageClient.tsx
+  - Threaded tenantId={walliamTenantId || undefined} to both
+    <SimilarListings/> call sites (lines 161 + 168).
+- app/property/[id]/HomePropertyPageClient.tsx
+  - Threaded tenantId={walliamTenantId || undefined} to both
+    <SimilarListings/> call sites (lines 150 + 162).
+
+VERIFICATIONS:
+- tsc --noEmit clean (full project).
+- Shared System 1 files zero git diff:
+    git diff HEAD -- lib/estimator/comparable-matcher-sales.ts \
+                     lib/estimator/comparable-matcher-rentals.ts \
+                     lib/estimator/resolve-adjustments.ts \
+                     app/estimator/actions/estimate-sale.ts \
+                     app/estimator/actions/estimate-rent.ts
+    → exit 0 (zero output).
+- Total tracked-file scope: 3 files (SimilarListings.tsx,
+  PropertyPageClient.tsx, HomePropertyPageClient.tsx) + this tracker.
+  Other modifications in working tree (charlie route + 2 territory
+  scripts) are pre-existing and unrelated.
+
+SMOKE STATUS (per surface):
+The operator's spec called for browser-driven manual smoke (click Sale
+Offer on Active rails, confirm modals open + auto-fill + run). What
+was verified server-side this session:
+- Dev server (npm run dev) booted clean on localhost:3005.
+- tsc clean.
+- Known-good building page (UC Tower) HTTP 200 with DEV_TENANT_DOMAIN=
+  walliam.ca → Walliam tenant resolution works on localhost.
+- Property detail route returns 404 in headless fetch (the route's
+  agent-resolution gate at app/property/[id]/page.tsx:153 requires
+  real browser session context, not satisfied by a Node fetch). NOT
+  a regression from this fix — same 404 would happen on the pre-fix
+  code path. CLAIMED, UNVERIFIED IN THIS SESSION: the button-click
+  end-to-end in a real browser session — operator's browser-side
+  check.
+Smoke targets identified for the operator's browser session:
+  CONDO:  /property/5ae04acd-bbbb-4ba9-8902-89a2d0f96fd0
+          (UC Tower, 33 Active siblings → "Available For Sale in This
+           Building" rail populated)
+  HOME:   /property/eaad332d-2ec2-4cc5-8bd9-a1f709325502
+          (Detached, Prince Edward County, has community_id +
+           municipality_id → 4-tier cascade resolves without building)
+
+NAMED-OPEN (new):
+- DevelopmentListings home-cohort wiring deferred. Explicit trigger:
+  the first home-containing development onboarded (any
+  property_type='Residential Freehold' OR home property_subtype on a
+  listing whose building has development_id NOT NULL). At that point:
+  add HomeListingCard + HomeEstimatorBuyerModal to
+  DevelopmentListings.tsx, mirror the home/condo branch from
+  NeighbourhoodListingSection.
+
+FILES MODIFIED (single uncommitted unit):
+  MOD components/property/SimilarListings.tsx
+  MOD app/property/[id]/PropertyPageClient.tsx
+  MOD app/property/[id]/HomePropertyPageClient.tsx
+  MOD docs/W-ESTIMATOR-RAG-TRACKER.md
+Backups timestamped _20260610_180000.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD pending operator approval (per task spec).
+APPLY STATUS — N/A (no DB change).
+  origin/main = 08fd546 (c2 revert, 2026-06-10).
+  Local main = 08fd546 + 1 uncommitted unit (this dead-button fix).

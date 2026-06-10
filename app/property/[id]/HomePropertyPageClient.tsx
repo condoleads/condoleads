@@ -152,6 +152,7 @@ export default function HomePropertyPageClient({
                 title="Recently Sold Nearby"
                 agentId={agent?.id}
                 isHome={true}
+                tenantId={walliamTenantId || undefined}
               />
 
             {availableNearby && availableNearby.length > 0 && (
@@ -159,7 +160,7 @@ export default function HomePropertyPageClient({
                 <h2 className="text-2xl font-bold mb-4">
                   Available {isSale ? 'For Sale' : 'For Lease'} Nearby
                 </h2>
-                <SimilarListings listings={availableNearby} agentId={agent?.id} isHome={true} />
+                <SimilarListings listings={availableNearby} agentId={agent?.id} isHome={true} tenantId={walliamTenantId || undefined} />
               </div>
             )}
           </div>

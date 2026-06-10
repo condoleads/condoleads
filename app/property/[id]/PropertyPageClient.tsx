@@ -158,14 +158,14 @@ export default function PropertyPageClient({
               </GatedContent>
             )}
 
-            <SimilarListings listings={similarListings || []} agentId={agent?.id} />
+            <SimilarListings listings={similarListings || []} agentId={agent?.id} tenantId={walliamTenantId || undefined} />
 
             {availableListings && availableListings.length > 0 && (
               <div>
                 <h2 className="text-2xl font-bold mb-4">
                   Available {isSale ? 'For Sale' : 'For Lease'} in This Building
                 </h2>
-                <SimilarListings listings={availableListings} agentId={agent?.id} />
+                <SimilarListings listings={availableListings} agentId={agent?.id} tenantId={walliamTenantId || undefined} />
               </div>
             )}
           </div>
