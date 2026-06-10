@@ -4,6 +4,11 @@ import { MLSListing } from '@/lib/types/building'
 import { extractExactSqft } from '@/lib/estimator/types'
 import { estimateSale } from '@/app/estimator/actions/estimate-sale'
 import { estimateRent } from '@/app/estimator/actions/estimate-rent'
+// c1 (2026-06-10): tenant-gated S2 condo lease entry. When tenantId is
+// present AND the request is LEASE, route to the new System 2 condo
+// matcher (geo cascade + segmentation). All other paths (sale, S1 lease)
+// continue calling the existing shared estimateSale/estimateRent unchanged.
+import { estimateCondoRent } from '@/app/estimator/actions/estimate-condo-rent'
 import EstimatorResults from '@/app/estimator/components/EstimatorResults'
 import { EstimateResult } from '@/lib/estimator/types'
 
@@ -15,9 +20,12 @@ interface PropertyEstimateCTAProps {
   buildingAddress?: string
   buildingSlug?: string
   agentId: string
+  // c1: optional tenantId from the page; when present we route LEASE
+  // requests to the new S2 condo matcher. SALE path unchanged (c2 work).
+  tenantId?: string
 }
 
-export default function PropertyEstimateCTA({ listing, status, isSale, buildingName, buildingAddress, buildingSlug, agentId }: PropertyEstimateCTAProps) {
+export default function PropertyEstimateCTA({ listing, status, isSale, buildingName, buildingAddress, buildingSlug, agentId, tenantId }: PropertyEstimateCTAProps) {
   const [loading, setLoading] = useState(true)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -43,9 +51,19 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
       
 
       try {
-        const response = isSale
-          ? await estimateSale(specs, false)
-          : await estimateRent(specs, false)
+        // c1 (2026-06-10): tenant-gated LEASE branch. When tenantId is
+        // present AND the request is LEASE, route to estimateCondoRent
+        // (S2 geo cascade + segmentation). The SALE path and the no-tenant
+        // LEASE path (System 1) call the shared estimateSale/estimateRent
+        // exactly as before — byte-identical to the pre-c1 behavior.
+        let response
+        if (isSale) {
+          response = await estimateSale(specs, false)
+        } else if (tenantId) {
+          response = await estimateCondoRent({ ...specs, tenantId }, false)
+        } else {
+          response = await estimateRent(specs, false)
+        }
 
         if (response.success && response.data) {
           setResult(response.data)

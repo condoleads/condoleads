@@ -5,6 +5,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { estimateSale } from '../actions/estimate-sale'
 import { estimateRent } from '../actions/estimate-rent'
+// c1 (2026-06-10): tenant-gated S2 condo lease entry. When tenantId is
+// present AND request is LEASE, route to the new condo matcher.
+import { estimateCondoRent } from '../actions/estimate-condo-rent'
 import { EstimateResult } from '@/lib/estimator/types'
 import EstimatorResults from './EstimatorResults'
 import { MLSListing } from '@/lib/types/building'
@@ -276,9 +279,17 @@ export default function EstimatorBuyerModal({
       ...(listing.association_fee && { associationFee: listing.association_fee })
     }
 
-    const response = isSale
-      ? await estimateSale(specs, true)
-      : await estimateRent(specs, true)
+    // c1 (2026-06-10): tenant-gated LEASE branch. S2 condo matcher when
+    // tenantId is present; existing shared estimateRent (System 1) when
+    // tenantId is null — byte-identical to pre-c1 behavior on the S1 path.
+    let response
+    if (isSale) {
+      response = await estimateSale(specs, true)
+    } else if (tenantId) {
+      response = await estimateCondoRent({ ...specs, tenantId }, true)
+    } else {
+      response = await estimateRent(specs, true)
+    }
 
     if (response.success && response.data) {
         setResult(response.data)

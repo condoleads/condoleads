@@ -216,6 +216,7 @@ export default function PropertyPageClient({
                       buildingAddress={building?.canonical_address || ''}
                       buildingSlug={building?.slug || ''}
                       agentId={walliamTenantId}
+                      tenantId={walliamTenantId || undefined}
                     />
                   </GatedContent>
                   <BuildingInfo
