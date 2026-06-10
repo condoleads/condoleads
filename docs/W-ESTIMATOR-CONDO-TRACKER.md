@@ -1047,3 +1047,133 @@ APPLY STATUS — N/A (no DB change in this unit).
   origin/main = 4a7b4a9 (c2 condo sale, 2026-06-10).
   Local main = 4a7b4a9 + 2 uncommitted units (the c2-follow-on
   Platinum threshold tune + this resolver-fix).
+
+
+================================================================================
+2026-06-10 — c2 REVERT: restore Platinum=building (≥1 same-building comp wins, SALE)
+================================================================================
+
+The c2-follow-on Platinum sub-tier comp-count threshold (41afbd0,
+local/held) optimized aggregate ±15 (+2.0pp) at the cost of the locked
+Platinum=building model — by skipping the most-relevant comp for ~93%
+of subjects with same-building data. The locked design is non-
+negotiable: Platinum = building is foundational, and a SINGLE same-
+building comp WINS on pricing. Buildings are how condos are valued —
+a same-building comp is the most relevant comp regardless of count.
+
+This unit REVERTS 41afbd0 in spirit (the threshold optimization) and
+locks the firing condition at ≥1.
+
+SCOPE: SALE matcher only (lib/estimator/condo-comparable-matcher-sales.ts).
+LEASE matcher untouched (zero git diff). Shared System 1 files
+untouched (zero git diff on all 5 — comparable-matcher-sales.ts,
+comparable-matcher-rentals.ts, resolve-adjustments.ts, estimate-sale.ts,
+estimate-rent.ts).
+
+WHY THE c2-FOLLOW-ON THRESHOLD DEVIATED FROM THE MODEL:
+The c2-follow-on sweep showed bldg_disabled beat Platinum-first by
++5.6pp ±15. Reading that signal as "thin pools are noisy, fall through
+to Gold" optimized the aggregate metric. The deeper read: same-building
+comps for SALE genuinely carry MORE information about the subject's
+true price than a community-aggregate, BUT same-building SALE prices
+vary more than community medians on a per-comp basis (renovation,
+view, exposure, timing). So:
+  - The community pool's CENTRAL TENDENCY tracks the macro price.
+  - The same-building pool's CENTRAL TENDENCY tracks the building-
+    specific price (which IS the right anchor — a unit in this
+    building should be priced from this building's recent comps).
+The aggregate ±15 metric on a heterogeneous sample favors central-
+tendency tracking (community wins on average). The locked model
+favors per-subject correctness (same-building wins per condo).
+These are different optimization criteria. The model takes precedence.
+
+REVERT (one line in findCondoComparablesSales + env-knob removal):
+  Pre-revert (41afbd0):
+    const PLATINUM_MIN_COMPS = parseInt(env.CONDO_SALE_PLATINUM_MIN_COMPS||'7',10)
+    if (result.comparables.length >= PLATINUM_MIN_COMPS) → building
+  Reverted (locked model):
+    /* knob removed */
+    if (result.comparables.length >= 1) → building
+  CONDO_SALE_PLATINUM_MIN_COMPS env knob: removed entirely from
+  production matcher. Mirrored in scripts/backtest-estimator-condos-
+  sale.js (constant pinned at 1; harness still controllable via
+  CONDO_DISABLE_BUILDING=1 for ad-hoc what-if work).
+
+VERIFICATION (real subjects):
+  CASE A — 1 same-bldg+bed+bath+LAR comp → Platinum WINS:
+    Subject W13042040 (bed=3 bath=2.0 LAR=1000-1199)
+    building_id=716dd2a5-b4bf-4587-9580-c380934b668c
+    SQL-confirmed: exactly 1 same-bldg matching comp (W12250306 sold
+    $500,000 on 2025-08-21).
+    EXPECTED runtime: Platinum fires (1 >= 1) → geoLevel='building',
+    tier='RANGE' (LAR matches the single comp).
+  CASE B — 0 same-bldg matching comps → falls through to Gold:
+    Subject X13037934 (bed=2 bath=2.0 LAR=1000-1199)
+    building_id=9524c750-146b-4da4-bf50-711f021d4a1e
+    SQL-confirmed: 0 same-bldg matching comps.
+    EXPECTED runtime: matchWithinBuilding returns CONTACT (length 0)
+    → Platinum gate fails (0 < 1) → falls through to Gold (community).
+
+  Runtime confirmation via backtest (N=200, reverted threshold):
+    50 subjects anchored Platinum on EXACTLY 1 comp (the CASE A
+    pattern fires). Geo distribution: building=121, community=69,
+    municipality=8, area=0, none=2. Matches the c2-follow-on sweep's
+    min=1 row exactly — internally consistent.
+
+S1 BYTE-IDENTICAL PROOF:
+  git diff HEAD -- (5 shared files) → exit 0 (zero output)
+    lib/estimator/comparable-matcher-sales.ts
+    lib/estimator/comparable-matcher-rentals.ts
+    lib/estimator/resolve-adjustments.ts
+    app/estimator/actions/estimate-sale.ts
+    app/estimator/actions/estimate-rent.ts
+  Shared System 1 condo SALE path: unchanged.
+
+LEASE-UNTOUCHED PROOF:
+  git diff HEAD -- lib/estimator/condo-comparable-matcher-rentals.ts
+  → exit 0 (zero output)
+  LEASE matcher: untouched. c1 Platinum-first ships unchanged.
+
+TENANT SEPARATION: unchanged (no new queries; same shared market
+tables with no tenant_id column).
+
+BACKTEST FOR THE RECORD (NOT a gate, NOT used to re-litigate):
+  Reverted matcher (Platinum >=1), tax band w=15, maint off, N=200:
+    priced: 198/200  CONTACT: 2
+    MAPE=17.61%  median=10.44%  ±15=61.6%
+  Reference points (logged, not driving the decision):
+    c2 baseline (min=2):      MAPE 17.49%  ±15 62.4%
+    c2-follow-on min=7 (revt): MAPE 17.43%  ±15 64.5%
+    this revert (min=1):       MAPE 17.61%  ±15 61.6%
+  The −2.9pp ±15 vs the deviation is the cost of model adherence.
+  Following the locked Platinum=building design — the number is logged,
+  not used to re-litigate.
+
+NAMED-OPEN updates:
+- The c2-follow-on NAMED-OPEN entry asking whether to disable Platinum
+  entirely on SALE: RESOLVED — NO, the locked model says Platinum
+  wins on ≥1 same-building comp. Aggregate-metric optimization is not
+  a sufficient reason to override the locked design.
+- The CONDO_SALE_PLATINUM_MIN_COMPS env knob is removed from the
+  production matcher. No env-controlled threshold ships.
+
+CARRIES FORWARD:
+- maint-PSF weight sweep (c2).
+- Locker analytics pipeline (c4).
+- Shared resolver schema-drift bug (Rule-Zero call).
+- Short-term lease cohort sub-pool (c1).
+
+FILES MODIFIED (single uncommitted unit):
+  MOD lib/estimator/condo-comparable-matcher-sales.ts  (revert threshold
+                                                       + remove env knob)
+  MOD scripts/backtest-estimator-condos-sale.js        (untracked local-only —
+                                                       harness mirror)
+  MOD docs/W-ESTIMATOR-CONDO-TRACKER.md                (this entry)
+Backups timestamped _20260610_170000.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — N/A (no DB change in this unit).
+  origin/main = 4a7b4a9 (c2 condo sale, 2026-06-10).
+  Local main = 4a7b4a9 + 3 uncommitted units (c2-follow-on threshold
+  41afbd0 + resolver-fix 5028b10 + this revert).
