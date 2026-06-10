@@ -26,6 +26,19 @@
 //                                  ±15 by 1.0pp when stacked with tax. Knob
 //                                  kept for forward sweep work; silent-omit
 //                                  at default 0.)
+//   CONDO_SALE_PLATINUM_MIN_COMPS (default <swept-value> — c2-follow-on, sale-only)
+//                                  Platinum (same-building) tier anchors only
+//                                  when the within-building bed+bath pool yields
+//                                  ≥N comps after the sub-tier match. Below N,
+//                                  fall through to Gold. Rationale: thin
+//                                  within-building SALE comp pools (1-3 comps,
+//                                  per c2 distribution recon) produce
+//                                  high-variance estimates; falling through to
+//                                  community lets the larger comp pool +
+//                                  score-nudge picker do better. LEASE is
+//                                  UNTOUCHED (c1 confirmed Platinum-first is
+//                                  correct for lease — same-building rents are
+//                                  tight + plentiful).
 //
 // Silent-omit on every signal: subject missing tax → tax band skips;
 // subject missing assoc_fee → maint-psf band skips. Un-plumbed callers
@@ -80,6 +93,13 @@ const TAX_WEIGHT = (() => {
 const MAINT_PSF_WEIGHT = (() => {
   const v = parseFloat(process.env.CONDO_SALE_MAINT_PSF_WEIGHT || '0')
   return Number.isFinite(v) && v >= 0 ? v : 0
+})()
+// c2-follow-on (2026-06-10): Platinum sub-tier comp-count threshold. Default
+// is the winning N from the sweep. When the within-building pool yields
+// fewer comps, fall through to Gold instead of anchoring on Platinum.
+const PLATINUM_MIN_COMPS = (() => {
+  const v = parseInt(process.env.CONDO_SALE_PLATINUM_MIN_COMPS || '7', 10)
+  return Number.isFinite(v) && v >= 1 ? v : 7
 })()
 const TAX_FLOOR = 500
 const TAX_YEAR_DELTA_MAX = 1
@@ -157,7 +177,11 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
 
     if (bldgSales && bldgSales.length > 0) {
       const result = matchWithinBuilding(bldgSales, specs, customValues)
-      if (result.comparables.length >= 2) {
+      // c2-follow-on: anchor on Platinum only when the within-building match
+      // yielded ≥ PLATINUM_MIN_COMPS comps. Thin pools fall through to Gold
+      // (the community-level cascade) where the larger comp pool +
+      // score-nudge ordering produces lower-variance estimates.
+      if (result.comparables.length >= PLATINUM_MIN_COMPS) {
         return { ...result, geoLevel: 'building' }
       }
     }
