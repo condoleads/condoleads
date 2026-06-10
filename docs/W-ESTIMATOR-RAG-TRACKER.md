@@ -7212,7 +7212,72 @@ FILES MODIFIED (single uncommitted unit):
 Backups timestamped _20260610_180000.
 tsc --noEmit clean (full project).
 
-PUSH STATUS — HELD pending operator approval (per task spec).
+PUSH STATUS — SHIPPED.
 APPLY STATUS — N/A (no DB change).
-  origin/main = 08fd546 (c2 revert, 2026-06-10).
-  Local main = 08fd546 + 1 uncommitted unit (this dead-button fix).
+  Commit: aa711d0 (fix(estimator): wire Sale/Lease Offer buttons on
+          single-property SimilarListings rails)
+  Pushed: 2026-06-10. Fast-forward 08fd546 → aa711d0 (1 commit).
+  origin/main = aa711d0 (confirmed after fetch).
+  Operator browser-smoke confirmed BEFORE push: building-page card
+  modal opens + runs (e.g. x2-condos-101-charles-st-e-toronto: Sale
+  Price Estimate $808,800, 5 comparables, "Same Size Units"). The
+  single-property SimilarListings rails (the dead-button surfaces
+  this fix targets) are now live with the same modal wiring on
+  walliam.ca tenant traffic; null-tenant (legacy condoleads.ca
+  subdomain) path remains byte-identical to pre-fix.
+
+CARRY-FORWARD (named-open, this run-log):
+- DevelopmentListings home-cohort wiring deferred. Trigger: first
+  home-containing development onboarded (any property_type=
+  'Residential Freehold' OR home property_subtype on a listing whose
+  building has development_id NOT NULL). Today's count: 0 across all
+  7 development pools (16 buildings). Re-run probe-dev-homes.js at
+  trigger time.
+
+
+================================================================================
+2026-06-10 — NEW WORKSTREAM FILED — W-CONDO-MODAL-PARITY (named-open, not started)
+================================================================================
+
+IDENTIFIED during the SimilarListings dead-button fix recon: the modal
+component that opens from every condo Sale/Lease Offer button —
+app/estimator/components/EstimatorBuyerModal.tsx — is the LEGACY
+condo modal shell. Its dispatch was upgraded in c1 (13336e9) and c2
+(4a7b4a9) to tenant-gate-route to the new S2 condo matchers
+(estimateCondoSale / estimateCondoRent), but the modal's UI/UX itself
+was NOT redesigned. Renders the older "Same Size Units" / 7-tier sub-
+tier presentation. HomeEstimatorBuyerModal.tsx is the newer richer
+modal (4-tier-spread / perfect-matches / investment-analysis layout
+used on the home path).
+
+MATCHER ROUTING IS CORRECT — verified this session:
+- All 4 condo card-button surfaces (ListingSection, NeighbourhoodListing-
+  Section, GeoListingSection, SimilarListings) import the same
+  EstimatorBuyerModal from '@/app/estimator/components/EstimatorBuyerModal'.
+- That file's dispatch (lines 284-298) routes:
+    SALE + tenantId  → estimateCondoSale (c2 S2 matcher)
+    SALE + !tenantId → estimateSale (shared S1)
+    LEASE + tenantId → estimateCondoRent (c1 S2 matcher)
+    LEASE + !tenantId → estimateRent (shared S1)
+- Every surface threads tenantId. On Walliam tenant traffic, the c1/c2
+  S2 condo matchers ARE reached from the card-button modal.
+
+The operator's "old modal" perception is a UI-SHELL asymmetry, not a
+matcher-routing bug. NOT introduced by the SimilarListings patch
+(aa711d0); pre-existing since pre-c1.
+
+SCOPE (the next workstream — not started this session):
+- Build CondoEstimatorBuyerModal.tsx mirroring HomeEstimatorBuyerModal's
+  feature set (4-tier-spread view, perfect-matches grouping,
+  investment-analysis if applicable, geo-level surfacing from the c2
+  cascade — Platinum=building / Gold=community / Silver=muni /
+  Bronze=area).
+- Swap the import on 4 surfaces: ListingSection.tsx,
+  NeighbourhoodListingSection.tsx, GeoListingSection.tsx,
+  SimilarListings.tsx.
+- Recon-first per the standing workstream rhythm (read the
+  HomeEstimatorBuyerModal UI structure end-to-end, identify what maps
+  1:1 vs needs condo-specific adaptation — e.g., locker presence,
+  parking spec, association_fee, building amenities surfacing).
+
+NAMED-OPEN. Identified 2026-06-10. Not started.
