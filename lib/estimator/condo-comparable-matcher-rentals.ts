@@ -467,7 +467,10 @@ function createComp(lease: any, specs: CondoLeaseSpecs, customValues: ResolvedCo
     }
     const subjL = specs.hasLocker
     const compL = lease.locker === 'Owned'
-    if (subjL !== compL) {
+    // Locker silent-omit (2026-06-10): S2 resolver returns 0 when no scope
+    // in the cascade has a value (c4 analytics pipeline pending). Skip the
+    // adjustment rather than faking the hardcoded $50 default.
+    if (subjL !== compL && customValues.locker > 0) {
       const amt = subjL ? customValues.locker : -customValues.locker
       adjustedPrice += amt
       adjustments.push({

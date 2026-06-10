@@ -457,7 +457,11 @@ function createComp(
     }
     const subjL = specs.hasLocker
     const compL = sale.locker === 'Owned'
-    if (subjL !== compL) {
+    // Locker silent-omit (2026-06-10): when the S2 resolver returns 0 for
+    // locker, no scope in the cascade has a value (c4 analytics pipeline
+    // still owes locker_*_calculated). Skip the locker $-adjustment rather
+    // than faking a $10,000 hardcoded default.
+    if (subjL !== compL && customValues.locker > 0) {
       const amt = subjL ? customValues.locker : -customValues.locker
       adjustedPrice += amt
       adjustments.push({

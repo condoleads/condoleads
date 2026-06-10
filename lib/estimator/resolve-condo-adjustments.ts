@@ -34,10 +34,15 @@ export interface ResolvedCondoAdjustments {
   }
 }
 
-// Hardcoded fallbacks. Match the existing shared resolver's defaults so the
-// no-adjustment-row case behaves identically.
-const HARDCODED_DEFAULTS_SALE  = { parkingPerSpace: 50000, locker: 10000 }
-const HARDCODED_DEFAULTS_LEASE = { parkingPerSpace: 200,   locker: 50    }
+// Hardcoded fallbacks for PARKING only. Match the existing shared resolver's
+// defaults so the no-adjustment-row case behaves identically for parking.
+const HARDCODED_DEFAULTS_SALE  = { parkingPerSpace: 50000 }
+const HARDCODED_DEFAULTS_LEASE = { parkingPerSpace: 200   }
+// LOCKER: silent-omit when no scope has a value. The c4 analytics pipeline
+// owes locker_*_calculated values; until then, returning 0 is the signal to
+// matchers that the locker adjustment should be skipped (do NOT fake a value).
+// Recon (2026-06-10) confirmed locker_*_calculated and locker_value_*
+// columns are 0% populated across all 408 adjustments rows.
 
 export async function resolveCondoAdjustments(
   buildingId: string | null | undefined,
@@ -65,8 +70,8 @@ export async function resolveCondoAdjustments(
       // cohort) — return defaults; the matcher's geo cascade will still run.
       return {
         parkingPerSpace: defaults.parkingPerSpace,
-        locker: defaults.locker,
-        sources: { parking: 'Hardcoded (no building)', locker: 'Hardcoded (no building)' },
+        locker: 0,
+        sources: { parking: 'Hardcoded (no building)', locker: 'silent-omit (no building)' },
       }
     }
 
@@ -87,8 +92,8 @@ export async function resolveCondoAdjustments(
     if (buildingError || !building) {
       return {
         parkingPerSpace: defaults.parkingPerSpace,
-        locker: defaults.locker,
-        sources: { parking: 'Hardcoded (building not found)', locker: 'Hardcoded (building not found)' },
+        locker: 0,
+        sources: { parking: 'Hardcoded (building not found)', locker: 'silent-omit (building not found)' },
       }
     }
 
@@ -120,7 +125,11 @@ export async function resolveCondoAdjustments(
       else if (!adj.neighbourhood_id) byLevel.generic = adj
     })
 
-    const resolveField = (manual: string, calc: string, fallback: number): { value: number; source: string } => {
+    // resolveField walks the cascade. At each scope: manual override
+    // (`*_value_*`) wins over computed (`*_weighted_avg` / `*_calculated`).
+    // When no scope has either, returns null — caller decides whether to
+    // fall back to a hardcoded default (parking) or silent-omit (locker).
+    const resolveField = (manual: string, calc: string): { value: number; source: string } | null => {
       const order = ['building', 'community', 'municipality', 'area', 'generic']
       for (const level of order) {
         const adj = byLevel[level]
@@ -132,22 +141,30 @@ export async function resolveCondoAdjustments(
           return { value: parseFloat(adj[calc]), source: `${cap(level)} (calculated)` }
         }
       }
-      return { value: fallback, source: 'Hardcoded' }
+      return null
     }
 
-    const parkingResolved = resolveField(parkingManual, parkingCalc, defaults.parkingPerSpace)
-    const lockerResolved  = resolveField(lockerManual,  lockerCalc,  defaults.locker)
+    const parkingResolved = resolveField(parkingManual, parkingCalc)
+    const lockerResolved  = resolveField(lockerManual,  lockerCalc)
 
     return {
-      parkingPerSpace: parkingResolved.value,
-      locker: lockerResolved.value,
-      sources: { parking: parkingResolved.source, locker: lockerResolved.source },
+      // Parking: hardcoded fallback when no scope has a value (preserves
+      // existing behavior — the matcher always applies a parking $-adj).
+      parkingPerSpace: parkingResolved?.value ?? defaults.parkingPerSpace,
+      // Locker: silent-omit (0) when no scope has a value. The matcher
+      // checks `customValues.locker > 0` before applying the locker $-adj
+      // (do NOT fake a value while the c4 analytics pipeline is pending).
+      locker: lockerResolved?.value ?? 0,
+      sources: {
+        parking: parkingResolved?.source ?? 'Hardcoded',
+        locker:  lockerResolved?.source  ?? 'silent-omit (no data in cascade)',
+      },
     }
   } catch {
     return {
       parkingPerSpace: defaults.parkingPerSpace,
-      locker: defaults.locker,
-      sources: { parking: 'Hardcoded (error)', locker: 'Hardcoded (error)' },
+      locker: 0,
+      sources: { parking: 'Hardcoded (error)', locker: 'silent-omit (error)' },
     }
   }
 }

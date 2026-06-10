@@ -861,3 +861,189 @@ APPLY STATUS — N/A (no DB change in this unit).
   origin/main = 4a7b4a9 (c2 condo sale, 2026-06-10).
   Local main = 4a7b4a9 + 1 uncommitted unit (this c2-follow-on Platinum
   threshold tune).
+
+
+================================================================================
+2026-06-10 — c2 RESOLVER-FIX: building-first cascade verified + locker silent-omit (S2-only)
+================================================================================
+
+The c1 + c2 phases shipped with the S2 condo resolver (resolve-condo-
+adjustments.ts) already structured as building-first cascade with manual-
+over-computed at each scope. This phase VERIFIED the granularity end-to-
+end against current table state AND fixed a subtle "fake-value" bug:
+when no scope in the cascade had any locker data, the resolver was
+returning hardcoded defaults ($10,000 sale / $50 lease) — the operator's
+spec requires silent-omit when the cascade is genuinely empty (do NOT
+fake values while c4 analytics pipeline is pending).
+
+SCOPE: S2-only — lib/estimator/resolve-condo-adjustments.ts (semantics),
+lib/estimator/condo-comparable-matcher-sales.ts (locker $-adj guard),
+lib/estimator/condo-comparable-matcher-rentals.ts (locker $-adj guard).
+SHARED System 1 files (comparable-matcher-sales.ts, -rentals.ts,
+resolve-adjustments.ts, estimate-sale.ts, estimate-rent.ts) UNTOUCHED —
+zero git diff.
+
+GRANULARITY RECON (current state, 2026-06-10):
+  Schema columns verified:
+    parking computed: parking_sale_weighted_avg, parking_lease_calculated
+    parking manual:   parking_value_sale, parking_value_lease
+    locker  computed: locker_sale_calculated, locker_lease_calculated
+    locker  manual:   locker_value_sale, locker_value_lease
+  (The shared resolve-adjustments.ts schema-drift bug — reads
+  parking_sale_calculated which doesn't exist — is still open. S2
+  resolver reads correct column names.)
+
+  Rows by scope (adjustments, 408 total):
+    building     50
+    community   239
+    municipality 97
+    area         21
+    generic       1   ← operator-set manual overrides for parking + locker
+
+  PARKING fill (computed columns):
+    Scope         SALE (weighted_avg)   LEASE (calculated)
+    building       0 / 50 ( 0%)         50 / 50 (100%)
+    community     18 / 239 (7.5%)      239 / 239 (100%)
+  Manual *_value_* columns: 0 at every scope (no dashboard overrides).
+  Generic row holds parking_value_sale=$50,000 + parking_value_lease=$200
+  (operator-set manual baseline — matches the prior hardcoded defaults).
+
+  LOCKER fill (computed columns):
+    Scope         SALE (calculated)    LEASE (calculated)
+    building       0 / 50 ( 0%)         0 / 50 ( 0%)
+    community      0 / 239 ( 0%)        0 / 239 ( 0%)
+    municipality   0 / 97  ( 0%)        0 / 97  ( 0%)
+    area           0 / 21  ( 0%)        0 / 21  ( 0%)
+  Manual *_value_* columns: 0 at every scope EXCEPT the generic row,
+  which holds locker_value_sale=$10,000 + locker_value_lease=$50
+  (operator-set manual baseline at generic scope).
+
+  Practical implication: the c4 locker analytics pipeline still owes
+  the per-geo locker_*_calculated values. Today, every condo's locker
+  $-adjustment resolves to the generic-row operator-set manual baseline
+  ($10k sale / $50 lease). If the operator deletes those generic-row
+  values, every cascade hits the silent-omit path (zero locker
+  adjustment) until the c4 pipeline ships.
+
+DIAGNOSIS (current S2 resolver behavior pre-this-fix):
+  - Cascade order building→community→muni→area→generic→hardcoded: CORRECT.
+  - Per-scope manual-over-computed priority: CORRECT.
+  - Correct column names (vs. shared resolver's drift bug): CORRECT.
+  - Locker fake-value bug: PRESENT. When the entire cascade was empty
+    (no scope had any locker value), the resolver returned hardcoded
+    $10,000 sale / $50 lease rather than silent-omitting. Pre-fix
+    behavior was effectively masked by the generic-row manual values
+    (always providing a non-null at the end of the cascade), but the
+    code path FAKED values when the data was actually absent.
+
+FIX (lib/estimator/resolve-condo-adjustments.ts):
+  - resolveField() now returns null when the cascade has no value.
+  - Caller does `parkingResolved?.value ?? defaults.parkingPerSpace`
+    (parking keeps hardcoded fallback — per operator spec, parking
+    not silent-omitted).
+  - Caller does `lockerResolved?.value ?? 0` with source
+    'silent-omit (no data in cascade)' (locker silent-omits per spec).
+  - Removed HARDCODED_DEFAULTS_SALE.locker and HARDCODED_DEFAULTS_LEASE.locker
+    constants — locker has no hardcoded fallback in the S2 resolver.
+  - All early-exit paths (no buildingId, building-not-found, error
+    catch) updated to return locker=0 + silent-omit source for
+    consistency.
+
+MATCHER GUARDS (sales + rentals):
+  - condo-comparable-matcher-sales.ts createComp(): the locker $-adj
+    block now guards `if (subjL !== compL && customValues.locker > 0)`.
+    When locker is 0 (silent-omit), no adjustment row is added.
+  - condo-comparable-matcher-rentals.ts createComp(): same guard.
+  - Sale-side cross-building comps don't carry a locker $-adj (existing
+    behavior); only Platinum within-building creates locker adjustments.
+    Same on lease side.
+
+RUNTIME VERIFICATION (via local-only probe-condo-resolver/route.ts):
+  CASE 1 — building HAS building-scope value → returns Building (calculated)
+    building_id=0905254b-7461-4fbf-91d0-d915d0526de2 (parking_lease_calculated=$200)
+    resolver(lease) → parking=$200 source="Building (calculated)" ✓
+  CASE 2 — building has NO building-scope row → falls through to Community
+    building_id=e358b16d-8048-4075-b7eb-e12130d6ab3c (no building row;
+                                                     community has $135.50)
+    resolver(lease) → parking=$135.50 source="Community (calculated)" ✓
+  CASE 3 — locker cascade: building → community → muni → area → generic
+    For the CASE 1 subject (no locker_*_calculated anywhere in higher
+    scopes), the cascade reaches generic and returns the operator-set
+    manual override:
+    resolver(lease) → locker=$50 source="Generic (manual)" ✓
+    resolver(sale)  → locker=$10000 source="Generic (manual)" ✓
+    The silent-omit safety net (locker=0 + silent-omit source) only
+    activates when EVEN the generic row's locker_value_* columns are
+    null. With the generic row currently set, this path is dormant —
+    but the architectural correctness (no faked values) is in place.
+  CASE 4 (bonus) — sale-side parking cascade reaches Community
+    resolver(sale) → parking=$41,000 source="Community (calculated)"
+    (Community-scope parking_sale_weighted_avg exists for this geo;
+    falls through past the empty building-scope sale_calc.)
+
+VERIFICATION OF FIX SEMANTICS (code-level proof of silent-omit):
+  resolveField (resolve-condo-adjustments.ts lines 124-144):
+    for (const level of order) {
+      const adj = byLevel[level]
+      if (!adj) continue
+      if (adj[manual] != null) return { value, source: 'Manual' }   ← MANUAL FIRST
+      if (adj[calc] != null)   return { value, source: 'Calculated' } ← CALC SECOND
+    }
+    return null   ← LINE 142: silent-omit signal when cascade exhausted
+  Caller:
+    locker: lockerResolved?.value ?? 0   ← LINE 161
+    sources.locker: lockerResolved?.source ?? 'silent-omit (no data in cascade)'
+
+LEASE + SALE BOTH FLOW CORRECTLY:
+  Sale matcher (createComp at line 460): the locker $-adj guard
+    `if (subjL !== compL && customValues.locker > 0)` — when resolver
+    returns 0, no locker adjustment row created (matchQuality and
+    adjustedPrice computations skip the locker entirely).
+  Lease matcher (createComp at line 470): same guard.
+
+S1 BYTE-IDENTICAL PROOF (shared files untouched):
+  git diff HEAD -- lib/estimator/comparable-matcher-sales.ts \
+                   lib/estimator/comparable-matcher-rentals.ts \
+                   lib/estimator/resolve-adjustments.ts \
+                   app/estimator/actions/estimate-sale.ts \
+                   app/estimator/actions/estimate-rent.ts
+  → exit 0 (zero output)
+  Five SHARED files (which condoleads.ca System 1 traffic uses for both
+  sale and lease condo estimates) all have zero git diff. The shared
+  resolver's parking_sale_calculated schema-drift bug is preserved
+  per Rule Zero — separate operator-approved call.
+
+TENANT SEPARATION (unchanged):
+  No new queries added to the S2 resolver. The new code paths read the
+  same `adjustments` table (shared market data, no tenant_id column).
+  Tenant separation analysis from c1+c2 still holds: SOUND.
+
+NAMED-OPEN updates:
+- locker analytics pipeline (c4): still owed. The silent-omit safety
+  net is now in place, so when the pipeline ships and operators clean
+  up the generic-row override, the matchers will skip the locker
+  $-adj gracefully rather than faking. Filed forward.
+
+CARRIES FORWARD (unchanged from c2):
+- parking_sale_calculated schema-drift in SHARED resolver (Rule-Zero
+  call, separate).
+- Platinum disable for SALE (named-open from c2-follow-on Platinum
+  threshold sweep — disabling fully beats min=7 by another +1.6pp ±15).
+- maint-PSF weight sweep.
+- Short-term lease cohort sub-pool (from c1).
+
+FILES MODIFIED (single uncommitted unit):
+  MOD lib/estimator/resolve-condo-adjustments.ts        (silent-omit semantics)
+  MOD lib/estimator/condo-comparable-matcher-sales.ts   (locker $-adj guard)
+  MOD lib/estimator/condo-comparable-matcher-rentals.ts (locker $-adj guard)
+  NEW app/api/probe-condo-resolver/route.ts             (untracked local-only —
+                                                        runtime verification)
+  MOD docs/W-ESTIMATOR-CONDO-TRACKER.md                 (this entry)
+Backups timestamped _20260610_155907.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — N/A (no DB change in this unit).
+  origin/main = 4a7b4a9 (c2 condo sale, 2026-06-10).
+  Local main = 4a7b4a9 + 2 uncommitted units (the c2-follow-on
+  Platinum threshold tune + this resolver-fix).
