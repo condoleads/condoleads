@@ -19,16 +19,164 @@ interface HomeRentalMatchResult {
   geoLevel: 'community' | 'municipality' | 'none'
 }
 
-const HOME_RENTAL_SELECT = `id, listing_key, close_price, list_price, bedrooms_total, 
-  bathrooms_total_integer, living_area_range, parking_total, locker, 
-  days_on_market, close_date, square_foot_source, 
+const HOME_RENTAL_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
+  bathrooms_total_integer, living_area_range, parking_total, locker,
+  days_on_market, close_date, square_foot_source,
   unit_number, property_subtype, street_name, street_number,
-  lot_width, lot_depth, lot_size_area, garage_type, basement, approximate_age`
+  lot_width, lot_depth, lot_size_area, garage_type, basement, approximate_age,
+  furnished, lease_term, portion_property_lease, rent_includes`
 
 // Rental adjustment values for homes
 const HOME_RENTAL_ADJUSTMENTS = {
   PARKING_PER_SPACE: 150,  // $150/mo per parking space
   BATHROOM: 100,           // $100/mo per bathroom difference
+}
+
+// ============ h9 LEASE SEGMENTATION GATES (2026-06-10, LEASE-only) ============
+//
+// 3 type gates filter the comp pool BEFORE matchWithinPool runs. The gates
+// partition each geo tier; sub-tier (exact-sqft / LAR / bed+bath / bed-only)
+// matching then runs WITHIN the gate-filtered pool. The geo cascade
+// (community → muni) is preserved.
+//
+// 1. FURNISHED: 3-bucket enum (Unfurnished | Furnished | Partially), 100% fill.
+//    Subject's bucket exact-match OR Partially bridges (Partially↔Furnished
+//    and Partially↔Unfurnished both allowed; Furnished↔Unfurnished blocked).
+//
+// 2. LEASE TERM GROUP: LONG {12/24/36+ Months} vs SHORT {Short Term Lease,
+//    Month To Month}. Same-group only. ~99% of leases are 12-Month, so the
+//    gate's effect is narrow — its job is isolating the small SHORT cohort
+//    (predominantly furnished, systematically different price).
+//
+// 3. PORTION_PROPERTY_LEASE (homes only): jsonb array of {Entire Property |
+//    Basement | Main | 2nd Floor | 3rd Floor | Other | Ancillary Structure}.
+//    Pool collapse:
+//      Basement       → Basement pool
+//      Upper          → Main/2nd/3rd Floor pool
+//      Entire         → Entire Property pool
+//      Ancillary/Other→ Ancillary pool
+//    Subject's portion-pool only.
+//
+// Silent-omit pattern: each gate checks `if (subject's value is null/undefined,
+// skip the filter)`. Un-plumbed callers get the matcher's pre-h9 behavior
+// (byte-identical). Env disable knobs:
+//   LEASE_GATE_FURNISHED=0  → furnished gate skipped
+//   LEASE_GATE_TERM=0       → term gate skipped
+//   LEASE_GATE_PORTION=0    → portion gate skipped
+//   LEASE_RENT_INCL_WEIGHT  → rent_includes score weight (default 10)
+// All env-default = enabled; setting to 0 disables for the sweep harness.
+
+const GATE_FURNISHED  = process.env.LEASE_GATE_FURNISHED !== '0'
+const GATE_TERM       = process.env.LEASE_GATE_TERM !== '0'
+const GATE_PORTION    = process.env.LEASE_GATE_PORTION !== '0'
+const RENT_INCL_WEIGHT = (() => {
+  const v = parseFloat(process.env.LEASE_RENT_INCL_WEIGHT || '10')
+  return Number.isFinite(v) && v >= 0 ? v : 10
+})()
+
+const LONG_TERMS  = new Set(['12 Months', '24 Months', '36 Plus Months'])
+const SHORT_TERMS = new Set(['Short Term Lease', 'Month To Month'])
+function leaseTermGroup(t?: string | null): 'LONG' | 'SHORT' | null {
+  if (!t) return null
+  if (LONG_TERMS.has(t)) return 'LONG'
+  if (SHORT_TERMS.has(t)) return 'SHORT'
+  return null  // unknown labels → null → gate silent-omits
+}
+
+const UPPER_PORTIONS = new Set(['Main', '2nd Floor', '3rd Floor'])
+const ANCILLARY_PORTIONS = new Set(['Other', 'Ancillary Structure'])
+function portionPool(arr?: string[] | null): 'Basement' | 'Upper' | 'Entire' | 'Ancillary' | null {
+  if (!arr || !Array.isArray(arr) || arr.length === 0) return null
+  // Priority: Basement > Upper > Entire > Ancillary (a "Basement+Main" comp
+  // is a basement-included rental, route to Basement pool to avoid mixing).
+  if (arr.includes('Basement')) return 'Basement'
+  if (arr.some(p => UPPER_PORTIONS.has(p))) return 'Upper'
+  if (arr.includes('Entire Property')) return 'Entire'
+  if (arr.some(p => ANCILLARY_PORTIONS.has(p))) return 'Ancillary'
+  return null
+}
+
+// Apply the 3 gates to a lease pool. Returns the filtered subset. Empty
+// subject value for a gate → that gate skipped (no filter). The matcher's
+// pre-gate pool is recovered when ALL gates skip (un-plumbed caller).
+function applyLeaseTypeGates(leases: any[], specs: any): any[] {
+  let pool = leases
+
+  // GATE 1: Furnished
+  if (GATE_FURNISHED && specs.subjectFurnished) {
+    const subjF = specs.subjectFurnished
+    pool = pool.filter(l => {
+      const compF = l.furnished
+      if (!compF) return true  // missing comp value → permit (silent-omit on comp side too)
+      if (compF === subjF) return true
+      // Partially bridges both directions
+      if (subjF === 'Partially' || compF === 'Partially') return true
+      return false  // Furnished ↔ Unfurnished blocked
+    })
+  }
+
+  // GATE 2: Lease term group
+  if (GATE_TERM) {
+    const subjGroup = leaseTermGroup(specs.subjectLeaseTerm)
+    if (subjGroup) {
+      pool = pool.filter(l => {
+        const compGroup = leaseTermGroup(l.lease_term)
+        if (!compGroup) return true  // missing → silent-omit
+        return compGroup === subjGroup
+      })
+    }
+  }
+
+  // GATE 3: Portion (homes only — applies via the lease matcher which IS homes-only)
+  if (GATE_PORTION) {
+    const subjPool = portionPool(specs.subjectPortionPropertyLease)
+    if (subjPool) {
+      pool = pool.filter(l => {
+        const compPool = portionPool(l.portion_property_lease)
+        if (!compPool) return true  // missing → silent-omit
+        return compPool === subjPool
+      })
+    }
+  }
+
+  return pool
+}
+
+// rent_includes Jaccard-overlap nudge: 0 → no overlap, 1 → identical sets.
+// Empty subject array → no nudge (silent-omit). Empty comp array against
+// non-empty subject → 0 overlap → 0 points.
+function rentIncludesNudge(lease: any, specs: any): number {
+  if (RENT_INCL_WEIGHT <= 0) return 0
+  const subj = specs.subjectRentIncludes
+  if (!Array.isArray(subj) || subj.length === 0) return 0
+  const comp = Array.isArray(lease.rent_includes) ? lease.rent_includes : []
+  if (comp.length === 0) return 0
+  const subjSet = new Set(subj)
+  const compSet = new Set(comp)
+  let inter = 0
+  for (const x of subjSet) if (compSet.has(x)) inter++
+  const union = subjSet.size + compSet.size - inter
+  if (union === 0) return 0
+  return RENT_INCL_WEIGHT * (inter / union)
+}
+
+// Basement-pool confidence supplement: when subject AND comp are both in the
+// Basement portion pool, score the basement jsonb similarity (Finished /
+// Separate Entrance / Walk-Out). Up to 5 pts. Outside the basement pool the
+// supplement returns 0 (basement features irrelevant for upper / entire).
+function basementBasementSupplement(lease: any, specs: any): number {
+  if (!GATE_PORTION) return 0  // when portion gate is off, we don't know which pool the comp is in
+  if (portionPool(specs.subjectPortionPropertyLease) !== 'Basement') return 0
+  if (portionPool(lease.portion_property_lease) !== 'Basement') return 0
+  const subjB = Array.isArray(specs.basementRaw) ? specs.basementRaw : null
+  const compB = Array.isArray(lease.basement) ? lease.basement : null
+  if (!subjB || !compB) return 0
+  const subjSet = new Set(subjB)
+  const compSet = new Set(compB)
+  let inter = 0
+  for (const x of subjSet) if (compSet.has(x)) inter++
+  if (subjSet.size === 0 || compSet.size === 0) return 0
+  return 5 * (inter / Math.max(subjSet.size, compSet.size))
 }
 
 /**
@@ -71,9 +219,17 @@ export async function findHomeComparablesRentals(specs: HomeSpecs): Promise<Home
       .limit(200)
 
     if (communityLeases && communityLeases.length > 0) {
-      const result = matchWithinPool(communityLeases, specs, customValues)
-      if (result.comparables.length >= 3) {
-        return { ...result, geoLevel: 'community' }
+      // h9: lease type gates run BEFORE sub-tier matching. The gate-filtered
+      // pool feeds matchWithinPool; sub-tier (exact-sqft/LAR/bed+bath/bed-only)
+      // logic stays untouched. When subject lacks a gate-relevant field OR
+      // the gate's env knob is off, that gate skips (silent-omit) — recovered
+      // behavior is byte-identical to pre-h9.
+      const gated = applyLeaseTypeGates(communityLeases, specs)
+      if (gated.length > 0) {
+        const result = matchWithinPool(gated, specs, customValues)
+        if (result.comparables.length >= 3) {
+          return { ...result, geoLevel: 'community' }
+        }
       }
     }
   }
@@ -93,9 +249,12 @@ export async function findHomeComparablesRentals(specs: HomeSpecs): Promise<Home
       .limit(300)
 
     if (muniLeases && muniLeases.length > 0) {
-      const result = matchWithinPool(muniLeases, specs, customValues)
-      if (result.comparables.length > 0) {
-        return { ...result, geoLevel: 'municipality' }
+      const gated = applyLeaseTypeGates(muniLeases, specs)
+      if (gated.length > 0) {
+        const result = matchWithinPool(gated, specs, customValues)
+        if (result.comparables.length > 0) {
+          return { ...result, geoLevel: 'municipality' }
+        }
       }
     }
   }
@@ -215,6 +374,15 @@ function scoreRentalSimilarity(lease: any, specs: HomeSpecs): number {
     else if (monthsAgo <= 6) score += 10
     else if (monthsAgo <= 12) score += 5
   }
+
+  // h9 (2026-06-10): rent_includes Jaccard-overlap nudge (default weight 10).
+  // Silent-omit on missing subject array. Score-only — never affects pool.
+  score += rentIncludesNudge(lease, specs)
+
+  // h9 (2026-06-10): basement-pool confidence supplement (up to 5 pts).
+  // Active only when subject + comp are both in the Basement portion pool;
+  // returns 0 elsewhere. Score-only.
+  score += basementBasementSupplement(lease, specs)
 
   return score
 }

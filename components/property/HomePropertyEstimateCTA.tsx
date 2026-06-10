@@ -64,6 +64,12 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
         // h8: subject tax for tax-similarity score band (silent-omit when missing)
         ...(listing.tax_annual_amount != null ? { subjectTaxAnnualAmount: parseFloat(String(listing.tax_annual_amount)) } : {}),
         ...(listing.tax_year != null ? { subjectTaxYear: parseInt(String(listing.tax_year), 10) } : {}),
+        // h9: lease segmentation fields (silent-omit when missing). Sale path
+        // ignores these; lease path reads them for the 3 type gates + rent_includes nudge.
+        ...((listing as any).furnished ? { subjectFurnished: (listing as any).furnished } : {}),
+        ...((listing as any).lease_term ? { subjectLeaseTerm: (listing as any).lease_term } : {}),
+        ...(Array.isArray((listing as any).portion_property_lease) ? { subjectPortionPropertyLease: (listing as any).portion_property_lease } : {}),
+        ...(Array.isArray((listing as any).rent_includes) ? { subjectRentIncludes: (listing as any).rent_includes } : {}),
       }
 
       try {

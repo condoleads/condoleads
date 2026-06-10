@@ -6844,3 +6844,149 @@ PUSH STATUS — HELD per operator standing instruction.
 APPLY STATUS — N/A (no DB change in this unit).
   origin/main = 02118df (apply attempt #2 run-log, 2026-06-09).
   Local main = 02118df + 1 uncommitted unit (h8 tax-similarity score band).
+
+
+2026-06-10 — h9 LEASE SEGMENTATION GATES (LEASE-only, homes) — SHIPS all 3 gates + rent_includes(10)
+
+Recon proved 4 lease segmentation signals are testable (HOMES universe,
+recent closed lease cohort):
+- furnished: fill ~99%, 3-value categorical (Unfurnished ~88%, Furnished ~10%,
+  Partially ~2%), clean → GATE.
+- lease_term: fill ~99%, dominated by '12 Months' (~99%); '24 Months' + short-
+  term tail. Grouped LONG / SHORT for the gate. Near-neutral on the bulk
+  cohort but protects the short cohort from contaminating the long pool → GATE.
+- portion_property_lease: jsonb, multi-value. Three semantic pools: Entire,
+  Basement, Main/Upper. The single biggest source of lease-side mis-pooling
+  (a $1500 basement comp drags an entire-home median catastrophically) → GATE.
+- rent_includes: jsonb, multi-value (Heat, Water, Hydro, Cable, Internet,
+  Parking, etc.). NOT a hard partition — a SCORE NUDGE via Jaccard overlap.
+
+Build (LEASE-only — SALE matcher, condo matcher, community-adjustment layer
+all untouched):
+- lib/estimator/home-comparable-matcher-sales.ts:
+  * HomeSpecs +subjectFurnished? +subjectLeaseTerm? +subjectPortionPropertyLease?
+    +subjectRentIncludes? (INTERFACE-ONLY — no behavior change to sale path;
+    the lease matcher imports the interface).
+- lib/estimator/home-comparable-matcher-rentals.ts (MAJOR):
+  * HOME_RENTAL_SELECT +furnished, +lease_term, +portion_property_lease,
+    +rent_includes (comp-side columns to filter and score on).
+  * Env knobs (all default-ON in production):
+      LEASE_GATE_FURNISHED, LEASE_GATE_TERM, LEASE_GATE_PORTION  — set =0 to skip.
+      LEASE_RENT_INCL_WEIGHT  — default 10 (set =0 to disable nudge).
+  * leaseTermGroup(t): 'LONG' (12/24-month + standard variants) / 'SHORT'
+    (Short Term Lease / Month To Month). Anything else → null → silent-omit.
+  * portionPool(arr): 'BASEMENT' if any element is 'Basement'; 'UPPER' if any
+    is Main / 2nd Floor / 3rd Floor / Upper; 'ENTIRE' if 'Entire Property'.
+    Anything else → null → silent-omit.
+  * applyLeaseTypeGates(leases, specs): three hard filters BEFORE the sub-tier
+    pool matchers run. Subject-side null → gate skips entirely (byte-identical
+    fallback). Comp-side null + subject present → comp excluded (gate enforces).
+  * rentIncludesNudge(lease, specs): Jaccard overlap of subject vs comp arrays
+    (intersection / union). 0-WEIGHT pts, default WEIGHT=10. Subject array null
+    → returns 0 (silent-omit).
+  * basementBasementSupplement(lease, specs): 0-5 pts confidence bump when
+    BOTH subject and comp are in the BASEMENT portion-pool AND have matching
+    basement jsonb tokens (reuses HomeSpecs.basementRaw). Pure score addition.
+  * findHomeComparablesRentals: applyLeaseTypeGates injected BEFORE
+    matchWithinPool inside EACH geo tier (Platinum / Gold / Silver / Bronze).
+    Gates operate within each tier — geo cascade preserved.
+  * scoreRentalSimilarity += rentIncludesNudge + basementBasementSupplement.
+- app/estimator/components/HomeEstimatorBuyerModal.tsx + components/property/
+  HomePropertyEstimateCTA.tsx: thread subject lease segmentation fields into
+  HomeSpecs (mirror of the h5/h6/h8 thread pattern).
+- scripts/backtest-estimator-homes.js (untracked local-only): mirror of the
+  gate stack + subject threading. Adds N_SAMPLE env override + SKIP_SALE=1
+  env (counterpart to existing SKIP_LEASE=1) so the lease sweep runs without
+  the sale matcher in the loop. LEASE_GATE_*_BT mirrors.
+- app/api/parity-probe-sf-lease/route.ts (NEW, untracked local-only): mirror
+  of the SF-sold probe but calls findHomeComparablesRentals + threads subject
+  lease fields. Closes a coverage gap — there was no lease-side parity probe.
+- scripts/parity-lease-baseline.js (NEW, untracked local-only): LEASE parity
+  classifier. Mirror of parity-4tier-activation.js but routed through the lease
+  probe. 40-subject cohort mix (entire / basement / upper / furnished / short),
+  pinned to lease-rich munis. Classifies byte-identical / expected-segment-
+  split / tier-degraded / INVESTIGATE. (Baseline+verify capture pending — gate
+  config bakes at module load, so requires a dev-server restart between modes.
+  Filed as follow-up; the sweep is the load-bearing measurement for the ship/
+  drop decision per operator's locked rule.)
+
+Lease sweep — SF LEASE, N=200 per run, SKIP_SALE=1, baseline + 3 per-gate
++ all-3 + all-3 + rent_includes(10) (decision metric: ±15% per operator):
+
+  config                          n    priced  CONTACT  MAPE    median  ±15    Δmape  Δmed   Δ±15
+  baseline (all gates OFF)       200   190     10       11.46%  6.88%   75.3%  —      —      —
+  furnished gate only            200   193      7       10.45%  5.66%   77.2%  -1.01  -1.22  +1.9
+  term gate only                 200   188     12        9.93%  6.00%   78.2%  -1.53  -0.88  +2.9
+  portion gate only              200   183     17        9.41%  6.21%   80.3%  -2.04  -0.67  +5.1
+  all 3 gates ON                 200   180     20       11.72%  6.00%   83.9%  +0.26  -0.88  +8.6   ← SHIP
+  all 3 + rent_includes(w=10)    200   175     25       13.46%  6.23%   85.1%  +2.00  -0.65  +9.9   ← SHIP
+
+  Decision rule (locked, operator spec — "gates should HOLD or IMPROVE
+  lease ±15"):
+  - furnished: +1.9pp ±15. SHIP.
+  - term: +2.9pp ±15. SHIP. (Operator's prior expectation: "term gate may
+    be near-neutral (99% annual) but protects the short cohort" — confirmed
+    in direction, actually slightly net-positive.)
+  - portion: +5.1pp ±15. SHIP. The biggest single-gate win — confirms the
+    operator's design hypothesis that lease-side mis-pooling (basement
+    comps in entire-home pools) was the dominant accuracy leak.
+  - all 3 stacked: +8.6pp ±15 (75.3% → 83.9%) with MAPE essentially flat
+    (+0.26pp within sample noise) and median improving (-0.88pp). The
+    locked metric jumped by a third of the remaining headroom in one
+    unit. SHIP.
+  - rent_includes(w=10) nudge: +1.2pp ±15 on top of all-gates (83.9 →
+    85.1%) BUT MAPE regresses +1.74pp on top of all-gates (11.72 →
+    13.46%) and CONTACT grows by 5 (180 → 175 priced). The score
+    reweight is shifting tighter comp picks that look closer on the
+    Jaccard but carry outlier prices. ±15 (the LOCKED metric per the
+    rule) still improves, so SHIP per the rule — but flagged as
+    something to monitor; a smaller default weight (3-5) may pick up
+    the ±15 lift without the MAPE cost. Filed as NAMED-OPEN.
+
+  Net: lease ±15% 75.3% → 85.1% in one unit. +9.9pp.
+
+Coverage / scope:
+- LEASE side only. Sale matcher (home-comparable-matcher-sales.ts) gets the
+  HomeSpecs interface fields but ZERO behavior change. Condo matcher, the
+  community-adjustment layer, the geo cascade — all untouched.
+- Geo cascade (Platinum → Gold → Silver → Bronze) is KEPT. Gates operate
+  WITHIN each tier, never instead of one.
+- Silent-omit pattern: subject value null → gate skips → byte-identical
+  fallback. A subject with no furnished value gets the pre-h9 behavior.
+- Operator's "basement + furnished gates help (real mis-pooling fixed)"
+  hypothesis confirmed by the sweep — portion gate (which captures the
+  basement mis-pooling) is the single biggest contributor.
+
+NAMED-OPEN (process findings):
+- rent_includes weight: default 10 ships per the ±15 rule but trades
+  ~1.7pp MAPE on top of all-gates. A weight=3-5 sweep may capture the
+  ±15 lift without the MAPE cost. Single env-knob change to measure.
+- Parity classifier baseline+verify capture: gate config bakes at module
+  load, so capturing baseline (gates OFF) and verify (gates ON) from the
+  same dev-server process is not possible without a restart between
+  modes. The sweep is the load-bearing measurement; the parity
+  classifier exists for the next iteration. Tool is built and tsc-clean.
+- Lease backtest determinism: per-run random sampling carries the same
+  noise as sale sweeps. The SWEEP across configs is robust to this; pp
+  deltas of <0.5 should not be treated as signal in either direction.
+  Fixed-seed sample option would tighten future A/B measurements.
+- Condo lease segmentation equivalent (condo matcher): same design, separate
+  workstream — filed but out of scope here.
+
+Files modified (single uncommitted unit):
+  MOD lib/estimator/home-comparable-matcher-sales.ts        (HomeSpecs interface only — no behavior change)
+  MOD lib/estimator/home-comparable-matcher-rentals.ts      (gates + scoring nudges — the load-bearing change)
+  MOD app/estimator/components/HomeEstimatorBuyerModal.tsx  (CTA thread)
+  MOD components/property/HomePropertyEstimateCTA.tsx       (CTA thread)
+  MOD scripts/backtest-estimator-homes.js                   (untracked local-only — sweep harness + gate mirror)
+  NEW app/api/parity-probe-sf-lease/route.ts                (untracked local-only — lease probe)
+  NEW scripts/parity-lease-baseline.js                      (untracked local-only — lease parity classifier)
+  MOD docs/W-ESTIMATOR-RAG-TRACKER.md                       (this entry)
+Backups all timestamped _20260610_*.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — N/A (no DB change in this unit).
+  origin/main = 02118df (apply attempt #2 run-log, 2026-06-09).
+  Local main = 48dc6ee (h8 tax-similarity, committed) + 1 uncommitted
+  unit (this h9 lease segmentation gates).

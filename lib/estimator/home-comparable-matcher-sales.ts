@@ -75,6 +75,17 @@ export interface HomeSpecs {
   // for callers that don't thread this.
   subjectTaxAnnualAmount?: number | null
   subjectTaxYear?: number | null
+
+  // h9 lease segmentation (2026-06-10, LEASE-only): subject's MLS lease type
+  // signals. The lease matcher gates the comp pool on these 3 fields. When
+  // any is null/undefined, the corresponding gate silent-omits (no filter).
+  // Sale matcher does NOT read these fields — interface addition only.
+  subjectFurnished?: string | null              // 'Unfurnished' | 'Furnished' | 'Partially'
+  subjectLeaseTerm?: string | null              // '12 Months' | 'Short Term Lease' | …
+  subjectPortionPropertyLease?: string[] | null // jsonb array — 'Entire Property' | 'Basement' | 'Main' | …
+  subjectRentIncludes?: string[] | null         // jsonb array — for the rent_includes score nudge
+  // (subject's basement jsonb already lives in basementRaw above — reused for
+  // the basement-pool confidence supplement on the lease side.)
 }
 
 interface HomeMatchResult {
