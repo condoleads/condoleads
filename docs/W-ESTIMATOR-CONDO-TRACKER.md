@@ -523,3 +523,188 @@ APPLY STATUS — N/A (no DB change in this unit).
   origin/main = ac06475 (h9 rent_includes weight tune, 2026-06-10).
   Local main = 58b7c8c (condo tracker created) + 1 uncommitted unit
   (this c1 condo lease build).
+
+
+================================================================================
+2026-06-10 — c2 CONDO SALE MATCHER (S2, fresh) — SHIPS building cascade + tax band (w=15); maint-PSF DROPPED
+================================================================================
+
+The second condo workstream phase. Builds the new System 2 condo SALE
+matcher beside the shared (S1+S2) matcher. Same architecture as c1 but
+with SALE-specific signals: h8 tax band (port from homes, 100% fill on
+condo sale), maintenance-$/sqft sliding band (replaces existing MAINT
+±20%-$ tier intent — measured + DROPPED per the decision rule below),
+parking SALE adjustment via the S2 resolver reading the CORRECT column
+(parking_sale_weighted_avg, not the broken parking_sale_calculated the
+shared resolver reads).
+
+S1 BYTE-IDENTICAL PROOF (mandatory pre-commit verification):
+  10 real recent condo SALE subjects (Whitby/Mississauga/Toronto mix)
+  routed through the local-only S1 SALE probe route
+  (app/api/parity-probe-condo-sale-s1/route.ts → calls the SHARED
+  findComparables + resolveAdjustments exactly as production does).
+  Captured BEFORE the build: scripts-output/c2-s1-snapshot-before.json.
+  Captured AFTER all S2 SALE files + CTA branches landed:
+  scripts-output/c2-s1-snapshot-after.json.
+    diff scripts-output/c2-s1-snapshot-before.json
+         scripts-output/c2-s1-snapshot-after.json
+    → exit 0 (zero output)
+  Shared sale matcher + shared resolver + shared estimate-sale.ts: zero
+  git diff. Only shared-file edits are the SALE additive branches on the
+  two CTAs that c1 already touched — null-tenant path runs the existing
+  code unchanged. Sale path for legacy condoleads.ca subdomain traffic:
+  unchanged.
+
+TWO-TENANT PROOF (mandatory tenant-separation verification):
+  3 subjects probed through the S2 SALE route with explicit
+  tenantIdOverride values — TENANT A = WALLiam
+  (b16e1039-38ed-43d7-bbc5-dd02bb651bc9) and TENANT B = aily
+  (e2619717-6401-4159-8d4c-d5f87651c8d6). Result for every subject:
+    C12570136: tenantA == tenantB ? true
+    C12877640: tenantA == tenantB ? true
+    W12139875: tenantA == tenantB ? true
+  Because the S2 SALE matcher reads ONLY shared market/reference tables
+  (mls_listings, buildings, adjustments, municipalities — none of which
+  has a tenant_id column), the tenantId thread is forward-compat only;
+  no per-tenant query path exists. Two-tenant equivalence by
+  construction, runtime-confirmed.
+
+BUILD (3 new S2 files + 2 shared CTAs surgically extended):
+- lib/estimator/condo-comparable-matcher-sales.ts (NEW S2): the main
+  SALE matcher. 4-tier geo cascade (Platinum=building → Gold→Silver→
+  Bronze). Within-Platinum: the existing 7-tier model (BINGO/RANGE/MAINT)
+  with parking+locker adjustments. Within-Gold/Silver/Bronze: bed+bath
+  + LAR alignment + score-nudge reordering. Building-less subjects skip
+  Platinum and start at Gold (the 5% recent SALE cohort the shared
+  matcher hard-fails on). Env knobs:
+    CONDO_SALE_TAX_BAND_PCT       (default 0.20)
+    CONDO_SALE_MAINT_PSF_BAND_PCT (default 0.20)
+    CONDO_SALE_TAX_WEIGHT         (default 15 — ships per sweep)
+    CONDO_SALE_MAINT_PSF_WEIGHT   (default 0  — DROPPED per sweep; knob
+                                   preserved for future tuning, but
+                                   silent-omit at default 0)
+- app/estimator/actions/estimate-condo-sale.ts (NEW S2 entry): resolves
+  community/muni/area from building, threads tenantId, calls the new
+  matcher, returns the standard EstimateResult via the shared
+  calculateEstimate. Same shape as estimate-condo-rent.ts.
+- (REUSED) lib/estimator/resolve-condo-adjustments.ts (built in c1): the
+  SALE-side parking value resolution reads parking_sale_weighted_avg —
+  the correct column — bypassing the shared resolver's schema-drift bug
+  (which reads parking_sale_calculated, a non-existent column).
+- components/property/PropertyEstimateCTA.tsx (SHARED, surgical edit):
+  c1 already threaded tenantId; c2 adds the SALE-side branch — SALE +
+  tenantId → estimateCondoSale; SALE + !tenantId → estimateSale (shared,
+  unchanged). LEASE branches preserved from c1.
+- app/estimator/components/EstimatorBuyerModal.tsx (SHARED, surgical
+  edit): same additive pattern. SALE-side branch added beside the c1
+  LEASE branch.
+- app/api/parity-probe-condo-sale-s1/route.ts (NEW, untracked
+  local-only): S1 SALE probe — calls the SHARED findComparables for
+  the byte-identical proof.
+- app/api/parity-probe-condo-sale/route.ts (NEW, untracked local-only):
+  S2 SALE probe — calls findCondoComparablesSales. Accepts
+  tenantIdOverride in the request body for the two-tenant proof.
+- scripts/parity-condo-sale-baseline.js (NEW, untracked local-only):
+  SALE parity classifier mirroring the c1 LEASE one. 30 subjects
+  (12 w_building / 12 no_building / 6 rich_tax for the tax-band cohort).
+- scripts/backtest-estimator-condos-sale.js (NEW, untracked local-only):
+  SALE backtest harness. Inlines the c2 matcher's logic; env-knob
+  controlled.
+
+PARITY CLASSIFIER (30 subjects, 3 cohorts):
+  | cohort      | n  | S1 priced | S2 priced | NEW-PRICED | LOST-PRICED |
+  | w_building  | 12 | 12/12     | 12/12     | 0          | 0           |
+  | no_building | 12 |  0/12     | 12/12     | **12**     | 0           |  ← coverage win
+  | rich_tax    |  6 |  6/6      |  6/6      | 0          | 0           |
+
+  Verdict: 12/12 building-less subjects newly priced via the geo cascade.
+  0 LOST-PRICED. Even cleaner than c1 (which had 5 LOST-PRICED short-term
+  cohort to the term gate); the SALE matcher has only score-nudges (tax,
+  maint-PSF), never hard gates that filter the pool, so no segmentation
+  exclusions can drop a subject to CONTACT. The architecture covers the
+  building-less SALE cohort the shared matcher hard-fails on.
+
+BACKTEST SWEEP (SF condo SALE, N=200, decision metric ±15):
+  config                          n    priced  CT  MAPE    median  ±15    Δmape   Δmed    Δ±15
+  baseline (tax=0 maint=0)        200  197     3   18.03%  11.51%  59.9%  —       —       —
+  tax band only (w=15)            200  197     3   17.33%  10.87%  62.9%  -0.70   -0.64   +3.0   ← SHIP tax
+  maint-PSF only (w=15)           200  197     3   18.16%  11.70%  59.4%  +0.13   +0.19   -0.5   ← DROP maint
+  tax+maint both ON (w=15 each)   200  197     3   17.38%  10.51%  61.9%  -0.65   -1.00   +2.0   (worse than tax-only on ±15)
+  BLDG DISABLED + tax+maint ON    200  197     3   16.95%  10.44%  65.5%  -1.08   -1.07   +5.6   (named-open: Platinum-threshold tuning)
+
+  hadB rate constant 140/142 across all configs; noB rate constant
+  57/58. Coverage architecture (cascade) is invariant to the score-nudge
+  config — gates would shift CONTACT counts, score-nudges only reorder.
+
+  Decision rule applied (locked, operator spec — "ship features that
+  improve-or-hold ±15 without MAPE regression beyond noise"):
+  - Building cascade (Platinum→Gold→Silver→Bronze): SHIP. Coverage
+    architecture. Parity proves 12/12 no-building subjects newly
+    priced. (See NAMED-OPEN for the Platinum-threshold finding.)
+  - h8 tax similarity band (w=15): SHIP. Tax-only config: +3.0pp ±15,
+    -0.70pp MAPE. Clean improvement on both metrics. Same default
+    weight + band-pct as homes h8 — port confirmed.
+  - Maintenance-$/sqft band (w=15): DROP. Maint-only config regresses
+    ±15 by 0.5pp; stacked with tax it costs an additional -1.0pp ±15
+    vs tax-only (62.9% → 61.9%) for no MAPE benefit. The signal is
+    intuitively correct (maintenance richness should price-correlate)
+    but the implementation interferes with the tax band's reordering.
+    Default weight set to 0 (silent-omit). Knob preserved for future
+    sweep iteration — env CONDO_SALE_MAINT_PSF_WEIGHT can be raised to
+    test alternate weights without code change.
+  - Parking SALE adjustment (via S2 resolver — reads correct column):
+    SHIP. Active inside the Platinum sub-tier (BINGO-ADJ / RANGE-ADJ /
+    MAINT-ADJ). No isolated measurement (the existing 7-tier model
+    folds it into adjustment-bearing tiers); included in the
+    tax-only/all-on configs which improve the locked metric.
+  - Locker: existing binary behavior ports as within-Platinum sub-tier
+    action (locker_*_calculated columns still 0% populated; defer to c4
+    locker analytics pipeline).
+
+  Net: ±15 59.9% → 62.9% (+3.0pp) with the tax-only config (the ship).
+  Plus 12/12 of the building-less cohort newly priced via the cascade.
+
+NAMED-OPEN (NEW, c2):
+- Platinum sub-tier comp-count threshold tuning. The bldg_off config
+  (skip Platinum, force Gold start) BEATS the design's Platinum-first
+  by +5.6pp ±15 (62.9% tax-only → 65.5% bldg_off+tax+maint). The signal
+  is that the within-building comp pool is often too thin (1-3 comps,
+  as the S1 baseline data showed) — averaging that few sales for a
+  price estimate has high variance vs the community-level pool (>=3
+  comps required to fire, score-nudge picks the best). Possible fix:
+  require Platinum to find ≥5 (or even ≥7) comps before it fires;
+  otherwise fall through to Gold. Filed for a c2-follow-on tuning
+  sweep — not blocking this ship, but a clear future improvement.
+- maintenance-$/sqft re-weight: the signal is intuitively correct
+  but doesn't help at w=15. A weight sweep over w∈{0, 3, 5, 7, 10}
+  (mirroring the homes h9 rent_includes follow-up) may find a weight
+  where maint-PSF supplements rather than competes with tax. Filed.
+- The schema-drift bug in the shared resolve-adjustments.ts
+  (parking_sale_calculated reads non-existent column) — STILL open as
+  a Rule-Zero call. The new S2 resolver reads the correct column from
+  day 1, so c2 doesn't suffer; the shared resolver still defaults
+  parking-SALE to $50,000 on every condoleads.ca subdomain estimate.
+
+CARRIES FORWARD (from c1, still open):
+- Locker value analytics pipeline (locker_*_calculated 0% populated).
+- CTA threading: c1+c2 both ship the tenant-gated additive branch.
+  Three shared CTA files touched cumulatively, all additive, byte-
+  identical on the null-tenant path.
+
+FILES MODIFIED (single uncommitted unit):
+  NEW lib/estimator/condo-comparable-matcher-sales.ts
+  NEW app/estimator/actions/estimate-condo-sale.ts
+  MOD components/property/PropertyEstimateCTA.tsx       (c2 SALE branch added)
+  MOD app/estimator/components/EstimatorBuyerModal.tsx  (c2 SALE branch added)
+  NEW app/api/parity-probe-condo-sale-s1/route.ts       (untracked local-only)
+  NEW app/api/parity-probe-condo-sale/route.ts          (untracked local-only)
+  NEW scripts/parity-condo-sale-baseline.js             (untracked local-only)
+  NEW scripts/backtest-estimator-condos-sale.js         (untracked local-only)
+  MOD docs/W-ESTIMATOR-CONDO-TRACKER.md                 (this entry)
+Backups timestamped _20260610_140754.
+tsc --noEmit clean (full project).
+
+PUSH STATUS — HELD per operator standing instruction.
+APPLY STATUS — N/A (no DB change in this unit).
+  origin/main = 13336e9 (c1 condo lease, 2026-06-10).
+  Local main = 13336e9 + 1 uncommitted unit (this c2 condo sale build).

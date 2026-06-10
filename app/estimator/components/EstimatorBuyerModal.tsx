@@ -8,6 +8,8 @@ import { estimateRent } from '../actions/estimate-rent'
 // c1 (2026-06-10): tenant-gated S2 condo lease entry. When tenantId is
 // present AND request is LEASE, route to the new condo matcher.
 import { estimateCondoRent } from '../actions/estimate-condo-rent'
+// c2 (2026-06-10): tenant-gated S2 condo SALE entry. Same pattern.
+import { estimateCondoSale } from '../actions/estimate-condo-sale'
 import { EstimateResult } from '@/lib/estimator/types'
 import EstimatorResults from './EstimatorResults'
 import { MLSListing } from '@/lib/types/building'
@@ -279,11 +281,15 @@ export default function EstimatorBuyerModal({
       ...(listing.association_fee && { associationFee: listing.association_fee })
     }
 
-    // c1 (2026-06-10): tenant-gated LEASE branch. S2 condo matcher when
-    // tenantId is present; existing shared estimateRent (System 1) when
-    // tenantId is null — byte-identical to pre-c1 behavior on the S1 path.
+    // c1/c2 (2026-06-10): tenant-gated branches.
+    //   SALE + tenantId  → estimateCondoSale (c2)
+    //   SALE + !tenantId → estimateSale (shared, unchanged — S1 path)
+    //   LEASE + tenantId → estimateCondoRent (c1)
+    //   LEASE + !tenantId → estimateRent (shared, unchanged — S1 path)
     let response
-    if (isSale) {
+    if (isSale && tenantId) {
+      response = await estimateCondoSale({ ...specs, tenantId }, true)
+    } else if (isSale) {
       response = await estimateSale(specs, true)
     } else if (tenantId) {
       response = await estimateCondoRent({ ...specs, tenantId }, true)

@@ -9,6 +9,9 @@ import { estimateRent } from '@/app/estimator/actions/estimate-rent'
 // matcher (geo cascade + segmentation). All other paths (sale, S1 lease)
 // continue calling the existing shared estimateSale/estimateRent unchanged.
 import { estimateCondoRent } from '@/app/estimator/actions/estimate-condo-rent'
+// c2 (2026-06-10): tenant-gated S2 condo SALE entry. Same additive pattern
+// as c1 but for the SALE path — building cascade + tax band + maint-PSF.
+import { estimateCondoSale } from '@/app/estimator/actions/estimate-condo-sale'
 import EstimatorResults from '@/app/estimator/components/EstimatorResults'
 import { EstimateResult } from '@/lib/estimator/types'
 
@@ -51,13 +54,16 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
       
 
       try {
-        // c1 (2026-06-10): tenant-gated LEASE branch. When tenantId is
-        // present AND the request is LEASE, route to estimateCondoRent
-        // (S2 geo cascade + segmentation). The SALE path and the no-tenant
-        // LEASE path (System 1) call the shared estimateSale/estimateRent
-        // exactly as before — byte-identical to the pre-c1 behavior.
+        // c1/c2 (2026-06-10): tenant-gated branches.
+        //   SALE + tenantId  → estimateCondoSale (c2 S2 condo SALE matcher)
+        //   SALE + !tenantId → estimateSale (shared, unchanged — S1 path)
+        //   LEASE + tenantId → estimateCondoRent (c1 S2 condo LEASE matcher)
+        //   LEASE + !tenantId → estimateRent (shared, unchanged — S1 path)
+        // Null-tenant paths are byte-identical to pre-c1/c2 behavior.
         let response
-        if (isSale) {
+        if (isSale && tenantId) {
+          response = await estimateCondoSale({ ...specs, tenantId }, false)
+        } else if (isSale) {
           response = await estimateSale(specs, false)
         } else if (tenantId) {
           response = await estimateCondoRent({ ...specs, tenantId }, false)
