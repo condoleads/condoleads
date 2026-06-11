@@ -116,7 +116,17 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
     }
 
     runEstimate()
-  }, [listing, isSale, buildingSlug, exactSqft])
+    // Stable primitive deps: listing.id is the SUBJECT identity. The parent
+    // passes listing as {...listing, buildings: building} — a new object literal
+    // every render — so depending on the whole `listing` object re-fired this
+    // effect on every parent state toggle (Book a Visit, modals, sticky bar)
+    // and re-CALLED estimateCondoSale. listing.id is a string primitive, stable
+    // across the parent's spread re-renders for the same subject, so the
+    // estimate fires once per subject and re-fires only on genuine subject
+    // navigation. All listing.* fields read inside the effect are subject-tied
+    // (bedrooms, tax, community_id, etc.) — they don't change without id
+    // changing, so dropping the whole-object dep is safe.
+  }, [listing.id, isSale, buildingSlug, exactSqft])
 
   if (loading) {
     return (

@@ -100,7 +100,15 @@ export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: Ho
     }
 
     runEstimate()
-  }, [listing, isSale, exactSqft, agentId, fetchCompetingListings])
+    // Stable primitive deps: listing.id is the SUBJECT identity. The parent
+    // passes listing as {...listing, buildings: building} — a new object literal
+    // every render — so depending on the whole `listing` object re-fired this
+    // effect on every parent state toggle and re-CALLED estimateHomeSale +
+    // fetchCompetingListings. listing.id is stable across spread re-renders
+    // for the same subject; all listing.* fields read inside the effect are
+    // subject-tied (street, sqft, bed/bath, tax, etc.), so dropping the
+    // whole-object dep is safe.
+  }, [listing.id, isSale, exactSqft, agentId, fetchCompetingListings])
 
   if (!isSale) return null
 
