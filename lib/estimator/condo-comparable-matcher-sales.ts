@@ -45,6 +45,7 @@ import {
   UnitSpecs,
   PriceAdjustment,
   MatchTier,
+  TierResult,
   extractExactSqft,
   assignTemperature,
   isMaintenanceMatch,
@@ -64,6 +65,18 @@ export interface CondoSaleMatchResult {
   tier: MatchTier
   comparables: ComparableSale[]
   geoLevel: 'building' | 'community' | 'municipality' | 'area' | 'none'
+  // W-CONDO-MODAL-PARITY Phase 1 (display-only, no pricing change):
+  // emit all four geo-tier pools as TierResult context so the Geographic
+  // Confidence Spread can render. Condo Platinum maps to BUILDING (not
+  // street, as on homes). Best-tier resolution + priced output below are
+  // BYTE-IDENTICAL to pre-Phase-1 behavior — these fields are additive.
+  tiers?: {
+    platinum: TierResult | null   // same-building pool
+    gold:     TierResult | null   // community pool
+    silver:   TierResult | null   // municipality pool
+    bronze:   TierResult | null   // area pool
+  }
+  bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
 }
 
 const CONDO_SALE_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
@@ -145,6 +158,57 @@ function rangeMidpoint(range?: string | null): number | null {
   return (parseInt(m[1]) + parseInt(m[2])) / 2
 }
 
+// W-CONDO-MODAL-PARITY Phase 1: median + min/max range over a raw pool's
+// close_price. Pure. Display context — never feeds the priced top-level
+// number (that still flows through calculateEstimate on the chosen tier's
+// comparables).
+function medianRangeOf(prices: number[]): { median: number; range: { low: number; high: number } } {
+  if (prices.length === 0) return { median: 0, range: { low: 0, high: 0 } }
+  const sorted = [...prices].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  const median = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid]
+  return {
+    median: Math.round(median),
+    range: { low: Math.round(sorted[0]), high: Math.round(sorted[sorted.length - 1]) },
+  }
+}
+
+// Build a TierResult for one geo tier's pool + its matched comparables.
+// Used per-tier so the display layer (Geographic Confidence Spread) can
+// render all four. Returns null when the pool is empty OR the within-tier
+// matcher produced zero comparables (the tier has no display data).
+//
+// `pool` is the post-query (and, on lease, post-gate) row set whose
+// close_prices feed the median/range display. `matched` is the priced
+// comparables that the within-tier match function returned — those are
+// what the user sees in the Comparables list when this tier wins.
+function buildCondoTierResult(
+  pool: any[],
+  matched: ComparableSale[],
+): TierResult | null {
+  if (!pool || pool.length === 0) return null
+  if (!matched || matched.length === 0) return null
+  const prices = pool
+    .map((s: any) => parseFloat(s.close_price))
+    .filter((p: number) => Number.isFinite(p) && p > 0)
+  const mr = medianRangeOf(prices)
+  // bestMatchScore on condo isn't part of the existing scoring pipeline
+  // (the within-Platinum sub-tier model is structural, not scored; the
+  // cross-building match uses scoreSim but doesn't surface the top score
+  // through). Use 100 as a neutral default that matches calculateEstimate's
+  // FALLBACK_SCORE — keeps any downstream score-driven UI honest about
+  // "we don't have a precise per-comp score for condos."
+  return {
+    comparables: matched,
+    count: pool.length,
+    median: mr.median,
+    range: mr.range,
+    bestMatchScore: 100,
+  }
+}
+
 export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<CondoSaleMatchResult> {
   const supabase = createClient()
   const twoYearsAgo = new Date()
@@ -153,8 +217,20 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
 
   const customValues = await resolveCondoAdjustments(specs.buildingId || null, 'sale', specs.tenantId ?? null)
 
-  // TIER 1 — PLATINUM: same building. Existing within-building 7-tier
-  // (BINGO/RANGE/MAINT) carries the within-building match.
+  // W-CONDO-MODAL-PARITY Phase 1 (2026-06-11): compute all four tier pools
+  // every call, then walk the EXISTING selection priority (Platinum >= 1
+  // same-building comp wins per c2-revert; Gold/Silver >= 3; Bronze >= 1).
+  // Best-tier resolution + priced output below are byte-identical to
+  // pre-Phase-1 — tiers + bestGeoTier are additive display context only.
+
+  // ----- Per-tier query + within-tier match. Each block builds:
+  //   - the queried (Sale-only — no gates on SALE) raw pool
+  //   - the within-tier matchResult (comparables + tier label)
+  //   - the TierResult for the display rail
+  // and stores them for the resolution step below.
+
+  let platinumMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let platinumTier: TierResult | null = null
   if (specs.buildingId) {
     const { data: bldgSales } = await supabase
       .from('mls_listings')
@@ -166,20 +242,14 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .gt('close_price', 100000)
       .gte('close_date', sinceISO)
       .order('close_date', { ascending: false })
-
     if (bldgSales && bldgSales.length > 0) {
-      const result = matchWithinBuilding(bldgSales, specs, customValues)
-      // Locked Platinum=building model (reaffirmed 2026-06-10): a single
-      // same-building comp WINS. Buildings are the foundational unit of
-      // condo valuation; a same-building comp is the most relevant comp
-      // regardless of count.
-      if (result.comparables.length >= 1) {
-        return { ...result, geoLevel: 'building' }
-      }
+      platinumMatch = matchWithinBuilding(bldgSales, specs, customValues)
+      platinumTier  = buildCondoTierResult(bldgSales, platinumMatch.comparables)
     }
   }
 
-  // TIER 2 — GOLD: same community.
+  let goldMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let goldTier: TierResult | null = null
   if (specs.communityId) {
     const { data: commSales } = await supabase
       .from('mls_listings')
@@ -192,16 +262,14 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .gte('close_date', sinceISO)
       .order('close_date', { ascending: false })
       .limit(300)
-
     if (commSales && commSales.length > 0) {
-      const result = matchAcrossBuildings(commSales, specs, customValues)
-      if (result.comparables.length >= 3) {
-        return { ...result, geoLevel: 'community' }
-      }
+      goldMatch = matchAcrossBuildings(commSales, specs, customValues)
+      goldTier  = buildCondoTierResult(commSales, goldMatch.comparables)
     }
   }
 
-  // TIER 3 — SILVER: same municipality.
+  let silverMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let silverTier: TierResult | null = null
   if (specs.municipalityId) {
     const { data: muniSales } = await supabase
       .from('mls_listings')
@@ -214,16 +282,14 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .gte('close_date', sinceISO)
       .order('close_date', { ascending: false })
       .limit(500)
-
     if (muniSales && muniSales.length > 0) {
-      const result = matchAcrossBuildings(muniSales, specs, customValues)
-      if (result.comparables.length >= 3) {
-        return { ...result, geoLevel: 'municipality' }
-      }
+      silverMatch = matchAcrossBuildings(muniSales, specs, customValues)
+      silverTier  = buildCondoTierResult(muniSales, silverMatch.comparables)
     }
   }
 
-  // TIER 4 — BRONZE: same area.
+  let bronzeMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let bronzeTier: TierResult | null = null
   if (specs.areaId) {
     const munis = await munisInArea(specs.areaId, supabase)
     if (munis.length > 0) {
@@ -238,17 +304,30 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
         .in('municipality_id', munis)
         .order('close_date', { ascending: false })
         .limit(500)
-
       if (areaSales && areaSales.length > 0) {
-        const result = matchAcrossBuildings(areaSales, specs, customValues)
-        if (result.comparables.length >= 1) {
-          return { ...result, geoLevel: 'area' }
-        }
+        bronzeMatch = matchAcrossBuildings(areaSales, specs, customValues)
+        bronzeTier  = buildCondoTierResult(areaSales, bronzeMatch.comparables)
       }
     }
   }
 
-  return { tier: 'CONTACT', comparables: [], geoLevel: 'none' }
+  const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: bronzeTier }
+
+  // SELECTION PRESERVED — same priority + same thresholds as pre-Phase-1.
+  // Locked c2-revert: a single same-building comp anchors Platinum.
+  if (platinumMatch && platinumMatch.comparables.length >= 1) {
+    return { ...platinumMatch, geoLevel: 'building', tiers, bestGeoTier: 'platinum' }
+  }
+  if (goldMatch && goldMatch.comparables.length >= 3) {
+    return { ...goldMatch, geoLevel: 'community', tiers, bestGeoTier: 'gold' }
+  }
+  if (silverMatch && silverMatch.comparables.length >= 3) {
+    return { ...silverMatch, geoLevel: 'municipality', tiers, bestGeoTier: 'silver' }
+  }
+  if (bronzeMatch && bronzeMatch.comparables.length >= 1) {
+    return { ...bronzeMatch, geoLevel: 'area', tiers, bestGeoTier: 'bronze' }
+  }
+  return { tier: 'CONTACT', comparables: [], geoLevel: 'none', tiers, bestGeoTier: 'none' }
 }
 
 const _areaMunisCache: Map<string, string[]> = new Map()

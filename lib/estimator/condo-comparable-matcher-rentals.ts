@@ -33,6 +33,7 @@ import {
   UnitSpecs,
   PriceAdjustment,
   MatchTier,
+  TierResult,
   extractExactSqft,
   assignTemperature,
 } from './types'
@@ -61,6 +62,55 @@ export interface CondoLeaseMatchResult {
   tier: MatchTier
   comparables: ComparableSale[]
   geoLevel: 'building' | 'community' | 'municipality' | 'area' | 'none'
+  // W-CONDO-MODAL-PARITY Phase 1 (display-only, no pricing change):
+  // mirror of the sale matcher's tiers emission. Best-tier resolution
+  // + priced output below are BYTE-IDENTICAL to pre-Phase-1.
+  tiers?: {
+    platinum: TierResult | null
+    gold:     TierResult | null
+    silver:   TierResult | null
+    bronze:   TierResult | null
+  }
+  bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
+}
+
+// W-CONDO-MODAL-PARITY Phase 1: median + min/max range over a pool's
+// close_price. Pure. Display context — never feeds the priced top-level
+// number.
+function medianRangeOf(prices: number[]): { median: number; range: { low: number; high: number } } {
+  if (prices.length === 0) return { median: 0, range: { low: 0, high: 0 } }
+  const sorted = [...prices].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  const median = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid]
+  return {
+    median: Math.round(median),
+    range: { low: Math.round(sorted[0]), high: Math.round(sorted[sorted.length - 1]) },
+  }
+}
+
+// Build a TierResult for one geo tier's pool + its matched comparables.
+// On the LEASE side `pool` is the post-gate row set — median/range reflect
+// the same cohort that drives the priced output. Returns null when the
+// pool is empty OR the within-tier matcher produced zero comparables.
+function buildCondoTierResult(
+  pool: any[],
+  matched: ComparableSale[],
+): TierResult | null {
+  if (!pool || pool.length === 0) return null
+  if (!matched || matched.length === 0) return null
+  const prices = pool
+    .map((s: any) => parseFloat(s.close_price))
+    .filter((p: number) => Number.isFinite(p) && p > 0)
+  const mr = medianRangeOf(prices)
+  return {
+    comparables: matched,
+    count: pool.length,
+    median: mr.median,
+    range: mr.range,
+    bestMatchScore: 100,
+  }
 }
 
 const CONDO_LEASE_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
@@ -180,8 +230,14 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
 
   const customValues = await resolveCondoAdjustments(specs.buildingId || null, 'lease', specs.tenantId ?? null)
 
-  // TIER 1 — PLATINUM: same building. Only fires when subject has building_id.
-  // Within-building sub-tier: existing 5-tier model (bed+bath strict, sqft/parking/locker).
+  // W-CONDO-MODAL-PARITY Phase 1 (2026-06-11): compute all four tier pools
+  // every call, then walk the EXISTING selection priority (Platinum >= 2;
+  // Gold/Silver >= 3; Bronze >= 1). Best-tier resolution + priced output
+  // below are byte-identical to pre-Phase-1 — tiers + bestGeoTier are
+  // additive display context only.
+
+  let platinumMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let platinumTier: TierResult | null = null
   if (specs.buildingId) {
     const { data: bldgLeases } = await supabase
       .from('mls_listings')
@@ -192,19 +248,17 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
       .not('close_price', 'is', null)
       .gte('close_date', sinceISO)
       .order('close_date', { ascending: false })
-
     if (bldgLeases && bldgLeases.length > 0) {
       const gated = applyLeaseSegGates(bldgLeases, specs)
       if (gated.length > 0) {
-        const result = matchWithinBuilding(gated, specs, customValues)
-        if (result.comparables.length >= 2) {
-          return { ...result, geoLevel: 'building' }
-        }
+        platinumMatch = matchWithinBuilding(gated, specs, customValues)
+        platinumTier  = buildCondoTierResult(gated, platinumMatch.comparables)
       }
     }
   }
 
-  // TIER 2 — GOLD: same community.
+  let goldMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let goldTier: TierResult | null = null
   if (specs.communityId) {
     const { data: commLeases } = await supabase
       .from('mls_listings')
@@ -216,19 +270,17 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
       .gte('close_date', sinceISO)
       .order('close_date', { ascending: false })
       .limit(300)
-
     if (commLeases && commLeases.length > 0) {
       const gated = applyLeaseSegGates(commLeases, specs)
       if (gated.length > 0) {
-        const result = matchAcrossBuildings(gated, specs, customValues)
-        if (result.comparables.length >= 3) {
-          return { ...result, geoLevel: 'community' }
-        }
+        goldMatch = matchAcrossBuildings(gated, specs, customValues)
+        goldTier  = buildCondoTierResult(gated, goldMatch.comparables)
       }
     }
   }
 
-  // TIER 3 — SILVER: same municipality.
+  let silverMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let silverTier: TierResult | null = null
   if (specs.municipalityId) {
     const { data: muniLeases } = await supabase
       .from('mls_listings')
@@ -240,20 +292,17 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
       .gte('close_date', sinceISO)
       .order('close_date', { ascending: false })
       .limit(500)
-
     if (muniLeases && muniLeases.length > 0) {
       const gated = applyLeaseSegGates(muniLeases, specs)
       if (gated.length > 0) {
-        const result = matchAcrossBuildings(gated, specs, customValues)
-        if (result.comparables.length >= 3) {
-          return { ...result, geoLevel: 'municipality' }
-        }
+        silverMatch = matchAcrossBuildings(gated, specs, customValues)
+        silverTier  = buildCondoTierResult(gated, silverMatch.comparables)
       }
     }
   }
 
-  // TIER 4 — BRONZE: same area. Areas span a wide geo, fewer comps qualify;
-  // require only 1 comp to ship a result (still better than CONTACT).
+  let bronzeMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let bronzeTier: TierResult | null = null
   if (specs.areaId) {
     const { data: areaLeases } = await supabase
       .from('mls_listings')
@@ -265,19 +314,33 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
       .in('municipality_id', await munisInArea(specs.areaId, supabase))
       .order('close_date', { ascending: false })
       .limit(500)
-
     if (areaLeases && areaLeases.length > 0) {
       const gated = applyLeaseSegGates(areaLeases, specs)
       if (gated.length > 0) {
-        const result = matchAcrossBuildings(gated, specs, customValues)
-        if (result.comparables.length >= 1) {
-          return { ...result, geoLevel: 'area' }
-        }
+        bronzeMatch = matchAcrossBuildings(gated, specs, customValues)
+        bronzeTier  = buildCondoTierResult(gated, bronzeMatch.comparables)
       }
     }
   }
 
-  return { tier: 'CONTACT', comparables: [], geoLevel: 'none' }
+  const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: bronzeTier }
+
+  // SELECTION PRESERVED — same priority + same thresholds as pre-Phase-1.
+  // LEASE Platinum threshold is >= 2 (c1 ship, NOT the c2-revert >=1
+  // which is sale-only).
+  if (platinumMatch && platinumMatch.comparables.length >= 2) {
+    return { ...platinumMatch, geoLevel: 'building', tiers, bestGeoTier: 'platinum' }
+  }
+  if (goldMatch && goldMatch.comparables.length >= 3) {
+    return { ...goldMatch, geoLevel: 'community', tiers, bestGeoTier: 'gold' }
+  }
+  if (silverMatch && silverMatch.comparables.length >= 3) {
+    return { ...silverMatch, geoLevel: 'municipality', tiers, bestGeoTier: 'silver' }
+  }
+  if (bronzeMatch && bronzeMatch.comparables.length >= 1) {
+    return { ...bronzeMatch, geoLevel: 'area', tiers, bestGeoTier: 'bronze' }
+  }
+  return { tier: 'CONTACT', comparables: [], geoLevel: 'none', tiers, bestGeoTier: 'none' }
 }
 
 // Helper: resolve list of municipality_ids in an area (the schema has

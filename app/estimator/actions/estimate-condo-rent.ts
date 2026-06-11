@@ -16,7 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 export async function estimateCondoRent(
   specs: CondoLeaseSpecs,
   _includeAI: boolean = false,
-): Promise<{ success: boolean; data?: EstimateResult; error?: string }> {
+): Promise<{ success: boolean; data?: EstimateResult; error?: string; geoLevel?: string }> {
   try {
     const tenantId = specs.tenantId ?? (await getCurrentTenantId())
 
@@ -60,9 +60,18 @@ export async function estimateCondoRent(
     const matchResult = await findCondoComparablesRentals(fullSpecs)
     const estimate = calculateEstimate({ tier: matchResult.tier, comparables: matchResult.comparables })
 
+    // W-CONDO-MODAL-PARITY Phase 1 (2026-06-11): propagate tiers,
+    // bestGeoTier, and geoLevel onto the action's return. Display-only —
+    // estimatedPrice, priceRange, matchTier are unchanged (selection
+    // logic preserved in the matcher).
     return {
       success: true,
-      data: { ...estimate },
+      data: {
+        ...estimate,
+        tiers: matchResult.tiers,
+        bestGeoTier: matchResult.bestGeoTier,
+      },
+      geoLevel: matchResult.geoLevel,
     }
   } catch (error) {
     console.error('Error estimating condo rent:', error)

@@ -1177,3 +1177,147 @@ APPLY STATUS — N/A (no DB change in this unit).
   origin/main = 4a7b4a9 (c2 condo sale, 2026-06-10).
   Local main = 4a7b4a9 + 3 uncommitted units (c2-follow-on threshold
   41afbd0 + resolver-fix 5028b10 + this revert).
+
+
+================================================================================
+2026-06-11 — W-CONDO-MODAL-PARITY PHASE 1 (DATA): condo matcher tiers emission
+================================================================================
+
+GOAL: bring the condo matchers to the home matcher's "compute-all-four-tiers"
+contract so the Geographic Confidence Spread can render in a future condo-
+modal redesign. DISPLAY-ONLY change — pricing tier selection unchanged
+(c2-revert behavior preserved). Action contract additive: tiers +
+bestGeoTier + geoLevel propagated; estimatedPrice / priceRange / matchTier
+byte-identical to pre-Phase-1.
+
+REFERENCE: lib/estimator/home-comparable-matcher-sales.ts (h7) — same
+contract (compute every tier, display every tier, price from best only).
+TierResult shape: { comparables, count, median, range, bestMatchScore }.
+
+CONDO PLATINUM = BUILDING (NOT street as on homes). The home-side
+labelMap "Same street" becomes "Same building" for the condo display
+layer; matcher-side label is identical (just the slot's semantic).
+
+BUILD:
+- lib/estimator/condo-comparable-matcher-sales.ts (MOD):
+  * Imported TierResult.
+  * Extended CondoSaleMatchResult with optional `tiers` + `bestGeoTier`.
+  * Added helpers medianRangeOf() + buildCondoTierResult().
+  * Refactored findCondoComparablesSales() to compute all four tier pools
+    every call (no early return on first hit), build TierResult per non-
+    empty pool, then walk the EXISTING selection priority:
+      Platinum >= 1 same-bldg comp wins  (c2-revert)
+      Gold     >= 3 community comps wins
+      Silver   >= 3 muni comps wins
+      Bronze   >= 1 area comp wins
+    Returns winning tier's match result PLUS tiers + bestGeoTier.
+- lib/estimator/condo-comparable-matcher-rentals.ts (MOD):
+  * Mirror of the sale change. LEASE Platinum threshold remains >= 2 (c1).
+  * Per-tier query → applyLeaseSegGates → matchWithinBuilding/
+    matchAcrossBuildings → buildCondoTierResult.
+- app/estimator/actions/estimate-condo-sale.ts (MOD):
+  * Return type widened to include `geoLevel?: string` (mirror of
+    estimate-home-sale.ts:19).
+  * `data` now spreads tiers + bestGeoTier from matchResult.
+  * Top-level `geoLevel` propagated.
+- app/estimator/actions/estimate-condo-rent.ts (MOD): same change, lease side.
+- app/api/parity-probe-condo-sale/route.ts (MOD, untracked local-only):
+  * Added tiers + bestGeoTier surface for the parity gate.
+- app/api/parity-probe-condo-lease/route.ts (MOD, untracked local-only):
+  * Same.
+
+NO CHANGE TO PRICING:
+- The winning tier's match result is returned UNCHANGED at the top level
+  (matchResult.tier, .comparables, .geoLevel).
+- The selection thresholds (>=1 platinum sale, >=2 platinum lease, >=3
+  gold/silver, >=1 bronze) are byte-identical to pre-Phase-1 (per c1
+  and c2-revert locks).
+- calculateEstimate() inputs unchanged → estimatedPrice / priceRange /
+  matchTier / adjustmentSummary identical.
+
+PARITY GATE (HARD STOP — byte-identical pricing proof):
+  Method: file-swap with timestamped backups.
+    1. Capture POST-patch matcher snapshot (15 sale + 15 lease subjects
+       from the c1/c2 baseline cohort) via the parity-probe routes.
+    2. Move current matchers to .NEW (preserve patch), restore .backup
+       files as active matchers.
+    3. Capture PRE-patch matcher snapshot on the SAME 15+15 subjects via
+       the same probe routes (the dev server tolerates the TS type errors
+       on probe.tiers reference against the pre-patch matcher's
+       narrower interface — Next.js compiles + serves).
+    4. Restore .NEW files back to active matcher paths.
+    5. Run parity-diff.js → exit 0 (zero pricing drift).
+  Snapshot fields compared (priced selection only):
+    tier, geoLevel, comp_keys[], close_prices[], adj_prices[]
+  Fields excluded (additive, allowed):
+    tiers, bestGeoTier
+  Result:
+    SALE  Summary: 15/15 byte-identical, 0 drift, 0 errors
+    LEASE Summary: 15/15 byte-identical, 0 drift, 0 errors
+    OVERALL: 30/30 byte-identical, total drift = 0
+    ✓ PARITY GATE PASSED — priced selection BYTE-IDENTICAL pre vs post.
+
+SAMPLE PROBE (post-patch — tiers populated):
+  SALE  C12570136 (subject id 9ebb81dc...)
+    tier=RANGE  geoLevel=building  bestGeoTier=platinum  comp count=1
+    tiers:
+      platinum: count=8   median=$937,500   range=[715,000 – 1,138,000]
+      gold:     count=300 median=$719,750   range=[330,000 – 6,500,000]
+      silver:   count=500 median=$731,650   range=[305,000 – 6,500,000]
+      bronze:   null  (no area pool fall-through reached)
+  LEASE C13078350 (subject id b40d34ce...)
+    tier=RANGE  geoLevel=building  bestGeoTier=platinum  comp count=4
+    tiers:
+      platinum: count=26  median=$3,000  range=[250 – 4,867]
+      gold:     count=23  median=$2,750  range=[1,650 – 8,000]
+      silver:   count=60  median=$2,725  range=[1,400 – 12,000]
+      bronze:   null
+
+CASCADE FALLTHROUGH STILL WORKS (BUILDING-LESS / THIN-BUILDING):
+- Parity-gate sample contained subjects whose Platinum returned 0
+  comparables → cascade fell to Gold/Silver as before; tier resolution
+  preserved.
+- E13051826 (no_building): tier=RANGE geoLevel=community comps=10
+- W13190588 (no_building): tier=RANGE-ADJ geoLevel=community comps=10
+  Both preserved their previous resolution; tiers.gold populated; tiers
+  .platinum null (no building).
+
+BACKUPS (all timestamped _20260611_120000):
+  lib/estimator/condo-comparable-matcher-sales.ts.backup_20260611_120000
+  lib/estimator/condo-comparable-matcher-rentals.ts.backup_20260611_120000
+  app/estimator/actions/estimate-condo-sale.ts.backup_20260611_120000
+  app/estimator/actions/estimate-condo-rent.ts.backup_20260611_120000
+  docs/W-ESTIMATOR-CONDO-TRACKER.md.backup_20260611_120000
+
+tsc --noEmit clean (full project, exit 0).
+
+FILES MODIFIED (single uncommitted unit):
+  MOD lib/estimator/condo-comparable-matcher-sales.ts   (sale 4-tier emission)
+  MOD lib/estimator/condo-comparable-matcher-rentals.ts (lease 4-tier emission)
+  MOD app/estimator/actions/estimate-condo-sale.ts      (propagate tiers/bestGeoTier/geoLevel)
+  MOD app/estimator/actions/estimate-condo-rent.ts      (same, lease)
+  MOD app/api/parity-probe-condo-sale/route.ts          (untracked local-only — tiers surface)
+  MOD app/api/parity-probe-condo-lease/route.ts         (untracked local-only — same)
+  MOD docs/W-ESTIMATOR-CONDO-TRACKER.md                 (this entry)
+Backups timestamped _20260611_120000.
+
+NEXT (W-CONDO-MODAL-PARITY PHASE 2 — UI, separate workstream):
+- Build CondoEstimatorBuyerModal.tsx mirroring HomeEstimatorBuyerModal's
+  feature set:
+  * Geographic Confidence Spread sub-component (reads result.tiers +
+    bestGeoTier; condo label map: Platinum="Same building", Gold=
+    "Community", Silver="Municipality", Bronze="Area").
+  * Geo Level Indicator narrative (reads geoLevel).
+  * Competing-For-Sale rail (reuse useCompetingListings hook +
+    /api/charlie/competing-listings endpoint — verify it serves condo
+    subjects cleanly).
+  * Investment Analysis section (reuse existing
+    components/property/InvestmentAnalysis.tsx; requires InvestmentData
+    threading).
+- Swap the import on 4 surfaces (ListingSection,
+  NeighbourhoodListingSection, GeoListingSection, SimilarListings).
+
+PUSH STATUS — HELD pending operator approval (per task spec).
+APPLY STATUS — N/A (no DB change).
+  origin/main = d31a108 (SimilarListings dead-button fix + tracker close).
+  Local main = d31a108 + 1 uncommitted unit (this Phase 1 tiers emission).
