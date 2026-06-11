@@ -14,6 +14,12 @@ import { estimateCondoRent } from '@/app/estimator/actions/estimate-condo-rent'
 import { estimateCondoSale } from '@/app/estimator/actions/estimate-condo-sale'
 import EstimatorResults from '@/app/estimator/components/EstimatorResults'
 import { EstimateResult } from '@/lib/estimator/types'
+// W-CONDO-MODAL-PARITY Phase 2 follow-up (2026-06-11) — wire the condo
+// Competing-For-Sale rail into the sidebar. The rail JSX shipped with
+// 4ac9a46 in EstimatorResults, and useCompetingListings already carries
+// the path:'condo' branch; the sidebar caller just never called the hook.
+// Mirror of HomePropertyEstimateCTA's wiring.
+import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
 
 interface PropertyEstimateCTAProps {
   listing: MLSListing
@@ -32,6 +38,8 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
   const [loading, setLoading] = useState(true)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // W-CONDO-MODAL-PARITY Phase 2 follow-up — condo Competing-For-Sale rail.
+  const { competingListings, fetchCompetingListings, resetCompetingListings } = useCompetingListings()
 
   const exactSqft = extractExactSqft(listing.square_foot_source)
 
@@ -79,6 +87,24 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
 
         if (response.success && response.data) {
           setResult(response.data)
+          // W-CONDO-MODAL-PARITY Phase 2 follow-up — fire the condo
+          // Competing-For-Sale fetch only on the S2 condo path (same gate
+          // that selected estimateCondoSale/estimateCondoRent above —
+          // tenantId presence). S1 callers (null tenant) leave the rail
+          // empty, byte-identical to pre-Phase-2 behavior. Endpoint condo
+          // branch is community-scoped + bedroom-filtered + limit 10 —
+          // no relation to the unbounded Bronze area query (BRONZE-TIMEOUT
+          // named-open).
+          if (tenantId && (listing as any).community_id && listing.bedrooms_total != null) {
+            fetchCompetingListings({
+              path: 'condo',
+              communityId: (listing as any).community_id,
+              bedrooms: listing.bedrooms_total,
+              livingAreaRange: listing.living_area_range || null,
+            })
+          } else {
+            resetCompetingListings()
+          }
         } else {
           setError(response.error || 'Failed to calculate estimate')
         }
@@ -132,6 +158,7 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
           parking: listing.parking_total,
           locker: listing.locker
         }}
+        competingListings={competingListings}
       />
     )
   }
