@@ -725,14 +725,12 @@ export default function EstimatorResults({
               )}
               <div className="space-y-4 max-h-[600px] overflow-y-auto">
                 {result.taxMatch.comparables.map((comp, idx) => {
-                  // W-TAX-MATCH b1 (2026-06-11): per-tile tier badge mirroring
-                  // the Competing-For-Sale pill (line 822-824). Badge text +
-                  // color derived from comp.sourceTier via CONDO_LABEL_MAP.
-                  // Falls back to the section's bestGeoTier when sourceTier is
-                  // absent (defensive — sourceTier is stamped by the matcher
-                  // for every multi-tier display comp, so this fallback should
-                  // never fire in production but keeps the badge always
-                  // present rather than blank).
+                  // W-TAX-MATCH b1-fix (2026-06-11): tier indicator moved from
+                  // photo-pill overlay into the tile body so it reads as
+                  // descriptive content alongside unit/beds/sqft/price rather
+                  // than a photo badge. Color-coded chip preserved via the
+                  // same tierBadgeColor map; labels come from CONDO_LABEL_MAP
+                  // (name + sub: 'Platinum · Same Building', etc.).
                   const tierKey = (comp.sourceTier || result.taxMatch?.bestGeoTier || 'gold') as 'platinum' | 'gold' | 'silver' | 'bronze'
                   const tierLabel = CONDO_LABEL_MAP[tierKey]
                   const tierBadgeColor =
@@ -749,11 +747,13 @@ export default function EstimatorResults({
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-2xl">🏢</div>
                         )}
-                        <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${tierBadgeColor}`}>
-                          {tierLabel.emoji} {tierLabel.name.toUpperCase()}
-                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
+                        <div className="mb-2">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${tierBadgeColor}`}>
+                            {tierLabel.emoji} {tierLabel.name} · {tierLabel.sub}
+                          </span>
+                        </div>
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           {comp.unitNumber && (
                             <span className="text-sm font-semibold text-slate-500">Unit {comp.unitNumber}</span>

@@ -920,6 +920,10 @@ export default function HomeEstimatorResults({
               )}
               <div className="space-y-4 max-h-[600px] overflow-y-auto">
                 {result.taxMatch.comparables.map((comp, idx) => {
+                  // W-TAX-MATCH HOME b1-fix (2026-06-11): tier indicator
+                  // moved from photo-pill overlay into the tile body. Labels
+                  // via HOME_LABEL_MAP (name + sub: 'Platinum · Same street',
+                  // etc.). Mirror of EstimatorResults.tsx tax-tile relocation.
                   const tierKey = (comp.sourceTier || result.taxMatch?.bestGeoTier || 'gold') as 'platinum' | 'gold' | 'silver' | 'bronze'
                   const tierLabel = HOME_LABEL_MAP[tierKey]
                   const tierBadgeColor =
@@ -936,11 +940,13 @@ export default function HomeEstimatorResults({
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-2xl">🏠</div>
                         )}
-                        <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${tierBadgeColor}`}>
-                          {tierLabel.emoji} {tierLabel.name.toUpperCase()}
-                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
+                        <div className="mb-2">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${tierBadgeColor}`}>
+                            {tierLabel.emoji} {tierLabel.name} · {tierLabel.sub}
+                          </span>
+                        </div>
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <p className="font-bold text-slate-900 text-lg">
                             {comp.bedrooms} bed, {comp.bathrooms} bath
