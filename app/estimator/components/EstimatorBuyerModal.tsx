@@ -14,6 +14,8 @@ import { EstimateResult } from '@/lib/estimator/types'
 import EstimatorResults from './EstimatorResults'
 import { MLSListing } from '@/lib/types/building'
 import { useAuth } from '@/components/auth/AuthContext'
+// W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — condo competing rail
+import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
 import VipPrompt from '@/components/chat/VipPrompt'
 import VipRequestForm, { VipRequestData } from '@/components/chat/VipRequestForm'
 import RegisterModal from '@/components/auth/RegisterModal'
@@ -61,8 +63,11 @@ export default function EstimatorBuyerModal({
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
+  const [geoLevel, setGeoLevel] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showRegister, setShowRegister] = useState(false)
+  // W-CONDO-MODAL-PARITY Phase 2: condo Competing-For-Sale rail
+  const { competingListings, fetchCompetingListings, resetCompetingListings } = useCompetingListings()
   
   // VIP flow states
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -278,7 +283,13 @@ export default function EstimatorBuyerModal({
       buildingSlug,
       agentId,
       ...(exactSqft !== null && { exactSqft }),
-      ...(listing.association_fee && { associationFee: listing.association_fee })
+      ...(listing.association_fee && { associationFee: listing.association_fee }),
+      // W-CONDO-MODAL-PARITY Phase 1-FIX (2026-06-11): h8 tax-similarity
+      // band on the condo SALE matcher was inert in production because
+      // these two fields were never threaded from the production caller —
+      // mirror of HomeEstimatorBuyerModal.tsx:281-283. Silent-omit when missing.
+      ...((listing as any).tax_annual_amount != null ? { subjectTaxAnnualAmount: parseFloat(String((listing as any).tax_annual_amount)) } : {}),
+      ...((listing as any).tax_year != null ? { subjectTaxYear: parseInt(String((listing as any).tax_year), 10) } : {}),
     }
 
     // c1/c2 (2026-06-10): tenant-gated branches.
@@ -299,6 +310,26 @@ export default function EstimatorBuyerModal({
 
     if (response.success && response.data) {
         setResult(response.data)
+        // W-CONDO-MODAL-PARITY Phase 2 (2026-06-11): on the S2 condo path,
+        // both actions return geoLevel at the TOP of the response (Phase 1).
+        // The shared S1 actions don't — stays null on legacy traffic so the
+        // modal's Geo Level Indicator block auto-hides.
+        const respGeo = (response as any).geoLevel as string | undefined
+        setGeoLevel(respGeo || null)
+        // Fire the Competing-For-Sale fetch ONLY on the condo S2 path.
+        // tenantId presence is the same gate that selected estimateCondoSale/
+        // estimateCondoRent above — S1 callers leave it null and skip the
+        // hook entirely (the rail stays auto-hidden on S1).
+        if (tenantId && (listing as any).community_id && listing.bedrooms_total != null) {
+          fetchCompetingListings({
+            path: 'condo',
+            communityId: (listing as any).community_id,
+            bedrooms: listing.bedrooms_total,
+            livingAreaRange: listing.living_area_range || null,
+          })
+        } else {
+          resetCompetingListings()
+        }
       } else {
         setError(response.error || 'Failed to calculate estimate')
       }
@@ -485,6 +516,40 @@ export default function EstimatorBuyerModal({
             Get an instant {isSale ? 'price' : 'rent'} estimate based on recent {isSale ? 'sales' : 'leases'} in {buildingName}
           </p>
 
+          {/* W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — Geo Level Indicator
+              (mirror of HomeEstimatorBuyerModal:518-532, 4-way branch on
+              condo geoLevel). Gated on {geoLevel && result} — on the
+              legacy S1 condo path the response carries no geoLevel
+              (shared action doesn't emit it), so this block auto-hides. */}
+          {geoLevel && result && (
+            <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
+              geoLevel === 'building'
+                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                : geoLevel === 'community'
+                ? 'bg-green-50 text-green-800 border border-green-200'
+                : 'bg-amber-50 text-amber-800 border border-amber-200'
+            }`}>
+              <span>
+                {geoLevel === 'building'
+                  ? '🏢'
+                  : geoLevel === 'community'
+                  ? '📍'
+                  : '🗺️'}
+              </span>
+              <span>
+                {geoLevel === 'building'
+                  ? 'Based on recent sales in this building'
+                  : geoLevel === 'community'
+                  ? 'Based on recent sales in your community'
+                  : geoLevel === 'municipality'
+                  ? 'Based on sales across the wider municipality'
+                  : geoLevel === 'area'
+                  ? 'Based on sales across the wider area (limited municipality data)'
+                  : ''}
+              </span>
+            </div>
+          )}
+
           {/* VIP Prompt */}
           {showVipPrompt && (
             <div className="mb-6">
@@ -589,6 +654,7 @@ export default function EstimatorBuyerModal({
               }}
               type={type}
               unitNumber={listing.unit_number || ''}
+              competingListings={competingListings}
             />
           )}
         </div>

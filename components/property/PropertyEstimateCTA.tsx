@@ -49,7 +49,13 @@ export default function PropertyEstimateCTA({ listing, status, isSale, buildingN
         buildingId: listing.building_id,
         buildingSlug: buildingSlug,
         ...(exactSqft !== null && { exactSqft }),
-        ...(listing.association_fee && { associationFee: listing.association_fee })
+        ...(listing.association_fee && { associationFee: listing.association_fee }),
+        // W-CONDO-MODAL-PARITY Phase 1-FIX (2026-06-11): h8 tax-similarity
+        // band on the condo SALE matcher was inert in production because
+        // these two fields were never threaded from the production caller —
+        // mirror of HomePropertyEstimateCTA.tsx:64-66. Silent-omit when missing.
+        ...(listing.tax_annual_amount != null ? { subjectTaxAnnualAmount: parseFloat(String(listing.tax_annual_amount)) } : {}),
+        ...(listing.tax_year != null ? { subjectTaxYear: parseInt(String(listing.tax_year), 10) } : {}),
       }
       
 

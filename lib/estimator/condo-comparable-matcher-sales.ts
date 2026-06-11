@@ -209,6 +209,28 @@ function buildCondoTierResult(
   }
 }
 
+// W-CONDO-MODAL-PARITY Phase 1-FIX (2026-06-11): comparability filter for
+// the displayed tier median/count. Mirrors the bed+bath(+LAR) subset the
+// match functions select top-10 from, so the displayed Geographic
+// Confidence Spread reflects subject-comparable inventory rather than the
+// raw geo pool (which on wide tiers, esp. Bronze, mixes property types and
+// produced the X2 Condos $1.33M-of-detached-homes display bug).
+// SELECTION IS UNCHANGED — matched comparables still come from the match
+// functions; this only narrows the pool feeding median/range/count.
+// LAR threshold (>= 3) mirrors matchAcrossBuildings line 427.
+function condoComparabilityFilter(
+  pool: any[],
+  specs: { bedrooms: number; bathrooms: number; livingAreaRange?: string },
+): any[] {
+  const bedBath = pool.filter(s =>
+    s.bedrooms_total === specs.bedrooms &&
+    s.bathrooms_total_integer === specs.bathrooms,
+  )
+  if (!specs.livingAreaRange) return bedBath
+  const lar = bedBath.filter(s => s.living_area_range === specs.livingAreaRange)
+  return lar.length >= 3 ? lar : bedBath
+}
+
 export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<CondoSaleMatchResult> {
   const supabase = createClient()
   const twoYearsAgo = new Date()
@@ -244,7 +266,7 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .order('close_date', { ascending: false })
     if (bldgSales && bldgSales.length > 0) {
       platinumMatch = matchWithinBuilding(bldgSales, specs, customValues)
-      platinumTier  = buildCondoTierResult(bldgSales, platinumMatch.comparables)
+      platinumTier  = buildCondoTierResult(condoComparabilityFilter(bldgSales, specs), platinumMatch.comparables)
     }
   }
 
@@ -264,7 +286,7 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .limit(300)
     if (commSales && commSales.length > 0) {
       goldMatch = matchAcrossBuildings(commSales, specs, customValues)
-      goldTier  = buildCondoTierResult(commSales, goldMatch.comparables)
+      goldTier  = buildCondoTierResult(condoComparabilityFilter(commSales, specs), goldMatch.comparables)
     }
   }
 
@@ -284,7 +306,7 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .limit(500)
     if (muniSales && muniSales.length > 0) {
       silverMatch = matchAcrossBuildings(muniSales, specs, customValues)
-      silverTier  = buildCondoTierResult(muniSales, silverMatch.comparables)
+      silverTier  = buildCondoTierResult(condoComparabilityFilter(muniSales, specs), silverMatch.comparables)
     }
   }
 
@@ -306,7 +328,7 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
         .limit(500)
       if (areaSales && areaSales.length > 0) {
         bronzeMatch = matchAcrossBuildings(areaSales, specs, customValues)
-        bronzeTier  = buildCondoTierResult(areaSales, bronzeMatch.comparables)
+        bronzeTier  = buildCondoTierResult(condoComparabilityFilter(areaSales, specs), bronzeMatch.comparables)
       }
     }
   }

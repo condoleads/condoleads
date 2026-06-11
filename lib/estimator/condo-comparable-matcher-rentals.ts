@@ -113,6 +113,25 @@ function buildCondoTierResult(
   }
 }
 
+// W-CONDO-MODAL-PARITY Phase 1-FIX (2026-06-11): comparability filter for
+// the displayed tier median/count. Same semantics as the sale matcher's
+// version (intentionally mirrored, not shared-util, per recon rec (a)).
+// On the LEASE side this applies ON TOP OF the lease-segmentation gates
+// already applied to `pool` — the gated pool is the input, the comparable
+// subset is the output. SELECTION IS UNCHANGED.
+function condoComparabilityFilter(
+  pool: any[],
+  specs: { bedrooms: number; bathrooms: number; livingAreaRange?: string },
+): any[] {
+  const bedBath = pool.filter(s =>
+    s.bedrooms_total === specs.bedrooms &&
+    s.bathrooms_total_integer === specs.bathrooms,
+  )
+  if (!specs.livingAreaRange) return bedBath
+  const lar = bedBath.filter(s => s.living_area_range === specs.livingAreaRange)
+  return lar.length >= 3 ? lar : bedBath
+}
+
 const CONDO_LEASE_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
   bathrooms_total_integer, living_area_range, parking_total, locker,
   days_on_market, close_date, square_foot_source, association_fee,
@@ -252,7 +271,7 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
       const gated = applyLeaseSegGates(bldgLeases, specs)
       if (gated.length > 0) {
         platinumMatch = matchWithinBuilding(gated, specs, customValues)
-        platinumTier  = buildCondoTierResult(gated, platinumMatch.comparables)
+        platinumTier  = buildCondoTierResult(condoComparabilityFilter(gated, specs), platinumMatch.comparables)
       }
     }
   }
@@ -274,7 +293,7 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
       const gated = applyLeaseSegGates(commLeases, specs)
       if (gated.length > 0) {
         goldMatch = matchAcrossBuildings(gated, specs, customValues)
-        goldTier  = buildCondoTierResult(gated, goldMatch.comparables)
+        goldTier  = buildCondoTierResult(condoComparabilityFilter(gated, specs), goldMatch.comparables)
       }
     }
   }
@@ -296,7 +315,7 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
       const gated = applyLeaseSegGates(muniLeases, specs)
       if (gated.length > 0) {
         silverMatch = matchAcrossBuildings(gated, specs, customValues)
-        silverTier  = buildCondoTierResult(gated, silverMatch.comparables)
+        silverTier  = buildCondoTierResult(condoComparabilityFilter(gated, specs), silverMatch.comparables)
       }
     }
   }
@@ -318,7 +337,7 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
       const gated = applyLeaseSegGates(areaLeases, specs)
       if (gated.length > 0) {
         bronzeMatch = matchAcrossBuildings(gated, specs, customValues)
-        bronzeTier  = buildCondoTierResult(gated, bronzeMatch.comparables)
+        bronzeTier  = buildCondoTierResult(condoComparabilityFilter(gated, specs), bronzeMatch.comparables)
       }
     }
   }

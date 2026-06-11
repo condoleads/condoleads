@@ -1341,3 +1341,338 @@ NEXT (W-CONDO-MODAL-PARITY PHASE 2 — UI, separate workstream):
 Dev server (localhost:3007, background task boh1kz2ul) remains up for
 Phase 2 recon. Tiers fields are populated and visible via
 /api/parity-probe-condo-sale + /api/parity-probe-condo-lease.
+
+
+================================================================================
+2026-06-11 — W-CONDO-MODAL-PARITY PHASE 2 (UI): condo modal parity build
+================================================================================
+
+OBJECTIVE: render the Phase 1 data (tiers + bestGeoTier + geoLevel) in
+the condo Buyer Modal at home-modal feature parity. NO matcher work, NO
+schema work — pure UI + one hook param. S1 auto-hide via data-presence
+gates (legacy shared S1 path leaves new fields undefined → all new
+sections invisible).
+
+FILES TOUCHED (5 existing + 1 new):
+  NEW  app/estimator/components/GeoConfidenceSpread.tsx
+       Extracted from HomeEstimatorResults.tsx:503-569 verbatim. Props:
+       { tiers, bestGeoTier, labelMap }. Exports HOME_LABEL_MAP +
+       CONDO_LABEL_MAP. Internal null-tier handling preserved exactly.
+  MOD  app/estimator/components/HomeEstimatorResults.tsx
+       B2 — replaced 503-569 inline block with <GeoConfidenceSpread
+       tiers={result.tiers} bestGeoTier={result.bestGeoTier}
+       labelMap={HOME_LABEL_MAP} />. Outer gate
+       {!isMultiUnitSubject && result.tiers && (...)} preserved.
+       Additionally: added optional unit_number + association_fee to
+       the exported CompetingListing interface (additive; home callers
+       never set them).
+  MOD  app/estimator/components/EstimatorResults.tsx
+       B3 — added <GeoConfidenceSpread ... labelMap={CONDO_LABEL_MAP} />
+       gated on result.tiers (same structural slot as home — after
+       Match Tier Banner, before Market Conditions).
+       B5 — added Competing-For-Sale rail (mirror of home rail 887-985
+       minus plex income panel). Condo tile shows: unit_number, beds/
+       baths, LAR, list_price, DOM, association_fee, mediaUrl. Gated
+       on competingListings.length > 0. View link uses /property/${id}
+       (works for the property detail page).
+       Added competingListings?: CompetingListing[] to props.
+  MOD  app/estimator/hooks/useCompetingListings.ts
+       B4 — accept path?: 'home' | 'condo' (default 'home'). Home gate
+       unchanged (propertySubtype + municipalityId). Condo gate is
+       communityId + bedrooms (matches the endpoint's condo branch).
+       Body forwards `path` and remaining fields unchanged. Default
+       value preserves byte-identical behavior for every pre-Phase-2
+       caller (HomeEstimatorBuyerModal, HomePropertyEstimateCTA).
+  MOD  app/estimator/components/EstimatorBuyerModal.tsx
+       A1 — Geo Level Indicator block added after the "Get an instant
+       estimate..." description line. 4-way branch on geoLevel:
+         building     → emerald-50  "Based on recent sales in this building"
+         community    → green-50    "Based on recent sales in your community"
+         municipality → amber-50    "Based on sales across the wider municipality"
+         area         → amber-50    "Based on sales across the wider area (limited municipality data)"
+       Gated on {geoLevel && result}.
+       Added geoLevel state + useCompetingListings hook + fire on the
+       condo S2 path only (gated on tenantId + listing.community_id +
+       listing.bedrooms_total). resetCompetingListings called on the
+       S1 path so the rail stays auto-hidden.
+       Threaded competingListings into <EstimatorResults>.
+
+S1 AUTO-HIDE — the regression gate (zero-touch on legacy condoleads.ca):
+  - Geographic Confidence Spread block: gated on {result.tiers && ...}.
+    The shared S1 matchers (frozen) do NOT emit tiers → tiers is
+    undefined on S1 → block returns null. S1 UX byte-identical.
+  - Competing-For-Sale rail: gated on {competingListings.length > 0}.
+    The fetchCompetingListings call site is gated on tenantId. S1
+    callers have tenantId=null → fetch never fires → array stays
+    empty → rail auto-hides.
+  - Geo Level Indicator: gated on {geoLevel && result}. The shared S1
+    actions (estimate-sale.ts / estimate-rent.ts) do NOT return
+    geoLevel → state stays null → block auto-hides.
+  Combined: legacy condoleads.ca subdomain traffic sees the SAME modal
+  it saw pre-Phase-2. No new sections rendered. No data fetched.
+
+PARITY GUARD (B2): pixel-identical home modal pre vs post extraction
+  Server-side proof (this session):
+  - GeoConfidenceSpread.tsx's JSX is character-for-character verbatim
+    from HomeEstimatorResults.tsx:511-568 (the inner block) with only
+    two delta edits: inline labelMap literal → labelMap prop,
+    drop result.tiers!/result.bestGeoTier in favor of tiers/bestGeoTier
+    props. HOME_LABEL_MAP constant equals the inline literal byte for
+    byte (lines 520-525 source → HOME_LABEL_MAP export).
+  - HomeEstimatorResults.tsx outer gate preserved verbatim.
+  - tsc --noEmit: clean (exit 0).
+  Browser-side check (operator's smoke #1): open a home estimate with
+  the 4-tier spread visible and confirm pixel-identical. Server-side
+  evidence above predicts pass.
+
+SMOKE TARGETS (for the operator's browser session):
+
+  #1 HOME PARITY  (B2 extraction-correctness):
+    Any home subject that previously rendered the 4-tier spread will
+    re-render via <GeoConfidenceSpread> with HOME_LABEL_MAP. Visual
+    output must be pixel-identical to pre-Phase-2.
+
+  #2 CONDO FOUR-TIER (all four populated, bronze NOT null):
+    W13067086 — id=1f66cd1c-9e08-4551-8a67-c4afb6515965
+    10 Martha Eaton Way Unit 1013, Toronto W04
+    Probe-confirmed (this session): all four tiers populate
+      platinum: count=11  median=$472,000  range=[440,000 – 560,000]
+      gold:     count=143 median=$870,000  range=[346,000 – 1,900,000]
+      silver:   count=500 median=$825,000  range=[300,000 – 3,700,000]
+      bronze:   count=500 median=$1,324,000 range=[319,000 – 8,350,000]
+    bestGeoTier=platinum, geoLevel=building.
+    URL: http://localhost:3007/property/1f66cd1c-9e08-4551-8a67-c4afb6515965
+    Click Sale Offer on the CTA → modal opens. Expected:
+      - Geo Level Indicator: emerald box, 🏢, "Based on recent sales in this building"
+      - Geographic Confidence Spread: all four rows render with medians
+        and counts; Platinum row labeled "Same Building", Anchor pill
+        on Platinum row, Gold/Silver/Bronze rows muted.
+
+  #3 CONDO NULL-TIER (bronze:null on a building-anchored subject):
+    C12570136 from Phase 1 parity set — id=9ebb81dc-1f59-4ece-9f78-8e441b0e851b
+    Probe-confirmed:
+      platinum: count=8  gold: count=300  silver: count=500  bronze: null
+    Expected: bronze row renders with right-side "no data" in italic
+    muted text, no crash, no empty box, layout intact.
+
+  #4 GEO LEVEL INDICATOR:
+    On both #2 (building) and any community-anchored subject — the
+    narrative copy + color matches the geoLevel value from the
+    response.
+
+  #5 COMPETING RAIL:
+    C12570136 confirmed-condo-comps subject. Runtime check in this
+    session returned 2 active comps from the condo endpoint branch
+    (C12751338 #406 and C12886126 #605, both 2BR/1200-1399, Toronto).
+    Expected: rail renders at the bottom of the results with
+    unit_number pill, association_fee chip, View Property → links.
+
+  #6 S1 AUTO-HIDE PROOF (regression gate):
+    Visit a condoleads.ca-mode condo property page (or any path where
+    PropertyEstimateCTA / EstimatorBuyerModal renders with
+    tenantId=undefined). Click Sale Offer. Modal opens.
+    Expected: NO Geographic Confidence Spread, NO Geo Level Indicator,
+    NO Competing rail. The condo modal looks byte-identical to pre-
+    Phase-2. This is the load-bearing regression check — if anything
+    new is visible on the S1 path, the auto-hide failed.
+
+  #7 LEASE PATH:
+    Any Walliam-tenant condo Lease Offer. Geographic Confidence Spread
+    + Geo Level Indicator should render (tiers + geoLevel emitted by
+    estimateCondoRent). Competing rail typically empty (the endpoint
+    condo branch is For-Sale-only); rail auto-hides on empty array.
+
+  #8 tsc --noEmit (server-side): clean, exit 0. ✓ (verified this session).
+
+DEFERRED (logged named-open per recon — do NOT build in Phase 2):
+- Investment Analysis in the modal. Geo-page entry surfaces (Building,
+  Neighbourhood, GeoListingSection) do not server-fetch InvestmentData;
+  single-property page already renders it on the page sidebar. Trigger
+  for future work: "if modal-level investment display is wanted across
+  geo surfaces → build /api/condo-investment-data endpoint + client
+  fetch from EstimatorBuyerModal." File: app/api/condo-investment-data/
+  route.ts (proposed). No work in Phase 2.
+
+FILES MODIFIED (single uncommitted unit):
+  NEW app/estimator/components/GeoConfidenceSpread.tsx
+  MOD app/estimator/components/HomeEstimatorResults.tsx
+  MOD app/estimator/components/EstimatorResults.tsx
+  MOD app/estimator/hooks/useCompetingListings.ts
+  MOD app/estimator/components/EstimatorBuyerModal.tsx
+  MOD docs/W-ESTIMATOR-CONDO-TRACKER.md (this entry)
+Backups timestamped _20260611_140000 (5 files; GeoConfidenceSpread is
+new — no backup needed).
+tsc --noEmit clean (full project, exit 0).
+
+PUSH STATUS — HELD pending operator approval + browser smoke (per task
+spec). The S1 auto-hide proof #6 is the load-bearing regression check;
+the home-parity check #1 is the extraction-correctness check.
+APPLY STATUS — N/A (no DB change).
+  origin/main = 61bb5da (Phase 1 tracker close).
+  Local main = 61bb5da + 1 uncommitted unit (this Phase 2 UI build).
+
+
+================================================================================
+2026-06-11 — W-CONDO-MODAL-PARITY PHASE 1-FIX: tier-pool correctness +
+              tax threading (the bug Phase 1's parity gate didn't catch)
+================================================================================
+
+OBJECTIVE: correct two PRODUCTION DEFECTS discovered in recon AFTER
+Phase 1 + Phase 2 had shipped a "byte-identical" gate:
+  (a) The displayed Geographic Confidence Spread on every condo tier was
+      computed over the RAW geo-queried pool (no bed/bath/LAR filter), so
+      wider tiers (esp. Bronze + Silver) reported inventory-heterogeneity
+      medians, not subject-comparable medians. On X2 Condos (101 Charles
+      St E) the Silver median was $584,500 over a 500-row Toronto Central
+      pool mixing 90% condos with 10% Residential Freehold — a meaningless
+      number to render next to a 2bd/2ba condo subject.
+  (b) The h8 tax-similarity band (CONDO_SALE_TAX_WEIGHT=15, c2 ship) was
+      INERT in production because subjectTaxAnnualAmount/subjectTaxYear
+      were never threaded from PropertyEstimateCTA / EstimatorBuyerModal.
+      The matcher had the code; the production callers didn't feed it.
+      Only the local parity-probe routes threaded tax — so the c2 sweep
+      that measured "+3.0pp ±15" lift was real for the probe and FAKE
+      for users.
+
+FINDING — THE LESSONS (log loudly, two rules to live by):
+
+  RULE 1: a parity gate that anchors on PRICED-TIER BYTE-IDENTITY is
+          BLIND to any newly-emitted display value. The Phase 1 gate
+          verified that priced output (tier, geoLevel, comparables,
+          adjusted_price) was unchanged — and it WAS unchanged, because
+          the priced tier reads from match-function output which is
+          correctly filtered. But the other three (now-displayed) tiers
+          carried raw-pool medians that NEVER existed pre-Phase-1 — so
+          there was nothing to "diff against" in those fields. The
+          gate's silence on them looked like passing; it was actually
+          absence of measurement.
+          GOING FORWARD: any change that emits NEW DISPLAYED VALUES
+          must include an INDEPENDENT verification of those values
+          (e.g., direct DB query reproducing the expected computation +
+          assert the matcher produces the same number). Not just
+          "did pre-existing fields stay the same."
+
+  RULE 2: a "shipped" lift must be verified in the PRODUCTION CALLER
+          PATH, not just in the probe harness. The probe route threaded
+          tax; the production caller didn't. The c2 sweep measured a
+          lift that never reached users. Tracker-vs-reality drift.
+          GOING FORWARD: every matcher signal that depends on a new
+          spec field must be traced to its production caller(s) AND
+          have the threading verified end-to-end before the lift is
+          marked "shipped" in the tracker.
+
+FIX SHAPE (recon-recommended Option A — mirror the home contract):
+
+  Helper `condoComparabilityFilter(pool, specs)` added to BOTH matcher
+  files (sale + lease, mirrored not shared-util per recon rec (a) — keeps
+  matchers independent, no cross-file refactor risk):
+    - bed+bath strict filter
+    - if specs.livingAreaRange, narrow to LAR subset; use it IF the
+      LAR subset has >= 3 elements (mirrors matchAcrossBuildings:427
+      threshold), else fall back to bed+bath
+    - returns a tighter pool that the displayed median/range/count is
+      computed over
+
+  Wrapped each of the 8 tier call sites:
+    sale:  lines 247, 267, 287, 309 — each
+           `buildCondoTierResult(<rawPool>, <match>.comparables)`
+           became
+           `buildCondoTierResult(condoComparabilityFilter(<rawPool>, specs), <match>.comparables)`
+    lease: lines 255, 277, 299, 321 — same wrap on the lease-seg-gated
+           pool (comparability filter applies ON TOP of segmentation
+           gating)
+
+  buildCondoTierResult body UNCHANGED — it just receives a tighter pool.
+
+  Tax threading added at 2 production caller surfaces:
+    PropertyEstimateCTA.tsx (specs object, end of literal) +
+    EstimatorBuyerModal.tsx (specs object, end of literal)
+  — verbatim from HomePropertyEstimateCTA.tsx:64-66 +
+  HomeEstimatorBuyerModal.tsx:281-283. Silent-omit when missing.
+  Lease: NO tax threading (0% tax_annual_amount fill on condo lease;
+  matcher doesn't reference tax on the lease path).
+
+FILES MODIFIED (5):
+  MOD lib/estimator/condo-comparable-matcher-sales.ts      (helper + 4 call wraps)
+  MOD lib/estimator/condo-comparable-matcher-rentals.ts    (helper + 4 call wraps)
+  MOD components/property/PropertyEstimateCTA.tsx           (tax threading)
+  MOD app/estimator/components/EstimatorBuyerModal.tsx     (tax threading)
+  MOD docs/W-ESTIMATOR-CONDO-TRACKER.md                    (this entry)
+Backups timestamped _20260611_073309 (5 files).
+
+PARITY GATE — Phase 1's blind spot, fixed for this fix:
+
+  4 subjects across the bug surface:
+    S1_X2_C13159484  — X2 Condos 2bd/2ba 800-899 (the named bug)
+    S2_X2_C13236446  — X2 Condos 2bd/2ba 800-899 (cross-check)
+    S3_W13067086     — building-anchored 3bd/2ba 1000-1199 (tax 1432.76)
+    S4_W13143450     — no-building / community-anchored 2bd/2ba 1000-1199 (tax 3478)
+  Methodology: file-swap. Patched matchers stashed; backup pre-patch
+  restored; PRE snapshot captured via /api/parity-probe-condo-sale;
+  patched restored; POST snapshot captured. Diff + independent DB-side
+  comparability-filter computation.
+
+  ASSERTION (1) — PRICING BYTE-IDENTICAL PRE vs POST:  PASS
+    4 / 4 subjects byte-identical on (tier, geoLevel, matched comparable
+    keys + close_price + adjusted_price). Zero priced fields moved.
+    The filter did NOT leak into selection.
+
+  ASSERTION (2) — X2 Silver bug signature gone:  PASS
+    S1 X2 Silver PRE = $584,500 (raw pool of 500, mixed inventory)
+    S1 X2 Silver POST = $750,000 (23-comp 2bd/2ba+LAR-800-899 subset)
+    Δ = +$165,500 — the freehold-contamination has been removed from
+    the displayed comparable cohort.
+    (Bronze tier was null both PRE and POST for X2 — the
+    matchAcrossBuildings call returns 0 matched comps for the area-wide
+    top-500 in this subject's specs, so buildCondoTierResult returns
+    null in both. Note also a SEPARATE pre-existing performance issue
+    discovered during this gate: the bronze Supabase query for
+    Toronto Central (35-muni .in() with .limit(500)) times out via the
+    server's anon client with code 57014. That's not introduced by
+    Phase 1-FIX; it explains why bronze is rarely renderable for
+    dense-inventory areas in production today. Filed for separate work.)
+
+  ASSERTION (3) — filtered_count <= raw_count per tier:  PASS
+    every (subject × tier) row honors this invariant.
+
+  Full PRE/POST table (raw / filtered counts + medians):
+    S1_X2_C13159484  platinum  33 → 5     $708,000 → $790,000   (+$82K)
+    S1_X2_C13159484  gold      300 → 15   $577,500 → $740,000   (+$162.5K)
+    S1_X2_C13159484  silver    500 → 23   $584,500 → $750,000   (+$165.5K) ← BUG
+    S2_X2_C13236446  platinum  33 → 5     $708,000 → $790,000   (+$82K)
+    S2_X2_C13236446  gold      300 → 15   $577,500 → $740,000   (+$162.5K)
+    S2_X2_C13236446  silver    500 → 23   $584,500 → $750,000   (+$165.5K)
+    S3_W13067086     platinum  11 → 2     $472,000 → $545,000   (+$73K)
+    S3_W13067086     gold      143 → 3    $870,000 → $550,000   (-$320K)
+    S3_W13067086     silver    500 → 12   $825,000 → $620,000   (-$205K)
+    S4_W13143450     gold      180 → 12   $930,000 → $693,000   (-$237K)
+    S4_W13143450     silver    500 → 13   $1,057,000 → $600,000 (-$457K) ← BUG
+
+  Independent DB verification (helper vs direct-query):
+    11 / 11 (subject × tier) rows MATCH on filtered count.
+    11 / 11 rows match on filtered median when using the matcher's
+    even-aware median formula. (My diff script used a simplified
+    upper-mid median for even-count pools, producing $0-$20K offline
+    "drift" lines — that's the script's simplification, not a matcher
+    bug. The matcher mirrors the home medianRangeOf exactly.)
+
+  TAX THREADING — runtime proof (probe route with suppressTax flag):
+    Subject S4_W13143450 (tax_annual_amount = 3478, gold-anchored, 10
+    matched comps).
+    Run A (suppressTax=true, simulates PRE-fix production caller path):
+      comp ordering = [W12636290, W13005844, W12578316, W12274471, W12160024, …]
+    Run B (suppressTax=false, POST-fix production caller path):
+      comp ordering = [W12578316, W12636290, W12274471, W13005844, W11982576, …]
+    H8 FIRED — top comparable changed from W12636290 → W12578316
+    when tax was threaded. The c2 +3.0pp ±15 lift now reaches users
+    instead of only the probe harness.
+    Tax-less subject (tax_annual_amount = 0): silent-omit — matcher
+    returns CONTACT/none, no error.
+
+SMOKE: tsc --noEmit exit 0 (full project, zero output).
+
+PUSH STATUS — HELD pending operator approval. The parity table above
+is the gate's evidence; operator decides whether to commit + push.
+APPLY STATUS — N/A (no DB change).
+  origin/main = 61bb5da (Phase 1 tracker close).
+  Local main = 61bb5da + 2 uncommitted units (Phase 2 UI + this Phase 1-FIX).
