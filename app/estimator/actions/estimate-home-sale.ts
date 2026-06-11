@@ -64,8 +64,11 @@ export async function estimateHomeSale(
       }
     }
 
-    // Step 2: Calculate estimate using existing statistical calculator
-    const estimate = calculateEstimate(matchResult)
+    // Step 2: Calculate estimate using existing statistical calculator.
+    // marketNoun overrides the default condo phrasing — homes show "Homes...
+    // in this area" instead of the calculator's default "Units...in this
+    // building" (homes have no building). Pricing/numeric output unchanged.
+    const estimate = calculateEstimate({ ...matchResult, marketNoun: { unit: 'Homes', place: 'area' } })
 
     // h1: plex-axis pricing override. runPlexPricingPath sets matchResult.
     // estimatedPrice as the MEDIAN of matched same-subtype LAR-adjacent

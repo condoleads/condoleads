@@ -59,8 +59,10 @@ export async function estimateHomeRent(
       }
     }
 
-    // Step 2: Calculate estimate
-    const estimate = calculateEstimate(matchResult)
+    // Step 2: Calculate estimate. marketNoun overrides the default condo
+    // phrasing — homes show "Homes...in this area" instead of "Units...in
+    // this building" (homes have no building). Pricing/numeric output unchanged.
+    const estimate = calculateEstimate({ ...matchResult, marketNoun: { unit: 'Homes', place: 'area' } })
 
     // Step 3: AI insights.
     // W-FUNNEL §9.2 Step 1: AI key + opt-in toggle now resolve per system.

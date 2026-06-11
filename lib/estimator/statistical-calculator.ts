@@ -4,6 +4,12 @@ import { ComparableSale, EstimateResult, MatchTier, TEMPERATURE_CONFIG } from '.
 interface CalculateInput {
   tier: MatchTier
   comparables: ComparableSale[]
+  // Subject-class noun for the market-conditions copy. Default (when this
+  // field is absent) is { unit: 'Units', place: 'building' } — preserves the
+  // historical condo phrasing byte-identically. Home actions pass
+  // { unit: 'Homes', place: 'area' } to avoid saying "in this building" on a
+  // detached home. Pricing/numeric output is unaffected by this field.
+  marketNoun?: { unit: string; place: string }
 }
 
 interface LegacySpecs {
@@ -26,16 +32,21 @@ export function calculateEstimate(
   // Handle legacy call: calculateEstimate(specs, comparables)
   let tier: MatchTier
   let comparables: ComparableSale[]
-  
+  // Default preserves the historical condo phrasing byte-identically. New-
+  // signature callers can override via input.marketNoun.
+  let marketNoun: { unit: string; place: string } = { unit: 'Units', place: 'building' }
+
   if (legacyComparables !== undefined) {
-    // Old signature: (specs, comparables) - used by rentals
+    // Old signature: (specs, comparables) - used by rentals.
+    // Legacy callers are condo-only; default noun is correct for them.
     tier = 'RANGE'
     comparables = legacyComparables
   } else {
-    // New signature: ({ tier, comparables })
+    // New signature: ({ tier, comparables, marketNoun? })
     const input = inputOrSpecs as CalculateInput
     tier = input.tier
     comparables = input.comparables
+    if (input.marketNoun) marketNoun = input.marketNoun
   }
 
   // CONTACT tier: No price calculation
@@ -112,13 +123,13 @@ export function calculateEstimate(
 
   if (avgDaysOnMarket < 30) {
     marketStatus = 'Fast'
-    marketMessage = 'Units are selling quickly in this building. Strong seller\'s market.'
+    marketMessage = `${marketNoun.unit} are selling quickly in this ${marketNoun.place}. Strong seller's market.`
   } else if (avgDaysOnMarket < 60) {
     marketStatus = 'Moderate'
-    marketMessage = 'Normal market conditions. Units selling at a steady pace.'
+    marketMessage = `Normal market conditions. ${marketNoun.unit} selling at a steady pace.`
   } else {
     marketStatus = 'Slow'
-    marketMessage = 'Units taking longer to sell. Buyer\'s market with more negotiating room.'
+    marketMessage = `${marketNoun.unit} taking longer to sell. Buyer's market with more negotiating room.`
   }
 
   // Count matches for summary
