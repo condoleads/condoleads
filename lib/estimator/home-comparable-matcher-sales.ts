@@ -108,6 +108,28 @@ interface HomeMatchResult {
     bronze:   TierResult | null   // area pool (new for SF; mirrors plex area cascade)
   }
   bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
+
+  // W-TAX-MATCH HOME (2026-06-11): mirror of condo's taxMatch payload
+  // (CondoSaleMatchResult.taxMatch). Tax-as-match-criterion result set,
+  // additive. `comparables` is the MULTI-TIER display list (sourceTier-
+  // stamped, dedup tightest-tier, capped at TAX_MATCH_DISPLAY_CAP).
+  // `winnerComparables` is the winning-tier-only list for the action's
+  // calculateEstimate (preserves the N=200 home backtest's 6.9% median APE).
+  // Bronze omitted (h8 muni-gated; silver is full muni reach). Plex paths
+  // (Duplex/Triplex/Fourplex/Multiplex) leave it undefined.
+  taxMatch?: {
+    matchTier:         MatchTier
+    comparables:       ComparableSale[]
+    winnerComparables: ComparableSale[]
+    count:             number
+    tiers?: {
+      platinum: TierResult | null
+      gold:     TierResult | null
+      silver:   TierResult | null
+      bronze:   TierResult | null
+    }
+    bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
+  }
 }
 
 // h1: per-subtype price-band fractions, keyed to the MEASURED median APE
@@ -1111,6 +1133,192 @@ function medianRangeOf(prices: number[]): { median: number; range: { low: number
 // have built (community-strict, community-relaxed, muni-strict, muni-relaxed,
 // muni-bedBath) the resulting `comparables` array is byte-identical to today
 // — same scoring, same top-10, same enrichment, same media join.
+// W-TAX-MATCH HOME (2026-06-11): tax-band membership predicate. Reuses the
+// existing h8 taxSimilarityScore as a SELECTOR (same-muni, +/-1 tax_year,
+// +/-20% band, $500 floor — all gates inside the scorer). Returns true iff
+// the comp falls inside the band; false otherwise (including when subject
+// tax/year/muni is missing — the scorer short-circuits to 0). Mirror of
+// condo-comparable-matcher-sales.ts withinTaxBand.
+function withinTaxBand(sale: any, specs: HomeSpecs): boolean {
+  return taxSimilarityScore(sale, specs) > 0
+}
+
+// W-TAX-MATCH HOME (2026-06-11): tax-mode geo cascade for SF homes (sale
+// only). Mirror of runTaxMatchCascade in the condo matcher. Queries the
+// same per-geo pools (street/community/muni), filters EACH by withinTaxBand
+// BEFORE the existing applyFunnel + buildSFTierResult, builds:
+//   - winnerComparables (winning-tier-only, for action's calculateEstimate)
+//   - comparables (multi-tier display list: platinum -> gold -> silver
+//     concatenated, sourceTier-stamped, deduped by listingKey keeping
+//     tightest tier, capped at TAX_MATCH_DISPLAY_CAP)
+//
+// Same priority + thresholds as the geo cascade (Platinum >= 1 for tax-mode
+// — backtest justified — and Gold/Silver >= 3). Bronze omitted (h8 is
+// muni-gated; silver IS the full muni reach in tax-mode).
+//
+// PLATINUM same-street: uses the EXISTING streetBonusFor(sale, subjName,
+// subjNum) predicate (line 242), which already handles normalization on
+// BOTH sides via normalizePlaceName + extractStreetName (subject side
+// pre-normalized by the caller). So "Adelaide Street West" vs "Adelaide St
+// W" parsed from comp's unparsed_address both pass through the same
+// normalizer; same-street matching is suffix-variance-robust by construction.
+const TAX_MATCH_DISPLAY_CAP = 12
+async function runHomeTaxMatchCascade(
+  supabase: any,
+  specs: HomeSpecs,
+  referenceDate: Date,
+  twoYearsAgo: Date,
+  subjName: string | null,
+  subjNum: number | null,
+  customValues: ResolvedHomeAdjustments,
+): Promise<HomeMatchResult['taxMatch']> {
+  // Short-circuit when the h8 gate would never fire.
+  const subjTax = specs.subjectTaxAnnualAmount
+  if (!subjTax || subjTax <= 500) return undefined
+  if (specs.subjectTaxYear == null) return undefined
+  if (!specs.municipalityId) return undefined
+
+  const subtypes = getCompatibleSubtypes(specs.propertySubtype)
+
+  // Query community pool (used for Gold tax-mode).
+  let commSales: any[] = []
+  if (specs.communityId) {
+    let q = supabase
+      .from('mls_listings')
+      .select(HOME_SELECT)
+      .eq('community_id', specs.communityId)
+      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
+      .eq('transaction_type', 'For Sale')
+      .eq('standard_status', 'Closed')
+      .not('close_price', 'is', null)
+      .gt('close_price', 100000)
+      .gte('close_date', twoYearsAgo.toISOString())
+      .order('close_date', { ascending: false })
+      .limit(300)
+    if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
+    const { data } = await q
+    commSales = data || []
+  }
+
+  // Query muni pool (used for BOTH Silver tax-mode AND Platinum same-street
+  // filter). Single query, two tiers — DRY.
+  let muniSales: any[] = []
+  {
+    let q = supabase
+      .from('mls_listings')
+      .select(HOME_SELECT)
+      .eq('municipality_id', specs.municipalityId)
+      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
+      .eq('transaction_type', 'For Sale')
+      .eq('standard_status', 'Closed')
+      .not('close_price', 'is', null)
+      .gt('close_price', 100000)
+      .gte('close_date', twoYearsAgo.toISOString())
+      .order('close_date', { ascending: false })
+      .limit(500)
+    if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
+    const { data } = await q
+    muniSales = data || []
+  }
+
+  // PLATINUM — same-street + tax-band. Same-street uses streetBonusFor
+  // (normalized both sides; suffix-variance-robust). Threshold >= 1 for tax-
+  // mode Platinum (backtest justified at 31.5% coverage).
+  let platinumTier: TierResult | null = null
+  if (subjName && subjNum != null && muniSales.length > 0) {
+    const samestreetBanded = muniSales.filter(s =>
+      streetBonusFor(s, subjName, subjNum).sameStreet && withinTaxBand(s, specs),
+    )
+    if (samestreetBanded.length > 0) {
+      const clean = samestreetBanded.filter(notAsIs)
+      let pool = applyFunnel(clean, specs)
+      if (pool.length < 1) pool = applyRelaxedFunnel(clean, specs)
+      if (pool.length >= 1) {
+        platinumTier = await buildSFTierResult(pool, specs, subjName, subjNum, customValues)
+      }
+    }
+  }
+
+  // GOLD — community + tax-band.
+  let goldTier: TierResult | null = null
+  if (commSales.length > 0) {
+    const banded = commSales.filter(s => withinTaxBand(s, specs))
+    if (banded.length > 0) {
+      const clean = banded.filter(notAsIs)
+      let pool = applyFunnel(clean, specs)
+      if (pool.length < 3) pool = applyRelaxedFunnel(clean, specs)
+      if (pool.length >= 3) {
+        goldTier = await buildSFTierResult(pool, specs, subjName, subjNum, customValues)
+      }
+    }
+  }
+
+  // SILVER — muni + tax-band (reuses muniSales).
+  let silverTier: TierResult | null = null
+  if (muniSales.length > 0) {
+    const banded = muniSales.filter(s => withinTaxBand(s, specs))
+    if (banded.length > 0) {
+      const clean = banded.filter(notAsIs)
+      let pool = applyFunnel(clean, specs)
+      if (pool.length < 3) pool = applyRelaxedFunnel(clean, specs)
+      if (pool.length >= 3) {
+        silverTier = await buildSFTierResult(pool, specs, subjName, subjNum, customValues)
+      }
+    }
+  }
+
+  const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: null }
+
+  // Winner by priority: Platinum >= 1, Gold/Silver >= 3.
+  let winnerTier: TierResult | null = null
+  let bestGeoTier: 'platinum' | 'gold' | 'silver' | 'none' = 'none'
+  if (platinumTier && platinumTier.count >= 1) {
+    winnerTier = platinumTier; bestGeoTier = 'platinum'
+  } else if (goldTier && goldTier.count >= 3) {
+    winnerTier = goldTier; bestGeoTier = 'gold'
+  } else if (silverTier && silverTier.count >= 3) {
+    winnerTier = silverTier; bestGeoTier = 'silver'
+  } else {
+    return undefined
+  }
+
+  // Multi-tier DISPLAY list: priority order = tightest tier first
+  // (platinum -> gold -> silver). Stamp sourceTier. Dedup by listingKey,
+  // KEEPING THE FIRST OCCURRENCE (tightest tier wins). Cap at
+  // TAX_MATCH_DISPLAY_CAP.
+  const stamp = (
+    arr: ComparableSale[] | undefined,
+    tier: 'platinum' | 'gold' | 'silver',
+  ): ComparableSale[] => (arr || []).map(c => ({ ...c, sourceTier: tier }))
+
+  const orderedAll: ComparableSale[] = [
+    ...stamp(platinumTier?.comparables, 'platinum'),
+    ...stamp(goldTier?.comparables, 'gold'),
+    ...stamp(silverTier?.comparables, 'silver'),
+  ]
+  const seenKeys = new Set<string>()
+  const deduped: ComparableSale[] = []
+  for (const c of orderedAll) {
+    const k = c.listingKey || `__noKey_${deduped.length}`
+    if (seenKeys.has(k)) continue
+    seenKeys.add(k)
+    deduped.push(c)
+    if (deduped.length >= TAX_MATCH_DISPLAY_CAP) break
+  }
+
+  // MatchTier for the tax section header (winning tier's quality axis).
+  const matchTier: MatchTier = tierFromScore(winnerTier.bestMatchScore, winnerTier.count)
+
+  return {
+    matchTier,
+    comparables:       deduped,
+    winnerComparables: winnerTier.comparables,
+    count:             winnerTier.count,
+    tiers,
+    bestGeoTier,
+  }
+}
+
 async function buildSFTierResult(
   funneledPool: any[],
   specs: HomeSpecs,
@@ -1358,6 +1566,13 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
   //   - Platinum meets threshold at >=3 (same threshold as Gold; tighter pool)
   const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: bronzeTier }
 
+  // W-TAX-MATCH HOME (2026-06-11): run the tax-mode cascade in parallel
+  // with the geo selection. ADDITIVE — does not influence geo
+  // tier/pricing/comps; the geo returns below are unchanged. taxMatch is
+  // undefined when subject tax is missing or no comps fall in the band
+  // (silent-omits at the renderer).
+  const taxMatch = await runHomeTaxMatchCascade(supabase, specs, referenceDate, twoYearsAgo, subjName, subjNum, customValues)
+
   let bestGeoTier: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
   let best: TierResult | null
   let geoLevel: HomeMatchResult['geoLevel']
@@ -1374,7 +1589,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
   }
 
   if (!best) {
-    return { tier: 'CONTACT', comparables: [], geoLevel: 'none', tiers, bestGeoTier }
+    return { tier: 'CONTACT', comparables: [], geoLevel: 'none', tiers, bestGeoTier, taxMatch }
   }
 
   // MatchTier (quality axis) from best tier's top score + count.
@@ -1391,6 +1606,7 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
     bestMatchScore: best.bestMatchScore,
     tiers,
     bestGeoTier,
+    taxMatch,
   }
 }
 

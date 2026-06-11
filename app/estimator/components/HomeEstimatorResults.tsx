@@ -883,6 +883,119 @@ export default function HomeEstimatorResults({
           </div>
         </div>
 
+        {/* W-TAX-MATCH HOME (2026-06-11) — Tax-Matched Comparables section.
+            Mirror of EstimatorResults.tsx (condo b1) on the home renderer.
+            Co-equal to the geo comparables section above: same h3 header,
+            same GeoConfidenceSpread (HOME_LABEL_MAP — Platinum=Same street),
+            same simplified tile (photo + bed/bath/sqft + price + tax + tier
+            badge pill). NO geo-tier match-detail panels (geo-mode specific).
+            NO combined estimate. Gated on result.taxMatch.comparables.length
+            > 0 + !isMultiUnitSubject (plex paths don't emit taxMatch). */}
+        {!isMultiUnitSubject && result.taxMatch && result.taxMatch.comparables.length > 0 && (
+          <div className="mt-8 space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 mb-1">
+                Tax-Matched Comparables ({result.taxMatch.count})
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Matched by property tax — similar assessed value within the same municipality.
+              </p>
+              <div className="bg-white rounded-xl p-5 border border-slate-200 mb-4">
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="text-sm font-semibold text-slate-700">Tax-matched estimate</span>
+                  <span className="text-2xl font-bold text-slate-900">{formatPrice(result.taxMatch.estimatedPrice)}</span>
+                </div>
+                <div className="text-xs text-slate-500">
+                  Range: {formatPrice(result.taxMatch.priceRange.low)} – {formatPrice(result.taxMatch.priceRange.high)}
+                </div>
+              </div>
+              {result.taxMatch.tiers && (
+                <div className="mb-4">
+                  <GeoConfidenceSpread
+                    tiers={result.taxMatch.tiers}
+                    bestGeoTier={result.taxMatch.bestGeoTier}
+                    labelMap={HOME_LABEL_MAP}
+                  />
+                </div>
+              )}
+              <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                {result.taxMatch.comparables.map((comp, idx) => {
+                  const tierKey = (comp.sourceTier || result.taxMatch?.bestGeoTier || 'gold') as 'platinum' | 'gold' | 'silver' | 'bronze'
+                  const tierLabel = HOME_LABEL_MAP[tierKey]
+                  const tierBadgeColor =
+                    tierKey === 'platinum' ? 'bg-emerald-600 text-white'
+                    : tierKey === 'gold'   ? 'bg-amber-500 text-white'
+                    : tierKey === 'silver' ? 'bg-slate-500 text-white'
+                    :                        'bg-orange-700 text-white'
+                  return (
+                  <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
+                    <div className="flex items-start gap-4 mb-3">
+                      <div className="w-24 h-24 flex-shrink-0 bg-slate-100 rounded-lg relative overflow-hidden">
+                        {comp.mediaUrl ? (
+                          <img src={comp.mediaUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-2xl">🏠</div>
+                        )}
+                        <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${tierBadgeColor}`}>
+                          {tierLabel.emoji} {tierLabel.name.toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <p className="font-bold text-slate-900 text-lg">
+                            {comp.bedrooms} bed, {comp.bathrooms} bath
+                          </p>
+                          {comp.propertySubtype && (
+                            <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                              {badgeSubtype(comp.propertySubtype)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-600">
+                          {comp.exactSqft ? `${comp.exactSqft} sqft` : comp.livingAreaRange + ' sqft'}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate mt-1">
+                          {comp.unparsedAddress?.split(',')[0] || '—'}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Sold: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} • {comp.daysOnMarket} days on market
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 mt-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm text-slate-600">Sale Price:</span>
+                        <span className="text-lg font-bold text-slate-900">{formatPrice(comp.closePrice)}</span>
+                      </div>
+                      {comp.taxAnnualAmount != null && comp.taxAnnualAmount > 0 && (
+                        <div className="flex justify-between items-center pt-2 mt-2 border-t border-slate-100">
+                          <span className="text-xs text-slate-500">Property tax:</span>
+                          <span className="text-xs text-slate-500">${Math.round(comp.taxAnnualAmount).toLocaleString()}/yr</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
+                        <span className="text-xs text-slate-500">Originally listed:</span>
+                        <span className="text-xs text-slate-500">{formatPrice(comp.listPrice)}</span>
+                      </div>
+                      {comp.listingKey && comp.unparsedAddress && (
+                        <a
+                          href={generateHomePropertySlug({ unparsed_address: comp.unparsedAddress, listing_key: comp.listingKey })}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          View Property Details →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* h3 refinement — Competing-For-Sale rail (LOCKED v11 Option C,
             Principle 5). Now shows for ALL home subjects (SF + plex), each
             matched on its type's sold-comp criteria (server-side via

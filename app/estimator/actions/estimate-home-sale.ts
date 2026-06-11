@@ -147,6 +147,33 @@ export async function estimateHomeSale(
       }
     }
 
+    // W-TAX-MATCH HOME (2026-06-11): when the matcher returned a tax-matched
+    // comp set, run the SAME calculateEstimate on the WINNER comps to get the
+    // tax section's own estimatedPrice + priceRange. Price math runs over
+    // winnerComparables (mono-tier winning list) — preserves the N=200 home
+    // backtest's 6.9% median APE measurement. Client-facing `comparables`
+    // carries the multi-tier display list (sourceTier-stamped, deduped,
+    // capped) built by runHomeTaxMatchCascade. Plex paths leave taxMatch
+    // undefined -> section auto-hides. Same marketNoun (homes/area) used
+    // for tax math as the geo path; price string-only fields stay consistent.
+    let taxMatch: EstimateResult['taxMatch'] = undefined
+    if (matchResult.taxMatch && matchResult.taxMatch.winnerComparables.length > 0) {
+      const taxEst = calculateEstimate({
+        tier: matchResult.taxMatch.matchTier,
+        comparables: matchResult.taxMatch.winnerComparables,
+        marketNoun: { unit: 'Homes', place: 'area' },
+      })
+      taxMatch = {
+        matchTier:      matchResult.taxMatch.matchTier,
+        comparables:    matchResult.taxMatch.comparables,
+        estimatedPrice: taxEst.estimatedPrice,
+        priceRange:     taxEst.priceRange,
+        count:          matchResult.taxMatch.count,
+        tiers:          matchResult.taxMatch.tiers,
+        bestGeoTier:    matchResult.taxMatch.bestGeoTier,
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -156,6 +183,7 @@ export async function estimateHomeSale(
         // Plex returns leave these undefined; SF returns populate both.
         tiers: matchResult.tiers,
         bestGeoTier: matchResult.bestGeoTier,
+        taxMatch,
       },
       geoLevel: matchResult.geoLevel,
     }
