@@ -184,6 +184,29 @@ function medianRangeOf(prices: number[]): { median: number; range: { low: number
 // close_prices feed the median/range display. `matched` is the priced
 // comparables that the within-tier match function returned — those are
 // what the user sees in the Comparables list when this tier wins.
+// W-CONDO-MODAL-PARITY follow-up (2026-06-11): attach a thumbnail mediaUrl
+// to each SELECTED comparable so the condo comp tile can render a photo.
+// Verbatim port of home-comparable-matcher-sales.ts:713-727 (same `media`
+// table, same variant_type='thumbnail' + order_number=0, same single
+// batched .in(listing_id, ids) query — NOT N+1). Called only on the top-N
+// selected raw sales (post-scoring, post-slice) so it cannot influence
+// selection, scoring, or pricing — strictly enrichment.
+async function attachMediaUrls(sales: any[]): Promise<any[]> {
+  if (!sales || sales.length === 0) return sales
+  const ids = sales.map(s => s.id).filter(Boolean)
+  if (ids.length === 0) return sales
+  const supabase = createClient()
+  const { data: media } = await supabase
+    .from('media')
+    .select('listing_id, media_url')
+    .in('listing_id', ids)
+    .eq('variant_type', 'thumbnail')
+    .eq('order_number', 0)
+  const map: Record<string, string> = {}
+  ;(media || []).forEach((m: any) => { map[m.listing_id] = m.media_url })
+  return sales.map(s => ({ ...s, mediaUrl: map[s.id] || null }))
+}
+
 function buildCondoTierResult(
   pool: any[],
   matched: ComparableSale[],
@@ -265,7 +288,7 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .gte('close_date', sinceISO)
       .order('close_date', { ascending: false })
     if (bldgSales && bldgSales.length > 0) {
-      platinumMatch = matchWithinBuilding(bldgSales, specs, customValues)
+      platinumMatch = await matchWithinBuilding(bldgSales, specs, customValues)
       platinumTier  = buildCondoTierResult(condoComparabilityFilter(bldgSales, specs), platinumMatch.comparables)
     }
   }
@@ -285,7 +308,7 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .order('close_date', { ascending: false })
       .limit(300)
     if (commSales && commSales.length > 0) {
-      goldMatch = matchAcrossBuildings(commSales, specs, customValues)
+      goldMatch = await matchAcrossBuildings(commSales, specs, customValues)
       goldTier  = buildCondoTierResult(condoComparabilityFilter(commSales, specs), goldMatch.comparables)
     }
   }
@@ -305,7 +328,7 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
       .order('close_date', { ascending: false })
       .limit(500)
     if (muniSales && muniSales.length > 0) {
-      silverMatch = matchAcrossBuildings(muniSales, specs, customValues)
+      silverMatch = await matchAcrossBuildings(muniSales, specs, customValues)
       silverTier  = buildCondoTierResult(condoComparabilityFilter(muniSales, specs), silverMatch.comparables)
     }
   }
@@ -327,7 +350,7 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
         .order('close_date', { ascending: false })
         .limit(500)
       if (areaSales && areaSales.length > 0) {
-        bronzeMatch = matchAcrossBuildings(areaSales, specs, customValues)
+        bronzeMatch = await matchAcrossBuildings(areaSales, specs, customValues)
         bronzeTier  = buildCondoTierResult(condoComparabilityFilter(areaSales, specs), bronzeMatch.comparables)
       }
     }
@@ -365,11 +388,11 @@ async function munisInArea(areaId: string, supabase: any): Promise<string[]> {
 // Existing 7-tier model: BINGO / BINGO-ADJ / RANGE / RANGE-ADJ / MAINT / MAINT-ADJ.
 // MAINT tier here uses the assoc_fee ±20% band (kept; the maint-PSF score
 // nudge is layered on top at scoring time, not as a separate tier).
-function matchWithinBuilding(
+async function matchWithinBuilding(
   sales: any[],
   specs: CondoSaleSpecs,
   customValues: ResolvedCondoAdjustments,
-): { tier: MatchTier; comparables: ComparableSale[] } {
+): Promise<{ tier: MatchTier; comparables: ComparableSale[] }> {
   const bedBath = sales.filter(s =>
     s.bedrooms_total === specs.bedrooms && s.bathrooms_total_integer === specs.bathrooms,
   )
@@ -386,14 +409,14 @@ function matchWithinBuilding(
       return (s.parking_total || 0) === specs.parking && (s.locker === 'Owned') === specs.hasLocker
     })
     if (bingo.length > 0) {
-      return { tier: 'BINGO', comparables: scoreAndShape(bingo, specs, customValues, 'BINGO', false) }
+      return { tier: 'BINGO', comparables: await scoreAndShape(bingo, specs, customValues, 'BINGO', false) }
     }
     const bingoAdj = bedBath.filter(s => {
       const sf = extractExactSqft(s.square_foot_source)
       return sf && sf >= min && sf <= max
     })
     if (bingoAdj.length > 0) {
-      return { tier: 'BINGO-ADJ', comparables: scoreAndShape(bingoAdj, specs, customValues, 'BINGO-ADJ', true) }
+      return { tier: 'BINGO-ADJ', comparables: await scoreAndShape(bingoAdj, specs, customValues, 'BINGO-ADJ', true) }
     }
   }
 
@@ -405,11 +428,11 @@ function matchWithinBuilding(
       ((s.locker === 'Owned') === specs.hasLocker),
     )
     if (range.length > 0) {
-      return { tier: 'RANGE', comparables: scoreAndShape(range, specs, customValues, 'RANGE', false) }
+      return { tier: 'RANGE', comparables: await scoreAndShape(range, specs, customValues, 'RANGE', false) }
     }
     const rangeAdj = bedBath.filter(s => s.living_area_range === specs.livingAreaRange)
     if (rangeAdj.length > 0) {
-      return { tier: 'RANGE-ADJ', comparables: scoreAndShape(rangeAdj, specs, customValues, 'RANGE-ADJ', true) }
+      return { tier: 'RANGE-ADJ', comparables: await scoreAndShape(rangeAdj, specs, customValues, 'RANGE-ADJ', true) }
     }
   }
 
@@ -421,11 +444,11 @@ function matchWithinBuilding(
       ((s.locker === 'Owned') === specs.hasLocker),
     )
     if (maint.length > 0) {
-      return { tier: 'MAINT', comparables: scoreAndShape(maint, specs, customValues, 'MAINT', false) }
+      return { tier: 'MAINT', comparables: await scoreAndShape(maint, specs, customValues, 'MAINT', false) }
     }
     const maintAdj = bedBath.filter(s => isMaintenanceMatch(specs.associationFee, s.association_fee, 0.20))
     if (maintAdj.length > 0) {
-      return { tier: 'MAINT-ADJ', comparables: scoreAndShape(maintAdj, specs, customValues, 'MAINT-ADJ', true) }
+      return { tier: 'MAINT-ADJ', comparables: await scoreAndShape(maintAdj, specs, customValues, 'MAINT-ADJ', true) }
     }
   }
 
@@ -433,11 +456,11 @@ function matchWithinBuilding(
 }
 
 // ===== Within Gold/Silver/Bronze (cross-building) =====
-function matchAcrossBuildings(
+async function matchAcrossBuildings(
   sales: any[],
   specs: CondoSaleSpecs,
   customValues: ResolvedCondoAdjustments,
-): { tier: MatchTier; comparables: ComparableSale[] } {
+): Promise<{ tier: MatchTier; comparables: ComparableSale[] }> {
   const bedBath = sales.filter(s =>
     s.bedrooms_total === specs.bedrooms && s.bathrooms_total_integer === specs.bathrooms,
   )
@@ -449,9 +472,12 @@ function matchAcrossBuildings(
     if (r.length >= 3) {
       const scored = r.map(s => ({ s, sc: scoreSim(s, specs) }))
       scored.sort((a, b) => b.sc - a.sc)
+      // Attach media AFTER scoring + slicing — strictly post-selection.
+      const top = scored.slice(0, 10).map(x => x.s)
+      const enriched = await attachMediaUrls(top)
       return {
         tier: 'RANGE',
-        comparables: scored.slice(0, 10).map(x => createCrossBuildingComp(x.s, specs)),
+        comparables: enriched.map(s => createCrossBuildingComp(s, specs)),
       }
     }
   }
@@ -460,9 +486,11 @@ function matchAcrossBuildings(
   if (bedBath.length >= 3) {
     const scored = bedBath.map(s => ({ s, sc: scoreSim(s, specs) }))
     scored.sort((a, b) => b.sc - a.sc)
+    const top = scored.slice(0, 10).map(x => x.s)
+    const enriched = await attachMediaUrls(top)
     return {
       tier: 'RANGE-ADJ',
-      comparables: scored.slice(0, 10).map(x => createCrossBuildingComp(x.s, specs)),
+      comparables: enriched.map(s => createCrossBuildingComp(s, specs)),
     }
   }
 
@@ -471,9 +499,11 @@ function matchAcrossBuildings(
   if (bedOnly.length >= 1) {
     const scored = bedOnly.map(s => ({ s, sc: scoreSim(s, specs) }))
     scored.sort((a, b) => b.sc - a.sc)
+    const top = scored.slice(0, 5).map(x => x.s)
+    const enriched = await attachMediaUrls(top)
     return {
       tier: 'CONTACT',
-      comparables: scored.slice(0, 5).map(x => createCrossBuildingComp(x.s, specs)),
+      comparables: enriched.map(s => createCrossBuildingComp(s, specs)),
     }
   }
 
@@ -510,18 +540,21 @@ function scoreSim(sale: any, specs: CondoSaleSpecs): number {
   return score
 }
 
-function scoreAndShape(
+async function scoreAndShape(
   sales: any[],
   specs: CondoSaleSpecs,
   customValues: ResolvedCondoAdjustments,
   tier: MatchTier,
   applyAdj: boolean,
-): ComparableSale[] {
+): Promise<ComparableSale[]> {
   // Within-Platinum: pricing carries by within-building structure; tax band +
   // maint-PSF nudges reorder but the top-N stays same-building.
   const scored = sales.map(s => ({ s, sc: scoreSim(s, specs) }))
   scored.sort((a, b) => b.sc - a.sc)
-  return scored.slice(0, 10).map(x => createComp(x.s, specs, customValues, applyAdj, tier))
+  // Attach media AFTER scoring + slicing — strictly post-selection enrichment.
+  const top = scored.slice(0, 10).map(x => x.s)
+  const enriched = await attachMediaUrls(top)
+  return enriched.map(sale => createComp(sale, specs, customValues, applyAdj, tier))
 }
 
 function createComp(
@@ -592,6 +625,8 @@ function createComp(
     matchQuality: mq,
     adjustments: adjustments.length > 0 ? adjustments : undefined,
     adjustedPrice: adjustments.length > 0 ? adjustedPrice : undefined,
+    // mediaUrl populated by attachMediaUrls on the SELECTED raw sales.
+    mediaUrl: sale.mediaUrl ?? null,
   }
 }
 
@@ -616,5 +651,6 @@ function createCrossBuildingComp(sale: any, specs: CondoSaleSpecs): ComparableSa
     temperature: assignTemperature(sale.close_date),
     matchTier: 'RANGE' as MatchTier,
     matchQuality: 'Good',
+    mediaUrl: sale.mediaUrl ?? null,
   }
 }

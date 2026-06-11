@@ -508,9 +508,21 @@ export default function EstimatorResults({
 
               return (
                 <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-start gap-4 mb-3">
+                    {/* W-CONDO-MODAL-PARITY follow-up (2026-06-11) — 96x96 photo
+                        column mirroring HomeEstimatorResults.tsx:619-630. When
+                        comp.mediaUrl is null (no thumbnail in the media table
+                        for this listing) → 🏢 fallback, identical to home's
+                        🏠 fallback pattern (no broken-img icon). */}
+                    <div className="w-24 h-24 flex-shrink-0 bg-slate-100 rounded-lg relative overflow-hidden">
+                      {comp.mediaUrl ? (
+                        <img src={comp.mediaUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl">🏢</div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         {comp.unitNumber && (
                           <span className="text-sm font-semibold text-slate-500">Unit {comp.unitNumber}</span>
                         )}

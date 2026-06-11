@@ -94,6 +94,29 @@ function medianRangeOf(prices: number[]): { median: number; range: { low: number
 // On the LEASE side `pool` is the post-gate row set — median/range reflect
 // the same cohort that drives the priced output. Returns null when the
 // pool is empty OR the within-tier matcher produced zero comparables.
+// W-CONDO-MODAL-PARITY follow-up (2026-06-11): attach a thumbnail mediaUrl
+// to each SELECTED comparable so the condo comp tile can render a photo.
+// Verbatim port of home-comparable-matcher-sales.ts:713-727 (same `media`
+// table, same variant_type='thumbnail' + order_number=0, same single
+// batched .in(listing_id, ids) query — NOT N+1). Called only on the top-N
+// selected raw leases (post-scoring, post-slice) so it cannot influence
+// selection, scoring, or pricing — strictly enrichment.
+async function attachMediaUrls(rows: any[]): Promise<any[]> {
+  if (!rows || rows.length === 0) return rows
+  const ids = rows.map(r => r.id).filter(Boolean)
+  if (ids.length === 0) return rows
+  const supabase = createClient()
+  const { data: media } = await supabase
+    .from('media')
+    .select('listing_id, media_url')
+    .in('listing_id', ids)
+    .eq('variant_type', 'thumbnail')
+    .eq('order_number', 0)
+  const map: Record<string, string> = {}
+  ;(media || []).forEach((m: any) => { map[m.listing_id] = m.media_url })
+  return rows.map(r => ({ ...r, mediaUrl: map[r.id] || null }))
+}
+
 function buildCondoTierResult(
   pool: any[],
   matched: ComparableSale[],
@@ -270,7 +293,7 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
     if (bldgLeases && bldgLeases.length > 0) {
       const gated = applyLeaseSegGates(bldgLeases, specs)
       if (gated.length > 0) {
-        platinumMatch = matchWithinBuilding(gated, specs, customValues)
+        platinumMatch = await matchWithinBuilding(gated, specs, customValues)
         platinumTier  = buildCondoTierResult(condoComparabilityFilter(gated, specs), platinumMatch.comparables)
       }
     }
@@ -292,7 +315,7 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
     if (commLeases && commLeases.length > 0) {
       const gated = applyLeaseSegGates(commLeases, specs)
       if (gated.length > 0) {
-        goldMatch = matchAcrossBuildings(gated, specs, customValues)
+        goldMatch = await matchAcrossBuildings(gated, specs, customValues)
         goldTier  = buildCondoTierResult(condoComparabilityFilter(gated, specs), goldMatch.comparables)
       }
     }
@@ -314,7 +337,7 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
     if (muniLeases && muniLeases.length > 0) {
       const gated = applyLeaseSegGates(muniLeases, specs)
       if (gated.length > 0) {
-        silverMatch = matchAcrossBuildings(gated, specs, customValues)
+        silverMatch = await matchAcrossBuildings(gated, specs, customValues)
         silverTier  = buildCondoTierResult(condoComparabilityFilter(gated, specs), silverMatch.comparables)
       }
     }
@@ -336,7 +359,7 @@ export async function findCondoComparablesRentals(specs: CondoLeaseSpecs): Promi
     if (areaLeases && areaLeases.length > 0) {
       const gated = applyLeaseSegGates(areaLeases, specs)
       if (gated.length > 0) {
-        bronzeMatch = matchAcrossBuildings(gated, specs, customValues)
+        bronzeMatch = await matchAcrossBuildings(gated, specs, customValues)
         bronzeTier  = buildCondoTierResult(condoComparabilityFilter(gated, specs), bronzeMatch.comparables)
       }
     }
@@ -374,11 +397,11 @@ async function munisInArea(areaId: string, supabase: any): Promise<string[]> {
 }
 
 // ===== Within-Platinum (same building) sub-tier matching =====
-function matchWithinBuilding(
+async function matchWithinBuilding(
   leases: any[],
   specs: CondoLeaseSpecs,
   customValues: ResolvedCondoAdjustments,
-): { tier: MatchTier; comparables: ComparableSale[] } {
+): Promise<{ tier: MatchTier; comparables: ComparableSale[] }> {
   const bedBath = leases.filter(l =>
     l.bedrooms_total === specs.bedrooms && l.bathrooms_total_integer === specs.bathrooms
   )
@@ -398,7 +421,8 @@ function matchWithinBuilding(
       return (l.parking_total || 0) === specs.parking && (l.locker === 'Owned') === specs.hasLocker
     })
     if (bingo.length > 0) {
-      return { tier: 'BINGO', comparables: bingo.slice(0, 10).map(l => createComp(l, specs, customValues, false)) }
+      const enriched = await attachMediaUrls(bingo.slice(0, 10))
+      return { tier: 'BINGO', comparables: enriched.map(l => createComp(l, specs, customValues, false)) }
     }
     // BINGO-ADJ: exact sqft ±10% + parking/locker may differ
     const bingoAdj = bedBath.filter(l => {
@@ -406,7 +430,8 @@ function matchWithinBuilding(
       return sf && sf >= min && sf <= max
     })
     if (bingoAdj.length > 0) {
-      return { tier: 'BINGO-ADJ', comparables: bingoAdj.slice(0, 10).map(l => createComp(l, specs, customValues, true)) }
+      const enriched = await attachMediaUrls(bingoAdj.slice(0, 10))
+      return { tier: 'BINGO-ADJ', comparables: enriched.map(l => createComp(l, specs, customValues, true)) }
     }
   }
 
@@ -418,11 +443,13 @@ function matchWithinBuilding(
       (l.locker === 'Owned') === specs.hasLocker,
     )
     if (range.length > 0) {
-      return { tier: 'RANGE', comparables: range.slice(0, 10).map(l => createComp(l, specs, customValues, false)) }
+      const enriched = await attachMediaUrls(range.slice(0, 10))
+      return { tier: 'RANGE', comparables: enriched.map(l => createComp(l, specs, customValues, false)) }
     }
     const rangeAdj = bedBath.filter(l => l.living_area_range === specs.livingAreaRange)
     if (rangeAdj.length > 0) {
-      return { tier: 'RANGE-ADJ', comparables: rangeAdj.slice(0, 10).map(l => createComp(l, specs, customValues, true)) }
+      const enriched = await attachMediaUrls(rangeAdj.slice(0, 10))
+      return { tier: 'RANGE-ADJ', comparables: enriched.map(l => createComp(l, specs, customValues, true)) }
     }
   }
 
@@ -433,11 +460,11 @@ function matchWithinBuilding(
 // Building-specific signals (parking spec, locker spec) lose meaning across
 // buildings — they become score nudges. Sqft-range + bed + bath remain the
 // alignment.
-function matchAcrossBuildings(
+async function matchAcrossBuildings(
   leases: any[],
   specs: CondoLeaseSpecs,
   customValues: ResolvedCondoAdjustments,
-): { tier: MatchTier; comparables: ComparableSale[] } {
+): Promise<{ tier: MatchTier; comparables: ComparableSale[] }> {
   const bedBath = leases.filter(l =>
     l.bedrooms_total === specs.bedrooms && l.bathrooms_total_integer === specs.bathrooms,
   )
@@ -452,9 +479,12 @@ function matchAcrossBuildings(
         score: scoreSimilarity(l, specs, customValues),
       }))
       scored.sort((a, b) => b.score - a.score)
+      // Attach media AFTER scoring + slicing — strictly post-selection.
+      const top = scored.slice(0, 10).map(s => s.lease)
+      const enriched = await attachMediaUrls(top)
       return {
         tier: 'RANGE',
-        comparables: scored.slice(0, 10).map(s => createCrossBuildingComp(s.lease, specs)),
+        comparables: enriched.map(l => createCrossBuildingComp(l, specs)),
       }
     }
   }
@@ -466,9 +496,11 @@ function matchAcrossBuildings(
       score: scoreSimilarity(l, specs, customValues),
     }))
     scored.sort((a, b) => b.score - a.score)
+    const top = scored.slice(0, 10).map(s => s.lease)
+    const enriched = await attachMediaUrls(top)
     return {
       tier: 'RANGE-ADJ',
-      comparables: scored.slice(0, 10).map(s => createCrossBuildingComp(s.lease, specs)),
+      comparables: enriched.map(l => createCrossBuildingComp(l, specs)),
     }
   }
 
@@ -480,9 +512,11 @@ function matchAcrossBuildings(
       score: scoreSimilarity(l, specs, customValues),
     }))
     scored.sort((a, b) => b.score - a.score)
+    const top = scored.slice(0, 5).map(s => s.lease)
+    const enriched = await attachMediaUrls(top)
     return {
       tier: 'CONTACT',
-      comparables: scored.slice(0, 5).map(s => createCrossBuildingComp(s.lease, specs)),
+      comparables: enriched.map(l => createCrossBuildingComp(l, specs)),
     }
   }
 
@@ -589,6 +623,8 @@ function createComp(lease: any, specs: CondoLeaseSpecs, customValues: ResolvedCo
     matchQuality: mq,
     adjustments: adjustments.length > 0 ? adjustments : undefined,
     adjustedPrice: adjustments.length > 0 ? adjustedPrice : undefined,
+    // mediaUrl populated by attachMediaUrls on the SELECTED raw leases.
+    mediaUrl: lease.mediaUrl ?? null,
   }
 }
 
@@ -614,5 +650,6 @@ function createCrossBuildingComp(lease: any, specs: CondoLeaseSpecs): Comparable
     temperature: assignTemperature(lease.close_date),
     matchTier: 'RANGE' as MatchTier,
     matchQuality: 'Good',
+    mediaUrl: lease.mediaUrl ?? null,
   }
 }
