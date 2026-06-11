@@ -77,6 +77,23 @@ export interface CondoSaleMatchResult {
     bronze:   TierResult | null   // area pool
   }
   bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
+
+  // W-TAX-MATCH (2026-06-11): tax-as-match-criterion result set, additive.
+  // Pricing/range computed at the action layer (calculateEstimate on
+  // taxMatch.comparables). Empty when subject has no usable tax fields or
+  // no comps fall in the band on any tier.
+  taxMatch?: {
+    matchTier:    MatchTier
+    comparables:  ComparableSale[]
+    count:        number
+    tiers?: {
+      platinum: TierResult | null
+      gold:     TierResult | null
+      silver:   TierResult | null
+      bronze:   TierResult | null
+    }
+    bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
+  }
 }
 
 const CONDO_SALE_SELECT = `id, listing_key, close_price, list_price, bedrooms_total,
@@ -232,6 +249,106 @@ function buildCondoTierResult(
   }
 }
 
+// W-TAX-MATCH (2026-06-11): tax-band membership predicate. Reuses the
+// existing h8 taxSimilarityScore as a SELECTOR: same-muni gate, +/-1
+// tax_year, +/-20% tax band, $500 floor — all checks already implemented
+// inside taxSimilarityScore. Returns true iff the comp falls inside the
+// band; false otherwise (including when subject tax/year/muni is missing,
+// because the scorer short-circuits to 0 in those cases).
+function withinTaxBand(sale: any, specs: CondoSaleSpecs): boolean {
+  return taxSimilarityScore(sale, specs) > 0
+}
+
+// W-TAX-MATCH (2026-06-11): tax-mode geo cascade. Sibling to the geo
+// cascade in findCondoComparablesSales. Queries the SAME 4 geo pools
+// (building/community/muni/area), filters EACH by withinTaxBand BEFORE
+// handing to the existing match functions (which then do bed+bath+LAR +
+// top-N scoring tail unchanged). Tier display via the same
+// buildCondoTierResult(condoComparabilityFilter(...)) helpers — both
+// pool-agnostic. Same selection priority as geo (Platinum >=1, Gold/Silver
+// >=3, Bronze >=1). Bronze is muni-gated by the h8 same-muni rule, so
+// area-wide bronze in tax-mode is bounded to single-muni anyway.
+async function runTaxMatchCascade(
+  supabase: any,
+  specs: CondoSaleSpecs,
+  sinceISO: string,
+  customValues: ResolvedCondoAdjustments,
+): Promise<CondoSaleMatchResult['taxMatch']> {
+  // Short-circuit when the h8 gate would never fire: no subject tax / year /
+  // muni means withinTaxBand always returns false; no point querying.
+  const subjTax = specs.subjectTaxAnnualAmount
+  if (!subjTax || subjTax <= 500) return undefined
+  if (specs.subjectTaxYear == null) return undefined
+  if (!specs.municipalityId) return undefined
+
+  let platinumMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let platinumTier: TierResult | null = null
+  if (specs.buildingId) {
+    const { data: bldgSales } = await supabase
+      .from('mls_listings').select(CONDO_SALE_SELECT)
+      .eq('building_id', specs.buildingId)
+      .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
+      .not('close_price', 'is', null).gt('close_price', 100000)
+      .gte('close_date', sinceISO).order('close_date', { ascending: false })
+    const banded = (bldgSales || []).filter((s: any) => withinTaxBand(s, specs))
+    if (banded.length > 0) {
+      platinumMatch = await matchWithinBuilding(banded, specs, customValues)
+      platinumTier  = buildCondoTierResult(condoComparabilityFilter(banded, specs), platinumMatch.comparables)
+    }
+  }
+
+  let goldMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let goldTier: TierResult | null = null
+  if (specs.communityId) {
+    const { data: commSales } = await supabase
+      .from('mls_listings').select(CONDO_SALE_SELECT)
+      .eq('community_id', specs.communityId)
+      .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
+      .not('close_price', 'is', null).gt('close_price', 100000)
+      .gte('close_date', sinceISO).order('close_date', { ascending: false }).limit(300)
+    const banded = (commSales || []).filter((s: any) => withinTaxBand(s, specs))
+    if (banded.length > 0) {
+      goldMatch = await matchAcrossBuildings(banded, specs, customValues)
+      goldTier  = buildCondoTierResult(condoComparabilityFilter(banded, specs), goldMatch.comparables)
+    }
+  }
+
+  let silverMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let silverTier: TierResult | null = null
+  // Tax-mode is muni-gated by the h8 same-muni rule, so silver IS the widest
+  // geo this mode reaches. Bronze (area) would only ever match same-muni
+  // rows anyway; folding it in adds nothing the silver query doesn't already
+  // see. Skip bronze in tax-mode — the silver query is the full muni reach.
+  if (specs.municipalityId) {
+    const { data: muniSales } = await supabase
+      .from('mls_listings').select(CONDO_SALE_SELECT)
+      .eq('municipality_id', specs.municipalityId)
+      .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
+      .not('close_price', 'is', null).gt('close_price', 100000)
+      .gte('close_date', sinceISO).order('close_date', { ascending: false }).limit(500)
+    const banded = (muniSales || []).filter((s: any) => withinTaxBand(s, specs))
+    if (banded.length > 0) {
+      silverMatch = await matchAcrossBuildings(banded, specs, customValues)
+      silverTier  = buildCondoTierResult(condoComparabilityFilter(banded, specs), silverMatch.comparables)
+    }
+  }
+
+  const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: null }
+
+  // Same priority + thresholds as the geo cascade (Platinum >=1, Gold/Silver
+  // >=3). Bronze omitted (see comment above).
+  if (platinumMatch && platinumMatch.comparables.length >= 1) {
+    return { matchTier: platinumMatch.tier, comparables: platinumMatch.comparables, count: platinumMatch.comparables.length, tiers, bestGeoTier: 'platinum' }
+  }
+  if (goldMatch && goldMatch.comparables.length >= 3) {
+    return { matchTier: goldMatch.tier, comparables: goldMatch.comparables, count: goldMatch.comparables.length, tiers, bestGeoTier: 'gold' }
+  }
+  if (silverMatch && silverMatch.comparables.length >= 3) {
+    return { matchTier: silverMatch.tier, comparables: silverMatch.comparables, count: silverMatch.comparables.length, tiers, bestGeoTier: 'silver' }
+  }
+  return undefined
+}
+
 // W-CONDO-MODAL-PARITY Phase 1-FIX (2026-06-11): comparability filter for
 // the displayed tier median/count. Mirrors the bed+bath(+LAR) subset the
 // match functions select top-10 from, so the displayed Geographic
@@ -358,21 +475,27 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
 
   const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: bronzeTier }
 
+  // W-TAX-MATCH (2026-06-11): run the tax-mode cascade in parallel with the
+  // geo selection. ADDITIVE — does not influence geo tier/pricing/comps; the
+  // five geo returns below are unchanged. taxMatch is undefined when subject
+  // tax is missing or no comps fall in the band.
+  const taxMatch = await runTaxMatchCascade(supabase, specs, sinceISO, customValues)
+
   // SELECTION PRESERVED — same priority + same thresholds as pre-Phase-1.
   // Locked c2-revert: a single same-building comp anchors Platinum.
   if (platinumMatch && platinumMatch.comparables.length >= 1) {
-    return { ...platinumMatch, geoLevel: 'building', tiers, bestGeoTier: 'platinum' }
+    return { ...platinumMatch, geoLevel: 'building', tiers, bestGeoTier: 'platinum', taxMatch }
   }
   if (goldMatch && goldMatch.comparables.length >= 3) {
-    return { ...goldMatch, geoLevel: 'community', tiers, bestGeoTier: 'gold' }
+    return { ...goldMatch, geoLevel: 'community', tiers, bestGeoTier: 'gold', taxMatch }
   }
   if (silverMatch && silverMatch.comparables.length >= 3) {
-    return { ...silverMatch, geoLevel: 'municipality', tiers, bestGeoTier: 'silver' }
+    return { ...silverMatch, geoLevel: 'municipality', tiers, bestGeoTier: 'silver', taxMatch }
   }
   if (bronzeMatch && bronzeMatch.comparables.length >= 1) {
-    return { ...bronzeMatch, geoLevel: 'area', tiers, bestGeoTier: 'bronze' }
+    return { ...bronzeMatch, geoLevel: 'area', tiers, bestGeoTier: 'bronze', taxMatch }
   }
-  return { tier: 'CONTACT', comparables: [], geoLevel: 'none', tiers, bestGeoTier: 'none' }
+  return { tier: 'CONTACT', comparables: [], geoLevel: 'none', tiers, bestGeoTier: 'none', taxMatch }
 }
 
 const _areaMunisCache: Map<string, string[]> = new Map()

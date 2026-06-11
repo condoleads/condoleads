@@ -685,6 +685,110 @@ export default function EstimatorResults({
           </div>
         </div>
 
+        {/* W-TAX-MATCH (2026-06-11) — Tax-Matched Comparables section.
+            Co-equal to the geo comparables section above: same h3 header
+            level, same GeoConfidenceSpread component (just fed
+            result.taxMatch.tiers instead of result.tiers), same photo tile
+            (photo + info + price + View link). NO geo-tier match-detail
+            panels (BINGO/RANGE/MAINT make no sense for tax-mode — the
+            match was by property tax, not sqft/maint band). NO combined/
+            blended headline number (backtest measured worse than tax
+            alone). Gated on result.taxMatch.comparables.length > 0 — S1
+            path, no-tax subjects, and lease paths leave taxMatch
+            undefined or empty -> section auto-hides cleanly. */}
+        {result.taxMatch && result.taxMatch.comparables.length > 0 && (
+          <div className="mt-8 space-y-6">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 mb-1">
+                Tax-Matched Comparables ({result.taxMatch.count})
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Matched by property tax — similar assessed value within the same municipality.
+              </p>
+              <div className="bg-white rounded-xl p-5 border border-slate-200 mb-4">
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="text-sm font-semibold text-slate-700">Tax-matched estimate</span>
+                  <span className="text-2xl font-bold text-slate-900">{formatPrice(result.taxMatch.estimatedPrice)}</span>
+                </div>
+                <div className="text-xs text-slate-500">
+                  Range: {formatPrice(result.taxMatch.priceRange.low)} – {formatPrice(result.taxMatch.priceRange.high)}
+                </div>
+              </div>
+              {result.taxMatch.tiers && (
+                <div className="mb-4">
+                  <GeoConfidenceSpread
+                    tiers={result.taxMatch.tiers}
+                    bestGeoTier={result.taxMatch.bestGeoTier}
+                    labelMap={CONDO_LABEL_MAP}
+                  />
+                </div>
+              )}
+              <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                {result.taxMatch.comparables.map((comp, idx) => (
+                  <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
+                    <div className="flex items-start gap-4 mb-3">
+                      <div className="w-24 h-24 flex-shrink-0 bg-slate-100 rounded-lg relative overflow-hidden">
+                        {comp.mediaUrl ? (
+                          <img src={comp.mediaUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-2xl">🏢</div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          {comp.unitNumber && (
+                            <span className="text-sm font-semibold text-slate-500">Unit {comp.unitNumber}</span>
+                          )}
+                          <p className="font-bold text-slate-900 text-lg">
+                            {comp.bedrooms} bed, {comp.bathrooms} bath
+                          </p>
+                          {comp.temperature && (
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${temperatureDisplay[comp.temperature].color}`}>
+                              {temperatureDisplay[comp.temperature].icon} {temperatureDisplay[comp.temperature].label}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-600">
+                          {comp.exactSqft ? `${comp.exactSqft} sqft` : comp.livingAreaRange + ' sqft'} • {comp.parking} parking • {comp.locker === 'Owned' ? 'Has locker' : 'No locker'}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Sold: {new Date(comp.closeDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} • {comp.daysOnMarket} days on market
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 mt-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm text-slate-600">Sale Price:</span>
+                        <span className="text-lg font-bold text-slate-900">{formatPrice(comp.closePrice)}</span>
+                      </div>
+                      {comp.taxAnnualAmount != null && comp.taxAnnualAmount > 0 && (
+                        <div className="flex justify-between items-center pt-2 mt-2 border-t border-slate-100">
+                          <span className="text-xs text-slate-500">Property tax:</span>
+                          <span className="text-xs text-slate-500">${Math.round(comp.taxAnnualAmount).toLocaleString()}/yr</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-slate-100">
+                        <span className="text-xs text-slate-500">Originally listed:</span>
+                        <span className="text-xs text-slate-500">{formatPrice(comp.listPrice)}</span>
+                      </div>
+                      {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
+                        <a
+                          href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          View Property Details →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — Competing-For-Sale
             rail. Mirror of HomeEstimatorResults' rail (887-985) MINUS the
             plex-only income panel (condos aren't multi-unit-income). Tile

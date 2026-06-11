@@ -57,6 +57,29 @@ export async function estimateCondoSale(
     const matchResult = await findCondoComparablesSales(fullSpecs)
     const estimate = calculateEstimate({ tier: matchResult.tier, comparables: matchResult.comparables })
 
+    // W-TAX-MATCH (2026-06-11): when the matcher returned a tax-matched comp
+    // set, run the SAME calculateEstimate on it to get its own estimatedPrice
+    // + priceRange. The tax section in EstimatorResults shows this as its own
+    // co-equal estimate. NO combined/blended number (backtest measured worse).
+    // Default condo marketNoun (no override) is correct here — same as the
+    // geo estimate above.
+    let taxMatch: EstimateResult['taxMatch'] = undefined
+    if (matchResult.taxMatch && matchResult.taxMatch.comparables.length > 0) {
+      const taxEst = calculateEstimate({
+        tier: matchResult.taxMatch.matchTier,
+        comparables: matchResult.taxMatch.comparables,
+      })
+      taxMatch = {
+        matchTier:      matchResult.taxMatch.matchTier,
+        comparables:    matchResult.taxMatch.comparables,
+        estimatedPrice: taxEst.estimatedPrice,
+        priceRange:     taxEst.priceRange,
+        count:          matchResult.taxMatch.count,
+        tiers:          matchResult.taxMatch.tiers,
+        bestGeoTier:    matchResult.taxMatch.bestGeoTier,
+      }
+    }
+
     // W-CONDO-MODAL-PARITY Phase 1 (2026-06-11): propagate tiers,
     // bestGeoTier, and geoLevel onto the action's return. Display-only —
     // estimatedPrice, priceRange, matchTier are unchanged (selection
@@ -67,6 +90,7 @@ export async function estimateCondoSale(
         ...estimate,
         tiers: matchResult.tiers,
         bestGeoTier: matchResult.bestGeoTier,
+        taxMatch,
       },
       geoLevel: matchResult.geoLevel,
     }

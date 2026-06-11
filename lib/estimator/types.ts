@@ -172,6 +172,30 @@ export interface EstimateResult {
     bronze:   TierResult | null
   }
   bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
+
+  // W-TAX-MATCH (2026-06-11): tax-as-match-criterion result set. Additive —
+  // condo SALE only; lease (~0% tax fill) + home (separate phase) leave it
+  // undefined, so the EstimatorResults section auto-hides. Selects comps by
+  // property-tax proximity (same-muni, +/-20% band — reuses h8 gate as a
+  // selector via withinTaxBand), prices off their sold prices, renders co-
+  // equal to the geo cascade.
+  // Backtest N=200 (2026-06-11): tax 8.4% median APE / 72.1% +/-15 hit vs
+  // geo 10.4% / 60.6%; KEEP Platinum (60.5% have >=2 in-bldg tax-band comps);
+  // CO-EQUAL framing; NO combined estimate.
+  taxMatch?: {
+    matchTier:        MatchTier
+    comparables:      ComparableSale[]
+    estimatedPrice:   number
+    priceRange:       { low: number; high: number }
+    count:            number
+    tiers?:           {
+      platinum: TierResult | null
+      gold:     TierResult | null
+      silver:   TierResult | null
+      bronze:   TierResult | null
+    }
+    bestGeoTier?:     'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
+  }
 }
 
 // ============ Helper Functions ============
