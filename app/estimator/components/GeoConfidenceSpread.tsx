@@ -84,8 +84,12 @@ export default function GeoConfidenceSpread({
           const tierTextStrong = isBest ? 'text-emerald-900' : tr ? 'text-slate-900' : 'text-slate-400'
           const tierTextMuted  = isBest ? 'text-emerald-700' : tr ? 'text-slate-600' : 'text-slate-400'
           return (
-            <div key={slot} className={`flex items-center justify-between px-3 py-2 rounded-lg border ${tierColor}`}>
-              <div className="flex items-center gap-3 min-w-0">
+            // Outer row: flex-wrap + gap-y so right cluster drops below left in
+            // the ~395px sidebar column (lg:grid-cols-3) instead of colliding.
+            // Modal context (wider) stays inline — wrap only kicks in when space
+            // is genuinely tight.
+            <div key={slot} className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 rounded-lg border ${tierColor}`}>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
                 <span className={`text-sm font-bold ${tierTextStrong}`}>
                   {labelMap[slot].emoji} {labelMap[slot].name}
                 </span>
@@ -99,15 +103,17 @@ export default function GeoConfidenceSpread({
                 )}
               </div>
               {tr ? (
-                <div className="flex items-center gap-4 text-right flex-shrink-0">
+                // Right cluster: dropped flex-shrink-0 so it compresses when
+                // sharing one line. Range dropped from inline row — at ~395px
+                // it forced collision with the left cluster; median + count are
+                // the primary signal, and the Platinum→Bronze delta + the
+                // footer paragraph already convey spread context.
+                <div className="flex items-center gap-3 text-right">
                   <div className={`text-sm font-bold ${tierTextStrong}`}>
                     {formatPrice(tr.median)}
                   </div>
                   <div className={`text-[11px] ${tierTextMuted}`}>
                     {tr.count} comp{tr.count === 1 ? '' : 's'}
-                  </div>
-                  <div className={`text-[10px] hidden sm:block ${tierTextMuted}`}>
-                    {formatPrice(tr.range.low)} – {formatPrice(tr.range.high)}
                   </div>
                 </div>
               ) : (
