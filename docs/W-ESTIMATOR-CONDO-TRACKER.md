@@ -1676,3 +1676,124 @@ is the gate's evidence; operator decides whether to commit + push.
 APPLY STATUS — N/A (no DB change).
   origin/main = 61bb5da (Phase 1 tracker close).
   Local main = 61bb5da + 2 uncommitted units (Phase 2 UI + this Phase 1-FIX).
+
+
+================================================================================
+2026-06-11 — W-CONDO-MODAL-PARITY PHASE 1-FIX: SHIPPED (close)
+================================================================================
+
+SHIPPED commit: 79b5411  fix(estimator): condo tier medians use
+                          comparability-filtered pool + thread tax to production
+
+Fast-forward: 61bb5da..79b5411  (pre-Phase-1-FIX → Phase 1-FIX)
+Files: 5 changed, 458 insertions(+), 10 deletions(-)
+  M lib/estimator/condo-comparable-matcher-sales.ts
+  M lib/estimator/condo-comparable-matcher-rentals.ts
+  M components/property/PropertyEstimateCTA.tsx
+  M app/estimator/components/EstimatorBuyerModal.tsx   ← entangled with Phase 2
+  M docs/W-ESTIMATOR-CONDO-TRACKER.md                  ← entangled with Phase 2
+
+PARITY SUMMARY (full table in the prior run-log block):
+  - PRICING BYTE-IDENTICAL PRE vs POST: PASS — 4 / 4 subjects, zero drift on
+    (tier, geoLevel, matched comparable keys + close_price + adjusted_price).
+    The filter did NOT leak into selection.
+  - TIER MEDIANS CORRECTED to comparability-filtered subsets:
+      S1/S2 X2 Condos silver: $584,500 (raw 500) → $750,000 (filtered 23)
+      S3 W13067086 silver:    $825,000 (raw 500) → $620,000 (filtered 12)
+      S4 W13143450 silver:    $1,057,000 (raw 500) → $600,000 (filtered 13)
+      ...all 11 (subject × non-bronze) tiers corrected.
+  - TAX H8 NOW FIRES IN PRODUCTION: comp ordering reshuffles when threaded
+    (S4 W13143450, run A=suppressed vs run B=threaded → top comp changes
+    W12636290 → W12578316). Tax-less subjects silent-omit cleanly.
+  - FROZEN S1 MATCHERS: zero diff on the 5 shared S1 files
+    (comparable-matcher-{sales,rentals}.ts, resolve-adjustments.ts,
+    estimate-{sale,rent}.ts).
+  - tsc --noEmit: exit 0, full project.
+
+ENTANGLEMENT (explicit, for traceability):
+  Two files in the staged set carry BOTH Phase 1-FIX and Phase 2 work because
+  the hunks were not separable by file path and interactive staging was not
+  available in this session:
+    - app/estimator/components/EstimatorBuyerModal.tsx: 1 hunk Phase 1-FIX
+      (tax-threading inside specs literal); 4 hunks Phase 2 modal-parity
+      wiring (useCompetingListings import, geoLevel state, Geo Level Indicator
+      JSX, competingListings prop).
+    - docs/W-ESTIMATOR-CONDO-TRACKER.md: Phase 2 run-log + Phase 1-FIX run-log
+      appended in one block.
+  Phase 2 wiring is display-only, tenant-gated, data-presence-gated (S1
+  auto-hide proven) — cannot affect pricing, does not touch S1. The remaining
+  Phase 2 UI files (EstimatorResults, HomeEstimatorResults, useCompetingListings,
+  GeoConfidenceSpread) land in the subsequent Phase 2 commit.
+
+DB-VERIFICATION CAVEAT (for future parity-gate authors):
+  The offline cross-check used a single-element median (prices[mid]) while the
+  matcher uses the home-equivalent even-aware median ((mid-1 + mid) / 2 for
+  even pool sizes). Counts matched 11/11 hard. Medians matched the home
+  formula in all rows; the logged "$5-20K DRIFT" lines on a handful of
+  even-count pools are the SCRIPT'S simplification, not matcher behavior.
+  Going forward: offline verifiers must mirror the matcher's median formula.
+
+================================================================================
+2026-06-11 — NAMED-OPEN: BRONZE-TIMEOUT
+================================================================================
+
+ISSUE: the Bronze tier query in both condo matchers (sale + lease)
+       — 35-muni-`.in()` + `.limit(500)` + order-by-close_date —
+       hits the Supabase statement timeout (PG code 57014, "canceling
+       statement due to statement timeout") on the anon client for
+       dense-inventory areas (e.g. Toronto Central area_id
+       9d0d6843-b16f-42b6-911c-5887a143866e: 35 munis spanning 51,719
+       2-year closed condo sales). The matcher's `if (areaSales &&
+       areaSales.length > 0)` check fails on the timeout and Bronze tier
+       stays null in the response.
+
+OBSERVED: discovered during the W-CONDO-MODAL-PARITY Phase 1-FIX parity
+       gate (2026-06-11). Bronze was null in BOTH PRE and POST snapshots
+       across all 4 parity subjects in Toronto / GTA. Direct Node `pg`
+       client query of the same WHERE clause completes fine; only the
+       Supabase anon client (via the matcher's `createClient()`) times
+       out.
+
+       Reproduced via direct Supabase JS query in this session:
+         areaSales err: { code: '57014',
+                          message: 'canceling statement due to statement timeout' }
+
+NOT INTRODUCED BY PHASE 1-FIX: Bronze was null in PRE (pre-Phase-1-FIX
+       matcher) AND POST (Phase 1-FIX matcher) for every parity subject —
+       identical behavior. The Phase 1-FIX changes what pool feeds median
+       display (call-site filter wrap); it does not change how `areaSales`
+       is queried. The timeout was already in production before this fix
+       and continues to be after.
+
+USER IMPACT: the modal's Geographic Confidence Spread Bronze tier is
+       structurally unrenderable in production for dense-inventory areas
+       (downtown condos in Toronto, Mississauga, etc.). The other three
+       tiers render normally; Bronze auto-hides because tiers.bronze is
+       null. No pricing impact (Bronze is the last-resort selection tier
+       and never fires when higher tiers are non-null).
+
+TRIGGER: needs query optimization before Bronze renders reliably on dense
+       areas. Candidate fixes (separate work, not scoped here):
+         (a) Server-side aggregation: instead of fetching 500 rows and
+             filtering in JS, run a single SQL aggregate (median +
+             percentile + count) over the comparability-filtered subset
+             and return just the TierResult shape.
+         (b) Transaction pooler: use the session/transaction pooler URL
+             (port 6543) instead of the direct connection for these
+             read-only queries — may not bypass the statement_timeout
+             but worth confirming.
+         (c) Pagination + narrower date window: shrink to 6-month or
+             1-year windows for Bronze; trade comp count for query speed.
+         (d) Move Bronze to a materialized aggregate cached per
+             (area_id × bedrooms × bathrooms × LAR) row, refreshed on
+             a sync cadence — eliminates the query entirely.
+
+PRIORITY: low-to-medium. The estimator priced output is unaffected (Bronze
+       never fires when Platinum/Gold/Silver have comps). The display
+       impact is one missing tier on the Confidence Spread for downtown
+       condos. Defer until product calls it out OR a separate sweep
+       bundles Bronze with another condo modal change.
+
+IDENTIFIED: 2026-06-11 (W-CONDO-MODAL-PARITY Phase 1-FIX parity gate).
+
+================================================================================
