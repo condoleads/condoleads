@@ -1992,3 +1992,39 @@ entries — this block stays in the condo tracker for workstream coherence.)
 
 REMAINING: nothing in the W-TAX-MATCH workstream. Workstream CLOSED.
 ================================================================================
+
+
+================================================================================
+2026-06-11 — W-TAX-MATCH — POST-CLOSE CORRECTION + DESIGN POLISH
+================================================================================
+
+- NOTE: the prior "workstream CLOSED" entry (fdb49fe) was filed prematurely
+  — a design issue was open and home rendering was not yet visually
+  verified at that point. Recording the actual completion here so disk
+  history is honest (closed -> reopened-for-polish -> shipped).
+
+- DESIGN FINDING (operator, from full-output review): the three result
+  sections (Comparable Sold / Tax-Matched / Competing For Sale) must each
+  read as distinct. Comparable Sold + Competing were fine. Tax-Matched
+  blurred (condo: identical chunky tile to Comparable Sold; home: out-of-
+  step old tile between two modern siblings). Operator's specific fix:
+  move the per-comp tier indicator OFF the photo pill INTO the tile body
+  as a labeled line; tax estimate panel + spread left as-is; Comparable
+  Sold + Competing untouched.
+
+- SHIPPED df4419d: tier indicator relocated photo-pill -> tile-body chip
+  ("Platinum · Same Building" condo / "Platinum · Same street" home),
+  color-coded by tier (emerald=platinum, amber=gold, slate=silver,
+  orange=bronze), condo + home. Presentation-only, diff-scoped to tax
+  tiles only (Comparable Sold / Competing / estimate panel / spread all
+  zero-diff). sourceTier data unchanged; multi-tier display intact.
+
+- W-TAX-MATCH now genuinely COMPLETE: condo sale (ffd9429 + b1 74f622c)
+  + home sale (f89f670) + tier-placement polish (df4419d). Pending:
+  operator visual confirmation on deployed walliam.ca (condo + home tax
+  sections render with body chips).
+
+- REMAINING (separate, not tax-match): BRONZE-TIMEOUT (dense-area query
+  opt) + carried named-opens (Platinum comp-count lever, c4 locker, etc.).
+
+================================================================================
