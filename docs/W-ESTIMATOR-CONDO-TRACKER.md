@@ -1883,3 +1883,73 @@ DB-VERIFICATION CAVEAT (referenced, not re-filed): the offline cross-
 OPTION D STATUS: SHIPPED (across d200eca..4ac9a46). W-CONDO-MODAL-PARITY
   the workstream is now CLOSED.
 ================================================================================
+
+
+================================================================================
+2026-06-11 — W-TAX-MATCH: tax-as-match-criterion result set (DECIDED)
+================================================================================
+
+CONCEPT (settled — do not re-question): a new MATCH MODE, not a new
+product/lane. The estimator selects comparables by PROPERTY-TAX proximity
+to the subject, prices off those comps' sold prices, and renders the result
+in the EXISTING EstimatorResults display — same photo tiles (6d190c9),
+same Platinum/Gold/Silver/Bronze tier badges, same comparable-sold +
+competing-for-sale sections. Appears as its OWN section alongside the
+geo/sqft-matched comps, same visual language, so the user weighs both.
+
+MATCH CRITERION (settled): comps whose tax_annual_amount is close to the
+subject's, SAME-MUNICIPALITY gated (mill rates differ — same gate the h8
+score band uses). Tax data + h8 scoring already exist in the matcher;
+this surfaces tax-matched comps as their own result set.
+
+TIERS (settled): tier badges on the tax-matched tiles = the SAME
+Platinum/Gold/Silver/Bronze GEO cascade (building/community/municipality/
+area) applied WITHIN the tax-matched set — same tier meaning as the geo
+result, NOT tax-proximity bands.
+
+REUSE (intent): plugs into the existing matcher pipeline + the existing
+tile/tier/createComp renderer. NOT a parallel display. Sale-only where
+tax fill supports it (sale ~100%, lease ~0% — like h8).
+
+STATUS: DECIDED -> wiring recon (where tax-match selection plugs into
+the existing matcher) -> backtest selection quality (does tax-match
+predict close_price?) like every estimator lever -> build. Concept
+LOCKED; the backtest measures quality, it is NOT a re-vote on the
+concept. Condo first, home after.
+
+SUPERSEDES: bug #6 (tax-comparison row). The small "Similar tax: $X /
+yours: $Y" row is REPLACED by this feature — not shipped, not vaguely
+deferred. Bug #6 marked SUPERSEDED-BY W-TAX-MATCH.
+
+================================================================================
+
+
+================================================================================
+2026-06-11 — W-TAX-MATCH — CONDO SALE SHIPPED · ffd9429
+================================================================================
+
+- withinTaxBand (h8 gate as selector) + runTaxMatchCascade (additive sibling
+  to geo cascade) + taxMatch on EstimateResult + tax-match section in
+  EstimatorResults (own GeoConfidenceSpread + photo tiles + own estimate).
+- Backtest N=200 justified: tax-mode 8.4% median APE / 72.1% +/-15 vs geo
+  10.4% / 60.6%; on 29 divergent subjects tax closer to actual 25/29.
+  Co-equal framing.
+- Platinum KEPT (data: 60.5% of subjects have >=2 in-building tax-band
+  comps — refuted the predicted collapse).
+- NO combined estimate (averaging measured worse than tax alone).
+- Geo path BYTE-IDENTICAL pre/post (0 / 4 drift on priced fields +
+  Platinum/Gold/Silver tier rail). Additive only. S1 frozen (zero diff).
+  Silent-omit on no-tax / no-band-comps.
+- Tile: literal-duplicate simplified tax tile (no geo-tier match-detail
+  panels — those are sqft/maint, geo-specific). Made geo render
+  byte-identical trivially.
+- tax-Bronze inherits BRONZE-TIMEOUT on dense areas (same as geo-Bronze,
+  pre-existing named-open — not introduced here). Tax-mode actually omits
+  bronze entirely (silver = the full muni reach since h8 is same-muni-
+  gated), so the timeout impact is even smaller than on geo.
+
+REMAINING: home tax-match (next phase, mirror on home matcher +
+HomeEstimatorResults, sale-only). Bug #6 SUPERSEDED-BY this — confirmed
+shipped.
+
+================================================================================
