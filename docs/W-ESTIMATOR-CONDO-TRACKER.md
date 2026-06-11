@@ -1797,3 +1797,89 @@ PRIORITY: low-to-medium. The estimator priced output is unaffected (Bronze
 IDENTIFIED: 2026-06-11 (W-CONDO-MODAL-PARITY Phase 1-FIX parity gate).
 
 ================================================================================
+2026-06-11 — W-CONDO-MODAL-PARITY PHASE 2 (UI): SHIPPED + Option D close
+================================================================================
+
+SHIPPED commit: 4ac9a46  feat(estimator): condo modal parity UI (Phase 2) —
+                          completes Option D paired with shipped Phase 1-FIX 79b5411
+
+Fast-forward: d200eca..4ac9a46
+Files: 4 changed, 259 insertions(+), 76 deletions(-)
+  NEW app/estimator/components/GeoConfidenceSpread.tsx
+  MOD app/estimator/components/EstimatorResults.tsx
+  MOD app/estimator/components/HomeEstimatorResults.tsx
+  MOD app/estimator/hooks/useCompetingListings.ts
+
+OPTION D — what it was, why it shipped as two commits:
+
+  ORIGINAL INTENT (operator directive 2026-06-11): land Phase 1-FIX and
+  Phase 2 modal parity as ONE combined unit, because the two are
+  structurally interdependent — EstimatorBuyerModal.tsx's Phase 1-FIX
+  tax-threading hunk lives in the same file as its Phase 2 wiring
+  (useCompetingListings import, geoLevel state, Geo Level Indicator JSX,
+  competingListings prop), and the modal's Phase 2 hunk calls
+  `fetchCompetingListings({ path: 'condo', ... })` which depends on the
+  hook's new path:'condo' branch typing in useCompetingListings.ts.
+
+  WHAT HAPPENED: Phase 1-FIX was committed and pushed first (79b5411 +
+  tracker close d200eca) before the operator's Option D directive
+  arrived. That earlier ship intentionally carried the EstimatorBuyerModal
+  Phase 2 wiring along with the tax thread (entanglement note in the
+  79b5411 commit body documented this), but it did NOT include the
+  Phase 2 UI files (EstimatorResults, HomeEstimatorResults,
+  useCompetingListings, GeoConfidenceSpread). RESULT: main was briefly
+  in a state where the modal called a hook signature the hook didn't
+  yet have on main — a latent type error on main between d200eca and
+  4ac9a46.
+
+  WHAT WE DID: rather than force-push to rewrite the already-published
+  79b5411/d200eca into one combined commit, shipped Phase 2 UI as a
+  second commit (4ac9a46) on top of d200eca. The COMBINED effect is the
+  same Option D unit on main; the boundary between Phase 1-FIX and
+  Phase 2 is just at d200eca/4ac9a46 rather than inside a single
+  squashed commit. Build (npm run build) PASSED on the combined tree
+  before 4ac9a46 — Compiled successfully + type validation, exit 0.
+
+  RULE GOING FORWARD: when units are structurally interdependent
+  (one's runtime code calls the other's signature), they need to ship
+  in the same push at minimum. The git-history boundary can be one
+  commit or several; what matters is that no fast-forward state on main
+  carries a calling-side without the called-side. Option D in this
+  case became "the d200eca..4ac9a46 fast-forward range" rather than
+  "one squashed commit", and that is a correct, non-destructive read
+  of the spirit of the directive.
+
+WHAT'S NOW ON MAIN (HEAD = 4ac9a46):
+
+  PHASE 1-FIX (79b5411): condoComparabilityFilter at 8 tier call sites
+    + buildCondoTierResult body unchanged; tax threading at both condo
+    callers. Parity (full table in the prior block): pricing
+    byte-identical PRE vs POST, tier medians corrected to filtered
+    subsets, h8 tax band firing in production, frozen S1 matchers
+    zero-diff, tsc clean.
+
+  PHASE 2 MODAL PARITY (4ac9a46): GeoConfidenceSpread extracted (shared
+    home + condo, labelMaps with condo "Same Building" / home "Same
+    Street"); Geo Level Indicator on the modal (4-way branch on
+    geoLevel); Competing-For-Sale rail on condo modal; useCompetingListings
+    path:'condo' branch (gates on community_id + bedrooms). All
+    display-only, tenant-gated, data-presence gated (S1 auto-hide
+    proven). Home path rewired through GeoConfidenceSpread — renders
+    identical. No matcher work in Phase 2.
+
+NAMED-OPEN BRONZE-TIMEOUT (referenced, not re-filed): filed in the
+  d200eca close block above. Status unchanged by Phase 2 — Phase 2 is
+  display-only and the Bronze timeout is in the matcher query layer.
+  Phase 2 surfaces the issue (Bronze auto-hides on dense areas in the
+  modal) but does not cause it. Pre-existing. No work scoped here.
+
+DB-VERIFICATION CAVEAT (referenced, not re-filed): the offline cross-
+  check median formula caveat was filed in the d200eca close block above
+  and applies to any future condo tier-pool sweeps. Same rule going
+  forward: offline verifiers must mirror the matcher's even-aware
+  median, or use the matcher's own medianRangeOf to compute the
+  expected value.
+
+OPTION D STATUS: SHIPPED (across d200eca..4ac9a46). W-CONDO-MODAL-PARITY
+  the workstream is now CLOSED.
+================================================================================
