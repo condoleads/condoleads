@@ -1953,3 +1953,42 @@ HomeEstimatorResults, sale-only). Bug #6 SUPERSEDED-BY this — confirmed
 shipped.
 
 ================================================================================
+
+
+================================================================================
+2026-06-11 — W-TAX-MATCH — HOME SALE SHIPPED · f89f670
+================================================================================
+(home extension of the W-TAX-MATCH workstream — the DECIDED block and the
+condo SHIPPED entry live above in this tracker; logging the home close here
+keeps the workstream narrative continuous. The home matcher itself tracks
+to docs/W-ESTIMATOR-RAG-TRACKER.md, which carries no prior W-TAX-MATCH
+entries — this block stays in the condo tracker for workstream coherence.)
+
+- Mirrors condo b1 (74f622c) on homes: runHomeTaxMatchCascade (additive),
+  multi-tier display + per-tile tier badge (Same Street / Community /
+  Municipality via HOME_LABEL_MAP), winning-tier price over
+  winnerComparables.
+- Backtest N=200: home tax-mode 6.9% median APE / 75% +/-15 vs geo 8.6% /
+  70.5% — co-equal, earned on home's own numbers (beats geo by wider
+  margin than condo did).
+- Platinum KEPT (same-street, 31.5% of subjects have >=2 tax-band comps —
+  above the keep-threshold; weaker than condo's 60.5% because streets are
+  sparser than buildings, as predicted by the recon).
+- Coverage 74% (vs condo 91.5%); silent-omit on ~26% (wider home tax
+  dispersion within muni). Working as designed.
+- Divergence split 18/18 (vs condo's tax-favoring 25/29) — on homes the
+  two signals are equally informative when they disagree; stronger
+  justification for showing both sections side-by-side.
+- Street normalization: REUSED existing streetBonusFor + normalizePlaceName
+  (both sides already converge by construction) — no new normalization
+  code added, suffix variance robust by construction.
+- Geo path BYTE-IDENTICAL 0 / 3 drifts (priced + 4-tier rail +
+  comparables order). Price over winnerComparables (6.9% backtest
+  measurement preserved exactly). S1 frozen (5 shared matchers zero
+  diff), condo W-TAX-MATCH (74f622c) untouched. NO combined estimate.
+  Sale-only.
+- W-TAX-MATCH now COMPLETE on both condo + home sale. Lease N/A
+  (~0% tax fill).
+
+REMAINING: nothing in the W-TAX-MATCH workstream. Workstream CLOSED.
+================================================================================
