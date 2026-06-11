@@ -1317,7 +1317,27 @@ NEXT (W-CONDO-MODAL-PARITY PHASE 2 — UI, separate workstream):
 - Swap the import on 4 surfaces (ListingSection,
   NeighbourhoodListingSection, GeoListingSection, SimilarListings).
 
-PUSH STATUS — HELD pending operator approval (per task spec).
+PUSH STATUS — SHIPPED.
 APPLY STATUS — N/A (no DB change).
-  origin/main = d31a108 (SimilarListings dead-button fix + tracker close).
-  Local main = d31a108 + 1 uncommitted unit (this Phase 1 tiers emission).
+  Commit: ca24767 (feat(estimator): condo matchers emit all-four geo
+          tiers for Confidence Spread (display-only))
+  Pushed: 2026-06-11. Fast-forward d31a108 → ca24767 (1 commit).
+  origin/main = ca24767 (confirmed after fetch; origin == HEAD).
+  Parity gate at push-time: 30/30 byte-identical (15 sale + 15 lease),
+  zero price drift. Pricing UNCHANGED — c2-revert behavior preserved
+  (Platinum ≥1 same-building comp wins, sale; ≥2 lease). tiers +
+  bestGeoTier + geoLevel additive only.
+
+NEXT (W-CONDO-MODAL-PARITY PHASE 2 — UI, separate workstream):
+- Build CondoEstimatorBuyerModal.tsx mirroring HomeEstimatorBuyerModal:
+  Geographic Confidence Spread (label map: Platinum="Same building"),
+  Geo Level Indicator narrative, Competing-For-Sale rail (reuse
+  useCompetingListings hook + /api/charlie/competing-listings),
+  Investment Analysis (reuse components/property/InvestmentAnalysis.tsx).
+- Swap import on 4 surfaces: ListingSection, NeighbourhoodListing-
+  Section, GeoListingSection, SimilarListings.
+- Recon-first per the standing rhythm.
+
+Dev server (localhost:3007, background task boh1kz2ul) remains up for
+Phase 2 recon. Tiers fields are populated and visible via
+/api/parity-probe-condo-sale + /api/parity-probe-condo-lease.
