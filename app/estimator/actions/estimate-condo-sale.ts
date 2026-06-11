@@ -63,11 +63,17 @@ export async function estimateCondoSale(
     // co-equal estimate. NO combined/blended number (backtest measured worse).
     // Default condo marketNoun (no override) is correct here — same as the
     // geo estimate above.
+    // W-TAX-MATCH b1 (2026-06-11): price math runs over WINNER comparables
+    // only (winning-tier slice) — preserves the N=200 backtest's 8.4%
+    // median APE measurement. The client-facing `comparables` field carries
+    // the multi-tier DISPLAY list (sourceTier-stamped, deduped, capped)
+    // built by runTaxMatchCascade. Price unchanged from ffd9429; display
+    // gets richer.
     let taxMatch: EstimateResult['taxMatch'] = undefined
-    if (matchResult.taxMatch && matchResult.taxMatch.comparables.length > 0) {
+    if (matchResult.taxMatch && matchResult.taxMatch.winnerComparables.length > 0) {
       const taxEst = calculateEstimate({
         tier: matchResult.taxMatch.matchTier,
-        comparables: matchResult.taxMatch.comparables,
+        comparables: matchResult.taxMatch.winnerComparables,
       })
       taxMatch = {
         matchTier:      matchResult.taxMatch.matchTier,

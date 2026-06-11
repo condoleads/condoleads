@@ -79,13 +79,22 @@ export interface CondoSaleMatchResult {
   bestGeoTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
 
   // W-TAX-MATCH (2026-06-11): tax-as-match-criterion result set, additive.
-  // Pricing/range computed at the action layer (calculateEstimate on
-  // taxMatch.comparables). Empty when subject has no usable tax fields or
-  // no comps fall in the band on any tier.
+  // W-TAX-MATCH b1 (2026-06-11): `comparables` is now the MULTI-TIER DISPLAY
+  // list (concatenated across tiers, sourceTier-stamped, deduped by
+  // listingKey keeping tightest tier, capped at TAX_MATCH_DISPLAY_CAP).
+  // `winnerComparables` is the WINNING-TIER-ONLY list used by the action
+  // for calculateEstimate — preserving the N=200 backtest (8.4% median APE).
+  // `count` = winnerComparables.length (the count used to size the section
+  // header — operator's intent is the "number of tax-matched comps shown"
+  // which still anchors on the winning tier; the broader display list is
+  // additional context).
+  // Empty when subject has no usable tax fields or no comps fall in the
+  // band on any tier.
   taxMatch?: {
-    matchTier:    MatchTier
-    comparables:  ComparableSale[]
-    count:        number
+    matchTier:         MatchTier
+    comparables:       ComparableSale[]    // multi-tier display list
+    winnerComparables: ComparableSale[]    // winning-tier-only, for pricing
+    count:             number
     tiers?: {
       platinum: TierResult | null
       gold:     TierResult | null
@@ -265,9 +274,24 @@ function withinTaxBand(sale: any, specs: CondoSaleSpecs): boolean {
 // handing to the existing match functions (which then do bed+bath+LAR +
 // top-N scoring tail unchanged). Tier display via the same
 // buildCondoTierResult(condoComparabilityFilter(...)) helpers — both
-// pool-agnostic. Same selection priority as geo (Platinum >=1, Gold/Silver
-// >=3, Bronze >=1). Bronze is muni-gated by the h8 same-muni rule, so
-// area-wide bronze in tax-mode is bounded to single-muni anyway.
+// pool-agnostic.
+//
+// W-TAX-MATCH b1 (2026-06-11): cascade now runs ALL tier matches (no
+// early-return), determines winner by priority (Platinum >=1 / Gold|Silver
+// >=3, mirroring geo), AND builds a multi-tier DISPLAY list:
+//   - concatenate platinum + gold + silver comps in priority order
+//   - stamp each with sourceTier
+//   - dedup by listingKey, keeping the TIGHTEST tier (platinum > gold > silver)
+//   - cap at TAX_MATCH_DISPLAY_CAP (12)
+// Returns winnerComparables (winning-tier-only, for action's calculateEstimate
+// — preserves backtest) AND comparables (multi-tier display list with
+// sourceTier).
+//
+// Tax-mode is muni-gated by the h8 same-muni rule, so silver IS the widest
+// geo this mode reaches. Bronze (area) would only ever match same-muni rows
+// anyway; folding it in adds nothing the silver query doesn't already see.
+// Skip bronze in tax-mode — the silver query is the full muni reach.
+const TAX_MATCH_DISPLAY_CAP = 12
 async function runTaxMatchCascade(
   supabase: any,
   specs: CondoSaleSpecs,
@@ -315,10 +339,6 @@ async function runTaxMatchCascade(
 
   let silverMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let silverTier: TierResult | null = null
-  // Tax-mode is muni-gated by the h8 same-muni rule, so silver IS the widest
-  // geo this mode reaches. Bronze (area) would only ever match same-muni
-  // rows anyway; folding it in adds nothing the silver query doesn't already
-  // see. Skip bronze in tax-mode — the silver query is the full muni reach.
   if (specs.municipalityId) {
     const { data: muniSales } = await supabase
       .from('mls_listings').select(CONDO_SALE_SELECT)
@@ -335,18 +355,54 @@ async function runTaxMatchCascade(
 
   const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: null }
 
-  // Same priority + thresholds as the geo cascade (Platinum >=1, Gold/Silver
-  // >=3). Bronze omitted (see comment above).
+  // Determine winner by priority: Platinum >=1, Gold/Silver >=3. Same as geo.
+  let winnerMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
+  let bestGeoTier: 'platinum' | 'gold' | 'silver' | 'none' = 'none'
   if (platinumMatch && platinumMatch.comparables.length >= 1) {
-    return { matchTier: platinumMatch.tier, comparables: platinumMatch.comparables, count: platinumMatch.comparables.length, tiers, bestGeoTier: 'platinum' }
+    winnerMatch = platinumMatch
+    bestGeoTier = 'platinum'
+  } else if (goldMatch && goldMatch.comparables.length >= 3) {
+    winnerMatch = goldMatch
+    bestGeoTier = 'gold'
+  } else if (silverMatch && silverMatch.comparables.length >= 3) {
+    winnerMatch = silverMatch
+    bestGeoTier = 'silver'
+  } else {
+    return undefined
   }
-  if (goldMatch && goldMatch.comparables.length >= 3) {
-    return { matchTier: goldMatch.tier, comparables: goldMatch.comparables, count: goldMatch.comparables.length, tiers, bestGeoTier: 'gold' }
+
+  // Build multi-tier DISPLAY list. Priority order = tightest tier first
+  // (platinum -> gold -> silver). Stamp sourceTier on each. Dedup by
+  // listingKey, KEEPING THE FIRST OCCURRENCE — which by priority order is
+  // the tightest tier the comp appears in.
+  const stamp = (
+    arr: ComparableSale[] | undefined,
+    tier: 'platinum' | 'gold' | 'silver',
+  ): ComparableSale[] => (arr || []).map(c => ({ ...c, sourceTier: tier }))
+
+  const orderedAll: ComparableSale[] = [
+    ...stamp(platinumMatch?.comparables, 'platinum'),
+    ...stamp(goldMatch?.comparables, 'gold'),
+    ...stamp(silverMatch?.comparables, 'silver'),
+  ]
+  const seenKeys = new Set<string>()
+  const deduped: ComparableSale[] = []
+  for (const c of orderedAll) {
+    const k = c.listingKey || `__noKey_${deduped.length}`
+    if (seenKeys.has(k)) continue
+    seenKeys.add(k)
+    deduped.push(c)
+    if (deduped.length >= TAX_MATCH_DISPLAY_CAP) break
   }
-  if (silverMatch && silverMatch.comparables.length >= 3) {
-    return { matchTier: silverMatch.tier, comparables: silverMatch.comparables, count: silverMatch.comparables.length, tiers, bestGeoTier: 'silver' }
+
+  return {
+    matchTier:         winnerMatch.tier,                 // winning tier's match label
+    comparables:       deduped,                          // MULTI-TIER display list (sourceTier-stamped)
+    winnerComparables: winnerMatch.comparables,          // winning-tier-only, for action's pricing
+    count:             winnerMatch.comparables.length,   // winning-tier count (drives header)
+    tiers,
+    bestGeoTier,
   }
-  return undefined
 }
 
 // W-CONDO-MODAL-PARITY Phase 1-FIX (2026-06-11): comparability filter for

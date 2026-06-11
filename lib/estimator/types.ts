@@ -83,6 +83,13 @@ export interface ComparableSale {
   // the Charlie-style plex tile (photo column). SF tiles do not render it.
   mediaUrl?: string | null
 
+  // W-TAX-MATCH b1 (2026-06-11): which GEO TIER this comp came from
+  // (platinum/gold/silver/bronze). Stamped by runTaxMatchCascade when
+  // building the multi-tier display list. Distinct from matchTier (which is
+  // the WITHIN-TIER match label: BINGO/RANGE/MAINT). Silent-omit on geo-
+  // path comps (only the tax-mode multi-tier list carries it).
+  sourceTier?: 'platinum' | 'gold' | 'silver' | 'bronze'
+
   // Match classification
   temperature?: Temperature
   matchTier?: MatchTier

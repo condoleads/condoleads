@@ -724,7 +724,23 @@ export default function EstimatorResults({
                 </div>
               )}
               <div className="space-y-4 max-h-[600px] overflow-y-auto">
-                {result.taxMatch.comparables.map((comp, idx) => (
+                {result.taxMatch.comparables.map((comp, idx) => {
+                  // W-TAX-MATCH b1 (2026-06-11): per-tile tier badge mirroring
+                  // the Competing-For-Sale pill (line 822-824). Badge text +
+                  // color derived from comp.sourceTier via CONDO_LABEL_MAP.
+                  // Falls back to the section's bestGeoTier when sourceTier is
+                  // absent (defensive — sourceTier is stamped by the matcher
+                  // for every multi-tier display comp, so this fallback should
+                  // never fire in production but keeps the badge always
+                  // present rather than blank).
+                  const tierKey = (comp.sourceTier || result.taxMatch?.bestGeoTier || 'gold') as 'platinum' | 'gold' | 'silver' | 'bronze'
+                  const tierLabel = CONDO_LABEL_MAP[tierKey]
+                  const tierBadgeColor =
+                    tierKey === 'platinum' ? 'bg-emerald-600 text-white'
+                    : tierKey === 'gold'   ? 'bg-amber-500 text-white'
+                    : tierKey === 'silver' ? 'bg-slate-500 text-white'
+                    :                        'bg-orange-700 text-white' // bronze
+                  return (
                   <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
                     <div className="flex items-start gap-4 mb-3">
                       <div className="w-24 h-24 flex-shrink-0 bg-slate-100 rounded-lg relative overflow-hidden">
@@ -733,6 +749,9 @@ export default function EstimatorResults({
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-2xl">🏢</div>
                         )}
+                        <span className={`absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold ${tierBadgeColor}`}>
+                          {tierLabel.emoji} {tierLabel.name.toUpperCase()}
+                        </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -783,7 +802,8 @@ export default function EstimatorResults({
                       )}
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </div>
