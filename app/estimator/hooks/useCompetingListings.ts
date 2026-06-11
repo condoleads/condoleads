@@ -18,6 +18,12 @@ import { useState, useCallback } from 'react'
 import type { CompetingListing } from '@/app/estimator/components/HomeEstimatorResults'
 
 interface FetchParams {
+  // W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — explicit path param.
+  // Default 'home' preserves byte-identical behavior for every pre-Phase-2
+  // caller (HomeEstimatorBuyerModal, HomePropertyEstimateCTA). The 'condo'
+  // path hits the endpoint's existing condo branch (community+bed+LAR);
+  // no architecturalStyle/age/subtype required.
+  path?: 'home' | 'condo'
   propertySubtype?: string | null
   // h3 refinement: communityId added so the competing rail can cascade
   // community → muni → area (mirrors the sold pool's geography).
@@ -35,26 +41,34 @@ export function useCompetingListings() {
   const [competingListings, setCompetingListings] = useState<CompetingListing[]>([])
 
   const fetchCompetingListings = useCallback(async (params: FetchParams) => {
-    const subtype = params.propertySubtype?.trim() || null
-    // h3 refinement: gate is no longer plex-only — SF subjects ALSO get a
-    // competing rail (same matching criteria as their sold-comp pool). Both
-    // types need municipalityId for the cascade. Subjects without it skip.
-    if (!subtype || !params.municipalityId) {
-      setCompetingListings([])
-      return
+    const path = params.path || 'home'
+    // Gate per path:
+    //   HOME : needs propertySubtype + municipalityId (unchanged from pre-Phase-2)
+    //   CONDO: needs communityId + bedrooms (matches the endpoint's condo branch)
+    if (path === 'home') {
+      const subtype = params.propertySubtype?.trim() || null
+      if (!subtype || !params.municipalityId) {
+        setCompetingListings([])
+        return
+      }
+    } else {
+      if (!params.communityId || params.bedrooms == null) {
+        setCompetingListings([])
+        return
+      }
     }
     try {
       const res = await fetch('/api/charlie/competing-listings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          path: 'home',
+          path,
           communityId: params.communityId,
           municipalityId: params.municipalityId,
           bedrooms: params.bedrooms,
           bathrooms: params.bathrooms,
           livingAreaRange: params.livingAreaRange,
-          propertySubtype: subtype,
+          propertySubtype: params.propertySubtype?.trim() || null,
           architecturalStyle: params.architecturalStyle,
           approximateAge: params.approximateAge,
         }),

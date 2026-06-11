@@ -4,6 +4,8 @@
 import { useState, useEffect } from 'react'
 import { EstimateResult, TEMPERATURE_CONFIG } from '@/lib/estimator/types'
 import { formatPrice } from '@/lib/utils/formatters'
+import GeoConfidenceSpread, { CONDO_LABEL_MAP } from './GeoConfidenceSpread'
+import type { CompetingListing } from './HomeEstimatorResults'
 import { generateHomePropertySlug } from '@/lib/utils/slugs'
 import { MessageSquare, AlertTriangle, Phone } from 'lucide-react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
@@ -19,17 +21,22 @@ interface EstimatorResultsProps {
   unitNumber?: string
   agentId?: string
   propertySpecs: any
+  // W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — Competing-For-Sale rail.
+  // Optional, gated on .length > 0 — S1 path (no useCompetingListings call)
+  // leaves it empty/undefined, so the rail auto-hides.
+  competingListings?: CompetingListing[]
 }
 
-export default function EstimatorResults({ 
-  result, 
+export default function EstimatorResults({
+  result,
   type = 'sale',
   buildingId,
   buildingName,
   buildingAddress,
   unitNumber,
   agentId,
-  propertySpecs
+  propertySpecs,
+  competingListings,
 }: EstimatorResultsProps) {
   const isSale = type === 'sale' || type === 'estimator'
   const { user } = useAuth()
@@ -419,6 +426,20 @@ export default function EstimatorResults({
           </div>
         )}
 
+        {/* W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — Geographic Confidence
+            Spread (Platinum=Same Building / Gold=Community / Silver=Muni /
+            Bronze=Area). Gated on result.tiers — S2 condo path
+            (estimateCondoSale/estimateCondoRent) populates this; the legacy
+            shared S1 condo path leaves it undefined, so the block auto-hides
+            and S1 UX is byte-identical to pre-Phase-2. */}
+        {result.tiers && (
+          <GeoConfidenceSpread
+            tiers={result.tiers}
+            bestGeoTier={result.bestGeoTier}
+            labelMap={CONDO_LABEL_MAP}
+          />
+        )}
+
         {/* Market Speed */}
         <div className="bg-slate-50 rounded-xl p-6">
           <h3 className="text-lg font-bold text-slate-900 mb-3">Market Conditions</h3>
@@ -651,6 +672,77 @@ export default function EstimatorResults({
             })}
           </div>
         </div>
+
+        {/* W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — Competing-For-Sale
+            rail. Mirror of HomeEstimatorResults' rail (887-985) MINUS the
+            plex-only income panel (condos aren't multi-unit-income). Tile
+            shows unit_number + beds/baths + LAR + price + DOM + assoc_fee +
+            mediaUrl + View Property link. Gated on competingListings.length
+            > 0 — empty array (S1 path, or no active comps) auto-hides. */}
+        {competingListings && competingListings.length > 0 && (() => {
+          const sortedByPrice = [...competingListings].sort((a, b) => a.list_price - b.list_price)
+          const low = sortedByPrice[0].list_price
+          const high = sortedByPrice[sortedByPrice.length - 1].list_price
+          return (
+            <div className="mt-8">
+              <h3 className="text-lg font-bold text-slate-900 mb-1">
+                Competing For Sale ({competingListings.length})
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                {competingListings.length} similar unit{competingListings.length === 1 ? '' : 's'} on the market now, {formatPrice(low)}–{formatPrice(high)} — your competition.
+              </p>
+              <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                {competingListings.map((cl, idx) => {
+                  const lp = cl.list_price ?? 0
+                  const href = `/property/${cl.id}`
+                  const Inner = (
+                    <>
+                      <div className="w-24 h-24 flex-shrink-0 bg-slate-100 relative overflow-hidden">
+                        {cl.mediaUrl ? (
+                          <img src={cl.mediaUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-2xl">🏢</div>
+                        )}
+                        <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-600 text-white">
+                          FOR SALE{cl.unit_number ? ` · #${cl.unit_number}` : ''}
+                        </span>
+                      </div>
+                      <div className="flex-1 px-3 py-2 min-w-0">
+                        <div className="flex justify-between items-start mb-0.5">
+                          <span className="text-base font-bold text-slate-900">
+                            {formatPrice(lp)}
+                          </span>
+                          {cl.days_on_market != null && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                              {cl.days_on_market}d on market
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate mb-0.5">
+                          {cl.unparsed_address?.split(',')[0] || '—'}
+                        </div>
+                        <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
+                          {cl.bedrooms_total != null && <span>{cl.bedrooms_total} bed</span>}
+                          {cl.bathrooms_total_integer != null && <span>{cl.bathrooms_total_integer} bath</span>}
+                          {cl.living_area_range && <span>{cl.living_area_range} sqft</span>}
+                          {cl.association_fee != null && cl.association_fee > 0 && (
+                            <span>${Math.round(cl.association_fee)}/mo maint</span>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )
+                  const tileClasses = 'flex bg-white border border-slate-200 hover:border-slate-300 rounded-xl overflow-hidden transition-colors'
+                  return (
+                    <a key={cl.id ?? idx} href={href} target="_blank" rel="noopener noreferrer" className={tileClasses + ' cursor-pointer'}>
+                      {Inner}
+                    </a>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Standard Disclaimer */}
         <div className="text-xs text-slate-500 pt-4 border-t">
