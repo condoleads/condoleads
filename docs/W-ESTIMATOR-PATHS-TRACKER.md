@@ -195,3 +195,100 @@ Operator notes: P0.5(a) was logged as PARTIAL because `tax_annual_amount` was pr
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval.
+
+Pushed fbc2825; operator verifying on live walliam.ca (push-then-verify, by operator decision).
+
+---
+
+## P-CASCADE-REBUILD (2026-06-12) — run log
+
+Operator-locked refinement to the geo cascade. Recon at recon/W-CASCADE-REBUILD-RECON.txt. NO rewrite, NO output regression — fine-tune the tier search so .limit applies AFTER match-filtering and Platinum anchors on a single match.
+
+### Predicate-push set (operator-selected: Safe-superset only)
+The locked predicate set in the original directive (bath ±1 home / exact condo, LAR exact, parking, locker, assoc_fee ±20%) was identified during build kickoff as semantically tighter than the existing JS funnel paths — home `applyFunnel` has no bath gate; `applyRelaxedFunnel` accepts adjacent LAR; condo `matchAcrossBuildings` has a bed-only last resort; condo `matchWithinBuilding` has BINGO/MAINT tiers that don't check LAR. Pushing those predicates into SQL would have tightened past the loosest funnel path and produced selection-shift on subjects whose anchor comp lives in the loose-path zone.
+
+Decision (operator): SAFE-SUPERSET ONLY. Push `bedrooms_total = specs.bedrooms` and nothing else. Every funnel path in both matchers requires bed eq, so the SQL push is a mathematically guaranteed selection NOOP and only fixes the recency-truncation class. The probe (below) confirms: zero SELECTION-SHIFT across 100 subjects, 26 TRUNCATION-FIX.
+
+### Applied changes
+| Site | File | Change |
+| Home geo Gold (community) query | lib/estimator/home-comparable-matcher-sales.ts | .eq('bedrooms_total', specs.bedrooms) added |
+| Home geo Silver (muni) query | same | same |
+| Home geo Bronze area query | same (runSFAreaQuery) | same |
+| Condo geo Gold (community) query | lib/estimator/condo-comparable-matcher-sales.ts | same |
+| Condo geo Silver (muni) query | same | same |
+| Condo geo Bronze (area) query | same | same |
+| Condo geo Platinum (building) query | same | UNCHANGED — operator spec scope was Gold/Silver/Bronze |
+| Tax cascades | both matchers | UNCHANGED — tax-band pre-filter already in SQL (6/12 fix) |
+
+### Parallelization plan applied
+| Site | Before | After |
+| Home geo (findHomeComparables) | Sequential await: Gd → Sv → Br → Tax | Promise.all([Gd, Sv, Br, Tax]); Platinum derives from Gold's funneled pool sequentially after |
+| Condo geo (findCondoComparablesSales) | Sequential await: Pt → Gd → Sv → Br → Tax | Promise.all([Pt, Gd, Sv, Br, Tax]); anchor resolution after |
+| Home tax (runHomeTaxMatchCascade) | Sequential await: community → muni | Promise.all([community, muni]); same-street Platinum derives from muniSales after |
+| Condo tax (runTaxMatchCascade) | Sequential await: Pt → Gd → Sv | Promise.all([Pt, Gd, Sv]); winner select after |
+
+### Threshold change
+| Tier | Property | Before | After |
+| Platinum | Home | >= 3 (L1604 pre-rebuild) | >= 1 |
+| Platinum | Condo | >= 1 (already, locked c2-revert) | >= 1 (unchanged) |
+| Gold/Silver/Bronze | both | unchanged | unchanged |
+
+### Cap changes
+| Section | Before | After |
+| Geo comps (per tier) | top-10 (no change) | top-10 (no change) |
+| Tax-match display (deduped multi-tier) | TAX_MATCH_DISPLAY_CAP=12 | TAX_MATCH_DISPLAY_CAP=10 |
+| Competing-for-sale | .limit(10) / .slice(0,10) | unchanged |
+| Condo matchWithinBuilding | already top-10 via scoreAndShape:786 | no edit needed (recon claim was wrong) |
+
+### Competing ordering
+Pure `list_price ASC` replaced with closeness/level priority + price tiebreak. Closeness rank = (same bed=4) + (same bath=2) + (same LAR=1); price ASC within bucket. Sites updated:
+- app/api/charlie/competing-listings/route.ts — condo branch, post-fetch sort
+- lib/estimator/home-comparable-matcher-sales.ts — findActiveCompetitionPlex tierQuery + area fallback, post-fetch sort
+- same file — findActiveCompetitionSF runFunnels, sort applied to each funnel's output before slice
+
+Each fetch widened from .limit(10) to .limit(100) so the bucketing has a usable spread.
+
+### Confidence by count
+Outer wrapper `calculateConfidence` over inner `_calculateConfidenceCore`. Inner is byte-identical to pre-rebuild. Wrapper appends ` Signal: <strength> (<n> comp[s]).` to confidenceMessage:
+- 1 comp → weak
+- 2 comps → ok
+- 3–4 comps → good
+- 5+ comps → strong
+
+No new field threaded through types/matcher/renderer. CONTACT tier and 0-comp returns left untouched.
+
+### Pricing-stability backtest (the hard gate)
+scripts/probe-p-cascade-rebuild.js — N=50 home + N=50 condo random closed sales from the last 90 days. Pre/post diff of the community-tier funnel output (proxy for the matcher's pricing tier when community anchors). Classifier:
+- TRUNCATION-FIX: new pool surfaced bed_eq comps the old pool truncated by recency
+- SELECTION-SHIFT: new funnel output differs from old without truncation evidence
+- IDENTICAL / NEUTRAL: no observable delta
+
+Classification table (sample N=50 per stratum):
+| Stratum | SELECTION-SHIFT | TRUNCATION-FIX | IDENTICAL | NEUTRAL | oldPoolsHitLimit | newBedEqIncreased | meanAbsPriceDelta |
+| HOME    |        0        |       10       |    40     |    0    |        12        |        11         |     $21,778       |
+| CONDO   |        0        |       16       |    34     |    0    |        16        |        16         |     $21,030       |
+
+GATE: PASS. Zero SELECTION-SHIFT across both strata.
+
+### Truncation-kill proof
+Most dramatic example surfaced by the probe — subject listing_key C12818456 (condo):
+- OLD path: community pool of 300 most-recent rows; 71 of those matched bedrooms eq (rest were other bed counts).
+- NEW path: same .limit(300) but with .eq('bedrooms_total', specs.bedrooms) pushed; 267 bed_eq rows returned (every row in the 2-yr window since the community is sparse for that bedroom band — .limit(300) didn't even bind).
+- Net bed_eq comps recovered: 196.
+- OLD funnel produced 60 match(es); NEW funnel produced 214.
+- Median close_price: OLD = $763,500, NEW = $801,500 — $38,000 shift driven entirely by previously-truncated bed_eq comps now visible.
+- This is the exact bug class the 9d3e182 tax-band fix addressed for the tax cascade. P-CASCADE-REBUILD applies the same fix shape to the geo cascade.
+
+### S1 zero-diff
+S1 lives at /admin, app/api/chat/*, agent_buildings. Diff scope:
+- lib/estimator/home-comparable-matcher-sales.ts (S2)
+- lib/estimator/condo-comparable-matcher-sales.ts (S2)
+- lib/estimator/statistical-calculator.ts (S2)
+- app/api/charlie/competing-listings/route.ts (S2)
+- scripts/probe-p-cascade-rebuild.js (NEW, S2 measurement-only)
+- docs/W-ESTIMATOR-PATHS-TRACKER.md (this tracker)
+
+No S1 paths touched.
+
+### Push status
+HELD per operator instruction. Commit landed locally; awaiting push approval after backtest review.

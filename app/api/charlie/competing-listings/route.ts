@@ -23,8 +23,16 @@ export async function POST(req: NextRequest) {
     let listings: any[] = []
 
     if (path === 'condo' && communityId) {
-      // Condo path unchanged — separate matcher, bed+LAR exact at community.
-      let query = supabase
+      // P-CASCADE-REBUILD (2026-06-12): closeness/level priority replaces
+      // pure list_price ASC. Bucketing (operator-locked):
+      //   T1: same bed AND same bath AND same LAR   (closest)
+      //   T2: same bed AND same bath
+      //   T3: same bed
+      // Tiebreak within bucket: list_price ASC. Pool fetched to .limit(100)
+      // so a broad bed-eq set is JS-bucketed; SQL LAR filter dropped because
+      // bucketing covers the LAR-eq case more accurately (still surfaces
+      // exact-LAR first, but falls back to bath-eq + bed-eq when sparse).
+      const { data, error } = await supabase
         .from('mls_listings')
         .select('id, listing_key, list_price, unparsed_address, bedrooms_total, bathrooms_total_integer, living_area_range, days_on_market, approximate_age, association_fee, property_subtype, unit_number')
         .in('standard_status', ['Active', 'Active Under Contract', 'Pending'])
@@ -34,15 +42,23 @@ export async function POST(req: NextRequest) {
         .eq('bedrooms_total', bedrooms)
         .gt('list_price', 100000)
         .order('list_price', { ascending: true })
-        .limit(10)
-
-      if (livingAreaRange) {
-        query = query.eq('living_area_range', livingAreaRange)
-      }
-
-      const { data, error } = await query
+        .limit(100)
       if (error) throw error
-      const rows = data || []
+      const closeRank = (s: any) => {
+        let r = 0
+        if (bathrooms != null && s.bathrooms_total_integer === bathrooms) r += 2
+        if (livingAreaRange && s.living_area_range === livingAreaRange) r += 1
+        return r
+      }
+      const sortedAndCapped = (data || [])
+        .map((s: any) => ({ s, r: closeRank(s) }))
+        .sort((a: any, b: any) => {
+          if (a.r !== b.r) return b.r - a.r
+          return (Number(a.s.list_price) || Infinity) - (Number(b.s.list_price) || Infinity)
+        })
+        .slice(0, 10)
+        .map((x: any) => x.s)
+      const rows = sortedAndCapped
       // Condo path: attach media inline (no shared helper yet).
       if (rows.length > 0) {
         const ids = rows.map((l: any) => l.id)

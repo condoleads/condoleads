@@ -963,6 +963,28 @@ async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promi
   const subjectLAR = specs.livingAreaRange
   if (!subjectLAR) return []  // plex axis requires LAR; without it, no competition pool
 
+  // P-CASCADE-REBUILD (2026-06-12): closeness/level priority within each
+  // anchor tier — same bed+bath+LAR > same bed+bath > same bed; price ASC
+  // as tiebreak. Plex tier cascade (community -> muni -> area) is the
+  // OUTER bucket; closeness re-ranks WITHIN each tier. Pool widened from
+  // .limit(10) to .limit(100) so bucketing sees a usable spread.
+  const sortByCloseness = (arr: any[]): any[] => {
+    return arr
+      .map(s => {
+        let r = 0
+        if (specs.bedrooms != null && s.bedrooms_total === specs.bedrooms) r += 4
+        if (specs.bathrooms != null && s.bathrooms_total_integer === specs.bathrooms) r += 2
+        if (subjectLAR && s.living_area_range === subjectLAR) r += 1
+        return { s, r }
+      })
+      .sort((a, b) => {
+        if (a.r !== b.r) return b.r - a.r
+        return (Number(a.s.list_price) || Infinity) - (Number(b.s.list_price) || Infinity)
+      })
+      .slice(0, 10)
+      .map(x => x.s)
+  }
+
   const tierQuery = async (geoCol: 'community_id' | 'municipality_id', geoVal: string) => {
     const { data } = await supabase
       .from('mls_listings')
@@ -975,8 +997,9 @@ async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promi
       .gt('list_price', 100000)
       .not('living_area_range', 'is', null)
       .order('list_price', { ascending: true })
-      .limit(10)
-    return (data || []).filter((s: any) => plexComparablePredicate(s, subjectLAR))
+      .limit(100)
+    const filtered = (data || []).filter((s: any) => plexComparablePredicate(s, subjectLAR))
+    return sortByCloseness(filtered)
   }
 
   if (specs.communityId) {
@@ -1002,8 +1025,9 @@ async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promi
         .gt('list_price', 100000)
         .not('living_area_range', 'is', null)
         .order('list_price', { ascending: true })
-        .limit(10)
-      const a = (data || []).filter((s: any) => plexComparablePredicate(s, subjectLAR))
+        .limit(100)
+      const filtered = (data || []).filter((s: any) => plexComparablePredicate(s, subjectLAR))
+      const a = sortByCloseness(filtered)
       if (a.length > 0) return a
     }
   }
@@ -1013,11 +1037,32 @@ async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promi
 async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise<any[]> {
   const subtypes = getCompatibleSubtypes(specs.propertySubtype)
 
+  // P-CASCADE-REBUILD (2026-06-12): closeness/level priority + price tiebreak
+  // applied to each funnel's output before slice(0, 10). Bucketing:
+  //   same bed+bath+LAR > same bed+bath > same bed; price ASC as tiebreak.
+  // The funnel (strict → relaxed → bedBath) remains the outer pool selector;
+  // closeness re-ranks within whichever funnel returns ≥1.
+  const sortByCloseness = (arr: any[]): any[] => {
+    return arr
+      .map(s => {
+        let r = 0
+        if (specs.bedrooms != null && s.bedrooms_total === specs.bedrooms) r += 4
+        if (specs.bathrooms != null && s.bathrooms_total_integer === specs.bathrooms) r += 2
+        if (specs.livingAreaRange && s.living_area_range === specs.livingAreaRange) r += 1
+        return { s, r }
+      })
+      .sort((a, b) => {
+        if (a.r !== b.r) return b.r - a.r
+        return (Number(a.s.list_price) || Infinity) - (Number(b.s.list_price) || Infinity)
+      })
+      .slice(0, 10)
+      .map(x => x.s)
+  }
   const runFunnels = (clean: any[]): any[] => {
     const strict = applyFunnel(clean, specs)
-    if (strict.length > 0) return strict.slice(0, 10)
+    if (strict.length > 0) return sortByCloseness(strict)
     const relaxed = applyRelaxedFunnel(clean, specs)
-    if (relaxed.length > 0) return relaxed.slice(0, 10)
+    if (relaxed.length > 0) return sortByCloseness(relaxed)
     // Last resort: bed+bath only with style-family + LAR-adjacent product gate
     // (mirrors findHomeComparables muni-tier fallback).
     const bedBath = clean.filter(s => {
@@ -1031,7 +1076,7 @@ async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise
           !isAdjacentRange(s.living_area_range, specs.livingAreaRange)) return false
       return true
     })
-    return bedBath.slice(0, 10)
+    return sortByCloseness(bedBath)
   }
 
   if (specs.communityId) {
@@ -1162,7 +1207,10 @@ function withinTaxBand(sale: any, specs: HomeSpecs): boolean {
 // pre-normalized by the caller). So "Adelaide Street West" vs "Adelaide St
 // W" parsed from comp's unparsed_address both pass through the same
 // normalizer; same-street matching is suffix-variance-robust by construction.
-const TAX_MATCH_DISPLAY_CAP = 12
+// P-CASCADE-REBUILD (2026-06-12): cap lowered 12 -> 10 for parity with the
+// geo-comps section's top-10 slice (operator-locked display rule: <=10 per
+// section). winnerComparables (pricing) is independent of this cap.
+const TAX_MATCH_DISPLAY_CAP = 10
 async function runHomeTaxMatchCascade(
   supabase: any,
   specs: HomeSpecs,
@@ -1196,62 +1244,59 @@ async function runHomeTaxMatchCascade(
   const yearLo = specs.subjectTaxYear - 1
   const yearHi = specs.subjectTaxYear + 1
 
-  // Query community pool (used for Gold tax-mode) — pre-filtered to tax-band.
-  let commSales: any[] = []
-  if (specs.communityId) {
-    let q = supabase
-      .from('mls_listings')
-      .select(HOME_SELECT)
-      .eq('community_id', specs.communityId)
-      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
-      .eq('transaction_type', 'For Sale')
-      .eq('standard_status', 'Closed')
-      .not('close_price', 'is', null)
-      .gt('close_price', 100000)
-      .gte('close_date', twoYearsAgo.toISOString())
-      .gte('tax_annual_amount', taxLow)
-      .lte('tax_annual_amount', taxHigh)
-      .gte('tax_year', yearLo)
-      .lte('tax_year', yearHi)
-      .order('close_date', { ascending: false })
-      .limit(300)
-    if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
-    const { data } = await q
-    commSales = data || []
-  }
+  // P-CASCADE-REBUILD (2026-06-12): parallelize community + muni tax-band
+  // queries via Promise.all. Independence: community query and muni query
+  // share no inputs. Same-street Platinum derives from muniSales sequentially
+  // AFTER gather. Bed_eq NOT pushed here — tax cascade already pre-filters
+  // by tax_annual_amount band which is the recency-fix-equivalent gate
+  // (per the 2026-06-12 SQL band fix).
+  let qComm = specs.communityId ? supabase
+    .from('mls_listings')
+    .select(HOME_SELECT)
+    .eq('community_id', specs.communityId)
+    .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', twoYearsAgo.toISOString())
+    .gte('tax_annual_amount', taxLow)
+    .lte('tax_annual_amount', taxHigh)
+    .gte('tax_year', yearLo)
+    .lte('tax_year', yearHi)
+    .order('close_date', { ascending: false })
+    .limit(300) : null
+  if (qComm && specs.asOfDate) qComm = qComm.lt('close_date', referenceDate.toISOString())
 
-  // Query muni pool (used for BOTH Silver tax-mode AND Platinum same-street
-  // filter) — pre-filtered to tax-band so the limit doesn't truncate viable
-  // band candidates by recency in dense munis.
-  let muniSales: any[] = []
-  {
-    let q = supabase
-      .from('mls_listings')
-      .select(HOME_SELECT)
-      .eq('municipality_id', specs.municipalityId)
-      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
-      .eq('transaction_type', 'For Sale')
-      .eq('standard_status', 'Closed')
-      .not('close_price', 'is', null)
-      .gt('close_price', 100000)
-      .gte('close_date', twoYearsAgo.toISOString())
-      .gte('tax_annual_amount', taxLow)
-      .lte('tax_annual_amount', taxHigh)
-      .gte('tax_year', yearLo)
-      .lte('tax_year', yearHi)
-      .order('close_date', { ascending: false })
-      .limit(500)
-    if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
-    const { data } = await q
-    muniSales = data || []
-  }
+  let qMuniTax = supabase
+    .from('mls_listings')
+    .select(HOME_SELECT)
+    .eq('municipality_id', specs.municipalityId)
+    .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', twoYearsAgo.toISOString())
+    .gte('tax_annual_amount', taxLow)
+    .lte('tax_annual_amount', taxHigh)
+    .gte('tax_year', yearLo)
+    .lte('tax_year', yearHi)
+    .order('close_date', { ascending: false })
+    .limit(500)
+  if (specs.asOfDate) qMuniTax = qMuniTax.lt('close_date', referenceDate.toISOString())
+
+  const [commSales, muniSales] = await Promise.all([
+    qComm ? qComm.then((r: any) => r.data || []) : Promise.resolve([] as any[]),
+    qMuniTax.then((r: any) => r.data || []),
+  ])
 
   // PLATINUM — same-street + tax-band. Same-street uses streetBonusFor
   // (normalized both sides; suffix-variance-robust). Threshold >= 1 for tax-
   // mode Platinum (backtest justified at 31.5% coverage).
   let platinumTier: TierResult | null = null
   if (subjName && subjNum != null && muniSales.length > 0) {
-    const samestreetBanded = muniSales.filter(s =>
+    const samestreetBanded = muniSales.filter((s: any) =>
       streetBonusFor(s, subjName, subjNum).sameStreet && withinTaxBand(s, specs),
     )
     if (samestreetBanded.length > 0) {
@@ -1267,7 +1312,7 @@ async function runHomeTaxMatchCascade(
   // GOLD — community + tax-band.
   let goldTier: TierResult | null = null
   if (commSales.length > 0) {
-    const banded = commSales.filter(s => withinTaxBand(s, specs))
+    const banded = commSales.filter((s: any) => withinTaxBand(s, specs))
     if (banded.length > 0) {
       const clean = banded.filter(notAsIs)
       let pool = applyFunnel(clean, specs)
@@ -1281,7 +1326,7 @@ async function runHomeTaxMatchCascade(
   // SILVER — muni + tax-band (reuses muniSales).
   let silverTier: TierResult | null = null
   if (muniSales.length > 0) {
-    const banded = muniSales.filter(s => withinTaxBand(s, specs))
+    const banded = muniSales.filter((s: any) => withinTaxBand(s, specs))
     if (banded.length > 0) {
       const clean = banded.filter(notAsIs)
       let pool = applyFunnel(clean, specs)
@@ -1400,11 +1445,18 @@ async function runSFAreaQuery(
   const muniIds = (areaMunis || []).map((m: any) => m.id)
   if (muniIds.length === 0) return []
   const subtypes = getCompatibleSubtypes(specs.propertySubtype)
+  // P-CASCADE-REBUILD (2026-06-12): SQL-level bedrooms_total pre-filter so
+  // .limit(500) applies AFTER bed-eq match-filtering. Safe-superset: every
+  // funnel path (strict, relaxed, bedBath last-resort) requires bedrooms eq;
+  // pushing it to SQL is a NOOP on selection (the JS funnel would reject
+  // every non-bed-eq row anyway) but kills the recency-truncation class.
+  // Same pattern as 9d3e182 tax-band fix.
   let q = supabase
     .from('mls_listings')
     .select(HOME_SELECT)
     .in('municipality_id', muniIds)
     .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
+    .eq('bedrooms_total', specs.bedrooms)
     .eq('transaction_type', 'For Sale')
     .eq('standard_status', 'Closed')
     .not('close_price', 'is', null)
@@ -1483,98 +1535,106 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
   // expected-platinum-anchor) OR when today returned CONTACT but the new
   // Bronze area pool has >=3 (expected-bronze-fill).
 
+  // P-CASCADE-REBUILD (2026-06-12): parallelize Gold/Silver/Bronze + Tax-Match
+  // queries via Promise.all. Independence verified in
+  // recon/W-CASCADE-REBUILD-RECON.txt section 4. Platinum (JS filter of
+  // goldPool) stays SEQUENTIAL after Gold's funnel — it has no separate
+  // query.
+  // Also pushes SQL-level bedrooms_total = specs.bedrooms on Gold + Silver
+  // queries so .limit applies AFTER bed-match. Safe-superset: every funnel
+  // path requires bed eq, so SQL push is a selection NOOP that only fixes
+  // the recency-truncation class. Same pattern as 9d3e182 tax fix. Bronze
+  // gets the same push in runSFAreaQuery.
+  let qGold = specs.communityId ? supabase
+    .from('mls_listings')
+    .select(HOME_SELECT)
+    .eq('community_id', specs.communityId)
+    .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
+    .eq('bedrooms_total', specs.bedrooms)
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', twoYearsAgo.toISOString())
+    .order('close_date', { ascending: false })
+    .limit(300) : null
+  if (qGold && specs.asOfDate) qGold = qGold.lt('close_date', referenceDate.toISOString())
+
+  let qSilver = specs.municipalityId ? supabase
+    .from('mls_listings')
+    .select(HOME_SELECT)
+    .eq('municipality_id', specs.municipalityId)
+    .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
+    .eq('bedrooms_total', specs.bedrooms)
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', twoYearsAgo.toISOString())
+    .order('close_date', { ascending: false })
+    .limit(500) : null
+  if (qSilver && specs.asOfDate) qSilver = qSilver.lt('close_date', referenceDate.toISOString())
+
+  const [communitySalesRes, muniSalesRes, areaSales, taxMatch] = await Promise.all([
+    qGold ? qGold.then((r: any) => r.data || []) : Promise.resolve(null),
+    qSilver ? qSilver.then((r: any) => r.data || []) : Promise.resolve(null),
+    runSFAreaQuery(specs, supabase, referenceDate, twoYearsAgo),
+    runHomeTaxMatchCascade(supabase, specs, referenceDate, twoYearsAgo, subjName, subjNum, customValues),
+  ])
+
   let goldTier: TierResult | null = null
   let platinumTier: TierResult | null = null
   let silverTier: TierResult | null = null
   let silverUsedBedBath = false
   let bronzeTier: TierResult | null = null
+  let goldPoolForPlatinum: any[] = []
 
-  // ----- GOLD: community pool (mirrors today's TIER 1 funnel sequence) -----
-  if (specs.communityId) {
-    let qCommunity = supabase
-      .from('mls_listings')
-      .select(HOME_SELECT)
-      .eq('community_id', specs.communityId)
-      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
-      .eq('transaction_type', 'For Sale')
-      .eq('standard_status', 'Closed')
-      .not('close_price', 'is', null)
-      .gt('close_price', 100000)
-      .gte('close_date', twoYearsAgo.toISOString())
-      .order('close_date', { ascending: false })
-      .limit(300)
-    if (specs.asOfDate) qCommunity = qCommunity.lt('close_date', referenceDate.toISOString())
-    const { data: communitySales } = await qCommunity
-
-    if (communitySales && communitySales.length > 0) {
-      const cleanSales = communitySales.filter(notAsIs)
-      // Strict-first, fall through to relaxed if strict <3 — mirrors today's
-      // sequence at lines 1004-1046 (pre-h7). Whichever pool today would have
-      // returned IS the gold pool here.
-      let goldPool = applyFunnel(cleanSales, specs)
-      if (goldPool.length < 3) {
-        goldPool = applyRelaxedFunnel(cleanSales, specs)
-      }
-      goldTier = await buildSFTierResult(goldPool, specs, subjName, subjNum, customValues)
-
-      // Platinum: same-street subset of Gold's already-funneled pool.
-      // No extra DB query. Subject without street data → null.
-      if (subjName && subjNum != null && goldPool.length > 0) {
-        const platinumPool = goldPool.filter(s => streetBonusFor(s, subjName, subjNum).sameStreet)
-        platinumTier = await buildSFTierResult(platinumPool, specs, subjName, subjNum, customValues)
-      }
+  // ----- GOLD: community pool (process after Promise.all gather) -----
+  if (communitySalesRes && communitySalesRes.length > 0) {
+    const cleanSales = communitySalesRes.filter(notAsIs)
+    let goldPool = applyFunnel(cleanSales, specs)
+    if (goldPool.length < 3) {
+      goldPool = applyRelaxedFunnel(cleanSales, specs)
     }
+    goldTier = await buildSFTierResult(goldPool, specs, subjName, subjNum, customValues)
+    goldPoolForPlatinum = goldPool
   }
 
-  // ----- SILVER: municipality pool (mirrors today's TIER 2 sequence) -----
-  if (specs.municipalityId) {
-    let qMuni = supabase
-      .from('mls_listings')
-      .select(HOME_SELECT)
-      .eq('municipality_id', specs.municipalityId)
-      .in('property_subtype', subtypes.flatMap(propertySubtypeVariants))
-      .eq('transaction_type', 'For Sale')
-      .eq('standard_status', 'Closed')
-      .not('close_price', 'is', null)
-      .gt('close_price', 100000)
-      .gte('close_date', twoYearsAgo.toISOString())
-      .order('close_date', { ascending: false })
-      .limit(500)
-    if (specs.asOfDate) qMuni = qMuni.lt('close_date', referenceDate.toISOString())
-    const { data: muniSales } = await qMuni
-
-    if (muniSales && muniSales.length > 0) {
-      const cleanSales = muniSales.filter(notAsIs)
-      let silverPool = applyFunnel(cleanSales, specs)
-      if (silverPool.length < 3) silverPool = applyRelaxedFunnel(cleanSales, specs)
-      if (silverPool.length < 2) {
-        // bedBathOnly fallback — today's last-resort that returns tier=CONTACT
-        // with muni comps (lines 1095-1106). We track usedBedBath so the
-        // best-tier resolution can force tier='CONTACT' to match pre-h7.
-        const bedBathOnly = cleanSales.filter(s => {
-          if (s.bedrooms_total !== specs.bedrooms) return false
-          if (Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) > 1) return false
-          const saleStyle = s.architectural_style?.[0] || null
-          if (specs.architecturalStyle && saleStyle &&
-              saleStyle !== specs.architecturalStyle &&
-              !isSameStyleFamily(saleStyle, specs.architecturalStyle || null)) return false
-          if (specs.livingAreaRange && s.living_area_range !== specs.livingAreaRange &&
-              !isAdjacentRange(s.living_area_range, specs.livingAreaRange)) return false
-          return true
-        })
-        if (bedBathOnly.length >= 2) {
-          silverPool = bedBathOnly
-          silverUsedBedBath = true
-        } else {
-          silverPool = []
-        }
-      }
-      silverTier = await buildSFTierResult(silverPool, specs, subjName, subjNum, customValues)
-    }
+  // ----- PLATINUM: same-street subset of Gold's funneled pool -----
+  // Stays sequential after Gold's funnel — JS filter, no DB query.
+  if (subjName && subjNum != null && goldPoolForPlatinum.length > 0) {
+    const platinumPool = goldPoolForPlatinum.filter(s => streetBonusFor(s, subjName, subjNum).sameStreet)
+    platinumTier = await buildSFTierResult(platinumPool, specs, subjName, subjNum, customValues)
   }
 
-  // ----- BRONZE: area pool (NEW for SF — lifts plex pattern) -----
-  const areaSales = await runSFAreaQuery(specs, supabase, referenceDate, twoYearsAgo)
+  // ----- SILVER: municipality pool (process after Promise.all gather) -----
+  if (muniSalesRes && muniSalesRes.length > 0) {
+    const cleanSales = muniSalesRes.filter(notAsIs)
+    let silverPool = applyFunnel(cleanSales, specs)
+    if (silverPool.length < 3) silverPool = applyRelaxedFunnel(cleanSales, specs)
+    if (silverPool.length < 2) {
+      const bedBathOnly = cleanSales.filter((s: any) => {
+        if (s.bedrooms_total !== specs.bedrooms) return false
+        if (Math.abs((s.bathrooms_total_integer || 0) - specs.bathrooms) > 1) return false
+        const saleStyle = s.architectural_style?.[0] || null
+        if (specs.architecturalStyle && saleStyle &&
+            saleStyle !== specs.architecturalStyle &&
+            !isSameStyleFamily(saleStyle, specs.architecturalStyle || null)) return false
+        if (specs.livingAreaRange && s.living_area_range !== specs.livingAreaRange &&
+            !isAdjacentRange(s.living_area_range, specs.livingAreaRange)) return false
+        return true
+      })
+      if (bedBathOnly.length >= 2) {
+        silverPool = bedBathOnly
+        silverUsedBedBath = true
+      } else {
+        silverPool = []
+      }
+    }
+    silverTier = await buildSFTierResult(silverPool, specs, subjName, subjNum, customValues)
+  }
+
+  // ----- BRONZE: area pool (process after Promise.all gather) -----
   if (areaSales.length > 0) {
     const cleanSales = areaSales.filter(notAsIs)
     let bronzePool = applyFunnel(cleanSales, specs)
@@ -1582,26 +1642,16 @@ export async function findHomeComparables(specs: HomeSpecs): Promise<HomeMatchRe
     bronzeTier = await buildSFTierResult(bronzePool, specs, subjName, subjNum, customValues)
   }
 
-  // ===== h7: BEST-TIER RESOLUTION (drives top-level fields) =====
-  // Order: Platinum>Gold>Silver>Bronze>CONTACT. Thresholds mirror today:
-  //   - Gold meets threshold at >=3 funneled (strict OR relaxed)
-  //   - Silver meets threshold at >=2 funneled OR bedBathOnly (forces CONTACT)
-  //   - Bronze meets threshold at >=3 funneled (no bedBathOnly fallback — area
-  //     pool is already wider, last-resort doesn't add useful signal)
-  //   - Platinum meets threshold at >=3 (same threshold as Gold; tighter pool)
+  // ===== BEST-TIER RESOLUTION (drives top-level fields) =====
+  // P-CASCADE-REBUILD (2026-06-12): Platinum threshold lowered from >=3 to
+  // >=1. "Platinum wins on a single match; climb a level only when that
+  // level's match count is zero." Gold/Silver/Bronze unchanged.
   const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: bronzeTier }
-
-  // W-TAX-MATCH HOME (2026-06-11): run the tax-mode cascade in parallel
-  // with the geo selection. ADDITIVE — does not influence geo
-  // tier/pricing/comps; the geo returns below are unchanged. taxMatch is
-  // undefined when subject tax is missing or no comps fall in the band
-  // (silent-omits at the renderer).
-  const taxMatch = await runHomeTaxMatchCascade(supabase, specs, referenceDate, twoYearsAgo, subjName, subjNum, customValues)
 
   let bestGeoTier: 'platinum' | 'gold' | 'silver' | 'bronze' | 'none'
   let best: TierResult | null
   let geoLevel: HomeMatchResult['geoLevel']
-  if (platinumTier && platinumTier.count >= 3) {
+  if (platinumTier && platinumTier.count >= 1) {
     best = platinumTier; bestGeoTier = 'platinum'; geoLevel = 'street'
   } else if (goldTier && goldTier.count >= 3) {
     best = goldTier; bestGeoTier = 'gold'; geoLevel = 'community'

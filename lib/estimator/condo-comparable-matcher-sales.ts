@@ -291,7 +291,10 @@ function withinTaxBand(sale: any, specs: CondoSaleSpecs): boolean {
 // geo this mode reaches. Bronze (area) would only ever match same-muni rows
 // anyway; folding it in adds nothing the silver query doesn't already see.
 // Skip bronze in tax-mode — the silver query is the full muni reach.
-const TAX_MATCH_DISPLAY_CAP = 12
+// P-CASCADE-REBUILD (2026-06-12): cap lowered 12 -> 10 for parity with the
+// geo-comps section's top-10 slice (operator-locked display rule: <=10 per
+// section). winnerComparables (pricing) is independent of this cap.
+const TAX_MATCH_DISPLAY_CAP = 10
 async function runTaxMatchCascade(
   supabase: any,
   specs: CondoSaleSpecs,
@@ -318,18 +321,50 @@ async function runTaxMatchCascade(
   const yearLo = specs.subjectTaxYear - 1
   const yearHi = specs.subjectTaxYear + 1
 
+  // P-CASCADE-REBUILD (2026-06-12): parallelize tax cascade Pt+Gd+Sv queries
+  // via Promise.all. All three queries are independent. Tax-band SQL pre-
+  // filter unchanged (already pushed by the 6/12 W12955302 fix).
+  const qTaxPlatinum = specs.buildingId ? supabase
+    .from('mls_listings').select(CONDO_SALE_SELECT)
+    .eq('building_id', specs.buildingId)
+    .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
+    .not('close_price', 'is', null).gt('close_price', 100000)
+    .gte('close_date', sinceISO).order('close_date', { ascending: false }) : null
+
+  const qTaxGold = specs.communityId ? supabase
+    .from('mls_listings').select(CONDO_SALE_SELECT)
+    .eq('community_id', specs.communityId)
+    .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
+    .not('close_price', 'is', null).gt('close_price', 100000)
+    .gte('close_date', sinceISO)
+    .gte('tax_annual_amount', taxLow)
+    .lte('tax_annual_amount', taxHigh)
+    .gte('tax_year', yearLo)
+    .lte('tax_year', yearHi)
+    .order('close_date', { ascending: false }).limit(300) : null
+
+  const qTaxSilver = specs.municipalityId ? supabase
+    .from('mls_listings').select(CONDO_SALE_SELECT)
+    .eq('municipality_id', specs.municipalityId)
+    .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
+    .not('close_price', 'is', null).gt('close_price', 100000)
+    .gte('close_date', sinceISO)
+    .gte('tax_annual_amount', taxLow)
+    .lte('tax_annual_amount', taxHigh)
+    .gte('tax_year', yearLo)
+    .lte('tax_year', yearHi)
+    .order('close_date', { ascending: false }).limit(500) : null
+
+  const [bldgSales, commSalesTax, muniSalesTax] = await Promise.all([
+    qTaxPlatinum ? qTaxPlatinum.then((r: any) => r.data || []) : Promise.resolve([] as any[]),
+    qTaxGold     ? qTaxGold.then((r: any) => r.data || [])     : Promise.resolve([] as any[]),
+    qTaxSilver   ? qTaxSilver.then((r: any) => r.data || [])   : Promise.resolve([] as any[]),
+  ])
+
   let platinumMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let platinumTier: TierResult | null = null
-  if (specs.buildingId) {
-    // Building pool has no .limit (small set), so truncation isn't an issue
-    // here — JS-only band filter is sufficient. Left unchanged.
-    const { data: bldgSales } = await supabase
-      .from('mls_listings').select(CONDO_SALE_SELECT)
-      .eq('building_id', specs.buildingId)
-      .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
-      .not('close_price', 'is', null).gt('close_price', 100000)
-      .gte('close_date', sinceISO).order('close_date', { ascending: false })
-    const banded = (bldgSales || []).filter((s: any) => withinTaxBand(s, specs))
+  if (bldgSales.length > 0) {
+    const banded = bldgSales.filter((s: any) => withinTaxBand(s, specs))
     if (banded.length > 0) {
       platinumMatch = await matchWithinBuilding(banded, specs, customValues)
       platinumTier  = buildCondoTierResult(condoComparabilityFilter(banded, specs), platinumMatch.comparables)
@@ -338,19 +373,8 @@ async function runTaxMatchCascade(
 
   let goldMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let goldTier: TierResult | null = null
-  if (specs.communityId) {
-    const { data: commSales } = await supabase
-      .from('mls_listings').select(CONDO_SALE_SELECT)
-      .eq('community_id', specs.communityId)
-      .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
-      .not('close_price', 'is', null).gt('close_price', 100000)
-      .gte('close_date', sinceISO)
-      .gte('tax_annual_amount', taxLow)
-      .lte('tax_annual_amount', taxHigh)
-      .gte('tax_year', yearLo)
-      .lte('tax_year', yearHi)
-      .order('close_date', { ascending: false }).limit(300)
-    const banded = (commSales || []).filter((s: any) => withinTaxBand(s, specs))
+  if (commSalesTax.length > 0) {
+    const banded = commSalesTax.filter((s: any) => withinTaxBand(s, specs))
     if (banded.length > 0) {
       goldMatch = await matchAcrossBuildings(banded, specs, customValues)
       goldTier  = buildCondoTierResult(condoComparabilityFilter(banded, specs), goldMatch.comparables)
@@ -359,19 +383,8 @@ async function runTaxMatchCascade(
 
   let silverMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let silverTier: TierResult | null = null
-  if (specs.municipalityId) {
-    const { data: muniSales } = await supabase
-      .from('mls_listings').select(CONDO_SALE_SELECT)
-      .eq('municipality_id', specs.municipalityId)
-      .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
-      .not('close_price', 'is', null).gt('close_price', 100000)
-      .gte('close_date', sinceISO)
-      .gte('tax_annual_amount', taxLow)
-      .lte('tax_annual_amount', taxHigh)
-      .gte('tax_year', yearLo)
-      .lte('tax_year', yearHi)
-      .order('close_date', { ascending: false }).limit(500)
-    const banded = (muniSales || []).filter((s: any) => withinTaxBand(s, specs))
+  if (muniSalesTax.length > 0) {
+    const banded = muniSalesTax.filter((s: any) => withinTaxBand(s, specs))
     if (banded.length > 0) {
       silverMatch = await matchAcrossBuildings(banded, specs, customValues)
       silverTier  = buildCondoTierResult(condoComparabilityFilter(banded, specs), silverMatch.comparables)
@@ -472,95 +485,109 @@ export async function findCondoComparablesSales(specs: CondoSaleSpecs): Promise<
   //   - the TierResult for the display rail
   // and stores them for the resolution step below.
 
+  // P-CASCADE-REBUILD (2026-06-12): parallelize Platinum + Gold + Silver +
+  // Bronze + Tax-Match queries via Promise.all. Independence verified in
+  // recon/W-CASCADE-REBUILD-RECON.txt section 4. SQL-level bedrooms_total
+  // push on Gold/Silver/Bronze (not Platinum — building pool is small, no
+  // truncation risk; operator-locked "Gold/Silver/Bronze" scope). Safe-
+  // superset: every condo match path requires bed eq via matchAcrossBuildings'
+  // bedBath base filter, so SQL push is a selection NOOP that only fixes the
+  // recency-truncation class.
+
+  // Resolve munis for Bronze before fan-out (one DB lookup, cached).
+  const bronzeMunis: string[] = specs.areaId ? await munisInArea(specs.areaId, supabase) : []
+
+  // Compose each base query (or null when geo missing).
+  const qPlatinum = specs.buildingId ? supabase
+    .from('mls_listings')
+    .select(CONDO_SALE_SELECT)
+    .eq('building_id', specs.buildingId)
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', sinceISO)
+    .order('close_date', { ascending: false }) : null
+
+  const qGoldCondo = specs.communityId ? supabase
+    .from('mls_listings')
+    .select(CONDO_SALE_SELECT)
+    .eq('community_id', specs.communityId)
+    .eq('bedrooms_total', specs.bedrooms)
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', sinceISO)
+    .order('close_date', { ascending: false })
+    .limit(300) : null
+
+  const qSilverCondo = specs.municipalityId ? supabase
+    .from('mls_listings')
+    .select(CONDO_SALE_SELECT)
+    .eq('municipality_id', specs.municipalityId)
+    .eq('bedrooms_total', specs.bedrooms)
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', sinceISO)
+    .order('close_date', { ascending: false })
+    .limit(500) : null
+
+  const qBronzeCondo = bronzeMunis.length > 0 ? supabase
+    .from('mls_listings')
+    .select(CONDO_SALE_SELECT + ', municipality_id')
+    .eq('transaction_type', 'For Sale')
+    .eq('standard_status', 'Closed')
+    .not('close_price', 'is', null)
+    .gt('close_price', 100000)
+    .gte('close_date', sinceISO)
+    .in('municipality_id', bronzeMunis)
+    .eq('bedrooms_total', specs.bedrooms)
+    .order('close_date', { ascending: false })
+    .limit(500) : null
+
+  const [bldgSales, commSalesGeo, muniSalesGeo, areaSales, taxMatch] = await Promise.all([
+    qPlatinum ? qPlatinum.then((r: any) => r.data || []) : Promise.resolve([] as any[]),
+    qGoldCondo ? qGoldCondo.then((r: any) => r.data || []) : Promise.resolve([] as any[]),
+    qSilverCondo ? qSilverCondo.then((r: any) => r.data || []) : Promise.resolve([] as any[]),
+    qBronzeCondo ? qBronzeCondo.then((r: any) => r.data || []) : Promise.resolve([] as any[]),
+    runTaxMatchCascade(supabase, specs, sinceISO, customValues),
+  ])
+
+  // Process each tier sequentially (post-gather). Match functions have their
+  // own awaits (attachMediaUrls); preserved in order to keep per-tier output
+  // byte-identical to pre-rebuild.
   let platinumMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let platinumTier: TierResult | null = null
-  if (specs.buildingId) {
-    const { data: bldgSales } = await supabase
-      .from('mls_listings')
-      .select(CONDO_SALE_SELECT)
-      .eq('building_id', specs.buildingId)
-      .eq('transaction_type', 'For Sale')
-      .eq('standard_status', 'Closed')
-      .not('close_price', 'is', null)
-      .gt('close_price', 100000)
-      .gte('close_date', sinceISO)
-      .order('close_date', { ascending: false })
-    if (bldgSales && bldgSales.length > 0) {
-      platinumMatch = await matchWithinBuilding(bldgSales, specs, customValues)
-      platinumTier  = buildCondoTierResult(condoComparabilityFilter(bldgSales, specs), platinumMatch.comparables)
-    }
+  if (bldgSales.length > 0) {
+    platinumMatch = await matchWithinBuilding(bldgSales, specs, customValues)
+    platinumTier  = buildCondoTierResult(condoComparabilityFilter(bldgSales, specs), platinumMatch.comparables)
   }
 
   let goldMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let goldTier: TierResult | null = null
-  if (specs.communityId) {
-    const { data: commSales } = await supabase
-      .from('mls_listings')
-      .select(CONDO_SALE_SELECT)
-      .eq('community_id', specs.communityId)
-      .eq('transaction_type', 'For Sale')
-      .eq('standard_status', 'Closed')
-      .not('close_price', 'is', null)
-      .gt('close_price', 100000)
-      .gte('close_date', sinceISO)
-      .order('close_date', { ascending: false })
-      .limit(300)
-    if (commSales && commSales.length > 0) {
-      goldMatch = await matchAcrossBuildings(commSales, specs, customValues)
-      goldTier  = buildCondoTierResult(condoComparabilityFilter(commSales, specs), goldMatch.comparables)
-    }
+  if (commSalesGeo.length > 0) {
+    goldMatch = await matchAcrossBuildings(commSalesGeo, specs, customValues)
+    goldTier  = buildCondoTierResult(condoComparabilityFilter(commSalesGeo, specs), goldMatch.comparables)
   }
 
   let silverMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let silverTier: TierResult | null = null
-  if (specs.municipalityId) {
-    const { data: muniSales } = await supabase
-      .from('mls_listings')
-      .select(CONDO_SALE_SELECT)
-      .eq('municipality_id', specs.municipalityId)
-      .eq('transaction_type', 'For Sale')
-      .eq('standard_status', 'Closed')
-      .not('close_price', 'is', null)
-      .gt('close_price', 100000)
-      .gte('close_date', sinceISO)
-      .order('close_date', { ascending: false })
-      .limit(500)
-    if (muniSales && muniSales.length > 0) {
-      silverMatch = await matchAcrossBuildings(muniSales, specs, customValues)
-      silverTier  = buildCondoTierResult(condoComparabilityFilter(muniSales, specs), silverMatch.comparables)
-    }
+  if (muniSalesGeo.length > 0) {
+    silverMatch = await matchAcrossBuildings(muniSalesGeo, specs, customValues)
+    silverTier  = buildCondoTierResult(condoComparabilityFilter(muniSalesGeo, specs), silverMatch.comparables)
   }
 
   let bronzeMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let bronzeTier: TierResult | null = null
-  if (specs.areaId) {
-    const munis = await munisInArea(specs.areaId, supabase)
-    if (munis.length > 0) {
-      const { data: areaSales } = await supabase
-        .from('mls_listings')
-        .select(CONDO_SALE_SELECT + ', municipality_id')
-        .eq('transaction_type', 'For Sale')
-        .eq('standard_status', 'Closed')
-        .not('close_price', 'is', null)
-        .gt('close_price', 100000)
-        .gte('close_date', sinceISO)
-        .in('municipality_id', munis)
-        .order('close_date', { ascending: false })
-        .limit(500)
-      if (areaSales && areaSales.length > 0) {
-        bronzeMatch = await matchAcrossBuildings(areaSales, specs, customValues)
-        bronzeTier  = buildCondoTierResult(condoComparabilityFilter(areaSales, specs), bronzeMatch.comparables)
-      }
-    }
+  if (areaSales.length > 0) {
+    bronzeMatch = await matchAcrossBuildings(areaSales, specs, customValues)
+    bronzeTier  = buildCondoTierResult(condoComparabilityFilter(areaSales, specs), bronzeMatch.comparables)
   }
 
   const tiers = { platinum: platinumTier, gold: goldTier, silver: silverTier, bronze: bronzeTier }
-
-  // W-TAX-MATCH (2026-06-11): run the tax-mode cascade in parallel with the
-  // geo selection. ADDITIVE — does not influence geo tier/pricing/comps; the
-  // five geo returns below are unchanged. taxMatch is undefined when subject
-  // tax is missing or no comps fall in the band.
-  const taxMatch = await runTaxMatchCascade(supabase, specs, sinceISO, customValues)
 
   // SELECTION PRESERVED — same priority + same thresholds as pre-Phase-1.
   // Locked c2-revert: a single same-building comp anchors Platinum.

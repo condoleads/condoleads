@@ -160,9 +160,29 @@ export function calculateEstimate(
 
 /**
  * Calculate confidence level based on tier and recency
+ *
+ * P-CASCADE-REBUILD (2026-06-12): anchor-tier comp-count strength bucketing
+ * surfaced via the existing confidenceMessage suffix. Operator-locked
+ * thresholds: 1=weak, 2=ok, 3-4=good, 5+=strong. The structural confidence
+ * enum and per-tier messaging are UNCHANGED — the count strength is appended
+ * as a parenthetical signal qualifier ("Signal: <label> (<n> comp[s])").
+ * No new field added; threading through types/matcher/renderer unchanged.
  */
-function calculateConfidence(
-  tier: MatchTier, 
+function countStrengthLabel(count: number): string {
+  if (count >= 5) return 'strong'
+  if (count >= 3) return 'good'
+  if (count === 2) return 'ok'
+  if (count === 1) return 'weak'
+  return 'none'
+}
+function withCountStrength(message: string, count: number): string {
+  if (count <= 0) return message
+  const label = countStrengthLabel(count)
+  const unit = count === 1 ? 'comp' : 'comps'
+  return `${message} Signal: ${label} (${count} ${unit}).`
+}
+function _calculateConfidenceCore(
+  tier: MatchTier,
   comparables: ComparableSale[]
 ): { confidence: EstimateResult['confidence']; confidenceMessage: string } {
   const hotCount = comparables.filter(c => c.temperature === 'HOT').length
@@ -239,6 +259,21 @@ function calculateConfidence(
     confidence: 'None',
     confidenceMessage: 'Your unit requires professional analysis for accurate pricing.'
   }
+}
+
+// P-CASCADE-REBUILD (2026-06-12): outer wrapper that injects the count-
+// strength signal qualifier into every non-empty confidenceMessage. The
+// _calculateConfidenceCore inner function is byte-identical to pre-
+// rebuild — wrapper-only change keeps the per-tier messaging logic intact.
+function calculateConfidence(
+  tier: MatchTier,
+  comparables: ComparableSale[]
+): { confidence: EstimateResult['confidence']; confidenceMessage: string } {
+  const core = _calculateConfidenceCore(tier, comparables)
+  // Only annotate when there is a real comp count — keeps the CONTACT/None
+  // message untouched (count is 0 or near-meaningless on that path).
+  if (tier === 'CONTACT' || comparables.length === 0) return core
+  return { confidence: core.confidence, confidenceMessage: withCountStrength(core.confidenceMessage, comparables.length) }
 }
 
 /**
