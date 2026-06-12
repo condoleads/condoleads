@@ -208,6 +208,7 @@ export default function HomePropertyPageClient({
                       listing={listing}
                       isSale={isSale}
                       agentId={walliamAgentId || ''}
+                      onEstimateClick={() => setShowEstimatorModal(true)}
                     />
                   </GatedContent>
                   <HomePropertyInfo listing={listing} />
@@ -230,6 +231,7 @@ export default function HomePropertyPageClient({
                       listing={listing}
                       isSale={isSale}
                       agentId={agent.id}
+                      onEstimateClick={() => setShowEstimatorModal(true)}
                     />
                   </GatedContent>
                   <HomePropertyInfo listing={listing} />

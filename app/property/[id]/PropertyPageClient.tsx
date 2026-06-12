@@ -222,6 +222,7 @@ export default function PropertyPageClient({
                       buildingSlug={building?.slug || ''}
                       agentId={walliamAgentId || ''}
                       tenantId={walliamTenantId || undefined}
+                      onEstimateClick={() => setShowEstimatorModal(true)}
                     />
                   </GatedContent>
                   <BuildingInfo
@@ -255,6 +256,7 @@ export default function PropertyPageClient({
                       buildingAddress={building?.canonical_address || ''}
                       buildingSlug={building?.slug || ''}
                       agentId={agent.id}
+                      onEstimateClick={() => setShowEstimatorModal(true)}
                     />
                   </GatedContent>
                   <BuildingInfo

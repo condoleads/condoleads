@@ -647,3 +647,59 @@ Sample tile links (all walliam.ca/property/{uuid}):
 HELD per operator instruction. Commit landed locally; awaiting push approval.
 
 Pushed 0f3f5e0; operator-approved. Agent lead-detail view now renders the full working document (3 sections + tenant-correct links), consistent with the buyer/agent emails; legacy leads fall back gracefully.
+
+---
+
+## P-DEFAULT-GATE (2026-06-12) — property-page auto-fire removed; teaser CTA opens the metered modal
+
+### Pre-flight findings (read-only, verified)
+- **Session route reuses sessionId** for same `(source, user_id, tenant_id)`: confirmed at `app/api/walliam/estimator/session/route.ts:123-136` — SELECT existing active/vip session, ORDER BY last_activity_at DESC LIMIT 1; only creates new when none exists. **PLUS** the DB enforces a UNIQUE index on `(user_id, tenant_id, source)` (`idx_chat_sessions_user_tenant_source_unique`, discovered this turn) — two active sessions for the same triple are physically impossible.
+- **Modal in-flight guard already present**: `EstimatorBuyerModal.tsx:110-114` useEffect gates `checkAndEstimate()` behind `!result && !loading && !sessionLoading`. `setSessionLoading(true)` is set BEFORE the session fetch (L174). Mirrors in `HomeEstimatorBuyerModal.tsx`.
+- **Idempotent open-trigger**: both header + sticky-bar + (new) inline-teaser buttons call `setShowEstimatorModal(true)` — a boolean setter that's idempotent.
+- **Verdict: NO new guard needed.** The combination of UNIQUE index + in-flight `!sessionLoading` guard + idempotent boolean opener covers all stated double-trigger scenarios. (Close + reopen for the same subject is an explicit separate user action and remains its own metered call by design.)
+
+### Fix (Option A + inline teaser)
+- **PropertyEstimateCTA.tsx** — full rewrite as a teaser-only component (78 lines, was ~180):
+  - Removed: action imports (`estimateCondoSale`, `estimateCondoRent`, `estimateSale`, `estimateRent`), `EstimatorResults` import, `useCompetingListings` hook, the `useEffect`-based auto-fire, all `result`/`loading`/`error` state.
+  - Added: `onEstimateClick?: () => void` prop; renders a sale/lease-aware teaser CTA whose button calls `onEstimateClick`.
+- **HomePropertyEstimateCTA.tsx** — same shape; home lease still returns null (matches pre-fix behavior). Sale teaser button calls `onEstimateClick`.
+- **PropertyPageClient.tsx** — both inline CTA call-sites (hero branch + agent-subdomain branch) now pass `onEstimateClick={() => setShowEstimatorModal(true)}` — the SAME handler the header + sticky-bar buttons use.
+- **HomePropertyPageClient.tsx** — same.
+- **Modal flow** — UNCHANGED. The teaser opens the existing metered modal; the modal's `checkAndEstimate` (session check → if-allowed → increment → estimate) is the single source of truth for metering.
+
+### Backend untouched (verified)
+- `app/api/walliam/estimator/session/route.ts` — UNCHANGED (sha 0534c79e0ba2, metering markers intact: `estimator_free_attempts`, `user_credit_overrides`).
+- `app/api/walliam/estimator/increment/route.ts` — UNCHANGED (sha 4f5cb2300b2b, W-RECOVERY A1.5 auth gate + `estimator_count` write intact).
+- `chat_sessions`, `user_credit_overrides`, `vip_requests` schemas: UNTOUCHED.
+- Charlie endpoints, AI chat (S1), S1 `/api/estimator/*`: UNTOUCHED.
+- FKs / resolver / recipient hierarchy / increment endpoint internals: UNTOUCHED.
+
+### Build
+- `npx tsc --noEmit` → exit 0
+- `npm run build` → exit 0
+
+### Test (scripts/test-p-default-gate.js) — 12/12 PASS
+| # | Verdict | Result |
+|---|---------|--------|
+| 1a | Condo CTA: auto-fire imports/effect REMOVED (regex on actual imports, not docblock strings) | **PASS** |
+| 1b | Home CTA: auto-fire imports/effect REMOVED | **PASS** |
+| 1c | Condo CTA: teaser CTA with `onEstimateClick` PRESENT | **PASS** |
+| 1d | Home CTA: teaser CTA with `onEstimateClick` PRESENT | **PASS** |
+| 2a | Condo PageClient threads `onEstimateClick` (≥4 sites — header + stickybar + 2 inline) | **PASS** (count=5) |
+| 2b | Home PageClient threads `onEstimateClick` (≥4 sites) | **PASS** (count=5) |
+| 3a | Condo modal in-flight guard (`!sessionLoading`) intact | **PASS** |
+| 3b | Home modal in-flight guard (`!sessionLoading`) intact | **PASS** |
+| 4a | **UNIQUE index on (user_id, tenant_id, source) prevents dup sessions** (DB-level proof) | **PASS** |
+| 4b | Session route SELECT returns same id on rapid re-call | **PASS** |
+| 5a | Session route metering markers intact (no diff) | **PASS** (sha 0534c79e0ba2) |
+| 5b | Increment route W-RECOVERY A1.5 + `estimator_count` markers intact (no diff) | **PASS** (sha 4f5cb2300b2b) |
+| 6 | Mutation delta = 0 (BEGIN/ROLLBACK on chat_sessions) | **PASS** (2127 → 2127) |
+
+### Why "ONE subject = ONE debit" is now structurally enforced
+Three independent layers:
+1. **UI layer** — header / sticky-bar / inline-teaser all call the same `setShowEstimatorModal(true)` (idempotent boolean setter). Cannot fire twice while modal is open.
+2. **Modal layer** — `useEffect` guarded by `!sessionLoading` (mutex). `checkAndEstimate` sets `sessionLoading=true` before the network call. Re-fires within the same open cycle are silently dropped.
+3. **DB layer** — `idx_chat_sessions_user_tenant_source_unique` makes a duplicate active session for the same user+tenant physically impossible. Even under race conditions, the session route can only return ONE sessionId per user+tenant. (Discovered this turn; documented for follow-on workstreams.)
+
+### Push status
+HELD per operator instruction. Commit landed locally; awaiting push approval.

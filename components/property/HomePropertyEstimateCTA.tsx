@@ -1,165 +1,56 @@
-﻿'use client'
+'use client'
 
-import { useState, useEffect } from 'react'
-import { estimateHomeSale } from '@/app/estimator/actions/estimate-home-sale'
-import { EstimateResult } from '@/lib/estimator/types'
-import HomeEstimatorResults from '@/app/estimator/components/HomeEstimatorResults'
-import { extractExactSqft } from '@/lib/estimator/types'
-import type { HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
-import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
+// components/property/HomePropertyEstimateCTA.tsx
+//
+// P-DEFAULT-GATE (2026-06-12): inline teaser CTA for the sidebar slot. The
+// previous on-mount auto-fire (estimateHomeSale, sale-only — home lease
+// already early-exited) ran ungated and consumed zero credits while the
+// "Get Sale Estimate" sticky-bar button opened a SEPARATELY-metered modal
+// — two entries for one subject. Per the credit model (1 estimate =
+// 1 attempt), we removed the auto-fire. This teaser CTA opens the SAME
+// metered modal (via the existing onEstimateClick wiring used by the
+// header + sticky bar). One metered door.
+//
+// Home lease is not implemented in the auto-fire today and stays that way;
+// the modal supports it via estimateHomeRent (dynamic import). The teaser
+// renders for sale only — lease comes through the modal-path only.
+
+import type { MLSListing } from '@/lib/types/building'
 
 interface HomePropertyEstimateCTAProps {
-  listing: any
+  listing: MLSListing
   isSale: boolean
   agentId: string
+  // P-DEFAULT-GATE (2026-06-12): opens the existing metered modal. Wired
+  // from HomePropertyPageClient — same handler the header + sticky-bar
+  // "Get Sale Estimate" buttons use.
+  onEstimateClick?: () => void
 }
 
-export default function HomePropertyEstimateCTA({ listing, isSale, agentId }: HomePropertyEstimateCTAProps) {
-  const [loading, setLoading] = useState(true)
-  const [result, setResult] = useState<EstimateResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const exactSqft = extractExactSqft(listing.square_foot_source)
-
-  // h3 fix — Competing-For-Sale fetch (shared hook with HomeEstimatorBuyerModal).
-  // Plex-only — SF subjects never hit the fetch. This component is the
-  // auto-run estimator on /property URLs; previously the competing rail
-  // never populated here because the fetch was wired only to the modal.
-  const { competingListings, fetchCompetingListings } = useCompetingListings()
-
-  useEffect(() => {
-    // Only estimate for sale listings (rent estimation not yet built for homes)
-    if (!isSale) {
-      setLoading(false)
-      return
-    }
-
-    const runEstimate = async () => {
-      setLoading(true)
-      setError(null)
-
-      // h5: subject street threading (street-level matching activation).
-      const streetNumParsed = parseInt(listing.street_number, 10)
-      const specs: HomeSpecs = {
-        bedrooms: listing.bedrooms_total || 0,
-        bathrooms: parseFloat(listing.bathrooms_total_integer) || 0,
-        propertySubtype: listing.property_subtype || listing.property_subtype || 'Detached',
-        communityId: listing.community_id || null,
-        municipalityId: listing.municipality_id || null,
-        livingAreaRange: listing.living_area_range || '',
-        exactSqft: exactSqft,
-        parking: listing.parking_total || 0,
-        lotWidth: listing.lot_width ? parseFloat(listing.lot_width) : null,
-        lotDepth: listing.lot_depth ? parseFloat(listing.lot_depth) : null,
-        // h6: lot_size_units drives metres→feet normalization in the matcher.
-        lotSizeUnits: listing.lot_size_units || null,
-        garageType: listing.garage_type || null,
-        basementRaw: listing.basement || null,
-        poolFeatures: listing.pool_features || null,
-        architecturalStyle: listing.architectural_style?.[0] || null,
-        approximateAge: listing.approximate_age || null,
-        agentId: agentId,
-        ...(listing.street_name ? { subjectStreetName: listing.street_name } : {}),
-        ...(!Number.isNaN(streetNumParsed) ? { subjectStreetNumber: streetNumParsed } : {}),
-        // h8: subject tax for tax-similarity score band (silent-omit when missing)
-        ...(listing.tax_annual_amount != null ? { subjectTaxAnnualAmount: parseFloat(String(listing.tax_annual_amount)) } : {}),
-        ...(listing.tax_year != null ? { subjectTaxYear: parseInt(String(listing.tax_year), 10) } : {}),
-        // h9: lease segmentation fields (silent-omit when missing). Sale path
-        // ignores these; lease path reads them for the 3 type gates + rent_includes nudge.
-        ...((listing as any).furnished ? { subjectFurnished: (listing as any).furnished } : {}),
-        ...((listing as any).lease_term ? { subjectLeaseTerm: (listing as any).lease_term } : {}),
-        ...(Array.isArray((listing as any).portion_property_lease) ? { subjectPortionPropertyLease: (listing as any).portion_property_lease } : {}),
-        ...(Array.isArray((listing as any).rent_includes) ? { subjectRentIncludes: (listing as any).rent_includes } : {}),
-      }
-
-      try {
-        const response = await estimateHomeSale(specs, false)
-        if (response.success && response.data) {
-          setResult(response.data)
-          // h3 refinement — Competing-For-Sale fetch. The server's
-          // findActiveCompetition mirrors the sold-comp matching for the
-          // subject's type (plex axis or SF funnel). Thread the full
-          // specs the matcher needs.
-          fetchCompetingListings({
-            propertySubtype: listing.property_subtype,
-            communityId: listing.community_id,
-            municipalityId: listing.municipality_id,
-            bedrooms: specs.bedrooms,
-            bathrooms: specs.bathrooms,
-            livingAreaRange: specs.livingAreaRange,
-            architecturalStyle: specs.architecturalStyle,
-            approximateAge: specs.approximateAge,
-          })
-        } else {
-          setError(response.error || 'Failed to calculate estimate')
-        }
-      } catch (err) {
-        setError('Failed to load estimate')
-      }
-      setLoading(false)
-    }
-
-    runEstimate()
-    // Stable primitive deps: listing.id is the SUBJECT identity. The parent
-    // passes listing as {...listing, buildings: building} — a new object literal
-    // every render — so depending on the whole `listing` object re-fired this
-    // effect on every parent state toggle and re-CALLED estimateHomeSale +
-    // fetchCompetingListings. listing.id is stable across spread re-renders
-    // for the same subject; all listing.* fields read inside the effect are
-    // subject-tied (street, sqft, bed/bath, tax, etc.), so dropping the
-    // whole-object dep is safe.
-  }, [listing.id, isSale, exactSqft, agentId, fetchCompetingListings])
-
+export default function HomePropertyEstimateCTA({ listing, isSale, onEstimateClick }: HomePropertyEstimateCTAProps) {
+  // Lease is not built for the home seller-side teaser today (matches
+  // pre-fix behavior: HomePropertyEstimateCTA early-exited on !isSale).
   if (!isSale) return null
 
-  if (loading) {
-    return (
-      <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-6">
-        <div className="animate-pulse">
-          <div className="h-6 bg-slate-200 rounded w-2/3 mb-4"></div>
-          <div className="h-4 bg-slate-200 rounded w-full mb-2"></div>
-          <div className="h-4 bg-slate-200 rounded w-3/4 mb-4"></div>
-          <div className="h-12 bg-slate-200 rounded w-full"></div>
-        </div>
-        <p className="text-center text-slate-500 mt-4">Calculating home estimate...</p>
-      </div>
-    )
-  }
+  const shortAddress = (listing as any)?.unparsed_address
+    ? String((listing as any).unparsed_address).split(',')[0].trim()
+    : 'this home'
 
-  if (error) {
-    return (
-      <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6">
-        <h3 className="text-xl font-bold text-red-900 mb-2">Estimate Unavailable</h3>
-        <p className="text-sm text-red-600">{error}</p>
-      </div>
-    )
-  }
-
-  if (result) {
-    return (
-      <HomeEstimatorResults
-        result={result}
-        type="sale"
-        buildingId=""
-        buildingName={listing.unparsed_address || ''}
-        buildingAddress={listing.unparsed_address || ''}
-        unitNumber=""
-        agentId={agentId}
-        listingId={listing.id}
-        subjectSubtype={listing.property_subtype?.trim() || null}
-        subjectNoi={(listing as any).net_operating_income}
-        subjectListPrice={listing.list_price}
-        competingListings={competingListings}
-        propertySpecs={{
-          bedrooms: listing.bedrooms_total,
-          bathrooms: parseFloat(listing.bathrooms_total_integer) || 0,
-          livingAreaRange: listing.living_area_range,
-          parking: listing.parking_total,
-          locker: null
-        }}
-      />
-    )
-  }
-
-  return null
+  return (
+    <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-6 text-white">
+      <div className="text-xs uppercase tracking-wide text-blue-200">Estimator</div>
+      <h3 className="text-xl font-bold mt-1">Get your sale estimate</h3>
+      <p className="text-sm text-blue-100 mt-2 leading-relaxed">
+        See the comparable sold, tax-matched, and currently-competing listings for {shortAddress}.
+      </p>
+      <button
+        type="button"
+        onClick={onEstimateClick}
+        disabled={!onEstimateClick}
+        className="mt-4 w-full bg-white text-blue-700 font-semibold py-3 px-4 rounded-xl shadow-sm hover:bg-blue-50 disabled:opacity-60 disabled:cursor-not-allowed transition"
+      >
+        Get sale estimate
+      </button>
+    </div>
+  )
 }
