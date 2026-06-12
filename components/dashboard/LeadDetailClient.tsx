@@ -3,23 +3,38 @@
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { Phone, Mail, MessageCircle, ArrowLeft, X } from 'lucide-react'
-import { 
-  updateLeadStatus, 
-  updateLeadQuality, 
-  addLeadNote, 
-  addLeadTag, 
+import {
+  updateLeadStatus,
+  updateLeadQuality,
+  addLeadNote,
+  addLeadTag,
   removeLeadTag,
-  setFollowUpDate 
+  setFollowUpDate
 } from '@/lib/actions/lead-management'
+// P-WORKING-DOC-DASHBOARD (2026-06-12): persisted-snapshot 3-section render of
+// the estimator working document. Reuses the same WorkingDoc shape the emails
+// use (lib/email/working-doc-render.ts); shaping data + listing-id resolution
+// computed server-side in app/dashboard/leads/[id]/page.tsx.
+import WorkingDocView from '@/components/dashboard/WorkingDocView'
+import type { WorkingDoc } from '@/lib/email/working-doc-render'
 
 interface LeadDetailClientProps {
   lead: any
   agent: any
   initialNotes: any[]
   engagementScore?: { score: number; status: 'hot' | 'warm' | 'cold'; activityCount: number }
+  // P-WORKING-DOC-DASHBOARD: optional. null/absent on legacy leads (pre-b9336dc
+  // property_details was summary-only); component renders nothing — the
+  // existing summary block above stays the agent's view.
+  workingDoc?: WorkingDoc | null
+  workingDocBaseUrl?: string
+  workingDocIdMap?: Record<string, string>
 }
 
-export default function LeadDetailClient({ lead, agent, initialNotes, engagementScore }: LeadDetailClientProps) {
+export default function LeadDetailClient({
+  lead, agent, initialNotes, engagementScore,
+  workingDoc, workingDocBaseUrl, workingDocIdMap,
+}: LeadDetailClientProps) {
   const [status, setStatus] = useState(lead.status)
   const [quality, setQuality] = useState(lead.quality)
   const [tags, setTags] = useState(lead.tags || [])
@@ -148,6 +163,16 @@ export default function LeadDetailClient({ lead, agent, initialNotes, engagement
           </div>
         </div>
       </div>
+
+      {/* P-WORKING-DOC-DASHBOARD: agent's view of the submitted estimator
+          working document. Persisted snapshot — consistent with the emails.
+          Live re-fetch is a deferred enhancement. Renders nothing when
+          workingDoc is absent (legacy leads). */}
+      <WorkingDocView
+        workingDoc={workingDoc}
+        baseUrl={workingDocBaseUrl || ''}
+        idMap={workingDocIdMap || {}}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">

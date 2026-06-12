@@ -583,3 +583,65 @@ Sample VIP-buyer property hrefs (all walliam.ca/property/{uuid}, zero condoleads
 HELD per operator instruction. b9336dc + this commit ready to push together after approval.
 
 Pushed b9336dc + 45f5441; operator-approved. Full P-WORKING-DOC spec live — workingDoc persisted + rendered into agent, property-page buyer, and estimator VIP buyer emails via one shared helper; b9336dc message reconciled honest by 45f5441.
+
+---
+
+## P-WORKING-DOC-DASHBOARD (2026-06-12) — agent lead-detail view renders the persisted working doc
+
+### Pre-flight findings
+- **Lead query already pulls `property_details`** — `app/dashboard/leads/[id]/page.tsx:25` uses `select('*')`, so the jsonb column (including `workingDoc`) is already in the row. No SELECT widening needed.
+- **Helper data + HTML are already separately exported** in `lib/email/working-doc-render.ts`. The React render can import the SHAPING (`WorkingDoc`, `WorkingDocSection`, `WorkingDocTile`, `resolveListingIds`, `collectListingKeys`) without pulling the email-HTML emitters (`renderEstimateHeader`, `renderWorkingDocSections`). NO split needed.
+- **S2 confirmed** — `/dashboard` is S2 (CLAUDE.md: S1 = `/admin`, `app/api/chat/*`, `agent_buildings`). No S1 touch.
+- **Tenant scoping intact** — `requireAgent` + `canAgentSeeLead(agent.id, lead.agent_id)` gate the page; this phase does NOT touch either.
+- **Listing-id resolution** — same `resolveListingIds` batch query the emails use. Tile links via `buildBaseUrl(tenantDomain)` → `walliam.ca/property/{uuid}`.
+
+### Design — persisted SNAPSHOT (live re-fetch deferred)
+The dashboard renders the workingDoc the same way the emails do — the agent sees what was submitted, consistent with what was sent. Live re-fetch of comparable prices/statuses is a deferred enhancement (own workstream).
+
+### Edits
+- **NEW `components/dashboard/WorkingDocView.tsx`** (React, 'use client', Tailwind-styled):
+  - Consumes `WorkingDoc`, `WorkingDocSection`, `WorkingDocTile` types imported from `lib/email/working-doc-render`.
+  - Three section renderers (Comparable Sold / Tax-Matched / Competing For Sale) + tile rows.
+  - Per-tile property link constructed from `idMap` (passed in from server) + `baseUrl` (tenant-correct).
+  - Returns `null` when `workingDoc` is absent — graceful for legacy leads.
+- **`app/dashboard/leads/[id]/page.tsx`** server-side assembly:
+  - Imports `buildBaseUrl` + `resolveListingIds` + `collectListingKeys` + `WorkingDoc` type.
+  - Pulls `workingDoc` from `lead.property_details.workingDoc` (already in scope).
+  - One `tenants.domain` lookup per page load (by `lead.tenant_id` — never hardcoded).
+  - `workingDocBaseUrl = buildBaseUrl(tenantDomain)`.
+  - `workingDocIdMap = await resolveListingIds(supabase, collectListingKeys(workingDoc))` (skipped when `workingDoc` absent).
+  - Threads the three new optional props to `LeadDetailClient`.
+- **`components/dashboard/LeadDetailClient.tsx`**:
+  - Three new optional props on the interface (`workingDoc`, `workingDocBaseUrl`, `workingDocIdMap`).
+  - Embeds `<WorkingDocView ... />` between the header and the existing grid. When all three are absent, the child renders nothing — the existing Lead Information / Notes / Tags layout is unaffected.
+
+### Care guards (verified)
+- Lead query tenant scoping + RLS: UNTOUCHED.
+- `requireAgent` + `canAgentSeeLead` hierarchy check: UNTOUCHED.
+- Email helpers (`renderEstimateHeader`, `renderWorkingDocSections`, `sendTenantEmail`, `buildLeadEmail`, `buildBuyerWorkingDocEmail`, `buildUserApprovalEmailHtml`): UNTOUCHED — the dashboard imports only the **shaping** utilities + types, not the HTML emitters.
+- `buildBaseUrl` reused (single source of truth for tenant URL resolution).
+- FKs / `resolveAgentForContext` / `getLeadEmailRecipients` / increment / `sendTenantEmail` internals: UNTOUCHED.
+- S1 zero-diff: no `/admin`, `app/api/chat/*`, `agent_buildings` paths.
+
+### Build
+- `npx tsc --noEmit` → exit 0
+- `npm run build` → exit 0
+
+### SAVEPOINT-isolated test (scripts/test-p-working-doc-dashboard.js)
+The React render is type-checked by `tsc` (already passed). The test exercises the DATA-ASSEMBLY layer (which is where the failure modes live):
+
+| # | Verdict | Result |
+|---|---------|--------|
+| 1 | `tenant.domain` resolves from the LEAD's `tenant_id` (not hardcoded); WALLiam tenant → `walliam.ca` | **PASS** |
+| 2 | 3 sections present on the persisted workingDoc (round-trips through `select('*')`) | **PASS** |
+| 3 | Tile links tenant-correct: `https://walliam.ca/property/{uuid}` (zero `condoleads`), 6 links sampled | **PASS** |
+| 4 | Legacy lead (no `workingDoc` on `property_details`): graceful — empty `idMap`, no crash, no `undefined`/`null` leak; component returns null | **PASS** |
+| 5 | Mutation delta = 0 (BEGIN/ROLLBACK; leads 201 → 201) | **PASS** |
+
+Sample tile links (all walliam.ca/property/{uuid}):
+- `https://walliam.ca/property/ce215210-45c3-46fd-9deb-14f1ef46b274`
+- `https://walliam.ca/property/8473b0a7-2f27-4a9b-a2fc-c67d6c98f658`
+- `https://walliam.ca/property/c95533dd-eac8-4e01-8583-c5bf5db934d6`
+
+### Push status
+HELD per operator instruction. Commit landed locally; awaiting push approval.

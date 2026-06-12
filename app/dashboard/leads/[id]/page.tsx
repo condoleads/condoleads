@@ -8,6 +8,15 @@ import { getUserActivities, calculateEngagementScore } from '@/lib/actions/user-
 import { canAgentSeeLead } from '@/lib/hierarchy/agent-tree'
 // W-FUNNEL Batch 1: tenant-aware brand for the sidebar h1.
 import { getTenantBrand } from '@/lib/tenant/getTenantBrand'
+// P-WORKING-DOC-DASHBOARD (2026-06-12): tenant-resolved base URL + batch
+// listing-id resolution so the dashboard renders the same tenant-correct
+// property links the emails use. Same helpers reused — no duplication.
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+import {
+  type WorkingDoc,
+  resolveListingIds,
+  collectListingKeys,
+} from '@/lib/email/working-doc-render'
 
 export default async function LeadDetailPage({ params }: { params: { id: string } }) {
   const { error, agent } = await requireAgent()
@@ -81,6 +90,29 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   const buildingsResult = await getAgentBuildings(agent.id)
   const buildings = buildingsResult.success ? buildingsResult.buildings : []
 
+  // P-WORKING-DOC-DASHBOARD (2026-06-12): assemble the workingDoc render props
+  // server-side. `lead` came from select('*'), so property_details (jsonb) is
+  // already in scope. Resolve tenant.domain → baseUrl ONCE per page and
+  // batch-resolve listing-id keys via the shared helper so the React component
+  // does no DB work. Graceful for legacy leads without workingDoc (idMap stays
+  // empty, baseUrl still tenant-correct, child renders nothing).
+  const workingDoc: WorkingDoc | null = (lead as any)?.property_details?.workingDoc ?? null
+  let tenantDomain: string | null = null
+  try {
+    const { data: tRow } = await supabase
+      .from('tenants')
+      .select('domain')
+      .eq('id', lead.tenant_id)
+      .maybeSingle()
+    tenantDomain = (tRow as any)?.domain ?? null
+  } catch (e) {
+    console.warn('[lead-detail] tenant.domain lookup failed:', e)
+  }
+  const workingDocBaseUrl = buildBaseUrl(tenantDomain)
+  const workingDocIdMap: Record<string, string> = workingDoc
+    ? await resolveListingIds(supabase, collectListingKeys(workingDoc))
+    : {}
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside className="fixed top-0 left-0 z-40 h-full w-64 bg-white border-r border-gray-200 hidden lg:block">
@@ -116,11 +148,14 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
       </aside>
       
       <div className="flex-1 lg:ml-64">
-        <LeadDetailClient 
-          lead={lead} 
-          agent={agent} 
+        <LeadDetailClient
+          lead={lead}
+          agent={agent}
           initialNotes={notes}
           engagementScore={engagement}
+          workingDoc={workingDoc}
+          workingDocBaseUrl={workingDocBaseUrl}
+          workingDocIdMap={workingDocIdMap}
         />
         
         {/* Activity Timeline */}
