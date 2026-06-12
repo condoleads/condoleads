@@ -25,6 +25,17 @@ import {
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
+import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+// P-WORKING-DOC (2026-06-12): shared 3-section render helper. ONE renderer
+// reused by agent + buyer + VIP emails. Reads strictly from the persisted JSON
+// — does NOT re-run the matcher.
+import {
+  type WorkingDoc,
+  resolveListingIds,
+  collectListingKeys,
+  renderWorkingDocSections,
+  renderEstimateHeader,
+} from '@/lib/email/working-doc-render'
 
 import { deriveLeadOriginRoute } from '@/lib/utils/lead-origin-route'
 // Create service role client that bypasses RLS
@@ -244,6 +255,39 @@ export async function createLead(params: CreateLeadParams) {
   }
 
   if (recipients) {
+    // P-WORKING-DOC (2026-06-12): plumb tenant.domain + brand_name so the
+    // template can build tenant-correct property hrefs via buildBaseUrl.
+    // ONE select per send. Tenant context already required for sendTenantEmail
+    // (it fetches the same row); CLAIMED-UNVERIFIED whether the two selects
+    // could be coalesced — kept separate for now to avoid touching the
+    // sendTenantEmail internals.
+    let tenantDomain: string | null = null
+    let tenantBrandName: string | null = null
+    try {
+      const { data: tRow } = await supabase
+        .from('tenants')
+        .select('domain, brand_name, name')
+        .eq('id', params.tenantId)
+        .maybeSingle()
+      tenantDomain = (tRow as any)?.domain ?? null
+      tenantBrandName = (tRow as any)?.brand_name ?? (tRow as any)?.name ?? null
+    } catch (e) {
+      console.warn('[leads] tenant.domain lookup failed; will fall back to NEXT_PUBLIC_APP_URL:', e)
+    }
+    const baseUrl = buildBaseUrl(tenantDomain)
+
+    // Pull the persisted workingDoc (the source of truth for all 3 sections).
+    // The client submit already built it; no matcher re-run.
+    const workingDoc: WorkingDoc | null = (params.propertyDetails as any)?.workingDoc ?? null
+
+    // Batch resolve listing_key -> mls_listings.id for tenant-correct hrefs
+    // on tiles that don't already carry an id (CompetingListing already has
+    // id; ComparableSale carries listingKey only).
+    const idMap: Record<string, string> = workingDoc
+      ? await resolveListingIds(supabase, collectListingKeys(workingDoc))
+      : {}
+
+    // ─── Agent email — enriched from stub to full working document ───────
     const html = buildLeadEmail({
       contactName: params.contactName,
       contactEmail: params.contactEmail,
@@ -254,6 +298,10 @@ export async function createLead(params: CreateLeadParams) {
       buildingName: params.propertyDetails?.buildingName,
       buildingAddress: params.propertyDetails?.buildingAddress,
       unitNumber: params.propertyDetails?.unitNumber,
+      workingDoc,
+      baseUrl,
+      idMap,
+      brandName: tenantBrandName,
     })
     const subject = `✦ New Lead — ${params.contactName} — ${source}`
 
@@ -287,6 +335,57 @@ export async function createLead(params: CreateLeadParams) {
         console.error('[leads] unexpected email error:', err)
       }
     }
+
+    // ─── NEW (P-WORKING-DOC): buyer copy of the working document ─────────
+    // Property-page estimate-CTA path had ZERO buyer email today. This
+    // adds a separate send to params.contactEmail with a buyer-safe template
+    // (no "New Lead" / "Reply to {name}" / agent PII). Guard: only fire when
+    // the contactEmail is present + plausibly valid + workingDoc carries
+    // section content (skip if all 3 sections are empty — nothing to send).
+    const buyerEmail = (params.contactEmail || '').trim()
+    const hasAnyDocSection = !!(workingDoc?.comparableSold?.tiles?.length
+      || workingDoc?.taxMatch?.tiles?.length
+      || workingDoc?.competing?.tiles?.length)
+    const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)
+
+    if (buyerEmail && looksLikeEmail && hasAnyDocSection && workingDoc) {
+      const buyerHtml = buildBuyerWorkingDocEmail({
+        contactName: params.contactName,
+        workingDoc,
+        baseUrl,
+        idMap,
+        brandName: tenantBrandName,
+      })
+      const buyerSubject = `Your estimate working document${tenantBrandName ? ' — ' + tenantBrandName : ''}`
+      try {
+        const buyerSend = await sendTenantEmail({
+          tenantId: params.tenantId,
+          to: buyerEmail,
+          subject: buyerSubject,
+          html: buyerHtml,
+        })
+        if (lead?.id) {
+          await logEmailRecipients({
+            supabase,
+            tenantId: params.tenantId,
+            leadId: lead.id,
+            agentId: resolvedAgentId,
+            recipients: { to: [buyerEmail], cc: [], bcc: [], resolved: { agent: null, manager: null, area_manager: null, tenant_admin: null, manager_platforms: [], admin_platforms: [], agent_delegates: [], manager_delegates: [], area_manager_delegates: [], tenant_admin_delegates: [] } } as any,
+            subject: buyerSubject,
+            templateKey: 'leads_helper_buyer_working_doc',
+            resendMessageId: buyerSend.id,
+          })
+        }
+      } catch (err) {
+        if (err instanceof TenantEmailNotConfigured) {
+          console.warn('[leads] buyer email not configured:', err.message)
+        } else if (err instanceof TenantEmailFailed) {
+          console.error('[leads] buyer resend send failed:', err.message)
+        } else {
+          console.error('[leads] buyer unexpected email error:', err)
+        }
+      }
+    }
   }
 
   return { success: true, lead }
@@ -296,6 +395,12 @@ export async function createLead(params: CreateLeadParams) {
 // Mirrors the visual shape used by walliam/contact for consistency across all
 // chain notifications. No agent-specific branding here — the helper resolves
 // recipients per tenant; this template is content-only.
+//
+// P-WORKING-DOC (2026-06-12): enriched from stub to the full 3-section working
+// document. Existing contact block is preserved; the working-document sections
+// (Comparable Sold / Tax-Matched / Competing For Sale) are appended via the
+// shared render helper when workingDoc is present. Property hrefs use
+// buildBaseUrl(tenantDomain) for tenant-correctness.
 function buildLeadEmail(params: {
   contactName: string
   contactEmail: string
@@ -306,11 +411,20 @@ function buildLeadEmail(params: {
   buildingName?: string
   buildingAddress?: string
   unitNumber?: string
+  workingDoc?: WorkingDoc | null
+  baseUrl?: string
+  idMap?: Record<string, string>
+  brandName?: string | null
 }): string {
   const { contactName, contactEmail, contactPhone, message, source, sourceUrl, buildingName, buildingAddress, unitNumber } = params
   const propertyLine = buildingName || buildingAddress
     ? `${buildingName || ''}${buildingAddress ? ' — ' + buildingAddress : ''}${unitNumber ? ' #' + unitNumber : ''}`
     : null
+
+  const workingDocBlock = params.workingDoc && params.baseUrl
+    ? renderEstimateHeader(params.workingDoc, { audience: 'agent', brandName: params.brandName || undefined })
+      + renderWorkingDocSections(params.workingDoc, params.baseUrl, params.idMap || {}, { audience: 'agent', brandName: params.brandName || undefined })
+    : ''
 
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #fff;">
@@ -327,10 +441,53 @@ function buildLeadEmail(params: {
           ${sourceUrl ? `<tr><td style="color: #64748b; vertical-align: top;">Source URL</td><td style="color: #0f172a; word-break: break-all;"><a href="${sourceUrl}" style="color: #1d4ed8;">${sourceUrl}</a></td></tr>` : ''}
           ${message ? `<tr><td style="color: #64748b; vertical-align: top;">Message</td><td style="color: #0f172a;">${message}</td></tr>` : ''}
         </table>
+        ${workingDocBlock}
         <div style="margin-top: 20px; text-align: center;">
           <a href="mailto:${contactEmail}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px;">
             Reply to ${contactName}
           </a>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// ─── NEW (P-WORKING-DOC): buyer copy template ────────────────────────────────
+// Property-page estimate path had no buyer email today. This template ships
+// the full 3-section working document to params.contactEmail with buyer-safe
+// phrasing: NO "New Lead", NO "Reply to {name}", NO other recipients, NO
+// agent PII. Property hrefs use buildBaseUrl(tenantDomain) — tenant-correct.
+function buildBuyerWorkingDocEmail(params: {
+  contactName: string
+  workingDoc: WorkingDoc
+  baseUrl: string
+  idMap?: Record<string, string>
+  brandName?: string | null
+}): string {
+  const name = (params.contactName || '').trim() || 'there'
+  const brand = params.brandName || ''
+  const headerLabel = brand ? `${brand} — Estimate Working Document` : 'Estimate Working Document'
+  const headerBlock = renderEstimateHeader(params.workingDoc, { audience: 'buyer', brandName: params.brandName || undefined })
+  const sectionsBlock = renderWorkingDocSections(
+    params.workingDoc,
+    params.baseUrl,
+    params.idMap || {},
+    { audience: 'buyer', brandName: params.brandName || undefined },
+  )
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 640px; margin: 0 auto; background: #fff;">
+      <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 28px; border-radius: 12px 12px 0 0;">
+        <div style="font-size: 18px; font-weight: 700; color: #fff;">${headerLabel}</div>
+        <div style="font-size: 13px; color: rgba(255,255,255,0.6); margin-top: 4px;">Hi ${name} — here is your estimate, kept current.</div>
+      </div>
+      <div style="padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+        <div style="font-size: 13px; color: #475569; line-height: 1.6;">
+          This is the working document for your property estimate. Each comparable below links to the live listing — the document stays reachable so you can revisit it any time.
+        </div>
+        ${headerBlock}
+        ${sectionsBlock}
+        <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+          Comparable selection methodology and live data are continuously updated. Values shown are statistical estimates from recent comparable sales, not appraisals.
         </div>
       </div>
     </div>

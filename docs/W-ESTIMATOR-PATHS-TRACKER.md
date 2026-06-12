@@ -429,3 +429,101 @@ OVERALL: PASS. All proofs in one run.
 HELD per operator instruction. Commit landed locally; awaiting push approval.
 
 Pushed f4b555c; operator-approved. Live lead capture restored on walliam.ca property pages (home + condo).
+
+---
+
+## P-WORKING-DOC (2026-06-12) — run log
+
+Refinement of EXISTING email paths: the estimator result now travels as a full 3-section working document on the lead row + agent email + a NEW property-page buyer copy. ONE shared render helper, tenant-correct property links via `buildBaseUrl(tenantDomain)`, no matcher re-run. Hierarchy + FKs + resolver + recipients + increment all untouched.
+
+### Pre-flight findings
+- `ComparableSale.listingKey` carries the MLS key (string); the `mls_listings.id` (UUID, used by `/property/[id]`) is NOT on the type. Batch-resolved at render time via `resolveListingIds`.
+- `CompetingListing` carries both `id` and `listing_key` — its tiles already have the id pre-resolved.
+- `/property/[id]` queries `mls_listings.id` (page.tsx:54). Tile hrefs must be UUID-keyed.
+
+### Canonical JSON schema (persisted on `leads.property_details.workingDoc`)
+```
+{
+  version: 1,
+  type: 'home' | 'condo',
+  subject: { buildingName, buildingAddress, unitNumber, bedrooms, bathrooms, livingAreaRange },
+  estimate: { estimatedPrice, priceRange, matchTier, bestGeoTier, confidence, confidenceMessage },
+  comparableSold: { bestGeoTier, count, estimatedPrice, median, tiles: WorkingDocTile[] } | null,
+  taxMatch:       { bestGeoTier, count, estimatedPrice, tiles: WorkingDocTile[] }          | null,
+  competing:      { count, tiles: WorkingDocTile[] }                                        | null,
+}
+```
+Reconstructable into the email render WITHOUT running the matcher. Capped at 10 tiles per section. Backwards-compat with existing buildingName/buildingAddress/unitNumber summary fields (additive).
+
+### Foundation — capture + persist
+- `app/estimator/components/EstimatorResults.tsx` — handleContactSubmit builds the workingDoc subset from the already-computed `result` + `competingListings` and threads it via `propertyDetails.workingDoc`.
+- `app/estimator/components/HomeEstimatorResults.tsx` — mirror.
+- `app/actions/submitLeadFromForm.ts` — no change required (`propertyDetails: any` forwards the new nested field unchanged).
+- `lib/actions/leads.ts:210` — `property_details: params.propertyDetails || null` write unchanged (the JSON now carries `workingDoc`).
+
+### Shared render helper (NEW)
+- `lib/email/working-doc-render.ts` — single source for:
+  - `WorkingDoc` / `WorkingDocSection` / `WorkingDocTile` types
+  - `resolveListingIds(supabase, keys)` — batch listing_key → mls_listings.id
+  - `collectListingKeys(doc)` — pull every key-needing-resolution
+  - `renderEstimateHeader(doc, opts)` — top estimate block (audience-aware)
+  - `renderWorkingDocSections(doc, baseUrl, idMap, opts)` — 3-section render
+  - `buildWorkingDocFromResult(...)` — server-side subset builder (currently the client does this inline; helper available for follow-ups)
+
+### Agent email — enriched from stub to full doc
+- `lib/actions/leads.ts buildLeadEmail` — extended signature accepts `workingDoc`, `baseUrl`, `idMap`, `brandName`. Existing contact block preserved; the 3 sections render via the shared helper when workingDoc is present. Tenant-correct property hrefs.
+
+### NEW property-page buyer copy
+- `lib/actions/leads.ts buildBuyerWorkingDocEmail` — new template, buyer-safe phrasing.
+  - NO "New Lead" header
+  - NO "Reply to {name}" CTA
+  - NO agent PII (no other recipients' emails, no agent contact block)
+  - Same 3 sections + same tenant-correct hrefs as the agent email (one render, two audiences)
+- `lib/actions/leads.ts createLead` — adds a SECOND `sendTenantEmail` call targeting `params.contactEmail` AFTER the agent send. Guards: `contactEmail` present + plausibly valid + at least one workingDoc section non-empty. Failure of buyer send does not block the agent send.
+
+### Hierarchy untouched (verified by code-test)
+- `getLeadEmailRecipients` signature + 6-layer chain implementation UNCHANGED.
+- Agent send still goes to `recipients.to / cc / bcc` from the helper.
+- Buyer send is a SEPARATE `sendTenantEmail` call to `contactEmail` only — does not co-mingle with the hierarchy recipients.
+- `logEmailRecipients` called for both sends with distinct `templateKey` ('leads_helper_new_lead_notification' for agent, 'leads_helper_buyer_working_doc' for buyer).
+
+### Care guards
+- FKs (leads_agent_id_fkey + composite consistency): UNTOUCHED
+- `resolveAgentForContext`, `getOrCreateLead`, `getLeadEmailRecipients`, `sendTenantEmail` internals: UNTOUCHED
+- Increment endpoint, DB schema: UNTOUCHED
+- `buildBaseUrl`: reused (already canonical, already correct)
+- Multi-tenant: `tenantDomain` resolved per-tenant via `tenants.domain` SELECT; never hardcoded
+- S1 zero-diff: no `/admin`, `app/api/chat/*`, `agent_buildings` paths touched
+- Charlie's `buildUserApprovalEmailHtml` (charlie/vip-request): UNTOUCHED
+- S1 vip-request builder: UNTOUCHED
+
+### VIP buyer email (estimator) — DEFERRED
+The operator's spec included enriching `buildUserApprovalEmailHtml` (estimator) with the same shared helper. That path is fired from MODAL flows (EstimatorBuyerModal / HomeEstimatorBuyerModal / EstimatorVipWrapper), not from the property-page CTA. The VIP route currently does not receive a workingDoc payload — wiring it requires:
+- Modal-side: build the same workingDoc subset (mirroring EstimatorResults.tsx handleContactSubmit) and include it in the vip-request POST body.
+- Route-side: parse + render via the shared helper into the user-approval email.
+
+The shared render helper is in place and ready for that integration; the wiring itself is the focused follow-up. Charlie's VIP buyer email + S1 vip-request remain UNTOUCHED per spec.
+
+### Build
+`npx tsc --noEmit` → exit 0
+`npm run build` → exit 0 (pre-existing dynamic-server warnings unchanged)
+
+### Code-test (scripts/test-p-working-doc.js, SAVEPOINT-isolated, no real send, no row persist)
+| # | Verdict | Result |
+|---|---------|--------|
+| 1 | Persist (workingDoc round-trips on `leads.property_details`) | **PASS** — JSON inserted + read-back, all 3 section arrays present |
+| 2 | Reconstructable (3 sections rendered from persisted JSON, no matcher re-run) | **PASS** |
+| 3 | Agent email — 3 sections + tenant-correct hrefs (walliam.ca, zero condoleads) | **PASS** |
+| 4 | Buyer email — PII-clean (no "New Lead", no "Reply to", no agent email) | **PASS** |
+| 5 | Mutation delta = 0 (BEGIN/ROLLBACK) | **PASS** — leads 201 → 201 |
+| 6 | Recipient hierarchy untouched (King Shah agent row intact) | **PASS** |
+
+Sample property hrefs (both agent + buyer):
+- `https://walliam.ca/property/ce215210-45c3-46fd-9deb-14f1ef46b274`
+- `https://walliam.ca/property/8473b0a7-2f27-4a9b-a2fc-c67d6c98f658`
+- `https://walliam.ca/property/c95533dd-eac8-4e01-8583-c5bf5db934d6`
+
+All hrefs resolved via real `mls_listings.id` via the batch listing_key resolver — confirms production listings round-trip cleanly.
+
+### Push status
+HELD per operator instruction. Commit landed locally; awaiting push approval.

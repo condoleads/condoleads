@@ -163,7 +163,92 @@ export default function EstimatorResults({
           estimatedPrice: result.showPrice ? result.estimatedPrice : null,
           confidence: result.confidence,
           matchTier: result.matchTier,
-          marketSpeed: result.marketSpeed?.status
+          marketSpeed: result.marketSpeed?.status,
+          // P-WORKING-DOC (2026-06-12): persist the full 3-section working
+          // document on the lead row so email + dashboard read from ONE
+          // source of truth without re-running the matcher. The schema is
+          // defined in lib/email/working-doc-render.ts (WorkingDoc).
+          workingDoc: {
+            version: 1,
+            type: 'condo',
+            subject: {
+              buildingName,
+              buildingAddress,
+              unitNumber,
+              bedrooms: propertySpecs?.bedrooms ?? null,
+              bathrooms: propertySpecs?.bathrooms ?? null,
+              livingAreaRange: propertySpecs?.livingAreaRange ?? null,
+            },
+            estimate: {
+              estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+              priceRange: result.priceRange ?? null,
+              matchTier: result.matchTier ?? null,
+              bestGeoTier: (result as any).bestGeoTier ?? null,
+              confidence: result.confidence ?? null,
+              confidenceMessage: result.confidenceMessage ?? null,
+            },
+            comparableSold: Array.isArray(result.comparables) && result.comparables.length > 0
+              ? {
+                  bestGeoTier: (result as any).bestGeoTier ?? null,
+                  count: (result as any).tiers?.[(result as any).bestGeoTier]?.count ?? result.comparables.length,
+                  estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+                  median: (result as any).tiers?.[(result as any).bestGeoTier]?.median ?? null,
+                  tiles: result.comparables.slice(0, 10).map((c: any) => ({
+                    listingKey: c.listingKey ?? null,
+                    closePrice: c.closePrice ?? null,
+                    adjustedPrice: c.adjustedPrice ?? null,
+                    closeDate: c.closeDate ?? null,
+                    daysOnMarket: c.daysOnMarket ?? null,
+                    bedrooms: c.bedrooms ?? null,
+                    bathrooms: c.bathrooms ?? null,
+                    livingAreaRange: c.livingAreaRange ?? null,
+                    unitNumber: c.unitNumber ?? null,
+                    unparsedAddress: c.unparsedAddress ?? null,
+                    matchTier: c.matchTier ?? null,
+                    sourceTier: c.sourceTier ?? null,
+                    temperature: c.temperature ?? null,
+                  })),
+                }
+              : null,
+            taxMatch: (result as any).taxMatch && Array.isArray((result as any).taxMatch.comparables) && (result as any).taxMatch.comparables.length > 0
+              ? {
+                  bestGeoTier: (result as any).taxMatch.bestGeoTier ?? null,
+                  count: (result as any).taxMatch.count ?? (result as any).taxMatch.comparables.length,
+                  estimatedPrice: (result as any).taxMatch.estimatedPrice ?? null,
+                  tiles: (result as any).taxMatch.comparables.slice(0, 10).map((c: any) => ({
+                    listingKey: c.listingKey ?? null,
+                    closePrice: c.closePrice ?? null,
+                    adjustedPrice: c.adjustedPrice ?? null,
+                    closeDate: c.closeDate ?? null,
+                    daysOnMarket: c.daysOnMarket ?? null,
+                    bedrooms: c.bedrooms ?? null,
+                    bathrooms: c.bathrooms ?? null,
+                    livingAreaRange: c.livingAreaRange ?? null,
+                    unitNumber: c.unitNumber ?? null,
+                    unparsedAddress: c.unparsedAddress ?? null,
+                    matchTier: c.matchTier ?? null,
+                    sourceTier: c.sourceTier ?? null,
+                    temperature: c.temperature ?? null,
+                  })),
+                }
+              : null,
+            competing: Array.isArray(competingListings) && competingListings.length > 0
+              ? {
+                  count: competingListings.length,
+                  tiles: competingListings.slice(0, 10).map((c: any) => ({
+                    id: c.id ?? null,
+                    listingKey: c.listing_key ?? null,
+                    listPrice: c.list_price ?? null,
+                    daysOnMarket: c.days_on_market ?? null,
+                    bedrooms: c.bedrooms_total ?? null,
+                    bathrooms: c.bathrooms_total_integer ?? null,
+                    livingAreaRange: c.living_area_range ?? null,
+                    unitNumber: c.unit_number ?? null,
+                    unparsedAddress: c.unparsed_address ?? null,
+                  })),
+                }
+              : null,
+          },
         },
         forceNew: true
       })
