@@ -22,6 +22,16 @@ import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): propagate email-delivery outcome.
 import { attemptTenantEmail } from '@/lib/email/sendTenantEmail'
 import { entityIdsFromSession } from '@/lib/admin-homes/extract-entity-ids'
+// P-WORKING-DOC Step 3 (2026-06-12): shared 3-section render helper for the
+// estimator VIP user-approval email. Same helper used by the property-page
+// agent + buyer emails (lib/actions/leads.ts) — ONE render impl.
+import {
+  type WorkingDoc,
+  resolveListingIds,
+  collectListingKeys,
+  renderEstimateHeader,
+  renderWorkingDocSections,
+} from '@/lib/email/working-doc-render'
 
 
 // Track user activity in user_activities table
@@ -48,11 +58,18 @@ function createServiceClient() {
 
 export async function POST(request: NextRequest) {
   try {
+    // P-WORKING-DOC Step 3 (2026-06-12): optional `workingDoc` field — the
+    // modal captures its already-computed EstimateResult subset and sends it
+    // in the POST body so the user-approval email can render the 3 sections
+    // via the shared helper. When absent (older client, agent-side request,
+    // or VIP-before-estimate flow), the email renders unchanged — backwards-
+    // compatible.
     const {
       sessionId,
       phone,
       pageUrl,
       buildingName,
+      workingDoc,
     } = await request.json()
 
     // W-RECOVERY A1.5 auth gate (part 1) — block requests without sessionId
@@ -335,12 +352,19 @@ export async function POST(request: NextRequest) {
       let userOutcome: { sent: boolean; reason: 'delivered' | 'not_configured' | 'send_failed' | 'no_user_email' } =
         { sent: false, reason: 'no_user_email' }
       if (userEmail) {
+        // P-WORKING-DOC Step 3 (2026-06-12): when the modal captured a
+        // working-doc (its already-computed estimate), batch-resolve
+        // listing-ids for tile hrefs and pass the doc to the email builder
+        // so the 3 sections render via the shared helper. Absent workingDoc
+        // -> renders the legacy approval body (backwards-compatible).
+        const wd = (workingDoc as WorkingDoc | null | undefined) ?? null
+        const idMap = wd ? await resolveListingIds(supabase, collectListingKeys(wd)) : {}
         const outcome = await attemptTenantEmail(
           {
             tenantId: tenantId || '',
             to: userEmail,
             subject: `${brandName} Estimator Access Approved`,
-            html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, domain, baseUrl, pageUrl),
+            html: buildUserApprovalEmailHtml(userName, agent?.full_name || brandName, autoApproveMessages, brandName, domain, baseUrl, pageUrl, wd, idMap),
           },
           '[walliam/estimator/vip-request] user approval'
         )
@@ -479,9 +503,33 @@ function buildApprovalEmailHtml(data: {
   `
 }
 
-function buildUserApprovalEmailHtml(userName: string, agentName: string, attemptsGranted: number, brandName: string, domain: string, baseUrl: string, pageUrl: string | null): string {
+// P-WORKING-DOC Step 3 (2026-06-12): extended signature. `workingDoc` + `idMap`
+// are optional — when the modal captured an estimate they spit out the 3
+// sections via the shared helper into the buyer/user-approval email. When
+// absent (older client / agent-side / VIP-before-estimate), the email renders
+// the legacy approval body unchanged — backwards-compatible.
+// Care guards: Charlie's buildUserApprovalEmailHtml + S1 chat/vip-request
+// builder UNTOUCHED. Property hrefs use buildBaseUrl(tenantDomain) already
+// computed by the caller as `baseUrl`. PII-clean: no agent email/phone, no
+// "New Lead" phrasing.
+function buildUserApprovalEmailHtml(
+  userName: string,
+  agentName: string,
+  attemptsGranted: number,
+  brandName: string,
+  domain: string,
+  baseUrl: string,
+  pageUrl: string | null,
+  workingDoc?: WorkingDoc | null,
+  idMap?: Record<string, string>,
+): string {
+  const wd = workingDoc ?? null
+  const workingDocBlock = wd
+    ? renderEstimateHeader(wd, { audience: 'buyer', brandName })
+      + renderWorkingDocSections(wd, baseUrl, idMap || {}, { audience: 'buyer', brandName })
+    : ''
   return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto;">
       <div style="background: linear-gradient(135deg, #0f172a, #1e293b); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
         <div style="font-size: 48px; margin-bottom: 12px;">✦</div>
         <h1 style="color: white; margin: 0; font-size: 24px;">Estimator Access Approved</h1>
@@ -493,7 +541,8 @@ function buildUserApprovalEmailHtml(userName: string, agentName: string, attempt
           <strong>${agentName}</strong> has approved your estimator access. You now have
           <strong>${attemptsGranted} additional estimate${attemptsGranted !== 1 ? 's' : ''}</strong> available.
         </p>
-        <div style="text-align: center;">
+        ${workingDocBlock}
+        <div style="text-align: center; margin-top: 28px;">
           <a href="${baseUrl}"
              style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #1d4ed8, #4f46e5); color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px;">
             ✦ Back to ${brandName}

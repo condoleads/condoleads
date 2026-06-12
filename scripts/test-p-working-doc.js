@@ -94,6 +94,28 @@ function buildBuyerEmail(opts) {
   `
 }
 
+// P-WORKING-DOC Step 3 — VIP user-approval email mirror. Same buyer-audience
+// 3-section render; legacy approval body stays intact above. Absent workingDoc
+// path → no sections rendered (backwards-compat) and no crash.
+function buildVipApprovalEmail(opts) {
+  const userName = opts.userName || 'there'
+  const brandName = opts.brandName || 'WALLiam'
+  const agentName = opts.agentName || brandName
+  const attemptsGranted = opts.attemptsGranted ?? 5
+  const wdBlock = opts.workingDoc
+    ? renderWorkingDoc(opts.workingDoc, opts.baseUrl, opts.idMap, 'buyer')
+    : ''
+  return `
+    <div>
+      <div class="vip-header">${brandName} Estimator Access Approved</div>
+      <div>Hi ${userName},</div>
+      <div><strong>${agentName}</strong> has approved your estimator access. You now have <strong>${attemptsGranted}</strong> additional estimates.</div>
+      ${wdBlock}
+      <div><a href="${opts.baseUrl}">Back to ${brandName}</a></div>
+    </div>
+  `
+}
+
 (async () => {
   const c = new Client(dbCfg())
   await c.connect()
@@ -255,6 +277,43 @@ function buildBuyerEmail(opts) {
     && !/Reply to /.test(buyerHtml)
     && !buyerHtml.includes('kingshahone@gmail.com')
 
+  // ─── Test 7 (P-WORKING-DOC Step 3): VIP user-approval email ──────────────
+  // With workingDoc present → 3 sections + tenant-correct hrefs + PII-clean.
+  // Without workingDoc → renders the legacy approval body; no crash.
+  const vipHtmlWithDoc = buildVipApprovalEmail({
+    userName: 'Jane Buyer',
+    agentName: 'WALLiam',                  // agent name in this template = brand on tenant fallback; no PII
+    attemptsGranted: 5,
+    workingDoc, baseUrl, idMap, brandName: 'WALLiam',
+  })
+  const vipHtmlAbsentDoc = buildVipApprovalEmail({
+    userName: 'Jane Buyer',
+    agentName: 'WALLiam',
+    attemptsGranted: 5,
+    workingDoc: null, baseUrl, idMap: {}, brandName: 'WALLiam',
+  })
+  const vipHrefs = allHrefs(vipHtmlWithDoc)
+  const vipPropertyHrefs = propertyHrefs(vipHrefs)
+  const vipSectionsOk =
+    vipHtmlWithDoc.includes('Comparable Sold')
+    && vipHtmlWithDoc.includes('Tax-Matched')
+    && vipHtmlWithDoc.includes('Competing For Sale')
+  const vipLinksOk = vipPropertyHrefs.length > 0
+    && vipPropertyHrefs.every(h => h.startsWith(baseUrl + '/property/'))
+    && condoleadsHits(vipHrefs).length === 0
+  const vipPiiOk = !vipHtmlWithDoc.includes('New Lead')
+    && !/Reply to /.test(vipHtmlWithDoc)
+    && !vipHtmlWithDoc.includes('kingshahone@gmail.com')
+  // Backwards-compat: absent workingDoc renders the legacy approval body,
+  // no crash, no broken markers, no "undefined"/"null" leaked into HTML.
+  const vipBackwardsCompatOk =
+    typeof vipHtmlAbsentDoc === 'string'
+    && vipHtmlAbsentDoc.length > 100
+    && vipHtmlAbsentDoc.includes('Estimator Access Approved')
+    && !vipHtmlAbsentDoc.includes('Comparable Sold')      // no sections without doc
+    && !vipHtmlAbsentDoc.includes('undefined')
+    && !vipHtmlAbsentDoc.includes('null')
+
   // ─── Test 5: section presence ─────────────────────────────────────────────
   const sectionsOk = (html) =>
     html.includes('Comparable Sold')
@@ -281,13 +340,19 @@ function buildBuyerEmail(opts) {
   console.log(`4 Buyer email — PII-clean (no "New Lead"/"Reply to"/agent):   ${piiOk ? 'PASS' : 'FAIL'}`)
   console.log(`5 Mutation delta = 0 (BEGIN/ROLLBACK):                        ${mutOk ? 'PASS' : 'FAIL'}  (before=${before} after=${after})`)
   console.log(`6 Recipient hierarchy untouched (King Shah agent row intact): ${hierarchyOk ? 'PASS' : 'FAIL'}`)
+  console.log(`7 VIP buyer email — 3 sections + tenant-correct hrefs:        ${(vipSectionsOk && vipLinksOk) ? 'PASS' : 'FAIL'}`)
+  console.log(`8 VIP buyer email — PII-clean:                                ${vipPiiOk ? 'PASS' : 'FAIL'}`)
+  console.log(`9 VIP backwards-compat (absent workingDoc renders, no crash): ${vipBackwardsCompatOk ? 'PASS' : 'FAIL'}`)
   console.log('')
   console.log('sample agent property hrefs (first 3):')
   agentPropertyHrefs.slice(0, 3).forEach(h => console.log('  ' + h))
   console.log('sample buyer property hrefs (first 3):')
   buyerPropertyHrefs.slice(0, 3).forEach(h => console.log('  ' + h))
+  console.log('sample VIP-buyer property hrefs (first 3):')
+  vipPropertyHrefs.slice(0, 3).forEach(h => console.log('  ' + h))
 
   const all = persistOk && agentSectionsOk && buyerSectionsOk && linksOk && piiOk && mutOk && hierarchyOk
+    && vipSectionsOk && vipLinksOk && vipPiiOk && vipBackwardsCompatOk
   console.log(`\nOVERALL: ${all ? 'PASS' : 'FAIL'}`)
   process.exit(all ? 0 : 1)
 })().catch(e => { console.error('[test] failed:', e); process.exit(2) })

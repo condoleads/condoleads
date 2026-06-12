@@ -527,3 +527,57 @@ All hrefs resolved via real `mls_listings.id` via the batch listing_key resolver
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval.
+
+---
+
+## P-WORKING-DOC Step 3 (2026-06-12) — estimator VIP buyer-email enrichment (completes b9336dc)
+
+### Honest correction
+`b9336dc`'s commit message claimed the shared render helper rendered into "the agent lead email, a NEW buyer copy on the property-page path, and the existing estimator VIP buyer email." Step 3 (the VIP buyer) was actually DEFERRED in that commit — flagged in the tracker under "VIP buyer email enrichment — DEFERRED" — but the commit message did not match. This commit ships Step 3 for real so the record is accurate. Not papered over: the deferral was reported in the executor's response to `b9336dc`; the re-issued spec confirmed Step 3 should ship.
+
+### Modal-side capture (POST body now carries workingDoc)
+- `app/estimator/components/EstimatorBuyerModal.tsx` — `handleWalliamVipSubmit` builds the same 3-section workingDoc subset that EstimatorResults already produces and includes it in the POST to `/api/walliam/estimator/vip-request`. Guarded on `result` being non-null (modal may VIP-request before estimating).
+- `app/estimator/components/HomeEstimatorBuyerModal.tsx` — mirror.
+- Backwards-compat: when `result` is null at VIP-request time (older flow / VIP-before-estimate), `workingDoc` is sent as `null`; the route renders the legacy approval body.
+
+### Route render
+- `app/api/walliam/estimator/vip-request/route.ts`:
+  - Imports the shared helper (`resolveListingIds`, `collectListingKeys`, `renderEstimateHeader`, `renderWorkingDocSections`) from `lib/email/working-doc-render.ts`. ONE render impl reused.
+  - POST body destructure now picks up `workingDoc` (optional, typed inline via `WorkingDoc | null`).
+  - Before the user-approval send: batch-resolve listing-ids via `resolveListingIds(supabase, collectListingKeys(wd))`.
+  - `buildUserApprovalEmailHtml` signature extended to accept `workingDoc?: WorkingDoc | null` and `idMap?: Record<string, string>`. The 3-section block (`renderEstimateHeader` + `renderWorkingDocSections`) is spliced into the email body when `workingDoc` is present; when absent, the existing approval body renders unchanged.
+
+### Care guards (verified)
+- Charlie's `buildUserApprovalEmailHtml` in `app/api/walliam/charlie/vip-request/route.ts`: UNTOUCHED.
+- S1 `app/api/chat/vip-request/route.ts` builder: UNTOUCHED.
+- Only the **estimator** VIP buyer template enriched.
+- FKs / resolver / recipients / increment / `sendTenantEmail` internals: UNTOUCHED.
+- Multi-tenant: `baseUrl = buildBaseUrl(tenantDomain)` (already resolved earlier in the route) — never hardcoded.
+- S1 zero-diff: no `/admin`, `app/api/chat/*`, `agent_buildings` paths in diff.
+
+### Build
+`npx tsc --noEmit` → exit 0
+`npm run build` → exit 0
+
+### Extended SAVEPOINT test (scripts/test-p-working-doc.js)
+9 verdicts, ALL PASS — previous 6 re-run + 3 new:
+
+| # | Verdict | Result |
+|---|---------|--------|
+| 1 | Persist (workingDoc round-trips on `leads.property_details`) | PASS |
+| 2 | Reconstructable (3 sections render from persisted JSON, no matcher re-run) | PASS |
+| 3 | Agent email — 3 sections + tenant-correct hrefs | PASS |
+| 4 | Buyer email (property-page) — PII-clean | PASS |
+| 5 | Mutation delta = 0 (BEGIN/ROLLBACK) | PASS — leads 201 → 201 |
+| 6 | Recipient hierarchy untouched | PASS |
+| **7** | **VIP buyer email — 3 sections + tenant-correct hrefs (walliam.ca/property/{uuid})** | **PASS** |
+| **8** | **VIP buyer email — PII-clean (no "New Lead", no "Reply to", no agent email)** | **PASS** |
+| **9** | **VIP backwards-compat — absent workingDoc renders legacy body, no crash, no "undefined"/"null" leakage** | **PASS** |
+
+Sample VIP-buyer property hrefs (all walliam.ca/property/{uuid}, zero condoleads):
+- `https://walliam.ca/property/ce215210-45c3-46fd-9deb-14f1ef46b274`
+- `https://walliam.ca/property/8473b0a7-2f27-4a9b-a2fc-c67d6c98f658`
+- `https://walliam.ca/property/c95533dd-eac8-4e01-8583-c5bf5db934d6`
+
+### Push status
+HELD per operator instruction. b9336dc + this commit ready to push together after approval.
