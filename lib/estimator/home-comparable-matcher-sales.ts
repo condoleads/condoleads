@@ -1180,7 +1180,23 @@ async function runHomeTaxMatchCascade(
 
   const subtypes = getCompatibleSubtypes(specs.propertySubtype)
 
-  // Query community pool (used for Gold tax-mode).
+  // W-TAX-MATCH HOME fix (2026-06-12): SQL-level tax-band pre-filter on the
+  // community + muni pool queries so .limit applies AFTER the band, not
+  // before. Pre-fix bug: .order(close_date desc).limit(500) executed BEFORE
+  // the JS withinTaxBand filter; for sparse-band luxury subjects (e.g.
+  // W12955302 — $6M / $32k tax in Mississauga's 4575-Detached muni), viable
+  // band comps ranked outside the top-500 most-recent got truncated before
+  // the band saw them, producing incorrect silent-omit. Fix: add the band
+  // and tax_year window to the Supabase query so the limit only kicks in
+  // among already-band-passing rows. withinTaxBand JS gate retained as the
+  // strict precision filter (it's stricter than SQL BETWEEN on the
+  // boundary). Tax cascade only; geo cascade's muni query unchanged.
+  const taxLow = subjTax * (1 - TAX_BAND_PCT)
+  const taxHigh = subjTax * (1 + TAX_BAND_PCT)
+  const yearLo = specs.subjectTaxYear - 1
+  const yearHi = specs.subjectTaxYear + 1
+
+  // Query community pool (used for Gold tax-mode) — pre-filtered to tax-band.
   let commSales: any[] = []
   if (specs.communityId) {
     let q = supabase
@@ -1193,6 +1209,10 @@ async function runHomeTaxMatchCascade(
       .not('close_price', 'is', null)
       .gt('close_price', 100000)
       .gte('close_date', twoYearsAgo.toISOString())
+      .gte('tax_annual_amount', taxLow)
+      .lte('tax_annual_amount', taxHigh)
+      .gte('tax_year', yearLo)
+      .lte('tax_year', yearHi)
       .order('close_date', { ascending: false })
       .limit(300)
     if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())
@@ -1201,7 +1221,8 @@ async function runHomeTaxMatchCascade(
   }
 
   // Query muni pool (used for BOTH Silver tax-mode AND Platinum same-street
-  // filter). Single query, two tiers — DRY.
+  // filter) — pre-filtered to tax-band so the limit doesn't truncate viable
+  // band candidates by recency in dense munis.
   let muniSales: any[] = []
   {
     let q = supabase
@@ -1214,6 +1235,10 @@ async function runHomeTaxMatchCascade(
       .not('close_price', 'is', null)
       .gt('close_price', 100000)
       .gte('close_date', twoYearsAgo.toISOString())
+      .gte('tax_annual_amount', taxLow)
+      .lte('tax_annual_amount', taxHigh)
+      .gte('tax_year', yearLo)
+      .lte('tax_year', yearHi)
       .order('close_date', { ascending: false })
       .limit(500)
     if (specs.asOfDate) q = q.lt('close_date', referenceDate.toISOString())

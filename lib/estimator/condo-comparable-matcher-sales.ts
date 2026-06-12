@@ -305,9 +305,24 @@ async function runTaxMatchCascade(
   if (specs.subjectTaxYear == null) return undefined
   if (!specs.municipalityId) return undefined
 
+  // W-TAX-MATCH CONDO fix (2026-06-12): SQL-level tax-band pre-filter on the
+  // community + muni pool queries so .limit applies AFTER the band, not
+  // before. Same bug class as the home matcher: .order(close_date desc).
+  // limit(N) executed BEFORE the JS withinTaxBand filter; for sparse-band
+  // subjects (luxury condos in dense munis), viable band comps ranked
+  // outside the most-recent N got truncated by recency. Fix: add band +
+  // tax_year window to the Supabase query. withinTaxBand JS gate retained
+  // as the precision filter. Tax cascade only; geo cascade unchanged.
+  const taxLow = subjTax * (1 - TAX_BAND_PCT)
+  const taxHigh = subjTax * (1 + TAX_BAND_PCT)
+  const yearLo = specs.subjectTaxYear - 1
+  const yearHi = specs.subjectTaxYear + 1
+
   let platinumMatch: { tier: MatchTier; comparables: ComparableSale[] } | null = null
   let platinumTier: TierResult | null = null
   if (specs.buildingId) {
+    // Building pool has no .limit (small set), so truncation isn't an issue
+    // here — JS-only band filter is sufficient. Left unchanged.
     const { data: bldgSales } = await supabase
       .from('mls_listings').select(CONDO_SALE_SELECT)
       .eq('building_id', specs.buildingId)
@@ -329,7 +344,12 @@ async function runTaxMatchCascade(
       .eq('community_id', specs.communityId)
       .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
       .not('close_price', 'is', null).gt('close_price', 100000)
-      .gte('close_date', sinceISO).order('close_date', { ascending: false }).limit(300)
+      .gte('close_date', sinceISO)
+      .gte('tax_annual_amount', taxLow)
+      .lte('tax_annual_amount', taxHigh)
+      .gte('tax_year', yearLo)
+      .lte('tax_year', yearHi)
+      .order('close_date', { ascending: false }).limit(300)
     const banded = (commSales || []).filter((s: any) => withinTaxBand(s, specs))
     if (banded.length > 0) {
       goldMatch = await matchAcrossBuildings(banded, specs, customValues)
@@ -345,7 +365,12 @@ async function runTaxMatchCascade(
       .eq('municipality_id', specs.municipalityId)
       .eq('transaction_type', 'For Sale').eq('standard_status', 'Closed')
       .not('close_price', 'is', null).gt('close_price', 100000)
-      .gte('close_date', sinceISO).order('close_date', { ascending: false }).limit(500)
+      .gte('close_date', sinceISO)
+      .gte('tax_annual_amount', taxLow)
+      .lte('tax_annual_amount', taxHigh)
+      .gte('tax_year', yearLo)
+      .lte('tax_year', yearHi)
+      .order('close_date', { ascending: false }).limit(500)
     const banded = (muniSales || []).filter((s: any) => withinTaxBand(s, specs))
     if (banded.length > 0) {
       silverMatch = await matchAcrossBuildings(banded, specs, customValues)
