@@ -110,6 +110,10 @@ export default function HomeEstimatorResults({
     phone: ''
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // P-LEADS-FIX (2026-06-12): surface lead-write failures instead of showing
+  // a false "submitted" success state. Set on FK-reject / network failure /
+  // resolver miss; cleared at the next submit attempt.
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   // Pre-fill form with user data
   useEffect(() => {
@@ -163,6 +167,7 @@ export default function HomeEstimatorResults({
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setSubmitError(null)
 
     const specs = propertySpecs || {}
     const message = result.showPrice 
@@ -205,6 +210,9 @@ export default function HomeEstimatorResults({
     }
 
     console.log('✅ Now creating lead...')
+    // P-LEADS-FIX (2026-06-12): track lead-write outcome so we don't show a
+    // false "submitted" success state when the FK / network / resolver fails.
+    let leadSucceeded = false
     try {
       const leadResult = await submitLeadFromForm({
         agentId,
@@ -233,14 +241,20 @@ export default function HomeEstimatorResults({
 
       if (!leadResult.success) {
         console.error('❌ Lead creation failed:', leadResult)
+        setSubmitError(leadResult.error || 'We could not submit your request right now. Please try again.')
+      } else {
+        leadSucceeded = true
       }
     } catch (error) {
       console.error('❌ Exception during lead creation:', error)
+      setSubmitError('We could not submit your request right now. Please try again.')
     }
 
     setIsSubmitting(false)
-    setSubmitted(true)
-    setShowContactForm(false)
+    if (leadSucceeded) {
+      setSubmitted(true)
+      setShowContactForm(false)
+    }
   }
 
   // CONTACT TIER: No price - show reference comparables + strong CTA
@@ -287,6 +301,11 @@ export default function HomeEstimatorResults({
             ) : (
               <form onSubmit={handleContactSubmit} className="bg-white rounded-xl p-6 space-y-4">
                 <h4 className="font-bold text-gray-900 text-lg mb-4">Get Your Free Valuation</h4>
+                {submitError && (
+                  <div role="alert" className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
+                    {submitError}
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Name *</label>
@@ -1191,6 +1210,11 @@ export default function HomeEstimatorResults({
           ) : (
             <form onSubmit={handleContactSubmit} className="bg-white rounded-xl p-6 space-y-4">
               <h4 className="font-bold text-gray-900 text-lg mb-4">Connect with Your Agent</h4>
+              {submitError && (
+                <div role="alert" className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
+                  {submitError}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Name *</label>

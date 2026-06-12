@@ -49,6 +49,10 @@ interface PropertyPageClientProps {
   investmentData?: InvestmentData
   isHero?: boolean
   walliamTenantId?: string | null
+  // P-LEADS-FIX (2026-06-12): server-resolved tenant-admin agent.id, threaded
+  // for the lead-form's agentId on the hero (walliam) branch. Sidesteps the
+  // hierarchy-load-bearing isHero?null:agent nulling above without removing it.
+  walliamAgentId?: string | null
 }
 
 export default function PropertyPageClient({
@@ -69,6 +73,7 @@ export default function PropertyPageClient({
   investmentData,
   isHero = false,
   walliamTenantId = null,
+  walliamAgentId = null,
   assistantName,
 }: PropertyPageClientProps) {
   const { user } = useAuth()
@@ -215,7 +220,7 @@ export default function PropertyPageClient({
                       buildingName={building?.building_name || ''}
                       buildingAddress={building?.canonical_address || ''}
                       buildingSlug={building?.slug || ''}
-                      agentId={walliamTenantId}
+                      agentId={walliamAgentId || ''}
                       tenantId={walliamTenantId || undefined}
                     />
                   </GatedContent>
@@ -292,7 +297,7 @@ export default function PropertyPageClient({
           buildingSlug={building?.slug || ''}
           buildingName={building?.building_name || ''}
           buildingAddress={building?.canonical_address || ''}
-          agentId={agent?.id || ''}
+          agentId={agent?.id || walliamAgentId || ''}
           tenantId={walliamTenantId || undefined}
           type={isSale ? 'sale' : 'lease'}
           exactSqft={listing.building_area_total || null}

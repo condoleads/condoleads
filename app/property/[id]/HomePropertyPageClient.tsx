@@ -44,6 +44,10 @@ interface HomePropertyPageClientProps {
   area?: { id: string; name: string; slug: string } | null
   isHero?: boolean
   walliamTenantId?: string | null
+  // P-LEADS-FIX (2026-06-12): server-resolved tenant-admin agent.id, threaded
+  // for the lead-form's agentId on the hero (walliam) branch. Sidesteps the
+  // hierarchy-load-bearing isHero?null:agent nulling above without removing it.
+  walliamAgentId?: string | null
 }
 
 export default function HomePropertyPageClient({
@@ -62,6 +66,7 @@ export default function HomePropertyPageClient({
   area,
   isHero = false,
   walliamTenantId = null,
+  walliamAgentId = null,
   assistantName,
 }: HomePropertyPageClientProps) {
   const { user } = useAuth()
@@ -202,7 +207,7 @@ export default function HomePropertyPageClient({
                     <HomePropertyEstimateCTA
                       listing={listing}
                       isSale={isSale}
-                      agentId={walliamTenantId}
+                      agentId={walliamAgentId || ''}
                     />
                   </GatedContent>
                   <HomePropertyInfo listing={listing} />
@@ -258,7 +263,7 @@ export default function HomePropertyPageClient({
           isOpen={showEstimatorModal}
           onClose={() => setShowEstimatorModal(false)}
           listing={listing}
-          agentId={agent?.id || ''}
+          agentId={agent?.id || walliamAgentId || ''}
           tenantId={walliamTenantId || undefined}
           type={isSale ? 'sale' : 'rent'}
           exactSqft={listing.building_area_total || null}

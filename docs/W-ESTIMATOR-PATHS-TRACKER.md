@@ -294,3 +294,136 @@ No S1 paths touched.
 HELD per operator instruction. Commit landed locally; awaiting push approval after backtest review.
 
 Pushed 9a451d1; operator-approved after zero-selection-shift backtest.
+
+---
+
+## P-SECTION-TEST + P-LEADS-RECON (2026-06-12) — run log
+
+### P-SECTION-TEST — estimator section assembly: PASS
+Build: scripts/test-estimator-sections.js (orchestrator) + app/api/test-estimator-sections/route.ts (probe; not committed, local-only). Picks one HOME subject (Detached, tax+comps+competing+tax-band-pool) and one CONDO subject (building+tax+same-building Platinum comp+competing) verified this run via direct pg, BEGIN/ROLLBACK isolated. For each of 4 cases (home-modal, home-page, condo-modal, condo-page) hits the probe (which invokes the REAL estimateHomeSale / estimateCondoSale actions + findActiveCompetition) and asserts all three sections.
+
+Results table:
+
+| case        | comparable-sold (tier/count/price) | tax-match (tier/count/price) | competing (count/order) | PASS/FAIL |
+|-------------|------------------------------------|------------------------------|-------------------------|-----------|
+| home-modal  | gold/8/$496,706                    | gold/7/$475,301              | 2/order-ok              | PASS      |
+| home-page   | gold/8/$496,706                    | gold/7/$475,301              | 2/order-ok              | PASS      |
+| condo-modal | platinum/3/$351,333                | platinum/4/$351,000          | 7/order-ok              | PASS      |
+| condo-page  | platinum/3/$351,333                | platinum/4/$351,000          | 7/order-ok              | PASS      |
+
+Parity (proof P1 closed the modal-vs-page section gap):
+- home-parity:  anchor MATCH (gold==gold), price MATCH ($496,706==$496,706), taxMatch tier MATCH (gold==gold), taxMatch price MATCH ($475,301==$475,301), competing MATCH (2==2). PASS.
+- condo-parity: anchor MATCH (platinum==platinum), price MATCH ($351,333==$351,333), taxMatch tier MATCH (platinum==platinum), taxMatch price MATCH ($351,000==$351,000), competing MATCH (7==7). PASS.
+
+Mutation check (no write fired during test): mls_listings 1,331,508 → 1,331,508 (delta 0); agents 10 → 10 (delta 0). MUTATION: NONE.
+
+Section verdicts (verified in production code path):
+- Home Comparable Sold: WORKING (modal + page)
+- Home Tax-Match:       WORKING (modal + page)
+- Home Competing:       WORKING (modal + page)
+- Condo Comparable Sold: WORKING (modal + page)
+- Condo Tax-Match:       WORKING (modal + page)
+- Condo Competing:       WORKING (modal + page)
+
+Charlie-groundwork map (verified): 3 sections (Comparable Sold / Tax-Matched / Competing-For-Sale), modal-vs-page parity guarantee, credit-seam decoupling — modal path increments via /api/walliam/estimator/increment, page path auto-runs without incrementing. The data the matcher produces is identical on both paths.
+
+### P-CASCADE-REBUILD — shipped 9a451d1 (2026-06-12)
+Push committed at 9a451d1; tracker push-note at 216de05. Backtest pre-push: zero SELECTION-SHIFT across 100 subjects (50 home + 50 condo), TRUNCATION-FIX 10 home / 16 condo. Truncation-kill proof — subject C12818456 (condo): OLD path saw 71 bed_eq comps in the 300-row recency window, NEW path saw 267; median close_price $763.5k → $801.5k. Operator-approved push at 9a451d1.
+
+### P-LEADS-RECON — property-page leads/emails NOT generating
+Full recon in recon/W-PROPERTY-PAGE-LEADS-RECON.txt. Operator-flagged live revenue defect: property-page estimates on homes AND condos do not generate leads/emails despite the section assembly working (per P-SECTION-TEST PASS above).
+
+PART A — BREAK POINT (lead+email chain):
+- Both home and condo break at the SAME prop-wiring site:
+  - CONDO: app/property/[id]/PropertyPageClient.tsx:218 — `agentId={walliamTenantId}`
+  - HOME:  app/property/[id]/HomePropertyPageClient.tsx:205 — `agentId={walliamTenantId}`
+- `walliamTenantId` is the WALLiam TENANTS.ID (sourced from `getCurrentTenantId()` at page.tsx:145 / HomePropertyPage.tsx:96), NOT a valid agents.id.
+- The shared submit handler at EstimatorResults.tsx:106 has a falsy-only kill switch (`if (!agentId)`); a truthy tenant-UUID passes the guard.
+- Submit fires → submitLeadFromForm(agentId=tenantsId) → createLead in lib/actions/leads.ts uses that value as the leads.agent_id FK. Either (a) FK rejects insert, or (b) lead persists with a bogus agent_id and getLeadEmailRecipients finds no recipients → no email. CLAIMED-UNVERIFIED which of (a)/(b) fires; both are consistent with the "no leads/emails" symptom.
+- The non-WALLiam (agent-subdomain) branch is FINE — passes the real agent.id at PropertyPageClient.tsx:252 / HomePropertyPageClient.tsx:227. Operator's "modal works" observation matches: the modal's agentId derives correctly (CLAIMED-UNVERIFIED on the exact derivation; not re-traced this recon).
+
+PART B — DEFAULT-OPEN CREDIT SEAM (metering gap, not correctness):
+- Property-page CTAs auto-run the matcher on mount with no credit gate:
+  - components/property/PropertyEstimateCTA.tsx:46-129 (deps [listing.id, isSale, buildingSlug, exactSqft])
+  - components/property/HomePropertyEstimateCTA.tsx:30-111 (deps [listing.id, isSale, exactSqft, agentId, fetchCompetingListings])
+- "Get Sale Estimate" button (PropertyHeader.tsx:118; PropertyStickyBar.tsx:94, 119) is WIRED but opens the MODAL (PropertyPageClient.tsx:108, 281, 286-300), which has its own credit+increment flow. The auto-run is a SEPARATE flow that bypasses metering.
+- Modal flow to mirror: EstimatorBuyerModal.tsx:167-266 (session check L178 → if-allowed → POST /api/walliam/estimator/increment L209-218 → handleEstimate L222); HomeEstimatorBuyerModal.tsx:152-244 mirrors.
+- Lease coverage: condo auto-runs lease too (PropertyEstimateCTA.tsx:70-86 calls estimateCondoRent/estimateRent on isSale=false) — same seam, same scope. Home lease is NOT implemented (HomePropertyEstimateCTA.tsx:32-35 early-exits).
+- Increment endpoint sanity: app/api/walliam/estimator/increment/route.ts L16-77, tenant-scoped via session source_key match (W-RECOVERY A1.5 gate), writes chat_sessions.estimator_count. Reused not rebuilt — same route serves modal and would serve auto-run.
+
+Parts A and B are INDEPENDENT defects on the same client files. Fix A = revenue (correctness). Fix B = metering (cost).
+
+Status: RECON ONLY. No code changes, no commits. Operator decision next on whether to fix A first or batch both.
+
+---
+
+## P-LEADS-FIX (2026-06-12) — run log
+
+Fixes the live revenue defect mapped in recon/W-PROPERTY-PAGE-LEADS-RECON.txt and pre-verified in recon/W-LEADS-FIX-PREVERIFY.txt. Property-page hero branch was passing tenant UUID (auto-CTA) or '' (button-modal) as agentId, causing every lead-write to FK-reject. Hierarchy guardrails (FKs, resolver, email chain, recipients, increment) untouched — fix makes data satisfy them.
+
+### Composite-FK verification (pre-flight)
+Direct pg query against production this run:
+```
+SELECT id, tenant_id, email, full_name, can_create_children FROM agents
+WHERE id = 'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe';
+```
+| id | tenant_id | email | full_name | can_create_children |
+|----|-----------|-------|-----------|---------------------|
+| fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe | b16e1039-38ed-43d7-bbc5-dd02bb651bc9 | kingshahone@gmail.com | King Shah | true |
+
+King Shah's tenant_id matches the WALLiam tenant id b16e1039. The composite `leads_agent_tenant_consistency` constraint will accept (agent_id, tenant_id) = (KingShah.id, WALLiam.id). PROCEED.
+
+### Edits — Option (b), surgical new prop
+Hierarchy-load-bearing `agent={isHero ? null : agent}` nulling on parent pages LEFT IN PLACE. Added a separate `walliamAgentId` prop alongside the existing `walliamTenantId`.
+
+Parent pages — expose resolved agent.id:
+- app/property/[id]/page.tsx:~402 — added `walliamAgentId={agent?.id ?? null}` to `<PropertyPageClient>`
+- app/property/[id]/HomePropertyPage.tsx:~313 — added `walliamAgentId={agent?.id ?? null}` to `<HomePropertyPageClient>`
+
+PageClient interfaces + destructure:
+- app/property/[id]/PropertyPageClient.tsx — added `walliamAgentId?: string | null` to props interface + destructured default null
+- app/property/[id]/HomePropertyPageClient.tsx — same
+
+4 lead-prop sites:
+- PropertyPageClient.tsx:~218 (auto-CTA, hero branch): `agentId={walliamAgentId || ''}` (was `walliamTenantId`)
+- PropertyPageClient.tsx:~295 (button-modal): `agentId={agent?.id || walliamAgentId || ''}` (was `agent?.id || ''`) — agent-subdomain branch (agent non-null) unchanged; hero branch (agent null) now uses walliamAgentId
+- HomePropertyPageClient.tsx:~205 (auto-CTA, hero branch): `agentId={walliamAgentId || ''}` (was `walliamTenantId`)
+- HomePropertyPageClient.tsx:~261 (button-modal): `agentId={agent?.id || walliamAgentId || ''}` (was `agent?.id || ''`)
+
+Agent-subdomain (non-hero) branches at PropertyPageClient.tsx:~252 and HomePropertyPageClient.tsx:~227 still pass `agentId={agent.id}` — byte-identical to pre-fix. Only the hero branch resolves differently.
+
+False-submit fix — EstimatorResults.tsx + HomeEstimatorResults.tsx:
+- Added `submitError` state (cleared on each submit attempt).
+- Introduced `leadSucceeded` flag inside handleContactSubmit; only `setSubmitted(true) + setShowContactForm(false)` when the flag is true.
+- On `!leadResult.success` or `catch`: `setSubmitError(...)` with the server's error message or a generic retry message.
+- Added an accessible `role="alert"` error banner inside both form sites (the contact-tier "Get Your Free Valuation" form and the disclaimer-banner "Connect with Your Agent" form) so the user sees the failure and can retry.
+
+### Hierarchy untouched
+- Both FKs (leads_agent_id_fkey + leads_agent_tenant_consistency composite) preserved — unmodified.
+- resolveAgentForContext, getOrCreateLead, submitLeadFromForm, getLeadEmailRecipients — unmodified.
+- `agent={isHero ? null : agent}` nulling left intact at page.tsx:397 + HomePropertyPage.tsx:308.
+- Increment endpoint, email chain, recipients resolution, DB schema — unmodified.
+- Condo `notAsIs` gap — not touched (out of scope per prior recon).
+
+### Build
+`npm run build` → exit 0. The Dynamic-server-usage warnings on /api/admin-homes/*, /api/chat/vip-approve, etc. are pre-existing Next.js notices for cookie/request-url usage — not failures.
+
+### Code-test (scripts/test-p-leads-fix.js, SAVEPOINT-isolated)
+| Verdict | Result |
+|---------|--------|
+| 1. NEW wiring (King Shah agent_id) satisfies both FKs | PASS (insert succeeded inside transaction, rolled back) |
+| 2. OLD wiring (WALLiam tenant UUID as agent_id) FK-rejects | PASS — error code 23503, constraint `leads_agent_id_fkey` |
+| 3a. Email recipients resolve King Shah email | PASS — kingshahone@gmail.com |
+| 3b. Recipients of OLD wiring resolve to null | PASS — agents lookup for tenant UUID returns no row |
+| 4. False-submit fix (simulation) | PASS — success → submitted=true; reject → submitted=false + error; throw → submitted=false + error |
+| 5. Mutation check | PASS — leads row count 201 → 201 (delta 0) |
+
+OVERALL: PASS. All proofs in one run.
+
+### Scope guards confirmed
+- S1 untouched: no `/admin`, `app/api/chat/*`, `agent_buildings` paths in this diff.
+- Agent-subdomain path byte-identical: both PageClients' non-hero branches (PropertyPageClient.tsx:~252, HomePropertyPageClient.tsx:~227) still pass `agent.id`.
+- No FK weakening, no resolver change, no email-path change, no schema change.
+
+### Push status
+HELD per operator instruction. Commit landed locally; awaiting push approval.
