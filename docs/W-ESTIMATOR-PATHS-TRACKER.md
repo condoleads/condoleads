@@ -703,3 +703,5 @@ Three independent layers:
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval.
+
+Pushed 4db3a7f; operator-approved. Property-page estimator gated — no auto-fire; single metered modal entry; one subject = one debit (UNIQUE index + in-flight guard + idempotent opener); backend untouched.
