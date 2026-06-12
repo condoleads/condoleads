@@ -427,3 +427,5 @@ OVERALL: PASS. All proofs in one run.
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval.
+
+Pushed f4b555c; operator-approved. Live lead capture restored on walliam.ca property pages (home + condo).
