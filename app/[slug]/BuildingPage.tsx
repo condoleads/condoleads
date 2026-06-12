@@ -34,7 +34,7 @@ const getCachedActiveListings = unstable_cache(
     const { data } = await supabase
       .from('mls_listings')
       .select(`
-        id, building_id, listing_id, listing_key, standard_status, transaction_type,
+        id, building_id, community_id, listing_id, listing_key, standard_status, transaction_type,
         list_price, close_price, close_date, unit_number, unparsed_address,
         bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
         square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
@@ -62,7 +62,7 @@ const getCachedClosedListings = unstable_cache(
     const { data } = await supabase
       .from('mls_listings')
       .select(`
-        id, building_id, listing_id, listing_key, standard_status, transaction_type,
+        id, building_id, community_id, listing_id, listing_key, standard_status, transaction_type,
         list_price, close_price, close_date, unit_number, unparsed_address,
         bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
         square_foot_source, parking_total, locker, association_fee, tax_annual_amount,

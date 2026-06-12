@@ -20,7 +20,7 @@ const LISTING_SELECT = `
   list_price, close_price, close_date, unit_number, unparsed_address,
   bedrooms_total, bathrooms_total_integer, property_type, property_subtype,
   living_area_range, square_foot_source, parking_total, locker,
-  association_fee, tax_annual_amount, days_on_market, listing_contract_date,
+  association_fee, tax_annual_amount, tax_year, days_on_market, listing_contract_date,
   building_area_total,
   lot_width, lot_depth, lot_size_dimensions, lot_size_area, lot_size_area_units,
   frontage_length, basement, garage_type, garage_yn, approximate_age,
