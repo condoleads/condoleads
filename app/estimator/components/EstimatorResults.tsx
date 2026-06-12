@@ -505,6 +505,17 @@ export default function EstimatorResults({
           <div className="space-y-4 max-h-[600px] overflow-y-auto">
             {result.comparables.map((comp, idx) => {
               const hasAdjustments = comp.adjustments && comp.adjustments.length > 0
+              // Geo-tier chip — uniform per section. The geo cascade returns
+              // mono-tier comps from result.bestGeoTier; the chip mirrors the
+              // tax-tile body chip shipped in df4419d. Skipped on CONTACT-
+              // tier (bestGeoTier === 'none') — no chip, no crash.
+              const geoTierKey = result.bestGeoTier && result.bestGeoTier !== 'none' ? result.bestGeoTier as 'platinum' | 'gold' | 'silver' | 'bronze' : null
+              const geoTierLabel = geoTierKey ? CONDO_LABEL_MAP[geoTierKey] : null
+              const geoTierBadgeColor = !geoTierKey ? ''
+                : geoTierKey === 'platinum' ? 'bg-emerald-600 text-white'
+                : geoTierKey === 'gold'     ? 'bg-amber-500 text-white'
+                : geoTierKey === 'silver'   ? 'bg-slate-500 text-white'
+                :                             'bg-orange-700 text-white' // bronze
 
               return (
                 <div key={idx} className="bg-slate-50 rounded-xl p-5 border-2 border-slate-200 hover:border-slate-300 transition-colors">
@@ -522,6 +533,13 @@ export default function EstimatorResults({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
+                      {geoTierLabel && (
+                        <div className="mb-2">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${geoTierBadgeColor}`}>
+                            {geoTierLabel.emoji} {geoTierLabel.name} · {geoTierLabel.sub}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
                         {comp.unitNumber && (
                           <span className="text-sm font-semibold text-slate-500">Unit {comp.unitNumber}</span>
@@ -716,6 +734,13 @@ export default function EstimatorResults({
               </div>
               {result.taxMatch.tiers && (
                 <div className="mb-4">
+                  {/* Section-level label: clarifies these tiers are derived
+                      from the tax-mode cascade, not geo. The shared
+                      GeoConfidenceSpread component's internal title stays
+                      "Geographic Confidence Spread" (correct for the geo
+                      section above); this h4 sits above it in the tax
+                      section only. */}
+                  <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2">Tax-Match Confidence Spread</h4>
                   <GeoConfidenceSpread
                     tiers={result.taxMatch.tiers}
                     bestGeoTier={result.taxMatch.bestGeoTier}

@@ -699,6 +699,18 @@ export default function HomeEstimatorResults({
                 )
               }
 
+              // Geo-tier chip (SF only — plex branch returned above).
+              // Uniform per section: geo cascade returns mono-tier comps from
+              // result.bestGeoTier. Mirrors the tax-tile body chip (df4419d).
+              // Skipped on CONTACT-tier (bestGeoTier === 'none').
+              const geoTierKey = result.bestGeoTier && result.bestGeoTier !== 'none' ? result.bestGeoTier as 'platinum' | 'gold' | 'silver' | 'bronze' : null
+              const geoTierLabel = geoTierKey ? HOME_LABEL_MAP[geoTierKey] : null
+              const geoTierBadgeColor = !geoTierKey ? ''
+                : geoTierKey === 'platinum' ? 'bg-emerald-600 text-white'
+                : geoTierKey === 'gold'     ? 'bg-amber-500 text-white'
+                : geoTierKey === 'silver'   ? 'bg-slate-500 text-white'
+                :                             'bg-orange-700 text-white'
+
               return (
                 <div key={idx} className="bg-white border border-slate-200 hover:border-slate-300 rounded-xl overflow-hidden transition-colors">
                   {/* h4: SHARED FRAME (photo column + horizontal header) — same
@@ -731,6 +743,13 @@ export default function HomeEstimatorResults({
                           </span>
                         )}
                       </div>
+                      {geoTierLabel && (
+                        <div className="mb-1">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${geoTierBadgeColor}`}>
+                            {geoTierLabel.emoji} {geoTierLabel.name} · {geoTierLabel.sub}
+                          </span>
+                        </div>
+                      )}
                       <div className="text-[11px] text-slate-500 truncate mb-0.5">
                         {comp.unparsedAddress?.split(',')[0] || '—'}
                       </div>
@@ -911,6 +930,11 @@ export default function HomeEstimatorResults({
               </div>
               {result.taxMatch.tiers && (
                 <div className="mb-4">
+                  {/* Section-level label: clarifies these tiers are derived
+                      from the tax-mode cascade, not geo. Shared
+                      GeoConfidenceSpread's internal title stays unchanged
+                      (correct for the geo section above). */}
+                  <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2">Tax-Match Confidence Spread</h4>
                   <GeoConfidenceSpread
                     tiers={result.taxMatch.tiers}
                     bestGeoTier={result.taxMatch.bestGeoTier}
