@@ -292,3 +292,5 @@ No S1 paths touched.
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval after backtest review.
+
+Pushed 9a451d1; operator-approved after zero-selection-shift backtest.
