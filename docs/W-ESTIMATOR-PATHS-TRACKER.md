@@ -581,3 +581,5 @@ Sample VIP-buyer property hrefs (all walliam.ca/property/{uuid}, zero condoleads
 
 ### Push status
 HELD per operator instruction. b9336dc + this commit ready to push together after approval.
+
+Pushed b9336dc + 45f5441; operator-approved. Full P-WORKING-DOC spec live — workingDoc persisted + rendered into agent, property-page buyer, and estimator VIP buyer emails via one shared helper; b9336dc message reconciled honest by 45f5441.
