@@ -645,3 +645,5 @@ Sample tile links (all walliam.ca/property/{uuid}):
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval.
+
+Pushed 0f3f5e0; operator-approved. Agent lead-detail view now renders the full working document (3 sections + tenant-correct links), consistent with the buyer/agent emails; legacy leads fall back gracefully.
