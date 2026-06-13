@@ -969,3 +969,50 @@ Pushed 09b97ef + d5a1ca2; operator-approved after eyeball. Charlie in-chat selle
   - app/api/walliam/charlie/vip-request/route.ts sha 97c651e90c6f MATCH
 - Dashboard byte-identity: LIGHT theme contains 24 verbatim pre-change class strings; default 'light' on WorkingDocView preserves dashboard signature.
 - S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
+
+---
+
+## C-PLAN-DOC-DEDUP — BUILT, LOCAL COMMIT (2026-06-13, HEAD 9eaceb7)
+
+Problem (surfaced by C-VERIFY recon): the Charlie plan email rendered the same seller comparables + competing listings TWICE — once via the legacy comparableSoldHtml/competingHtml blocks (reading sellerEstimate.comparables/competingListings) and once via the new C-PLAN-DOC working-doc render (reading workingDoc.comparableSold/competing tiles). Same source data, two visual outputs, recipient sees duplicates.
+
+Pre-flight content-equivalence check: the working-doc render was NOT a superset of the legacy blocks — missing photo, temperature badge (HOT/WARM/COLD), matchQuality, and Sold → / For Sale → affordance. Per directive, those four fields were CARRIED INTO the working-doc tile render first, then the legacy blocks were gated off.
+
+Files changed (3, +279 / -5):
+- lib/email/working-doc-render.ts
+  - WorkingDocTile interface: + mediaUrl?: string | null, + matchQuality?: string | null (additive optional)
+  - buildWorkingDocFromResult: tileFromComp + tileFromCompeting capture mediaUrl (cascading fallback: c.mediaUrl → c.media[0].media_url → c.media[0].url); tileFromComp also captures matchQuality
+  - renderTile: photo cell (when mediaUrl present), temperature badge on photo for sold tiles, matchQuality below address, Sold → / For Sale → affordance, price color matches legacy (#059669 sold / #1d4ed8 sale)
+- app/api/charlie/plan-email/route.ts
+  - comparableSoldHtml: gated by !workingDoc && ...
+  - competingHtml:      gated by !workingDoc && ...
+  - Mount order at L686-688 UNCHANGED. When workingDoc present, legacy slots emit '' and the working-doc section is the single source.
+- scripts/test-c-plan-doc-dedup.js (NEW, 29 verdicts, 29/29 PASS)
+
+Backwards-compat guarantee: workingDoc-absent path renders the legacy blocks BYTE-IDENTICAL to pre-edit (verified — bodies match backup minus the leading !workingDoc && guard). Older clients, buyer flows, and any plan session without a seller estimate see no change.
+
+Wiring untouched (verified):
+- Lead insert (agent_id + tenant_id + manager_id + area_manager_id + tenant_admin_id stamped, status='new')
+- user_activities 'plan_generated' log
+- getLeadEmailRecipients(tenantId, agentId) call site + chain
+- Buyer copy send (to: userEmail) + chain send (recipients TO/CC/BCC)
+- Per-tenant Resend key via attemptTenantEmail
+- buildBaseUrl(domain) tenant-domain-first
+
+09b97ef byte-identity guards still match (SHA fingerprints verified):
+- app/api/charlie/route.ts          sha 9c64acba0564 MATCH
+- charlie-tools.ts                  sha a02ee7ab48f9 MATCH
+- charlie-prompts.ts                sha fbe7b7de14b9 MATCH
+- charlie/vip-request/route.ts      sha 97c651e90c6f MATCH
+
+Dashboard React WorkingDocView: SHA 40b1e460fe11 — UNCHANGED. Only imports the WorkingDocTile type; new optional fields are TS-compatible and unrendered, so dashboard stays byte-identical.
+
+InChatWorkingDoc: SHA cfb3bd101cb1 — UNCHANGED.
+
+Side-benefit: agent lead email, estimator VIP buyer email, and property-page buyer email (all consume renderWorkingDocSections) automatically gain photos + temperature + Sold/For Sale labels when their underlying comp data carries the same fields. Content gain, not regression — the data was always in EstimateResult, just not displayed.
+
+Build: tsc --noEmit exit 0; npm run build exit 0.
+Test: 29/29 PASS.
+S1 zero-diff.
+
+HOLD push per operator instruction. Local commit 9eaceb7. Awaiting operator eyeball + approval.
