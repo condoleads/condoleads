@@ -24,6 +24,19 @@ import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { attemptTenantEmail } from '@/lib/email/sendTenantEmail'
 import { validateSession } from '@/lib/utils/validate-session'
 import { buildBaseUrl } from '@/lib/utils/tenant-brand'
+// C-PLAN-DOC (2026-06-13): shared 3-section render helper. Same one the
+// estimator emails (agent + property-page buyer + VIP buyer) and the
+// dashboard lead-detail view use — ONE render impl, now five surfaces.
+// Nullable-additive: when the POST body has no workingDoc field (older
+// clients, buyer flows, sessions without seller estimate) the entire
+// rendering block silent-skips and the email is byte-identical to today.
+import {
+  type WorkingDoc,
+  resolveListingIds,
+  collectListingKeys,
+  renderEstimateHeader,
+  renderWorkingDocSections,
+} from '@/lib/email/working-doc-render'
 
 // T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
 
@@ -55,7 +68,9 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
+    // C-PLAN-DOC (2026-06-13): optional workingDoc carried by sessions that
+    // ran the seller-estimate flow. Absent → email renders unchanged.
+    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, workingDoc } = await req.json()
 
     if (!sessionId || !userId || !planType) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
@@ -161,7 +176,16 @@ export async function POST(req: NextRequest) {
       budgetMax: plan?.budgetMax || null,
     })
 
-    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl })
+    // C-PLAN-DOC (2026-06-13): if the seller-estimate runner produced a
+    // workingDoc this session, batch-resolve mls_listings.id for every
+    // tile's listing_key once (same helper the estimator emails use).
+    // Absent workingDoc → empty map, render slot silent-skips.
+    const wd: WorkingDoc | null = (workingDoc as WorkingDoc | null | undefined) ?? null
+    const workingDocIdMap: Record<string, string> = wd
+      ? await resolveListingIds(supabase, collectListingKeys(wd))
+      : {}
+
+    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl, workingDoc: wd, workingDocIdMap })
     const subject = `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
     // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): capture user-email outcome.
@@ -257,8 +281,14 @@ function buildRichPlanEmail(data: {
   domain: string
   baseUrl: string
   sourceUrl?: string | null
+  // C-PLAN-DOC (2026-06-13): optional 3-section working document (tax-match
+  // + tier confidence + comparable/competing tiles). When null, the
+  // conditional render block silent-skips and the rest of the email is
+  // byte-identical to today (backwards-compat by construction).
+  workingDoc?: WorkingDoc | null
+  workingDocIdMap?: Record<string, string>
 }): string {
-  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl, sourceUrl } = data
+  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl, sourceUrl, workingDoc, workingDocIdMap } = data
   const isBuyer = planType === 'buyer'
   const topListings = (listings || []).slice(0, 10)
 
@@ -587,6 +617,17 @@ function buildRichPlanEmail(data: {
     </div>
   ` : ''
 
+  // C-PLAN-DOC (2026-06-13): full 3-section working document — tax-match +
+  // P/G/S/B tiers + tax-band comps + competing — rendered via the SHARED
+  // helper (same one used by the estimator emails + dashboard). Audience
+  // is 'buyer' (the plan email goes to the prospect). When workingDoc is
+  // null (older client / buyer flow / no seller estimate this session),
+  // the block silent-skips and the rest of the email is byte-identical.
+  const workingDocHtml = workingDoc
+    ? renderEstimateHeader(workingDoc, { audience: 'buyer', brandName })
+      + renderWorkingDocSections(workingDoc, baseUrl, workingDocIdMap || {}, { audience: 'buyer', brandName })
+    : ''
+
   const vipHtml = vipCreditUsed ? `
     <div style="background: linear-gradient(135deg, #1e1b4b, #312e81); border: 1px solid rgba(99,102,241,0.3); border-radius: 10px; padding: 14px 18px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between;">
       <div>
@@ -644,6 +685,7 @@ function buildRichPlanEmail(data: {
         ${listingsHtml}
         ${comparableSoldHtml}
         ${competingHtml}
+        ${workingDocHtml}
         ${vipHtml}
         ${disclaimerHtml}
         ${agentHtml}

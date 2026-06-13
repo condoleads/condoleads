@@ -3,6 +3,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTenantId } from '@/hooks/useTenantId'
 import { useCreditSession } from '@/components/credits/CreditSessionContext'
+// C-PLAN-DOC (2026-06-13): shape the runner's raw EstimateResult into the
+// shared WorkingDoc form so the plan-email render can reuse the same 3-section
+// helper the estimator emails + dashboard use. NULLABLE-ADDITIVE — if the
+// runner hasn't fired (no seller estimate this session), workingDoc is null
+// and the plan-email renders byte-identical to today.
+import { buildWorkingDocFromResult } from '@/lib/email/working-doc-render'
 
 export type MessageRole = 'user' | 'assistant'
 export type ConversationBlock =
@@ -453,6 +459,27 @@ export function useCharlie() {
         // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): READ the response so
         // we know whether the plan email actually reached the user. If it
         // didn't, set planEmailWarning so the UI can show an honest banner.
+        // C-PLAN-DOC (2026-06-13): when the seller-estimate runner already
+        // produced a result this session, shape it into the shared WorkingDoc
+        // form so the plan email's new conditional render slot can use the
+        // same 3-section helper the estimator emails + dashboard use. ABSENT
+        // (no seller estimate fired) → null is sent and the plan email
+        // renders byte-identical to today (nullable-additive).
+        const se = stateRef.current.sellerEstimate
+        const workingDoc = se && se.estimate ? buildWorkingDocFromResult({
+          type: se.path === 'home' ? 'home' : 'condo',
+          subject: {
+            buildingName: se.buildingName || null,
+            buildingAddress: null,
+            unitNumber: null,
+            bedrooms: se.bedrooms ?? null,
+            bathrooms: null,
+            livingAreaRange: se.livingAreaRange || null,
+          },
+          result: se.estimate,
+          competingListings: se.competingListings || null,
+        }) : null
+
         fetch('/api/charlie/plan-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -469,6 +496,10 @@ export function useCharlie() {
             vipCreditTotal: stateRef.current.vipCreditTotal,
             comparables: stateRef.current.comparables.slice(0, 6),
             sellerEstimate: stateRef.current.sellerEstimate,
+            // C-PLAN-DOC (2026-06-13): new optional payload field. Absent on
+            // older clients / non-seller flows → route receives undefined →
+            // existing email path unchanged.
+            workingDoc,
             blocks: stateRef.current.blocks.filter(b => b.type !== 'plan').slice(0, 20),
           }),
         })

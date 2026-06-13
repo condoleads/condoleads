@@ -705,3 +705,84 @@ Three independent layers:
 HELD per operator instruction. Commit landed locally; awaiting push approval.
 
 Pushed 4db3a7f; operator-approved. Property-page estimator gated — no auto-fire; single metered modal entry; one subject = one debit (UNIQUE index + in-flight guard + idempotent opener); backend untouched.
+
+---
+
+## C-PLAN-DOC (2026-06-13) — Charlie plan email renders the full working document
+
+First Charlie enhancement after W-CHARLIE-RECON. Additive-only, no regression. Threads the seller-estimate runner's modern matcher output (P-CASCADE-REBUILD: tax-match + Platinum/Gold/Silver/Bronze tiers + exhaustive cascade) into the plan email via the SHARED working-doc render helper. Same render the estimator emails + dashboard already use — ONE render impl, now five surfaces.
+
+### Pre-flight findings (read-only, verified)
+- `SellerEstimateRunner.tsx` produces raw `EstimateResult` (via `onEstimateReady({ estimate, comparables, competingListings, ... })`); does NOT shape into WorkingDoc. → Build shapes it at the useCharlie seam via `buildWorkingDocFromResult` (existing helper export, no logic duplication).
+- `SellerEstimateRunner` renders `null` on success — it has NO UI. There's no "runner UI gap" to log; any UI surface for tax-match/tiers lives elsewhere (out of scope here).
+- `plan-email/route.ts`:
+  - Already has `tenantId` + `domain` in scope via `validateSession` helper.
+  - Already computes `BASE_URL = buildBaseUrl(domain)` (L82).
+  - Existing optional `sellerEstimate` param renders comparable-sold (~L566) + competing (~L593) blocks conditionally; the workingDoc render slot anchors right after these, before vipHtml.
+- `useCharlie.ts`:
+  - Plan-email POST at L464-484 carries `sellerEstimate: stateRef.current.sellerEstimate`. `workingDoc` adds beside it.
+
+### Edits
+- `app/charlie/hooks/useCharlie.ts`:
+  - Imports `buildWorkingDocFromResult` from the shared helper.
+  - Before the plan-email POST, computes `workingDoc` from `stateRef.current.sellerEstimate` via the helper (path → 'home'|'condo', subject fields, result, competingListings). NULL when no seller estimate ran this session.
+  - Adds `workingDoc` to the POST body alongside `sellerEstimate`.
+- `app/api/charlie/plan-email/route.ts`:
+  - Imports `WorkingDoc` type + `resolveListingIds`, `collectListingKeys`, `renderEstimateHeader`, `renderWorkingDocSections` from the shared helper.
+  - Destructures `workingDoc` from the POST body (optional).
+  - Before sending: if `workingDoc` present, batch-resolves `mls_listings.id` for every tile's `listing_key` via `resolveListingIds(supabase, collectListingKeys(workingDoc))`. Empty map otherwise.
+  - Extends `buildRichPlanEmail` signature with optional `workingDoc?: WorkingDoc | null` + `workingDocIdMap?: Record<string,string>`.
+  - Inside the email body builder: computes `workingDocHtml` via `renderEstimateHeader(audience='buyer') + renderWorkingDocSections(audience='buyer')` when workingDoc is present; empty string otherwise.
+  - Splices `${workingDocHtml}` into the email body right after the existing `${comparableSoldHtml}${competingHtml}` and before `${vipHtml}`.
+
+### Care guards (verified by test)
+- `app/api/charlie/route.ts` (chat stream + generate_plan stub at L728-743): UNTOUCHED — no matcher call introduced, planReady stub intact. Chat SSE events, word-by-word streaming, message/plan increment RPCs, gates, low-credit email, 13 tools' schemas, tenant system prompt, per-tenant Anthropic key: all unchanged.
+- `app/api/walliam/charlie/vip-request/route.ts` `buildUserApprovalEmailHtml` (Charlie's buyer-approval email): UNTOUCHED — no working-doc-render imports added. Deliberate W-WORKING-DOC Step 3 boundary preserved.
+- `audience='buyer'` on both render calls — plan email goes to the prospect; PII-safe.
+- Per-tenant `baseUrl = buildBaseUrl(tenantDomain)` (already in scope from the existing validateSession path) — never hardcoded.
+- S1 (`app/api/chat/*`, `/admin`, `agent_buildings`): zero diff.
+
+### Credit metering — render-only, no debit change
+- `plan-email/route.ts` does NOT call `/api/walliam/estimator/increment` (verified by test).
+- Charlie's plan pool (`chat_sessions.buyer_plans_used` / `seller_plans_used`) is already debited at `generate_plan` tool call in the chat stream — UNTOUCHED here.
+- `estimator_count` is NOT incremented by this enhancement. One seller-plan request = ONE plan-pool debit (the existing flow). 1-action-1-debit invariant preserved.
+
+### Build
+- `npx tsc --noEmit` → exit 0
+- `npm run build` → exit 0
+
+### Test (scripts/test-c-plan-doc.js) — 19/19 PASS
+
+Static-code + DB proof checks:
+
+| Group | Verdict | Result |
+|---|---|---|
+| useCharlie imports `buildWorkingDocFromResult` from shared helper | | PASS |
+| useCharlie shapes workingDoc + threads into POST body | | PASS |
+| useCharlie maps runner `path` → working-doc `type` (home/condo) | | PASS |
+| plan-email imports shared helper module | | PASS |
+| plan-email imports all 4 needed exports (resolveListingIds + collectListingKeys + renderEstimateHeader + renderWorkingDocSections) | | PASS |
+| plan-email destructures `workingDoc` from POST body | | PASS |
+| plan-email batch-resolves listing-ids via shared helper | | PASS |
+| plan-email renders header + 3 sections via shared helper | | PASS |
+| plan-email splices `${workingDocHtml}` into email body | | PASS |
+| plan-email render uses `audience='buyer'` (PII-safe for prospect) | | PASS |
+| **Backwards-compat: workingDoc absent → empty string (byte-identical email)** | | **PASS** (key regression gate) |
+| plan-email does NOT call `/api/walliam/estimator/increment` | | PASS |
+| plan-email still inserts lead row | | PASS |
+| plan-email still logs `plan_generated` activity | | PASS |
+| plan-email still uses `getLeadEmailRecipients` (6-layer chain) | | PASS |
+| plan-email still uses `attemptTenantEmail` (F-EMAIL-CALLER pattern) | | PASS |
+| Chat stream: `generate_plan` stub intact (planReady: true) | | PASS |
+| Chat stream: NO matcher calls (still stub) | | PASS |
+| Charlie VIP buyer-approval builder UNTOUCHED (no working-doc imports) | | PASS |
+
+### Regression contract satisfied
+The C-RECON Part D checklist gates this enhancement. Every item touched by the edits is verified intact:
+- Chat-stream behavior (SSE events, streaming, metering, gates, 13 tools, system prompt, per-tenant key): file untouched.
+- plan-email shape additions: nullable-additive only. Existing POST body fields (sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks) all preserved.
+- Charlie VIP email builder: untouched.
+- S1 routes (`app/api/chat/*`): zero diff.
+
+### Push status
+HELD per operator instruction. Commit landed locally; awaiting push approval.
