@@ -1103,3 +1103,76 @@ Pushed 2367783 + 0be66de; operator-approved. Charlie reverted to 460ef63 origina
 - Reference materialized for byte-compare: recon/_pre-df2ec76-plan-email.ts.txt, recon/_pre-df2ec76-ResultsPanel.tsx.txt, recon/_pre-df2ec76-useCharlie.ts.txt
 - S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
 - Awaiting operator live-eyeball on walliam.ca to confirm Charlie's chat panel + plan email show only the original sections (no "Estimator working document" label, no duplicate comparable/competing) and the estimator surfaces still render the working doc.
+
+---
+
+## C-ENHANCE-1-DATA — LOCAL COMMIT (2026-06-13, HEAD f0904e5)
+
+DATA-LAYER ONLY. No render change. Switched Charlie's seller runner to the S2 condo matcher and threaded propertyTax → subjectTaxAnnualAmount + subjectTaxYear on both condo and home specs. Charlie's state.sellerEstimate.estimate now carries tiers + bestGeoTier (anchor) + taxMatch when the form provides propertyTax — the data gate before the render build.
+
+Scope:
+- app/charlie/components/SellerEstimateRunner.tsx (only file edited)
+  - imports: estimateSale → estimateCondoSale, estimateRent → estimateCondoRent
+  - Props.formData: + propertyTax?: string
+  - condo SALE: CondoSaleSpecs (= UnitSpecs + community/muni/area + subjectTax* + tenantId fallback)
+  - condo LEASE: CondoLeaseSpecs (no tax fields — matcher doesn't compute tax-match on lease, by design)
+  - home SALE/LEASE: HomeSpecs + subjectTaxAnnualAmount + subjectTaxYear
+- scripts/verify-c-enhance-data.js (NEW)
+
+NO render change. SellerEstimateBlock, ComparableCard, plan-email, ResultsPanel, dashboard: untouched.
+
+S1 callers UNCHANGED (verified by grep):
+- EstimatorSeller / EstimatorBuyer / EstimatorBuyerModal still import estimateSale/Rent.
+
+09b97ef byte-identity guards still match:
+- app/api/charlie/route.ts          sha 9c64acba0564 MATCH
+- charlie-tools.ts                  sha a02ee7ab48f9 MATCH
+- charlie-prompts.ts                sha fbe7b7de14b9 MATCH
+- charlie/vip-request/route.ts      sha 97c651e90c6f MATCH
+
+Charlie SHAs (post-edit):
+- plan-email/route.ts        sha fd89b183e1b0 UNCHANGED (revert state)
+- ResultsPanel.tsx           sha 72f5d88adef9 UNCHANGED
+- useCharlie.ts              sha 5288819e9870 UNCHANGED
+- SellerEstimateRunner.tsx   sha (edited — runner is the only file changed)
+
+Build: tsc --noEmit exit 0; npm run build exit 0.
+S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
+
+VERIFY (scripts/verify-c-enhance-data.js, code-verified — not live):
+Ran against npm run dev on http://localhost:3001 (3000 was busy). Probe endpoint
+/api/test-estimator-sections invokes the same S2 actions Charlie's runner now uses.
+3 real WALLiam-coverage subjects discovered via SAVEPOINT-isolated pg (BEGIN ...
+ROLLBACK, no mutation):
+
+Case 1: CONDO with tax — X9436670, tax=$3,649, year=2023
+  bestGeoTier=platinum  matchTier=MAINT  confidence=Medium-Low
+  tiers.platinum={count:4,  median:$533,000}
+  tiers.gold    ={count:7,  median:$437,000}
+  tiers.silver  ={count:26, median:$631,750}
+  tiers.bronze  =null
+  taxMatch.comparablesCount=7  taxMatch.bestGeoTier=platinum  → FIRING
+
+Case 2: HOME with tax — E12481299 Detached, tax=$4,162.56, year=2025
+  bestGeoTier=gold  matchTier=BINGO  confidence=High
+  tiers.platinum=null
+  tiers.gold    ={count:8,  median:$795,000}
+  tiers.silver  ={count:14, median:$812,500}
+  tiers.bronze  =null
+  taxMatch.comparablesCount=10  taxMatch.bestGeoTier=gold  → FIRING
+
+Case 3: CONDO without tax — N9417561 (graceful path)
+  bestGeoTier=platinum  matchTier=RANGE  confidence=Medium
+  tiers.platinum={count:1, median:$725,354}
+  taxMatch=null  → NO CRASH (matcher correctly returns undefined when no tax)
+
+Assertions: all clean. FATAL issues: (none). Exit code 0.
+
+tenantId fallback: getCurrentTenantId() server-side worked correctly in dev with
+DEV_TENANT_DOMAIN=walliam.ca in .env.local. Matchers populated tiers + taxMatch
+without explicit specs.tenantId — confirms Charlie's runner null-tenant path is
+production-equivalent.
+
+HOLD push pending operator approval. Operator's live walliam.ca eyeball is the
+next gate. After approval, push → then the render build (C-ENHANCE-2-RENDER) lands
+the tier rail + chip + tax-match subsection across the 3 surfaces.
