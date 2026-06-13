@@ -1176,3 +1176,22 @@ production-equivalent.
 HOLD push pending operator approval. Operator's live walliam.ca eyeball is the
 next gate. After approval, push → then the render build (C-ENHANCE-2-RENDER) lands
 the tier rail + chip + tax-match subsection across the 3 surfaces.
+
+---
+
+## C-ENHANCE-1-DATA — PUSHED (2026-06-13)
+
+Pushed f0904e5 + 6f685be; operator-approved. Charlie seller runner on S2 condo matcher + tax threaded; tiers/anchor/tax-match now populate (code-verified: condo X9436670 + home E12481299 firing; no-tax graceful); data layer only, no render change yet.
+
+- origin/main: 6f685be (fast-forward from 34b0384, no force)
+- Build: tsc --noEmit exit 0; npm run build exit 0
+- Verify (scripts/verify-c-enhance-data.js): all clean, exit 0.
+  - condo X9436670 (tax=$3,649): tiers Plat(4)/Gold(7)/Silver(26)/null; bestGeoTier=platinum; taxMatch.comparablesCount=7 FIRING
+  - home  E12481299 (tax=$4,162.56): tiers null/Gold(8)/Silver(14)/null; bestGeoTier=gold; taxMatch.comparablesCount=10 FIRING
+  - condo N9417561 (no tax): tiers Plat(1); taxMatch=null; estimatedPrice=$725,354 — graceful no-op, no crash
+- tenantId fallback: getCurrentTenantId() server-side RESOLVED at runtime (dev with DEV_TENANT_DOMAIN=walliam.ca); Charlie's null-tenant client path is production-equivalent.
+- S1 callers (EstimatorSeller / EstimatorBuyer / EstimatorBuyerModal): imports UNCHANGED — zero impact on legacy condoleads.ca estimator paths.
+- 09b97ef byte-identity guards still match (chat route 9c64acba0564, tools a02ee7ab48f9, prompts fbe7b7de14b9, Charlie VIP 97c651e90c6f).
+- Revert-state Charlie files BYTE-UNCHANGED: plan-email fd89b183e1b0, ResultsPanel 72f5d88adef9, useCharlie 5288819e9870.
+- S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
+- Next: C-ENHANCE-2-RENDER builds the tier rail + chip + tax-match subsection across in-chat panel + plan email + dashboard, sitting on this data foundation.
