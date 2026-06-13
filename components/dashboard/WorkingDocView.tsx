@@ -23,10 +23,103 @@ import type {
   WorkingDocTile,
 } from '@/lib/email/working-doc-render'
 
+// C-CHAT-VALUATION-STYLE (2026-06-13): optional theme prop. Default 'light'
+// is BYTE-IDENTICAL to the pre-change render (same class strings, same DOM)
+// so the dashboard's appearance is preserved exactly. 'dark' is used by
+// Charlie's InChatWorkingDoc to match the panel palette (slate-900 / white
+// text / subtle borders / blue-400 links). One component, two themes; no
+// duplicate logic, no email-HTML import.
+export type WorkingDocViewTheme = 'light' | 'dark'
+
+interface ThemeClasses {
+  container: string
+  heading: string
+  headerCard: string
+  headerCaption: string
+  subjectLine: string
+  estimatePrice: string
+  rangeText: string
+  confidenceText: string
+  sectionWrap: string
+  sectionTitle: string
+  sectionSubtitle: string
+  sectionHeader: string
+  tableText: string
+  tileRow: string
+  tileAddrLink: string
+  tileAddrNoLink: string
+  tileUnit: string
+  tileSpecs: string
+  tilePrice: string
+  tileAdjusted: string
+  tileTier: string
+  tileDate: string
+  tileDom: string
+  footer: string
+}
+
+const LIGHT: ThemeClasses = {
+  container: 'bg-white rounded-lg shadow p-6 mt-6',
+  heading: 'text-lg font-semibold mb-4',
+  headerCard: 'bg-slate-50 border border-slate-200 rounded-lg p-4',
+  headerCaption: 'text-[10px] uppercase tracking-wide text-gray-500',
+  subjectLine: 'text-sm font-semibold text-gray-900 mt-1',
+  estimatePrice: 'text-2xl font-extrabold text-gray-900 mt-2',
+  rangeText: 'text-xs text-gray-500 mt-0.5',
+  confidenceText: 'text-xs text-gray-600 mt-1.5',
+  sectionWrap: 'mt-6',
+  sectionTitle: 'text-sm font-semibold text-gray-900',
+  sectionSubtitle: 'text-xs text-gray-500 mt-0.5',
+  sectionHeader: 'text-xs text-gray-600 mt-1.5',
+  tableText: 'w-full mt-2 text-sm',
+  tileRow: 'border-b border-gray-200 last:border-0',
+  tileAddrLink: 'text-sm font-medium text-blue-700 hover:text-blue-900',
+  tileAddrNoLink: 'text-sm font-medium text-gray-900',
+  tileUnit: 'text-xs text-gray-500 mt-0.5',
+  tileSpecs: 'text-xs text-gray-500 mt-0.5',
+  tilePrice: 'text-sm font-bold text-gray-900',
+  tileAdjusted: 'text-xs font-normal text-gray-500 ml-1',
+  tileTier: 'text-[10px] text-gray-500 mt-0.5',
+  tileDate: 'text-[10px] text-gray-500 mt-0.5',
+  tileDom: 'text-[10px] text-gray-400 mt-0.5',
+  footer: 'mt-5 pt-4 border-t border-gray-100 text-[11px] text-gray-400 leading-relaxed',
+}
+
+const DARK: ThemeClasses = {
+  container: 'rounded-lg p-6 mt-6 bg-[#0f172a] border border-white/5',
+  heading: 'text-lg font-semibold mb-4 text-white',
+  headerCard: 'rounded-lg p-4 bg-white/[0.04] border border-white/[0.07]',
+  headerCaption: 'text-[10px] uppercase tracking-wide text-white/40',
+  subjectLine: 'text-sm font-semibold text-white mt-1',
+  estimatePrice: 'text-2xl font-extrabold text-emerald-400 mt-2',
+  rangeText: 'text-xs text-white/50 mt-0.5',
+  confidenceText: 'text-xs text-white/60 mt-1.5',
+  sectionWrap: 'mt-6',
+  sectionTitle: 'text-sm font-semibold text-white',
+  sectionSubtitle: 'text-xs text-white/40 mt-0.5',
+  sectionHeader: 'text-xs text-white/60 mt-1.5',
+  tableText: 'w-full mt-2 text-sm',
+  tileRow: 'border-b border-white/[0.06] last:border-0',
+  tileAddrLink: 'text-sm font-medium text-blue-300 hover:text-blue-200',
+  tileAddrNoLink: 'text-sm font-medium text-white',
+  tileUnit: 'text-xs text-white/40 mt-0.5',
+  tileSpecs: 'text-xs text-white/40 mt-0.5',
+  tilePrice: 'text-sm font-bold text-white',
+  tileAdjusted: 'text-xs font-normal text-white/40 ml-1',
+  tileTier: 'text-[10px] text-white/50 mt-0.5',
+  tileDate: 'text-[10px] text-white/40 mt-0.5',
+  tileDom: 'text-[10px] text-white/30 mt-0.5',
+  footer: 'mt-5 pt-4 border-t border-white/[0.06] text-[11px] text-white/40 leading-relaxed',
+}
+
+const THEMES: Record<WorkingDocViewTheme, ThemeClasses> = { light: LIGHT, dark: DARK }
+
 interface Props {
   workingDoc: WorkingDoc | null | undefined
   baseUrl: string
   idMap: Record<string, string>
+  // Default 'light' preserves dashboard byte-identity.
+  theme?: WorkingDocViewTheme
 }
 
 function fmtPrice(n: number | null | undefined): string {
@@ -58,8 +151,8 @@ function tierLabel(t?: string | null): string {
 }
 
 function TileRow({
-  tile, baseUrl, idMap, priceKind,
-}: { tile: WorkingDocTile; baseUrl: string; idMap: Record<string, string>; priceKind: 'close' | 'list' }) {
+  tile, baseUrl, idMap, priceKind, t,
+}: { tile: WorkingDocTile; baseUrl: string; idMap: Record<string, string>; priceKind: 'close' | 'list'; t: ThemeClasses }) {
   const href = tileHref(baseUrl, tile, idMap)
   const price = priceKind === 'list' ? tile.listPrice : tile.closePrice
   const adjusted = tile.adjustedPrice && tile.adjustedPrice !== price ? tile.adjustedPrice : null
@@ -74,34 +167,34 @@ function TileRow({
   const specs = [beds, baths, lar].filter(Boolean).join(' · ')
 
   return (
-    <tr className="border-b border-gray-200 last:border-0">
+    <tr className={t.tileRow}>
       <td className="py-2.5 pr-3 align-top">
         {href ? (
-          <a href={href} className="text-sm font-medium text-blue-700 hover:text-blue-900" target="_blank" rel="noopener noreferrer">
+          <a href={href} className={t.tileAddrLink} target="_blank" rel="noopener noreferrer">
             {addr}
           </a>
         ) : (
-          <span className="text-sm font-medium text-gray-900">{addr}</span>
+          <span className={t.tileAddrNoLink}>{addr}</span>
         )}
-        {unit && <div className="text-xs text-gray-500 mt-0.5">{unit}</div>}
-        {specs && <div className="text-xs text-gray-500 mt-0.5">{specs}</div>}
+        {unit && <div className={t.tileUnit}>{unit}</div>}
+        {specs && <div className={t.tileSpecs}>{specs}</div>}
       </td>
       <td className="py-2.5 pl-3 text-right align-top whitespace-nowrap">
-        <div className="text-sm font-bold text-gray-900">
+        <div className={t.tilePrice}>
           {fmtPrice(price)}
-          {adjusted && <span className="text-xs font-normal text-gray-500 ml-1">(adj {fmtPrice(adjusted)})</span>}
+          {adjusted && <span className={t.tileAdjusted}>(adj {fmtPrice(adjusted)})</span>}
         </div>
-        {tier && <div className="text-[10px] text-gray-500 mt-0.5">{tier}</div>}
-        {date && <div className="text-[10px] text-gray-500 mt-0.5">{date}</div>}
-        {dom && <div className="text-[10px] text-gray-400 mt-0.5">{dom}</div>}
+        {tier && <div className={t.tileTier}>{tier}</div>}
+        {date && <div className={t.tileDate}>{date}</div>}
+        {dom && <div className={t.tileDom}>{dom}</div>}
       </td>
     </tr>
   )
 }
 
 function Section({
-  title, subtitle, section, baseUrl, idMap, priceKind,
-}: { title: string; subtitle: string; section: WorkingDocSection | null | undefined; baseUrl: string; idMap: Record<string, string>; priceKind: 'close' | 'list' }) {
+  title, subtitle, section, baseUrl, idMap, priceKind, t,
+}: { title: string; subtitle: string; section: WorkingDocSection | null | undefined; baseUrl: string; idMap: Record<string, string>; priceKind: 'close' | 'list'; t: ThemeClasses }) {
   if (!section || !section.tiles || section.tiles.length === 0) return null
   const median = section.median != null ? `Median ${fmtPrice(section.median)}` : null
   const est = section.estimatedPrice != null ? `Section estimate ${fmtPrice(section.estimatedPrice)}` : null
@@ -109,14 +202,14 @@ function Section({
   const count = `${section.count} comp${section.count === 1 ? '' : 's'}`
   const header = [anchor, est, median, count].filter(Boolean).join(' · ')
   return (
-    <div className="mt-6">
-      <div className="text-sm font-semibold text-gray-900">{title}</div>
-      <div className="text-xs text-gray-500 mt-0.5">{subtitle}</div>
-      <div className="text-xs text-gray-600 mt-1.5">{header}</div>
-      <table className="w-full mt-2 text-sm">
+    <div className={t.sectionWrap}>
+      <div className={t.sectionTitle}>{title}</div>
+      <div className={t.sectionSubtitle}>{subtitle}</div>
+      <div className={t.sectionHeader}>{header}</div>
+      <table className={t.tableText}>
         <tbody>
-          {section.tiles.slice(0, 10).map((t, i) => (
-            <TileRow key={(t.listingKey || t.id || i) + ''} tile={t} baseUrl={baseUrl} idMap={idMap} priceKind={priceKind} />
+          {section.tiles.slice(0, 10).map((tile, i) => (
+            <TileRow key={(tile.listingKey || tile.id || i) + ''} tile={tile} baseUrl={baseUrl} idMap={idMap} priceKind={priceKind} t={t} />
           ))}
         </tbody>
       </table>
@@ -124,7 +217,7 @@ function Section({
   )
 }
 
-export default function WorkingDocView({ workingDoc, baseUrl, idMap }: Props) {
+export default function WorkingDocView({ workingDoc, baseUrl, idMap, theme = 'light' }: Props) {
   if (!workingDoc) return null
   const est = workingDoc.estimate || {}
   const subj = workingDoc.subject || {}
@@ -134,22 +227,27 @@ export default function WorkingDocView({ workingDoc, baseUrl, idMap }: Props) {
     || workingDoc.competing?.tiles?.length)
   if (!hasAnySection && est.estimatedPrice == null) return null
 
+  // Theme lookup. theme='light' restores today's class strings VERBATIM
+  // (dashboard byte-identity). theme='dark' uses panel-matching classes
+  // for Charlie's in-chat render.
+  const t = THEMES[theme]
+
   return (
-    <div className="bg-white rounded-lg shadow p-6 mt-6">
-      <h2 className="text-lg font-semibold mb-4">Estimator working document</h2>
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500">Submitted estimate</div>
-        {subjectLine && <div className="text-sm font-semibold text-gray-900 mt-1">{subjectLine}</div>}
+    <div className={t.container}>
+      <h2 className={t.heading}>Estimator working document</h2>
+      <div className={t.headerCard}>
+        <div className={t.headerCaption}>Submitted estimate</div>
+        {subjectLine && <div className={t.subjectLine}>{subjectLine}</div>}
         {est.estimatedPrice != null && (
-          <div className="text-2xl font-extrabold text-gray-900 mt-2">{fmtPrice(est.estimatedPrice)}</div>
+          <div className={t.estimatePrice}>{fmtPrice(est.estimatedPrice)}</div>
         )}
         {est.priceRange && (
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className={t.rangeText}>
             Range {fmtPrice(est.priceRange.low)} — {fmtPrice(est.priceRange.high)}
           </div>
         )}
         {(est.confidence || est.matchTier) && (
-          <div className="text-xs text-gray-600 mt-1.5">
+          <div className={t.confidenceText}>
             Confidence: {est.confidence || '—'}{est.matchTier ? ` · ${est.matchTier}` : ''}
           </div>
         )}
@@ -162,6 +260,7 @@ export default function WorkingDocView({ workingDoc, baseUrl, idMap }: Props) {
         baseUrl={baseUrl}
         idMap={idMap}
         priceKind="close"
+        t={t}
       />
       <Section
         title="Tax-Matched"
@@ -170,6 +269,7 @@ export default function WorkingDocView({ workingDoc, baseUrl, idMap }: Props) {
         baseUrl={baseUrl}
         idMap={idMap}
         priceKind="close"
+        t={t}
       />
       <Section
         title="Competing For Sale"
@@ -178,9 +278,10 @@ export default function WorkingDocView({ workingDoc, baseUrl, idMap }: Props) {
         baseUrl={baseUrl}
         idMap={idMap}
         priceKind="list"
+        t={t}
       />
 
-      <div className="mt-5 pt-4 border-t border-gray-100 text-[11px] text-gray-400 leading-relaxed">
+      <div className={t.footer}>
         Snapshot of the working document at submission. Tile links open the live property page.
       </div>
     </div>

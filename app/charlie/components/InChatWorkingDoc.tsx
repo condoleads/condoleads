@@ -105,9 +105,12 @@ export default function InChatWorkingDoc({ sellerEstimate }: Props) {
   // client-side.
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
 
+  // C-CHAT-VALUATION-STYLE (2026-06-13): pass theme='dark' to
+  // WorkingDocView so tier badges, tax-match, tiles, and links use
+  // panel-matching dark classes. WorkingDocView's default 'light' keeps
+  // the dashboard appearance byte-identical. Outer wrapper container
+  // dropped — the dark theme provides its own container styling now.
   return (
-    <div className="rounded-2xl bg-slate-50 border border-slate-200 mt-4 overflow-hidden">
-      <WorkingDocView workingDoc={workingDoc} baseUrl={baseUrl} idMap={idMap} />
-    </div>
+    <WorkingDocView workingDoc={workingDoc} baseUrl={baseUrl} idMap={idMap} theme="dark" />
   )
 }

@@ -876,3 +876,79 @@ The chat-side render is a Tailwind component (`WorkingDocView`) in a slate backg
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval.
+
+---
+
+## C-CHAT-VALUATION-STYLE (2026-06-13) — dark-mode for the in-chat working document
+
+Visual-only follow-up to 09b97ef. The chat panel's `bg-#080f1a` dark theme made the dashboard-light WorkingDocView (the React render reused in-chat) look like a misplaced light card. This pass adds a `theme` prop to WorkingDocView so the same component renders both surfaces correctly: dashboard stays byte-identical (default 'light'), Charlie passes 'dark'.
+
+### Approach taken: theme prop on WorkingDocView (preferred; fallback path NOT needed)
+The shared theme prop turned out clean: a `WorkingDocViewTheme = 'light' | 'dark'` type + two `ThemeClasses` lookups (`LIGHT`, `DARK`) + default 'light' on the prop. Both `TileRow` and `Section` accept the theme strings via a single `t` prop. No JSX restructuring — only `className=` strings differ between themes.
+
+### Pre-flight findings (verified)
+- **WorkingDocView pre-change styling** (Tailwind, light):
+  - Outer: `bg-white rounded-lg shadow p-6 mt-6`
+  - Header card: `bg-slate-50 border border-slate-200 rounded-lg p-4`
+  - Text/labels: `text-gray-900` / `text-gray-500` / `text-gray-600`
+  - Links: `text-blue-700 hover:text-blue-900`
+  - Tile borders: `border-gray-200`
+- **Charlie ResultsPanel palette** (inline-styled dark):
+  - Background: `#080f1a`
+  - Tile fills: `rgba(255,255,255,0.04)` + `1px solid rgba(255,255,255,0.07)`
+  - Bright text: `#fff` + accents (`#10b981`, `#3b82f6`, `#6366f1`, `#8b5cf6`)
+  - Dim labels: `rgba(255,255,255,0.30-0.45)`
+  - Dividers: `rgba(255,255,255,0.06)`
+
+### Build
+- **`components/dashboard/WorkingDocView.tsx`**:
+  - Added `WorkingDocViewTheme = 'light' | 'dark'` type + `Props.theme?: WorkingDocViewTheme` with default `'light'`.
+  - Added `ThemeClasses` interface + `LIGHT` + `DARK` lookups + `THEMES` map.
+  - `LIGHT` entries contain EVERY pre-change class string VERBATIM (the dashboard byte-identity guarantee). Test asserts 24 verbatim matches.
+  - `DARK` entries use panel-matching classes: `bg-[#0f172a]` container with `border-white/5`, `bg-white/[0.04]` header card, `text-white` headings, `text-emerald-400` for the estimate price (accent matching the panel's `#10b981`), `text-blue-300 hover:text-blue-200` links, `border-white/[0.06]` row dividers, white-translucent dim labels.
+  - `TileRow` + `Section` now accept the `t: ThemeClasses` prop; all className strings flow through `t`. No JSX structure change.
+  - `WorkingDocView`'s top-level `<div>` uses `t.container`; same elements as before.
+- **`app/charlie/components/InChatWorkingDoc.tsx`**:
+  - Drops the outer light wrapper `<div className="rounded-2xl bg-slate-50 border border-slate-200 mt-4 overflow-hidden">` — the dark theme provides its own container now.
+  - Passes `theme="dark"` to WorkingDocView.
+  - Data layer untouched (`buildWorkingDocFromResult`, `collectListingKeys`, supabase listing-id resolution, `window.location.origin` base URL).
+
+### Care guards
+- **Dashboard byte-identity**: the dashboard mounts `<WorkingDocView workingDoc={...} baseUrl={...} idMap={...} />` with NO theme prop. Default 'light' applies. The LIGHT class strings are byte-identical to today's render. Test asserts every pre-change class string is present in the LIGHT lookup verbatim.
+- **Data + logic**: zero change. The working-doc shape, listing-id resolution, tile content, section structure, anchors, footer text — all unchanged. This is purely className routing.
+- **09b97ef byte-identity fingerprints** still match:
+  - `app/api/charlie/route.ts`: sha `9c64acba0564` MATCH
+  - `app/charlie/lib/charlie-tools.ts`: sha `a02ee7ab48f9` MATCH
+  - `app/charlie/lib/charlie-prompts.ts`: sha `fbe7b7de14b9` MATCH
+  - `app/api/walliam/charlie/vip-request/route.ts`: sha `97c651e90c6f` MATCH
+- **C-PLAN-DOC integration** intact (plan-email workingDoc destructure + render; useCharlie workingDoc threading).
+- **Charlie ResultsPanel** wiring from 09b97ef intact.
+- **Buyer flow**: still no render (seller-only).
+- **S1**: zero diff.
+
+### Build
+- `npx tsc --noEmit` → exit 0
+- `npm run build` → exit 0
+
+### Test (scripts/test-c-chat-valuation-style.js) — 15/15 PASS
+
+| # | Verdict | Result |
+|---|---|---|
+| 1 | WorkingDocView has theme prop with default 'light' (signature preserved) | PASS |
+| **2** | **LIGHT theme contains EVERY pre-change dashboard class string (byte-identical render)** | **PASS** (key dashboard guard) |
+| 3 | DARK theme uses dark container | PASS |
+| 4 | DARK theme uses white text | PASS |
+| 5 | DARK theme uses light-blue link colors (readable on dark) | PASS |
+| 6 | DARK theme has NO accidental light-mode solid-class leak | PASS |
+| 7 | InChatWorkingDoc passes theme="dark" explicitly | PASS |
+| 8 | InChatWorkingDoc data layer untouched | PASS |
+| 9 | ResultsPanel wiring from 09b97ef intact | PASS |
+| 10 | Chat route byte-identical to 09b97ef | PASS (sha 9c64acba0564) |
+| 11 | Tools file byte-identical to 09b97ef | PASS (sha a02ee7ab48f9) |
+| 12 | System prompt byte-identical to 09b97ef | PASS (sha fbe7b7de14b9) |
+| 13 | Charlie VIP buyer-approval builder byte-identical to 09b97ef | PASS (sha 97c651e90c6f) |
+| 14 | plan-email C-PLAN-DOC integration intact | PASS |
+| 15 | useCharlie C-PLAN-DOC threading intact | PASS |
+
+### Push status
+HELD per operator instruction. Commit landed locally; awaiting push approval. Will push WITH 09b97ef.
