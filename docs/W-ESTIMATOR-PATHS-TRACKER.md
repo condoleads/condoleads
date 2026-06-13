@@ -952,3 +952,20 @@ The shared theme prop turned out clean: a `WorkingDocViewTheme = 'light' | 'dark
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval. Will push WITH 09b97ef.
+
+---
+
+## C-CHAT-VALUATION + C-CHAT-VALUATION-STYLE — PUSHED (2026-06-13)
+
+Pushed 09b97ef + d5a1ca2; operator-approved after eyeball. Charlie in-chat seller valuation now renders the full tier + tax-match working document, dark-themed to match the panel; dashboard byte-identical (theme prop, default light); chat route/tools/prompt/VIP/metering untouched.
+
+- origin/main: d5a1ca2 (fast-forward from f154a4a, no force)
+- Build: tsc clean, next build clean
+- Tests: scripts/test-c-chat-valuation.js 24/24 PASS, scripts/test-c-chat-valuation-style.js 15/15 PASS
+- 09b97ef byte-identity guards (verified on push):
+  - app/api/charlie/route.ts          sha 9c64acba0564 MATCH
+  - app/charlie/lib/charlie-tools.ts  sha a02ee7ab48f9 MATCH
+  - app/charlie/lib/charlie-prompts.ts sha fbe7b7de14b9 MATCH
+  - app/api/walliam/charlie/vip-request/route.ts sha 97c651e90c6f MATCH
+- Dashboard byte-identity: LIGHT theme contains 24 verbatim pre-change class strings; default 'light' on WorkingDocView preserves dashboard signature.
+- S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
