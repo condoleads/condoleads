@@ -1037,3 +1037,43 @@ Pushed 9eaceb7 + 31f7bdc; operator-approved, eyeballing on live walliam.ca. Plan
 - Backwards-compat (workingDoc-absent): legacy comparableSoldHtml + competingHtml bodies byte-identical to pre-edit (only the leading `!workingDoc &&` guard added).
 - Side-benefit: agent lead email + estimator VIP buyer email + property-page buyer email gain photo + temperature + Sold/For Sale label when their comp data carries the same fields (UX gain, no regression).
 - S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
+
+---
+
+## C-PLAN-DOC-DEDUP-REVERT — LOCAL COMMIT (2026-06-13, HEAD 2367783)
+
+Reverted the Charlie-side consumption of the working document. The render added to Charlie by df2ec76 / 09b97ef / d5a1ca2 / 9eaceb7 duplicated Charlie's pre-existing Comparable Sold + Competing For Sale sections AND surfaced internal "Estimator working document" language in the UI. Operator requested removal; Charlie's ORIGINAL comparable/competing rendering must be restored exactly.
+
+Revert target: 460ef63 (the commit immediately before df2ec76 introduced workingDoc to Charlie). Verified: Charlie's plan-email + in-chat at 460ef63 rendered ONLY the original sections (no working-doc, no duplicates).
+
+Files reverted (Charlie-side ONLY — restored from 460ef63 via `git checkout 460ef63 -- <path>`):
+- app/api/charlie/plan-email/route.ts  — content-byte-identical to 460ef63 (CRLF-normalized diff: empty). Removes workingDoc destructure, shared-helper imports (renderEstimateHeader / renderWorkingDocSections / resolveListingIds / collectListingKeys), workingDocIdMap batch resolve, workingDocHtml block, and the !workingDoc gates added by 9eaceb7. comparableSoldHtml + competingHtml render Charlie's original sections, ungated, single render.
+- app/charlie/components/ResultsPanel.tsx — content-byte-identical to 460ef63. Removes InChatWorkingDoc import + the <InChatWorkingDoc sellerEstimate={se} /> JSX line. sellerEstimate block shows 4 original sub-sections (Property Estimate, Competing For Sale, Pricing Strategy & Risk, Your Seller Strategy).
+- app/charlie/hooks/useCharlie.ts — content-byte-identical to 460ef63. Removes buildWorkingDocFromResult import, the workingDoc shaping block, and the workingDoc field from the plan-email POST body.
+- app/charlie/components/InChatWorkingDoc.tsx — DELETED. Confirmed via grep: ResultsPanel was the only importer (now reverted). Zero other consumers.
+
+Shared estimator files LEFT INTACT (estimator's approved P-WORKING-DOC + dashboard depend on them):
+- lib/email/working-doc-render.ts            sha 3d6579b89db6  UNCHANGED  (byte-identical to pre-revert state)
+- components/dashboard/WorkingDocView.tsx     sha 40b1e460fe11  UNCHANGED
+  Consumed by: lib/actions/leads.ts (agent + buyer working-doc emails), app/api/walliam/estimator/vip-request/route.ts (VIP buyer email), app/dashboard/leads/[id]/page.tsx + components/dashboard/LeadDetailClient.tsx (dashboard lead detail). All 4 estimator surfaces continue to render the working document.
+
+Protected SHAs still byte-identical (09b97ef fingerprints):
+- app/api/charlie/route.ts          sha 9c64acba0564 MATCH
+- app/charlie/lib/charlie-tools.ts  sha a02ee7ab48f9 MATCH
+- app/charlie/lib/charlie-prompts.ts sha fbe7b7de14b9 MATCH
+- app/api/walliam/charlie/vip-request/route.ts sha 97c651e90c6f MATCH
+
+Build: tsc --noEmit exit 0; npm run build exit 0.
+S1 zero-diff.
+
+Verified by code:
+- Charlie plan-email body byte-identical to 460ef63 (comparable/competing rendered ONCE, original sections, no working-doc label).
+- ResultsPanel body byte-identical to 460ef63 (sellerEstimate panel restored exactly).
+- useCharlie body byte-identical to 460ef63 (POST body has no workingDoc field).
+- Shared estimator files byte-identical to current (un-touched).
+
+Needs operator live-eyeball on walliam.ca after push:
+- Visual confirmation that Charlie's chat panel shows only the original sellerEstimate block (no "Estimator working document" label, no duplicate Comparable Sold / Competing For Sale).
+- Visual confirmation that the agent lead email + buyer working-doc email + VIP buyer email + dashboard lead view still render the working document (estimator surfaces unchanged).
+
+HOLD push pending operator approval. Local commit 2367783.
