@@ -1257,3 +1257,43 @@ Test: scripts/test-c-enhance-render.js 49/49 PASS.
 S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
 
 CODE-VERIFIED. NOT live. Operator's live walliam.ca eyeball after push is the next gate.
+
+---
+
+## C-ENHANCE-2-RENDER — PUSHED (2026-06-13)
+
+Pushed 3d9ac08 + 9caee67; operator-approved. Charlie's existing sections now carry tier badges + anchor rail + tax-match across in-chat/plan-email/dashboard, Charlie voice (no estimator labels, no duplication); protected surfaces byte-identical; form sq-ft+tax required. Code-verified; operator eyeballing live.
+
+- origin/main: 9caee67 (fast-forward from 7144605, no force)
+- Build: tsc --noEmit exit 0; npm run build exit 0
+- Test: scripts/test-c-enhance-render.js 49/49 PASS
+
+Charlie-voice headings (zero estimator strings — negation-regex proven):
+- "Confidence by Area"         (NOT "Geographic Confidence Spread")
+- "Tax-Matched · N found"      (NOT "Tax-Matched Comparables")
+- "Charlie seller estimate"    (NOT "Estimator working document")
+
+3-surface render:
+- In-chat: ComparableCard chips + SellerEstimateBlock tier rail (anchor highlighted) + Tax-Matched subsection IN PLACE (child of the same block, not a sibling section).
+- Plan email: inline tier chip in comparableSoldHtml + NEW taxMatchHtml between comp/competing; plan_data.sellerEstimate persisted additively on lead insert.
+- Dashboard: NEW components/dashboard/CharlieLeadEstimate (white-card); LeadDetailClient branches EXCLUSIVELY — Charlie present → CharlieLeadEstimate, else WorkingDocView. Estimator-lead path UNTOUCHED.
+
+Single-render guarantee preserved (the C-PLAN-DOC-DEDUP-REVERT lesson):
+- comparableSoldHtml + competingHtml remain UNGATED. taxMatchHtml is a NEW sibling between them, not a dup.
+
+Form: sq-ft mandatory (both condo + home); propertyTax mandatory for SALE flow (lease keeps optional). Misleading "future value calculations" hint removed; replaced with accuracy-focused copy.
+
+Protected surfaces byte-identical (verified):
+- ResultsPanel.tsx          sha 72f5d88adef9   UNCHANGED
+- WorkingDocView.tsx        sha 40b1e460fe11   UNCHANGED
+- chat route                sha 9c64acba0564   MATCH (09b97ef)
+- charlie-tools             sha a02ee7ab48f9   MATCH (09b97ef)
+- charlie-prompts           sha fbe7b7de14b9   MATCH (09b97ef)
+- charlie/vip-request       sha 97c651e90c6f   MATCH (09b97ef)
+- useCharlie                sha 5288819e9870   UNCHANGED
+
+Reuse strategy: HOME_LABEL_MAP + CONDO_LABEL_MAP + tier color hex literals only. Estimator's tier-rail component + tax section JSX NOT reused (white-card chrome + estimator wording would clash).
+
+Absent-data graceful: tiers undefined → rail skips; taxMatch.comparables.length===0 → subsection skips; sellerEstimate null on lead → CharlieLeadEstimate returns null (falls through to existing render path).
+
+S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
