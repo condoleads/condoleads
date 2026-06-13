@@ -162,6 +162,14 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           // CharlieLeadEstimate exclusively when it's present; the existing
           // <WorkingDocView /> renders unchanged for estimator-source leads.
           charlieSellerEstimate={(lead as any)?.plan_data?.sellerEstimate ?? null}
+          // C-CHARLIE-FOLLOWUP C (2026-06-13): identify Charlie SELLER leads
+          // so LeadDetailClient can render the honest "no estimate captured"
+          // notice for pre-3d9ac08 leads (where plan_data.sellerEstimate is
+          // null because persistence didn't exist yet). lead_origin_route is
+          // the canonical Charlie identifier (see plan-email/route.ts:142).
+          leadIsCharlieSeller={
+            (lead as any)?.lead_origin_route === 'charlie' && (lead as any)?.intent === 'seller'
+          }
         />
         
         {/* Activity Timeline */}

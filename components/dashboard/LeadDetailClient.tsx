@@ -38,12 +38,18 @@ interface LeadDetailClientProps {
   // WorkingDocView (exclusive branch — Charlie leads write to plan_data,
   // estimator leads write to property_details).
   charlieSellerEstimate?: any
+  // C-CHARLIE-FOLLOWUP C (2026-06-13): when the lead is a Charlie seller-
+  // source lead AND charlieSellerEstimate is absent (the 98 pre-3d9ac08
+  // leads), the branch enters CharlieLeadEstimate with legacyNoticeWhenEmpty=
+  // true so the agent sees the honest "no estimate captured" notice instead
+  // of empty space. Estimator leads keep going to WorkingDocView.
+  leadIsCharlieSeller?: boolean
 }
 
 export default function LeadDetailClient({
   lead, agent, initialNotes, engagementScore,
   workingDoc, workingDocBaseUrl, workingDocIdMap,
-  charlieSellerEstimate,
+  charlieSellerEstimate, leadIsCharlieSeller,
 }: LeadDetailClientProps) {
   const [status, setStatus] = useState(lead.status)
   const [quality, setQuality] = useState(lead.quality)
@@ -174,13 +180,28 @@ export default function LeadDetailClient({
         </div>
       </div>
 
-      {/* C-ENHANCE-2-RENDER: exclusive branch. Charlie seller-plan leads
-          mount CharlieLeadEstimate (reading lead.plan_data.sellerEstimate);
-          estimator leads (or any lead without that payload) mount the
-          existing WorkingDocView path. WorkingDocView's null-guard handles
-          the legacy/missing case unchanged. */}
+      {/* C-ENHANCE-2-RENDER + C-CHARLIE-FOLLOWUP C: branch the dashboard
+          estimate render. Three cases (in priority order):
+            1. Charlie lead WITH persisted estimate → CharlieLeadEstimate
+               (the full tier-rail + tax-match render)
+            2. Charlie SELLER lead WITHOUT persisted estimate (the 98 pre-
+               3d9ac08 leads) → CharlieLeadEstimate with the legacyNotice-
+               WhenEmpty flag → renders the "No estimate captured" notice
+            3. Estimator lead (or any lead that doesn't carry either) →
+               WorkingDocView unchanged */}
       {charlieSellerEstimate ? (
         <CharlieLeadEstimate sellerEstimate={charlieSellerEstimate} />
+      ) : leadIsCharlieSeller ? (
+        <CharlieLeadEstimate
+          sellerEstimate={null}
+          legacyNoticeWhenEmpty={true}
+          leadMeta={{
+            intent: lead?.intent ?? null,
+            geoName: lead?.geo_name ?? null,
+            contactName: lead?.contact_name ?? null,
+            createdAtIso: lead?.created_at ?? null,
+          }}
+        />
       ) : (
         <WorkingDocView
           workingDoc={workingDoc}

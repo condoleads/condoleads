@@ -1297,3 +1297,149 @@ Reuse strategy: HOME_LABEL_MAP + CONDO_LABEL_MAP + tier color hex literals only.
 Absent-data graceful: tiers undefined → rail skips; taxMatch.comparables.length===0 → subsection skips; sellerEstimate null on lead → CharlieLeadEstimate returns null (falls through to existing render path).
 
 S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
+
+---
+
+## C-CHARLIE-FOLLOWUP Phase 2 — LOCAL COMMIT (2026-06-13)
+
+Three items shipped together:
+- B(i) fixture-driven email smoke harness (closes the gap the 49/49 static test missed)
+- B(ii) defensive stale-session console.warn in plan-email
+- C dashboard "no estimate captured" distinction for pre-3d9ac08 Charlie seller leads
+
+Backups:
+- app/api/charlie/plan-email/route.ts.backup_c-followup_20260613_140452
+- components/dashboard/CharlieLeadEstimate.tsx.backup_c-followup_20260613_140452
+- components/dashboard/LeadDetailClient.tsx.backup_c-followup_20260613_140452
+- app/dashboard/leads/[id]/page.tsx.backup_c-followup_20260613_140452
+- docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_c-followup_20260613_140452
+
+### B(i) — fixture-driven harness
+
+Fixture source: real production lead 63b48f13-8a03-46be-b4ce-91007da0794a
+(WALLiam tenant, walliam_charlie source, seller intent, 606 Aspen rd Pickering,
+created 2026-06-13T17:09:04Z — the only post-3d9ac08 seller lead at recon time).
+
+Captured fixture shape:
+  path                     home
+  intent                   sale
+  comparables.length       5
+  competingListings.length 2
+  estimate.bestGeoTier     gold       ← anchor
+  estimate.tiers slots     gold(5 comps, $1.127M median), silver(32 comps, $1.119M),
+                           bronze=null, platinum=null
+  estimate.taxMatch.count  12         ← tax-match FIRES
+  estimate.taxMatch.cmps   10
+  estimate.taxMatch.bestGeoTier silver
+
+Plumbing:
+- Extracted buildRichPlanEmail + MONTHS_ARR into a new shared module:
+  lib/email/charlie-plan-email-html.ts (verbatim — Next.js refused the
+  non-handler export from a route file).
+- app/api/charlie/plan-email/route.ts imports from the new module.
+  Behavior IDENTICAL — function body byte-equivalent (sed-extracted, not
+  re-typed).
+- Probe endpoint app/api/charlie/test-render-plan-email-probe/route.ts
+  POSTs sellerEstimate (+ context with realistic defaults) → calls
+  buildRichPlanEmail → returns { html }.
+  Underscore-prefix avoided (Next.js treats _folders as private + non-
+  routable); "-probe" suffix marks it as test-only.
+- Smoke harness scripts/smoke-charlie-email-fixture.js:
+    1. SAVEPOINT-isolated pg read of fixture lead → writes scripts-output/
+       c-followup-fixture.json
+    2. POSTs fixture to probe → captures HTML
+    3. Asserts 20 named items: 4 new (tier chip, emoji, Tax-Matched
+       heading, tax-matched estimate pill), 7 preservation (Comparable Sold,
+       Competing For Sale, plan card "Your Seller Strategy", AI Disclaimer,
+       Your Profile, Market Snapshot, Open WALLiam CTA), 1 conditional
+       (Price by Home Type when subtype_breakdown present), 2 single-render
+       (Comparable Sold / Competing — no dedup regression), 4 negation
+       (no estimator-voice strings), 2 link safety (walliam.ca present,
+       condoleads.ca absent).
+       OUTPUT: scripts-output/smoke-charlie-email-fixture.txt
+
+Smoke result: 20/20 PASS. Real probe invocation; live HTML 45,849 bytes
+from the same buildRichPlanEmail the production POST handler uses.
+
+### B(ii) — stale-session warn
+
+File: app/api/charlie/plan-email/route.ts:64-72
+When sellerEstimate is present but sellerEstimate.estimate.bestGeoTier is
+absent (the stale-tab / pre-f0904e5 case), emit:
+  console.warn('[plan-email] STALE-SESSION: sellerEstimate present but
+                estimate.bestGeoTier missing — likely a pre-f0904e5 /
+                stale-tab session. Email will render without tier chips.
+                sessionId=... userId=...')
+
+Pure observability — does NOT block the send, does NOT change the email body.
+Lets ops see "half-rendered email" events in Vercel logs instead of silent
+degradation.
+
+### C — dashboard "no estimate captured" distinction
+
+components/dashboard/CharlieLeadEstimate.tsx:
+- Props extended with optional legacyNoticeWhenEmpty + leadMeta.
+- When sellerEstimate is null AND legacyNoticeWhenEmpty=true, render an
+  amber "No estimate captured" notice card with the leadMeta context.
+  Estimator leads still get null (legacyNoticeWhenEmpty=false by default)
+  and fall through to the caller's existing render path.
+
+components/dashboard/LeadDetailClient.tsx:
+- Props gain leadIsCharlieSeller?: boolean.
+- Branch is now 3-way (in priority order):
+    1. charlieSellerEstimate present  → <CharlieLeadEstimate sellerEstimate=…/>
+    2. leadIsCharlieSeller=true       → <CharlieLeadEstimate sellerEstimate={null}
+                                          legacyNoticeWhenEmpty={true} leadMeta={…}/>
+    3. otherwise                      → <WorkingDocView ...>  (estimator leads)
+
+app/dashboard/leads/[id]/page.tsx:
+- Passes leadIsCharlieSeller={lead.lead_origin_route === 'charlie' &&
+                              lead.intent === 'seller'}
+
+Effect:
+- 98 pre-3d9ac08 Charlie seller leads will now show the amber "No estimate
+  captured" notice on the dashboard (previously rendered empty / no estimate
+  panel at all).
+- Estimator leads: unchanged.
+- Post-3d9ac08 Charlie leads with sellerEstimate persisted: unchanged (full
+  CharlieLeadEstimate render).
+
+### Decisions logged
+
+- A) PRICING GRAPH — NAMED new-feature item, NOT auto-built. Settled from
+   6f685be vs HEAD diff: gate at ResultsPanel.tsx:107
+   (`!(blocks||[]).some(b=>b.type==='sellerEstimate')`) is BYTE-IDENTICAL
+   between the two commits. BuyerOfferBlock is buyer/analytics-only by
+   PRE-EXISTING design, not a 3d9ac08 regression. If operator wants the
+   pricing graph IN-CHAT inside the seller flow, that's an additive
+   enhancement to scope later.
+
+- C) BACKFILL — NAMED impossible (data-confirmed). chat_sessions has no
+   seller-estimate column; pre-3d9ac08 plan_data shape lacks estimate;
+   property_details is NULL for Charlie leads. The matcher output existed
+   only in browser memory and was discarded at session end. Forward-only
+   from 3d9ac08. The "no estimate captured" notice replaces the empty
+   render for those 98 leads.
+
+### Build / files changed
+
+- npx tsc --noEmit: exit 0
+- 4 files modified (route.ts, CharlieLeadEstimate.tsx, LeadDetailClient.tsx,
+  page.tsx)
+- 3 files new (lib/email/charlie-plan-email-html.ts extracted module,
+  test-render-plan-email-probe/route.ts probe endpoint,
+  scripts/smoke-charlie-email-fixture.js smoke harness)
+- Protected 09b97ef SHAs still match (chat/tools/prompt/Charlie VIP)
+- ResultsPanel + WorkingDocView byte-unchanged
+
+### Claimed-unverified flags
+
+⚠ Smoke harness depends on lead 63b48f13... existing. If the operator
+  prunes test leads, the smoke will need a new fixture source (it ROLLS
+  BACK its own read, but it can't conjure a deleted row). Flagged.
+⚠ The B(ii) stale-session warn surface (Vercel logs) is not asserted by
+  any local test — it'll only show value when a real stale-session
+  delivery happens in production. Flagged.
+
+HOLD push per directive. Awaiting operator approval + live walliam.ca
+eyeball of the dashboard notice on a pre-3d9ac08 Charlie lead.

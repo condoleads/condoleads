@@ -63,6 +63,23 @@ interface SellerEstimatePayload {
 
 interface Props {
   sellerEstimate: SellerEstimatePayload | null | undefined
+  // C-CHARLIE-FOLLOWUP C (2026-06-13): when the lead is known to be a Charlie
+  // seller-source lead but plan_data.sellerEstimate is absent (the 98 pre-
+  // 3d9ac08 leads, where the estimate was browser-state-only and never
+  // persisted to the DB — confirmed in W-CHARLIE-FOLLOWUP Item C), render
+  // an honest "no estimate captured" notice instead of returning null. This
+  // distinguishes "pre-persistence Charlie lead" from "estimator lead with
+  // its own working-doc render". When this prop is false (estimator leads),
+  // the component returns null and the caller falls through to its own
+  // existing render path (e.g. WorkingDocView).
+  legacyNoticeWhenEmpty?: boolean
+  // Optional metadata for the notice header — keeps it informational.
+  leadMeta?: {
+    intent?: string | null
+    geoName?: string | null
+    contactName?: string | null
+    createdAtIso?: string | null
+  }
 }
 
 const TIER_COLORS: Record<TierKey, string> = {
@@ -133,8 +150,38 @@ function CompRow({ c, tier, labelMap, kind }: { c: any; tier: string | null | un
   )
 }
 
-export default function CharlieLeadEstimate({ sellerEstimate }: Props) {
-  if (!sellerEstimate) return null
+export default function CharlieLeadEstimate({ sellerEstimate, legacyNoticeWhenEmpty, leadMeta }: Props) {
+  // C-CHARLIE-FOLLOWUP C (2026-06-13): legacy notice path. When the caller
+  // says this IS a Charlie lead but the estimate isn't persisted, render
+  // the honest "no estimate captured" notice. Estimator leads still get
+  // null and fall through to WorkingDocView in the caller's branch.
+  if (!sellerEstimate) {
+    if (!legacyNoticeWhenEmpty) return null
+    return (
+      <div className="bg-white rounded-lg shadow p-6 mt-6">
+        <h2 className="text-lg font-semibold mb-1">Charlie seller estimate</h2>
+        <div className="text-xs text-slate-500 mb-4">
+          {leadMeta?.contactName || ''}
+          {leadMeta?.geoName ? (leadMeta?.contactName ? ' · ' : '') + leadMeta.geoName : ''}
+          {leadMeta?.createdAtIso ? ` · ${leadMeta.createdAtIso.slice(0, 10)}` : ''}
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="text-sm font-semibold text-amber-900 mb-1">
+            No estimate captured
+          </div>
+          <div className="text-xs text-amber-800 leading-relaxed">
+            This Charlie seller lead pre-dates the estimate-persistence change (commit 3d9ac08,
+            2026-06-13). The seller&apos;s tier rail, tax-match, and comparables were rendered
+            in the chat panel at the time but were never stored on the lead row, so they cannot
+            be displayed here. The plan email (sent at lead creation) is still available in the
+            recipient&apos;s inbox and the chain BCC log if the agent needs to see the estimate
+            content. New Charlie seller leads created after 3d9ac08 will show the full estimate
+            on this page.
+          </div>
+        </div>
+      </div>
+    )
+  }
   const est = sellerEstimate.estimate || {}
   const comps = sellerEstimate.comparables || []
   const competing = sellerEstimate.competingListings || []

@@ -1,0 +1,42 @@
+=== C-CHARLIE-FOLLOWUP B(i) SMOKE ===
+fixture lead: 63b48f13-8a03-46be-b4ce-91007da0794a
+cache miss, reading live (SAVEPOINT-isolated)...
+wrote fixture cache: C:\Condoleads\Project\scripts-output\c-followup-fixture.json
+
+fixture sellerEstimate shape:
+  path                   = home
+  intent                 = sale
+  subjectAddress         = 606 Aspen rd, Pickering
+  comparables.length     = 5
+  competingListings.len  = 2
+  estimate.bestGeoTier   = gold
+  estimate.taxMatch.count= 12
+  estimate.taxMatch.cmps = 10
+  estimate.tiers slots   = gold,bronze,silver,platinum
+
+dev server: http://localhost:3001
+returned HTML length = 45849 bytes
+
+=== ASSERTIONS ===
+PASS  tier chip <div> present (anchor tier color in HTML) [expected hex=#f59e0b]
+PASS  tier chip emoji marker present (◆ or ●)
+PASS  Tax-Matched (N) heading present [taxComps.length=10]
+PASS  Tax-matched estimate inline pill present
+PASS  Comparable Sold section header present [sellerComps=5]
+PASS  Competing For Sale section header present [competing=2]
+PASS  Plan card "Your Seller Strategy" label present
+PASS  AI Disclaimer block present
+PASS  Plan-card Profile section present
+PASS  Plan-card Market Snapshot section present
+PASS  Open WALLiam CTA present
+PASS  Price by Home Type table present (analytics.subtype_breakdown shipped)
+PASS  Single "Comparable Sold" section (no dedup regression) [occurrences=1]
+PASS  Single "Competing For Sale" section (no dedup regression) [occurrences=1]
+PASS  Zero "Geographic Confidence Spread" string
+PASS  Zero "Tax-Matched Comparables" string (estimator wording)
+PASS  Zero "Estimator working document" string
+PASS  Zero "working document" string anywhere
+PASS  At least one walliam.ca href in HTML
+PASS  Zero condoleads.ca href leak
+
+OVERALL: PASS
