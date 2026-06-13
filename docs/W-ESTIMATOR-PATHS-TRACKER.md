@@ -788,3 +788,91 @@ The C-RECON Part D checklist gates this enhancement. Every item touched by the e
 HELD per operator instruction. Commit landed locally; awaiting push approval.
 
 Pushed df2ec76; operator-approved. Charlie plan email now renders the full working document (tax-match + P/G/S/B tiers + 3 sections, tenant-correct links) via the shared helper; nullable-additive, backwards-compat byte-identical; chat stream/tools/metering/VIP email untouched; credit invariant preserved.
+
+---
+
+## C-CHAT-VALUATION (2026-06-13) — in-chat seller valuation renders the full working document
+
+UI-only enhancement on top of C-PLAN-DOC. The seller-estimate runner already computed tier-true matcher data (Platinum/Gold/Silver/Bronze, tax-match) and stored it in `state.sellerEstimate` BEFORE the chat begins — but the result panel was rendering only summary fields (price range + market snapshot). This change adds the full working document (tax-match + tiers + 3 sections) inline beneath the existing summary, REUSING the React WorkingDocView built for the dashboard.
+
+### Pre-flight findings (verified)
+- **Result-panel component** is `app/charlie/components/ResultsPanel.tsx`. SellerEstimate block at L248-338. Today's sub-sections: Property Estimate (via `SellerEstimateBlock`), Competing For Sale (`ActiveListingCard`), Pricing Strategy & Risk (`PricingRiskBlock`), and a "Your Seller Strategy" card. **NO tier badges, NO tax-match, NO working-doc 3-section render.**
+- **state.sellerEstimate shape** at render time: full EstimateResult + comparables + competingListings + buildingName + intent + path — works directly with `buildWorkingDocFromResult` (already imported in useCharlie post-C-PLAN-DOC).
+- **WorkingDocView reuse**: `components/dashboard/WorkingDocView.tsx` exists (P-WORKING-DOC-DASHBOARD), is a 'use client' React component with props `workingDoc | null + baseUrl + idMap`. Reusable as-is — no logic rebuilt. Email-HTML emitters (`renderEstimateHeader`/`renderWorkingDocSections`) are NOT imported by either the wrapper or the view; this is one schema, two render surfaces.
+
+### Build
+- **NEW `app/charlie/components/InChatWorkingDoc.tsx`** (one wrapper component, no logic duplication):
+  - Imports `buildWorkingDocFromResult` + `collectListingKeys` + the `WorkingDoc` type from the shared helper.
+  - Imports `WorkingDocView` from the dashboard (React reuse).
+  - Imports `supabase` client (the same singleton SellerEstimateRunner uses).
+  - `useMemo` shapes the runner's raw `EstimateResult` into a `WorkingDoc` via `buildWorkingDocFromResult` (path='home'|'condo', subject fields, result, competingListings).
+  - `useEffect` does CLIENT-SIDE batch resolve `listing_key → mls_listings.id` via the supabase client (mirrors `resolveListingIds` from the shared helper). Cleanup flag prevents stale setState on unmount.
+  - `baseUrl = window.location.origin` — browser-native, inherently tenant-correct (the widget runs on the tenant's host; links resolve to the same host). No tenant-domain threading needed in client state.
+  - Returns `null` when sellerEstimate is absent/incomplete — graceful backwards-compat.
+- **`app/charlie/components/ResultsPanel.tsx`** — minimal touch:
+  - Single new import: `InChatWorkingDoc`.
+  - Single new JSX line inside the existing sellerEstimate block, right after the Property Estimate sub-section: `<InChatWorkingDoc sellerEstimate={se} />`.
+  - Existing sub-sections (Property Estimate, Competing For Sale, Pricing Risk, Seller Strategy) all preserved verbatim.
+
+### Backend untouched (verified by SHA fingerprinting in test)
+- `app/api/charlie/route.ts` (chat stream + generate_plan stub): **UNCHANGED** (sha `9c64acba0564`). All 13 tools, plan gating + atomic increment, SSE events, low-credit email, message logging, tenant prompt, per-tenant Anthropic key: byte-identical.
+- `app/charlie/lib/charlie-tools.ts`: **UNCHANGED** (sha `a02ee7ab48f9`). 13 tools' schemas preserved.
+- `app/charlie/lib/charlie-prompts.ts`: **UNCHANGED** (sha `fbe7b7de14b9`). BUYER/SELLER flow rules + tenant-parameterized identity intact.
+- `app/api/walliam/charlie/vip-request/route.ts` (`buildUserApprovalEmailHtml`): **UNCHANGED** (sha `97c651e90c6f`). W-WORKING-DOC Step 3 boundary preserved.
+- `components/dashboard/WorkingDocView.tsx`: **UNCHANGED** (sha `00e6b82ccfcf`). Reused as-is.
+- `app/charlie/hooks/useCharlie.ts`: ZERO touch. C-PLAN-DOC's plan-email POST `workingDoc` threading still intact.
+- `app/api/charlie/plan-email/route.ts`: ZERO touch. C-PLAN-DOC's `workingDoc` destructure + render still intact.
+- S1 (`app/api/chat/*`, `/admin`, `agent_buildings`): zero diff.
+
+### Credit metering — render-only, ZERO change
+- No route file touched → debit logic byte-identical.
+- Plan-pool atomic increment at `app/api/charlie/route.ts:467` unchanged.
+- `/api/walliam/estimator/increment` NOT called by any new code (verified — wrapper does only Supabase read for listing-id resolution; no increment endpoint).
+- `estimator_count` UNTOUCHED. 1-action-1-debit invariant preserved.
+
+### Buyer flow
+This is **SELLER-FLOW ONLY**. The runner mounts only in CharlieOverlay's seller branch ([CharlieOverlay.tsx:229-241](app/charlie/components/CharlieOverlay.tsx#L229-L241)). For buyer flow no `sellerEstimate` exists; `InChatWorkingDoc` is mounted inside the sellerEstimate block which only renders when `block.type === 'sellerEstimate'` is appended to blocks[] — that happens via `setSellerEstimate` in useCharlie which is called only from the seller path. Buyer flow renders exactly as today.
+
+### Build
+- `npx tsc --noEmit` → exit 0
+- `npm run build` → exit 0
+
+### Test (scripts/test-c-chat-valuation.js) — 24/24 PASS
+
+| Group | Verdict |
+|---|---|
+| Wrapper imports shared helper (shaping + key-collection) | PASS |
+| Wrapper reuses React WorkingDocView (no rebuild) | PASS |
+| Wrapper does NOT import email-HTML emitters | PASS |
+| Wrapper shapes via buildWorkingDocFromResult (useMemo) | PASS |
+| Wrapper does client-side listing-id resolution (useEffect + supabase + mls_listings + listing_key IN) | PASS |
+| Wrapper uses window.location.origin (no hardcoded host) | PASS |
+| Wrapper returns null when workingDoc null (backwards-compat) | PASS |
+| ResultsPanel imports + mounts InChatWorkingDoc | PASS |
+| ResultsPanel sellerEstimate block structure intact (all 4 existing sub-sections) | PASS |
+| WorkingDocView props unchanged (workingDoc + baseUrl + idMap) | PASS |
+| WorkingDocView returns null gracefully | PASS |
+| **Chat route NOT modified (no working-doc imports, no matcher imports)** | **PASS** |
+| **Chat route generate_plan stub intact (planReady: true, no matcher call)** | **PASS** |
+| **Chat route SSE event types intact (7 types)** | **PASS** |
+| **Chat route plan-pool atomic increment RPC intact** | **PASS** |
+| **Tools file: 13 tools intact (count matches)** | **PASS** |
+| **System prompt: BUYER/SELLER flow rules + tenant-parameterized identity intact** | **PASS** |
+| useCharlie C-PLAN-DOC threading intact | PASS |
+| useCharlie SSE consumer + handleToolResult + block types intact | PASS |
+| plan-email C-PLAN-DOC integration intact | PASS |
+| plan-email does NOT call estimator increment | PASS |
+| **Charlie VIP buyer-approval builder UNCHANGED** | **PASS** |
+
+SHA fingerprints (byte-identity guards):
+- chat route: `9c64acba0564`
+- tools: `a02ee7ab48f9`
+- system prompt: `fbe7b7de14b9`
+- Charlie VIP builder: `97c651e90c6f`
+- WorkingDocView (reused as-is): `00e6b82ccfcf`
+
+### Operator-eyeball moment
+The chat-side render is a Tailwind component (`WorkingDocView`) in a slate background container, while the surrounding Charlie panel is dark mode with inline styles. Functionally correct but visually distinct from the rest of the panel. The operator should eyeball it live to decide whether a follow-up styling pass is wanted (no code change required — visual polish is a separate workstream).
+
+### Push status
+HELD per operator instruction. Commit landed locally; awaiting push approval.

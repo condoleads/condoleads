@@ -9,6 +9,11 @@ import ActiveListingCard from './ActiveListingCard'
 import PricingRiskBlock from './PricingRiskBlock'
 import BuyerOfferBlock from './BuyerOfferBlock'
 import BuildingCard from './BuildingCard'
+// C-CHAT-VALUATION (2026-06-13): in-chat render of the seller-estimate
+// runner's working document (tax-match + Platinum/Gold/Silver/Bronze tiers
+// + 3 sections). UI-only. Reuses the React WorkingDocView from the dashboard
+// — no logic rebuilt. Renders nothing when sellerEstimate is absent.
+import InChatWorkingDoc from './InChatWorkingDoc'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -263,6 +268,13 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                     intent={se.intent || 'sale'}
                     isLease={se.intent === 'lease'}
                   />
+                  {/* C-CHAT-VALUATION (2026-06-13): full working document —
+                      tier confidence + tax-match + 3-section comparable
+                      render — beneath the existing summary block. UI-only;
+                      the chat-stream route, tools, gates, metering, system
+                      prompt, and Charlie VIP email are all byte-identical.
+                      Renders nothing when sellerEstimate is null/incomplete. */}
+                  <InChatWorkingDoc sellerEstimate={se} />
                 </div>
               )}
               {se?.success && (
