@@ -267,9 +267,15 @@ export default function SellerForm({ onSubmit, onBack }: Props) {
   )
 
   const canProceed = form.streetNumber && form.streetName && form.city && form.municipalityId
+  // C-ENHANCE-2-RENDER (2026-06-13): livingAreaRange is now mandatory for
+  // BOTH condo and home (previously condo-only). propertyTax is mandatory
+  // for the SALE flow — it gates the tax-match cascade in the matcher;
+  // without it Charlie can't show same-tax-band comparables. Lease keeps
+  // it optional (lease ~0% tax fill; matcher leaves taxMatch undefined).
   const canSubmit = canProceed && form.bedrooms && form.bathrooms &&
     (form.propertyCategory === 'home' ? !!form.propertySubtype : true) &&
-    (form.propertyCategory === 'condo' ? !!form.livingAreaRange : true)
+    !!form.livingAreaRange &&
+    (form.intent === 'sale' ? !!form.propertyTax : true)
 
   // Step 1 — Intent + Category
   if (step === 1) {
@@ -347,14 +353,16 @@ export default function SellerForm({ onSubmit, onBack }: Props) {
         </div>
       </div>
 
-      {/* Sqft Range — combo */}
+      {/* Sqft Range — combo. Mandatory for both condo and home (C-ENHANCE-2-
+          RENDER). The matcher uses it as the primary specs gate; without it
+          comparable matching can't pick the right cohort. */}
       <ComboField
         label="Square Footage Range"
         value={form.livingAreaRange}
         onChange={v => set('livingAreaRange', v)}
         options={form.propertyCategory === 'condo' ? SQFT_RANGES_CONDOS : SQFT_RANGES_HOMES}
         placeholder="Select or type range"
-        required={form.propertyCategory === 'condo'}
+        required={true}
       />
 
       {/* Approximate Age — combo */}
@@ -394,9 +402,13 @@ export default function SellerForm({ onSubmit, onBack }: Props) {
         </div>
       )}
 
-      {/* Property Tax */}
+      {/* Property Tax — required for sale (gates the matcher's tax-match
+          cascade; without it Charlie can't show same-tax-band comparables).
+          Lease keeps it optional (lease has ~0% tax fill). */}
       <div>
-        {lbl('Annual Property Tax ($)', false, 'Used for future value calculations')}
+        {form.intent === 'sale'
+          ? lbl('Annual Property Tax ($)', true, 'Affects accuracy — matches you against same-tax-band comparables')
+          : lbl('Annual Property Tax ($)', false, 'Optional for lease — most lease records have no tax')}
         {inp('propertyTax', 'e.g. 4500', 'number')}
       </div>
 

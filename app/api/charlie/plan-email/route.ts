@@ -143,7 +143,26 @@ export async function POST(req: NextRequest) {
       intent: planType,
       geo_name: geoName,
       budget_max: plan?.budgetMax || null,
-      plan_data: { planType, plan, analytics, topListings: (listings || []).slice(0, 5) },
+      // C-ENHANCE-2-RENDER (2026-06-13): additive — persist a slim copy of
+      // sellerEstimate alongside the existing fields so the dashboard's NEW
+      // CharlieLeadEstimate can render the tier rail + tax-match for Charlie
+      // seller-plan leads. Read-only payload (estimate.tiers/taxMatch/
+      // bestGeoTier/comparables + competing + subject context). Absent for
+      // buyer plans and any path without seller-estimate this session.
+      plan_data: {
+        planType, plan, analytics,
+        topListings: (listings || []).slice(0, 5),
+        sellerEstimate: sellerEstimate ? {
+          estimate: sellerEstimate.estimate || null,
+          comparables: sellerEstimate.comparables || [],
+          competingListings: sellerEstimate.competingListings || [],
+          buildingName: sellerEstimate.buildingName || null,
+          subjectAddress: sellerEstimate.subjectAddress || null,
+          geoLevel: sellerEstimate.geoLevel || null,
+          intent: sellerEstimate.intent || 'sale',
+          path: sellerEstimate.path || null,
+        } : null,
+      },
       manager_id: chainManagerId,
       area_manager_id: chainAreaManagerId,
       tenant_admin_id: chainTenantAdminId,
@@ -532,6 +551,41 @@ function buildRichPlanEmail(data: {
     </div>
   ` : ''
 
+  // C-ENHANCE-2-RENDER (2026-06-13): tier chip + label maps. Local literals
+  // (no helper import) — matches the in-chat ComparableCard chip styling +
+  // the dashboard CharlieLeadEstimate chip. Verbatim color values from
+  // EstimatorResults.tsx:619-622 / 862-869. Label maps verbatim from
+  // GeoConfidenceSpread.tsx:46-58 — copied here to keep email-html rendering
+  // dependency-free (no React imports in the email build).
+  const TIER_COLORS_EMAIL: Record<string, string> = {
+    platinum: '#10b981', gold: '#f59e0b', silver: '#64748b', bronze: '#c2410c',
+  }
+  const HOME_LABELS_EMAIL: Record<string, { name: string; sub: string; emoji: string }> = {
+    platinum: { name: 'Platinum', sub: 'Same street',     emoji: '◆' },
+    gold:     { name: 'Gold',     sub: 'Community',       emoji: '●' },
+    silver:   { name: 'Silver',   sub: 'Municipality',    emoji: '●' },
+    bronze:   { name: 'Bronze',   sub: 'Area',            emoji: '●' },
+  }
+  const CONDO_LABELS_EMAIL: Record<string, { name: string; sub: string; emoji: string }> = {
+    platinum: { name: 'Platinum', sub: 'Same Building',   emoji: '◆' },
+    gold:     { name: 'Gold',     sub: 'Community',       emoji: '●' },
+    silver:   { name: 'Silver',   sub: 'Municipality',    emoji: '●' },
+    bronze:   { name: 'Bronze',   sub: 'Area',            emoji: '●' },
+  }
+  // path derived from sellerEstimate (set by SellerEstimateRunner) — falls
+  // back to condo when absent (legacy plan-email shape pre-enhancement).
+  const sellerPath: 'condo' | 'home' = sellerEstimate?.path === 'home' ? 'home' : 'condo'
+  const emailLabelMap = sellerPath === 'home' ? HOME_LABELS_EMAIL : CONDO_LABELS_EMAIL
+  const bestGeoTier = sellerEstimate?.estimate?.bestGeoTier as string | undefined
+  const validGeoTier = bestGeoTier && bestGeoTier !== 'none' ? bestGeoTier : null
+  function tierChipHtml(tier: string | null | undefined): string {
+    if (!tier || tier === 'none') return ''
+    const color = TIER_COLORS_EMAIL[tier]
+    const label = emailLabelMap[tier]
+    if (!color || !label) return ''
+    return `<div style="font-size:9px;font-weight:700;color:#fff;background:${color};display:inline-block;padding:2px 6px;border-radius:3px;margin-bottom:4px;">${label.emoji} ${label.name} &middot; ${label.sub}</div>`
+  }
+
   const sellerComps = sellerEstimate?.comparables || comparables || []
   const comparableSoldHtml = sellerComps.length > 0 ? `
     <div style="margin: 20px 0;">
@@ -540,14 +594,65 @@ function buildRichPlanEmail(data: {
         const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
         const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+        // Geo comps are mono-tier — chip falls back to validGeoTier (the
+        // anchor) when the comp itself doesn't carry a sourceTier. Mirrors
+        // EstimatorResults.tsx:616-617.
+        const tileTier = c.sourceTier || validGeoTier
         return `
           <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
               ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"><div style="background:${c.temperature === 'HOT' ? '#ef4444' : c.temperature === 'WARM' ? '#f59e0b' : '#3b82f6'};color:#fff;font-size:9px;font-weight:700;padding:2px 5px;margin-top:2px;text-align:center;">${c.temperature || 'SOLD'}</div></td>` : ''}
               <td style="padding: 10px 14px; vertical-align: middle;">
+                ${tierChipHtml(tileTier)}
                 <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${(c.unparsedAddress || c.unparsed_address || '').split(',')[0]}</div>
                 <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : '', c.sqft ? c.sqft + ' sqft' : '', c.daysOnMarket ? c.daysOnMarket + 'd DOM' : ''].filter(Boolean).join(' &middot; ')}</div>
                 ${c.matchQuality ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${c.matchQuality}</div>` : ''}
+              </td>
+              <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
+                <div style="font-size: 16px; font-weight: 800; color: #059669;">$${Number(price).toLocaleString('en-CA')}</div>
+                <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Sold &rarr;</div>
+              </td>
+            </tr></table>
+          </a>
+        `
+      }).join('')}
+    </div>
+  ` : ''
+
+  // C-ENHANCE-2-RENDER — Tax-Matched subsection. Mounted between the
+  // sold-comp block and the competing block (see body template below).
+  // Heading "Tax-Matched (N)" — Charlie voice. Tiles reuse the comparable-
+  // row template; each tile reads its own c.sourceTier (the multi-tier
+  // display list stamps per tile, mirror of condo-comparable-matcher-
+  // sales.ts L86-90). Optional inline subhead with the tax-matched
+  // estimate + range. Gate: any comparables present.
+  const taxComps = (sellerEstimate?.estimate?.taxMatch?.comparables || []) as any[]
+  const taxMatchEst = sellerEstimate?.estimate?.taxMatch?.estimatedPrice
+  const taxMatchRange = sellerEstimate?.estimate?.taxMatch?.priceRange
+  const taxMatchHtml = taxComps.length > 0 ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">Tax-Matched (${taxComps.length})</div>
+      <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Same-municipality sales with similar property tax &mdash; a co-equal value signal alongside the comps above.</div>
+      ${taxMatchEst != null ? `
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline;">
+        <span style="font-size: 11px; color: #64748b;">Tax-matched estimate</span>
+        <span style="font-size: 13px; font-weight: 700; color: #0f172a;">$${Number(taxMatchEst).toLocaleString('en-CA')}${taxMatchRange ? `<span style="font-size:11px;font-weight:400;color:#94a3b8;margin-left:8px;"> &middot; $${Number(taxMatchRange.low).toLocaleString('en-CA')}&ndash;$${Number(taxMatchRange.high).toLocaleString('en-CA')}</span>` : ''}</span>
+      </div>` : ''}
+      ${taxComps.slice(0, 10).map((c: any) => {
+        const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
+        const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
+        const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+        // Per-tile sourceTier (multi-tier display list). Falls back to anchor
+        // tier when the tile doesn't carry one (forward-compat).
+        const tileTier = c.sourceTier || validGeoTier
+        return `
+          <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+              ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"></td>` : ''}
+              <td style="padding: 10px 14px; vertical-align: middle;">
+                ${tierChipHtml(tileTier)}
+                <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${(c.unparsedAddress || c.unparsed_address || '').split(',')[0]}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[c.bedrooms_total ? c.bedrooms_total + ' bed' : '', c.bathrooms_total_integer ? c.bathrooms_total_integer + ' bath' : '', c.sqft ? c.sqft + ' sqft' : '', c.daysOnMarket ? c.daysOnMarket + 'd DOM' : ''].filter(Boolean).join(' &middot; ')}</div>
               </td>
               <td style="padding: 10px 14px; text-align: right; vertical-align: middle;">
                 <div style="font-size: 16px; font-weight: 800; color: #059669;">$${Number(price).toLocaleString('en-CA')}</div>
@@ -643,6 +748,7 @@ function buildRichPlanEmail(data: {
         ${profileHtml}
         ${listingsHtml}
         ${comparableSoldHtml}
+        ${taxMatchHtml}
         ${competingHtml}
         ${vipHtml}
         ${disclaimerHtml}

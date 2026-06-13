@@ -1,6 +1,23 @@
 ﻿// app/charlie/components/SellerEstimateBlock.tsx
 'use client'
-import ComparableCard from './ComparableCard'
+import ComparableCard, { type ComparableTier } from './ComparableCard'
+// C-ENHANCE-2-RENDER (2026-06-13): label-map constants (no UI text drag).
+// Component NOT imported — the estimator's tier-rail component carries
+// white-card chrome + its own heading wording that doesn't belong in
+// Charlie's dark voice. Charlie mirrors the row STRUCTURE only.
+import {
+  HOME_LABEL_MAP,
+  CONDO_LABEL_MAP,
+  type GeoConfidenceLabelMap,
+} from '@/app/estimator/components/GeoConfidenceSpread'
+
+type TierKey = 'platinum' | 'gold' | 'silver' | 'bronze'
+
+interface TierSlot {
+  count?: number
+  median?: number
+  range?: { low: number; high: number }
+}
 
 interface Props {
   estimate: {
@@ -11,6 +28,24 @@ interface Props {
     showPrice: boolean
     matchTier: string
     marketSpeed: { avgDaysOnMarket: number; status: string; message: string }
+    // C-ENHANCE-2-RENDER: P/G/S/B tier rail data + tax-match subsection
+    // data, both populated by f0904e5 (data-foundation commit). Optional —
+    // S1 paths + plex + lease + no-tax cases leave these undefined and
+    // the rail/subsection skip cleanly.
+    tiers?: {
+      platinum: TierSlot | null
+      gold:     TierSlot | null
+      silver:   TierSlot | null
+      bronze:   TierSlot | null
+    }
+    bestGeoTier?: TierKey | 'none'
+    taxMatch?: {
+      comparables: any[]
+      estimatedPrice?: number
+      priceRange?: { low: number; high: number }
+      count?: number
+      bestGeoTier?: TierKey | 'none'
+    }
   }
   comparables: any[]
   buildingName?: string
@@ -19,6 +54,12 @@ interface Props {
   resolvedAddress?: any
   isLease?: boolean
   intent: 'sale' | 'lease'
+  // C-ENHANCE-2-RENDER: path selects label map (HOME=Same street vs
+  // CONDO=Same Building). Optional — when absent, derived from buildingName
+  // (the runner sets buildingName on the resolved-data only for condos —
+  // SellerEstimateRunner.tsx onEstimateReady), keeping ResultsPanel's mount
+  // line byte-identical (no new prop required at the call site).
+  path?: 'condo' | 'home'
 }
 
 const CONFIDENCE_COLORS: Record<string, string> = {
@@ -30,9 +71,41 @@ const CONFIDENCE_COLORS: Record<string, string> = {
   'None': '#94a3b8',
 }
 
-export default function SellerEstimateBlock({ estimate, comparables, buildingName, subjectAddress, geoLevel, isLease, intent }: Props) {
+// Tier color palette (verbatim from EstimatorResults; local literals).
+const TIER_COLORS: Record<TierKey, string> = {
+  platinum: '#10b981',
+  gold:     '#f59e0b',
+  silver:   '#64748b',
+  bronze:   '#c2410c',
+}
+
+const TIER_ORDER: TierKey[] = ['platinum', 'gold', 'silver', 'bronze']
+
+function fmtPrice(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  return '$' + Math.round(n).toLocaleString()
+}
+
+export default function SellerEstimateBlock({ estimate, comparables, buildingName, subjectAddress, geoLevel, isLease, intent, path }: Props) {
   const confColor = CONFIDENCE_COLORS[estimate.confidence] || '#94a3b8'
   const priceLabel = isLease ? '/mo' : ''
+
+  // C-ENHANCE-2-RENDER: tier rail + tax-match prep. All gates are checked
+  // here so the JSX below stays clean. estimate.tiers absent (S1 condo
+  // path pre-f0904e5, plex, or any path that doesn't populate tiers) →
+  // hasTiers=false → rail block silent-skips.
+  // Path derivation when not passed: buildingName presence = condo (set by
+  // SellerEstimateRunner.tsx:157 only on the condo path), keeping
+  // ResultsPanel's mount line byte-identical.
+  const resolvedPath: 'condo' | 'home' = path ?? (buildingName ? 'condo' : 'home')
+  const labelMap: GeoConfidenceLabelMap = resolvedPath === 'home' ? HOME_LABEL_MAP : CONDO_LABEL_MAP
+  const hasTiers = !!estimate.tiers
+  const bestTier: TierKey | null = (estimate.bestGeoTier && estimate.bestGeoTier !== 'none')
+    ? (estimate.bestGeoTier as TierKey)
+    : null
+  const uniformTierForGeoTiles: ComparableTier | null = bestTier  // mono-tier comps from bestGeoTier
+  const taxComps = estimate.taxMatch?.comparables || []
+  const hasTaxMatch = taxComps.length > 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -119,6 +192,67 @@ export default function SellerEstimateBlock({ estimate, comparables, buildingNam
         </div>
       )}
 
+      {/* C-ENHANCE-2-RENDER — Tier rail ("Confidence by Area"). Charlie
+          dark voice; mirrors the estimator's GeoConfidenceSpread ROW
+          STRUCTURE only (4 rows P/G/S/B, anchor highlighted). Heading
+          chosen specifically to NOT echo the estimator's "Geographic
+          Confidence Spread" wording. Skips cleanly when estimate.tiers
+          is undefined (S1 paths, plex, lease-without-cascade). */}
+      {hasTiers && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 8 }}>
+            Confidence by Area
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {TIER_ORDER.map(slot => {
+              const tr = estimate.tiers?.[slot] || null
+              const isBest = bestTier === slot
+              const tierColor = TIER_COLORS[slot]
+              const slotLabel = labelMap[slot]
+              const rowBg = isBest ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.03)'
+              const rowBorder = isBest ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(255,255,255,0.06)'
+              return (
+                <div key={slot} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 12px', borderRadius: 8, background: rowBg, border: rowBorder,
+                  flexWrap: 'wrap', gap: 8,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <span style={{
+                      display: 'inline-block', fontSize: 11, fontWeight: 700,
+                      padding: '2px 7px', borderRadius: 4,
+                      background: tierColor, color: '#fff',
+                    }}>{slotLabel.emoji} {slotLabel.name}</span>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>{slotLabel.sub}</span>
+                    {isBest && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700,
+                        padding: '2px 6px', borderRadius: 4,
+                        background: 'rgba(16,185,129,0.25)', color: '#10b981',
+                        letterSpacing: '0.1em', textTransform: 'uppercase',
+                      }}>Anchor</span>
+                    )}
+                  </div>
+                  {tr ? (
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, color: '#fff' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{fmtPrice(tr.median)}</span>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                        {tr.count ?? 0} comp{(tr.count ?? 0) === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 11, fontStyle: 'italic', color: 'rgba(255,255,255,0.3)' }}>no data</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 8 }}>
+            Narrow spread = high confidence. Wide spread = your block sold differently than your community.
+          </div>
+        </div>
+      )}
+
       {/* Comparables */}
       {comparables.length > 0 && (
         <div>
@@ -127,7 +261,64 @@ export default function SellerEstimateBlock({ estimate, comparables, buildingNam
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {comparables.slice(0, 6).map((c, i) => (
-              <ComparableCard key={i} comparable={c} isLease={isLease} />
+              <ComparableCard
+                key={i}
+                comparable={c}
+                isLease={isLease}
+                // Geo comparables are mono-tier from bestGeoTier — uniform
+                // chip per row mirroring EstimatorResults.tsx:616-617.
+                sourceTier={uniformTierForGeoTiles}
+                path={resolvedPath}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* C-ENHANCE-2-RENDER — Tax-Matched subsection (CHILD of the same
+          block, NOT a sibling section). Mirrors Charlie's existing
+          "Comparable Sold · N found" pattern. Heading chosen in Charlie
+          voice, not echoing the estimator's tax-section wording. Tiles
+          reuse ComparableCard; tax-match tiles carry per-tile sourceTier
+          (Platinum/Gold/Silver/Bronze) from the multi-tier display list. */}
+      {hasTaxMatch && (
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6 }}>
+            Tax-Matched · {taxComps.length} found
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>
+            Same-municipality sales with similar property tax — a co-equal value signal alongside the comps above.
+          </div>
+          {estimate.taxMatch?.estimatedPrice != null && (
+            <div style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 8, padding: '8px 12px', marginBottom: 10,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+            }}>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Tax-matched estimate</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                {fmtPrice(estimate.taxMatch.estimatedPrice)}
+                {estimate.taxMatch.priceRange && (
+                  <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.4)', marginLeft: 8 }}>
+                    · {fmtPrice(estimate.taxMatch.priceRange.low)}–{fmtPrice(estimate.taxMatch.priceRange.high)}
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {taxComps.slice(0, 6).map((c: any, i: number) => (
+              <ComparableCard
+                key={i}
+                comparable={c}
+                isLease={isLease}
+                // tax-match tiles can mix tiers — pass null so the card
+                // falls back to the comparable's own c.sourceTier (already
+                // stamped by runTaxMatchCascade per types.ts L86-90).
+                sourceTier={null}
+                path={resolvedPath}
+              />
             ))}
           </div>
         </div>

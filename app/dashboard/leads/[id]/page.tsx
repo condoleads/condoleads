@@ -156,6 +156,12 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
           workingDoc={workingDoc}
           workingDocBaseUrl={workingDocBaseUrl}
           workingDocIdMap={workingDocIdMap}
+          // C-ENHANCE-2-RENDER (2026-06-13): Charlie seller-plan leads carry
+          // an estimate payload in lead.plan_data.sellerEstimate (written by
+          // app/api/charlie/plan-email/route.ts). LeadDetailClient mounts
+          // CharlieLeadEstimate exclusively when it's present; the existing
+          // <WorkingDocView /> renders unchanged for estimator-source leads.
+          charlieSellerEstimate={(lead as any)?.plan_data?.sellerEstimate ?? null}
         />
         
         {/* Activity Timeline */}

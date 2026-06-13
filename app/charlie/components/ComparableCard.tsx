@@ -1,6 +1,20 @@
 ﻿// app/charlie/components/ComparableCard.tsx
 'use client'
 
+// C-ENHANCE-2-RENDER (2026-06-13): per-tile tier chip. Reuses the IMPORTABLE
+// label-map constants from the estimator (no UI text drag, no component
+// reuse). Color values are local literals matching the estimator's tier
+// palette verbatim. Chip is conditional — silent-omits when sourceTier is
+// not provided (so the data-foundation gate at C-ENHANCE-1-DATA decides
+// whether the chip ever appears; this render layer just respects the prop).
+import {
+  HOME_LABEL_MAP,
+  CONDO_LABEL_MAP,
+  type GeoConfidenceLabelMap,
+} from '@/app/estimator/components/GeoConfidenceSpread'
+
+export type ComparableTier = 'platinum' | 'gold' | 'silver' | 'bronze'
+
 interface Props {
   comparable: {
     closePrice?: number
@@ -19,8 +33,13 @@ interface Props {
     adjustedPrice?: number
     unitNumber?: string
     propertySubtype?: string
+    sourceTier?: string | null
   }
   isLease?: boolean
+  // C-ENHANCE-2-RENDER props. Both optional — when absent, the chip never
+  // renders and the card is byte-equivalent to the pre-enhancement render.
+  sourceTier?: ComparableTier | null
+  path?: 'condo' | 'home'
 }
 
 const TEMP_COLORS: Record<string, string> = {
@@ -28,6 +47,15 @@ const TEMP_COLORS: Record<string, string> = {
 }
 const QUALITY_COLORS: Record<string, string> = {
   Perfect: '#10b981', Excellent: '#3b82f6', Good: '#8b5cf6', Fair: '#f59e0b'
+}
+
+// Tier color palette — verbatim from EstimatorResults.tsx:619-622 / 862-869.
+// Local literals so Charlie's render doesn't depend on estimator UI imports.
+const TIER_COLORS: Record<ComparableTier, string> = {
+  platinum: '#10b981',
+  gold:     '#f59e0b',
+  silver:   '#64748b',
+  bronze:   '#c2410c',
 }
 
 function timeAgo(dateStr: string): string {
@@ -39,9 +67,22 @@ function timeAgo(dateStr: string): string {
 
 const HOME_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex']
 
-export default function ComparableCard({ comparable: c, isLease = false }: Props) {
+export default function ComparableCard({ comparable: c, isLease = false, sourceTier, path }: Props) {
   const price = c.adjustedPrice || c.closePrice || c.listPrice
   const sqft = c.exactSqft || (c.livingAreaRange ? parseInt(c.livingAreaRange.split('-')[0]) + 50 : null)
+
+  // Tier chip — prefer explicit prop (e.g. uniform-tier from estimate
+  // .bestGeoTier for geo comparables) over per-tile sourceTier (mixed-tier
+  // for the tax-match display list). Silent-omit when neither is present
+  // or when the value isn't a known tier (forward-compat).
+  const tierKey = (sourceTier || (c.sourceTier as ComparableTier | undefined)) as ComparableTier | undefined
+  const validTier: ComparableTier | null =
+    tierKey === 'platinum' || tierKey === 'gold' || tierKey === 'silver' || tierKey === 'bronze'
+      ? tierKey
+      : null
+  const labelMap: GeoConfidenceLabelMap = path === 'home' ? HOME_LABEL_MAP : CONDO_LABEL_MAP
+  const tierLabel = validTier ? labelMap[validTier] : null
+  const tierColor = validTier ? TIER_COLORS[validTier] : null
 
   const handleClick = () => {
     if (!c.listingKey) return
@@ -105,6 +146,21 @@ export default function ComparableCard({ comparable: c, isLease = false }: Props
 
       {/* Info */}
       <div style={{ flex: 1, padding: '10px 12px', minWidth: 0 }}>
+        {/* Tier chip — silent-omit when no tier signal. Sits above the price
+            row so it reads as a label for the tile (matches the estimator's
+            structural placement at EstimatorResults.tsx:640-646), but uses
+            Charlie's chip style + dark-panel-appropriate solid bg/white text. */}
+        {tierLabel && tierColor && (
+          <div style={{ marginBottom: 4 }}>
+            <span style={{
+              display: 'inline-block',
+              fontSize: 10, fontWeight: 700,
+              padding: '2px 7px', borderRadius: 4,
+              background: tierColor, color: '#fff',
+              letterSpacing: '0.02em',
+            }}>{tierLabel.emoji} {tierLabel.name} · {tierLabel.sub}</span>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>
             {price ? `$${price.toLocaleString()}${isLease ? '/mo' : ''}` : '—'}

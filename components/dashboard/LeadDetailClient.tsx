@@ -17,6 +17,10 @@ import {
 // computed server-side in app/dashboard/leads/[id]/page.tsx.
 import WorkingDocView from '@/components/dashboard/WorkingDocView'
 import type { WorkingDoc } from '@/lib/email/working-doc-render'
+// C-ENHANCE-2-RENDER (2026-06-13): Charlie seller-plan leads have their own
+// dashboard render path. Exclusive of WorkingDocView (estimator leads) — never
+// both. Branch decided by presence of plan_data.sellerEstimate on the lead row.
+import CharlieLeadEstimate from '@/components/dashboard/CharlieLeadEstimate'
 
 interface LeadDetailClientProps {
   lead: any
@@ -29,11 +33,17 @@ interface LeadDetailClientProps {
   workingDoc?: WorkingDoc | null
   workingDocBaseUrl?: string
   workingDocIdMap?: Record<string, string>
+  // C-ENHANCE-2-RENDER: Charlie seller-estimate payload from
+  // lead.plan_data.sellerEstimate. When present, this is mounted instead of
+  // WorkingDocView (exclusive branch — Charlie leads write to plan_data,
+  // estimator leads write to property_details).
+  charlieSellerEstimate?: any
 }
 
 export default function LeadDetailClient({
   lead, agent, initialNotes, engagementScore,
   workingDoc, workingDocBaseUrl, workingDocIdMap,
+  charlieSellerEstimate,
 }: LeadDetailClientProps) {
   const [status, setStatus] = useState(lead.status)
   const [quality, setQuality] = useState(lead.quality)
@@ -164,15 +174,20 @@ export default function LeadDetailClient({
         </div>
       </div>
 
-      {/* P-WORKING-DOC-DASHBOARD: agent's view of the submitted estimator
-          working document. Persisted snapshot — consistent with the emails.
-          Live re-fetch is a deferred enhancement. Renders nothing when
-          workingDoc is absent (legacy leads). */}
-      <WorkingDocView
-        workingDoc={workingDoc}
-        baseUrl={workingDocBaseUrl || ''}
-        idMap={workingDocIdMap || {}}
-      />
+      {/* C-ENHANCE-2-RENDER: exclusive branch. Charlie seller-plan leads
+          mount CharlieLeadEstimate (reading lead.plan_data.sellerEstimate);
+          estimator leads (or any lead without that payload) mount the
+          existing WorkingDocView path. WorkingDocView's null-guard handles
+          the legacy/missing case unchanged. */}
+      {charlieSellerEstimate ? (
+        <CharlieLeadEstimate sellerEstimate={charlieSellerEstimate} />
+      ) : (
+        <WorkingDocView
+          workingDoc={workingDoc}
+          baseUrl={workingDocBaseUrl || ''}
+          idMap={workingDocIdMap || {}}
+        />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
