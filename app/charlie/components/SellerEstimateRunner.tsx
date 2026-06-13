@@ -1,12 +1,19 @@
 ﻿// app/charlie/components/SellerEstimateRunner.tsx
 'use client'
 import { useEffect, useState, useRef } from 'react'
-import { estimateSale } from '@/app/estimator/actions/estimate-sale'
-import { estimateRent } from '@/app/estimator/actions/estimate-rent'
+// C-ENHANCE-1-DATA (2026-06-13): switch condo path to S2 matchers so result
+// .data carries tiers + bestGeoTier + taxMatch (the S1 estimateSale/Rent
+// returned none of these). Charlie is the ONLY non-estimator importer of S1
+// estimateSale/Rent — verified C-ENHANCE-PREFLIGHT, no other-caller impact.
+// estimateCondoSale's CondoSaleSpecs extends UnitSpecs (all new fields
+// optional) and its return is a strict superset of estimateSale's — drop-in.
+import { estimateCondoSale } from '@/app/estimator/actions/estimate-condo-sale'
+import { estimateCondoRent } from '@/app/estimator/actions/estimate-condo-rent'
 import { estimateHomeSale } from '@/app/estimator/actions/estimate-home-sale'
 import { estimateHomeRent } from '@/app/estimator/actions/estimate-home-rent'
-import { UnitSpecs } from '@/lib/estimator/types'
-import { HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
+import type { CondoSaleSpecs } from '@/lib/estimator/condo-comparable-matcher-sales'
+import type { CondoLeaseSpecs } from '@/lib/estimator/condo-comparable-matcher-rentals'
+import type { HomeSpecs } from '@/lib/estimator/home-comparable-matcher-sales'
 import { supabase } from '@/lib/supabase/client'
 
 
@@ -58,6 +65,12 @@ interface Props {
     propertySubtype: string
     streetNumber: string
     streetName: string
+    // C-ENHANCE-1-DATA (2026-06-13): CharlieOverlay already passes the FULL
+    // SellerFormData object (which carries propertyTax) to this runner; the
+    // earlier Props interface dropped it. Declaring it here unlocks the
+    // tax-match cascade by threading subjectTaxAnnualAmount + subjectTaxYear
+    // into the specs build below.
+    propertyTax?: string
   }
   onEstimateReady: (data: any) => void
 }
@@ -82,18 +95,47 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
       let result: any = null
 
       if (resolvedData.path === 'condo' && resolvedData.buildingId) {
-        const specs: UnitSpecs = {
-          buildingId: resolvedData.buildingId,
-          buildingSlug: resolvedData.buildingSlug,
-          bedrooms: bedsNum,
-          bathrooms: bathsNum,
-          livingAreaRange: livingAreaRange || '700-799',
-          parking: parkingNum,
-          hasLocker: formData.locker !== 'none' && !!formData.locker,
+        // C-ENHANCE-1-DATA: build CondoSaleSpecs (sale) or CondoLeaseSpecs
+        // (lease). Both extend UnitSpecs + add optional community/muni/area
+        // (already threaded via resolvedData) + tenantId. Sale specs also
+        // carry the tax-match inputs. tenantId is intentionally NOT threaded
+        // from the client; estimate-condo-{sale,rent}.ts:21 falls back to
+        // getCurrentTenantId() server-side (request-host-aware) — verified by
+        // the C-ENHANCE-PREFLIGHT pre-flight + the data-verify script below.
+        const taxNum = formData.propertyTax ? parseFloat(formData.propertyTax) : NaN
+        const subjectTaxAnnualAmount = Number.isFinite(taxNum) && taxNum > 0 ? taxNum : null
+        const subjectTaxYear = subjectTaxAnnualAmount != null ? new Date().getFullYear() : null
+        if (formData.intent === 'lease') {
+          const specs: CondoLeaseSpecs = {
+            buildingId: resolvedData.buildingId,
+            buildingSlug: resolvedData.buildingSlug,
+            bedrooms: bedsNum,
+            bathrooms: bathsNum,
+            livingAreaRange: livingAreaRange || '700-799',
+            parking: parkingNum,
+            hasLocker: formData.locker !== 'none' && !!formData.locker,
+            communityId: resolvedData.communityId || null,
+            municipalityId: resolvedData.municipalityId || null,
+          }
+          result = await estimateCondoRent(specs, false)
+        } else {
+          const specs: CondoSaleSpecs = {
+            buildingId: resolvedData.buildingId,
+            buildingSlug: resolvedData.buildingSlug,
+            bedrooms: bedsNum,
+            bathrooms: bathsNum,
+            livingAreaRange: livingAreaRange || '700-799',
+            parking: parkingNum,
+            hasLocker: formData.locker !== 'none' && !!formData.locker,
+            communityId: resolvedData.communityId || null,
+            municipalityId: resolvedData.municipalityId || null,
+            // Tax-match inputs — silent-omit when no tax provided (matcher
+            // hard-gates on both fields, returns undefined for taxMatch).
+            subjectTaxAnnualAmount,
+            subjectTaxYear,
+          }
+          result = await estimateCondoSale(specs, false)
         }
-        result = formData.intent === 'lease'
-          ? await estimateRent(specs, false)
-          : await estimateSale(specs, false)
       }
 
       if (resolvedData.path === 'home' && resolvedData.municipalityId) {
@@ -102,6 +144,14 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
         // reaches specs (would silently disable the bonus anyway, but explicit
         // guard avoids weirdness if subjectStreetNumber ever feeds arithmetic).
         const streetNumParsed = parseInt(formData.streetNumber, 10)
+        // C-ENHANCE-1-DATA: thread propertyTax → subjectTaxAnnualAmount +
+        // subjectTaxYear. HomeSpecs already has these fields (home-comparable-
+        // matcher-sales.ts:76-77); the home matcher's h8 tax-similarity score
+        // band uses them. Silent-omit when no tax — matcher contributes 0
+        // points instead of penalty, and taxMatch cascade returns undefined.
+        const taxNum = formData.propertyTax ? parseFloat(formData.propertyTax) : NaN
+        const subjectTaxAnnualAmount = Number.isFinite(taxNum) && taxNum > 0 ? taxNum : null
+        const subjectTaxYear = subjectTaxAnnualAmount != null ? new Date().getFullYear() : null
         const specs: HomeSpecs = {
           bedrooms: bedsNum,
           bathrooms: bathsNum,
@@ -112,6 +162,8 @@ export default function SellerEstimateRunner({ resolvedData, formData, onEstimat
           lotWidth: formData.frontage ? parseFloat(formData.frontage) : null,
           ...(formData.streetName ? { subjectStreetName: formData.streetName } : {}),
           ...(!Number.isNaN(streetNumParsed) ? { subjectStreetNumber: streetNumParsed } : {}),
+          subjectTaxAnnualAmount,
+          subjectTaxYear,
         }
         result = formData.intent === 'lease'
           ? await estimateHomeRent(specs, false)
