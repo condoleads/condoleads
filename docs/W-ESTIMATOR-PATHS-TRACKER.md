@@ -1016,3 +1016,24 @@ Test: 29/29 PASS.
 S1 zero-diff.
 
 HOLD push per operator instruction. Local commit 9eaceb7. Awaiting operator eyeball + approval.
+
+---
+
+## C-PLAN-DOC-DEDUP — PUSHED (2026-06-13)
+
+Pushed 9eaceb7 + 31f7bdc; operator-approved, eyeballing on live walliam.ca. Plan-email comparables/competing de-duplicated (working-doc single source when present; photo/temperature/matchQuality/affordance carried in so no content lost; legacy preserved for older clients).
+
+- origin/main: 31f7bdc (fast-forward from 296b75a, no force)
+- Build: tsc --noEmit exit 0; npm run build exit 0
+- Test: scripts/test-c-plan-doc-dedup.js 29/29 PASS
+- 09b97ef byte-identity guards still match:
+  - app/api/charlie/route.ts          sha 9c64acba0564 MATCH
+  - charlie-tools.ts                  sha a02ee7ab48f9 MATCH
+  - charlie-prompts.ts                sha fbe7b7de14b9 MATCH
+  - charlie/vip-request/route.ts      sha 97c651e90c6f MATCH
+- Dashboard WorkingDocView: sha 40b1e460fe11 UNCHANGED (additive optional fields, graceful ignore).
+- InChatWorkingDoc: sha cfb3bd101cb1 UNCHANGED.
+- Wiring (lead insert + user_activities + getLeadEmailRecipients + buyer-copy send + per-tenant Resend key + buildBaseUrl): UNCHANGED.
+- Backwards-compat (workingDoc-absent): legacy comparableSoldHtml + competingHtml bodies byte-identical to pre-edit (only the leading `!workingDoc &&` guard added).
+- Side-benefit: agent lead email + estimator VIP buyer email + property-page buyer email gain photo + temperature + Sold/For Sale label when their comp data carries the same fields (UX gain, no regression).
+- S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
