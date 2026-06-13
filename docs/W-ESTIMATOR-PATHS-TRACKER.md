@@ -1195,3 +1195,65 @@ Pushed f0904e5 + 6f685be; operator-approved. Charlie seller runner on S2 condo m
 - Revert-state Charlie files BYTE-UNCHANGED: plan-email fd89b183e1b0, ResultsPanel 72f5d88adef9, useCharlie 5288819e9870.
 - S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
 - Next: C-ENHANCE-2-RENDER builds the tier rail + chip + tax-match subsection across in-chat panel + plan email + dashboard, sitting on this data foundation.
+
+---
+
+## C-ENHANCE-2-RENDER — LOCAL COMMIT (2026-06-13, HEAD 3d9ac08)
+
+Tier badges + anchor rail + tax-match subsection added to Charlie's EXISTING sections in place, across THREE surfaces. Charlie voice — no new sections, no "working document"/estimator labels. Form: sq-ft + tax now required. Sits on the f0904e5 data foundation.
+
+Files changed (8: 6 modified + 2 new):
+- app/charlie/components/ComparableCard.tsx (chip + props)
+- app/charlie/components/SellerEstimateBlock.tsx (tier rail + tax subsection + path derive)
+- app/charlie/components/SellerForm.tsx (sq-ft + tax required, hint fixed)
+- app/api/charlie/plan-email/route.ts (chip in comp rows + taxMatchHtml + plan_data.sellerEstimate persist)
+- components/dashboard/LeadDetailClient.tsx (exclusive branch)
+- app/dashboard/leads/[id]/page.tsx (charlieSellerEstimate prop wiring)
+- components/dashboard/CharlieLeadEstimate.tsx (NEW white-card render)
+- scripts/test-c-enhance-render.js (NEW, 49/49 PASS)
+
+Reuse strategy:
+- HOME_LABEL_MAP + CONDO_LABEL_MAP from estimator (data constants, no UI text drag)
+- Tier color hex literals declared locally in each Charlie file
+- Estimator's tier-rail JSX + tax section NOT reused (white-card chrome + estimator voice)
+
+Charlie-voice headings (test-asserted):
+- "Confidence by Area"          (NOT "Geographic Confidence Spread")
+- "Tax-Matched · N found"       (NOT "Tax-Matched Comparables")
+- "Charlie seller estimate"     (NOT "Estimator working document")
+
+In-chat (Charlie dark panel):
+- ComparableCard: chip above price row, solid bg + white text, silent-omit when no tier.
+- SellerEstimateBlock: tier rail between range card and Comparable Sold header — 4 rows P/G/S/B, emerald anchor highlight + ANCHOR chip, "no data" graceful. Tax-Matched subsection after the comp list with optional tax-estimate pill. path derived from buildingName so ResultsPanel mount line stays byte-identical.
+
+Plan email:
+- Inline TIER_COLORS_EMAIL + label maps + tierChipHtml helper (no working-doc-render import).
+- comparableSoldHtml: chip per tile (c.sourceTier ?? bestGeoTier fallback).
+- NEW taxMatchHtml block: heading + optional inline tax-matched estimate + tile rows with per-tile chips. Mounted between comparableSoldHtml and competingHtml.
+- plan_data on lead insert ADDITIVELY persists sellerEstimate. Existing plan_data fields untouched.
+- comparableSoldHtml + competingHtml stay UNGATED — preserves the C-PLAN-DOC-DEDUP-REVERT single-render guarantee. taxMatchHtml is a new sibling, not a dup.
+
+Dashboard:
+- NEW CharlieLeadEstimate (white-card, mirrors in-chat structure).
+- LeadDetailClient branches exclusive: charlieSellerEstimate → CharlieLeadEstimate; else WorkingDocView. Never both.
+- WorkingDocView UNTOUCHED (sha 40b1e460fe11) — estimator-lead path preserved exactly.
+
+Form:
+- livingAreaRange required (both condo + home, was condo-only).
+- propertyTax required for SALE (was optional). Hint corrected to accuracy-focused. Lease keeps optional (lease ~0% tax fill).
+- canSubmit guard enforces both.
+
+Byte-identical proofs (verified by test):
+- ResultsPanel.tsx          sha 72f5d88adef9   UNCHANGED
+- WorkingDocView.tsx        sha 40b1e460fe11   UNCHANGED
+- chat route                sha 9c64acba0564   MATCH (09b97ef)
+- tools                     sha a02ee7ab48f9   MATCH (09b97ef)
+- prompts                   sha fbe7b7de14b9   MATCH (09b97ef)
+- Charlie VIP               sha 97c651e90c6f   MATCH (09b97ef)
+- useCharlie                sha 5288819e9870   UNCHANGED
+
+Build: tsc --noEmit exit 0; npm run build exit 0.
+Test: scripts/test-c-enhance-render.js 49/49 PASS.
+S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
+
+CODE-VERIFIED. NOT live. Operator's live walliam.ca eyeball after push is the next gate.
