@@ -562,8 +562,17 @@ function buildRichPlanEmail(data: {
     </div>
   ` : ''
 
+  // C-PLAN-DOC-DEDUP (2026-06-13): when workingDoc is present (normal seller-
+  // plan case) it is now the single source for both the comparable-sold and
+  // competing sections (its renderTile carries photo + temperature + match
+  // quality + Sold/For Sale label, matching what the legacy blocks below used
+  // to show). The legacy comparableSoldHtml + competingHtml blocks are GATED
+  // OFF when workingDoc is present to remove duplicate rendering. When
+  // workingDoc is absent (older clients, buyer flow, no seller estimate this
+  // session), the legacy blocks render exactly as before — byte-identical
+  // backwards-compat.
   const sellerComps = sellerEstimate?.comparables || comparables || []
-  const comparableSoldHtml = sellerComps.length > 0 ? `
+  const comparableSoldHtml = !workingDoc && sellerComps.length > 0 ? `
     <div style="margin: 20px 0;">
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Comparable Sold (${sellerComps.length})</div>
       ${sellerComps.map((c: any) => {
@@ -590,7 +599,9 @@ function buildRichPlanEmail(data: {
     </div>
   ` : ''
 
-  const competingHtml = sellerEstimate?.competingListings && sellerEstimate.competingListings.length > 0 ? `
+  // C-PLAN-DOC-DEDUP (2026-06-13): same gate — when workingDoc is present, the
+  // working-doc render's competing section is the single source.
+  const competingHtml = !workingDoc && sellerEstimate?.competingListings && sellerEstimate.competingListings.length > 0 ? `
     <div style="margin: 20px 0;">
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Competing For Sale (${sellerEstimate.competingListings.length})</div>
       ${sellerEstimate.competingListings.slice(0, 10).map((c: any) => {

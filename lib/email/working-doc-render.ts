@@ -43,6 +43,12 @@ export interface WorkingDocTile {
   matchTier?: string | null
   sourceTier?: string | null                  // platinum/gold/silver/bronze for tax-match list
   temperature?: string | null
+  // C-PLAN-DOC-DEDUP (2026-06-13): additive optional fields carried for the
+  // email-HTML render so the plan email can drop the legacy duplicate blocks
+  // without losing visible content. Dashboard React (WorkingDocView) imports
+  // the type but doesn't render these — its appearance stays byte-identical.
+  mediaUrl?: string | null                    // photo URL for the email tile
+  matchQuality?: string | null                // matcher's quality string (e.g. "Same building")
 }
 
 export interface WorkingDocSection {
@@ -164,25 +170,52 @@ function renderTile(
   const tier = tile.sourceTier ? tierLabel(tile.sourceTier) : ''
   const unit = tile.unitNumber ? `Unit ${escapeHtml(tile.unitNumber)}` : ''
 
+  // C-PLAN-DOC-DEDUP (2026-06-13): photo + temperature badge + matchQuality +
+  // Sold/For Sale affordance. Each is conditional — present only when its
+  // underlying data is populated. Other email surfaces gain these too (a UX
+  // improvement; the data was already in EstimateResult, just not rendered).
+  // Dashboard React component is untouched.
+  const photo = tile.mediaUrl ? escapeHtml(tile.mediaUrl) : ''
+  const tempColor = tile.temperature === 'HOT' ? '#ef4444'
+    : tile.temperature === 'WARM' ? '#f59e0b'
+    : tile.temperature === 'COLD' ? '#3b82f6'
+    : '#64748b'
+  const tempBadge = priceKind === 'close' && tile.temperature
+    ? `<div style="background:${tempColor};color:#fff;font-size:9px;font-weight:700;padding:2px 5px;margin-top:3px;text-align:center;border-radius:3px;">${escapeHtml(tile.temperature)}</div>`
+    : ''
+  const matchQ = tile.matchQuality
+    ? `<div style="font-size:10px;color:#94a3b8;margin-top:3px;">${escapeHtml(tile.matchQuality)}</div>`
+    : ''
+  const priceColor = priceKind === 'close' ? '#059669' : '#1d4ed8'
+  const affordance = priceKind === 'close' ? 'Sold →' : 'For Sale →'
+
   const priceCell = adjusted
-    ? `<span style="font-weight:700;color:#0f172a;">${fmtPrice(price as number)}</span> <span style="font-size:11px;color:#64748b;">(adj ${fmtPrice(adjusted)})</span>`
-    : `<span style="font-weight:700;color:#0f172a;">${fmtPrice(price as number)}</span>`
+    ? `<span style="font-weight:700;color:${priceColor};">${fmtPrice(price as number)}</span> <span style="font-size:11px;color:#64748b;">(adj ${fmtPrice(adjusted)})</span>`
+    : `<span style="font-weight:700;color:${priceColor};">${fmtPrice(price as number)}</span>`
 
   const linkOpen = href ? `<a href="${href}" style="color:#1d4ed8;text-decoration:none;">` : ''
   const linkClose = href ? `</a>` : ''
 
+  const photoCell = photo ? `
+      <td width="80" style="padding:10px 0 10px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+        <img src="${photo}" alt="" width="80" height="72" style="display:block;width:80px;height:72px;object-fit:cover;border-radius:6px;">
+        ${tempBadge}
+      </td>` : ''
+
   return `
-    <tr>
+    <tr>${photoCell}
       <td style="padding:10px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
         ${linkOpen}<div style="font-size:13px;color:#0f172a;font-weight:600;">${addr}</div>${linkClose}
         ${unit ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${unit}</div>` : ''}
         <div style="font-size:11px;color:#64748b;margin-top:2px;">${beds} · ${baths}${lar ? ' · ' + lar : ''}</div>
+        ${matchQ}
       </td>
       <td style="padding:10px 8px;border-bottom:1px solid #e2e8f0;text-align:right;vertical-align:top;white-space:nowrap;">
         ${priceCell}
         ${tier ? `<div style="font-size:10px;color:#64748b;margin-top:3px;">${tier}</div>` : ''}
         ${date ? `<div style="font-size:10px;color:#64748b;margin-top:2px;">${date}</div>` : ''}
         ${dom ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${dom}</div>` : ''}
+        <div style="font-size:10px;color:#94a3b8;margin-top:3px;">${affordance}</div>
       </td>
     </tr>
   `
@@ -305,6 +338,10 @@ export function buildWorkingDocFromResult(input: {
     matchTier: c?.matchTier ?? null,
     sourceTier: c?.sourceTier ?? null,
     temperature: c?.temperature ?? null,
+    // C-PLAN-DOC-DEDUP: carry photo + matchQuality forward so the working-doc
+    // render covers what the legacy comparableSoldHtml block used to show.
+    mediaUrl: c?.mediaUrl ?? c?.media?.[0]?.media_url ?? c?.media?.[0]?.url ?? null,
+    matchQuality: c?.matchQuality ?? null,
   })
 
   const tileFromCompeting = (c: any): WorkingDocTile => ({
@@ -317,6 +354,8 @@ export function buildWorkingDocFromResult(input: {
     livingAreaRange: c?.living_area_range ?? null,
     unitNumber: c?.unit_number ?? null,
     unparsedAddress: c?.unparsed_address ?? null,
+    // C-PLAN-DOC-DEDUP: same — covers what legacy competingHtml used to show.
+    mediaUrl: c?.mediaUrl ?? c?.media?.[0]?.media_url ?? c?.media?.[0]?.url ?? null,
   })
 
   const comparableSold: WorkingDocSection | null =
