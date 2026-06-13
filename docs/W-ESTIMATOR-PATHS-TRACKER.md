@@ -1077,3 +1077,29 @@ Needs operator live-eyeball on walliam.ca after push:
 - Visual confirmation that the agent lead email + buyer working-doc email + VIP buyer email + dashboard lead view still render the working document (estimator surfaces unchanged).
 
 HOLD push pending operator approval. Local commit 2367783.
+
+---
+
+## C-PLAN-DOC-DEDUP-REVERT — PUSHED (2026-06-13)
+
+Pushed 2367783 + 0be66de; operator-approved. Charlie reverted to 460ef63 original sections (no duplicate comparable/competing, no working-document label); shared estimator files untouched (estimator not regressed).
+
+- origin/main: 0be66de (fast-forward from 9312ca9, no force)
+- Build: tsc --noEmit exit 0; npm run build exit 0
+- Charlie-side reverts (content-byte-identical to 460ef63 via `git checkout 460ef63 -- <path>`):
+  - app/api/charlie/plan-email/route.ts        (workingDoc destructure/helpers/render block + !workingDoc gates REMOVED)
+  - app/charlie/components/ResultsPanel.tsx    (InChatWorkingDoc import + JSX line REMOVED; original 4-section sellerEstimate panel restored)
+  - app/charlie/hooks/useCharlie.ts            (buildWorkingDocFromResult + workingDoc POST field REMOVED)
+  - app/charlie/components/InChatWorkingDoc.tsx (DELETED — zero other importers)
+- Shared estimator files LEFT INTACT (estimator continues to render the working document):
+  - lib/email/working-doc-render.ts       sha 3d6579b89db6  UNCHANGED
+  - components/dashboard/WorkingDocView.tsx sha 40b1e460fe11 UNCHANGED
+  - Consumed by 4 estimator surfaces (agent lead email, buyer working-doc email, VIP buyer email, dashboard lead detail) — all still wired and working.
+- 09b97ef byte-identity guards still match:
+  - app/api/charlie/route.ts          sha 9c64acba0564 MATCH
+  - charlie-tools.ts                  sha a02ee7ab48f9 MATCH
+  - charlie-prompts.ts                sha fbe7b7de14b9 MATCH
+  - charlie/vip-request/route.ts      sha 97c651e90c6f MATCH
+- Reference materialized for byte-compare: recon/_pre-df2ec76-plan-email.ts.txt, recon/_pre-df2ec76-ResultsPanel.tsx.txt, recon/_pre-df2ec76-useCharlie.ts.txt
+- S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
+- Awaiting operator live-eyeball on walliam.ca to confirm Charlie's chat panel + plan email show only the original sections (no "Estimator working document" label, no duplicate comparable/competing) and the estimator surfaces still render the working doc.
