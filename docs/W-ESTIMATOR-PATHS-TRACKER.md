@@ -1443,3 +1443,15 @@ Effect:
 
 HOLD push per directive. Awaiting operator approval + live walliam.ca
 eyeball of the dashboard notice on a pre-3d9ac08 Charlie lead.
+
+---
+
+## C-CHARLIE-FOLLOWUP Phase 2 — RECONCILE (2026-06-13)
+
+Live verifier (scripts/verify-charlie-followup-phase2.js, 48/48 PASS against origin/main = a1f92cf) reconciles the earlier recon counts:
+
+- Live WALLiam Charlie seller leads: **7 total** — **1 FULL render (63b48f13)**, **6 AMBER notice** (42a20b25, 6e96e63b, e2d3aeb0, 2feab2b4, d624677c, 5477a25f). The earlier C-CHARLIE-FOLLOWUP Phase 1 figure of "10 seller / 1 with estimate" is superseded — leads were pruned/created between sessions. Branch logic verified correct against the live set: AMBER never fires when sellerEstimate is present; NEITHER never fires on a charlie-seller lead; FULL only fires on 63b48f13.
+
+Two NAMED decision items, NOT auto-built (operator's call):
+- **(i)** `subjectAddress` is captured into `plan_data.sellerEstimate.subjectAddress` (verified: `"606 Aspen rd, Pickering"` on lead 63b48f13) but is NOT rendered in `buildRichPlanEmail`'s body — the email header shows `geoName` + `userName` + brand only. This is the pre-existing email shape (not introduced or regressed by Phase 2). Operator decision whether to add the street address to the email body.
+- **(ii)** AMBER React DOM is proven correct by **deterministic branch resolution** (the shipped 3-way logic + the static notice JSX in CharlieLeadEstimate, both content-asserted: "No estimate captured" text present, "3d9ac08" cutoff cited, zero `estimate.*` / `tiers.*` / `taxMatch.*` interpolation — no fabrication). Live walliam.ca DOM eyeball pending (no server-render harness added; operator can verify by opening one of the 6 AMBER leads on the dashboard).
