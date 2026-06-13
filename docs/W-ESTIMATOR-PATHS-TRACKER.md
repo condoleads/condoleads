@@ -786,3 +786,5 @@ The C-RECON Part D checklist gates this enhancement. Every item touched by the e
 
 ### Push status
 HELD per operator instruction. Commit landed locally; awaiting push approval.
+
+Pushed df2ec76; operator-approved. Charlie plan email now renders the full working document (tax-match + P/G/S/B tiers + 3 sections, tenant-correct links) via the shared helper; nullable-additive, backwards-compat byte-identical; chat stream/tools/metering/VIP email untouched; credit invariant preserved.
