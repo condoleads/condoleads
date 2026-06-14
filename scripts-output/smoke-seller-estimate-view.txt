@@ -1,0 +1,161 @@
+================================================================
+W-CHARLIE-CONVERGENCE CV-0 — SMOKE (canonical helper, real fixture)
+================================================================
+dev server: http://localhost:3001
+fixture lead: 63b48f13-8a03-46be-b4ce-91007da0794a
+
+view top-level keys: path, intent, subjectAddress, buildingName, geoLevel, geoName, priceCard, tierRail, marketIntel, priceByHomeType, offerIntel, bestTime, priceTrendMonthly, planCardGrid, planSummary, pricingRisk, comparables, taxMatch, competingListings, present
+view.present: {"priceCard":true,"tierRail":true,"comparables":true,"taxMatch":true,"competing":true,"marketIntel":true,"priceByHomeType":true,"offerIntel":true,"bestTime":true,"planCardGrid":true,"planSummary":true,"pricingRisk":true}
+
+PASS  view non-null
+PASS  view.path === "home" (fixture is a home seller)  [actual="home"]
+PASS  view.intent === "sale"  [actual="sale"]
+PASS  view.subjectAddress === "606 Aspen rd, Pickering"  [actual="606 Aspen rd, Pickering"]
+PASS  view.buildingName === null (home, no building)  [actual=null]
+PASS  view.geoLevel === null  [actual=null]
+PASS  view.geoName === "Pickering"
+PASS  present.priceCard === true  [actual=true]
+PASS  present.tierRail === true  [actual=true]
+PASS  present.comparables === true  [actual=true]
+PASS  present.taxMatch === true  [actual=true]
+PASS  present.competing === true  [actual=true]
+PASS  present.marketIntel === true  [actual=true]
+PASS  present.priceByHomeType === true  [actual=true]
+PASS  present.offerIntel === true  [actual=true]
+PASS  present.bestTime === true  [actual=true]
+PASS  present.planCardGrid === true  [actual=true]
+PASS  present.planSummary === true  [actual=true]
+PASS  present.pricingRisk === true  [actual=true]
+PASS  priceCard.estimatedPrice === 1012635  [actual=1012635]
+PASS  priceCard.priceRange.low === 931624 && high === 1093646
+PASS  priceCard.confidence === "Medium"
+PASS  priceCard.matchTier === "RANGE-ADJ"
+PASS  priceCard.marketSpeed.avgDaysOnMarket is a positive integer (matcher-derived comp avg DOM)  [actual=17]
+PASS  priceCard.currentMarketPrice === 1032000
+PASS  tierRail.bestGeoTier === "gold" (the anchor)
+PASS  tierRail.slots.platinum === null
+PASS  tierRail.slots.bronze === null
+PASS  tierRail.slots.gold.count === 5 && median === 1127000
+PASS  tierRail.slots.silver.count === 32 && median === 1118500
+PASS  comparables.length === 5  [actual=5]
+PASS  comparables[0].priceKind === "close"
+PASS  comparables[0].sourceTier === null (geo cascade, undefined in source)  [actual=null]
+PASS  comparables[0].listingKey matches source (E12856240)
+PASS  comparables[0].mediaUrl matches source
+PASS  comparables[0].address matches unparsedAddress
+PASS  comparables[0].beds === src.bedrooms
+PASS  comparables[0].baths === src.bathrooms
+PASS  comparables[0].dom === src.daysOnMarket
+PASS  comparables[0].price === adjustedPrice ?? closePrice (=1032000)  [row=1032000, expected=1032000]
+PASS  comparables[0].sqft === src.livingAreaRange ("2000-2500")
+PASS  comparables[1].priceKind === "close"
+PASS  comparables[1].sourceTier === null (geo cascade, undefined in source)  [actual=null]
+PASS  comparables[1].listingKey matches source (E13013782)
+PASS  comparables[1].mediaUrl matches source
+PASS  comparables[1].address matches unparsedAddress
+PASS  comparables[1].beds === src.bedrooms
+PASS  comparables[1].baths === src.bathrooms
+PASS  comparables[1].dom === src.daysOnMarket
+PASS  comparables[1].price === adjustedPrice ?? closePrice (=918000)  [row=918000, expected=918000]
+PASS  comparables[1].sqft === src.livingAreaRange ("2000-2500")
+PASS  comparables[2].priceKind === "close"
+PASS  comparables[2].sourceTier === null (geo cascade, undefined in source)  [actual=null]
+PASS  comparables[2].listingKey matches source (E12126821)
+PASS  comparables[2].mediaUrl matches source
+PASS  comparables[2].address matches unparsedAddress
+PASS  comparables[2].beds === src.bedrooms
+PASS  comparables[2].baths === src.bathrooms
+PASS  comparables[2].dom === src.daysOnMarket
+PASS  comparables[2].price === adjustedPrice ?? closePrice (=980000)  [row=980000, expected=980000]
+PASS  comparables[2].sqft === src.livingAreaRange ("2000-2500")
+PASS  comparables[3].priceKind === "close"
+PASS  comparables[3].sourceTier === null (geo cascade, undefined in source)  [actual=null]
+PASS  comparables[3].listingKey matches source (E12164416)
+PASS  comparables[3].mediaUrl matches source
+PASS  comparables[3].address matches unparsedAddress
+PASS  comparables[3].beds === src.bedrooms
+PASS  comparables[3].baths === src.bathrooms
+PASS  comparables[3].dom === src.daysOnMarket
+PASS  comparables[3].price === adjustedPrice ?? closePrice (=1125000)  [row=1125000, expected=1125000]
+PASS  comparables[3].sqft === src.livingAreaRange ("2000-2500")
+PASS  comparables[4].priceKind === "close"
+PASS  comparables[4].sourceTier === null (geo cascade, undefined in source)  [actual=null]
+PASS  comparables[4].listingKey matches source (E12114302)
+PASS  comparables[4].mediaUrl matches source
+PASS  comparables[4].address matches unparsedAddress
+PASS  comparables[4].beds === src.bedrooms
+PASS  comparables[4].baths === src.bathrooms
+PASS  comparables[4].dom === src.daysOnMarket
+PASS  comparables[4].price === adjustedPrice ?? closePrice (=1035000)  [row=1035000, expected=1035000]
+PASS  comparables[4].sqft === src.livingAreaRange ("2000-2500")
+PASS  taxMatch.count === 12  [actual=12]
+PASS  taxMatch.bestGeoTier === "silver"
+PASS  taxMatch.comparables.length === 10
+PASS  taxMatch.estimatedPrice === 848754
+PASS  every tax comp row carries sourceTier="silver"  [silver count=10/10]
+PASS  every tax comp row priceKind === "close"
+PASS  competingListings.length === 2
+PASS  competingListings[0].priceKind === "list"
+PASS  competingListings[0].price === src.list_price (=1199900)
+PASS  competingListings[0].address === src.unparsed_address
+PASS  competingListings[0].beds === src.bedrooms_total (=3)
+PASS  competingListings[0].baths === src.bathrooms_total_integer (=3)
+PASS  competingListings[0].listingKey === src.listing_key
+PASS  competingListings[0].id === src.id
+PASS  competingListings[0].sourceTier === null
+PASS  marketIntel.geoName === "Pickering"
+PASS  marketIntel.closedAvgDom90 === 25
+PASS  marketIntel.saleToListRatio === 100.72
+PASS  marketIntel.activeCount === 423
+PASS  marketIntel.absorptionRatePct === 18.68
+PASS  marketIntel.monthsOfInventory === 5.35
+PASS  marketIntel.medianPsf === null (source is null)
+PASS  priceByHomeType.length === 5 (Detached / Semi-Detached / Att-Row / Link / Duplex)  [actual=5]
+PASS  priceByHomeType has a "Detached" row
+PASS  Detached row count matches source
+PASS  Detached row medianPrice matches source
+PASS  Detached row saleToList matches source
+PASS  offerIntel.offerAt === 100.72
+PASS  offerIntel.avgConcession === 3.57
+PASS  offerIntel.decideIn === 25
+PASS  bestTime.currentMonth === 6
+PASS  bestTime.currentMonthRank === 3
+PASS  bestTime.bestMonths is non-empty array
+PASS  planCardGrid.goal === "Top dollar"
+PASS  planCardGrid.timeline === "3-6 months"
+PASS  planCardGrid.propertyType === "Detached"
+PASS  planCardGrid.bedrooms === 3
+PASS  planCardGrid.budgetMax === null (seller)
+PASS  planSummary starts with "Pickering is currently a Buyer's Market"
+PASS  pricingRisk.saleToListRatio === 100.72
+PASS  pricingRisk.closedAvgDom90 === 25
+PASS  pricingRisk.estimatedPrice === 1012635
+PASS  pricingRisk.avgConcessionPct === 3.57
+PASS  view has zero "NaN" tokens
+PASS  view has zero "undefined" tokens
+PASS  view has zero "N/A" placeholder strings
+PASS  view has zero em-dash placeholder strings
+
+── tierChipFor truth table ──
+PASS  tierChipFor("silver", "gold", "home") → silver (per-tile wins) + sub="Municipality"  [{"tier":"silver","color":"#64748b","label":"Silver","marker":"●","sub":"Municipality"}]
+PASS  tierChipFor(null, "gold", "home") → gold (anchor fallback) + sub="Community"  [{"tier":"gold","color":"#f59e0b","label":"Gold","marker":"●","sub":"Community"}]
+PASS  tierChipFor(null, null, "home") → null (no chip)
+PASS  tierChipFor("platinum", null, "condo") → platinum + sub="Same Building"
+PASS  tierChipFor("bronze", null, "home") → bronze + sub="Area"
+PASS  tierChipFor("none", "gold", "home") → gold (anchor — "none" is not valid)
+PASS  tierChipFor("gibberish", "silver", "home") → silver (anchor fallback ignores unknown tier)
+PASS  TIER_META.platinum.color === "#10b981"
+PASS  TIER_META.gold.color     === "#f59e0b"
+PASS  TIER_META.silver.color   === "#64748b"
+PASS  TIER_META.bronze.color   === "#c2410c"
+PASS  TIER_META.platinum.marker === "◆"
+PASS  TIER_META.gold.marker === "●"
+
+── buildSellerEstimateView gate cases ──
+PASS  buyer plan (planType=buyer, sellerEstimate=null) → view is null (clean gate, no throw)
+PASS  seller plan with no sellerEstimate → view is null (gate enforced)
+PASS  planData=null → view is null
+
+================================================================
+OVERALL: PASS  (144/144 passed, 0 failed)
+================================================================

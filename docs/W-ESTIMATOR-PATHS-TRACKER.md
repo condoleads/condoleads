@@ -1455,3 +1455,146 @@ Live verifier (scripts/verify-charlie-followup-phase2.js, 48/48 PASS against ori
 Two NAMED decision items, NOT auto-built (operator's call):
 - **(i)** `subjectAddress` is captured into `plan_data.sellerEstimate.subjectAddress` (verified: `"606 Aspen rd, Pickering"` on lead 63b48f13) but is NOT rendered in `buildRichPlanEmail`'s body — the email header shows `geoName` + `userName` + brand only. This is the pre-existing email shape (not introduced or regressed by Phase 2). Operator decision whether to add the street address to the email body.
 - **(ii)** AMBER React DOM is proven correct by **deterministic branch resolution** (the shipped 3-way logic + the static notice JSX in CharlieLeadEstimate, both content-asserted: "No estimate captured" text present, "3d9ac08" cutoff cited, zero `estimate.*` / `tiers.*` / `taxMatch.*` interpolation — no fabrication). Live walliam.ca DOM eyeball pending (no server-render harness added; operator can verify by opening one of the 6 AMBER leads on the dashboard).
+
+---
+
+## W-CHARLIE-CONVERGENCE — OPENED + CV-0 SHIPPED (2026-06-14)
+
+Workstream goal: end the section-level inconsistency mapped in
+recon/W-CHARLIE-CONVERGENCE.txt — the dashboard, in-chat panel, and plan
+email each render a different subset of the same canonical seller data.
+Bring all three to a single shared shape so they cannot diverge again.
+
+### Deploy state (W-CHARLIE-CONVERGENCE — DEPLOY VERIFY, 2026-06-14)
+
+origin/main confirmed at `3aa0449` (HEAD == origin/main, fast-forward of feature `a1f92cf` + tracker `3aa0449`). Live walliam.ca production deployment `dpl_ACR2UJX8xUuXrLo6SpkSYbCfHBXY` created 2026-06-13T19:09:47Z, ~19s after the `3aa0449` push — strong inference: production is on `3aa0449`. Vercel CLI v51.8.0 inspect does NOT expose `meta.githubCommitSha`; live SHA confirmation requires the dashboard. Flagged claimed-unverified.
+
+### Locked canonical target set (the convergence spec)
+
+All three renderers will render the SAME canonical sections from the same lead row, gated by honest `present` flags (no empty shells):
+
+  · Plan card grid (Profile + Market Snapshot)
+  · Market Intelligence (analytics roll-up)
+  · Price by Home Type (subtype_breakdown)
+  · Offer Intelligence (Offer At / Avg Concession / Decide In)
+  · Best Time (seasonal best/worst months)
+  · Plan summary text
+  · Seller Profile table
+  · Property Estimate price card
+  · 4-row tier rail (P/G/S/B + anchor)
+  · Comparable Sold + per-tile tier chips
+  · Tax-Matched + per-tile tier chips + tax-matched estimate pill
+  · Competing For Sale (NO chip — deliberate; not a scored/matched comp)
+  · Pricing Strategy & Risk (concession card + DOM-risk table)
+  · AI Disclaimer
+
+### 3-phase plan
+
+  · CV-0 (THIS COMMIT) — Shared foundation. New files only: data-shaping
+    helper + tier-chip helper + fixture-driven smoke. NO renderer touched.
+  · CV-1 — Lead-page convergence. Migrate CharlieLeadEstimate (white-card)
+    to consume the canonical view + tier-chip helper. Add the missing
+    sections (plan card grid, Seller Profile, Best Time, Pricing Strategy
+    & Risk, etc.) gated by `present` flags. Estimator-lead WorkingDocView
+    branch UNCHANGED.
+  · CV-2 — Email convergence. Migrate buildRichPlanEmail to consume the
+    canonical view + tier-chip helper. Replace email's inline
+    TIER_COLORS_EMAIL / HOME_LABELS_EMAIL / CONDO_LABELS_EMAIL duplication
+    with import from lib/charlie/tier-chip.ts.
+  · CV-3 — Convergence harness. One test asserts all three surfaces render
+    the same canonical set against the same fixture; renderer-specific
+    style/copy is allowed to differ, structure is not.
+
+### Decision log
+
+  · Charlie in-chat "buyer-gating" (ResultsPanel.tsx:107 hides
+    BuyerOfferBlock when a sellerEstimate block exists) — LEFT AS-IS.
+    Pre-existing design, byte-identical 6f685be→HEAD per
+    W-CHARLIE-REGRESSION recon. Un-gating it would be a new feature
+    (showing the pricing graph + Price-by-Bedroom inside a seller flow),
+    not a convergence fix. Operator can scope separately.
+  · Lead 63b48f13 is the locked CV fixture — only post-3d9ac08 seller lead
+    with sellerEstimate persisted at recon time. 606 Aspen rd Pickering,
+    Detached home, bestGeoTier=gold, taxMatch.count=12 firing,
+    taxMatch.bestGeoTier=silver, 5 geo comps + 10 tax comps + 2 competing.
+
+### CV-0 ship (this commit)
+
+NEW FILES ONLY. No renderer touched. No source-code edit to plan-email,
+SellerEstimateBlock, ComparableCard, ResultsPanel, CharlieLeadEstimate,
+LeadDetailClient, page.tsx, charlie-plan-email-html.
+
+  · lib/charlie/tier-chip.ts (NEW, 92 lines)
+    Single source for tier color (#10b981 / #f59e0b / #64748b / #c2410c)
+    + label + marker + per-path sub. Cites the existing duplication
+    (ComparableCard.tsx:54-58, SellerEstimateBlock.tsx:75-79, CharlieLead-
+    Estimate.tsx:85-89, charlie-plan-email-html.ts) — values byte-
+    identical. Exports `TIER_META`, `TIER_ORDER`, `asTierName`,
+    `tierChipFor(sourceTier, anchorTier, path)` (anchor-fallback mirror
+    of EstimatorResults.tsx:616-617). Pure JS — no React import, no
+    bundler complications, both React surfaces AND email-HTML builder can
+    import. CV-1/CV-2 will migrate the 4 duplications.
+  · lib/charlie/seller-estimate-view.ts (NEW, 432 lines)
+    Exports `SellerEstimateView` type + `buildSellerEstimateView(planData)`
+    pure function. Reads plan_data.{plan, analytics, sellerEstimate} and
+    produces ONE normalized shape covering every canonical section above.
+    NORMALIZES the three comp-row shapes (geo camelCase, tax camelCase +
+    sourceTier, competing snake_case) into ONE `CanonicalCompRow`:
+    `{ address, beds, baths, sqft, dom, price, priceKind, listingKey,
+       sourceTier, mediaUrl, id }`. Missing fields → explicit null (Rule
+    Zero — no fabricated values). Returns null for buyer plans / empty
+    plans (clean gate, no throw). Carries `present` flags so renderers
+    show/hide honestly. Pure: no React, no DOM, no string-HTML.
+    Deterministic.
+  · app/api/charlie/test-seller-estimate-view-probe/route.ts (NEW)
+    Test-only probe (Next.js forbids non-handler exports from route files,
+    so the smoke can't import the TS helper directly without ts-node).
+    POST { op:view, leadId|planData } / { op:tierChip, … } /
+    { op:tierMeta } / { op:asTierName, … }. No mutation, no auth gates,
+    no send.
+  · scripts/smoke-seller-estimate-view.js (NEW)
+    Fixture-driven smoke. SAVEPOINT-isolated pg read of 63b48f13 plan_data
+    → POSTs to probe → asserts EVERY canonical section against the live
+    source. 144 named PASS/FAIL items.
+
+### CV-0 RECON output (STEP 1 — source field shapes captured from 63b48f13)
+
+  · plan_data.plan.{goal,type,geoName,summary,bedrooms,timeline,
+        budgetMax,budgetMin,planReady,propertyType,estimatedValueMax,
+        estimatedValueMin}
+  · plan_data.analytics (28 fields including insight_seasonal {
+        best_months,sample_size,monthly_data,worst_months,current_month,
+        annual_avg_dom,annual_avg_stl,current_month_rank } +
+        subtype_breakdown {per-subtype {count,avg_dom,median_price,
+        sale_to_list}} + price_trend_monthly[24]{count,month,value})
+  · plan_data.sellerEstimate.{path,intent,estimate{},geoLevel,
+        comparables[5],buildingName,subjectAddress,competingListings[2]}
+  · plan_data.sellerEstimate.estimate.{tiers{P/G/S/B},taxMatch{count,
+        tiers,matchTier,priceRange,bestGeoTier,comparables[10],
+        estimatedPrice},matchTier,showPrice,confidence,priceRange,
+        bestGeoTier,comparables[5],marketSpeed{status,message,
+        avgDaysOnMarket},estimatedPrice,adjustmentSummary,
+        confidenceMessage,currentMarketPrice}
+  · GEO comp row (camelCase): closePrice/listPrice/closeDate/listingKey/
+        mediaUrl/unparsedAddress/livingAreaRange/daysOnMarket/etc.; NO
+        sourceTier on any of the 5
+  · TAX comp row (camelCase + sourceTier='silver' on all 10)
+  · COMPETING row (snake_case): list_price/listing_key/bedrooms_total/
+        bathrooms_total_integer/unparsed_address/living_area_range/
+        days_on_market/etc.; NO sourceTier
+
+### Build + test
+
+  · npx tsc --noEmit: exit 0
+  · scripts/smoke-seller-estimate-view.js: 144/144 PASS
+    OUTPUT: scripts-output/smoke-seller-estimate-view.txt
+
+### Hygiene
+
+  · No renderer touched. ResultsPanel/SellerEstimateBlock/ComparableCard/
+    CharlieLeadEstimate/LeadDetailClient/page.tsx/charlie-plan-email-html
+    byte-unchanged.
+  · S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings):
+    zero diff.
+  · Tracker write atomic with this commit (operator's standing pattern).
+  · HOLD push pending operator approval.
