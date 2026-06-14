@@ -7,35 +7,66 @@ import { createClient } from '@/lib/supabase/server'
 export async function POST(req: NextRequest) {
   const supabase = createClient()
   const body = await req.json()
-  const { propertyCategory, streetNumber, streetName, city, municipalityId: resolvedMunicipalityId } = body
+  const {
+    propertyCategory, streetNumber, streetName, city,
+    municipalityId: resolvedMunicipalityId,
+    // W-CHARLIE-FORM-UX-FIX (2026-06-14): when the SellerForm condo
+    // path picks a building from the AreaSearch typeahead, the
+    // resolved buildingId comes through here and short-circuits the
+    // canonical-address fuzzy resolve below. Legacy callers (no
+    // buildingId) continue to hit the fuzzy path — no regression.
+    buildingId: providedBuildingId,
+  } = body
 
   try {
     if (propertyCategory === 'condo') {
-      // Try street number + first word of street name
-      const streetFirst = streetName.split(' ')[0]
-      const { data: buildings } = await supabase
-        .from('buildings')
-        .select('id, building_name, canonical_address, community_id, cover_photo_url, slug')
-        .ilike('canonical_address', `%${streetNumber}%${streetFirst}%`)
-        .limit(5)
+      let building: any = null
 
-      let building = buildings?.[0] || null
-
-      // Fallback: street name only + city district
-      if (!building) {
-        const { data: buildings2 } = await supabase
+      // ── W-CHARLIE-FORM-UX-FIX (2026-06-14) — DIRECT buildingId lookup ──
+      // Skip the fuzzy ILIKE round-trip when the form already supplies a
+      // resolved building (typeahead picked from /api/search). Falls
+      // through to the fuzzy path below if the provided id doesn't
+      // resolve, so a stale/invalid id can't break the flow.
+      if (providedBuildingId) {
+        const { data: byId } = await supabase
           .from('buildings')
           .select('id, building_name, canonical_address, community_id, cover_photo_url, slug')
-          .ilike('street_name', `%${streetFirst}%`)
-          .ilike('city_district', `%${city.trim()}%`)
+          .eq('id', providedBuildingId)
+          .maybeSingle()
+        if (byId) building = byId
+      }
+
+      // Legacy / fallback: fuzzy resolve by canonical_address.
+      // streetName is required for this path; legacy SellerForm callers
+      // always supply it. Direct-buildingId callers may not — guard.
+      if (!building && streetName) {
+        const streetFirst = streetName.split(' ')[0]
+        const { data: buildings } = await supabase
+          .from('buildings')
+          .select('id, building_name, canonical_address, community_id, cover_photo_url, slug')
+          .ilike('canonical_address', `%${streetNumber}%${streetFirst}%`)
           .limit(5)
-        building = buildings2?.[0] || null
+
+        building = buildings?.[0] || null
+
+        // Fallback: street name only + city district
+        if (!building) {
+          const { data: buildings2 } = await supabase
+            .from('buildings')
+            .select('id, building_name, canonical_address, community_id, cover_photo_url, slug')
+            .ilike('street_name', `%${streetFirst}%`)
+            .ilike('city_district', `%${city.trim()}%`)
+            .limit(5)
+          building = buildings2?.[0] || null
+        }
       }
 
       if (!building) {
         return NextResponse.json({
           success: false,
-          error: `No building found at ${streetNumber} ${streetName}, ${city}. Please check the address.`,
+          error: providedBuildingId
+            ? `Building id ${providedBuildingId} not found. Try picking from the dropdown again.`
+            : `No building found at ${streetNumber} ${streetName}, ${city}. Please check the address.`,
         })
       }
 

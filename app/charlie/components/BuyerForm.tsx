@@ -104,10 +104,24 @@ function ComboField({ label, value, onChange, options, placeholder }: {
   )
 }
 
-function AreaSearch({ value, onChange, onSelect }: {
+// W-CHARLIE-FORM-UX-FIX (2026-06-14): exported so SellerForm condo
+// path can reuse the SAME typeahead component (filtered to buildings).
+// Existing BuyerForm callsite at L266+ is unchanged — defaults preserve
+// pre-fix behavior. New optional props:
+//   placeholder?  — override the input placeholder string
+//   filterTypes?  — when set, only results whose type is in the array
+//                   render (e.g. ['building'] for SellerForm condo).
+//                   When unset, all groups render (BuyerForm behavior).
+// onSelect result shape extended with community_id (carried for building
+// rows by /api/search; null/absent for non-building rows). BuyerForm's
+// existing handler destructures { name, type, id, slug } only; the new
+// field is additive and ignored there.
+export function AreaSearch({ value, onChange, onSelect, placeholder, filterTypes }: {
   value: string
   onChange: (v: string) => void
-  onSelect: (result: { name: string; type: string; id: string; slug: string }) => void
+  onSelect: (result: { name: string; type: string; id: string; slug: string; community_id?: string | null }) => void
+  placeholder?: string
+  filterTypes?: string[]
 }) {
   const [groups, setGroups] = useState<{ label: string; results: any[] }[]>([])
   const [open, setOpen] = useState(false)
@@ -136,6 +150,14 @@ function AreaSearch({ value, onChange, onSelect }: {
     listing: '🏠',
   }
 
+  // Apply optional type filter — preserves BuyerForm behavior when unset
+  // (filtered === groups), narrows to building rows for SellerForm condo.
+  const filteredGroups = filterTypes && filterTypes.length > 0
+    ? groups
+        .map(g => ({ label: g.label, results: g.results.filter((r: any) => filterTypes.includes(r.type)) }))
+        .filter(g => g.results.length > 0)
+    : groups
+
   return (
     <div style={{ position: 'relative' as const }}>
       <input
@@ -143,7 +165,7 @@ function AreaSearch({ value, onChange, onSelect }: {
         onChange={e => { onChange(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="e.g. Whitby, Waterfront Communities, X2 Condos..."
+        placeholder={placeholder ?? 'e.g. Whitby, Waterfront Communities, X2 Condos...'}
         style={inputStyle}
       />
       {open && value.trim().length >= 2 && (
@@ -153,14 +175,14 @@ function AreaSearch({ value, onChange, onSelect }: {
           borderRadius: 10, zIndex: 999, maxHeight: 280, overflowY: 'auto' as const, marginTop: 4,
         }}>
           {loading && <div style={{ padding: '10px 14px', fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Searching...</div>}
-          {!loading && groups.length === 0 && <div style={{ padding: '10px 14px', fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>No results found</div>}
-          {!loading && groups.map((group, gi) => (
+          {!loading && filteredGroups.length === 0 && <div style={{ padding: '10px 14px', fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>No results found</div>}
+          {!loading && filteredGroups.map((group, gi) => (
             <div key={gi}>
               <div style={{ padding: '6px 14px', fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', background: 'rgba(255,255,255,0.03)' }}>
                 {group.label}
               </div>
               {group.results.map((r, ri) => (
-                <div key={ri} onMouseDown={() => { onSelect({ name: r.name, type: r.type, id: r.id, slug: r.slug }); setOpen(false) }}
+                <div key={ri} onMouseDown={() => { onSelect({ name: r.name, type: r.type, id: r.id, slug: r.slug, community_id: r.community_id ?? null }); setOpen(false) }}
                   style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', gap: 10 }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.07)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}

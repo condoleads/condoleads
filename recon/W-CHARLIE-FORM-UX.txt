@@ -1,0 +1,505 @@
+W-CHARLIE-FORM-UX — RECON (read-only, no edits)
+run: 2026-06-14
+scope: Charlie SellerForm + BuyerForm — required-field UX + condo
+       building search in the location section. NO fix.
+
+═══════════════════════════════════════════════════════════════════════════
+ITEM 1 — REQUIRED-FIELD UX (current state)
+═══════════════════════════════════════════════════════════════════════════
+
+  Files:
+    app/charlie/components/SellerForm.tsx  (444 lines)
+    app/charlie/components/BuyerForm.tsx   (368 lines)
+
+  1.1 — How "required" is currently signaled
+
+    SellerForm has a local `lbl(text, required, hint?)` helper at
+    SellerForm.tsx:250-257:
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em',
+                      color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>
+          {text}{required && <span style={{ color: '#ef4444', marginLeft: 4 }}>*</span>}
+        </div>
+        {hint && <div style={{ fontSize: 11, color: 'rgba(245,158,11,0.8)',
+                              marginTop: 2 }}>⚠ {hint}</div>}
+      </div>
+
+    The required signal is a RED ASTERISK `*` (#ef4444) appended to the
+    label. Hints render below in amber as "⚠ {hint}". The
+    `ComboField` component has the same pattern + an opposite
+    "⚠ Improves accuracy" footnote for OPTIONAL fields
+    (SellerForm.tsx:145-146).
+
+    BuyerForm has a SMALLER `lbl(text, required)` helper at
+    BuyerForm.tsx:243-247 — same red-asterisk pattern, NO hint param,
+    NO "improves accuracy" tag, NO amber hint line.
+
+  1.2 — SellerForm Step 1 fields (intent + category)
+
+    SellerForm.tsx:281-309. Two chip-button fields, both required:
+      L285: "Are you selling or leasing?"  REQUIRED  *
+            chip("For Sale" | "For Lease")
+      L292: "Property Type"                REQUIRED  *
+            chip("🏠 House / Townhouse" | "🏢 Condo")
+
+  1.3 — SellerForm Step 2 fields (property details — render order)
+
+    SellerForm.tsx:313-431. Listed in render order with required flag:
+
+      L318  "Property Address"             REQUIRED  *
+            inp(streetNumber, "No.")    + inp(streetName, "Street Name")
+            + CitySearch (writes municipalityId via onSelect)
+      L333  "Property Subtype" (home only) REQUIRED  *
+            HOME_SUBTYPES chips: Detached/Semi/Townhouse/Link/Duplex/Triplex
+      L343  "Bedrooms"                     REQUIRED  *
+            chips 1/2/3/4/5+
+      L349  "Bathrooms"                    REQUIRED  *
+            chips 1/2/3/4+
+      L359  "Square Footage Range"         REQUIRED  *  ComboField(required=true)
+            SQFT_RANGES_HOMES or SQFT_RANGES_CONDOS
+      L369  "Approximate Age"              OPTIONAL  ⚠ "Improves accuracy"
+            AGE_OPTIONS combo
+      L381  "Parking Spaces" (condo only)  OPTIONAL  ⚠
+            chips 0/1/2
+      L387  "Locker" (condo only)          OPTIONAL  ⚠
+            chips None/Owned/Exclusive
+      L399  "Lot Frontage (ft)" (home only) OPTIONAL  ⚠ "Affects accuracy —
+                                            major value factor for homes"
+            inp(frontage, "e.g. 40")
+      L408  "Annual Property Tax ($)"      CONDITIONAL:
+            sale  → REQUIRED  *  ⚠ "Affects accuracy — matches you
+                                    against same-tax-band comparables"
+            lease → OPTIONAL  ⚠ "Optional for lease — most lease
+                                  records have no tax"
+            inp(propertyTax, "e.g. 4500", "number")
+      L416  "Timeline"                     REQUIRED  *
+            chips ASAP/1-3 mo/3-6 mo/6-12 mo/Not sure yet
+      L424  "Your Goal"                    REQUIRED  *
+            chips Top dollar/Fast sale/Balanced
+
+  1.4 — SellerForm submit validation
+
+    SellerForm.tsx:269-278:
+      canProceed = streetNumber && streetName && city && municipalityId
+      canSubmit  = canProceed
+                && bedrooms && bathrooms
+                && (propertyCategory === 'home' ? !!propertySubtype : true)
+                && !!livingAreaRange
+                && (intent === 'sale' ? !!propertyTax : true)
+
+    SellerForm.tsx:437-441 — submit button DISABLED when !canSubmit:
+      <button onClick={() => canSubmit && onSubmit(form)} disabled={!canSubmit}
+              style={{ ..., background: canSubmit ? '#10b981 gradient' : 'gray',
+                       color: canSubmit ? '#fff' : 'rgba(255,255,255,0.3)' }}>
+        Get My {sale|Lease} Estimate →
+      </button>
+
+    Behavior: the form CANNOT submit with missing required fields. The
+    button visually grays out. No inline error message, no scrolling to
+    the missing field, no specific guidance about WHICH required field
+    is empty.
+
+  1.5 — Property Tax helper text (verbatim)
+
+    SellerForm.tsx:410-411:
+      sale:  lbl('Annual Property Tax ($)', true,
+                 'Affects accuracy — matches you against same-tax-band comparables')
+      lease: lbl('Annual Property Tax ($)', false,
+                 'Optional for lease — most lease records have no tax')
+
+    SellerForm.tsx:412:
+      inp('propertyTax', 'e.g. 4500', 'number')
+
+    Label:       "Annual Property Tax ($)"
+    Required:    YES for sale, NO for lease
+    Hint:        sale  → "Affects accuracy — matches you against same-tax-
+                          band comparables"  (amber, prefixed with ⚠)
+                 lease → "Optional for lease — most lease records have no tax"
+    Placeholder: "e.g. 4500"
+    Type:        number
+
+    The hint does NOT explain WHERE to find the value (e.g. "see your
+    tax bill or MPAC notice"), only its purpose. No suggested-range
+    guidance ("typical Pickering Detached: $5k–$10k") and no explicit
+    "leave blank if unknown" UX — the form just refuses submit if blank.
+
+  1.6 — BuyerForm fields (render order)
+
+    BuyerForm.tsx:251-355. Listed in render order:
+
+      L256  "Are you buying or leasing?"   REQUIRED  *
+            chip("Buying" | "Leasing")
+      L265  "Where are you looking?"       REQUIRED  *
+            AreaSearch (writes geoType/geoId/geoSlug via onSelect)
+            ALSO: inline amber warning at L274 — "⚠ Please select a
+                  location from the dropdown" — fires when user TYPED
+                  but did not select a result. This is the ONLY
+                  inline-validation hint in either form.
+      L278  "Budget Range"                 OPTIONAL  (no asterisk)
+            BudgetSelect min + max
+      L288  "Property Type"                OPTIONAL
+            chip Any / Condo / House
+      L299  "Property Subtype" (condo/house, NOT 'any')  OPTIONAL
+            chips of CONDO_SUBTYPES or HOME_SUBTYPES
+      L312  "Square Footage" (condo/house)  OPTIONAL
+            ComboField
+      L326  "Approximate Age" (condo/house) OPTIONAL
+            ComboField
+      L339  "Bedrooms"                     OPTIONAL
+            chips Any/Studio/1/2/3/4+
+      L348  "Timeline"                     OPTIONAL
+            chips ASAP/1-3 mo/3-6 mo/6-12 mo/Not sure yet
+
+    BuyerForm canSubmit (BuyerForm.tsx:231):
+      canSubmit = form.area.trim() && form.geoId
+
+    Buyer ONLY requires the location (area + geoId) — everything else
+    is optional. Submit button gating mirrors seller (disabled until
+    canSubmit, gray-on-fail).
+
+  1.7 — Required-field UX summary (the operator's question)
+
+    Existing UX already in place:
+      ✓ Required fields ARE marked with red-asterisk `*`
+      ✓ Optional fields with accuracy-impact get amber "⚠ Improves
+        accuracy" tags (SellerForm only — BuyerForm doesn't)
+      ✓ Some required fields get amber hints below the label
+        (SellerForm only — BuyerForm doesn't)
+      ✓ Submit button disabled-state when required missing (visual
+        gray)
+      ✓ BuyerForm has ONE inline validation hint ("⚠ Please select a
+        location from the dropdown") — only one of its kind across
+        both forms
+
+    NOT in place:
+      ✗ Where-to-find guidance for non-obvious required fields
+        (e.g. property tax → "see your tax bill / MPAC notice")
+      ✗ Suggested-range / example-value guidance specific to the
+        subject's geo (e.g. "Pickering Detached typical: $5k–$10k")
+      ✗ Inline error message on submit attempt — the disabled button
+        is silent; user is not told WHICH field is missing
+      ✗ Auto-scroll-to-first-missing-required behavior on submit
+      ✗ Required-order-first reorganization — the current order is
+        logical (address → subtype → beds → baths → sqft → age →
+        parking → locker → frontage → tax → timeline → goal), but
+        OPTIONAL fields (age, parking, locker, frontage) currently
+        sit BETWEEN required ones (sqft, tax). Surfacing all
+        required first is a possible reorg.
+
+═══════════════════════════════════════════════════════════════════════════
+ITEM 2 — CONDO LOCATION / BUILDING SEARCH (current state)
+═══════════════════════════════════════════════════════════════════════════
+
+  2.1 — Condo location inputs in SellerForm TODAY
+
+    SellerForm condo flow uses the IDENTICAL location inputs as the
+    home flow (no condo-specific branch). At SellerForm.tsx:316-328:
+
+      streetNumber  inp("No.")                — free-text input
+      streetName    inp("Street Name")        — free-text input
+      city          CitySearch (line 323-327) — typeahead against
+                                                /api/charlie/municipalities
+                                                returns [{id, name, displayName}]
+                                                writes municipalityId on select
+
+    The user is expected to KNOW their building's street address.
+    There is NO building-name search and NO building autocomplete
+    on SellerForm for condos. The address is resolved server-side
+    in the seller-estimate route at L13-37: street_number + first
+    word of street_name → `buildings.canonical_address ILIKE` fuzzy
+    match; falls back to street_name + city_district ILIKE; returns
+    first match or "No building found" error.
+
+    Result: a user who knows their CONDO BUILDING NAME but not the
+    canonical street address (or types it imprecisely) gets a
+    "No building found" hard-fail from the API. There is no
+    forgiving search-by-name path on the seller form.
+
+  2.2 — EXISTING building-search capability (reusable, already shipped)
+
+    YES — Charlie already has working building search wired into the
+    BuyerForm. The component + endpoint are production-grade and can
+    be reused as-is.
+
+    Component: AreaSearch in app/charlie/components/BuyerForm.tsx:107-181
+      Typeahead input that calls /api/search?q=… and renders grouped
+      results: "Areas & Communities" + "Buildings" + "Active Listings"
+      etc. Each result carries { type, id, name, slug, subtitle, url }.
+      type can be: 'municipality' | 'community' | 'neighbourhood' |
+                   'building' | 'listing'
+      Icon map: TYPE_ICONS = { municipality:'🏙', community:'🏘',
+                               neighbourhood:'📍', building:'🏢',
+                               listing:'🏠' } (BuyerForm.tsx:131-137)
+
+    Endpoint: app/api/search/route.ts
+      GET /api/search?q={query}
+      Returns { groups: [{ label, results: SearchResult[] }] }.
+      SearchResult shape (app/api/search/route.ts:18-25):
+        { type, id, name, slug, subtitle, url }
+
+      Search intents (route.ts:36-50 detectIntent):
+        - number_only ("101"):  street-number → buildings_with_listing_counts
+        - address ("101 King"): number+street → buildings + units
+        - geo_prefix ("miss"):  ≤5 chars no digits → fetchGeo prefix
+        - name ("aura"):        geo + building name + listings (≥7 chars)
+
+      NAME mode (route.ts:295-324) is the building-by-name search the
+      operator wants:
+        buildings_with_listing_counts
+          .select('id, building_name, slug, street_number, street_name,
+                   active_listings_count')
+          .ilike('building_name', `%${intent.text}%`)
+          .order('active_listings_count', { ascending: false })
+          .limit(5)
+
+      ADDRESS mode (route.ts:158-282, condensed) is the by-street-number
+      search:
+        buildings_with_listing_counts
+          .ilike('street_name', streetPattern)
+          AND street_number matched separately
+        Falls back to street-name-only when number+street finds nothing.
+
+    Verdict: NAME-search AND STREET-search are both already implemented
+    against the SAME `buildings_with_listing_counts` view, surfaced
+    via a SINGLE endpoint, consumed by an ALREADY-SHIPPED autocomplete
+    component (AreaSearch) that the BuyerForm uses. Reuse path is
+    direct.
+
+  2.3 — buildings table searchable fields
+
+    From lib/actions/buildings.ts:8-23 (the most direct buildings
+    SELECT in the codebase) + the seller-estimate API call:
+      id              uuid              PK
+      building_name   text              ← searchable (ilike '%name%')
+      canonical_address text             ← used by seller-estimate route
+                                          (route.ts:19 ilike '%num%street%')
+      street_number   text              ← searchable (number_only intent)
+      street_name     text              ← searchable (address/name modes)
+      city_district   text              ← fallback geo filter
+                                          (seller-estimate route.ts:32)
+      postal_code     text
+      total_units     int
+      total_floors    int
+      year_built      int
+      latitude        float
+      longitude       float
+
+    PLUS from the seller-estimate condo branch (route.ts:18):
+      community_id    uuid              ← geo linkage (used to fetch
+                                          analytics + condo cascade
+                                          Platinum-tier comp pool)
+      cover_photo_url text
+      slug            text
+
+    The `buildings_with_listing_counts` view (used by /api/search)
+    additionally exposes `active_listings_count` (route.ts:62-70).
+
+    Capable of:
+      ✓ Name search    (ilike '%query%' on building_name)
+      ✓ Street search  (street_number + street_name, separately or together)
+      ✓ Geo filter     (community_id, city_district)
+      ✗ Tenant scope   (NOT a column on buildings — see ITEM 3)
+
+  2.4 — How a selected building threads to the seller-estimate matcher
+
+    SellerForm.onSubmit → POST /api/charlie/seller-estimate
+      body: { propertyCategory, streetNumber, streetName, city,
+              municipalityId, ... }
+      route.ts:13-69 (condo branch): server-side resolves
+        `buildings` row by canonical_address ILIKE or street_name +
+        city_district ILIKE → returns { buildingId, communityId, ... }
+      Response shape: { success, path: 'condo', buildingId,
+                        buildingName, buildingSlug, buildingPhoto,
+                        communityId, canonicalAddress, marketAnalytics,
+                        analyticsGeoType, analyticsGeoId }
+
+    CharlieOverlay.tsx onSubmit handler (~L209) sets `resolvedSeller =
+    result` and `sellerFormData = formData`.
+
+    SellerEstimateRunner.tsx:97-138 (condo branch):
+      if (resolvedData.path === 'condo' && resolvedData.buildingId) {
+        const specs: CondoSaleSpecs = {
+          buildingId: resolvedData.buildingId,    ← THIS is the field
+                                                    that drives Platinum
+                                                    same-building matching
+          buildingSlug: resolvedData.buildingSlug,
+          bedrooms, bathrooms, livingAreaRange, parking, hasLocker,
+          communityId, municipalityId,
+          subjectTaxAnnualAmount, subjectTaxYear,
+        }
+        result = await estimateCondoSale(specs, false)
+      }
+
+    The condo matcher's Platinum tier is anchored to buildingId
+    (the same-building tier). If a user selected a building DIRECTLY
+    from autocomplete, the buildingId would be in hand BEFORE the
+    submit — bypassing the address-based fuzzy resolver entirely.
+
+    Where would the selected building_id flow if building search
+    were wired into SellerForm? The cleanest path: BuyerForm-style
+    AreaSearch → on building-typed result, set form.buildingId
+    (NEW field on SellerFormData). Then either:
+      (a) skip the /api/charlie/seller-estimate condo resolve when
+          buildingId is already present — go straight to SellerEstimate
+          Runner with { buildingId, communityId } pre-resolved. This
+          requires the autocomplete result to ALSO carry communityId
+          (currently the SearchResult shape lacks it — route.ts:62-78
+          buildingResult() doesn't include community_id in the response).
+      (b) call /api/charlie/seller-estimate with buildingId override —
+          the route would need a "lookup by buildingId" path
+          (currently it only fuzzy-matches by address).
+
+    NEITHER path is currently wired in. The choice + implementation
+    is the fix's scope.
+
+═══════════════════════════════════════════════════════════════════════════
+ITEM 3 — WIRING / CONSTRAINTS
+═══════════════════════════════════════════════════════════════════════════
+
+  3.1 — Tenant scoping of /api/search
+
+    File: app/api/search/route.ts
+    Tenant filter on the buildings/communities/listings queries: NONE.
+
+    Reading the entire file: the route uses a service-role Supabase
+    client and queries buildings_with_listing_counts, communities,
+    municipalities, neighbourhoods, mls_listings WITHOUT a tenant_id
+    filter. This is INTENTIONAL for this endpoint — `/api/search` is
+    the GLOBAL public search used by tenants' branded sites (the
+    landing autocomplete on walliam.ca, aily.ca, etc.). All tenants
+    see the same building catalog because the buildings table itself
+    is tenant-agnostic (the GTA building registry).
+
+    Middleware behavior (middleware.ts:108-115):
+      For all /api routes the middleware injects `x-tenant-id` header
+      based on the request host. /api/search does NOT consume this
+      header today — confirmed by grep ("tenant" / "x-tenant" in
+      route.ts → 0 matches).
+
+    Implication for the fix:
+      Reusing /api/search for SellerForm building search is
+      TENANT-CORRECT by construction — the user types a building
+      name on walliam.ca's Charlie panel, the global registry returns
+      matches, and the user's choice writes building_id into form
+      state. The subsequent seller-estimate API call IS tenant-aware
+      (via x-tenant-id header injection), so the matcher's tenant
+      scoping happens DOWNSTREAM of the search, exactly as it does
+      for the home flow today.
+
+    There is no current need to add tenant_id filtering to /api/search
+    for this fix — buildings are not tenant-scoped data.
+
+  3.2 — Geo scoping options for the building search
+
+    If the operator wants the building search SCOPED by geo (e.g.
+    "only show buildings in Pickering"), the search would need to
+    either:
+      (a) Accept a geo filter param (community_id or municipality_id)
+          and filter the buildings_with_listing_counts query by it
+          (existing column on the buildings table: community_id).
+          Endpoint change: add `?geo_id=…&geo_type=community` query
+          string + WHERE clause.
+      (b) Stay global (status quo) and rely on the user to type
+          enough of the building name to disambiguate.
+
+    Status quo is what BuyerForm uses (global search; user-typed
+    disambiguation). Wiring (a) into a new SellerForm condo search
+    would need:
+      - the seller form's CitySearch (which already returns
+        municipalityId) to act as an UPSTREAM geo filter on the
+        building autocomplete
+      - /api/search to accept the geo filter param
+
+    The BuyerForm's geo answer can be a BUILDING directly — the
+    AreaSearch is the FIRST and ONLY location input. Seller's
+    different ordering (city → street → building?) is a design
+    decision; both shapes are supportable from the existing
+    endpoint with minor or no changes.
+
+  3.3 — Form-level location-mandatory enforcement
+
+    SellerForm: street_number AND street_name AND city AND
+    municipalityId are ALL required (line 269 — canProceed gate).
+    The form will not submit until all four are filled, AND the city
+    must be selected from the dropdown (CitySearch onSelect writes
+    municipalityId; typing a city without selecting leaves
+    municipalityId empty → canProceed false → button disabled).
+
+    BuyerForm: form.area AND form.geoId required (line 231 —
+    canSubmit). Same pattern: typing without selecting leaves
+    geoId empty → button disabled. BuyerForm.tsx:274 surfaces an
+    inline amber warning when this state is detected:
+      {form.area && !form.geoId &&
+        <div>⚠ Please select a location from the dropdown</div>}
+    This is the only inline-validation hint in the codebase; could
+    be cloned to seller for the same "typed but not selected" case.
+
+    For a CONDO building-as-location pattern, the equivalent gate
+    would be: form.buildingId required (analogous to geoId). The
+    canSubmit logic would need to know whether the user picked a
+    building vs typed a street.
+
+═══════════════════════════════════════════════════════════════════════════
+SUMMARY — what exists vs what the fix would add
+═══════════════════════════════════════════════════════════════════════════
+
+  EXISTS (reusable, no changes needed):
+    - Red-asterisk required marker (lbl helper, SellerForm + BuyerForm)
+    - Amber "⚠ Improves accuracy" tag for SellerForm optional fields
+    - Amber hint line below labels (SellerForm only)
+    - canSubmit gate + disabled button visual
+    - One inline validation hint ("⚠ Please select a location from
+      the dropdown") on BuyerForm location
+    - Full building search backend (/api/search NAME + ADDRESS modes)
+    - Buildings table fields covering name + street + community
+    - Working autocomplete component (AreaSearch in BuyerForm.tsx)
+      that consumes /api/search and surfaces buildings as a result
+      group with the 🏢 icon
+    - Seller-estimate matcher already accepts buildingId via
+      CondoSaleSpecs (SellerEstimateRunner.tsx:122-138)
+
+  ABSENT (the fix's scope):
+    - Where-to-find guidance for property tax (e.g. "see your tax
+      bill / MPAC notice")
+    - Inline-validation hints beyond the one buyer-location case
+      (no per-field "missing required" messages on submit attempt)
+    - Building-search integration on SellerForm condo branch — the
+      backend and component exist; only the wiring into SellerForm
+      condo path is missing
+    - A buildingId field on SellerFormData (the resolver currently
+      returns it, but the form itself doesn't carry it as a
+      pre-resolved value; the form passes ADDRESS strings and lets
+      the route fuzzy-match)
+    - A "lookup by building_id" path on /api/charlie/seller-estimate
+      (currently only does address fuzzy match in the condo branch)
+    - Required-fields-first reordering (optional fields are
+      interleaved with required in current SellerForm render order)
+
+═══════════════════════════════════════════════════════════════════════════
+UNVERIFIABLE / FLAGGED
+═══════════════════════════════════════════════════════════════════════════
+
+  - The buildings_with_listing_counts VIEW definition is not in
+    repo (it's a DB-level view). Its column set is inferred from
+    the /api/search SELECT statements (id, building_name, slug,
+    street_number, street_name, active_listings_count). community_id
+    is on the underlying `buildings` table per the seller-estimate
+    route's SELECT, but may or may not be exposed by the view.
+    Confirming the view's exact projection (especially community_id
+    + cover_photo_url) would harden the fix design.
+
+  - The exact UX flow the operator wants (free-text building name
+    typeahead first, then auto-fill street; OR street first with
+    optional building disambiguation; OR a sibling "I know my
+    building name" toggle) is not stated. The recon establishes
+    that any of these flows is supportable with the existing
+    endpoint + component; the design choice is the operator's.
+
+  - Whether the operator wants the propertyTax hint TEXT itself
+    expanded (e.g. add "see your tax bill or MPAC notice — leave
+    blank if unknown") or wants additional fail-soft logic (e.g.
+    allow submit without tax + render the tax-match empty-state
+    pill) is not stated. Empty-state pill is already in place
+    (W-CHARLIE-FIX GAP 2 ; charlie-plan-email-html.ts +
+    SellerEstimateBlock.tsx). Changing tax to optional would
+    require flipping the canSubmit gate at SellerForm.tsx:278.

@@ -1,0 +1,58 @@
+W-CHARLIE-FORM-UX-FIX — verify
+run: 2026-06-14T18:27:17.986Z
+base: http://localhost:3003
+
+────────────────────────────────────────────────────────────────────────────
+PART A — API surface
+────────────────────────────────────────────────────────────────────────────
+A1: /api/search?q=x2 condos  groups=Buildings
+PASS  A1 — Buildings group present in /api/search  → count=1
+PASS  A1 — first building carries community_id  → building=X2 Condos community_id=a779120f-855d-410a-974f-795506b102be
+PASS  A2 — condo POST with buildingId returns success  → {"success":true,"buildingId":"2bcd2f02-37e1-4083-9154-c589da99a459"}
+PASS  A2 — condo POST with buildingId returns the picked building.id  → expected=2bcd2f02-37e1-4083-9154-c589da99a459 got=2bcd2f02-37e1-4083-9154-c589da99a459
+PASS  A2 — condo POST returns communityId  → communityId=a779120f-855d-410a-974f-795506b102be
+PASS  A3 — condo legacy address-fuzzy fallback returns a valid shape (success+building OR error)  → {"success":true,"path":"condo","buildingId":"5dc2195c-5790-44d9-be01-ef0e8e9ec2e7","buildingName":"1371 King","buildingSlug":"1371-king-street-w-toronto-w01","buildingPhoto":"https://trreb-image.ampre
+PASS  A4 — home POST succeeds (no regression)  → {"success":true,"path":"home","municipalityId":"dc096c48-42b5-4dde-b20c-3b2b7c7b3757"}
+PASS  A4 — home POST returns path:home
+────────────────────────────────────────────────────────────────────────────
+PART B — Playwright real-flow
+────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────
+B2 — submit with missing required → inline errors fire
+────────────────────────────────────────────────────────────────────────────
+PASS  B2 — missing-required banner renders after click on disabled-look submit  → banner count=1
+PASS  B2 — "Street number required" inline message renders
+PASS  B2 — "Square footage range required" inline message renders
+PASS  B2 — "Annual property tax required" inline message renders
+PASS  B2 — up-front "Fields marked * are required" signal renders
+PASS  B2 — expanded propertyTax helper text ("Find it on your property tax bill or MPAC")
+PASS  B2 — optional accuracy-boosters grouped under a divider
+
+────────────────────────────────────────────────────────────────────────────
+B1 — HOME flow at propertyTax=8000 (no regression)
+────────────────────────────────────────────────────────────────────────────
+PASS  B1 — HOME flow POSTs /api/charlie/seller-estimate
+PASS  B1 — HOME payload has propertyCategory=home  → {"propertyCategory":"home"}
+PASS  B1 — HOME payload has streetNumber=606
+PASS  B1 — HOME payload has streetName="Aspen rd"
+PASS  B1 — HOME payload buildingId is empty/absent (legacy shape preserved)  → buildingId=
+
+────────────────────────────────────────────────────────────────────────────
+B3 — CONDO flow with AreaSearch building typeahead
+────────────────────────────────────────────────────────────────────────────
+PASS  B3 — condo branch shows "Your Building" label (not raw address)
+PASS  B3 — AreaSearch typeahead input visible in condo branch
+B3 — X2 Condos dropdown results visible: 1
+PASS  B3 — CONDO flow POSTs /api/charlie/seller-estimate
+PASS  B3 — CONDO payload propertyCategory=condo
+PASS  B3 — CONDO payload buildingId populated from typeahead pick  → buildingId=2bcd2f02-37e1-4083-9154-c589da99a459
+PASS  B3 — CONDO payload communityId populated from typeahead pick  → communityId=a779120f-855d-410a-974f-795506b102be
+────────────────────────────────────────────────────────────────────────────
+FINAL
+────────────────────────────────────────────────────────────────────────────
+PASS  0 assertion failure(s)
+
+Files:
+  C:\Condoleads\Project\recon\W-CHARLIE-FORM-UX-FIX-VERIFY.txt
+  C:\Condoleads\Project\recon\form-ux-fix-screenshots/

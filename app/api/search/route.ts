@@ -20,6 +20,14 @@ export interface SearchResult {
   slug: string
   subtitle: string
   url: string
+  // W-CHARLIE-FORM-UX-FIX (2026-06-14): community_id is exposed by
+  // buildings_with_listing_counts (STEP 0 view introspect confirmed)
+  // and carried here so Charlie's seller form can thread the picked
+  // building's community_id into CondoSaleSpecs without an extra
+  // /api/charlie/seller-estimate fuzzy-resolve round-trip. Optional
+  // because non-building result types don't carry it (and existing
+  // BuyerForm consumers ignore it).
+  community_id?: string | null
 }
 
 export interface SearchResponse {
@@ -58,6 +66,7 @@ function buildingResult(b: {
   slug: string
   street_number: string | null
   street_name: string | null
+  community_id?: string | null
   active_listings_count?: number
 }): SearchResult {
   const address = [b.street_number, b.street_name].filter(Boolean).join(' ')
@@ -70,6 +79,8 @@ function buildingResult(b: {
     slug: b.slug,
     subtitle: subtitle || 'Condo Building',
     url: `/${b.slug}`,
+    // W-CHARLIE-FORM-UX-FIX (2026-06-14): see SearchResult interface comment.
+    community_id: b.community_id ?? null,
   }
 }
 
@@ -177,7 +188,7 @@ export async function GET(req: NextRequest) {
       // Buildings at this street number — ordered by most active listings
       supabase
         .from('buildings_with_listing_counts')
-        .select('id, building_name, slug, street_number, street_name, active_listings_count')
+        .select('id, building_name, slug, street_number, street_name, community_id, active_listings_count')
         .eq('street_number', intent.number)
         .order('active_listings_count', { ascending: false })
         .limit(6),
@@ -185,7 +196,7 @@ export async function GET(req: NextRequest) {
       // Buildings whose name starts with this number — e.g. "101 Erskine"
       supabase
         .from('buildings_with_listing_counts')
-        .select('id, building_name, slug, street_number, street_name, active_listings_count')
+        .select('id, building_name, slug, street_number, street_name, community_id, active_listings_count')
         .ilike('building_name', `${intent.number}%`)
         .order('active_listings_count', { ascending: false })
         .limit(4),
@@ -239,7 +250,7 @@ export async function GET(req: NextRequest) {
     const [buildingsRes, listingsRes] = await Promise.all([
       supabase
         .from('buildings_with_listing_counts')
-        .select('id, building_name, slug, street_number, street_name, active_listings_count')
+        .select('id, building_name, slug, street_number, street_name, community_id, active_listings_count')
         .eq('street_number', intent.number)
         .ilike('street_name', streetPattern)
         .order('active_listings_count', { ascending: false })
@@ -267,7 +278,7 @@ export async function GET(req: NextRequest) {
     if (!groups.length) {
       const { data: fallback } = await supabase
         .from('buildings_with_listing_counts')
-        .select('id, building_name, slug, street_number, street_name, active_listings_count')
+        .select('id, building_name, slug, street_number, street_name, community_id, active_listings_count')
         .ilike('street_name', streetPattern)
         .order('active_listings_count', { ascending: false })
         .limit(5)
@@ -296,7 +307,7 @@ export async function GET(req: NextRequest) {
 
     supabase
       .from('buildings_with_listing_counts')
-      .select('id, building_name, slug, street_number, street_name, active_listings_count')
+      .select('id, building_name, slug, street_number, street_name, community_id, active_listings_count')
       .ilike('building_name', `%${intent.text}%`)
       .order('active_listings_count', { ascending: false })
       .limit(5),

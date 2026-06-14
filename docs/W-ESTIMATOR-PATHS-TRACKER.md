@@ -2643,3 +2643,261 @@ W-CHARLIE-FINETUNE-FIX — 3 finetune items shipped — 2026-06-14
   3. ComparableCard + SellerEstimateBlock still carry their inline
      TIER_COLORS literals (CV-3 follow-up); HOME_TYPES literal
      duplications killed by this fix.
+
+
+───────────────────────────────────────────────────────────────────────
+W-CHARLIE-FORM-UX-FIX — SellerForm UX + condo building search — 2026-06-14
+───────────────────────────────────────────────────────────────────────
+
+  Scope: 5 files edited + 0 new. System 2 only; S1 untouched. Condo
+         + home matchers + SellerEstimateRunner + CharlieOverlay all
+         BYTE-UNCHANGED (matcher load-bearing, no edits). The condo
+         buildingId already flows via CondoSaleSpecs — we just feed
+         it from the form via the new typeahead.
+
+### STEP 0 — DB view introspection (read-only)
+
+  Confirmed via information_schema on buildings_with_listing_counts:
+    columns: id (uuid), building_name (varchar), slug (varchar),
+             street_number (varchar), street_name (varchar),
+             community_id (uuid), active_listings_count (bigint)
+
+  → community_id IS exposed by the view. The /api/search building
+    query only needed to ADD it to the SELECT (no schema work, no
+    join). cover_photo_url is NOT in the view but is not needed
+    for the matcher wire (the seller-estimate route fetches it from
+    the underlying buildings table on direct-buildingId lookup).
+
+### ITEM 1 — Required-field UX
+
+  app/charlie/components/SellerForm.tsx:
+    L304-311: up-front signal — "Fields marked * are required.
+              Optional fields below improve accuracy." (subtle slate
+              card at the top of Step 2; explains the asterisk so
+              the * marker is no longer assumed).
+
+    L444-445: propertyTax SALE hint expanded — pre-fix:
+                "Affects accuracy — matches you against same-tax-band comparables"
+              post-fix:
+                "Find it on your property tax bill or MPAC assessment.
+                 Affects accuracy — matches you against same-tax-band comparables."
+              Lease hint unchanged. Field stays REQUIRED for sale
+              (canSubmit gate at the new buildRequiredChecks rule
+              keeps the existing semantics).
+
+    L270-307 (handleSubmit + buildRequiredChecks): per-field submit
+              guidance. Button is ALWAYS clickable now (aria-disabled
+              instead of HTML disabled, so onClick fires); if any
+              required is missing, populate the `errors` map (drives
+              inline ⚠ messages below each missing field) and
+              scrollIntoView({ behavior:'smooth' }) + .focus() the
+              first missing field's anchor (id="f-{key}"). Mirrors
+              the only pre-fix inline-validation pattern in the
+              codebase: BuyerForm.tsx:274 "⚠ Please select a location
+              from the dropdown" — clone, not invent.
+
+    L312+ (Step 2 reorder): required-first order applied —
+              Address → [Subtype if home] → Beds → Baths → Sqft →
+              [Property Tax if sale] → Timeline → Goal →
+              ───── divider "Optional — improves accuracy" ─────
+              Approximate Age → [Parking + Locker if condo] →
+              [Frontage if home]
+              Every field's required/optional flag and hint text are
+              IDENTICAL to pre-fix — only the rendering position
+              moves. Prove by reading the diff: no `lbl(field, …)`
+              call's required arg flipped.
+
+### ITEM 2 — Condo building search (reuses /api/search + AreaSearch)
+
+  app/api/search/route.ts:
+    L16-32 (SearchResult interface): added optional `community_id?:
+              string | null` field. Existing consumers (BuyerForm,
+              landing autocomplete) destructure the original 6 fields
+              and ignore the new one — purely additive.
+
+    L55-79 (buildingResult builder): accepts `community_id` from the
+              input row and emits it on the SearchResult.
+
+    L195/L203/L257/L285/L314 (all five
+              buildings_with_listing_counts SELECTs): added
+              `community_id` to the column list. STEP 0 confirmed
+              the view exposes this column directly — no join needed.
+
+  app/charlie/components/BuyerForm.tsx:
+    L107: `function AreaSearch` → `export function AreaSearch`
+              (one-word change) so SellerForm condo path can reuse
+              it. Existing BuyerForm callsite at L266+ unchanged.
+
+    L107-189: added optional props `placeholder?: string` and
+              `filterTypes?: string[]`. When `filterTypes` is set,
+              only result groups whose `type` is in the list render
+              (used by SellerForm condo to show ONLY buildings).
+              When unset (BuyerForm default), all groups render —
+              behavior identical to pre-fix.
+
+    L110 (onSelect type): result shape extended with
+              `community_id?: string | null` — additive, ignored by
+              BuyerForm's destructuring at L269.
+
+  app/charlie/components/SellerForm.tsx:
+    L3: import { AreaSearch } from './BuyerForm'
+
+    L5-30 (SellerFormData): added 3 fields — `buildingId`,
+              `communityId`, `buildingSlug`. Empty strings for home
+              flow; populated only when condo user picks from the
+              typeahead.
+
+    L312-360 (condo address branch): replaces the raw
+              streetNumber+streetName+CitySearch trio with:
+                <AreaSearch
+                  placeholder="e.g. Aura, 1 King St W, X2 Condos..."
+                  filterTypes={['building']}
+                  onSelect={r => populate form.buildingId/communityId/
+                                 buildingSlug + city (display) +
+                                 derived streetNumber/streetName from
+                                 r.subtitle}
+                />
+              Inline amber warning ("⚠ Please select a building from
+              the dropdown") fires when the user typed but no
+              buildingId set. Mirrors BuyerForm.tsx:274.
+
+    L361-385 (home address branch): UNCHANGED logic; only wrapped
+              with id="f-streetNumber" / id="f-streetName" /
+              id="f-municipalityId" scroll anchors for the new
+              per-field error UX.
+
+  app/api/charlie/seller-estimate/route.ts:
+    L11-21 (body destructure): added `buildingId: providedBuildingId`.
+
+    L24-40 (condo branch — NEW direct-buildingId lookup):
+              when providedBuildingId is present, .eq('id', …)
+              .maybeSingle() against buildings — skips the
+              canonical_address ILIKE round-trip. Falls through
+              to the existing fuzzy path if the id doesn't resolve,
+              so an invalid/stale id can't break the flow.
+
+    L42-58 (condo branch — legacy fuzzy path): UNCHANGED behavior.
+              streetName?-guarded (legacy callers always supplied
+              streetName; direct-buildingId callers may not).
+
+### VERIFY (real flow / real render — NOT source-grep)
+
+  scripts/form-ux-fix-verify.js — local dev (npm run dev on :3003):
+
+  PART A — API surface (curl-like):
+    PASS  A1 — /api/search?q=x2 condos returns Buildings group with
+                community_id="a779120f-…" on first result
+    PASS  A2 — /api/charlie/seller-estimate POST { propertyCategory:
+                'condo', buildingId: 'X2 Condos id' } → success, returns
+                the same buildingId + communityId
+    PASS  A3 — legacy condo POST (no buildingId, address-fuzzy path)
+                still resolves a valid building (no regression)
+    PASS  A4 — home POST → success, path:'home', no behavior change
+
+  PART B — Playwright real-flow on the live form:
+    B1 — HOME flow at propertyTax=8000 (no regression):
+      PASS  HOME submit POSTs /api/charlie/seller-estimate
+      PASS  HOME payload propertyCategory=home
+      PASS  HOME payload streetNumber=606, streetName="Aspen rd"
+      PASS  HOME payload buildingId empty (legacy shape preserved)
+    B2 — missing-required submit guidance:
+      PASS  banner "N required fields missing — see highlighted fields above"
+      PASS  inline "Street number required" message
+      PASS  inline "Square footage range required" message
+      PASS  inline "Annual property tax required" message
+      PASS  up-front "Fields marked * are required" signal
+      PASS  expanded propertyTax helper "Find it on your property
+            tax bill or MPAC assessment …"
+      PASS  optional accuracy-boosters under divider
+    B3 — CONDO flow with AreaSearch building typeahead:
+      PASS  condo branch shows "Your Building" label (not raw address)
+      PASS  AreaSearch typeahead visible with "Aura, 1 King St W, X2 Condos" placeholder
+      PASS  X2 Condos dropdown result visible after typing
+      PASS  CONDO submit POSTs /api/charlie/seller-estimate
+      PASS  CONDO payload propertyCategory=condo
+      PASS  CONDO payload buildingId populated from typeahead pick
+            (id="2bcd2f02-…" — the X2 Condos building)
+      PASS  CONDO payload communityId populated
+            (community_id="a779120f-…" — Toronto's Church-Yonge Corridor)
+
+  Final: 22/22 PASS, 0 assertion failures.
+
+  Tenant safety: /api/search stays GLOBAL by design (the buildings
+  table is a tenant-agnostic GTA registry; downstream
+  /api/charlie/seller-estimate is tenant-aware via middleware's
+  x-tenant-id header). No tenant regression possible from this fix.
+
+### TSC + byte-unchanged proofs
+
+  TSC: npx tsc --noEmit → exit 0
+
+  Backups (all 20260614_181446 except tracker):
+    app/charlie/components/SellerForm.tsx.backup_20260614_181446
+    app/charlie/components/BuyerForm.tsx.backup_20260614_181446
+    app/charlie/components/CharlieOverlay.tsx.backup_20260614_181446
+    app/charlie/components/SellerEstimateRunner.tsx.backup_20260614_181446
+    app/api/search/route.ts.backup_20260614_181446
+    app/api/charlie/seller-estimate/route.ts.backup_20260614_181446
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260614_182846
+
+  Protected 09b97ef SHAs — all OK:
+    app/api/charlie/route.ts                          9c64acba0564
+    app/charlie/lib/charlie-tools.ts                  a02ee7ab48f9
+    app/charlie/lib/charlie-prompts.ts                fbe7b7de14b9
+    app/api/walliam/charlie/vip-request/route.ts      97c651e90c6f
+
+  S1 zero-diff:
+    app/admin/page.tsx                                c956360a6f23
+    app/api/chat/route.ts                             145b367d8d8f
+    app/admin/agents/page.tsx                         f34fa709b1a1
+
+  Matcher load-bearing files (we DO NOT touch them):
+    lib/estimator/condo-comparable-matcher-sales.ts   f2222c087887
+    lib/estimator/home-comparable-matcher-sales.ts    1f1226618c4c
+    app/estimator/actions/estimate-condo-sale.ts      e0ea9b6da291
+    app/estimator/actions/estimate-home-sale.ts       eb4546e9f0a2
+    app/charlie/components/SellerEstimateRunner.tsx   5374d402f524
+                                                      (BYTE-UNCHANGED
+                                                       vs pre-fix backup)
+    app/charlie/components/CharlieOverlay.tsx         (BYTE-UNCHANGED
+                                                       vs pre-fix backup)
+
+### Operator-visible outcome
+
+  Before:
+    - Required fields marked with * but the marker was unexplained
+    - Submit button silently grayed when required missing — user
+      had to hunt for what was missing
+    - propertyTax hint only stated PURPOSE, not WHERE to find
+    - Optional accuracy-boosters interleaved between required fields
+    - CONDO seller flow: same street_number + street_name + city
+      address entry as home; users who knew their building name had
+      to type the street address. Imprecise typing → "No building
+      found" hard-fail from API
+  After:
+    - Up-front signal at top of Step 2 explains the * marker
+    - Submit always clickable; missing-required click populates
+      inline ⚠ messages + scrolls to first missing field
+    - propertyTax SALE hint now reads: "Find it on your property
+      tax bill or MPAC assessment. Affects accuracy …"
+    - Required-fields-first ordering; optional fields grouped under
+      a divider labelled "Optional — improves accuracy"
+    - CONDO flow: building typeahead (reuses BuyerForm's AreaSearch)
+      shows buildings + active-listings count; user picks → form
+      auto-fills buildingId + communityId + buildingSlug → API
+      short-circuits the fuzzy resolve and goes straight to the
+      condo matcher with the building anchor. Legacy address-based
+      flow still works for any existing callsite.
+
+### Named follow-ups (out of scope)
+
+  1. Operator manual eyeball post-deploy: open SellerForm in Charlie,
+     verify the up-front signal renders, the inline missing-required
+     messages fire and scroll, the condo typeahead works for
+     real-world buildings.
+  2. Address-derivation from r.subtitle in the condo onSelect uses a
+     regex split on " · " which assumes the buildingResult subtitle
+     format. If the operator decides to surface the street address
+     as a separate read-only display field next to the building
+     name, the parsing logic could move to a server-side helper
+     that returns street_number + street_name as separate fields.
