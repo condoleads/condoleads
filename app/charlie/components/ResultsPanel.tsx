@@ -250,6 +250,71 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           const aSnap = block.analyticsSnapshot
           return (
             <div key={_bi}>
+              {/* W-CHARLIE-FIX GAP 1 (2026-06-14): un-gate Market Intelligence
+                  grid + Price by Home Type + Offer Intelligence for the seller
+                  flow. Pre-fix bug: setSellerEstimate (useCharlie.ts:262-271)
+                  pushes only a 'sellerEstimate' block to state.blocks, never
+                  an 'analytics' block. The analytics-block render path
+                  (line 78+) — which is where Market Intel + BuyerOfferBlock
+                  live — was therefore unreachable in seller flow. Real-DOM
+                  harness confirmed all 3 sections ABSENT pre-fix despite
+                  source-grep reporting them PRESENT (CV-3's blind spot).
+                  Fix: render the same 3 subsections inside the sellerEstimate
+                  block, fed by block.analyticsSnapshot (already threaded
+                  through). Buyer flow path (lines 78-110) untouched —
+                  buyers still get the analytics block + BuyerOfferBlock via
+                  the line-107 gate, which only suppresses BuyerOfferBlock
+                  when a sellerEstimate block exists. */}
+              {se?.success && aSnap && (() => {
+                const cond = marketConditionLabel(aSnap.sale_to_list_ratio, aSnap.closed_avg_dom_90)
+                return (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12 }}>
+                      Market Intelligence · {block.geoName}
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${cond.color}18`, border: `1px solid ${cond.color}40`, borderRadius: 100, padding: '5px 14px', marginBottom: 14 }}>
+                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: cond.color, boxShadow: `0 0 6px ${cond.color}` }} />
+                        <span style={{ fontSize: 12, fontWeight: 700, color: cond.color }}>{cond.label}</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                        {[
+                          { label: 'Median PSF', value: fmt(aSnap.median_psf, '$'), color: '#3b82f6' },
+                          { label: 'Avg DOM', value: fmt(aSnap.closed_avg_dom_90, '', 'd'), color: '#6366f1' },
+                          { label: 'Sale/List', value: fmt(aSnap.sale_to_list_ratio, '', '%'), color: '#10b981' },
+                          { label: 'Active', value: fmt(aSnap.active_count), color: '#8b5cf6' },
+                          { label: 'Sold 90d', value: fmt(aSnap.closed_sale_count_90), color: '#ec4899' },
+                          { label: 'Absorption', value: fmt(aSnap.absorption_rate_pct, '', '%'), color: '#f59e0b' },
+                        ].map(m => (
+                          <div key={m.label} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '12px' }}>
+                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{m.label}</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: m.color }}>{m.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {/* BuyerOfferBlock contains Offer Intelligence + Price by
+                        Home Type — both useful to sellers (anticipated offer
+                        levels + subtype-level price breakdown). Rendering
+                        them here closes the operator-confirmed GAP 1 without
+                        changing the buyer-side render path.
+
+                        W-CHARLIE-FIX GAP 1 (2026-06-14): derive propertyType
+                        from se.path ('home'→'homes', 'condo'→'condo') with
+                        aSnap.track as fallback. seller-estimate API now also
+                        stamps `track` into marketAnalytics (see
+                        app/api/charlie/seller-estimate/route.ts), so either
+                        source resolves correctly; the path-derived fallback
+                        guarantees isHomes/isCondo gate inside BuyerOfferBlock
+                        fires even on legacy/cached payloads. */}
+                    <BuyerOfferBlock
+                      analytics={aSnap}
+                      propertyType={aSnap.track || (se.path === 'home' ? 'homes' : 'condo')}
+                      geoName={block.geoName}
+                    />
+                  </div>
+                )
+              })()}
               {se?.success && (
                 <div>
                   <SectionHeader title="Property Estimate" />

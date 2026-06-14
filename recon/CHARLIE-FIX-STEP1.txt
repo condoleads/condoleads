@@ -1,0 +1,64 @@
+W-CHARLIE-FIX STEP 1 — root-cause tax=5000 vs tax=7500
+run: 2026-06-14T13:12:02.092Z
+base: https://www.walliam.ca
+
+GOAL: capture /api/charlie/seller-estimate response payload at
+      tax=5000 and tax=7500 for 606 Aspen rd Pickering Detached
+      3bd/3bth, livingArea 1500-2000. Side-by-side payload diff to
+      identify whether the matcher returns empty taxMatch at 5000
+      (matcher-band cause) or populated taxMatch at 5000 that the
+      UI drops (threading cause).
+
+
+════════════════════════════════════════════════════════════════════════════
+RUN: propertyTax=5000
+════════════════════════════════════════════════════════════════════════════
+form submitted with propertyTax=5000
+Property Estimate appeared after 2s of wait
+render probe: {"taxMatchHeading":"Tax-Matched · 10 found","hasTaxMatchedAny":true,"hasPropertyEstimate":true,"hasCompetingForSale":true,"hasConfidenceByArea":true}
+
+════════════════════════════════════════════════════════════════════════════
+RUN: propertyTax=7500
+════════════════════════════════════════════════════════════════════════════
+form submitted with propertyTax=7500
+Property Estimate appeared after 2s of wait
+render probe: {"taxMatchHeading":"Tax-Matched · 10 found","hasTaxMatchedAny":true,"hasPropertyEstimate":true,"hasCompetingForSale":true,"hasConfidenceByArea":true}
+
+════════════════════════════════════════════════════════════════════════════
+SIDE-BY-SIDE DIFF — /api/charlie/seller-estimate payloads
+════════════════════════════════════════════════════════════════════════════
+
+--- propertyTax=5000 ---
+  resolver.success:        true
+  resolver.path:           home
+  resolver.municipalityId: dc096c48-42b5-4dde-b20c-3b2b7c7b3757
+  resolver.municipality:   Pickering
+  resolver.communityId:    5c5d3a90-75f0-4be9-b07e-0f0d07d34290
+  marketAnalytics fields:  median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, psf_trend_pct, dom_trend_pct
+  render: Tax-Matched heading in DOM: Tax-Matched · 10 found
+  render: Property Estimate present:   true
+  render: Competing For Sale present:  true
+
+--- propertyTax=7500 ---
+  resolver.success:        true
+  resolver.path:           home
+  resolver.municipalityId: dc096c48-42b5-4dde-b20c-3b2b7c7b3757
+  resolver.municipality:   Pickering
+  resolver.communityId:    5c5d3a90-75f0-4be9-b07e-0f0d07d34290
+  marketAnalytics fields:  median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, psf_trend_pct, dom_trend_pct
+  render: Tax-Matched heading in DOM: Tax-Matched · 10 found
+  render: Property Estimate present:   true
+  render: Competing For Sale present:  true
+
+════════════════════════════════════════════════════════════════════════════
+VERDICT
+════════════════════════════════════════════════════════════════════════════
+  tax=5000 Tax-Matched in DOM: Tax-Matched · 10 found
+  tax=7500 Tax-Matched in DOM: Tax-Matched · 10 found
+  → BOTH render Tax-Matched. The operator's observation could not
+    be reproduced — possible transient or different inputs.
+
+files written:
+  C:\Condoleads\Project\recon\CHARLIE-FIX-STEP1.txt
+  C:\Condoleads\Project\recon\charlie-fix-payload-5000.json
+  C:\Condoleads\Project\recon\charlie-fix-payload-7500.json

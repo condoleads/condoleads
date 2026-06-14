@@ -1,0 +1,102 @@
+W-CHARLIE-FIX STEP 3 — real-DOM verify (LOCAL DEV, post-edit)
+run: 2026-06-14T13:28:49.542Z
+base: http://localhost:3002
+
+Verifies that the GAP 1 + GAP 2 edits do what they claim against the
+REAL chromium DOM after npm run dev rebuilt the local app.
+
+
+════════════════════════════════════════════════════════════════════════════
+SCENARIO A: seller propertyTax=5000 — normal tax — should produce both old + new sections
+════════════════════════════════════════════════════════════════════════════
+[A] Property Estimate appeared after 9s
+
+[A] Section inventory (real DOM):
+----------------------------------------------------------------------------
+SECTION                                           PROBE               STATUS
+----------------------------------------------------------------------------
+Property Estimate price card                      Estimated Value     PRESENT (n=1)
+4-row tier rail (Confidence by Area)              Confidence by Area  PRESENT (n=1)
+Comparable Sold                                   Comparable Sold     PRESENT (n=1)
+Tax-Matched section (always rendered)             Tax-Matched         PRESENT (n=2)
+Competing For Sale                                Competing For Sale  PRESENT (n=1)
+Pricing Strategy & Risk                           Pricing Strategy    PRESENT (n=2)
+Your Seller Strategy card                         Your Seller StrategyPRESENT (n=1)
+[GAP 1] Market Intelligence                       Market Intelligence PRESENT (n=1)
+[GAP 1] Offer Intelligence                        Offer Intelligence  PRESENT (n=1)
+[GAP 1] Price by Home Type                        Price by Home Type  PRESENT (n=1)
+Tax-Matched heading text: Tax-Matched · 10 found
+[GAP 2] empty-state message present? no
+
+════════════════════════════════════════════════════════════════════════════
+SCENARIO B: seller propertyTax=7500 — normal tax (no regression vs CV-3 baseline)
+════════════════════════════════════════════════════════════════════════════
+[B] Property Estimate appeared after 7s
+
+[B] Section inventory (real DOM):
+----------------------------------------------------------------------------
+SECTION                                           PROBE               STATUS
+----------------------------------------------------------------------------
+Property Estimate price card                      Estimated Value     PRESENT (n=1)
+4-row tier rail (Confidence by Area)              Confidence by Area  PRESENT (n=1)
+Comparable Sold                                   Comparable Sold     PRESENT (n=1)
+Tax-Matched section (always rendered)             Tax-Matched         PRESENT (n=2)
+Competing For Sale                                Competing For Sale  PRESENT (n=1)
+Pricing Strategy & Risk                           Pricing Strategy    PRESENT (n=2)
+Your Seller Strategy card                         Your Seller StrategyPRESENT (n=1)
+[GAP 1] Market Intelligence                       Market Intelligence PRESENT (n=1)
+[GAP 1] Offer Intelligence                        Offer Intelligence  PRESENT (n=1)
+[GAP 1] Price by Home Type                        Price by Home Type  PRESENT (n=1)
+Tax-Matched heading text: Tax-Matched · 10 found
+[GAP 2] empty-state message present? no
+
+════════════════════════════════════════════════════════════════════════════
+SCENARIO C: seller propertyTax=50000 — extreme tax — likely empty tax-match → GAP 2 empty-state
+════════════════════════════════════════════════════════════════════════════
+[C] Property Estimate appeared after 5s
+
+[C] Section inventory (real DOM):
+----------------------------------------------------------------------------
+SECTION                                           PROBE               STATUS
+----------------------------------------------------------------------------
+Property Estimate price card                      Estimated Value     PRESENT (n=1)
+4-row tier rail (Confidence by Area)              Confidence by Area  PRESENT (n=1)
+Comparable Sold                                   Comparable Sold     PRESENT (n=1)
+Tax-Matched section (always rendered)             Tax-Matched         PRESENT (n=2)
+Competing For Sale                                Competing For Sale  PRESENT (n=1)
+Pricing Strategy & Risk                           Pricing Strategy    PRESENT (n=2)
+Your Seller Strategy card                         Your Seller StrategyPRESENT (n=1)
+[GAP 1] Market Intelligence                       Market Intelligence PRESENT (n=1)
+[GAP 1] Offer Intelligence                        Offer Intelligence  PRESENT (n=1)
+[GAP 1] Price by Home Type                        Price by Home Type  PRESENT (n=1)
+Tax-Matched heading text: Tax-Matched · 0 found
+[GAP 2] empty-state message present? YES
+
+════════════════════════════════════════════════════════════════════════════
+SCENARIO D: BUYER flow — verify BuyerOfferBlock + analytics block unchanged
+════════════════════════════════════════════════════════════════════════════
+BuyerForm UI mounted? {"buyerFormMounted":true,"hasBuyerOpenForm":true}
+NOTE: full buyer rendering verification requires authed-chat to
+reach the BuyerOfferBlock render path (LLM call). Source check
+below confirms the analytics-block branch (lines 78-110, including
+line 107 gate) is unchanged by GAP 1 edit — verified by file diff.
+────────────────────────────────────────────────────────────────────────────
+FINAL VERDICT
+────────────────────────────────────────────────────────────────────────────
+PASS  scenario A: Property Estimate price card preserved
+PASS  scenario A: Tax-Matched section rendered
+PASS  scenario A: Competing For Sale preserved
+PASS  scenario A: Pricing Strategy & Risk preserved
+PASS  scenario A: [GAP 1] Market Intelligence NOW rendered
+PASS  scenario A: [GAP 1] Offer Intelligence NOW rendered
+PASS  scenario A: [GAP 1] Price by Home Type NOW rendered
+PASS  scenario B: no regression — Property Estimate present
+PASS  scenario B: no regression — Tax-Matched present
+PASS  scenario B: [GAP 1] Market Intelligence present
+PASS  scenario C: Tax-Matched section header rendered (always-on)
+     scenario C: tax-match populated? Tax-Matched · 0 found
+PASS  scenario C: [GAP 2] honest empty-state rendered when tax-match empty
+
+Files:
+  C:\Condoleads\Project\recon\REAL-CHARLIE-FIX-VERIFY.txt
+  C:\Condoleads\Project\recon\charlie-fix-verify-screenshots/

@@ -40,9 +40,16 @@ export async function POST(req: NextRequest) {
       }
 
       // Fetch community analytics
+      // W-CHARLIE-FIX GAP 1 (2026-06-14): widen the analytics SELECT to
+      // include subtype_breakdown / bedroom_breakdown / price_trend_monthly
+      // (used by BuyerOfferBlock for Price by Home Type + trend chart) and
+      // stamp `track: 'condo'` into the returned object so the in-chat
+      // seller panel's BuyerOfferBlock can derive isCondo correctly. The
+      // matcher path (estimateCondoSale server action) is unrelated and
+      // independent; this only enlarges what we return for analytics display.
       const { data: analytics } = await supabase
         .from('geo_analytics')
-        .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, psf_trend_pct, dom_trend_pct')
+        .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, psf_trend_pct, dom_trend_pct, bedroom_breakdown, subtype_breakdown, price_trend_monthly, insight_seasonal')
         .eq('geo_type', 'community')
         .eq('geo_id', building.community_id)
         .eq('track', 'condo')
@@ -58,7 +65,7 @@ export async function POST(req: NextRequest) {
         buildingPhoto: building.cover_photo_url,
         communityId: building.community_id,
         canonicalAddress: building.canonical_address,
-        marketAnalytics: analytics,
+        marketAnalytics: analytics ? { ...analytics, track: 'condo' } : analytics,
         analyticsGeoType: 'community',
         analyticsGeoId: building.community_id,
       })
@@ -101,11 +108,17 @@ export async function POST(req: NextRequest) {
       }
 
       // Fetch analytics
+      // W-CHARLIE-FIX GAP 1 (2026-06-14): widen analytics SELECT (see same-
+      // comment in the condo branch above). subtype_breakdown is what
+      // BuyerOfferBlock's "Price by Home Type" reads (line 171 of that
+      // file); price_trend_monthly feeds the 24-month trend chart.
+      // `track: 'homes'` stamped into the response so the BuyerOfferBlock
+      // isHomes gate fires (line 66 of BuyerOfferBlock.tsx).
       const geoType = communityId ? 'community' : 'municipality'
       const geoId = communityId || municipality.id
       const { data: analytics } = await supabase
         .from('geo_analytics')
-        .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, psf_trend_pct, dom_trend_pct')
+        .select('median_psf, closed_avg_dom_90, sale_to_list_ratio, absorption_rate_pct, active_count, closed_sale_count_90, psf_trend_pct, dom_trend_pct, bedroom_breakdown, subtype_breakdown, price_trend_monthly, insight_seasonal')
         .eq('geo_type', geoType)
         .eq('geo_id', geoId)
         .eq('track', 'homes')
@@ -118,7 +131,7 @@ export async function POST(req: NextRequest) {
         municipalityId: municipality.id,
         municipalityName: municipality.name,
         communityId,
-        marketAnalytics: analytics,
+        marketAnalytics: analytics ? { ...analytics, track: 'homes' } : analytics,
         analyticsGeoType: geoType,
         analyticsGeoId: geoId,
       })

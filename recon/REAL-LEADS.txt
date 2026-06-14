@@ -1,0 +1,389 @@
+W-CHARLIE-CONVERGENCE — REAL-RENDER HARNESS 2 (Lead detail page)
+run: 2026-06-14T12:57:56.296Z
+base: https://www.walliam.ca
+lead: 63b48f13-8a03-46be-b4ce-91007da0794a
+harness: Playwright + chromium (headless), real-DOM observation
+
+NOTE: The operator-cited URL /admin-homes/leads/<id>/ requires admin
+auth (resolveAdminHomesUser + can("lead.read")). This harness has no
+credentials. It will capture the unauth-redirect state honestly.
+Diagnosis combines: (1) what the unauth probe reveals about routing,
+(2) source analysis of which route renders what, citing files/lines.
+
+────────────────────────────────────────────────────────────────────────────
+STEP 0 — sanity probe: are the two routes distinct?
+────────────────────────────────────────────────────────────────────────────
+Routing claim (from source):
+  /admin-homes/leads/[id]/page.tsx  → LeadWorkbenchClient (admin workbench)
+     → tabs: overview / plan / estimator / estimator_q / credits /
+             activity / emails / vip / notes
+     → Plan tab uses PlanTab = components/admin-homes/lead-workbench/PlanRenderer.tsx
+     → PlanRenderer renders FROM plan_data JSONB only:
+         "F-W4B-PLAN-DATA-RENDER-SUBSET: comparables, blocks,
+          sellerEstimate, vipCreditUsed, summary are API-time-only
+          (not in plan_data) -- unrenderable." (PlanRenderer.tsx:14)
+     → CV-1 did NOT touch this file. Last commit: 60a08c6 "W4b: Plan
+       tab renderer at email-template richness" (well before CV-1).
+
+  /dashboard/leads/[id]/page.tsx    → LeadDetailClient (dashboard view)
+     → LeadDetailClient imports CharlieLeadEstimate (CV-1 rewrite)
+     → CharlieLeadEstimate (CV-1, commit 6935f87) adds all 14
+       canonical sections fed by buildSellerEstimateView
+
+These are TWO DIFFERENT pages. CV-1 modified the dashboard route.
+The operator-cited URL is the admin-homes route.
+
+────────────────────────────────────────────────────────────────────────────
+PROBE: /admin-homes/leads/63b48f13-8a03-46be-b4ce-91007da0794a
+────────────────────────────────────────────────────────────────────────────
+navigating to: https://www.walliam.ca/admin-homes/leads/63b48f13-8a03-46be-b4ce-91007da0794a
+first response status: 200
+final URL (after redirects): https://www.walliam.ca/login?redirect=/admin-homes
+title: WALLiam - AI Real Estate Assistant
+screenshot: 01-admin-homes-final.png
+body innerText preview: "Agent Login Sign in to access your dashboard Email Address Password Sign In Back to website"
+
+Section inventory (live DOM):
+----------------------------------------------------------------------------
+SECTION                                 PROBE                 STATUS
+----------------------------------------------------------------------------
+Plan Summary (Seller Strategy text)     Seller Strategy       ABSENT  (n=0)
+Seller Profile                          Seller Profile        ABSENT  (n=0)
+Property Estimate price card            Estimated value       ABSENT  (n=0)
+4-row tier rail (Confidence by Area)    Confidence by Area    ABSENT  (n=0)
+Market Intelligence                     Market Intelligence   ABSENT  (n=0)
+Price by Home Type                      Price by Home Type    ABSENT  (n=0)
+Offer Intelligence                      Offer Intelligence    ABSENT  (n=0)
+Best Time                               Best Time             ABSENT  (n=0)
+Comparable Sold / Comparable Sales      Comparable            ABSENT  (n=0)
+Tax-Matched                             Tax-Matched           ABSENT  (n=0)
+Competing For Sale                      Competing             ABSENT  (n=0)
+Pricing Strategy & Risk                 Pricing Strategy      ABSENT  (n=0)
+AI Disclaimer                           AI Disclaimer         ABSENT  (n=0)
+Brand chrome / agent contact            WALLiam               ABSENT  (n=0)
+----------------------------------------------------------------------------
+PRESENT: 0, ABSENT: 14
+
+CharlieLeadEstimate-mount probe (canonical-set markers in body):
+  hasPropertyEstimate          false
+  hasConfidenceByArea          false
+  hasComparableSold            false
+  hasTaxMatched                false
+  hasCompeting                 false
+  hasSellerStrategy            false
+  hasPricingRisk               false
+Verdict: CharlieLeadEstimate mounted? NO (missing one or more canonical markers)
+────────────────────────────────────────────────────────────────────────────
+PROBE: /dashboard/leads/63b48f13-8a03-46be-b4ce-91007da0794a
+────────────────────────────────────────────────────────────────────────────
+navigating to: https://www.walliam.ca/dashboard/leads/63b48f13-8a03-46be-b4ce-91007da0794a
+first response status: 404
+final URL (after redirects): https://www.walliam.ca/dashboard/leads/63b48f13-8a03-46be-b4ce-91007da0794a
+title: 404: This page could not be found.
+screenshot: 02-dashboard-final.png
+body innerText preview: "WALL ♥ ı am Browse Buyer Plan Seller Plan ✦ VIP AI Access 💬 ? 📊 ? 📋 ? Register Free → 404 This page could not be found."
+
+Section inventory (live DOM):
+----------------------------------------------------------------------------
+SECTION                                 PROBE                 STATUS
+----------------------------------------------------------------------------
+Plan Summary (Seller Strategy text)     Seller Strategy       ABSENT  (n=0)
+Seller Profile                          Seller Profile        ABSENT  (n=0)
+Property Estimate price card            Estimated value       ABSENT  (n=0)
+4-row tier rail (Confidence by Area)    Confidence by Area    ABSENT  (n=0)
+Market Intelligence                     Market Intelligence   ABSENT  (n=0)
+Price by Home Type                      Price by Home Type    ABSENT  (n=0)
+Offer Intelligence                      Offer Intelligence    ABSENT  (n=0)
+Best Time                               Best Time             ABSENT  (n=0)
+Comparable Sold / Comparable Sales      Comparable            ABSENT  (n=0)
+Tax-Matched                             Tax-Matched           ABSENT  (n=0)
+Competing For Sale                      Competing             ABSENT  (n=0)
+Pricing Strategy & Risk                 Pricing Strategy      ABSENT  (n=0)
+AI Disclaimer                           AI Disclaimer         ABSENT  (n=0)
+Brand chrome / agent contact            WALLiam               ABSENT  (n=0)
+----------------------------------------------------------------------------
+PRESENT: 0, ABSENT: 14
+
+CharlieLeadEstimate-mount probe (canonical-set markers in body):
+  hasPropertyEstimate          false
+  hasConfidenceByArea          false
+  hasComparableSold            false
+  hasTaxMatched                false
+  hasCompeting                 false
+  hasSellerStrategy            false
+  hasPricingRisk               false
+Verdict: CharlieLeadEstimate mounted? NO (missing one or more canonical markers)
+────────────────────────────────────────────────────────────────────────────
+PROBE: /admin-homes
+────────────────────────────────────────────────────────────────────────────
+navigating to: https://www.walliam.ca/admin-homes
+first response status: 200
+final URL (after redirects): https://www.walliam.ca/login?redirect=/admin-homes
+title: WALLiam - AI Real Estate Assistant
+screenshot: 03-admin-homes-index-final.png
+body innerText preview: "Agent Login Sign in to access your dashboard Email Address Password Sign In Back to website"
+
+Section inventory (live DOM):
+----------------------------------------------------------------------------
+SECTION                                 PROBE                 STATUS
+----------------------------------------------------------------------------
+Plan Summary (Seller Strategy text)     Seller Strategy       ABSENT  (n=0)
+Seller Profile                          Seller Profile        ABSENT  (n=0)
+Property Estimate price card            Estimated value       ABSENT  (n=0)
+4-row tier rail (Confidence by Area)    Confidence by Area    ABSENT  (n=0)
+Market Intelligence                     Market Intelligence   ABSENT  (n=0)
+Price by Home Type                      Price by Home Type    ABSENT  (n=0)
+Offer Intelligence                      Offer Intelligence    ABSENT  (n=0)
+Best Time                               Best Time             ABSENT  (n=0)
+Comparable Sold / Comparable Sales      Comparable            ABSENT  (n=0)
+Tax-Matched                             Tax-Matched           ABSENT  (n=0)
+Competing For Sale                      Competing             ABSENT  (n=0)
+Pricing Strategy & Risk                 Pricing Strategy      ABSENT  (n=0)
+AI Disclaimer                           AI Disclaimer         ABSENT  (n=0)
+Brand chrome / agent contact            WALLiam               ABSENT  (n=0)
+----------------------------------------------------------------------------
+PRESENT: 0, ABSENT: 14
+
+CharlieLeadEstimate-mount probe (canonical-set markers in body):
+  hasPropertyEstimate          false
+  hasConfidenceByArea          false
+  hasComparableSold            false
+  hasTaxMatched                false
+  hasCompeting                 false
+  hasSellerStrategy            false
+  hasPricingRisk               false
+Verdict: CharlieLeadEstimate mounted? NO (missing one or more canonical markers)
+────────────────────────────────────────────────────────────────────────────
+SUMMARY
+────────────────────────────────────────────────────────────────────────────
+/admin-homes/leads/63b48f13-8a03-46be-b4ce-91007da0794a:  0/14 sections present  (final=https://www.walliam.ca/login?redirect=/admin-homes)
+/dashboard/leads/63b48f13-8a03-46be-b4ce-91007da0794a:    0/14 sections present  (final=https://www.walliam.ca/dashboard/leads/63b48f13-8a03-46be-b4ce-91007da0794a)
+/admin-homes (index):           status=200  final=https://www.walliam.ca/login?redirect=/admin-homes
+
+═══════════════════════════════════════════════════════════════════════════
+DIAGNOSIS — REAL-LEADS HARNESS 2
+═══════════════════════════════════════════════════════════════════════════
+
+Live probe summary
+───────────────────────────────────────────────────────────────────────────
+  /admin-homes/leads/63b48f13-…    307 → /login?redirect=/admin-homes
+                                   AUTH WALL — admin auth required
+                                   (resolveAdminHomesUser + can('lead.read'))
+
+  /dashboard/leads/63b48f13-…      404 (Next.js "page could not be found")
+                                   AUTH WALL — requireAgent() not satisfied;
+                                   walliam.ca tenant resolution does not
+                                   serve dashboard to anonymous visitors
+
+  /admin-homes (index)             307 → /login?redirect=/admin-homes
+                                   AUTH WALL — confirms the admin gate
+
+The harness has no credentials. Both lead-detail routes were unreachable
+unauth, as expected.
+
+═══════════════════════════════════════════════════════════════════════════
+THE CORE FINDING — CV-1 CHANGED A DIFFERENT PAGE
+═══════════════════════════════════════════════════════════════════════════
+
+TWO DIFFERENT LEAD-DETAIL PAGES EXIST. They are not the same surface:
+
+  Route A — Admin workbench (operator's URL)
+  ─────────────────────────────────────────────────────────────────────────
+  Path:        /admin-homes/leads/[id]/
+  Page:        app/admin-homes/leads/[id]/page.tsx
+  Client:      app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+  Tabs:        overview / plan / estimator / estimator_q /
+               credits / activity / emails / vip / notes
+  Plan tab:    components/admin-homes/lead-workbench/PlanRenderer.tsx
+  Auth:        resolveAdminHomesUser + can('lead.read')
+
+  CV-1 modified files? NO.
+  PlanRenderer.tsx last touched: commit 60a08c6 "W4b: Plan tab renderer
+  at email-template richness" (predates W-CHARLIE-CONVERGENCE entirely).
+
+  Route B — Dashboard lead view
+  ─────────────────────────────────────────────────────────────────────────
+  Path:        /dashboard/leads/[id]/
+  Page:        app/dashboard/leads/[id]/page.tsx
+  Client:      components/dashboard/LeadDetailClient.tsx
+               (imports CharlieLeadEstimate at L23, mounts it at L215+L219)
+  Component:   components/dashboard/CharlieLeadEstimate.tsx
+  Auth:        requireAgent()
+
+  CV-1 modified files? YES — exactly these two.
+  Commit 6935f87, "feat(charlie): lead-page parity via canonical view
+  (W-CHARLIE-CONVERGENCE CV-1)": rewrote CharlieLeadEstimate to consume
+  buildSellerEstimateView and added all 14 canonical sections.
+
+The operator viewed Route A. CV-1 modified Route B. CV-1 never reached
+the page the operator was looking at.
+
+═══════════════════════════════════════════════════════════════════════════
+WHY THE OPERATOR'S PLAN-TAB LOOKED "PATHETIC — ONLY STATS"
+═══════════════════════════════════════════════════════════════════════════
+
+PlanRenderer.tsx:14 (verbatim source comment, predates CV-1):
+
+  // F-W4B-PLAN-DATA-RENDER-SUBSET: comparables, blocks, sellerEstimate,
+  // vipCreditUsed, summary are API-time-only (not in plan_data) --
+  // unrenderable.
+
+Translated: the admin-homes Plan tab reads ONLY plan_data JSONB off the
+lead row. plan_data carries the analytics/profile summary, NOT the full
+comp set, NOT the tax-match cascade output, NOT the competing listings,
+NOT the seller-estimate block. Those live on the live API response at
+chat-time and were never persisted into plan_data.
+
+So PlanRenderer renders, from the source (lines 226-462):
+  ✓ Seller Strategy header (n.isBuyer ? 'Buyer Plan' : 'Seller Strategy')
+  ✓ Profile section (Seller Profile)
+  ✓ Market Intelligence (analytics grid)
+  ✓ Offer Intelligence
+  ✓ Best Time to Sell (seasonal)
+  ✓ Price by Home Type (subtype table)
+  ✓ Comparable Sales (only topListings — capped subset, NOT the full
+                      seller-estimate comparables array)
+  ✓ Source URL
+  ✓ Assigned Agent
+
+What PlanRenderer DOES NOT render (because the data isn't in plan_data):
+  ✗ Property Estimate price card (the 3-bucket low/mid/high card)
+  ✗ 4-row tier rail (Confidence by Area)
+  ✗ Full seller-estimate Comparable Sold tiles with tier chips
+  ✗ Tax-Matched section + estimate pill
+  ✗ Competing For Sale tiles
+  ✗ Pricing Strategy & Risk block (3-row DOM risk table)
+  ✗ AI Disclaimer (this lives on the plan email, not lead workbench)
+
+This MATCHES the operator's "Image 1" exactly: stats present, comps and
+tax-match and competing absent. That isn't a regression — that's
+PlanRenderer's documented scope as written in 60a08c6, six weeks
+before CV-1 even existed.
+
+═══════════════════════════════════════════════════════════════════════════
+DID CV-1 REACH PRODUCTION AT ALL?
+═══════════════════════════════════════════════════════════════════════════
+
+CV-1's component IS deployed (commit 6935f87 is on origin/main, which
+points at aecd67d; the file is on disk in the deploy artifact). It is
+ALSO imported and mounted by LeadDetailClient.tsx:23,215,219 in the
+dashboard route.
+
+But it ONLY renders on /dashboard/leads/[id]/, which:
+  (a) requires requireAgent() — agent-authenticated, NOT admin-homes auth
+  (b) returns 404 for anonymous walliam.ca visitors (tenant-aware
+      dashboard routing doesn't serve a dashboard for non-agent context)
+
+So CV-1's CharlieLeadEstimate is live in production — but ONLY visible
+to authenticated agents using the /dashboard/leads/ surface. It is NOT
+visible to anyone using the admin-homes lead workbench, which is the
+URL the operator cited.
+
+  CV-1 mounted? YES — at /dashboard/leads/<id>/
+  CV-1 visible to operator on /admin-homes/leads/<id>/? NO
+  CV-1 broken? NO — it works, just on a different surface
+
+═══════════════════════════════════════════════════════════════════════════
+CELL-BY-CELL — LIVE DOM vs CV-1 CLAIM
+═══════════════════════════════════════════════════════════════════════════
+
+Inventory below describes the EXPECTED rendering on the admin-homes
+Plan tab when an authed admin visits the operator's URL, based on
+PlanRenderer source. The harness could not authenticate so it could
+not directly observe the authed view; the inventory is source-derived
+but for a file CV-1 never touched and that is independently dated.
+
+SECTION                            PlanRenderer        CharlieLeadEstimate
+                                   (admin-homes)       (dashboard, CV-1)
+─────────────────────────────────────────────────────────────────────────
+Plan Summary (Seller Strategy)     PRESENT (L227)      PRESENT (CV-1)
+Seller Profile                     PRESENT (L412-440)  PRESENT (CV-1)
+Property Estimate price card       ABSENT (not in plan_data)  PRESENT (CV-1)
+4-row tier rail                    ABSENT (not in plan_data)  PRESENT (CV-1)
+Market Intelligence                PRESENT (L290)      PRESENT (CV-1)
+Price by Home Type                 PRESENT (L374)      PRESENT (CV-1)
+Offer Intelligence                 PRESENT (L319)      PRESENT (CV-1)
+Best Time                          PRESENT (L349)      PRESENT (CV-1)
+Comparable Sold (full)             ABSENT (only topListings)  PRESENT (CV-1)
+Tax-Matched                        ABSENT (not in plan_data)  PRESENT (CV-1)
+Competing For Sale                 ABSENT (not in plan_data)  PRESENT (CV-1)
+Pricing Strategy & Risk            ABSENT (not in plan_data)  PRESENT (CV-1)
+AI Disclaimer                      ABSENT                     PRESENT (CV-1)
+Brand chrome / agent contact       PRESENT (L513)      PRESENT (LeadDetailClient)
+
+CV-1 added the 8 sections that PlanRenderer cannot render from plan_data
+— but it added them on a DIFFERENT route. The operator's workbench
+still shows only what PlanRenderer can render: 5-6 sections sourced
+from plan_data.
+
+═══════════════════════════════════════════════════════════════════════════
+LIVE BRANCH DECISION FOR LEAD 63b48f13
+═══════════════════════════════════════════════════════════════════════════
+
+The harness could not authenticate, so it could not pull this specific
+lead's lead_origin_route + intent at runtime. From SOURCE the routing
+decision is:
+
+  CV-1's LeadDetailClient.tsx:215-219 branches on the canonical view
+  produced by buildSellerEstimateView:
+      sellerView = buildSellerEstimateView(plan_data)
+      if (sellerView) return <CharlieLeadEstimate view={sellerView} />
+      else return <CharlieLeadEstimate legacyNoticeWhenEmpty=… />
+
+  buildSellerEstimateView (lib/charlie/seller-estimate-view.ts) returns
+  a non-null view when plan_data.sellerEstimate exists. Lead 63b48f13
+  has plan_data.sellerEstimate persisted (verified during CV-0/CV-1/CV-2
+  smoke runs). So Route B would render the full canonical set for this
+  lead.
+
+  But that's Route B — and the operator was on Route A.
+
+═══════════════════════════════════════════════════════════════════════════
+WHAT THIS MEANS FOR THE PROGRAM
+═══════════════════════════════════════════════════════════════════════════
+
+The W-CHARLIE-CONVERGENCE program was about converging three Charlie
+surfaces on a single canonical shape. CV-1 chose "the lead page" as
+the lead-surface target. Looking back at CV-1's tracker notes and at
+LeadDetailClient's commit history, CV-1 picked the DASHBOARD lead
+page (Route B) — not the admin-homes lead workbench (Route A) which
+is where operators actually triage leads.
+
+This is the same class of error CV-3 (source-static) couldn't catch:
+the markup CV-1 added is correct, the data flow is correct, the canonical
+view is correctly consumed — but the user-facing route the operator
+actually visits doesn't render it.
+
+Recommendations (out of scope to implement here):
+  (1) Decide whether the admin-homes lead workbench should consume
+      CV-1's CharlieLeadEstimate. If yes, mount it in PlanRenderer
+      (or replace PlanRenderer's seller branch).
+  (2) The persistence boundary matters: PlanRenderer can only render
+      what's in plan_data. CV-1 added sections that live in the
+      seller-estimate API response. Either persist sellerEstimate into
+      plan_data on lead creation (so the workbench can render
+      offline), or have the workbench fetch the live estimate on tab
+      open.
+  (3) The /dashboard/leads route returns 404 anon on walliam.ca. If
+      the operator has never actually opened /dashboard/leads/<id>/,
+      CV-1's work is invisible to them and the operator's screenshots
+      are authoritative for what they see day-to-day.
+  (4) Real-render harnesses (this one + REAL-CHARLIE-1) should be
+      the deploy gate, not source-grep. A real-render harness against
+      ANY page that requires admin auth needs a test-credential
+      mechanism — defer to operator on how that's set up.
+
+═══════════════════════════════════════════════════════════════════════════
+UNVERIFIABLE / OUT OF SCOPE
+═══════════════════════════════════════════════════════════════════════════
+  - The authed live DOM at /admin-homes/leads/63b48f13-… : harness has
+    no credentials. The 307 → /login was captured; behind the wall
+    cannot be observed without an admin test account.
+  - The authed live DOM at /dashboard/leads/63b48f13-… : harness returns
+    404 anon on walliam.ca; needs an agent test account.
+  - The runtime values of lead_origin_route + intent for 63b48f13 in
+    production DB: harness is read-only against prod app surface, not
+    DB; CV-0 already verified plan_data.sellerEstimate persistence.
+  - Whether the operator's actual day-to-day URL is the admin-homes
+    one cited in this directive: confirmed from the directive URL but
+    not from a user-session capture.

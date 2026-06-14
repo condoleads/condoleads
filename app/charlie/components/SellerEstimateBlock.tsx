@@ -280,15 +280,40 @@ export default function SellerEstimateBlock({ estimate, comparables, buildingNam
           "Comparable Sold · N found" pattern. Heading chosen in Charlie
           voice, not echoing the estimator's tax-section wording. Tiles
           reuse ComparableCard; tax-match tiles carry per-tile sourceTier
-          (Platinum/Gold/Silver/Bronze) from the multi-tier display list. */}
-      {hasTaxMatch && (
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6 }}>
-            Tax-Matched · {taxComps.length} found
+          (Platinum/Gold/Silver/Bronze) from the multi-tier display list.
+
+          W-CHARLIE-FIX GAP 2 (2026-06-14): always render the Tax-Matched
+          section header. Pre-fix bug: `{hasTaxMatch && (…)}` silent-hid
+          the entire section when the matcher returned 0 banded comps
+          (runHomeTaxMatchCascade returns undefined when all 3 tiers
+          fail their >=1/>=3 thresholds — home-comparable-matcher-sales.ts
+          L1352). Real-DOM harness confirmed this can happen for
+          sparse-band subjects. Replaced with an honest empty-state so
+          the section never silently vanishes — the operator now sees
+          why the tax-match is absent instead of wondering if the
+          renderer dropped it. */}
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6 }}>
+          Tax-Matched · {taxComps.length} found
+        </div>
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>
+          Same-municipality sales with similar property tax — a co-equal value signal alongside the comps above.
+        </div>
+        {!hasTaxMatch && (
+          <div style={{
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px dashed rgba(255,255,255,0.08)',
+            borderRadius: 8, padding: '12px 14px', marginBottom: 10,
+          }}>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+              No tax-matched comparables for this property — the matcher's
+              ±20% same-municipality tax band did not surface enough
+              comps to qualify a tier. The geo-based comparables above
+              remain the primary value signal.
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 10 }}>
-            Same-municipality sales with similar property tax — a co-equal value signal alongside the comps above.
-          </div>
+        )}
+        {hasTaxMatch && (<>
           {estimate.taxMatch?.estimatedPrice != null && (
             <div style={{
               background: 'rgba(255,255,255,0.04)',
@@ -321,8 +346,8 @@ export default function SellerEstimateBlock({ estimate, comparables, buildingNam
               />
             ))}
           </div>
-        </div>
-      )}
+        </>)}
+      </div>
     </div>
   )
 }

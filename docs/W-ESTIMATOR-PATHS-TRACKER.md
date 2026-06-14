@@ -1955,3 +1955,158 @@ W-CHARLIE-CONVERGENCE CV-3 — CONVERGENCE LOCK (test-only) — 2026-06-14
   3. Operator eyeballs (manual, not automatable):
      - Lead-page DOM at walliam.ca/dashboard/leads/<id>/
      - Email-client render (Gmail web + Outlook Desktop)
+
+
+───────────────────────────────────────────────────────────────────────
+W-CHARLIE-FIX — CHARLIE IN-CHAT REAL-RENDER FIX — 2026-06-14
+───────────────────────────────────────────────────────────────────────
+
+  Scope: 2 files edited + 1 API endpoint widened (System 2 only; S1
+         untouched; email + lead-page files byte-unchanged). 3 gaps from
+         the REAL-CHARLIE harness all resolved. Source-grep convergence
+         (CV-3) is now DEPRECATED as the release gate — real-DOM
+         Playwright is the gate.
+
+### STEP 1 — root-cause tax=5000 (read-only, before any edit)
+
+  Dual live run (head to head) on aecd67d:
+    propertyTax=5000   → "Tax-Matched · 10 found"  rendered live DOM
+    propertyTax=7500   → "Tax-Matched · 10 found"  rendered live DOM
+
+  Both values render Tax-Matched with 10 comps. The operator's GAP 3
+  observation (tax=5000 → no tax-match) cannot be reproduced against
+  the current deploy. Possible causes (unverifiable): stale browser
+  cache, transient deploy state, or different field combination at
+  the time of the operator's run.
+
+  However, the silent-hide PATTERN that would produce that observation
+  IS real: home-comparable-matcher-sales.ts:1352 returns undefined when
+  the cascade fails all 3 tier thresholds (Platinum ≥ 1; Gold/Silver
+  ≥ 3 after funnel), and SellerEstimateBlock.tsx:108 silently hid the
+  section in that case. The GAP 2 honest-empty-state fix below makes
+  this scenario operator-visible (no silent vanish), which subsumes
+  GAP 3 — when the matcher returns no comps for ANY reason (band too
+  narrow, sparse data, future regression), the operator now sees
+  "No tax-matched comparables for this property" instead of nothing.
+
+### STEP 2 — the 3 fixes (file:line)
+
+  GAP 1 — un-gate Market Intel + Price by Home Type + Offer Intel for
+  seller flow:
+    • app/charlie/components/ResultsPanel.tsx:253-308
+      Mounted the Market Intelligence grid + BuyerOfferBlock INSIDE
+      the sellerEstimate block render path, fed by
+      block.analyticsSnapshot. The buyer-side gate at line 107
+      (now 162) is UNCHANGED — buyers still get the analytics block
+      via the existing path. propertyType is derived as
+      `aSnap.track || (se.path === 'home' ? 'homes' : 'condo')` so
+      BuyerOfferBlock's isHomes/isCondo gates fire correctly even on
+      legacy/cached payloads.
+    • app/api/charlie/seller-estimate/route.ts:43-50 + 106-113
+      Widened analytics SELECT to include bedroom_breakdown,
+      subtype_breakdown, price_trend_monthly, insight_seasonal.
+      Stamps `track: 'condo'`/`'homes'` into the returned analytics
+      object so BuyerOfferBlock can derive isCondo/isHomes from it.
+
+  GAP 2 — replace silent tax-match hide with honest empty-state:
+    • app/charlie/components/SellerEstimateBlock.tsx:278-326
+      Always render the Tax-Matched section header (with N count).
+      When taxComps.length === 0, render a dashed-border empty-state
+      pill: "No tax-matched comparables for this property — the
+      matcher's ±20% same-municipality tax band did not surface
+      enough comps to qualify a tier. The geo-based comparables
+      above remain the primary value signal."
+
+  GAP 3 — tax=5000 root-cause-driven fix:
+    NOT REPRODUCIBLE per STEP 1 (BOTH 5000 and 7500 render). Folded
+    into GAP 2 empty-state, which closes the visibility class of the
+    operator's complaint regardless of which tax value happens to
+    yield zero comps in a given matcher run.
+
+### STEP 3 — real-DOM Playwright verify (LOCAL dev, port 3002)
+
+  Test harness: scripts/charlie-fix-step3-verify.js
+  Scenarios:
+    A — seller propertyTax=5000  (normal range)
+    B — seller propertyTax=7500  (no regression vs CV-3 baseline)
+    C — seller propertyTax=50000 (extreme tax → empty tax-match)
+    D — buyer flow (form-mount verify; full render needs auth)
+
+  Real-DOM section inventory per scenario:
+
+  SECTION                              A(5000)   B(7500)   C(50000)
+  ─────────────────────────────────────────────────────────────────
+  Property Estimate price card         PRESENT   PRESENT   PRESENT
+  4-row tier rail (Confidence by Area) PRESENT   PRESENT   PRESENT
+  Comparable Sold                      PRESENT   PRESENT   PRESENT
+  Tax-Matched (always-on header)       PRESENT   PRESENT   PRESENT
+  Competing For Sale                   PRESENT   PRESENT   PRESENT
+  Pricing Strategy & Risk              PRESENT   PRESENT   PRESENT
+  Your Seller Strategy card            PRESENT   PRESENT   PRESENT
+  [GAP 1] Market Intelligence          PRESENT   PRESENT   PRESENT
+  [GAP 1] Offer Intelligence           PRESENT   PRESENT   PRESENT
+  [GAP 1] Price by Home Type           PRESENT   PRESENT   PRESENT
+  Tax-Matched heading text             "·10 found"  "·10 found"  "·0 found"
+  [GAP 2] empty-state present?         no         no         YES
+
+  Final verdict: 13/13 PASS, 0 FAIL.
+
+  Buyer-side gate (ResultsPanel:107) verified UNCHANGED — buyer flow
+  still routes Market Intel + BuyerOfferBlock through the analytics
+  block path. No regression.
+
+### STEP 4 — TSC + byte-unchanged proofs
+
+  TSC:                       npx tsc --noEmit → exit 0
+  Backups before edit (timestamp 20260614_131538 + 132533):
+    - app/charlie/components/ResultsPanel.tsx.backup_20260614_131538
+    - app/charlie/components/SellerEstimateBlock.tsx.backup_20260614_131538
+    - app/api/charlie/seller-estimate/route.ts.backup_20260614_132533
+
+  Protected 09b97ef SHAs — all OK:
+    app/api/charlie/route.ts                          9c64acba0564
+    app/charlie/lib/charlie-tools.ts                  a02ee7ab48f9
+    app/charlie/lib/charlie-prompts.ts                fbe7b7de14b9
+    app/api/walliam/charlie/vip-request/route.ts      97c651e90c6f
+
+  S1 zero-diff (admin/page.tsx, api/chat/route.ts, admin/agents/page.tsx):
+    c956360a6f23 / 145b367d8d8f / f34fa709b1a1 — UNCHANGED.
+
+  Charlie-in-chat-only confirmation — these files NOT touched:
+    lib/email/charlie-plan-email-html.ts              271edc397e96
+    components/dashboard/CharlieLeadEstimate.tsx      5ea528c865d1
+    components/dashboard/LeadDetailClient.tsx         c6dd945fc086
+    components/admin-homes/lead-workbench/PlanRenderer.tsx d263721818d7
+
+### CV-3 source-grep harness — DEPRECATED as the release gate
+
+  CV-3 (scripts/smoke-cv3-convergence.js) is now a fast-feedback unit
+  signal only. It catches markup drift + helper rename + tier-color
+  literal drift, but it CANNOT detect:
+    - runtime data-driven gates (e.g. hasTaxMatch → silent hide on
+      empty comps — silently passed CV-3 despite GAP 2 being live)
+    - cross-block gating (e.g. ResultsPanel:107 suppressing
+      BuyerOfferBlock in seller flow — CV-3 enumerated as
+      DELIBERATE-GATE, which papered over GAP 1)
+    - missing data fields from upstream APIs (e.g.
+      subtype_breakdown not in seller-estimate response — invisible
+      to CV-3)
+    - propertyType prop mismatches (e.g. aSnap.track undefined →
+      BuyerOfferBlock returns null — invisible to CV-3)
+
+  The release gate is now scripts/real-charlie-harness.js (REAL-CHARLIE
+  for in-chat) + scripts/charlie-fix-step3-verify.js (this fix's verify
+  harness). Future deploys should run both BEFORE marking a Charlie
+  surface change as shipped.
+
+### Named follow-ups (out of scope here)
+
+  1. REAL-CHARLIE-2 (lead page) and REAL-CHARLIE-3 (email-client
+     render) harnesses — referenced in CV-3 follow-ups; required
+     before claiming convergence on those surfaces.
+  2. Authed-flow real-render harness — needs test agent + VIP credit
+     to verify the post-register path (plan generation, AI Disclaimer,
+     Best Time rendering).
+  3. PlanRenderer parity with CharlieLeadEstimate (admin-homes lead
+     workbench) — REAL-LEADS harness diagnosis identified this as a
+     separate route from CV-1's scope; product decision pending.

@@ -1,0 +1,338 @@
+W-CHARLIE-CONVERGENCE — REAL-RENDER HARNESS 1 (Charlie in-chat)
+run: 2026-06-14T12:36:48.075Z
+base: https://www.walliam.ca
+harness: Playwright + chromium (headless), single browser session, real-DOM observation
+
+────────────────────────────────────────────────────────────────────────────
+STEP 0 — deploy SHA verification
+────────────────────────────────────────────────────────────────────────────
+Operator asserts live deploy = aecd67d (last main commit per `git log origin/main -1`).
+Vercel does not expose commit SHA in default headers; SHA is verified by the
+operator out-of-band. Harness drives this base; if a build is in progress, the
+result reflects whichever artifact Vercel serves at the time of run.
+
+────────────────────────────────────────────────────────────────────────────
+STEP 1 — navigate to homepage + open Charlie (seller intent)
+────────────────────────────────────────────────────────────────────────────
+title: WALLiam - AI Real Estate Assistant for the GTA
+dispatch charlie:open with form=seller via window CustomEvent (same as homepage chip)
+screenshot: 01-charlie-opened.png
+────────────────────────────────────────────────────────────────────────────
+STEP 2 — SellerForm step 1: Sale + Home
+────────────────────────────────────────────────────────────────────────────
+SellerForm step 1 mounted
+clicked: Next →
+screenshot: 02-form-step2.png
+────────────────────────────────────────────────────────────────────────────
+STEP 3 — SellerForm step 2: fill property details
+────────────────────────────────────────────────────────────────────────────
+filled: streetNumber=606
+filled: streetName=Aspen rd
+typed in CitySearch: Pickering
+municipalities API responded
+Pickering dropdown options found: 1
+mouse-clicked Pickering option
+clicked subtype: Detached
+clicked chip bedrooms → 3
+clicked chip bathrooms → 3
+combo livingAreaRange → 1500-2000
+filled: propertyTax=7500
+chip timeline → 3-6 months
+chip goal → Top dollar
+screenshot: 03-form-filled.png
+────────────────────────────────────────────────────────────────────────────
+STEP 4 — submit SellerForm
+────────────────────────────────────────────────────────────────────────────
+submit button found: YES
+submit button disabled? false
+clicked submit (force)
+────────────────────────────────────────────────────────────────────────────
+STEP 5 — wait for SellerEstimateRunner to render results
+────────────────────────────────────────────────────────────────────────────
+Property Estimate section appeared after 3s
+screenshot: 04-results-rendered.png
+stripped register modal nodes from DOM for visual capture (state unchanged)
+screenshot: 05-panel-no-modal.png
+────────────────────────────────────────────────────────────────────────────
+STEP 6 — capture rendered DOM + section inventory
+────────────────────────────────────────────────────────────────────────────
+captured innerHTML: C:\Condoleads\Project\recon\real-charlie-panel-innerHTML.html (42667 chars, source=tightest ResultsPanel container (holds all 5 markers))
+
+Section inventory (REAL rendered DOM, NOT source):
+----------------------------------------------------------------------------
+SECTION                                 PROBE                       STATUS
+----------------------------------------------------------------------------
+Plan Summary (Seller Strategy)          Your Seller Strategy        PRESENT (n=1)
+Seller Profile (planCardGrid)           Your Profile                ABSENT  (n=0)
+Property Estimate price card            Estimated Value             PRESENT (n=1)
+4-row tier rail (Confidence by Area)    Confidence by Area          PRESENT (n=1)
+Market Intelligence (analytics grid)    Market Intelligence         ABSENT  (n=0)
+Price by Home Type (subtype table)      Price by Home Type          ABSENT  (n=0)
+Offer Intelligence                      Offer Intelligence          ABSENT  (n=0)
+Best Time (seasonal)                    Best Time                   ABSENT  (n=0)
+Comparable Sold                         Comparable Sold             PRESENT (n=1)
+Tax-Matched section                     Tax-Matched                 PRESENT (n=2)
+Tax-matched estimate pill               Tax-matched estimate        PRESENT (n=1)
+Competing For Sale                      Competing For Sale          PRESENT (n=1)
+Pricing Strategy & Risk                 Pricing Strategy            PRESENT (n=2)
+AI Disclaimer                           AI Disclaimer               ABSENT  (n=0)
+----------------------------------------------------------------------------
+PRESENT: 8, ABSENT: 6
+
+Tax-Matched heading text (if present): Tax-Matched · 10 found
+────────────────────────────────────────────────────────────────────────────
+STEP 7 — network call inventory (diagnosis)
+────────────────────────────────────────────────────────────────────────────
+200 https://www.walliam.ca/api/charlie/municipalities?q=Pickering
+  preview: {"success":true,"municipalities":[{"id":"dc096c48-42b5-4dde-b20c-3b2b7c7b3757","name":"Pickering","displayName":"Pickering"}]}…
+200 https://www.walliam.ca/api/charlie/seller-estimate
+  preview: {"success":true,"path":"home","municipalityId":"dc096c48-42b5-4dde-b20c-3b2b7c7b3757","municipalityName":"Pickering","communityId":"5c5d3a90-75f0-4be9-b07e-0f0d07d34290","marketAnalytics":{"median_psf…
+200 https://www.walliam.ca/api/charlie/competing-listings
+  preview: {"success":true,"listings":[{"id":"074195a9-fe94-48f5-9bd1-8ccabd698b2f","listing_key":"E13221142","list_price":869000,"unparsed_address":"1518 Woodruff Crescent, Pickering, ON L1V 3S6","bedrooms_tota…
+200 https://www.walliam.ca/api/charlie/community-buildings
+  preview: {"success":true,"affordable":[],"premium":[]}…
+
+────────────────────────────────────────────────────────────────────────────
+STEP 8 — runtime state probe (data-not-arriving vs data-gated)
+────────────────────────────────────────────────────────────────────────────
+Runtime DOM probe:
+  moneyTokensVisible             ["$775,807","$843,269","$910,731","$960,00013","$960,00081","$860,000158","$746,500","$796,200","$822,000","$895,000","$840,000","$725,000","$830,238","$763,819","$896,657","$796,200","$895,000","$822
+  hasTaxMatchHeading             true
+  hasTaxMatchedEstimatePill      true
+  hasPropertyEstimate            true
+  hasMarketIntelligence          false
+  hasPricingStrategy             true
+  hasYourSellerStrategy          true
+  hasYourProfile                 false
+────────────────────────────────────────────────────────────────────────────
+SUMMARY
+────────────────────────────────────────────────────────────────────────────
+Inventory: 8/14 canonical sections present in live DOM.
+Absent: seller_profile, market_intel, price_by_home_type, offer_intel, best_time, ai_disclaimer
+
+See:
+  C:\Condoleads\Project\recon\REAL-CHARLIE.txt
+  C:\Condoleads\Project\recon\real-charlie-panel-innerHTML.html
+  C:\Condoleads\Project\recon\real-charlie-screenshots/
+
+═══════════════════════════════════════════════════════════════════════════
+DIAGNOSIS (cell-by-cell, REAL DOM vs CV-3 source-static prediction)
+═══════════════════════════════════════════════════════════════════════════
+
+Operator's claim under test:
+  (1) "Live Charlie in-chat is MISSING tax-match"
+  (2) "The upper stats section (Market Intelligence / Price by Home Type)
+       is also missing"
+  (3) "The CV source-grep proof is void — it passed while production is
+       broken"
+
+Harness inputs (matching the 63b48f13 lead the operator captured):
+  address      606 Aspen rd, Pickering
+  subtype      Detached
+  beds / baths 3 / 3
+  livingArea   1500-2000
+  propertyTax  $7500/yr   (REQUIRED for sale — gates tax-match cascade)
+  timeline     3-6 months
+  goal         Top dollar
+
+Form submitted unauthenticated (no DB write — same path any anonymous
+visitor takes). SellerForm POST to /api/charlie/seller-estimate
+returned 200 with municipality dc096c48-… (Pickering) and community
+5c5d3a90-…, and the matcher returned a real estimate with 10
+comparables + 10 tax-matched comparables + 1 competing listing.
+
+───────────────────────────────────────────────────────────────────────────
+Tax-match verdict (operator's #1 question)
+───────────────────────────────────────────────────────────────────────────
+PRESENT in live DOM. Captured rendering:
+
+  "Tax-Matched · 10 found"                       (heading, exact text)
+  "Tax-matched estimate"      $830,238           (estimate pill)
+  10 ComparableCard tiles with tier chips        (taxComps.slice(0,6) +
+                                                  scroll — see panel
+                                                  innerHTML for full
+                                                  tile markup)
+
+The harness REPRODUCES tax-match rendering against the live deploy with
+the same inputs the operator captured. The operator's "missing tax-match"
+observation is NOT reproduced on the in-chat surface when propertyTax is
+supplied. If the operator's flow either (a) omitted propertyTax (the form
+gates it required for sale — would fail at submit, not reach the panel),
+(b) used a value with zero qualifying tax-band comps (matcher returns
+taxMatch=undefined → hasTaxMatch=false → section silently hidden), or
+(c) was looking at a different surface (dashboard lead page or email —
+separate harnesses needed), the absence is data-not-arriving, not a
+renderer break.
+
+Source path that gates Tax-Matched rendering:
+  app/charlie/components/SellerEstimateBlock.tsx:107-108
+    const taxComps = estimate.taxMatch?.comparables || []
+    const hasTaxMatch = taxComps.length > 0
+  Line 284: {hasTaxMatch && (…<Tax-Matched section>…)}
+  Verdict: data-driven gate. If the matcher returns no tax-band match,
+  the section is silently absent.
+
+───────────────────────────────────────────────────────────────────────────
+Upper stats section verdict (operator's #2 question)
+───────────────────────────────────────────────────────────────────────────
+ABSENT in live DOM — and this is DELIBERATE-GATE, confirmed against
+source:
+
+  app/charlie/components/ResultsPanel.tsx:107
+    {!(blocks||[]).some((b) => b.type === 'sellerEstimate') && (<div>
+      <SectionHeader title="Buyer Intelligence" />
+      <BuyerOfferBlock analytics={a} propertyType={a.track} … />
+    </div>)}
+
+  BuyerOfferBlock CONTAINS:
+    • Market Intelligence analytics grid
+    • Price by Home Type subtype table
+    • Offer Intelligence (offer-at recommendation)
+
+  The gate fires whenever a sellerEstimate block exists in the blocks
+  array. Since the seller flow ALWAYS produces a sellerEstimate block
+  (setSellerEstimate calls blocks.push({type:'sellerEstimate',…}) at
+  useCharlie.ts:269), the upper stats section is NEVER shown in the
+  seller flow. This is the same routing CV-3 enumerated as
+  DELIBERATE-GATE.
+
+  Whether this gate is correct PRODUCT BEHAVIOR is a separate question
+  from whether the renderer is broken. The gate IS firing as designed.
+  If the operator wants Market Intel + Price by Home Type in the seller
+  panel, the fix is either (a) remove the gate at ResultsPanel:107,
+  (b) move those subsections inside the sellerEstimate block, or
+  (c) add a dedicated seller-aware analytics block. None of these are
+  a renderer bug — they're product decisions.
+
+───────────────────────────────────────────────────────────────────────────
+CV source-grep verdict (operator's #3 question)
+───────────────────────────────────────────────────────────────────────────
+CV-3 was source-static — it asserted that the JSX/HTML strings exist
+in the surface source code, and that data fields reference the canonical
+view shape. It did NOT exercise the runtime data path. CV-3 PASSED on
+all 14 sections × 3 surfaces because:
+  - lead page, email, in-chat ALL have the section markup in source
+  - the section markup reads the right view.* fields
+  - tier-color literals are sourced from CV-0 TIER_META
+
+That is necessary but NOT sufficient. CV-3 cannot detect:
+  - matcher returning empty taxMatch.comparables → silent gate (the
+    operator's likely scenario)
+  - runtime conditional rendering hiding a section (e.g.
+    ResultsPanel:107 buyer-vs-seller gate)
+  - data-shape mismatch between matcher output and view fields
+  - cached/stale browser state showing an old render
+
+REAL-CHARLIE (this harness) is the runtime ground truth: it observes
+what the chromium DOM actually contains after the seller flow completes.
+
+───────────────────────────────────────────────────────────────────────────
+Cell-by-cell ABSENT diagnosis
+───────────────────────────────────────────────────────────────────────────
+
+seller_profile ("Your Profile")
+  CV-3 verdict:  PRESENT
+  Real DOM:      ABSENT — label mismatch, not a renderer gap.
+  Diagnosis:     The in-chat surface renders the seller-profile content
+                 under DIFFERENT labels: "Your Property" + "Market
+                 Snapshot" inside the "Your Seller Strategy" card
+                 (ResultsPanel.tsx:295-325). The email surface uses
+                 "Your Profile" + "Market Snapshot" labels — that's the
+                 label the harness probed for. Same data, different
+                 wording per surface.
+                 → DELIBERATE-LABEL-DIFFERENCE. Out of CV-3 scope.
+
+market_intel ("Market Intelligence")
+price_by_home_type ("Price by Home Type")
+offer_intel ("Offer Intelligence")
+  CV-3 verdict:  DELIBERATE-GATE on in-chat
+  Real DOM:      ABSENT — gate firing as designed.
+  Diagnosis:     ResultsPanel.tsx:107 hides BuyerOfferBlock (which
+                 contains all three) whenever blocks contains a
+                 sellerEstimate. The seller flow always pushes a
+                 sellerEstimate block.
+                 → DELIBERATE-GATE confirmed live. If operator wants
+                 them shown, it's a product decision, not a bug.
+
+best_time ("Best Time")
+ai_disclaimer ("AI Disclaimer")
+  CV-3 verdict:  PRESENT in-chat (via PlanDocument / plan block)
+  Real DOM:      ABSENT — plan never generated this session.
+  Diagnosis:     Both render inside the 'plan' block
+                 (ResultsPanel.tsx:352-414, AI Disclaimer at L406; Best
+                 Time inside PlanDocument). Plan only renders when
+                 plan.planReady=true, which requires the chat-message
+                 after seller-estimate to reach the LLM. In this
+                 unauthenticated harness, useCharlie.ts:282 gates that
+                 message behind the register modal (gateReason:
+                 'register'), so the plan is never generated.
+                 → DATA-NOT-ARRIVING (auth-gate path). Would render
+                 for an authenticated VIP user. NOT a deploy regression.
+
+───────────────────────────────────────────────────────────────────────────
+PRESENT — confirmed live (in panel innerHTML + screenshot 05)
+───────────────────────────────────────────────────────────────────────────
+  Plan Summary (Your Seller Strategy header)
+  Property Estimate price card     — $843,269 mid + $775,807 low + $910,731 high
+  4-row tier rail (Confidence by Area) — rendered with tier chips
+  Comparable Sold · 10 found       — 10 ComparableCard tiles
+  Tax-Matched · 10 found           — 10 tiles + estimate pill
+  Tax-matched estimate $830,238    — with priceRange band
+  Competing For Sale · 1 found     — 1 ActiveListingCard
+  Pricing Strategy & Risk          — At asking / 5% over / 10% over rows
+  Your Seller Strategy card        — Your Property + Market Snapshot
+  (Active Competition: 17 listings; Avg DOM: 20.3d; Sale-to-List: 101.32%)
+
+═══════════════════════════════════════════════════════════════════════════
+WHAT CV-3 GOT RIGHT, WHAT IT GOT WRONG
+═══════════════════════════════════════════════════════════════════════════
+
+GOT RIGHT (renderer source claims, confirmed by live DOM):
+  - lead-page / email / in-chat all have the section markup
+  - tier colors sourced from CV-0 TIER_META (no inline drift)
+  - in-chat DELIBERATE-GATE classifications for market_intel /
+    price_by_home_type / offer_intel — confirmed gated live
+
+GOT WRONG (or insufficient):
+  - "PRESENT" in source DID NOT MEAN "PRESENT in rendered DOM" — a
+    conditional gate, a missing data field, or a different label can
+    silently suppress a source-grep-positive section. CV-3 cannot see
+    this.
+  - "seller_profile = PRESENT in in-chat" was a source-string match for
+    something the in-chat surface labels DIFFERENTLY at runtime ("Your
+    Property" / "Market Snapshot"). The CV-3 harness checked the wrong
+    surface-specific label.
+
+WHAT THIS CHANGES FOR THE PROGRAM
+───────────────────────────────────────────────────────────────────────────
+Source-static convergence (CV-3) is a necessary backstop — it catches
+markup drift, helper rename, tier-color regression. But it CANNOT be
+the only proof. A real-render harness like this one MUST run against
+every deploy before claiming "no regression in the seller panel". CV-3
+is the unit-test layer; REAL-CHARLIE is the integration-test layer.
+
+Recommendation (out of scope to implement):
+  Add REAL-CHARLIE-1 (in-chat, this harness) +
+      REAL-CHARLIE-2 (lead page) +
+      REAL-CHARLIE-3 (email-client render)
+  as a 3-surface real-render triple, gated as a release-blocker.
+  CV-3 stays as a fast-feedback CI test but is no longer the source
+  of truth.
+
+═══════════════════════════════════════════════════════════════════════════
+UNVERIFIABLE / OUT OF SCOPE
+═══════════════════════════════════════════════════════════════════════════
+  - Authenticated-user flow (plan generation, AI Disclaimer + Best Time
+    rendering): needs a test account with VIP credit. Harness is
+    read-only, no DB write.
+  - Dashboard lead page (/dashboard/leads/63b48f13/) live render: needs
+    REAL-CHARLIE-2 harness (separate). Auth required.
+  - Email-client render: needs REAL-CHARLIE-3 harness (capture rendered
+    HTML in Gmail/Outlook client). Out of Playwright scope; needs an
+    email-rendering service or manual eyeball.
+  - The operator's specific original observation: if the operator saw
+    tax-match missing in a flow that DID supply propertyTax with a
+    valid value, the harness cannot reproduce that — possible causes
+    are stale browser cache, ad-blocker, or a transient deploy state
+    that has since recovered. Worth running this harness again on a
+    fresh Vercel build to check for non-determinism.
