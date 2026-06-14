@@ -1,0 +1,87 @@
+W-CHARLIE-LEADS-FIX STEP 1 — data-wall verdict
+run: 2026-06-14T13:42:13.810Z
+
+────────────────────────────────────────────────────────────────────────────
+PART 1 — lead 63b48f13-8a03-46be-b4ce-91007da0794a plan_data top-level keys
+────────────────────────────────────────────────────────────────────────────
+  contact_name:       Finaltest110
+  lead_origin_route:  charlie
+  intent:             seller
+  agent_id:           null
+  tenant_id:          b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+  plan_data top keys: ["analytics","plan","planType","sellerEstimate","topListings"]
+  plan_data.sellerEstimate present? YES
+  sellerEstimate top-level keys: ["buildingName","comparables","competingListings","estimate","geoLevel","intent","path","subjectAddress"]
+  sellerEstimate.estimate present?       true
+  sellerEstimate.comparables count:      5
+  sellerEstimate.competingListings count: 2
+  sellerEstimate.estimate.taxMatch.comparables count: 10
+  sellerEstimate.estimate.taxMatch.estimatedPrice:    848754
+────────────────────────────────────────────────────────────────────────────
+PART 2 — coverage: WALLiam Charlie seller leads with plan_data.sellerEstimate
+────────────────────────────────────────────────────────────────────────────
+  tenant rows: 1
+    tenant b16e1039-38ed-43d7-bbc5-dd02bb651bc9: WALLiam
+  WALLiam Charlie SELLER leads:
+    total:                 12
+    with sellerEstimate:   3
+    without sellerEstimate:9
+    coverage:              25.0%
+  recent 10 (most→oldest):
+    2026-06-14T11:58  hasSE=Y  1b2a5b50…  charlie  there
+    2026-06-13T19:13  hasSE=Y  9e8d25b3…  charlie  Finaltest110
+    2026-06-13T17:09  hasSE=Y  63b48f13…  charlie  Finaltest110
+    2026-06-13T16:24  hasSE=N  42a20b25…  charlie  Final Test 109
+    2026-06-13T13:47  hasSE=N  6e96e63b…  charlie  Final Test 109
+    2026-06-13T12:48  hasSE=N  e2d3aeb0…  charlie  finaltest106
+    2026-06-05T15:00  hasSE=N  2feab2b4…  charlie  finaltest5@gmail.com
+    2026-06-01T17:11  hasSE=N  d624677c…  charlie  Finaltest
+    2026-05-18T16:03  hasSE=N  5477a25f…  charlie  there
+    2026-05-11T21:07  hasSE=N  12b09327…  charlie_vip_request  T6d Verify seller
+────────────────────────────────────────────────────────────────────────────
+PART 3 — admin route + PlanRenderer SELLER branch source verdict
+────────────────────────────────────────────────────────────────────────────
+  Route: app/admin-homes/leads/[id]/page.tsx
+         → mounts LeadWorkbenchClient.tsx (server → client handoff)
+         → LeadWorkbenchClient.tsx:150  <PlanTab anchorLead={…} leadFamily={…} />
+         → PlanTab = components/admin-homes/lead-workbench/PlanRenderer.tsx
+
+  PlanRenderer SELLER branch (n.isBuyer === false):
+    L226-227: headerLabel = "Seller Strategy"
+    L262:     <Profile norm={n} />        — Seller Profile section
+    L290:     Market Intelligence section
+    L319:     Offer Intelligence section
+    L349:     Best Time to Sell section
+    L374:     Price by Home Type section
+    L462-463: "Comparable Sales" — capped topListings (subset)
+    L513:     Assigned Agent (brand chrome)
+
+  WHAT PLANRENDERER LACKS (per L14 comment) but plan_data DOES carry:
+    - sellerEstimate.estimate (price card)
+    - sellerEstimate.estimate.tiers (4-row tier rail "Confidence by Area")
+    - sellerEstimate.comparables (full Comparable Sold + tier chips)
+    - sellerEstimate.estimate.taxMatch (Tax-Matched + chips + pill)
+    - sellerEstimate.competingListings (Competing For Sale)
+    - PricingRiskBlock content (Pricing Strategy & Risk)
+  These are exactly the 14 sections CV-1 added to CharlieLeadEstimate.
+  The plan_data CARRIES the data; the renderer just doesn't consume it.
+
+  Cleanest mount point (preserves PlanRenderer stats, no duplication):
+    Replace L462-463 "Comparable Sales (topListings)" subsection with a
+    CharlieLeadEstimate mount fed by buildSellerEstimateView(plan_data).
+    CharlieLeadEstimate carries: price card + tier rail + Comparable Sold
+    (the full version with tier chips, NOT the topListings subset) +
+    Tax-Matched + Competing + Pricing Strategy & Risk. The PlanRenderer
+    stats above (Market Intel/Offer Intel/Best Time/Price by Home Type/
+    Profile/Seller Strategy header) remain INTACT and unmoved — they
+    feed from plan_data.analytics (not plan_data.sellerEstimate) and
+    are correctly rendered by PlanRenderer already.
+    Duplication check: CharlieLeadEstimate ALSO has Market Intel/Price
+    by Home Type sections (CV-1). To avoid duplication, those sections
+    inside CharlieLeadEstimate must be SUPPRESSED on the admin mount
+    (since PlanRenderer renders them). Use the view.present flags OR a
+    new optional `omit` prop on CharlieLeadEstimate. STEP 2 picks one.
+────────────────────────────────────────────────────────────────────────────
+OUTPUT FILES
+────────────────────────────────────────────────────────────────────────────
+  C:\Condoleads\Project\recon\CHARLIE-LEADS-FIX-STEP1.txt

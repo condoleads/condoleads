@@ -12,8 +12,23 @@
 //
 // F-W4B-PLAN-DATA-RENDER-SUBSET: comparables, blocks, sellerEstimate,
 // vipCreditUsed, summary are API-time-only (not in plan_data) -- unrenderable.
+//
+// W-CHARLIE-LEADS-FIX (2026-06-14): the L13-14 comment above is OUTDATED for
+// Charlie SELLER leads created after commit 3d9ac08 (2026-06-13) — those
+// leads DO carry plan_data.sellerEstimate (full estimate + comparables +
+// taxMatch + competingListings). STEP 1 SAVEPOINT read confirms 3/12 (25%)
+// of WALLiam Charlie seller leads carry it; 63b48f13 verified. Rather than
+// duplicate CV-1's CharlieLeadEstimate work in this file, the seller branch
+// below mounts CharlieLeadEstimate directly, fed by buildSellerEstimateView
+// (same pattern LeadDetailClient.tsx:213-228 uses on the /dashboard/leads/
+// route). Duplicate sections (Market Intel/Offer Intel/Best Time/Price by
+// Home Type/Profile/Summary) are SUPPRESSED inside CharlieLeadEstimate via
+// the view.present flags — PlanRenderer continues to render those itself.
+// Buyer plans are untouched (TopListings remains the buyer-side rendering).
 
 import { useState } from 'react'
+import CharlieLeadEstimate from '@/components/dashboard/CharlieLeadEstimate'
+import { buildSellerEstimateView } from '@/lib/charlie/seller-estimate-view'
 
 interface Agent {
   id?: string
@@ -223,6 +238,14 @@ function PlanRenderer({ lead }: { lead: Lead }) {
   const hasSubtype = a.subtype_breakdown && typeof a.subtype_breakdown === 'object' && Object.keys(a.subtype_breakdown).length > 0
   const hasListings = n.topListings.length > 0
 
+  // W-CHARLIE-LEADS-FIX (2026-06-14): hoist the canonical-view derivation so
+  // the bottom-of-page <Disclaimer /> can suppress itself when SellerEstimate-
+  // Mount will render CharlieLeadEstimate's own AI Disclaimer (line 552 of
+  // CharlieLeadEstimate.tsx). Without this, the seller-WITH-sellerEstimate
+  // case renders TWO disclaimers. Pure-function call; safe to repeat in
+  // SellerEstimateMount.
+  const sellerViewPresent = !n.isBuyer && buildSellerEstimateView(lead.plan_data ?? null) != null
+
   const headerIcon = n.isBuyer ? '🏠' : '💰'
   const headerLabel = n.isBuyer ? 'Buyer Plan' : 'Seller Strategy'
 
@@ -260,10 +283,23 @@ function PlanRenderer({ lead }: { lead: Lead }) {
         {hasSubtype && <SubtypeBreakdown breakdown={a.subtype_breakdown} />}
         {n.summary && <Summary text={n.summary} isBuyer={n.isBuyer} />}
         <Profile norm={n} />
-        {hasListings && <TopListings listings={n.topListings} isBuyer={n.isBuyer} />}
+        {/* W-CHARLIE-LEADS-FIX (2026-06-14): buyer keeps TopListings (matched
+            listings preview). Seller routes to SellerEstimateMount, which
+            consumes plan_data.sellerEstimate via the same canonical view
+            LeadDetailClient uses on the dashboard route. Mount uses
+            view.present flag overrides to suppress sections PlanRenderer
+            already renders (Market Intel/Offer Intel/Best Time/Price by
+            Home Type/Profile/Summary), so nothing duplicates. */}
+        {n.isBuyer && hasListings && <TopListings listings={n.topListings} isBuyer={n.isBuyer} />}
+        {!n.isBuyer && <SellerEstimateMount lead={lead} />}
         {lead.source_url && <SourceUrl url={lead.source_url} />}
         {lead.agents && <AgentCard agent={lead.agents} />}
-        <Disclaimer />
+        {/* W-CHARLIE-LEADS-FIX: suppress PlanRenderer's Disclaimer when the
+            seller-side CharlieLeadEstimate mount will render its own AI
+            Disclaimer (else dup ×2). Buyer keeps it; seller w/o
+            sellerEstimate keeps it (amber-notice path returns early in
+            CharlieLeadEstimate before its disclaimer). */}
+        {!sellerViewPresent && <Disclaimer />}
       </div>
     </div>
   )
@@ -453,6 +489,57 @@ function Profile({ norm }: { norm: NormalizedPlan }) {
         </div>
       )}
     </section>
+  )
+}
+
+// W-CHARLIE-LEADS-FIX (2026-06-14): seller-side full-content mount. Reuses
+// CharlieLeadEstimate (CV-1) by feeding it the canonical view derived from
+// plan_data.sellerEstimate. The duplicate-section suppression rationale
+// is documented at the import block at the top of this file.
+//
+// Duplication map (PlanRenderer above renders → suppressed inside the mount):
+//   PlanRenderer.MarketIntel       → view.present.marketIntel = false
+//   PlanRenderer.OfferIntel        → view.present.offerIntel = false
+//   PlanRenderer.BestTime          → view.present.bestTime = false
+//   PlanRenderer.SubtypeBreakdown  → view.present.priceByHomeType = false
+//   PlanRenderer.Profile           → view.present.planCardGrid = false
+//   PlanRenderer.Summary           → view.present.planSummary = false
+// What CharlieLeadEstimate DOES render under this mount (the sections
+// PlanRenderer can't render from plan_data):
+//   Property Estimate price card, 4-row tier rail (Confidence by Area),
+//   Comparable Sold + tier chips, Tax-Matched + chips + estimate pill,
+//   Competing For Sale, Pricing Strategy & Risk, AI Disclaimer.
+// Null sellerEstimate → CharlieLeadEstimate renders the Phase-2 amber
+// "no estimate captured" notice (legacyNoticeWhenEmpty=true).
+function SellerEstimateMount({ lead }: { lead: Lead }) {
+  const view = buildSellerEstimateView(lead.plan_data ?? null)
+  if (view) {
+    const adminView = {
+      ...view,
+      present: {
+        ...view.present,
+        // suppress PlanRenderer-duplicate sections
+        planCardGrid: false,
+        marketIntel: false,
+        offerIntel: false,
+        bestTime: false,
+        priceByHomeType: false,
+        planSummary: false,
+      },
+    }
+    return <CharlieLeadEstimate view={adminView} />
+  }
+  return (
+    <CharlieLeadEstimate
+      view={null}
+      legacyNoticeWhenEmpty={true}
+      leadMeta={{
+        intent: lead.intent ?? null,
+        geoName: lead.geo_name ?? null,
+        contactName: lead.contact_name ?? null,
+        createdAtIso: lead.created_at ?? null,
+      }}
+    />
   )
 }
 

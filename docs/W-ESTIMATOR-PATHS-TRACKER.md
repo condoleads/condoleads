@@ -2110,3 +2110,185 @@ W-CHARLIE-FIX — CHARLIE IN-CHAT REAL-RENDER FIX — 2026-06-14
   3. PlanRenderer parity with CharlieLeadEstimate (admin-homes lead
      workbench) — REAL-LEADS harness diagnosis identified this as a
      separate route from CV-1's scope; product decision pending.
+
+
+───────────────────────────────────────────────────────────────────────
+W-CHARLIE-LEADS-FIX — ADMIN LEAD PAGE FULL-CONTENT MOUNT — 2026-06-14
+───────────────────────────────────────────────────────────────────────
+
+  Scope: 1 file edited (components/admin-homes/lead-workbench/
+         PlanRenderer.tsx). System 2; S1 untouched. Charlie in-chat
+         + email + dashboard LeadDetailClient + CharlieLeadEstimate
+         byte-unchanged. REAL-LEADS recon identified that CV-1's
+         CharlieLeadEstimate was mounted on /dashboard/leads/[id]/
+         (a route the operator never visits) while the operator-
+         visible /admin-homes/leads/[id]/ uses PlanRenderer (limited
+         to plan_data fields). This mount brings the full canonical
+         content to the admin page WITHOUT modifying CV-1's component.
+
+### STEP 1 — data-wall verdict
+
+  SAVEPOINT-isolated read against production. Resolves PlanRenderer.tsx
+  L14's outdated "sellerEstimate is API-time-only, not in plan_data,
+  unrenderable" comment:
+
+  lead 63b48f13-8a03-46be-b4ce-91007da0794a (Finaltest110, intent=seller):
+    plan_data top keys: ["analytics","plan","planType","sellerEstimate",
+                         "topListings"]
+    sellerEstimate present? YES
+    sellerEstimate.estimate present + taxMatch.comparables count 10 +
+      estimatedPrice 848754. comparables count 5. competingListings 2.
+
+  Coverage across all WALLiam Charlie SELLER leads:
+    total:                  12
+    with sellerEstimate:    3  (25.0%)
+    without sellerEstimate: 9  (legacy, pre-3d9ac08 persistence change)
+    Recent leads (Jun 14, Jun 13) all have it; older ones don't.
+
+  Verdict: the L14 comment was correct WHEN WRITTEN (pre-3d9ac08), now
+  outdated. Persisted sellerEstimate exists for 25% of seller leads
+  (will rise to 100% as legacy leads age out). The fix MUST handle
+  both shapes — full content where present, honest amber notice where
+  null — which is exactly the Phase-2 amber-notice pattern.
+
+### STEP 2 — mount approach (file:line, duplication choice)
+
+  components/admin-homes/lead-workbench/PlanRenderer.tsx
+    L16-17 + L30-31: import CharlieLeadEstimate + buildSellerEstimateView
+    L245:            sellerViewPresent (hoisted view-derivation for the
+                      disclaimer-suppression branch below)
+    L285-286:        buyer keeps TopListings (matched listings);
+                      seller routes to <SellerEstimateMount lead={lead} />
+    L297:            {!sellerViewPresent && <Disclaimer />} — suppress
+                      PlanRenderer's Disclaimer when CharlieLeadEstimate
+                      will render its own AI Disclaimer (avoid dup ×2)
+    L501-538:        SellerEstimateMount function definition.
+                      Computes view = buildSellerEstimateView(plan_data).
+                      View present → mount CharlieLeadEstimate with
+                      adminView (present flag overrides suppress the
+                      6 sections PlanRenderer already renders).
+                      View null  → mount CharlieLeadEstimate with
+                      view=null + legacyNoticeWhenEmpty=true → amber
+                      "no estimate captured" notice.
+
+  Duplication-avoidance choice — override view.present flags inside the
+  mount BEFORE passing to CharlieLeadEstimate:
+    view.present.planCardGrid    = false   (PlanRenderer.Profile renders)
+    view.present.marketIntel     = false   (PlanRenderer.MarketIntel)
+    view.present.offerIntel      = false   (PlanRenderer.OfferIntel)
+    view.present.bestTime        = false   (PlanRenderer.BestTime)
+    view.present.priceByHomeType = false   (PlanRenderer.SubtypeBreakdown)
+    view.present.planSummary     = false   (PlanRenderer.Summary)
+  + PlanRenderer.Disclaimer suppressed when sellerViewPresent (via
+    the L297 conditional) to avoid CharlieLeadEstimate's AI Disclaimer
+    rendering twice.
+
+  Net: each section renders EXACTLY ONCE per the seller view, sourced
+  from whichever component is the cleanest fit (PlanRenderer for the
+  analytics-derived stats, CharlieLeadEstimate for the
+  sellerEstimate-derived sections).
+
+### STEP 3 — REAL-DOM verify (no source-grep)
+
+  Handle: react-dom/server.renderToStaticMarkup + tsx/cjs (no jsdom).
+  jsdom + @testing-library/react NOT installed; chose the lighter
+  string-assertion path. tsx (3 packages, ~5MB) installed as
+  devDependency for the test harness only.
+
+  Real lead 63b48f13 plan_data pulled SAVEPOINT-isolated, fed to
+  PlanTab as both anchorLead and leadFamily[0]. Static markup
+  captured (31,744 chars) and section occurrence-counted:
+
+  TAG                   NEEDLE                  COUNT  VERDICT
+  ────────────────────────────────────────────────────────────────
+  PlanRenderer's existing sections (must remain ×1):
+  PR-MarketIntel        Market Intelligence     1      PASS
+  PR-OfferIntel         Offer Intelligence      1      PASS
+  PR-BestTime           Best Time to            1      PASS
+  PR-PriceByHomeType    Price by Home Type      1      PASS
+  PR-SellerProfile      Seller Profile          1      PASS
+  PR-SellerStrategy-Hdr "💰 Seller Strategy"    1      PASS
+  PR-SummaryCard        "Your Seller Strategy"  1      PASS
+  global-strategy-count "Seller Strategy" (sum) 2      PASS  (header + Summary; no CLE dup)
+
+  CharlieLeadEstimate-mounted sections (new — must render ×1):
+  CLE-PriceCard         Estimated value         1      PASS
+  CLE-TierRail          Confidence by Area      1      PASS
+  CLE-ComparableSold    Comparable Sold         1      PASS
+  CLE-TaxMatched        Tax-Matched             1      PASS
+  CLE-TaxMatchPill      Tax-matched estimate    1      PASS
+  CLE-Competing         Competing For Sale      1      PASS
+  CLE-PricingRisk       Pricing Strategy        1      PASS
+  CLE-AIDisclaimer      AI Disclaimer           1      PASS (was ×2 pre-suppress)
+  ────────────────────────────────────────────────────────────────
+  Section verdict: 16/16 PASS, 0 FAIL.
+
+  Null-path (lead 42a20b25 — Final Test 109, sellerEstimate=null):
+    amber heading "No estimate captured"               × 1   PASS
+    amber copy "pre-dates the estimate-persistence …" × 1   PASS
+    Estimated value (price card) not present                 PASS
+    Tax-Matched not present                                  PASS
+    Comparable Sold not present                              PASS
+    Null path verdict: PASS.
+
+  Final: 16/16 + amber PASS, 0 FAIL.
+
+### STEP 4 — TSC + byte-unchanged proofs
+
+  TSC: npx tsc --noEmit → exit 0.
+
+  Backups:
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+      .backup_20260614_134427 (pre-STEP-2 state)
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+      .backup_20260614_140729 (this run)
+
+  Protected 09b97ef SHAs — all OK:
+    app/api/charlie/route.ts                          9c64acba0564
+    app/charlie/lib/charlie-tools.ts                  a02ee7ab48f9
+    app/charlie/lib/charlie-prompts.ts                fbe7b7de14b9
+    app/api/walliam/charlie/vip-request/route.ts      97c651e90c6f
+
+  S1 zero-diff:
+    app/admin/page.tsx                                c956360a6f23
+    app/api/chat/route.ts                             145b367d8d8f
+    app/admin/agents/page.tsx                         f34fa709b1a1
+
+  Scope-bound byte-unchanged (this is admin-lead-page only):
+    app/charlie/components/ResultsPanel.tsx           ea96a0091bf5
+    app/charlie/components/SellerEstimateBlock.tsx    66e30c271f3c
+    app/api/charlie/seller-estimate/route.ts          73a40ec0351f
+    lib/email/charlie-plan-email-html.ts              271edc397e96
+    components/dashboard/CharlieLeadEstimate.tsx      5ea528c865d1
+    components/dashboard/LeadDetailClient.tsx         c6dd945fc086
+    lib/charlie/seller-estimate-view.ts               1d4178b4de84
+    lib/charlie/tier-chip.ts                          0cac5bfb8e6e
+
+### Operator-visible outcome
+
+  Before: /admin-homes/leads/63b48f13/ Plan tab rendered Market Intel,
+          Offer Intel, Best Time, Price by Home Type, Seller Profile +
+          a topListings subset. NO price card, NO tier rail, NO full
+          comparables with chips, NO tax-match, NO competing, NO
+          pricing-risk block. Operator's "pathetic — only stats"
+          complaint, exactly as captured.
+
+  After:  same Plan tab now ALSO renders Property Estimate price card +
+          4-row tier rail (Confidence by Area) + full Comparable Sold
+          with tier chips + Tax-Matched + Tax-matched estimate pill +
+          Competing For Sale + Pricing Strategy & Risk + AI Disclaimer.
+          Existing stats UNCHANGED in position and content. Zero
+          duplication (proven by occurrence count). Pre-persistence
+          legacy seller leads (75% of historical) render the honest
+          Phase-2 amber notice instead of empty/broken sections.
+
+### Named follow-ups (out of scope)
+
+  1. Operator manual eyeball at /admin-homes/leads/63b48f13/ post-deploy
+     to confirm visual layout matches the rendered-markup verify above.
+  2. CV-3 source-grep harness (deprecated as release gate per
+     W-CHARLIE-FIX) — augment with a real-render version of REAL-LEADS
+     equivalent for ongoing regression coverage on this surface.
+  3. tsx devDependency installed for the verify harness. Small footprint
+     (~5MB). If unwanted, can be removed and harness re-pointed at
+     esbuild-register or any other TSX loader.

@@ -1,0 +1,67 @@
+W-CHARLIE-LEADS-FIX STEP 3 — real-render verify
+run: 2026-06-14T14:06:35.752Z
+handle: react-dom/server.renderToStaticMarkup + tsx/cjs (no jsdom)
+
+────────────────────────────────────────────────────────────────────────────
+PART 0 — pull REAL 63b48f13 plan_data (SAVEPOINT)
+────────────────────────────────────────────────────────────────────────────
+real lead pulled: 63b48f13-8a03-46be-b4ce-91007da0794a (Finaltest110, intent=seller)
+  plan_data top keys: ["analytics","plan","planType","sellerEstimate","topListings"]
+  sellerEstimate present? true
+  sellerEstimate.comparables count:      5
+  sellerEstimate.estimate.taxMatch comps: 10
+  sellerEstimate.competingListings:       2
+
+null-sellerEstimate lead: 42a20b25-6d77-46d1-971a-c472b580efed (Final Test 109) — for amber-notice path
+
+────────────────────────────────────────────────────────────────────────────
+PART 1 — render PlanTab with the SELLER lead
+────────────────────────────────────────────────────────────────────────────
+PlanTab imported OK — type=function
+renderToStaticMarkup OK — 31744 chars
+(full markup saved to recon/real-leads-fix-rendered.html)
+
+────────────────────────────────────────────────────────────────────────────
+PART 2 — section inventory (occurrence COUNTS — no-duplication assertion)
+────────────────────────────────────────────────────────────────────────────
+TAG                   NEEDLE                          COUNT  VERDICT
+----------------------------------------------------------------------------
+PR-MarketIntel        Market Intelligence             1      PASS
+PR-OfferIntel         Offer Intelligence              1      PASS
+PR-BestTime           Best Time to                    1      PASS
+PR-PriceByHomeType    Price by Home Type              1      PASS
+PR-SellerProfile      Seller Profile                  1      PASS
+PR-SellerStrategy-Hdr 💰 Seller Strategy              1      PASS
+PR-SummaryCard        Your Seller Strategy            1      PASS
+global-strategy-count Seller Strategy                 2      PASS
+CLE-PriceCard         Estimated value                 1      PASS
+CLE-TierRail          Confidence by Area              1      PASS
+CLE-ComparableSold    Comparable Sold                 1      PASS
+CLE-TaxMatched        Tax-Matched                     1      PASS
+CLE-TaxMatchPill      Tax-matched estimate            1      PASS
+CLE-Competing         Competing For Sale              1      PASS
+CLE-PricingRisk       Pricing Strategy                1      PASS
+CLE-AIDisclaimer      AI Disclaimer                   1      PASS
+----------------------------------------------------------------------------
+section verdict: 16/16 PASS, 0 FAIL
+
+────────────────────────────────────────────────────────────────────────────
+PART 3 — null-sellerEstimate path (amber "no estimate captured" notice)
+────────────────────────────────────────────────────────────────────────────
+renderToStaticMarkup (null) OK — 8779 chars
+amber heading "No estimate captured" count: 1  → PASS
+amber copy "pre-dates the estimate-persistence change" count: 1  → PASS
+no Estimated value (price card NOT rendered when sellerEstimate=null): PASS
+no Tax-Matched (NOT rendered when sellerEstimate=null):                PASS
+no Comparable Sold (NOT rendered when sellerEstimate=null):            PASS
+  null path verdict: PASS
+
+────────────────────────────────────────────────────────────────────────────
+FINAL VERDICT
+────────────────────────────────────────────────────────────────────────────
+PASS (0 failure(s) across 16 section probes + amber path)
+
+Files:
+  C:\Condoleads\Project\recon\REAL-LEADS-FIX-VERIFY.txt
+  recon/real-leads-fix-rendered.html       (full PlanTab markup, seller fixture)
+  recon/real-leads-fix-null-rendered.html  (amber-path markup)
