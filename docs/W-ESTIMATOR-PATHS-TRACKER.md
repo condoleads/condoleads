@@ -2292,3 +2292,148 @@ W-CHARLIE-LEADS-FIX — ADMIN LEAD PAGE FULL-CONTENT MOUNT — 2026-06-14
   3. tsx devDependency installed for the verify harness. Small footprint
      (~5MB). If unwanted, can be removed and harness re-pointed at
      esbuild-register or any other TSX loader.
+
+
+───────────────────────────────────────────────────────────────────────
+W-CHARLIE-EMAIL-FIX — TAX-MATCH SILENT-OMIT FIX (EMAIL) — 2026-06-14
+───────────────────────────────────────────────────────────────────────
+
+  Scope: 1 file edited (lib/email/charlie-plan-email-html.ts).
+         System 2; S1 untouched. Charlie in-chat (ResultsPanel,
+         SellerEstimateBlock), seller-estimate API, plan-email route,
+         admin PlanRenderer, dashboard LeadDetailClient + Charlie-
+         LeadEstimate, helper modules all byte-unchanged.
+
+### STEP 1 — silent-omit fix (file:line)
+
+  lib/email/charlie-plan-email-html.ts:381-440
+    Pre-fix gate (silent-omit):
+      const taxMatchHtml = taxComps.length > 0 ? `<…tax-match section…>` : ''
+    Post-fix (always render, conditional inner):
+      const taxMatchEmptyStateHtml = `<…honest empty-state…>`
+      const taxMatchHtml = `
+        <div…>
+          <div…>Tax-Matched (${taxComps.length})</div>
+          <div…>Same-municipality sales…</div>
+          ${taxComps.length === 0
+            ? taxMatchEmptyStateHtml
+            : `${pillHtml}${tilesHtml}`}
+        </div>`
+    Empty-state markup is email-safe: <table>/<td> layout, inline
+    styles, no flexbox, no <div> background tricks Outlook strips.
+    Wording matches the chat fix (SellerEstimateBlock.tsx empty-state,
+    W-CHARLIE-FIX GAP 2):
+      "No tax-matched comparables for this property — the matcher's
+       ±20% same-municipality tax band did not surface enough comps to
+       qualify a tier. The geo-based comparables above remain the
+       primary value signal."
+
+### STEP 2 — real-render verify (renderToStaticMarkup, NOT source-grep)
+
+  Handle: live buildRichPlanEmail + tsx/cjs against real plan_data
+  pulled SAVEPOINT-isolated. Two leads.
+
+  PART 1 — POPULATED PATH (63b48f13, 10 tax-comps):
+    rendered: 50,455 chars
+    SHA12 post-fix:   d54b129e847d
+    SHA12 pre-fix:    d54b129e847d
+    populated-path byte-identical?  PASS
+
+    populated-section probes:
+      Tax-Matched (10)                  PASS  present
+      Tax-matched estimate pill         PASS  present
+      Tier rail (Confidence by Area)    PASS  present
+      Price card (Estimated Value)      PASS  present
+      Comparable Sold (5)               PASS  present
+      Competing For Sale                PASS  present
+      no empty-state on populated       PASS  absent (correctly)
+    shape checks:
+      walliam.ca hrefs: 18              PASS
+      condoleads.ca leak: 0             PASS
+      undefined/NaN/$0 leaks: 0         PASS
+
+  PART 2 — EMPTY-STATE PATH (1b2a5b50, 0 tax-comps):
+    rendered: 34,322 chars (was ~33,383 pre-fix = +939 chars for
+    the new header + empty-state markup; section now visible
+    instead of silent-vanished)
+    empty-state + preservation probes:
+      Tax-Matched (0) header NOW renders        PASS  present
+      Empty-state honest line NOW renders       PASS  present
+      Tax-matched estimate pill ABSENT          PASS  absent
+      Subhead "Same-municipality sales…"        PASS  present
+      Tier rail still present                   PASS  present
+      Price card still present                  PASS  present
+      Comparable Sold still present             PASS  present
+      Competing For Sale still present          PASS  present
+    shape checks:
+      walliam.ca hrefs: 8               PASS
+      condoleads.ca leak: 0             PASS
+      undefined/NaN/$0 leaks: 0         PASS
+
+  FINAL: 0 assertion failures across both leads.
+
+### NOTE — timing finding from REAL-EMAIL recon
+
+  63b48f13 and 9e8d25b3 emails were sent BEFORE the CV-2 commit
+  4f0ffc4 (2026-06-14 06:23 -0400) authored the Tax-Matched section
+  into the email template. Their delivered emails are frozen old
+  artifacts — not broken; just sent by the pre-CV-2 builder. Fresh
+  sends post-CV-2 carry the tax-match section (verified above for
+  63b48f13's plan_data rendered through the current builder).
+  This empty-state fix targets the live class of failure (matcher
+  returns 0 banded comps → silent omit), which is what 1b2a5b50
+  demonstrated post-CV-2.
+
+### STEP 3 — TSC + byte-unchanged proofs
+
+  TSC: npx tsc --noEmit → exit 0
+  Backups:
+    lib/email/charlie-plan-email-html.ts.backup_20260614_142951
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260614_143251
+
+  Protected 09b97ef SHAs — all OK:
+    app/api/charlie/route.ts                          9c64acba0564
+    app/charlie/lib/charlie-tools.ts                  a02ee7ab48f9
+    app/charlie/lib/charlie-prompts.ts                fbe7b7de14b9
+    app/api/walliam/charlie/vip-request/route.ts      97c651e90c6f
+
+  S1 zero-diff:
+    app/admin/page.tsx                                c956360a6f23
+    app/api/chat/route.ts                             145b367d8d8f
+    app/admin/agents/page.tsx                         f34fa709b1a1
+
+  Scope-bound byte-unchanged (this is email-only):
+    app/charlie/components/ResultsPanel.tsx           ea96a0091bf5
+    app/charlie/components/SellerEstimateBlock.tsx    66e30c271f3c
+    app/api/charlie/seller-estimate/route.ts          73a40ec0351f
+    app/api/charlie/plan-email/route.ts               4f24d9cd2cc7
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+                                                      82862b71d691
+    components/dashboard/CharlieLeadEstimate.tsx      5ea528c865d1
+    components/dashboard/LeadDetailClient.tsx         c6dd945fc086
+    lib/charlie/seller-estimate-view.ts               1d4178b4de84
+    lib/charlie/tier-chip.ts                          0cac5bfb8e6e
+
+### Operator-visible outcome
+
+  Before: when the matcher returned no tax-band comps for a Charlie
+          seller lead (sparse data or extreme tax value), the entire
+          Tax-Matched section silently vanished from the plan email.
+          Operator confirmed live on 1b2a5b50 (post-CV-2 send).
+  After:  the section header and subhead always render. When count=0,
+          a dashed-border empty-state pill says "No tax-matched
+          comparables for this property — the matcher's ±20% same-
+          municipality tax band did not surface enough comps to
+          qualify a tier. The geo-based comparables above remain the
+          primary value signal." When count>0, the rendering is
+          BYTE-IDENTICAL to pre-fix (SHA12 match d54b129e847d).
+          Chat + email empty-state wording now consistent.
+
+### Named follow-ups (out of scope)
+
+  1. Operator manual eyeball: open a fresh seller-flow email (post-
+     this-fix deploy) in Gmail + Outlook Desktop; confirm the dashed-
+     border empty-state pill renders cleanly when matcher returns 0
+     comps.
+  2. Pricing Strategy & Risk is still ABSENT in email — CV-3
+     DELIBERATE-OMISSION; separate operator decision.

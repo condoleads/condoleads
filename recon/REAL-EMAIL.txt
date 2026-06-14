@@ -1,0 +1,195 @@
+W-CHARLIE-EMAIL REAL-RENDER HARNESS 3 — email delivery path
+run: 2026-06-14T14:24:59.186Z
+handle: live buildRichPlanEmail (charlie-plan-email-html.ts) via tsx/cjs
+source: REAL plan_data from production DB, SAVEPOINT-isolated read
+
+────────────────────────────────────────────────────────────────────────────
+STEP 1 — route threading trace
+────────────────────────────────────────────────────────────────────────────
+  app/api/charlie/plan-email/route.ts
+    L63:  destructures { sellerEstimate, plan, analytics, planType, ... } from req.json()
+    L77:  STALE-SESSION detector — warns iff sellerEstimate.estimate.bestGeoTier missing
+          (does NOT block; informational console.warn)
+    L172: SAVES SLIM plan_data.sellerEstimate to leads row:
+          { estimate: sellerEstimate.estimate || null,
+            comparables, competingListings, buildingName, subjectAddress,
+            geoLevel, intent, path }
+          → estimate.taxMatch is INSIDE estimate; slim copy carries it.
+    L200: PASSES sellerEstimate WHOLESALE to buildRichPlanEmail
+          (NOT the slim copy — the live request body unchanged).
+          NO reshape, NO flatten, NO field drop.
+
+  Trigger: app/charlie/hooks/useCharlie.ts:456-474
+    body: { sellerEstimate: stateRef.current.sellerEstimate, ... }
+    state.sellerEstimate is set by setSellerEstimate(data) at L262-271,
+    where data is the full onEstimateReady payload from
+    SellerEstimateRunner.tsx:205-214:
+      { success, estimate, comparables, buildingName, marketAnalytics,
+        analyticsGeoType, analyticsGeoId, intent, path, subjectAddress }
+    estimate IS the matcher output (result.data) — contains taxMatch
+    when the matcher produced one. NO field drop along this path.
+
+  Builder: lib/email/charlie-plan-email-html.ts
+    L334: const view = buildSellerEstimateView({ planType, plan, analytics, sellerEstimate })
+    L388: const taxComps = (sellerEstimate?.estimate?.taxMatch?.comparables || [])
+    L391: const taxMatchHtml = taxComps.length > 0 ? `<...Tax-Matched (N)...>` : ""
+          GATE: when taxComps.length === 0, silent-omit the section
+          (same pattern Charlie in-chat had until W-CHARLIE-FIX/GAP 2;
+          email still has the silent-hide pattern post-GAP-2 fix).
+────────────────────────────────────────────────────────────────────────────
+STEP 1b — CV-2 deploy timing vs lead creation
+────────────────────────────────────────────────────────────────────────────
+  CV-2 commit 4f0ffc4 (added Tax-Matched section to email):
+    git-authored: 2026-06-14 06:23:10 -0400 (Eastern)
+  Live deploy: after push to origin/main (in this session) on 2026-06-14.
+  Lead 63b48f13 created: 2026-06-13 17:09 (~13.5 hours BEFORE CV-2 commit)
+  Lead 9e8d25b3 created: 2026-06-13 19:13 (~11 hours BEFORE CV-2 commit)
+  Lead 1b2a5b50 created: 2026-06-14 11:58 (~5 hours AFTER CV-2 commit)
+  → 63b48f13 was emailed by the pre-CV-2 builder. No Tax-Matched section
+    existed in the email template at the time of send. The "delivered
+    email missing tax-match" observation for 63b48f13 is timing-driven.
+────────────────────────────────────────────────────────────────────────────
+STEP 2 — render REAL path against real plan_data (current CV-2+ builder)
+────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────
+RENDER: 63b48f13 (Finaltest110, pre-CV-2 send) — lead 63b48f13-8a03-46be-b4ce-91007da0794a (created Sat Jun 13 2026 13:09:04 GMT-0400 (Eastern Daylight Time))
+────────────────────────────────────────────────────────────────────────────
+  plan_data top keys: ["analytics","plan","planType","sellerEstimate","topListings"]
+  sellerEstimate present? true
+  sellerEstimate.estimate.taxMatch present? true
+  sellerEstimate.estimate.taxMatch.comparables count: 10
+  sellerEstimate.estimate.taxMatch.estimatedPrice: 848754
+  sellerEstimate.comparables count: 5
+  sellerEstimate.competingListings count: 2
+  rendered HTML: 50455 chars → C:\Condoleads\Project\recon\real-email-render-63b48f13.html
+
+  Section inventory (real HTML):
+  ------------------------------------------------------------------------
+  Tax-Matched section                PRESENT — "Tax-Matched (10)"
+  Tax-matched estimate pill          PRESENT — "Tax-matched estimate"
+  Tier rail (Confidence by Area)     PRESENT — "Confidence by Area"
+  Price card (Estimated Value)       PRESENT — "Estimated Value"
+  Comparable Sold                    PRESENT — "Comparable Sold (5)"
+  Competing For Sale                 PRESENT — "Competing For Sale"
+  Pricing Strategy                   ABSENT
+
+────────────────────────────────────────────────────────────────────────────
+RENDER: 1b2a5b50 (most recent post-CV-2 send) — lead 1b2a5b50-4756-4a61-a17b-fb5e205b158e (created Sun Jun 14 2026 07:58:01 GMT-0400 (Eastern Daylight Time))
+────────────────────────────────────────────────────────────────────────────
+  plan_data top keys: ["analytics","plan","planType","sellerEstimate","topListings"]
+  sellerEstimate present? true
+  sellerEstimate.estimate.taxMatch present? false
+  sellerEstimate.estimate.taxMatch.comparables count: 0
+  sellerEstimate.estimate.taxMatch.estimatedPrice: undefined
+  sellerEstimate.comparables count: 5
+  sellerEstimate.competingListings count: 2
+  rendered HTML: 33383 chars → C:\Condoleads\Project\recon\real-email-render-1b2a5b50.html
+
+  Section inventory (real HTML):
+  ------------------------------------------------------------------------
+  Tax-Matched section                ABSENT
+  Tax-matched estimate pill          ABSENT
+  Tier rail (Confidence by Area)     PRESENT — "Confidence by Area"
+  Price card (Estimated Value)       PRESENT — "Estimated Value"
+  Comparable Sold                    PRESENT — "Comparable Sold (5)"
+  Competing For Sale                 PRESENT — "Competing For Sale"
+  Pricing Strategy                   ABSENT
+────────────────────────────────────────────────────────────────────────────
+STEP 3 — DIAGNOSIS
+────────────────────────────────────────────────────────────────────────────
+
+Operator complaint: delivered email missing tax-match.
+Three candidate causes:
+  (a) Operator email was pre-CV-2 deploy (timing)
+  (b) Operator email was for a lead whose sellerEstimate lacked taxMatch
+      (0-comp case — silent-omit by the same pattern as Charlie GAP 2)
+  (c) Real threading bug dropping taxMatch between trigger → route → builder
+
+Evidence:
+  Route threading (STEP 1): NO reshape, NO drop. sellerEstimate is passed
+    wholesale to buildRichPlanEmail. (c) RULED OUT by source trace.
+  Timing (STEP 1b): 63b48f13 created 13.5h BEFORE CV-2 commit. Its email
+    was rendered by the pre-CV-2 builder which had NO Tax-Matched section.
+    9e8d25b3 same — created 11h BEFORE CV-2.
+  Render verify (STEP 2): if the current builder renders Tax-Matched
+    correctly when fed 63b48f13.plan_data.sellerEstimate, that confirms
+    the threading + builder work — the original delivered email lacked
+    tax-match because the builder lacked the section at send time.
+  Empty-taxMatch class (b): when the matcher returns no comps in band,
+    plan_data.sellerEstimate.estimate.taxMatch.comparables is empty
+    and the builder silent-omits (L391 gate). Same silent-hide pattern
+    as Charlie in-chat had pre-W-CHARLIE-FIX. NOT FIXED for email.
+
+Verdict pending real-render results above. See section inventories.
+
+Files:
+  C:\Condoleads\Project\recon\REAL-EMAIL.txt
+  recon/real-email-render-63b48f13.html
+  recon/real-email-render-1b2a5b50.html
+
+═══════════════════════════════════════════════════════════════════════════
+FINAL VERDICT — what the real-render evidence proves
+═══════════════════════════════════════════════════════════════════════════
+
+(c) Threading bug: RULED OUT.
+    STEP 1 source trace shows the live route passes sellerEstimate
+    wholesale (no reshape, no flatten, no field drop). The trigger
+    (useCharlie.ts:456-474) sends stateRef.current.sellerEstimate which
+    carries the full onEstimateReady payload including
+    estimate.taxMatch. STEP 2 confirms: when 63b48f13's plan_data
+    (which carries 10 tax-comps) is threaded through the current
+    builder, "Tax-Matched (10)" renders exactly as expected. Threading
+    is clean end-to-end.
+
+(a) Pre-CV-2-deploy timing: CONFIRMED for 63b48f13 (and 9e8d25b3).
+    Both leads were created BEFORE the CV-2 commit 4f0ffc4
+    (2026-06-14 06:23 -0400) authored the Tax-Matched section into
+    the email template. Their delivered emails were rendered by the
+    pre-CV-2 builder which had no such section. The operator's
+    observation for these leads is timing — the SAME plan_data, run
+    through TODAY's builder, renders the section correctly.
+
+(b) Empty-taxMatch silent-omit: CONFIRMED LIVE for 1b2a5b50
+    (post-CV-2 send). plan_data.sellerEstimate.estimate.taxMatch is
+    EMPTY for this lead — the matcher returned zero comps in band
+    (home-comparable-matcher-sales.ts:1352 returns undefined when
+    cascade fails all 3 tier thresholds). The current email builder
+    silent-omits the entire Tax-Matched section (charlie-plan-email-
+    html.ts:391 gate `taxComps.length > 0 ? <…> : ''`). This is the
+    SAME silent-hide pattern Charlie in-chat had before W-CHARLIE-FIX
+    GAP 2. The chat fix has NOT been applied to the email.
+
+Two separate causes — one is timing (resolves itself for new leads),
+one is a live gate-class gap. Operator's complaint plausibly conflated
+the two; either way, only (b) is a fix in scope going forward.
+
+Recommendation (not in scope to fix here — recon only):
+  Apply the same empty-state pattern to the email that
+  W-CHARLIE-FIX GAP 2 applied to Charlie in-chat
+  (SellerEstimateBlock.tsx:278-326): always render the Tax-Matched
+  header with the count, and when count=0 render an honest empty-
+  state line in place of the tiles. Email-safe variant (inline
+  styles, no flexbox) — same wording as the chat version.
+
+Also out of scope:
+  Pricing Strategy & Risk is ABSENT in the email for BOTH samples —
+  matches CV-3's enumerated DELIBERATE-OMISSION. Still flagged
+  pending operator decision (was a CV-3 follow-up; still open).
+
+═══════════════════════════════════════════════════════════════════════════
+UNVERIFIABLE / FLAGGED
+═══════════════════════════════════════════════════════════════════════════
+  - The actual SENT HTML for 63b48f13's delivered email. Without the
+    chain BCC log of that specific send, we cannot byte-compare the
+    pre-CV-2 delivered HTML to the current rendering. The timing
+    argument relies on commit timestamp vs created_at — both verified
+    via git log + DB select. If a copy of the original delivered HTML
+    exists (Gmail archive / BCC log), comparing it to the current
+    builder output for the same plan_data would be the cleanest proof.
+  - The operator's email address used to receive the test sends, and
+    which lead ID their specific complaint was about. If their
+    complaint was about 1b2a5b50 specifically, (b) is the direct cause;
+    if 63b48f13 specifically, (a). Without the specific lead ID we
+    confirm both are real and recommend addressing (b) as a fix in
+    scope.

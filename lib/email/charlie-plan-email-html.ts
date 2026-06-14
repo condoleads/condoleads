@@ -384,15 +384,32 @@ export function buildRichPlanEmail(data: {
   // row template; each tile reads its own c.sourceTier (the multi-tier
   // display list stamps per tile, mirror of condo-comparable-matcher-
   // sales.ts L86-90). Optional inline subhead with the tax-matched
-  // estimate + range. Gate: any comparables present.
+  // estimate + range.
+  //
+  // W-CHARLIE-EMAIL-FIX (2026-06-14): replace the silent-omit (was
+  // `taxComps.length > 0 ? <…> : ""`) with an always-rendered section.
+  // When the matcher returns no banded comps (home-comparable-matcher-
+  // sales.ts:1352 returns undefined → empty taxMatch), the section now
+  // shows an HONEST empty-state line instead of vanishing. Same pattern
+  // W-CHARLIE-FIX GAP 2 applied to Charlie in-chat
+  // (SellerEstimateBlock.tsx:278-326). Email-safe: <table>/<td> layout,
+  // inline styles, no flexbox, no <div> background tricks Outlook
+  // strips. POPULATED path (N>0) is BYTE-IDENTICAL to pre-fix — only
+  // the outer gate changes shape.
   const taxComps = (sellerEstimate?.estimate?.taxMatch?.comparables || []) as any[]
   const taxMatchEst = sellerEstimate?.estimate?.taxMatch?.estimatedPrice
   const taxMatchRange = sellerEstimate?.estimate?.taxMatch?.priceRange
-  const taxMatchHtml = taxComps.length > 0 ? `
+  const taxMatchEmptyStateHtml = `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; margin-bottom: 10px;">
+        <tr><td style="padding: 12px 14px; font-size: 12px; color: #475569; line-height: 1.5;">
+          No tax-matched comparables for this property &mdash; the matcher&rsquo;s &plusmn;20% same-municipality tax band did not surface enough comps to qualify a tier. The geo-based comparables above remain the primary value signal.
+        </td></tr>
+      </table>`
+  const taxMatchHtml = `
     <div style="margin: 20px 0;">
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">Tax-Matched (${taxComps.length})</div>
       <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Same-municipality sales with similar property tax &mdash; a co-equal value signal alongside the comps above.</div>
-      ${taxMatchEst != null ? `
+      ${taxComps.length === 0 ? taxMatchEmptyStateHtml : `${taxMatchEst != null ? `
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: baseline;">
         <span style="font-size: 11px; color: #64748b;">Tax-matched estimate</span>
         <span style="font-size: 13px; font-weight: 700; color: #0f172a;">$${Number(taxMatchEst).toLocaleString('en-CA')}${taxMatchRange ? `<span style="font-size:11px;font-weight:400;color:#94a3b8;margin-left:8px;"> &middot; $${Number(taxMatchRange.low).toLocaleString('en-CA')}&ndash;$${Number(taxMatchRange.high).toLocaleString('en-CA')}</span>` : ''}</span>
@@ -420,9 +437,9 @@ export function buildRichPlanEmail(data: {
             </tr></table>
           </a>
         `
-      }).join('')}
+      }).join('')}`}
     </div>
-  ` : ''
+  `
 
   const competingHtml = sellerEstimate?.competingListings && sellerEstimate.competingListings.length > 0 ? `
     <div style="margin: 20px 0;">

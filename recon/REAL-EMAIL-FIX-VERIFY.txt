@@ -1,0 +1,51 @@
+W-CHARLIE-EMAIL-FIX STEP 2 — real-render verify
+run: 2026-06-14T14:31:56.251Z
+handle: live buildRichPlanEmail (post-fix) + tsx/cjs, real plan_data from prod DB
+
+────────────────────────────────────────────────────────────────────────────
+PART 1 — POPULATED PATH (63b48f13, 10 tax-comps)
+────────────────────────────────────────────────────────────────────────────
+  rendered: 50455 chars → C:\Condoleads\Project\recon\real-email-fix-render-63b48f13.html
+  SHA12: d54b129e847d
+  pre-fix recon SHA12:           d54b129e847d
+  populated-path byte-identical? PASS
+
+  populated-section probes:
+  ------------------------------------------------------------------------
+  Tax-Matched (10)                     PASS (present)
+  Tax-matched estimate pill            PASS (present)
+  Tier rail                            PASS (present)
+  Price card                           PASS (present)
+  Comparable Sold                      PASS (present)
+  Competing For Sale                   PASS (present)
+  no empty-state on populated          PASS (absent)
+  walliam.ca hrefs:            18  → PASS
+  condoleads.ca leak count:    0  → PASS
+  undefined/NaN/$0 leaks:      0  → PASS
+────────────────────────────────────────────────────────────────────────────
+PART 2 — EMPTY-STATE PATH (1b2a5b50, 0 tax-comps)
+────────────────────────────────────────────────────────────────────────────
+  rendered: 34322 chars → C:\Condoleads\Project\recon\real-email-fix-render-1b2a5b50.html
+
+  empty-state + preservation probes:
+  ------------------------------------------------------------------------
+  Tax-Matched (0) header NOW renders       PASS (present)
+  Empty-state honest line NOW renders      PASS (present)
+  Tax-matched estimate pill ABSENT         PASS (absent)
+  No tile section header creep             PASS (present)
+  Tier rail still present                  PASS (present)
+  Price card still present                 PASS (present)
+  Comparable Sold still present            PASS (present)
+  Competing For Sale still present         PASS (present)
+  walliam.ca hrefs:            8  → PASS
+  condoleads.ca leak count:    0  → PASS
+  undefined/NaN/$0 leaks:      0  → PASS
+────────────────────────────────────────────────────────────────────────────
+FINAL VERDICT
+────────────────────────────────────────────────────────────────────────────
+PASS  0 assertion failure(s) across both leads
+
+Files:
+  C:\Condoleads\Project\recon\REAL-EMAIL-FIX-VERIFY.txt
+  C:\Condoleads\Project\recon\real-email-fix-render-63b48f13.html
+  C:\Condoleads\Project\recon\real-email-fix-render-1b2a5b50.html
