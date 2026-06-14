@@ -1,0 +1,132 @@
+================================================================
+W-CHARLIE-CONVERGENCE CV-3 — convergence lock harness
+================================================================
+fixture lead: 63b48f13-8a03-46be-b4ce-91007da0794a
+dev server: http://localhost:3001
+
+canonical view built: path=home, present={"priceCard":true,"tierRail":true,"comparables":true,"taxMatch":true,"competing":true,"marketIntel":true,"priceByHomeType":true,"offerIntel":true,"bestTime":true,"planCardGrid":true,"planSummary":true,"pricingRisk":true}
+
+────────────────────────────────────────────────────────────────
+LEAD PAGE (CharlieLeadEstimate.tsx + LeadDetailClient.tsx)
+────────────────────────────────────────────────────────────────
+PASS  lead page: Plan Summary (Seller Strategy text)
+PASS  lead page: Seller Profile (planCardGrid)
+PASS  lead page: Property Estimate price card
+PASS  lead page: 4-row tier rail (P/G/S/B + anchor)
+PASS  lead page: Market Intelligence (analytics grid)
+PASS  lead page: Price by Home Type (subtype table)
+PASS  lead page: Offer Intelligence
+PASS  lead page: Best Time (seasonal)
+PASS  lead page: Comparable Sold + tier chips
+PASS  lead page: Tax-Matched + chips + estimate pill
+PASS  lead page: Competing For Sale (no chip — deliberate per-tile rule)
+PASS  lead page: Pricing Strategy & Risk
+PASS  lead page: AI Disclaimer
+PASS  lead page: Brand chrome / CTA / agent card
+
+────────────────────────────────────────────────────────────────
+EMAIL (buildRichPlanEmail live HTML via test-render-plan-email-probe)
+────────────────────────────────────────────────────────────────
+PASS  email: Plan Summary (Seller Strategy text)
+PASS  email: Seller Profile (planCardGrid)
+PASS  email: Property Estimate price card
+PASS  email: 4-row tier rail (P/G/S/B + anchor)
+PASS  email: Market Intelligence (analytics grid)
+PASS  email: Price by Home Type (subtype table)
+PASS  email: Offer Intelligence
+PASS  email: Best Time (seasonal)
+PASS  email: Comparable Sold + tier chips
+PASS  email: Tax-Matched + chips + estimate pill
+PASS  email: Competing For Sale (no chip — deliberate per-tile rule)
+PASS  email: Pricing Strategy & Risk — DELIBERATE-OMISSION (Operator-confirmed: PricingRiskBlock concession + DOM-risk table is intentionall…)
+PASS  email: AI Disclaimer
+PASS  email: Brand chrome / CTA / agent card
+
+────────────────────────────────────────────────────────────────
+CHARLIE IN-CHAT (ResultsPanel.tsx + SellerEstimateBlock.tsx + PlanDocument.tsx + PricingRiskBlock.tsx + ComparableCard.tsx)
+────────────────────────────────────────────────────────────────
+PASS  in-chat: Plan Summary (Seller Strategy text) — DELIBERATE-OMISSION  [The long plan.summary text is the email's surface; the in-chat plan block (PlanDocument) renders structured ro…]
+PASS  in-chat: Seller Profile (planCardGrid)
+PASS  in-chat: Property Estimate price card
+PASS  in-chat: 4-row tier rail (P/G/S/B + anchor)
+PASS  in-chat: Market Intelligence (analytics grid) — DELIBERATE-GATE  [ResultsPanel.tsx:107 gate `!(blocks||[]).some(b=>b.type===sellerEstimate)` hides BuyerOfferBlock when a seller…]
+PASS  in-chat: Price by Home Type (subtype table) — DELIBERATE-GATE  [Same buyer-gating block as market_intel — Price by Home Type is inside BuyerOfferBlock.…]
+PASS  in-chat: Offer Intelligence — DELIBERATE-GATE  [Same buyer-gating block as market_intel — Offer Intelligence is inside BuyerOfferBlock.…]
+PASS  in-chat: Best Time (seasonal)
+PASS  in-chat: Comparable Sold + tier chips
+PASS  in-chat: Tax-Matched + chips + estimate pill
+PASS  in-chat: Competing For Sale (no chip — deliberate per-tile rule)
+PASS  in-chat: Pricing Strategy & Risk
+PASS  in-chat: AI Disclaimer
+PASS  in-chat: Brand chrome / CTA / agent card — N/A  [In-chat IS the chat panel — there is no separate brand chrome wrapping it (the WALLiam brand is the host conte…]
+
+────────────────────────────────────────────────────────────────
+CONVERGENCE MATRIX (14 sections × 3 surfaces)
+────────────────────────────────────────────────────────────────
+
+SECTION                                 LEAD PAGE                   EMAIL                       IN-CHAT                     
+----------------------------------------------------------------------------------------------------------------------------
+Plan Summary (Seller Strategy text)     PRESENT                     PRESENT                     DELIBERATE-OMISSION         
+Seller Profile (planCardGrid)           PRESENT                     PRESENT                     PRESENT                     
+Property Estimate price card            PRESENT                     PRESENT                     PRESENT                     
+4-row tier rail (P/G/S/B + anchor)      PRESENT                     PRESENT                     PRESENT                     
+Market Intelligence (analytics grid)    PRESENT                     PRESENT                     DELIBERATE-GATE             
+Price by Home Type (subtype table)      PRESENT                     PRESENT                     DELIBERATE-GATE             
+Offer Intelligence                      PRESENT                     PRESENT                     DELIBERATE-GATE             
+Best Time (seasonal)                    PRESENT                     PRESENT                     PRESENT                     
+Comparable Sold + tier chips            PRESENT                     PRESENT                     PRESENT                     
+Tax-Matched + chips + estimate pill     PRESENT                     PRESENT                     PRESENT                     
+Competing For Sale (no chip — deliberate per-tile rule)PRESENT                     PRESENT                     PRESENT                     
+Pricing Strategy & Risk                 PRESENT                     DELIBERATE-OMISSION         PRESENT                     
+AI Disclaimer                           PRESENT                     PRESENT                     PRESENT                     
+Brand chrome / CTA / agent card         PRESENT                     PRESENT                     N/A                         
+----------------------------------------------------------------------------------------------------------------------------
+matrix cells: 42 PASS, 0 FAIL (any "MISSING" cell = FAIL)
+PASS  CONVERGENCE MATRIX: every cell is PRESENT or an explicitly-enumerated deliberate exception  [0 cells unaccounted for]
+
+Enumerated deliberate exceptions (the only non-PRESENT cells allowed):
+  - email.pricing_risk → DELIBERATE-OMISSION
+      reason: Operator-confirmed: PricingRiskBlock concession + DOM-risk table is intentionally not in the plan email — flagged for operator decision at CV-3 (do not add in CV-3 scope).
+  - inchat.market_intel → DELIBERATE-GATE
+      reason: ResultsPanel.tsx:107 gate `!(blocks||[]).some(b=>b.type===sellerEstimate)` hides BuyerOfferBlock when a sellerEstimate block exists. Byte-identical 6f685be→HEAD per W-CHARLIE-REGRESSION recon.
+  - inchat.price_by_home_type → DELIBERATE-GATE
+      reason: Same buyer-gating block as market_intel — Price by Home Type is inside BuyerOfferBlock.
+  - inchat.offer_intel → DELIBERATE-GATE
+      reason: Same buyer-gating block as market_intel — Offer Intelligence is inside BuyerOfferBlock.
+  - inchat.plan_summary → DELIBERATE-OMISSION
+      reason: The long plan.summary text is the email's surface; the in-chat plan block (PlanDocument) renders structured rows + a brief Seller Strategy preview card pre-plan instead.
+  - inchat.brand_chrome → N/A
+      reason: In-chat IS the chat panel — there is no separate brand chrome wrapping it (the WALLiam brand is the host context, not a section).
+
+────────────────────────────────────────────────────────────────
+SINGLE-SOURCE / DUPLICATION WATCH (CV-0 TIER_META drift gate)
+────────────────────────────────────────────────────────────────
+PASS  lead page (CharlieLeadEstimate): TIER_META imported, no inline TIER_COLORS literal
+PASS  email (charlie-plan-email-html): TIER_META imported, no inline TIER_COLORS_EMAIL literal
+PASS  ComparableCard: inline TIER_COLORS still byte-identical to CV-0 TIER_META  [{"platinum":"#10b981","gold":"#f59e0b","silver":"#64748b","bronze":"#c2410c"}]
+PASS  SellerEstimateBlock: inline TIER_COLORS still byte-identical to CV-0 TIER_META  [{"platinum":"#10b981","gold":"#f59e0b","silver":"#64748b","bronze":"#c2410c"}]
+
+Known remaining duplication (CV-3 flagged, not failed; cleanup pass tracked):
+  - app/charlie/components/ComparableCard.tsx:54-58
+  - app/charlie/components/SellerEstimateBlock.tsx:75-79
+  → Both byte-identical to CV-0 TIER_META; this test fails red if either drifts.
+
+────────────────────────────────────────────────────────────────
+BYTE-UNCHANGED proofs (CV-3 is test-only)
+────────────────────────────────────────────────────────────────
+PASS  app/api/charlie/route.ts  expected=9c64acba0564, got=9c64acba0564
+PASS  app/charlie/lib/charlie-tools.ts  expected=a02ee7ab48f9, got=a02ee7ab48f9
+PASS  app/charlie/lib/charlie-prompts.ts  expected=fbe7b7de14b9, got=fbe7b7de14b9
+PASS  app/api/walliam/charlie/vip-request/route.ts  expected=97c651e90c6f, got=97c651e90c6f
+INFO  components/dashboard/CharlieLeadEstimate.tsx  sha=5ea528c865d1
+INFO  components/dashboard/LeadDetailClient.tsx  sha=c6dd945fc086
+INFO  lib/email/charlie-plan-email-html.ts  sha=271edc397e96
+INFO  app/charlie/components/ResultsPanel.tsx  sha=72f5d88adef9
+INFO  app/charlie/components/SellerEstimateBlock.tsx  sha=564981cd6333
+INFO  app/charlie/components/ComparableCard.tsx  sha=57a70d05ffec
+INFO  lib/charlie/tier-chip.ts  sha=0cac5bfb8e6e
+INFO  lib/charlie/seller-estimate-view.ts  sha=1d4178b4de84
+
+================================================================
+OVERALL: PASS  (51/51 passed, 0 failed)
+================================================================

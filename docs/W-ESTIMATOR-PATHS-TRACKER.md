@@ -1828,3 +1828,130 @@ the canonical payload → buildRichPlanEmail renders → 58 assertions.
                        approval + email eyeball
   - CV-3: convergence harness — asserts all three surfaces render the
           same canonical set against the same fixture (NEXT)
+
+
+───────────────────────────────────────────────────────────────────────
+W-CHARLIE-CONVERGENCE CV-3 — CONVERGENCE LOCK (test-only) — 2026-06-14
+───────────────────────────────────────────────────────────────────────
+
+  Scope: NEW test file + tracker only. No renderer modified. System 2
+         only; S1 untouched.
+
+  New file: scripts/smoke-cv3-convergence.js (+ scripts-output/smoke-cv3-
+            convergence.txt). Anti-drift gate: asserts all three Charlie
+            seller surfaces emit the same canonical set against the same
+            fixture (lead 63b48f13). 14 canonical sections × 3 surfaces
+            = 42 matrix cells. PASS only if every cell is PRESENT or an
+            explicitly-enumerated deliberate exception.
+
+### Convergence matrix result (51/51 PASS)
+
+  SECTION                              LEAD PAGE  EMAIL              IN-CHAT
+  ----------------------------------------------------------------------------
+  Plan Summary                         PRESENT    PRESENT            DELIB-OM
+  Seller Profile                       PRESENT    PRESENT            PRESENT
+  Property Estimate price card         PRESENT    PRESENT            PRESENT
+  4-row tier rail                      PRESENT    PRESENT            PRESENT
+  Market Intelligence                  PRESENT    PRESENT            DELIB-GA
+  Price by Home Type                   PRESENT    PRESENT            DELIB-GA
+  Offer Intelligence                   PRESENT    PRESENT            DELIB-GA
+  Best Time (seasonal)                 PRESENT    PRESENT            PRESENT
+  Comparable Sold + tier chips         PRESENT    PRESENT            PRESENT
+  Tax-Matched + chips + pill           PRESENT    PRESENT            PRESENT
+  Competing For Sale                   PRESENT    PRESENT            PRESENT
+  Pricing Strategy & Risk              PRESENT    DELIB-OM           PRESENT
+  AI Disclaimer                        PRESENT    PRESENT            PRESENT
+  Brand chrome / CTA                   PRESENT    PRESENT            N/A
+  ----------------------------------------------------------------------------
+  42 cells: 35 PRESENT, 4 DELIB-GATE, 2 DELIB-OMISSION, 1 N/A. Zero MISSING.
+
+### Enumerated deliberate exceptions (the only non-PRESENT cells allowed)
+
+  - email.pricing_risk → DELIBERATE-OMISSION
+      Operator-confirmed: PricingRiskBlock concession + DOM-risk table
+      is intentionally not in the plan email. FLAGGED FOR OPERATOR
+      DECISION post-CV-3 (do not add in CV-3 scope).
+
+  - inchat.{market_intel, price_by_home_type, offer_intel} → DELIBERATE-GATE
+      ResultsPanel.tsx:107 gates BuyerOfferBlock when a sellerEstimate
+      block exists. Source still present; gating is intentional buyer-
+      surface routing. Byte-identical 6f685be → HEAD per W-CHARLIE-
+      REGRESSION recon.
+
+  - inchat.plan_summary → DELIBERATE-OMISSION
+      The long plan.summary text is the email's surface. In-chat
+      PlanDocument renders structured rows + a brief Seller Strategy
+      preview card pre-plan instead.
+
+  - inchat.brand_chrome → N/A
+      In-chat IS the chat panel — there is no separate brand chrome
+      wrapping it (WALLiam brand is the host context, not a section).
+
+### Single-source / duplication watch (drift gate)
+
+  PASS  lead page (CharlieLeadEstimate): TIER_META imported, no inline
+        TIER_COLORS literal remains.
+  PASS  email (charlie-plan-email-html): TIER_META imported, no inline
+        TIER_COLORS_EMAIL literal remains.
+  PASS  ComparableCard: inline TIER_COLORS still byte-identical to CV-0
+        TIER_META: {platinum:#10b981, gold:#f59e0b, silver:#64748b,
+        bronze:#c2410c}.
+  PASS  SellerEstimateBlock: inline TIER_COLORS still byte-identical
+        to CV-0 TIER_META.
+
+  Known remaining duplication (flagged, not failed; cleanup tracked):
+  - app/charlie/components/ComparableCard.tsx:54-58
+  - app/charlie/components/SellerEstimateBlock.tsx:75-79
+  → Test goes red on drift. Cleanup pass tracked under CV-3 follow-ups.
+
+### Byte-unchanged proofs (CV-3 is test-only)
+
+  PROTECTED (09b97ef-frozen) — must equal:
+    app/api/charlie/route.ts                          9c64acba0564  OK
+    app/charlie/lib/charlie-tools.ts                  a02ee7ab48f9  OK
+    app/charlie/lib/charlie-prompts.ts                fbe7b7de14b9  OK
+    app/api/walliam/charlie/vip-request/route.ts      97c651e90c6f  OK
+
+  Informational (renderers; CV-3 made no changes):
+    components/dashboard/CharlieLeadEstimate.tsx      5ea528c865d1
+    components/dashboard/LeadDetailClient.tsx         c6dd945fc086
+    lib/email/charlie-plan-email-html.ts              271edc397e96
+    app/charlie/components/ResultsPanel.tsx           72f5d88adef9
+    app/charlie/components/SellerEstimateBlock.tsx    564981cd6333
+    app/charlie/components/ComparableCard.tsx         57a70d05ffec
+    lib/charlie/tier-chip.ts                          0cac5bfb8e6e
+    lib/charlie/seller-estimate-view.ts               1d4178b4de84
+
+  S1 zero-diff:
+    app/admin/page.tsx                                c956360a6f23
+    app/api/chat/route.ts                             145b367d8d8f
+    app/admin/agents/page.tsx                         f34fa709b1a1
+
+  TSC: npx tsc --noEmit → exit 0.
+
+### W-CHARLIE-CONVERGENCE — CORE COMPLETE
+
+  - CV-0 (5040a5e):  shipped + pushed.
+  - CV-1 (6935f87):  shipped + pushed; lead-page parity confirmed in
+                     walliam.ca prod.
+  - CV-2 (4f0ffc4):  shipped + pushed; email parity (price card + tier
+                     rail mounted; inline tier literals removed).
+  - CV-3 (this commit): shipped local; convergence harness green
+                        (51/51 PASS, 42/42 matrix cells accounted for).
+                        HOLD push pending operator approval.
+
+### Named follow-ups (out of CV-3 scope)
+
+  1. Email Pricing-Risk decision. PricingRiskBlock is in the lead page
+     and in-chat but DELIBERATE-OMISSION in email. Operator decides:
+     add to email (CV-2-followup) or formalize the omission (update
+     harness with permanent reason).
+
+  2. ComparableCard + SellerEstimateBlock duplication cleanup. Two
+     in-chat React surfaces still carry inline TIER_COLORS literals
+     byte-identical to TIER_META. One atomic migration to consume
+     CV-0 TIER_META would kill duplications 3 and 4 (of original 4).
+
+  3. Operator eyeballs (manual, not automatable):
+     - Lead-page DOM at walliam.ca/dashboard/leads/<id>/
+     - Email-client render (Gmail web + Outlook Desktop)
