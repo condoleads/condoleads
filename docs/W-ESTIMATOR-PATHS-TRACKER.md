@@ -1598,3 +1598,121 @@ LeadDetailClient, page.tsx, charlie-plan-email-html.
     zero diff.
   · Tracker write atomic with this commit (operator's standing pattern).
   · HOLD push pending operator approval.
+
+---
+
+## W-CHARLIE-CONVERGENCE CV-1 — SHIPPED LOCAL (2026-06-14)
+
+Lead-page parity. CharlieLeadEstimate now consumes the canonical
+SellerEstimateView from CV-0 and renders the FULL locked target set on the
+dashboard: the existing estimate block (price card, tier rail, comparables
+with chips, tax-matched + estimate pill, competing) PLUS the 8 plan-side
+sections it previously dropped (Seller Strategy, Seller Profile, Market
+Intelligence, Price by Home Type, Offer Intelligence, Best Time to Sell,
+Pricing Strategy & Risk, AI Disclaimer). Each section is gated on its
+view.present flag — no empty shells.
+
+Tier-chip duplication killed at this surface: CharlieLeadEstimate.tsx now
+imports TIER_META / TIER_ORDER / tierChipFor from CV-0 instead of declaring
+its own inline `TIER_COLORS: Record<TierKey, string> = { platinum:'#10b981',
+... }` literal (previously at L85-89 of the file). Same hex values — proven
+byte-identical by CV-0 — but now ONE source. Three duplications remain
+(ComparableCard, SellerEstimateBlock, charlie-plan-email-html) — CV-2 hits
+the email one; the two in-chat React surfaces are out of CV-1 scope.
+
+### Deploy state correction
+
+CV-0 marked `3aa0449` live deploy as INFERRED (Vercel CLI v51 didn't expose
+`meta.githubCommitSha`). Operator subsequently confirmed via the Vercel
+dashboard Production row that walliam.ca IS serving `3aa0449`. Status:
+VERIFIED LIVE, not inferred.
+
+### Files (changes only — backup_cv1_20260614_054218 for each)
+
+  - components/dashboard/CharlieLeadEstimate.tsx
+    REWRITE. Props now `{ view: SellerEstimateView | null | undefined,
+    legacyNoticeWhenEmpty?, leadMeta? }`. Sections (in render order):
+      L165-176  amber notice                    (Phase 2 path preserved)
+      L196-202  Seller Strategy (planSummary)   NEW
+      L205-237  Seller Profile (planCardGrid)   NEW
+      L240-260  Estimate price card             (preserved)
+      L263-313  Tier rail "Confidence by Area"  (preserved; TIER_META migrated)
+      L316-364  Market Intelligence             NEW
+      L367-394  Price by Home Type              NEW
+      L397-419  Offer Intelligence              NEW
+      L422-441  Best Time to Sell               NEW
+      L444-456  Comparable Sold + chips         (preserved)
+      L459-486  Tax-Matched + pill + chips      (preserved)
+      L489-501  Competing For Sale (no chip)    (preserved)
+      L504-561  Pricing Strategy & Risk         NEW
+      L564-568  AI Disclaimer                   NEW
+    Tier chip via `tierChipFor` (CV-0 anchor-fallback rule).
+    Inline TIER_COLORS literal REMOVED.
+
+  - components/dashboard/LeadDetailClient.tsx
+    Calls buildSellerEstimateView((lead as any)?.plan_data ?? null) once.
+    Branches: view present → CharlieLeadEstimate view={sellerView}; else
+    leadIsCharlieSeller → CharlieLeadEstimate view={null} legacyNoticeWhen-
+    Empty={true} leadMeta={…}; else → WorkingDocView (unchanged).
+    The `charlieSellerEstimate` prop is now vestigial (kept on interface
+    for page.tsx backward compat; not destructured).
+
+  - app/dashboard/leads/[id]/page.tsx — UNCHANGED. Vestigial `charlie-
+    SellerEstimate` prop on LeadDetailClient still satisfies the existing
+    caller; `leadIsCharlieSeller` still propagates. No edit needed.
+
+### Verification
+
+  - scripts/smoke-cv1-lead-page.js (NEW)
+    Combined-evidence smoke. DATA leg hits the CV-0 view probe at
+    /api/charlie/test-seller-estimate-view-probe (the SHIPPED helper runs
+    server-side; verifies view non-null + correct present flags + correct
+    values from analytics/plan/estimate for 63b48f13). VIEW-CONSUMPTION
+    leg does static source analysis of CharlieLeadEstimate.tsx +
+    LeadDetailClient.tsx (every canonical section's JSX present + reads
+    the right view path + each gated on view.present.*). AMBER path:
+    asserts the legacyNotice copy + amber-styling class are in the source
+    AND that buildSellerEstimateView returns null for a real pre-3d9ac08
+    Charlie seller lead (42a20b25-…). NEITHER path: asserts view returns
+    null for a non-charlie-seller lead (1fdab8c3-…). Tier-chip parity:
+    asserts the inline TIER_COLORS literal is GONE and CV-0 imports
+    present. Non-in-scope surfaces byte-unchanged: 09b97ef SHAs all match
+    (chat route / tools / prompt / Charlie VIP). Result: 92/92 PASS.
+    OUTPUT: scripts-output/smoke-cv1-lead-page.txt
+
+  - Render-output probe NOT shipped. A `renderToStaticMarkup` probe over
+    CharlieLeadEstimate failed because Next 14 resolves 'use client'
+    imports in route handlers to a client-component placeholder object,
+    not the function. Documented in the smoke header. Combined-evidence
+    pattern (CV-0 data smoke + static source) is the C-CHARLIE-FOLLOWUP
+    B(i) approach when actual server-rendering of a client component
+    isn't feasible.
+
+### Byte-unchanged proofs (CV-1 is lead-page only)
+
+  app/charlie/components/ResultsPanel.tsx           sha 72f5d88adef9  unchanged
+  app/charlie/components/SellerEstimateBlock.tsx    sha 564981cd6333  unchanged
+  app/charlie/components/ComparableCard.tsx         sha 57a70d05ffec  unchanged
+  lib/email/charlie-plan-email-html.ts              sha a20d5f4e1b2f  unchanged
+  app/api/charlie/plan-email/route.ts               sha 4f24d9cd2cc7  unchanged
+  app/api/charlie/route.ts                          sha 9c64acba0564  MATCH (09b97ef)
+  app/charlie/lib/charlie-tools.ts                  sha a02ee7ab48f9  MATCH (09b97ef)
+  app/charlie/lib/charlie-prompts.ts                sha fbe7b7de14b9  MATCH (09b97ef)
+  app/api/walliam/charlie/vip-request/route.ts      sha 97c651e90c6f  MATCH (09b97ef)
+
+### Build + S1
+
+  npx tsc --noEmit: exit 0
+  S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings): zero diff.
+
+### Phase status
+
+  - CV-0: shipped + pushed (origin/main = 3aa0449 + 5040a5e)
+  - CV-1: shipped local; HOLD push pending operator approval + walliam.ca
+          eyeball of a real Charlie seller lead with full canonical render
+  - CV-2: NEXT — email convergence; buildRichPlanEmail consumes the
+          canonical view + tier-chip helper (kills the email's literal
+          TIER_COLORS_EMAIL / HOME_LABELS_EMAIL / CONDO_LABELS_EMAIL
+          duplication)
+  - CV-3: convergence harness — asserts all three surfaces render the same
+          canonical set

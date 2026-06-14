@@ -1,0 +1,119 @@
+================================================================
+W-CHARLIE-CONVERGENCE CV-1 — lead-page parity smoke
+================================================================
+fixture lead (FULL render): 63b48f13-8a03-46be-b4ce-91007da0794a
+amber lead (legacyNotice):  42a20b25-6d77-46d1-971a-c472b580efed
+neither lead (estimator):   1fdab8c3-e440-47e4-9289-96610e4ebf59
+dev server: http://localhost:3001
+
+── DATA — view shape from CV-0 helper (via probe) ──
+PASS  fixture view non-null
+PASS  view.path === "home"
+PASS  view.subjectAddress === "606 Aspen rd, Pickering"
+PASS  view.present.priceCard === true  [actual=true]
+PASS  view.present.tierRail === true  [actual=true]
+PASS  view.present.comparables === true  [actual=true]
+PASS  view.present.taxMatch === true  [actual=true]
+PASS  view.present.competing === true  [actual=true]
+PASS  view.present.marketIntel === true  [actual=true]
+PASS  view.present.priceByHomeType === true  [actual=true]
+PASS  view.present.offerIntel === true  [actual=true]
+PASS  view.present.bestTime === true  [actual=true]
+PASS  view.present.planCardGrid === true  [actual=true]
+PASS  view.present.planSummary === true  [actual=true]
+PASS  view.present.pricingRisk === true  [actual=true]
+PASS  view.tierRail.bestGeoTier === "gold"
+PASS  view.tierRail.slots.gold.count === 5 && median === 1127000
+PASS  view.taxMatch.count === 12 && comparables.length === 10
+PASS  all tax comps carry sourceTier="silver"
+PASS  view.marketIntel.closedAvgDom90 === 25
+PASS  view.marketIntel.saleToListRatio === 100.72
+PASS  view.marketIntel.activeCount === 423
+PASS  view.priceByHomeType.length === 5
+PASS  view.bestTime.currentMonthRank === 3
+PASS  view.planCardGrid.goal === "Top dollar"
+PASS  view.planSummary starts with "Pickering"
+
+── AMBER probe ──
+PASS  AMBER: view is null for pre-3d9ac08 Charlie seller lead  [actual=null]
+── NEITHER probe ──
+PASS  NEITHER: view is null for non-charlie-seller lead  [actual=null]
+
+── VIEW-CONSUMPTION — CharlieLeadEstimate.tsx structural assertions ──
+PASS  PRESERVE: header text
+PASS  PRESERVE: price card label
+PASS  PRESERVE: tier rail heading
+PASS  PRESERVE: Comparable Sold header reads view.comparables.length
+PASS  PRESERVE: Tax-Matched header reads view.taxMatch
+PASS  PRESERVE: tax-matched estimate pill label
+PASS  PRESERVE: Competing For Sale header reads view.competingListings
+PASS  PRESERVE: ANCHOR chip
+PASS  NEW: Seller Strategy section heading
+PASS  NEW: JSX renders {view.planSummary}
+PASS  NEW: Seller Profile section heading
+PASS  NEW: JSX renders {view.planCardGrid.goal}
+PASS  NEW: JSX renders {view.planCardGrid.timeline}
+PASS  NEW: JSX renders {view.planCardGrid.propertyType}
+PASS  NEW: Market Intelligence heading
+PASS  NEW: JSX consumes view.marketIntel.closedAvgDom90
+PASS  NEW: JSX consumes view.marketIntel.saleToListRatio
+PASS  NEW: JSX consumes view.marketIntel.activeCount
+PASS  NEW: Price by Home Type heading
+PASS  NEW: JSX maps view.priceByHomeType
+PASS  NEW: Offer Intelligence heading
+PASS  NEW: JSX consumes view.offerIntel.offerAt
+PASS  NEW: JSX consumes view.offerIntel.avgConcession
+PASS  NEW: JSX consumes view.offerIntel.decideIn
+PASS  NEW: Best Time to Sell heading
+PASS  NEW: JSX consumes view.bestTime
+PASS  NEW: Pricing Strategy heading
+PASS  NEW: Pricing-risk DOM row "At asking price"
+PASS  NEW: Pricing-risk DOM row "5% over asking"
+PASS  NEW: Pricing-risk DOM row "10% over asking"
+PASS  NEW: AI Disclaimer block
+PASS  GATE: price card gated on view.present.priceCard
+PASS  GATE: tier rail gated on view.present.tierRail
+PASS  GATE: comparables gated
+PASS  GATE: tax-match gated
+PASS  GATE: competing gated
+PASS  GATE: marketIntel gated
+PASS  GATE: priceByHomeType gated
+PASS  GATE: offerIntel gated
+PASS  GATE: bestTime gated
+PASS  GATE: planCardGrid gated
+PASS  GATE: planSummary gated
+PASS  GATE: pricingRisk gated
+PASS  AMBER: legacy notice text in source
+PASS  AMBER: cutoff commit cited
+PASS  AMBER: amber styling class
+PASS  CV-0 IMPORT: tier-chip module imported
+PASS  CV-0 IMPORT: TIER_META named import
+PASS  CV-0 IMPORT: TIER_ORDER named import
+PASS  CV-0 IMPORT: tierChipFor named import
+PASS  CV-1: inline TIER_COLORS literal REMOVED from CharlieLeadEstimate.tsx (no more duplication)
+PASS  CV-0 IMPORTS exact block: TIER_META + TIER_ORDER + tierChipFor
+PASS  PROPS: view prop now SellerEstimateView (replaced sellerEstimate)
+PASS  PROPS: old sellerEstimate prop removed from interface
+
+── LeadDetailClient.tsx wiring ──
+PASS  LeadDetailClient imports buildSellerEstimateView from CV-0
+PASS  LeadDetailClient calls buildSellerEstimateView(lead.plan_data)
+PASS  LeadDetailClient passes view prop
+PASS  LeadDetailClient amber branch passes view={null}
+PASS  LeadDetailClient amber branch legacyNoticeWhenEmpty=true
+PASS  LeadDetailClient: old `sellerEstimate={charlieSellerEstimate}` pattern REMOVED
+
+── NON-IN-SCOPE files — byte-unchanged (CV-1 is lead-page only) ──
+INFO  app/charlie/components/ResultsPanel.tsx  sha=72f5d88adef9
+INFO  app/charlie/components/SellerEstimateBlock.tsx  sha=564981cd6333
+INFO  app/charlie/components/ComparableCard.tsx  sha=57a70d05ffec
+INFO  lib/email/charlie-plan-email-html.ts  sha=a20d5f4e1b2f
+INFO  app/api/charlie/plan-email/route.ts  sha=4f24d9cd2cc7
+PASS  app/api/charlie/route.ts  expected=9c64acba0564, got=9c64acba0564
+PASS  app/charlie/lib/charlie-tools.ts  expected=a02ee7ab48f9, got=a02ee7ab48f9
+PASS  app/charlie/lib/charlie-prompts.ts  expected=fbe7b7de14b9, got=fbe7b7de14b9
+PASS  app/api/walliam/charlie/vip-request/route.ts  expected=97c651e90c6f, got=97c651e90c6f
+
+================================================================
+OVERALL: PASS  (92/92 passed, 0 failed)
+================================================================

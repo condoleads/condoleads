@@ -21,6 +21,11 @@ import type { WorkingDoc } from '@/lib/email/working-doc-render'
 // dashboard render path. Exclusive of WorkingDocView (estimator leads) — never
 // both. Branch decided by presence of plan_data.sellerEstimate on the lead row.
 import CharlieLeadEstimate from '@/components/dashboard/CharlieLeadEstimate'
+// W-CHARLIE-CONVERGENCE CV-1 (2026-06-14): build the canonical view once from
+// plan_data so the dashboard renders the same shape the email + in-chat will
+// consume in CV-2/CV-3. View is null for non-Charlie leads, buyer plans, or
+// Charlie seller leads with no persisted sellerEstimate (the 6 AMBER leads).
+import { buildSellerEstimateView } from '@/lib/charlie/seller-estimate-view'
 
 interface LeadDetailClientProps {
   lead: any
@@ -37,6 +42,9 @@ interface LeadDetailClientProps {
   // lead.plan_data.sellerEstimate. When present, this is mounted instead of
   // WorkingDocView (exclusive branch — Charlie leads write to plan_data,
   // estimator leads write to property_details).
+  // CV-1 vestigial — kept on the interface for backward compat with the
+  // page.tsx caller, but no longer read here (the canonical view is built
+  // from lead.plan_data directly).
   charlieSellerEstimate?: any
   // C-CHARLIE-FOLLOWUP C (2026-06-13): when the lead is a Charlie seller-
   // source lead AND charlieSellerEstimate is absent (the 98 pre-3d9ac08
@@ -49,7 +57,7 @@ interface LeadDetailClientProps {
 export default function LeadDetailClient({
   lead, agent, initialNotes, engagementScore,
   workingDoc, workingDocBaseUrl, workingDocIdMap,
-  charlieSellerEstimate, leadIsCharlieSeller,
+  leadIsCharlieSeller,
 }: LeadDetailClientProps) {
   const [status, setStatus] = useState(lead.status)
   const [quality, setQuality] = useState(lead.quality)
@@ -180,35 +188,54 @@ export default function LeadDetailClient({
         </div>
       </div>
 
-      {/* C-ENHANCE-2-RENDER + C-CHARLIE-FOLLOWUP C: branch the dashboard
-          estimate render. Three cases (in priority order):
-            1. Charlie lead WITH persisted estimate → CharlieLeadEstimate
-               (the full tier-rail + tax-match render)
-            2. Charlie SELLER lead WITHOUT persisted estimate (the 98 pre-
-               3d9ac08 leads) → CharlieLeadEstimate with the legacyNotice-
-               WhenEmpty flag → renders the "No estimate captured" notice
+      {/* C-ENHANCE-2-RENDER + C-CHARLIE-FOLLOWUP C + W-CHARLIE-CONVERGENCE
+          CV-1: branch the dashboard estimate render. Three cases (priority
+          order):
+            1. Charlie lead WITH persisted estimate → buildSellerEstimateView
+               returns a non-null canonical view → CharlieLeadEstimate
+               renders the canonical-target set (price card + tier rail +
+               comps + tax + competing + market intel + price-by-home-type +
+               offer intel + best time + plan summary + seller profile +
+               pricing risk + disclaimer), each section gated on
+               view.present.*.
+            2. Charlie SELLER lead WITHOUT persisted estimate (the 6 pre-
+               3d9ac08 AMBER leads) → view is null but legacyNoticeWhenEmpty
+               sends CharlieLeadEstimate down the "No estimate captured"
+               notice path (Phase 2 behavior preserved).
             3. Estimator lead (or any lead that doesn't carry either) →
-               WorkingDocView unchanged */}
-      {charlieSellerEstimate ? (
-        <CharlieLeadEstimate sellerEstimate={charlieSellerEstimate} />
-      ) : leadIsCharlieSeller ? (
-        <CharlieLeadEstimate
-          sellerEstimate={null}
-          legacyNoticeWhenEmpty={true}
-          leadMeta={{
-            intent: lead?.intent ?? null,
-            geoName: lead?.geo_name ?? null,
-            contactName: lead?.contact_name ?? null,
-            createdAtIso: lead?.created_at ?? null,
-          }}
-        />
-      ) : (
-        <WorkingDocView
-          workingDoc={workingDoc}
-          baseUrl={workingDocBaseUrl || ''}
-          idMap={workingDocIdMap || {}}
-        />
-      )}
+               WorkingDocView unchanged. */}
+      {(() => {
+        // CV-1: derive the canonical view once. buildSellerEstimateView is
+        // pure + deterministic; reads lead.plan_data (the same JSONB that
+        // already carries Charlie's persisted plan + analytics +
+        // sellerEstimate) and returns null cleanly for buyer plans /
+        // estimator leads / AMBER leads.
+        const sellerView = buildSellerEstimateView((lead as any)?.plan_data ?? null)
+        if (sellerView) {
+          return <CharlieLeadEstimate view={sellerView} />
+        }
+        if (leadIsCharlieSeller) {
+          return (
+            <CharlieLeadEstimate
+              view={null}
+              legacyNoticeWhenEmpty={true}
+              leadMeta={{
+                intent: lead?.intent ?? null,
+                geoName: lead?.geo_name ?? null,
+                contactName: lead?.contact_name ?? null,
+                createdAtIso: lead?.created_at ?? null,
+              }}
+            />
+          )
+        }
+        return (
+          <WorkingDocView
+            workingDoc={workingDoc}
+            baseUrl={workingDocBaseUrl || ''}
+            idMap={workingDocIdMap || {}}
+          />
+        )
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">

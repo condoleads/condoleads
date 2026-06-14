@@ -2,78 +2,50 @@
 
 // components/dashboard/CharlieLeadEstimate.tsx
 //
-// C-ENHANCE-2-RENDER (2026-06-13) — agent dashboard render for Charlie
-// seller-plan leads. Branches alongside the estimator-source render path
-// (which serves estimator leads from lead.property_details). This component
-// is mounted ONLY when lead.plan_data.sellerEstimate is present (Charlie
-// writes it from app/api/charlie/plan-email/route.ts). Exclusive branch —
-// never both renders.
+// W-CHARLIE-CONVERGENCE CV-1 (2026-06-14) — agent dashboard render for
+// Charlie seller-plan leads. Consumes the CANONICAL SellerEstimateView
+// from lib/charlie/seller-estimate-view.ts (shipped in CV-0). All sections
+// (price card, tier rail, comparables, tax-matched, competing, market intel,
+// price-by-home-type, offer intel, best time, seller strategy, seller
+// profile, pricing strategy & risk, AI disclaimer) render from the same
+// canonical shape. Tier chips use tierChipFor / TIER_META from
+// lib/charlie/tier-chip.ts — eliminates the white-card duplication that
+// previously lived at L85-89 of this file (now sourced from CV-0).
 //
-// Reuses ONLY the label-map constants (HOME_LABEL_MAP / CONDO_LABEL_MAP)
-// from the estimator. The estimator's tier-rail component carries white-
-// card Tailwind + its own heading wording that doesn't fit Charlie's
-// voice; this component mirrors the row structure only.
+// History:
+//   - C-ENHANCE-2-RENDER (2026-06-13): initial dashboard render — estimate
+//     block only (price card + tier rail + comparables + tax + competing).
+//   - C-CHARLIE-FOLLOWUP C (2026-06-13): amber "No estimate captured"
+//     notice for the 6 pre-3d9ac08 Charlie seller leads.
+//   - W-CHARLIE-CONVERGENCE CV-1 (2026-06-14): plan-side parity. Adds the
+//     8 missing sections from the recon gap matrix, all gated on
+//     view.present flags. Tier-chip literals migrated to CV-0 (this file
+//     no longer owns hex values).
 //
-// Renders nothing when sellerEstimate is null/absent — caller's existing
-// fallback handles those cases via the page.tsx branch.
+// Mounted ONLY by LeadDetailClient. Branches alongside the estimator-source
+// WorkingDocView; never both renders.
 
 import {
-  HOME_LABEL_MAP,
-  CONDO_LABEL_MAP,
-  type GeoConfidenceLabelMap,
-} from '@/app/estimator/components/GeoConfidenceSpread'
-
-type TierKey = 'platinum' | 'gold' | 'silver' | 'bronze'
-
-interface TierSlot {
-  count?: number
-  median?: number
-  range?: { low: number; high: number }
-}
-
-interface SellerEstimatePayload {
-  estimate?: {
-    estimatedPrice?: number
-    priceRange?: { low: number; high: number }
-    confidence?: string
-    matchTier?: string
-    bestGeoTier?: TierKey | 'none'
-    tiers?: {
-      platinum: TierSlot | null
-      gold:     TierSlot | null
-      silver:   TierSlot | null
-      bronze:   TierSlot | null
-    }
-    taxMatch?: {
-      comparables: any[]
-      estimatedPrice?: number
-      priceRange?: { low: number; high: number }
-      count?: number
-      bestGeoTier?: TierKey | 'none'
-    }
-  }
-  comparables?: any[]
-  competingListings?: any[]
-  buildingName?: string | null
-  subjectAddress?: string | null
-  geoLevel?: string | null
-  intent?: 'sale' | 'lease'
-  path?: 'condo' | 'home' | null
-}
+  TIER_META,
+  TIER_ORDER,
+  tierChipFor,
+  type TierName,
+  type TierBestSlot,
+} from '@/lib/charlie/tier-chip'
+import type {
+  SellerEstimateView,
+  CanonicalCompRow,
+  PriceByHomeTypeRow,
+} from '@/lib/charlie/seller-estimate-view'
 
 interface Props {
-  sellerEstimate: SellerEstimatePayload | null | undefined
-  // C-CHARLIE-FOLLOWUP C (2026-06-13): when the lead is known to be a Charlie
-  // seller-source lead but plan_data.sellerEstimate is absent (the 98 pre-
-  // 3d9ac08 leads, where the estimate was browser-state-only and never
-  // persisted to the DB — confirmed in W-CHARLIE-FOLLOWUP Item C), render
-  // an honest "no estimate captured" notice instead of returning null. This
-  // distinguishes "pre-persistence Charlie lead" from "estimator lead with
-  // its own working-doc render". When this prop is false (estimator leads),
-  // the component returns null and the caller falls through to its own
-  // existing render path (e.g. WorkingDocView).
+  // CV-1: consume the canonical view produced by buildSellerEstimateView in
+  // LeadDetailClient. `null` means either (a) no Charlie seller content on
+  // this lead (estimator lead — caller's branch sends to WorkingDocView) or
+  // (b) a Charlie seller lead without persisted estimate (the 6 AMBER leads
+  // — caller sets legacyNoticeWhenEmpty=true).
+  view: SellerEstimateView | null | undefined
   legacyNoticeWhenEmpty?: boolean
-  // Optional metadata for the notice header — keeps it informational.
   leadMeta?: {
     intent?: string | null
     geoName?: string | null
@@ -82,67 +54,74 @@ interface Props {
   }
 }
 
-const TIER_COLORS: Record<TierKey, string> = {
-  platinum: '#10b981',
-  gold:     '#f59e0b',
-  silver:   '#64748b',
-  bronze:   '#c2410c',
-}
-
-const TIER_ORDER: TierKey[] = ['platinum', 'gold', 'silver', 'bronze']
+const MONTHS_ARR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 function fmtPrice(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—'
   return '$' + Math.round(n).toLocaleString()
 }
 
-function TierChip({ tier, labelMap }: { tier: string | null | undefined; labelMap: GeoConfidenceLabelMap }) {
-  if (!tier || tier === 'none') return null
-  const k = tier as TierKey
-  if (!TIER_COLORS[k]) return null
-  const lbl = labelMap[k]
+function fmtNumber(n: number | null | undefined, suffix = ''): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  return Number(n).toLocaleString('en-CA') + suffix
+}
+
+function fmtPct(n: number | null | undefined, digits = 1): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  return n.toFixed(digits) + '%'
+}
+
+function TierChip({ tier, anchorTier, path }: {
+  tier: TierName | null
+  anchorTier: TierBestSlot
+  path: 'home' | 'condo'
+}) {
+  const chip = tierChipFor(tier, anchorTier !== 'none' ? anchorTier : null, path)
+  if (!chip) return null
   return (
     <span
       className="inline-block text-[10px] font-bold text-white rounded px-2 py-0.5 mr-2"
-      style={{ background: TIER_COLORS[k] }}
+      style={{ background: chip.color }}
     >
-      {lbl.emoji} {lbl.name} · {lbl.sub}
+      {chip.marker} {chip.label} · {chip.sub}
     </span>
   )
 }
 
-function CompRow({ c, tier, labelMap, kind }: { c: any; tier: string | null | undefined; labelMap: GeoConfidenceLabelMap; kind: 'sold' | 'tax' | 'competing' }) {
-  const price = c.adjustedPrice || c.closePrice || c.close_price || c.listPrice || c.list_price || 0
-  const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
-  const addr = (c.unparsedAddress || c.unparsed_address || '').split(',')[0]
-  const beds = c.bedrooms ?? c.bedrooms_total
-  const baths = c.bathrooms ?? c.bathrooms_total_integer
-  const sqft = c.exactSqft || c.livingAreaRange || c.living_area_range
-  const dom = c.daysOnMarket ?? c.days_on_market
+function CompRow({ row, anchorTier, path, kind }: {
+  row: CanonicalCompRow
+  anchorTier: TierBestSlot
+  path: 'home' | 'condo'
+  kind: 'sold' | 'tax' | 'competing'
+}) {
   const priceColor = kind === 'competing' ? 'text-blue-700' : 'text-emerald-700'
   const affordance = kind === 'competing' ? 'For Sale →' : 'Sold →'
+  // No chip on competing tiles (deliberate — not a matched/scored comp).
+  const tier: TierName | null = kind === 'competing' ? null : (row.sourceTier as TierName | null)
   return (
     <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-white">
-      {photo && (
+      {row.mediaUrl && (
         <div className="w-20 flex-shrink-0">
-          <img src={photo} alt="" className="block w-20 h-[72px] object-cover" />
+          <img src={row.mediaUrl} alt="" className="block w-20 h-[72px] object-cover" />
         </div>
       )}
       <div className="flex-1 px-3 py-2 min-w-0">
-        <TierChip tier={tier} labelMap={labelMap} />
-        <div className="text-sm font-bold text-slate-900 truncate">{addr || '—'}</div>
+        {kind !== 'competing' && (
+          <TierChip tier={tier} anchorTier={anchorTier} path={path} />
+        )}
+        <div className="text-sm font-bold text-slate-900 truncate">{row.address || '—'}</div>
         <div className="text-xs text-slate-500 mt-0.5">
           {[
-            beds != null ? `${beds} bed` : '',
-            baths != null ? `${baths} bath` : '',
-            sqft ? `${sqft}${typeof sqft === 'number' ? ' sqft' : ' sqft'}` : '',
-            dom != null ? `${dom}d DOM` : '',
-          ].filter(Boolean).join(' · ')}
+            row.beds != null ? `${row.beds} bed` : '',
+            row.baths != null ? `${row.baths} bath` : '',
+            row.sqft != null ? `${row.sqft} sqft` : '',
+            row.dom != null ? `${row.dom}d DOM` : '',
+          ].filter(Boolean).join(' · ') || '—'}
         </div>
       </div>
       <div className="px-3 py-2 text-right whitespace-nowrap">
         <div className={`text-base font-extrabold ${priceColor}`}>
-          ${Number(price).toLocaleString('en-CA')}
+          {row.price != null ? '$' + Number(row.price).toLocaleString('en-CA') : '—'}
         </div>
         <div className="text-[11px] text-slate-400 mt-0.5">{affordance}</div>
       </div>
@@ -150,12 +129,12 @@ function CompRow({ c, tier, labelMap, kind }: { c: any; tier: string | null | un
   )
 }
 
-export default function CharlieLeadEstimate({ sellerEstimate, legacyNoticeWhenEmpty, leadMeta }: Props) {
-  // C-CHARLIE-FOLLOWUP C (2026-06-13): legacy notice path. When the caller
-  // says this IS a Charlie lead but the estimate isn't persisted, render
-  // the honest "no estimate captured" notice. Estimator leads still get
-  // null and fall through to WorkingDocView in the caller's branch.
-  if (!sellerEstimate) {
+export default function CharlieLeadEstimate({ view, legacyNoticeWhenEmpty, leadMeta }: Props) {
+  // Phase 2 amber-notice path — preserved exactly. When the caller signals
+  // "this IS a Charlie seller lead but the estimate isn't persisted", show
+  // the honest legacy notice. Estimator leads still get null and fall
+  // through to the caller's WorkingDocView branch.
+  if (!view) {
     if (!legacyNoticeWhenEmpty) return null
     return (
       <div className="bg-white rounded-lg shadow p-6 mt-6">
@@ -182,74 +161,103 @@ export default function CharlieLeadEstimate({ sellerEstimate, legacyNoticeWhenEm
       </div>
     )
   }
-  const est = sellerEstimate.estimate || {}
-  const comps = sellerEstimate.comparables || []
-  const competing = sellerEstimate.competingListings || []
-  const taxComps = est.taxMatch?.comparables || []
 
-  // Path derivation (mirrors SellerEstimateBlock.tsx) — uses explicit
-  // payload.path when present, otherwise infers from buildingName.
-  const resolvedPath: 'condo' | 'home' =
-    sellerEstimate.path === 'home' || sellerEstimate.path === 'condo'
-      ? sellerEstimate.path
-      : (sellerEstimate.buildingName ? 'condo' : 'home')
-  const labelMap = resolvedPath === 'home' ? HOME_LABEL_MAP : CONDO_LABEL_MAP
+  // ── canonical render ────────────────────────────────────────────────────
+  const p = view.present
+  const path = view.path
+  const anchorTier = view.tierRail.bestGeoTier
+  const bestTier: TierName | null =
+    view.tierRail.bestGeoTier !== 'none' ? (view.tierRail.bestGeoTier as TierName) : null
 
-  const hasAnything =
-    est.estimatedPrice != null ||
-    comps.length > 0 ||
-    competing.length > 0 ||
-    !!est.tiers ||
-    taxComps.length > 0
-  if (!hasAnything) return null
-
-  const bestTier: TierKey | null =
-    est.bestGeoTier && est.bestGeoTier !== 'none' ? (est.bestGeoTier as TierKey) : null
-  const uniformTierForGeoTiles: TierKey | null = bestTier
+  // Renders something only when at least one canonical section is present.
+  const hasAnyCanonicalSection =
+    p.priceCard || p.tierRail || p.comparables || p.taxMatch || p.competing ||
+    p.marketIntel || p.priceByHomeType || p.offerIntel || p.bestTime ||
+    p.planSummary || p.planCardGrid || p.pricingRisk
+  if (!hasAnyCanonicalSection) return null
 
   return (
     <div className="bg-white rounded-lg shadow p-6 mt-6">
       {/* Header — Charlie voice. */}
       <h2 className="text-lg font-semibold mb-1">Charlie seller estimate</h2>
-      {(sellerEstimate.subjectAddress || sellerEstimate.buildingName) && (
+      {(view.subjectAddress || view.buildingName) && (
         <div className="text-xs text-slate-500 mb-4">
-          {sellerEstimate.subjectAddress || ''}
-          {sellerEstimate.subjectAddress && sellerEstimate.buildingName ? ' · ' : ''}
-          {sellerEstimate.buildingName || ''}
-          {sellerEstimate.geoLevel ? ` · ${sellerEstimate.geoLevel} level` : ''}
+          {view.subjectAddress || ''}
+          {view.subjectAddress && view.buildingName ? ' · ' : ''}
+          {view.buildingName || ''}
+          {view.geoLevel ? ` · ${view.geoLevel} level` : ''}
         </div>
       )}
 
-      {/* Estimate price card */}
-      {est.estimatedPrice != null && (
+      {/* CV-1 NEW — Seller Strategy summary (plan.summary text). */}
+      {p.planSummary && view.planSummary && (
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider font-bold text-blue-700 mb-2">
+            Seller Strategy
+          </div>
+          <p className="text-sm text-slate-800 leading-relaxed">{view.planSummary}</p>
+        </div>
+      )}
+
+      {/* CV-1 NEW — Seller Profile (planCardGrid). */}
+      {p.planCardGrid && (
+        <div className="mb-6 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-3">
+            Seller Profile
+          </div>
+          <table className="w-full text-sm">
+            <tbody>
+              {view.planCardGrid.propertyType && (
+                <tr><td className="text-slate-500 py-1 pr-3 w-32">Property Type</td><td className="font-semibold text-slate-900">{view.planCardGrid.propertyType}</td></tr>
+              )}
+              {view.planCardGrid.bedrooms != null && (
+                <tr><td className="text-slate-500 py-1 pr-3">Bedrooms</td><td className="font-semibold text-slate-900">{view.planCardGrid.bedrooms}</td></tr>
+              )}
+              {view.planCardGrid.timeline && (
+                <tr><td className="text-slate-500 py-1 pr-3">Timeline</td><td className="font-semibold text-slate-900">{view.planCardGrid.timeline}</td></tr>
+              )}
+              {view.planCardGrid.goal && (
+                <tr><td className="text-slate-500 py-1 pr-3">Goal</td><td className="font-semibold text-slate-900">{view.planCardGrid.goal}</td></tr>
+              )}
+              {(view.planCardGrid.estimatedValueMin != null || view.planCardGrid.estimatedValueMax != null) && (
+                <tr><td className="text-slate-500 py-1 pr-3">Est. Value</td><td className="font-semibold text-emerald-700">
+                  {fmtPrice(view.planCardGrid.estimatedValueMin)} — {fmtPrice(view.planCardGrid.estimatedValueMax)}
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Estimate price card — unchanged structure from Phase 2. */}
+      {p.priceCard && (
         <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4">
           <div className="text-[10px] uppercase tracking-wide text-slate-500">Estimated value</div>
           <div className="text-2xl font-extrabold text-slate-900 mt-2">
-            {fmtPrice(est.estimatedPrice)}
+            {fmtPrice(view.priceCard.estimatedPrice)}
           </div>
-          {est.priceRange && (
+          {view.priceCard.priceRange && (
             <div className="text-xs text-slate-500 mt-0.5">
-              Range {fmtPrice(est.priceRange.low)} — {fmtPrice(est.priceRange.high)}
+              Range {fmtPrice(view.priceCard.priceRange.low)} — {fmtPrice(view.priceCard.priceRange.high)}
             </div>
           )}
-          {(est.confidence || est.matchTier) && (
+          {(view.priceCard.confidence || view.priceCard.matchTier) && (
             <div className="text-xs text-slate-600 mt-1.5">
-              Confidence: {est.confidence || '—'}{est.matchTier ? ` · ${est.matchTier}` : ''}
+              Confidence: {view.priceCard.confidence || '—'}{view.priceCard.matchTier ? ` · ${view.priceCard.matchTier}` : ''}
             </div>
           )}
         </div>
       )}
 
-      {/* Tier rail — Charlie voice. Heading matches the in-chat render.
-          Skips when tiers absent. */}
-      {est.tiers && (
+      {/* Tier rail "Confidence by Area" — TIER_META migrated from CV-0. */}
+      {p.tierRail && (
         <div className="mb-6">
           <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">
             Confidence by Area
           </div>
           <div className="flex flex-col gap-1.5">
             {TIER_ORDER.map(slot => {
-              const tr = est.tiers?.[slot] || null
+              const tr = view.tierRail.slots[slot]
               const isBest = bestTier === slot
               const rowCls = isBest
                 ? 'flex items-center justify-between flex-wrap gap-2 px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50'
@@ -259,11 +267,13 @@ export default function CharlieLeadEstimate({ sellerEstimate, legacyNoticeWhenEm
                   <div className="flex items-center gap-2 min-w-0">
                     <span
                       className="inline-block text-xs font-bold text-white rounded px-2 py-0.5"
-                      style={{ background: TIER_COLORS[slot] }}
+                      style={{ background: TIER_META[slot].color }}
                     >
-                      {labelMap[slot].emoji} {labelMap[slot].name}
+                      {TIER_META[slot].marker} {TIER_META[slot].label}
                     </span>
-                    <span className="text-xs text-slate-600">{labelMap[slot].sub}</span>
+                    <span className="text-xs text-slate-600">
+                      {path === 'home' ? TIER_META[slot].homeSub : TIER_META[slot].condoSub}
+                    </span>
                     {isBest && (
                       <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
                         Anchor
@@ -285,89 +295,266 @@ export default function CharlieLeadEstimate({ sellerEstimate, legacyNoticeWhenEm
             })}
           </div>
           <div className="text-[11px] text-slate-500 mt-2">
-            Narrow spread = high confidence. Wide spread = subject's block sold differently than the community.
+            Narrow spread = high confidence. Wide spread = subject&apos;s block sold differently than the community.
           </div>
         </div>
       )}
 
-      {/* Comparable Sold — Charlie's existing section, with per-tile tier
-          chip (uniform from anchor). Heading mirrors the in-chat copy. */}
-      {comps.length > 0 && (
+      {/* CV-1 NEW — Market Intelligence grid (analytics roll-up). */}
+      {p.marketIntel && (
+        <div className="mb-6 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-3">
+            Market Intelligence{view.marketIntel.geoName ? ` · ${view.marketIntel.geoName}` : ''}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {view.marketIntel.closedAvgDom90 != null && (
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Avg DOM</div>
+                <div className="text-base font-bold text-slate-900">{view.marketIntel.closedAvgDom90}d</div>
+              </div>
+            )}
+            {view.marketIntel.saleToListRatio != null && (
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Sale / List</div>
+                <div className="text-base font-bold text-slate-900">{fmtPct(view.marketIntel.saleToListRatio)}</div>
+              </div>
+            )}
+            {view.marketIntel.activeCount != null && (
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Active</div>
+                <div className="text-base font-bold text-slate-900">{fmtNumber(view.marketIntel.activeCount)}</div>
+              </div>
+            )}
+            {view.marketIntel.closedSaleCount90 != null && (
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Sold (90d)</div>
+                <div className="text-base font-bold text-slate-900">{fmtNumber(view.marketIntel.closedSaleCount90)}</div>
+              </div>
+            )}
+            {view.marketIntel.absorptionRatePct != null && (
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Absorption</div>
+                <div className="text-base font-bold text-slate-900">{fmtPct(view.marketIntel.absorptionRatePct)}</div>
+              </div>
+            )}
+            {view.marketIntel.medianSalePrice != null && (
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Median Sale</div>
+                <div className="text-base font-bold text-slate-900">{fmtPrice(view.marketIntel.medianSalePrice)}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CV-1 NEW — Price by Home Type (subtype_breakdown). */}
+      {p.priceByHomeType && view.priceByHomeType.length > 0 && (
         <div className="mb-6">
           <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-3">
-            Comparable Sold · {comps.length} found
+            Price by Home Type
+          </div>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200">
+                <th className="text-left py-2 pr-3 text-[10px] uppercase text-slate-500 font-bold">Type</th>
+                <th className="text-center py-2 px-2 text-[10px] uppercase text-slate-500 font-bold">DOM</th>
+                <th className="text-center py-2 px-2 text-[10px] uppercase text-slate-500 font-bold">STL</th>
+                <th className="text-right py-2 pl-3 text-[10px] uppercase text-slate-500 font-bold">Median</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.priceByHomeType.map((r: PriceByHomeTypeRow, i: number) => (
+                <tr key={i} className="border-b border-slate-100">
+                  <td className="py-2 pr-3 font-semibold text-slate-900">{r.subtype}</td>
+                  <td className="py-2 px-2 text-center text-slate-600">{r.avgDom != null ? Math.round(r.avgDom) + 'd' : '—'}</td>
+                  <td className="py-2 px-2 text-center text-slate-600">{r.saleToList != null ? r.saleToList.toFixed(1) + '%' : '—'}</td>
+                  <td className="py-2 pl-3 text-right font-bold text-blue-700">{fmtPrice(r.medianPrice)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* CV-1 NEW — Offer Intelligence (3 derived cards). */}
+      {p.offerIntel && (
+        <div className="mb-6 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-3">
+            Offer Intelligence
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-white border border-slate-200 rounded p-2 text-center">
+              <div className="text-[10px] text-slate-500 uppercase">Offer At</div>
+              <div className="text-lg font-extrabold text-blue-700">{view.offerIntel.offerAt != null ? view.offerIntel.offerAt.toFixed(1) + '%' : '—'}</div>
+              <div className="text-[9px] text-slate-400">of asking</div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded p-2 text-center">
+              <div className="text-[10px] text-slate-500 uppercase">Avg Concession</div>
+              <div className="text-lg font-extrabold text-emerald-700">{view.offerIntel.avgConcession != null ? view.offerIntel.avgConcession.toFixed(1) + '%' : '—'}</div>
+              <div className="text-[9px] text-slate-400">below asking</div>
+            </div>
+            <div className="bg-white border border-slate-200 rounded p-2 text-center">
+              <div className="text-[10px] text-slate-500 uppercase">Decide In</div>
+              <div className="text-lg font-extrabold text-amber-600">{view.offerIntel.decideIn != null ? Math.round(view.offerIntel.decideIn) + 'd' : '—'}</div>
+              <div className="text-[9px] text-slate-400">avg DOM</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CV-1 NEW — Best Time to Sell (seasonal). */}
+      {p.bestTime && view.bestTime && (
+        <div className="mb-6 bg-slate-50 border border-slate-200 rounded-lg p-4">
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">
+            Best Time to Sell
+          </div>
+          <div className="text-sm text-slate-700 leading-relaxed">
+            {view.bestTime.bestMonths.length > 0 && (
+              <>Best months: <strong className="text-emerald-700">{view.bestTime.bestMonths.map((m: number) => MONTHS_ARR[m-1] || '?').join(', ')}</strong>{' '}</>
+            )}
+            {view.bestTime.worstMonths.length > 0 && (
+              <>· Avoid: <strong className="text-red-600">{view.bestTime.worstMonths.map((m: number) => MONTHS_ARR[m-1] || '?').join(', ')}</strong></>
+            )}
+          </div>
+          {view.bestTime.currentMonth != null && view.bestTime.currentMonthRank != null && (
+            <div className="text-xs text-slate-500 mt-1">
+              Currently <strong>{MONTHS_ARR[view.bestTime.currentMonth-1] || '?'}</strong> — ranked #{view.bestTime.currentMonthRank} of 12 for seller power.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Comparable Sold — canonical CompRow rows. */}
+      {p.comparables && (
+        <div className="mb-6">
+          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-3">
+            Comparable Sold · {view.comparables.length} found
           </div>
           <div className="flex flex-col gap-2">
-            {comps.slice(0, 10).map((c: any, i: number) => (
-              <CompRow
-                key={i}
-                c={c}
-                tier={c.sourceTier || uniformTierForGeoTiles}
-                labelMap={labelMap}
-                kind="sold"
-              />
+            {view.comparables.slice(0, 10).map((row, i) => (
+              <CompRow key={i} row={row} anchorTier={anchorTier} path={path} kind="sold" />
             ))}
           </div>
         </div>
       )}
 
-      {/* Tax-Matched subsection — Charlie voice (matches in-chat copy).
-          Child subsection of the same block (not a sibling section
-          header). */}
-      {taxComps.length > 0 && (
+      {/* Tax-Matched subsection. */}
+      {p.taxMatch && view.taxMatch && (
         <div className="mb-6">
           <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">
-            Tax-Matched · {taxComps.length} found
+            Tax-Matched · {view.taxMatch.comparables.length} found
           </div>
           <div className="text-xs text-slate-500 mb-3">
             Same-municipality sales with similar property tax — a co-equal value signal alongside the comps above.
           </div>
-          {est.taxMatch?.estimatedPrice != null && (
+          {view.taxMatch.estimatedPrice != null && (
             <div className="flex justify-between items-baseline bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3">
               <span className="text-[11px] text-slate-500">Tax-matched estimate</span>
               <span className="text-sm font-bold text-slate-900">
-                {fmtPrice(est.taxMatch.estimatedPrice)}
-                {est.taxMatch.priceRange && (
+                {fmtPrice(view.taxMatch.estimatedPrice)}
+                {view.taxMatch.priceRange && (
                   <span className="text-[11px] font-normal text-slate-400 ml-2">
-                    · {fmtPrice(est.taxMatch.priceRange.low)}–{fmtPrice(est.taxMatch.priceRange.high)}
+                    · {fmtPrice(view.taxMatch.priceRange.low)}–{fmtPrice(view.taxMatch.priceRange.high)}
                   </span>
                 )}
               </span>
             </div>
           )}
           <div className="flex flex-col gap-2">
-            {taxComps.slice(0, 10).map((c: any, i: number) => (
-              <CompRow
-                key={i}
-                c={c}
-                tier={c.sourceTier || uniformTierForGeoTiles}
-                labelMap={labelMap}
-                kind="tax"
-              />
+            {view.taxMatch.comparables.slice(0, 10).map((row, i) => (
+              <CompRow key={i} row={row} anchorTier={view.taxMatch!.bestGeoTier} path={path} kind="tax" />
             ))}
           </div>
         </div>
       )}
 
-      {/* Competing For Sale — Charlie's existing section. Same pattern. */}
-      {competing.length > 0 && (
-        <div>
+      {/* Competing For Sale — no chip on these tiles. */}
+      {p.competing && (
+        <div className="mb-6">
           <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-3">
-            Competing For Sale · {competing.length} found
+            Competing For Sale · {view.competingListings.length} found
           </div>
           <div className="flex flex-col gap-2">
-            {competing.slice(0, 10).map((c: any, i: number) => (
-              <CompRow
-                key={i}
-                c={c}
-                tier={null}
-                labelMap={labelMap}
-                kind="competing"
-              />
+            {view.competingListings.slice(0, 10).map((row, i) => (
+              <CompRow key={i} row={row} anchorTier={anchorTier} path={path} kind="competing" />
             ))}
           </div>
         </div>
       )}
+
+      {/* CV-1 NEW — Pricing Strategy & Risk. */}
+      {p.pricingRisk && (() => {
+        const pr = view.pricingRisk
+        // Mirror PricingRiskBlock's logic (concession + DOM-risk table).
+        const stl = pr.saleToListRatio
+        const dom = pr.closedAvgDom90
+        const ep = pr.estimatedPrice
+        if (stl == null || dom == null || ep == null) return null
+        const concessionPct = Math.max(0, 100 - stl)
+        const concessionAmt = Math.round(ep * concessionPct / 100)
+        const rows = [
+          { label: 'At asking price', multiplier: 1.0, pct: '0%' },
+          { label: '5% over asking',  multiplier: 1.8, pct: '+5%' },
+          { label: '10% over asking', multiplier: 3.2, pct: '+10%' },
+        ]
+        function domColor(d: number): string {
+          if (d <= 21) return 'text-emerald-700'
+          if (d <= 45) return 'text-amber-600'
+          return 'text-red-700'
+        }
+        return (
+          <div className="mb-6 bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-3">
+              Pricing Strategy &amp; Risk
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Avg Below Ask</div>
+                <div className={`text-lg font-extrabold ${concessionPct > 3 ? 'text-red-700' : concessionPct > 1 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                  {concessionPct.toFixed(1)}%
+                </div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Dollar Amount</div>
+                <div className="text-lg font-extrabold text-slate-700">~${concessionAmt.toLocaleString()}</div>
+              </div>
+              <div className="bg-white border border-slate-200 rounded p-2">
+                <div className="text-[10px] text-slate-500 uppercase">Sale-to-List</div>
+                <div className="text-lg font-extrabold text-blue-700">{stl.toFixed(1)}%</div>
+              </div>
+            </div>
+            <table className="w-full text-sm">
+              <tbody>
+                {rows.map((r, i) => {
+                  const estDom = Math.round(dom * r.multiplier)
+                  return (
+                    <tr key={i} className="border-t border-slate-200">
+                      <td className="py-2 pr-3">
+                        <div className="font-semibold text-slate-900">{r.label}</div>
+                        <div className="text-[10px] text-slate-500">{r.pct} vs market avg</div>
+                      </td>
+                      <td className="py-2 text-right">
+                        <div className={`text-base font-extrabold ${domColor(estDom)}`}>{estDom}d</div>
+                        <div className="text-[10px] text-slate-500">est. DOM</div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            <div className="text-[11px] text-slate-500 mt-3">
+              ⚠ Properties sitting 45+ days lose negotiating power and signal price issues to buyers.
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* CV-1 NEW — AI Disclaimer. */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-900 leading-relaxed">
+        <strong>⚠ AI Disclaimer:</strong> This estimate and plan are generated by artificial
+        intelligence using market data and algorithms. For informational purposes only;
+        verify with a licensed real-estate agent before making decisions.
+      </div>
     </div>
   )
 }
