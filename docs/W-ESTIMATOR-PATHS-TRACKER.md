@@ -2437,3 +2437,209 @@ W-CHARLIE-EMAIL-FIX — TAX-MATCH SILENT-OMIT FIX (EMAIL) — 2026-06-14
      comps.
   2. Pricing Strategy & Risk is still ABSENT in email — CV-3
      DELIBERATE-OMISSION; separate operator decision.
+
+
+───────────────────────────────────────────────────────────────────────
+W-CHARLIE-FINETUNE-FIX — 3 finetune items shipped — 2026-06-14
+───────────────────────────────────────────────────────────────────────
+
+  Scope: 6 files edited + 1 new helper. System 2 only; S1 untouched
+         (zero-diff verified). Protected 09b97ef SHAs all OK. Charlie
+         in-chat + dashboard + admin PlanRenderer + email all touched
+         (each item lives on multiple surfaces).
+
+### ITEM 1 — shared listing slug helper (kills the 404 class)
+
+  New file: lib/utils/property-slug.ts
+    Lifted byte-for-byte from Charlie's working in-chat tile slug
+    builders. Format (homes): {addr-kebab}-{city-kebab}-{mls_lc}.
+    Format (condos): {addr-kebab}-unit-{unit}-{mls_lc}, with the
+    unit-less {addr}-unit-{mls} fallback Charlie's ComparableCard
+    already produces.
+
+  BYTE-IDENTICAL proof: scripts/_slug-byte-test.js feeds 8 fixtures
+    (Detached/Semi/Townhouse, condo-with-unit, condo-no-unit-in-addr,
+    condo-no-unit-at-all, apostrophe-in-addr, no-listingKey) to BOTH
+    the original inline Charlie logic AND buildPropertySlug. 16/16
+    PASS across camelCase (ComparableCard) + snake_case (ActiveListing
+    Card) variants. Output: buildPropertySlug refactor is a no-op on
+    rendered tile hrefs in Charlie.
+
+  Charlie refactor (now calls the helper):
+    app/charlie/components/ComparableCard.tsx:11-12, 86-99
+    app/charlie/components/ActiveListingCard.tsx:3-4, 23-25, 30-41
+    HOME_TYPES literal duplications killed (lived in both files).
+
+  Email refactor (3 slug sites + listingsHtml, all moved to helper):
+    lib/email/charlie-plan-email-html.ts:22 (import)
+    listingsHtml at L294-308       — slug via helper, fallback to baseUrl
+    comparableSoldHtml at L367-379 — slug via helper
+    taxMatchHtml at L441-453       — slug via helper
+    competingHtml at L483-495      — slug via helper
+    Base unchanged: tenant.domain → buildBaseUrl, already tenant-correct.
+
+  Live status verification (pre-fix bare-MLS would 404):
+    curl -sI https://www.walliam.ca/e12856240                             → 404
+    curl -sI https://www.walliam.ca/421-pineview-lane-pickering-e12856240 → 200
+
+### ITEM 2 — admin lead-page CompRow tiles now clickable
+
+  components/dashboard/CharlieLeadEstimate.tsx:40 (import buildPropertySlug)
+  components/dashboard/CharlieLeadEstimate.tsx:92-145 (CompRow refactor)
+    Outer <div> now conditional-wrapped in <a href target="_blank"
+    rel="noopener noreferrer"> when buildPropertySlug returns a slug.
+    Falls through to bare <div> when no listingKey (rare; honest non-
+    link rather than broken URL). Slug fed from CanonicalCompRow
+    (address + listingKey + path); helper's condo-no-unit branch handles
+    missing unitNumber identically to Charlie's existing fallback.
+    Sold (L514+), tax (L545+), competing (L562+) tiles all benefit.
+
+  Real-DOM verify against 63b48f13: 17 property-slug <a href> tags
+  rendered (5 sold + 10 tax + 2 competing = 17 tiles). First comp
+  href = /421-pineview-lane-pickering-e12856240 (matches helper).
+
+### ITEM 3 — Tax-Match Confidence rail (CV-0-symmetric across 3 surfaces)
+
+  3a — Canonical view extension:
+    lib/charlie/seller-estimate-view.ts
+      L161-163  PresentFlags.taxTierRail: boolean (added)
+      L184-188  SellerEstimateView.taxTierRail: TierRailView | null
+      L450-460  populate taxTierRail = buildTierRail({tiers, bestGeoTier})
+                from estimate.taxMatch (when present); null when no cascade
+      L474-484  taxTierRailHasAny = mirror of tierRail presence rule
+      L503      present.taxTierRail = taxTierRailHasAny
+      L538      taxTierRail added to returned SellerEstimateView object
+
+  3b — Charlie in-chat dark tax rail:
+    app/charlie/components/SellerEstimateBlock.tsx
+      L42-58   taxMatch interface extended with tiers field (matches
+               runHomeTaxMatchCascade output shape)
+      L342-410 Tax-Match Confidence rail inline-rendered between the
+               estimate pill and the tiles. Dark-themed mirror of the
+               geo rail at L195-254 (same row structure, anchor highlight,
+               "no data" fallback). Heading "Tax-Match Confidence" so
+               it's never confused with the geo "Confidence by Area".
+               Silently skipped when no anchor + no tier-slot has data.
+
+  3c — Admin lead-page white tax rail:
+    components/dashboard/CharlieLeadEstimate.tsx:499-554
+      Mounted between the Tax-matched estimate pill and the tax tiles
+      (estimator placement). Mirrors the existing geo rail at L289-336
+      (white Tailwind theme; identical row structure). Gated on
+      view.present.taxTierRail; null path silent-skips.
+
+  3d — Email tax rail (Outlook-safe):
+    lib/email/charlie-plan-email-html.ts:430-468 (taxTierRailHtml)
+      Clones tierRailHtml (geo rail at L568+); nested <table>/<td>
+      layout, inline styles, dashed-border + emerald anchor accent.
+      Mounted inline within taxMatchHtml at L497 between the estimate
+      pill and the tiles (estimator placement). When taxTierRail null,
+      taxTierRailHtml is '' and the section silently skips.
+
+  Heading: "Tax-Match Confidence" on ALL three surfaces — never
+  mislabeled as the geo "Confidence by Area".
+
+### Real-rendered-output verify (NOT source-grep)
+
+  scripts/charlie-finetune-fix-verify.js — renderToStaticMarkup
+  against REAL leads (SAVEPOINT read), per-surface assertions.
+
+  63b48f13 (Silver-anchored tax tiers, 10 tax comps):
+    PASS  ITEM 1 — 17/17 email property hrefs use descriptive slug;
+                   zero bare-MLS hrefs (the 404 pattern)
+    PASS  ITEM 1 — first comp email href matches helper-built slug
+                   (https://www.walliam.ca/421-pineview-lane-pickering-e12856240)
+    PASS  ITEM 2 — 17 property-slug <a href> tags on lead page;
+                   first comp href = /421-pineview-lane-pickering-e12856240
+    PASS  ITEM 3c — Tax-Match Confidence rail PRESENT on lead page;
+                    Silver anchor highlighted; P/G/B "no data" honest
+                    fallback (5 "no data" total including geo)
+    PASS  ITEM 3d — Tax-Match Confidence rail PRESENT in email;
+                    Silver anchor highlighted
+    PASS  REGRESSION — geo "Confidence by Area" rail unchanged on
+                       both surfaces (no rename, no displacement)
+    PASS  REGRESSION — Tax-Matched (10) header / pill / Comparable
+                       Sold (5) / Competing For Sale all preserved
+                       (existing surfaces unaffected)
+
+  1b2a5b50 (0 tax-comps, post-CV-2 empty case):
+    PASS  email tax rail ABSENT (no fake tiers when taxMatch empty)
+    PASS  empty-state pill STILL renders ("No tax-matched comparables…")
+    PASS  lead-page tax rail ABSENT (no fake tiers)
+
+  Regression sniffs (all surfaces):
+    PASS  no condoleads.ca leak in any of email-63 / email-1b /
+          lead-63 / lead-1b
+    PASS  no undefined / NaN / $0 leaks (the pre-existing "~$0"
+          approximation marker in PlanRenderer's Pricing Risk
+          concession display is correctly excluded)
+
+  Shared-slug-helper byte-identical proof:
+    PASS  16/16 fixtures match between old inline Charlie logic and
+          new buildPropertySlug helper (camelCase + snake_case branches)
+
+  Final: 0 assertion failures across 4 leads × 5 surfaces.
+
+### Condo path — FLAGGED UNVERIFIED
+
+  No real condo Charlie seller lead with persisted sellerEstimate
+  exists in production. The condo branch of the slug helper is
+  byte-identical to Charlie's ComparableCard's existing condo
+  branch (proven by 16/16 fixture test including 3 condo-shaped
+  inputs: with-unit, no-unit-in-addr, no-unit-at-all). The condo
+  tax rail uses CONDO_LABEL_MAP (Platinum="Same Building") via
+  the same labelMap branch the helper already uses correctly.
+
+  When a real condo Charlie seller lead is created post-3d9ac08,
+  the harness will exercise the condo path. Until then, condo
+  fidelity is verified by structural equivalence (helper + view
+  + renderers) not by end-to-end runtime data.
+
+### TSC + byte-unchanged proofs
+
+  TSC: npx tsc --noEmit → exit 0
+  Backups (all 20260614_152643 except tracker):
+    app/charlie/components/ComparableCard.tsx.backup_20260614_152643
+    app/charlie/components/ActiveListingCard.tsx.backup_20260614_152643
+    app/charlie/components/SellerEstimateBlock.tsx.backup_20260614_152643
+    components/dashboard/CharlieLeadEstimate.tsx.backup_20260614_152643
+    lib/email/charlie-plan-email-html.ts.backup_20260614_152643
+    lib/charlie/seller-estimate-view.ts.backup_20260614_152643
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260614_161201
+
+  Protected 09b97ef SHAs — all OK:
+    app/api/charlie/route.ts                          9c64acba0564
+    app/charlie/lib/charlie-tools.ts                  a02ee7ab48f9
+    app/charlie/lib/charlie-prompts.ts                fbe7b7de14b9
+    app/api/walliam/charlie/vip-request/route.ts      97c651e90c6f
+
+  S1 zero-diff:
+    app/admin/page.tsx                                c956360a6f23
+    app/api/chat/route.ts                             145b367d8d8f
+    app/admin/agents/page.tsx                         f34fa709b1a1
+
+### Operator-visible outcome
+
+  ITEM 1: every email tile href now resolves to the descriptive
+          walliam.ca slug — clicks land on the property page (200)
+          instead of 404. Same fix on the lead-page tiles (ITEM 2).
+  ITEM 2: admin lead-page comp/tax/competing tiles now clickable;
+          open in a new tab to the walliam.ca property page.
+  ITEM 3: Tax-Match Confidence rail rendered above the tax tiles on
+          all three surfaces (in-chat dark / lead-page white / email
+          Outlook-safe). 4-row P/G/S/B with anchor highlight + honest
+          "no data" fallback for un-qualified tiers. Heading
+          "Tax-Match Confidence" never collides with the geo
+          "Confidence by Area" rail.
+
+### Named follow-ups (out of scope)
+
+  1. Operator manual eyeball post-deploy: open a fresh seller-flow
+     email in Gmail/Outlook + open the admin lead page; click a tile
+     to confirm 200, confirm the tax rail visual matches the geo
+     rail's styling on each surface.
+  2. Condo path runtime verification — flagged unverified above;
+     covered structurally but needs a real condo lead post-deploy.
+  3. ComparableCard + SellerEstimateBlock still carry their inline
+     TIER_COLORS literals (CV-3 follow-up); HOME_TYPES literal
+     duplications killed by this fix.

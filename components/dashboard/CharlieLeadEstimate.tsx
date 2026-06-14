@@ -37,6 +37,7 @@ import type {
   CanonicalCompRow,
   PriceByHomeTypeRow,
 } from '@/lib/charlie/seller-estimate-view'
+import { buildPropertySlug } from '@/lib/utils/property-slug'
 
 interface Props {
   // CV-1: consume the canonical view produced by buildSellerEstimateView in
@@ -98,8 +99,25 @@ function CompRow({ row, anchorTier, path, kind }: {
   const affordance = kind === 'competing' ? 'For Sale →' : 'Sold →'
   // No chip on competing tiles (deliberate — not a matched/scored comp).
   const tier: TierName | null = kind === 'competing' ? null : (row.sourceTier as TierName | null)
-  return (
-    <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-white">
+
+  // W-CHARLIE-FINETUNE-FIX (2026-06-14): make the tile clickable. CompRow
+  // was a static <div>; operator-reported gap (REAL-LEADS recon). Slug is
+  // built via the shared helper that Charlie's in-chat tiles use, so the
+  // href matches the walliam.ca-resolvable format (curl-verified 200 vs
+  // pre-fix would-be 404 on bare MLS). When no listingKey, helper returns
+  // null and we render the un-wrapped div (honest non-link, no broken url).
+  const slug = buildPropertySlug({
+    listingKey: row.listingKey,
+    unparsedAddress: row.address,
+    path,
+    // unitNumber unknown for canonical rows — helper's condo-no-unit
+    // fallback handles this case identically to Charlie's ComparableCard
+    // when unitNumber is absent.
+  })
+  const href = slug ? '/' + slug : null
+
+  const tileInner = (
+    <>
       {row.mediaUrl && (
         <div className="w-20 flex-shrink-0">
           <img src={row.mediaUrl} alt="" className="block w-20 h-[72px] object-cover" />
@@ -125,6 +143,24 @@ function CompRow({ row, anchorTier, path, kind }: {
         </div>
         <div className="text-[11px] text-slate-400 mt-0.5">{affordance}</div>
       </div>
+    </>
+  )
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex border border-slate-200 rounded-lg overflow-hidden bg-white hover:bg-slate-50 hover:border-slate-300 transition-colors no-underline"
+      >
+        {tileInner}
+      </a>
+    )
+  }
+  return (
+    <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-white">
+      {tileInner}
     </div>
   )
 }
@@ -460,6 +496,67 @@ export default function CharlieLeadEstimate({ view, legacyNoticeWhenEmpty, leadM
               </span>
             </div>
           )}
+
+          {/* W-CHARLIE-FINETUNE-FIX (2026-06-14) — Tax-Match Confidence rail.
+              Mirrors the geo rail at L289-336 above, fed by view.taxTierRail
+              (TierRailView produced by buildTierRail(estimate.taxMatch.{tiers,
+              bestGeoTier}) in CV-0 helper). When taxTierRail is null OR all
+              slots are null + no anchor, present.taxTierRail is false and
+              this section is silently skipped — empty-state from the tax
+              section header above already covers that case. Heading distinct
+              from the geo rail's "Confidence by Area" so the two rails are
+              never confused. */}
+          {p.taxTierRail && view.taxTierRail && (() => {
+            const taxTr = view.taxTierRail
+            const taxBest: TierName | null = taxTr.bestGeoTier !== 'none' ? (taxTr.bestGeoTier as TierName) : null
+            return (
+              <div className="mb-3">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">
+                  Tax-Match Confidence
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {TIER_ORDER.map(slot => {
+                    const tr = taxTr.slots[slot]
+                    const isBest = taxBest === slot
+                    const rowCls = isBest
+                      ? 'flex items-center justify-between flex-wrap gap-2 px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50'
+                      : 'flex items-center justify-between flex-wrap gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50'
+                    return (
+                      <div key={slot} className={rowCls}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="inline-block text-xs font-bold text-white rounded px-2 py-0.5"
+                            style={{ background: TIER_META[slot].color }}
+                          >
+                            {TIER_META[slot].marker} {TIER_META[slot].label}
+                          </span>
+                          <span className="text-xs text-slate-600">
+                            {path === 'home' ? TIER_META[slot].homeSub : TIER_META[slot].condoSub}
+                          </span>
+                          {isBest && (
+                            <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                              Anchor
+                            </span>
+                          )}
+                        </div>
+                        {tr ? (
+                          <div className="flex items-baseline gap-3">
+                            <span className="text-sm font-bold text-slate-900">{fmtPrice(tr.median)}</span>
+                            <span className="text-[11px] text-slate-500">
+                              {tr.count ?? 0} comp{(tr.count ?? 0) === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] italic text-slate-400">no data</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+
           <div className="flex flex-col gap-2">
             {view.taxMatch.comparables.slice(0, 10).map((row, i) => (
               <CompRow key={i} row={row} anchorTier={view.taxMatch!.bestGeoTier} path={path} kind="tax" />

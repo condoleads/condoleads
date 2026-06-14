@@ -1,0 +1,79 @@
+W-CHARLIE-FINETUNE-FIX — real-rendered-output verify
+run: 2026-06-14T16:11:20.644Z
+handle: react-dom/server.renderToStaticMarkup + tsx/cjs + live builder
+
+real lead 1: 63b48f13-8a03-46be-b4ce-91007da0794a (Finaltest110, intent=seller)
+real lead 2: 1b2a5b50-4756-4a61-a17b-fb5e205b158e (there, intent=seller)
+condo lead:  (NONE FOUND — condo path UNVERIFIED)
+
+────────────────────────────────────────────────────────────────────────────
+PART A — ITEM 1: email href format (63b48f13, 10 tax + 5 comps + 2 competing)
+────────────────────────────────────────────────────────────────────────────
+rendered: 54637 chars
+total href count: 18
+property-page hrefs: 17
+descriptive-slug hrefs: 17
+bare-MLS hrefs (the 404 pattern): 0
+PASS  ITEM 1 — zero bare-MLS hrefs in email  → all property hrefs use descriptive slug
+PASS  ITEM 1 — first comp href matches helper-built slug  → expected=https://www.walliam.ca/421-pineview-lane-pickering-e12856240
+PASS  ITEM 1 — first comp NOT bare-MLS (no https://www.walliam.ca/e12856240)
+────────────────────────────────────────────────────────────────────────────
+PART B — ITEM 2 + 3c: lead page (63b48f13) via renderToStaticMarkup
+────────────────────────────────────────────────────────────────────────────
+rendered: 36474 chars
+<a> tag count: 18
+property-slug <a> hrefs: 17
+sample slug hrefs: /421-pineview-lane-pickering-e12856240, /1987-rosebank-road-pickering-e13013782, /748-pebble-court-pickering-e12126821, /1762-autumn-crescent-pickering-e12164416
+PASS  ITEM 2 — lead-page tiles wrapped in <a href> (>= 5 property slugs)  → found 17
+PASS  ITEM 2 — first comp href = /421-pineview-lane-pickering-e12856240
+PASS  ITEM 3c — Tax-Match Confidence rail PRESENT on lead page  → count=1
+PASS  ITEM 3c — Silver tier is anchor on lead page
+PASS  ITEM 3c — "no data" entries for empty tax tiers (>= 3)  → count=5
+PASS  REGRESSION — geo "Confidence by Area" rail still present
+────────────────────────────────────────────────────────────────────────────
+PART C — ITEM 3d: email Tax-Match Confidence rail (63b48f13)
+────────────────────────────────────────────────────────────────────────────
+PASS  ITEM 3d — Tax-Match Confidence rail PRESENT in email  → count=1
+PASS  ITEM 3d — Silver anchor in email tax rail
+PASS  REGRESSION — email geo "Confidence by Area" still present
+────────────────────────────────────────────────────────────────────────────
+PART D — 1b2a5b50 (0 tax-comps): NO fake tax rail; empty-state still shows
+────────────────────────────────────────────────────────────────────────────
+rendered email 1b: 34532 chars
+PASS  1b2a5b50 — email tax rail ABSENT (no fake tiers when taxMatch empty)  → count=0
+PASS  1b2a5b50 — empty-state pill STILL renders
+PASS  1b2a5b50 — lead-page tax rail ABSENT (no fake tiers)  → count=0
+────────────────────────────────────────────────────────────────────────────
+PART E — regression: no condoleads.ca leak; no undefined/NaN/$0; populated path checks
+────────────────────────────────────────────────────────────────────────────
+PASS  email-63 — no condoleads.ca leak
+PASS  email-63 — no undefined/NaN/$0 (excluding ~$0 approximation marker)
+PASS  email-1b — no condoleads.ca leak
+PASS  email-1b — no undefined/NaN/$0 (excluding ~$0 approximation marker)
+PASS  lead-63 — no condoleads.ca leak
+PASS  lead-63 — no undefined/NaN/$0 (excluding ~$0 approximation marker)
+PASS  lead-1b — no condoleads.ca leak
+PASS  lead-1b — no undefined/NaN/$0 (excluding ~$0 approximation marker)
+PASS  63b48f13 email — Tax-Matched (10) header preserved
+PASS  63b48f13 email — Tax-matched estimate pill preserved
+PASS  63b48f13 email — Comparable Sold (5) preserved
+PASS  63b48f13 email — Competing For Sale preserved
+────────────────────────────────────────────────────────────────────────────
+PART F — Charlie tile slug helper byte-identical proof (regression)
+────────────────────────────────────────────────────────────────────────────
+PASS  Shared slug helper byte-identical across 16 fixtures  → BYTE-IDENTICAL PASS across 16 fixtures
+────────────────────────────────────────────────────────────────────────────
+PART G — condo path (CONDO_LABEL_MAP, Platinum="Same Building")
+────────────────────────────────────────────────────────────────────────────
+  no real condo Charlie seller lead with persisted sellerEstimate → CONDO PATH UNVERIFIED (flagged)
+────────────────────────────────────────────────────────────────────────────
+FINAL
+────────────────────────────────────────────────────────────────────────────
+PASS  0 assertion failure(s) total
+
+Files:
+  C:\Condoleads\Project\recon\W-CHARLIE-FINETUNE-FIX-VERIFY.txt
+  recon/finetune-fix-email-63b48f13.html
+  recon/finetune-fix-email-1b2a5b50.html
+  recon/finetune-fix-leadpage-63b48f13.html
+  recon/finetune-fix-leadpage-1b2a5b50.html

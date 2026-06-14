@@ -1,0 +1,288 @@
+W-CHARLIE-FINETUNE — ITEM 3 RE-RECON (read-only, no edits)
+target: 4-tier ANCHOR RAIL above the tax-match section
+        (NOT the per-tile chips — those render fine; see prior recon)
+run: 2026-06-14
+fixture: 63b48f13-8a03-46be-b4ce-91007da0794a (real WALLiam Charlie seller lead)
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 1 — ESTIMATOR's tax-match anchor rail
+═══════════════════════════════════════════════════════════════════════════
+
+  HOME estimator:
+    app/estimator/components/HomeEstimatorResults.tsx:1035-1048
+      {result.taxMatch.tiers && (
+        <div className="mb-4">
+          <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600 mb-2">
+            Tax-Match Confidence Spread
+          </h4>
+          <GeoConfidenceSpread
+            tiers={result.taxMatch.tiers}
+            bestGeoTier={result.taxMatch.bestGeoTier}
+            labelMap={HOME_LABEL_MAP}
+          />
+        </div>
+      )}
+
+  CONDO estimator (same pattern, condo labels):
+    app/estimator/components/EstimatorResults.tsx:839-854
+      {result.taxMatch.tiers && (
+        <div className="mb-4">
+          <h4 …>Tax-Match Confidence Spread</h4>
+          <GeoConfidenceSpread
+            tiers={result.taxMatch.tiers}
+            bestGeoTier={result.taxMatch.bestGeoTier}
+            labelMap={CONDO_LABEL_MAP}
+          />
+        </div>
+      )}
+
+  Placement: sits ABOVE the tax tiles, BELOW the "Tax-matched estimate"
+  pill (estimatedPrice + range). Same surface position you'd want in
+  Charlie/lead-page/email so the anchor is visible immediately under
+  the price headline.
+
+  Driving fields (cited from the estimator source):
+    result.taxMatch.tiers         — per-slot tier breakdown (full
+                                    4-slot shape, each slot null OR
+                                    a TierResult — count/median/range/
+                                    bestMatchScore/comparables)
+    result.taxMatch.bestGeoTier   — which slot to highlight as anchor
+                                    ('platinum'|'gold'|'silver'|
+                                    'bronze'|'none')
+
+  Display per tier (from GeoConfidenceSpread.tsx:80-150):
+    - Tier label  : {emoji} {name} (e.g. '◆ Platinum')
+    - Tier sub    : {sub} (e.g. 'Same street' for home, 'Same Building'
+                          for condo, 'Community', 'Municipality', 'Area')
+    - Anchor pill : the "ANCHOR" tag rendered next to the matching slot
+    - Tier price  : median (formatPrice'd)
+    - Tier count  : N comp(s)
+    - Empty slot  : "no data" italic gray text when tiers[slot] is null
+
+  Same component as the geo "Geographic Confidence Spread" rail. The
+  only differences:
+    - data source: result.taxMatch.tiers vs result.tiers
+    - section h4 label above it: "Tax-Match Confidence Spread"
+      vs (no h4 — geo uses GeoConfidenceSpread's own internal h3 of
+      "Geographic Confidence Spread")
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 2 — CHARLIE: tax-match anchor rail is ABSENT
+═══════════════════════════════════════════════════════════════════════════
+
+  Charlie in-chat — app/charlie/components/SellerEstimateBlock.tsx:296-348
+    Tax-Matched section structure:
+      L297-299  header "Tax-Matched · N found"
+      L300-302  subtitle "Same-municipality sales with similar property
+                 tax — a co-equal value signal alongside the comps above."
+      L303-315  empty-state pill (W-CHARLIE-FIX GAP 2) when N=0
+      L317-334  tax-matched estimate pill (price + range) when N>0
+      L335-347  tax tiles via ComparableCard ×6 (slice(0, 6))
+    → NO 4-tier rail anywhere in this block.
+
+    Compare with Charlie's GEO tier rail in the SAME file at L201-258:
+      "Confidence by Area" — a CUSTOM dark-themed inline implementation
+      (NOT a reuse of GeoConfidenceSpread; same row structure mirrored
+      manually). Reads estimate.tiers + bestGeoTier. Renders 4 rows
+      P/G/S/B with anchor highlight + median + count + 'no data'.
+    → GEO has the rail; TAX does not.
+
+  Charlie does NOT import GeoConfidenceSpread itself — only the
+  HOME_LABEL_MAP, CONDO_LABEL_MAP, and label types from that file
+  (SellerEstimateBlock.tsx:8-12). The estimator's tax rail component
+  is therefore not reachable as-is from Charlie's tax block.
+
+  Lead-page — components/dashboard/CharlieLeadEstimate.tsx:441-468
+    Tax-Matched section structure:
+      L444-446  header "Tax-Matched · N found"
+      L447-449  subtitle (same as Charlie in-chat)
+      L450-462  tax-matched estimate pill (price + range)
+      L463-467  tax tiles via CompRow ×10 (slice(0, 10))
+    → NO 4-tier rail. Same gap as in-chat.
+    Compare to GEO rail at L252-300 in the SAME file — "Confidence by
+    Area" rail driven by view.tierRail.slots[slot]. Present for geo,
+    absent for tax.
+
+  Email — lib/email/charlie-plan-email-html.ts
+    L489: const tierRailHtml = view?.present.tierRail ? `<…GEO rail…>` : ''
+    No taxTierRailHtml equivalent. The tax-match block (taxMatchHtml
+    at L391-440) renders header + subtitle + empty-state OR pill +
+    tiles. No rail.
+
+  Verdict: the 4-tier tax-match anchor rail is missing on ALL THREE
+  Charlie surfaces (in-chat, lead-page, email). The estimator surfaces
+  it on BOTH home and condo. This is a real consistency gap.
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 3 — DATA AVAILABILITY: can Charlie build it honestly?
+═══════════════════════════════════════════════════════════════════════════
+
+  Live read from 63b48f13 (SAVEPOINT-isolated, read-only):
+
+  plan_data.sellerEstimate.estimate.taxMatch top keys:
+    [bestGeoTier, comparables, count, estimatedPrice, matchTier,
+     priceRange, tiers]
+
+  taxMatch.bestGeoTier:   silver
+  taxMatch.matchTier:     MAINT
+  taxMatch.count:         12
+  taxMatch.estimatedPrice: 848754
+
+  taxMatch.tiers (the per-slot breakdown — EXACTLY what the estimator's
+  rail consumes):
+    platinum: null
+    gold:     null
+    silver:   {
+                count: 12,
+                median: 835750,
+                range: { low: 756500, high: 993000 },
+                bestMatchScore: 61.915,
+                comparables.length: 10,
+              }
+    bronze:   null
+
+  Compare with the GEO cascade on the same lead (estimate.tiers):
+    platinum: null
+    gold:     { count: 5,  median: 1127000, range: {963000, 1170000} }
+    silver:   { count: 32, median: 1118500, range: {898800, 1575000} }
+    bronze:   null
+  estimate.bestGeoTier:   gold
+
+  SAME SHAPE. The TierResult interface is reused — same fields, same
+  null semantics for unqualified slots. The estimator's
+  GeoConfidenceSpread component already handles `tiers[slot] === null
+  → "no data"` gracefully (verified at GeoConfidenceSpread.tsx:124).
+
+  Honest rendering for 63b48f13's tax rail:
+    Platinum  : no data
+    Gold      : no data
+    Silver    : $835,750 · 12 comps   ← ANCHOR
+    Bronze    : no data
+
+  → Data is present and honest. Rail can be rendered with no fabricated
+  values, just like the geo rail handles partial-coverage cases today.
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 4 — CANONICAL COMPONENT + WIRING
+═══════════════════════════════════════════════════════════════════════════
+
+  4.1 — what the estimator uses
+
+    Component: <GeoConfidenceSpread> from
+               app/estimator/components/GeoConfidenceSpread.tsx
+    Props:     { tiers: GeoConfidenceSpreadTiers;
+                 bestGeoTier?: 'platinum'|'gold'|'silver'|'bronze'|'none';
+                 labelMap: GeoConfidenceLabelMap }
+    Render:    white-themed (bg-white, border-slate-200, slate text).
+               Has its own internal h3 "Geographic Confidence Spread"
+               (line 73), so the tax section adds an h4 ABOVE it
+               labeling the tax variant — the h3 reads correctly
+               in the geo section but is functionally wrong in the
+               tax section (acknowledged comment at L1041 of
+               HomeEstimatorResults).
+
+  4.2 — what each Charlie surface would need
+
+    LEAD-PAGE (white-themed) — best fit for direct GeoConfidenceSpread:
+      Same Tailwind theme as the estimator. Could mount
+      <GeoConfidenceSpread tiers={view.taxTierRail.slots …} … /> with
+      no theme adjustment.
+      OR mirror the existing dashboard-styled rail at
+      CharlieLeadEstimate.tsx:252-300 (using view.tierRail) and clone
+      it for view.taxTierRail (CV-0-pattern symmetric).
+
+    IN-CHAT (dark-themed) — GeoConfidenceSpread is white; visual clash:
+      The chat panel renders dark (rgba(255,255,255,…) tokens). The
+      estimator's white component would visually break the dark UI.
+      Charlie's existing geo rail at SellerEstimateBlock.tsx:201-258
+      is a CUSTOM dark-themed loop mirroring GeoConfidenceSpread's
+      row STRUCTURE only. Cleanest path: re-use that same custom
+      dark loop with `taxMatch.tiers` instead of `estimate.tiers` and
+      `taxMatch.bestGeoTier` instead of bestGeoTier from geo cascade.
+      Heading text would change from "Confidence by Area" to e.g.
+      "Tax-Match Confidence" (operator wording call).
+
+    EMAIL (Outlook-safe HTML, inline styles) — neither component
+    reusable verbatim:
+      tierRailHtml at charlie-plan-email-html.ts:489 is the geo rail
+      HTML, generated from view.tierRail.slots[slot]. Same template
+      can be cloned and pointed at view.taxTierRail.slots[slot].
+
+  4.3 — canonical view extension (CV-0 pattern)
+
+    The canonical SellerEstimateView (lib/charlie/seller-estimate-view.ts:
+    174-198) currently carries:
+      tierRail: TierRailView      (geo cascade — line 184)
+      taxMatch: TaxMatchView|null (tax cascade WITHOUT a per-slot
+                                  tier rail — line 194; TaxMatchView at
+                                  lines 151-157 carries
+                                  count/estimatedPrice/priceRange/
+                                  bestGeoTier/comparables but NOT slots)
+
+    To wire honestly:
+      1. Add `taxTierRail: TierRailView | null` to SellerEstimateView
+         (symmetric to tierRail).
+      2. Populate it in buildSellerEstimateView from
+         `estimate.taxMatch.tiers` + `estimate.taxMatch.bestGeoTier`
+         (the buildTierRail helper at L283-294 already produces this
+         shape; call it with taxMatch.tiers as input).
+      3. Add `taxTierRail: boolean` to PresentFlags (L159-172).
+      4. Set present.taxTierRail = at-least-one-slot-non-null OR
+         bestGeoTier-is-real (mirror tierRail's presence rule at L482).
+      5. All three renderers consume view.taxTierRail symmetric to
+         view.tierRail.
+
+    This is the cleanest path consistent with CV-0's canonical-view
+    pattern. Alternative: extend TaxMatchView itself with a `tiers`
+    field — also valid but less symmetric to the geo rail.
+
+  4.4 — data-availability gate
+
+    On 63b48f13, taxMatch.tiers IS present with one non-null slot
+    (silver). On 1b2a5b50 (the empty-tax-match case from W-CHARLIE-
+    EMAIL-FIX recon), `taxMatch` itself is empty/missing (taxComps =
+    []), so buildTaxMatch returns null at line 300 and there's no
+    rail to render — empty-state already handles this. The tax rail
+    fix must respect the present.taxTierRail flag (off → silent skip,
+    same pattern as tierRail).
+
+  4.5 — NOT proposing the fix shape
+
+    This recon establishes the working component, the driving fields,
+    and the data shape. The actual fix shape (white-themed component
+    vs dark-themed custom loop vs hybrid view-extension) is a product/
+    style decision for the operator. The minimum constraint is:
+    consume taxMatch.tiers + taxMatch.bestGeoTier, render 4 rows
+    symmetric to the geo rail, honor null slots as "no data", anchor
+    highlight on bestGeoTier.
+
+═══════════════════════════════════════════════════════════════════════════
+UNVERIFIABLE / FLAGGED
+═══════════════════════════════════════════════════════════════════════════
+
+  - Condo path was not exercised in this recon (63b48f13 is Detached).
+    The estimator's condo branch at EstimatorResults.tsx:839-854 is
+    structurally identical except for CONDO_LABEL_MAP (Platinum = "Same
+    Building" not "Same street"). Condo taxMatch.tiers shape would be
+    identical to the home shape verified above. Worth a condo-lead
+    verification before any fix.
+
+  - The estimator's white-themed GeoConfidenceSpread component
+    requires no changes to support tax data — it's already parameterized
+    by tiers + bestGeoTier + labelMap. Whether the lead-page chooses
+    to mount it as-is or mirror it locally is a styling choice; both
+    are viable.
+
+  - The persisted plan_data on 63b48f13 IS the post-3d9ac08 shape
+    (sellerEstimate.estimate.taxMatch.tiers exists). Older leads
+    (pre-3d9ac08, the 75% without sellerEstimate) wouldn't have tiers
+    either — they already route to the amber notice via
+    SellerEstimateMount and never reach the tax rail.
+
+  - The h4 heading wording in the estimator ("Tax-Match Confidence
+    Spread") reads as an addition LAYERED on top of GeoConfidenceSpread's
+    internal h3 ("Geographic Confidence Spread") — there's a literal
+    overlap of titles in the estimator. Charlie's custom dark loop
+    has no internal h3, so it can use one clear section heading
+    (e.g. "Tax-Match Confidence" or similar). This is wording, not
+    a functional gap.

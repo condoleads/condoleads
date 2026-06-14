@@ -1,6 +1,8 @@
 // app/charlie/components/ActiveListingCard.tsx
 'use client'
 
+import { buildPropertySlug } from '@/lib/utils/property-slug'
+
 interface Props {
   listing: {
     id: string
@@ -20,8 +22,8 @@ interface Props {
   }
 }
 
-const HOME_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex']
-
+// W-CHARLIE-FINETUNE-FIX (2026-06-14): HOME_TYPES literal + slug-build
+// inlined logic lifted to lib/utils/property-slug.ts. See ComparableCard.
 function domColor(dom: number | undefined): string {
   if (dom == null) return 'rgba(255,255,255,0.3)'
   if (dom <= 21) return '#10b981'
@@ -31,25 +33,17 @@ function domColor(dom: number | undefined): string {
 
 export default function ActiveListingCard({ listing: l }: Props) {
   const handleClick = () => {
-    if (!l.listing_key) return
-    const mls = l.listing_key.toLowerCase()
-    const rawAddr = (l.unparsed_address || '').split(',')[0].trim()
-    const unitStr = l.unit_number || ''
-    const withoutUnit = unitStr
-      ? rawAddr.replace(new RegExp('\\s+' + unitStr + '\\s*$'), '').trim()
-      : rawAddr
-    const addr = withoutUnit
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-    const isCondo = !HOME_TYPES.includes(l.property_subtype || '')
-    const city = (l.unparsed_address || '').split(',')[1]?.trim().split(' ')[0].toLowerCase() || ''
-    const url = isCondo
-      ? (unitStr ? `${addr}-unit-${unitStr}-${mls}` : `${addr}-unit-${mls}`)
-      : `${addr}-${city ? city + '-' : ''}${mls}`
-    window.open('/' + url, '_blank')
+    // W-CHARLIE-FINETUNE-FIX (2026-06-14): see ComparableCard.tsx for the
+    // same delegation pattern. snake_case fields mapped to the helper's
+    // camelCase interface.
+    const slug = buildPropertySlug({
+      listingKey: l.listing_key,
+      unparsedAddress: l.unparsed_address,
+      propertySubtype: l.property_subtype,
+      unitNumber: l.unit_number,
+    })
+    if (!slug) return
+    window.open('/' + slug, '_blank')
   }
 
   const age = l.approximate_age || (l.year_built ? `Built ${l.year_built}` : null)

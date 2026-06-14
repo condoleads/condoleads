@@ -159,6 +159,10 @@ export interface TaxMatchView {
 export interface PresentFlags {
   priceCard: boolean
   tierRail: boolean
+  // W-CHARLIE-FINETUNE-FIX (2026-06-14): tax-match anchor rail (P/G/S/B
+  // breakdown of taxMatch.tiers). Symmetric to tierRail. Renderers gate
+  // a per-surface "Tax-Match Confidence" rail on this flag.
+  taxTierRail: boolean
   comparables: boolean
   taxMatch: boolean
   competing: boolean
@@ -182,6 +186,11 @@ export interface SellerEstimateView {
   // Canonical sections (always shaped; check `present` for whether to render)
   priceCard: PriceCardView
   tierRail: TierRailView
+  // W-CHARLIE-FINETUNE-FIX (2026-06-14): tax-match anchor rail. null when
+  // taxMatch is absent (legacy / pre-cascade lead) OR when all 4 tier
+  // slots are null (cascade ran but no tier qualified). Symmetric to
+  // tierRail above; consumed by per-surface "Tax-Match Confidence" rails.
+  taxTierRail: TierRailView | null
   marketIntel: MarketIntelView
   priceByHomeType: PriceByHomeTypeRow[]
   offerIntel: OfferIntelView
@@ -439,6 +448,16 @@ export function buildSellerEstimateView(planData: any): SellerEstimateView | nul
   const priceCard       = buildPriceCard(est)
   const tierRail        = buildTierRail(est)
   const taxMatch        = buildTaxMatch(est)
+  // W-CHARLIE-FINETUNE-FIX (2026-06-14): tax-match anchor rail built
+  // from estimate.taxMatch.tiers + estimate.taxMatch.bestGeoTier — same
+  // TierResult shape as the geo cascade (verified on 63b48f13: 4-slot
+  // shape with platinum/gold/bronze null + silver populated). Reuses the
+  // existing buildTierRail helper by passing a synthetic `est` whose
+  // tiers + bestGeoTier come from taxMatch. Returns null when there's no
+  // tax cascade output to summarize — gated below in present.taxTierRail.
+  const taxTierRail: TierRailView | null = (est?.taxMatch?.tiers || est?.taxMatch?.bestGeoTier)
+    ? buildTierRail({ tiers: est.taxMatch.tiers || {}, bestGeoTier: est.taxMatch.bestGeoTier })
+    : null
   const marketIntel     = buildMarketIntel(analytics, geoName)
   const priceByHomeType = buildPriceByHomeType(analytics)
   const offerIntel      = buildOfferIntel(analytics)
@@ -452,6 +471,17 @@ export function buildSellerEstimateView(planData: any): SellerEstimateView | nul
   const tierRailHasAny =
     tierRail.bestGeoTier !== 'none' ||
     !!(tierRail.slots.platinum || tierRail.slots.gold || tierRail.slots.silver || tierRail.slots.bronze)
+
+  // W-CHARLIE-FINETUNE-FIX (2026-06-14): mirror the tierRail presence
+  // rule for the tax rail. Either an anchor or at-least-one non-null
+  // slot must be present for the rail to render. When taxMatch itself
+  // is null (legacy lead / no cascade), taxTierRail is null and this
+  // flag stays false — empty-state pill in the tax-match section
+  // already covers that case.
+  const taxTierRailHasAny = !!taxTierRail && (
+    taxTierRail.bestGeoTier !== 'none' ||
+    !!(taxTierRail.slots.platinum || taxTierRail.slots.gold || taxTierRail.slots.silver || taxTierRail.slots.bronze)
+  )
 
   const marketIntelHasAny = (
     marketIntel.closedAvgDom90 !== null ||
@@ -482,6 +512,7 @@ export function buildSellerEstimateView(planData: any): SellerEstimateView | nul
   const present: PresentFlags = {
     priceCard:       priceCard.estimatedPrice !== null,
     tierRail:        tierRailHasAny,
+    taxTierRail:     taxTierRailHasAny,
     comparables:     comparables.length > 0,
     taxMatch:        !!taxMatch && taxMatch.comparables.length > 0,
     competing:       competingListings.length > 0,
@@ -503,6 +534,7 @@ export function buildSellerEstimateView(planData: any): SellerEstimateView | nul
     geoName,
     priceCard,
     tierRail,
+    taxTierRail,
     marketIntel,
     priceByHomeType,
     offerIntel,

@@ -1,0 +1,376 @@
+W-CHARLIE-FINETUNE — recon (read-only, no edits)
+run: 2026-06-14
+fixture: 63b48f13-8a03-46be-b4ce-91007da0794a (real WALLiam Charlie seller lead)
+
+═══════════════════════════════════════════════════════════════════════════
+ITEM 1 — EMAIL LINKS 404 (Charlie works, email doesn't)
+═══════════════════════════════════════════════════════════════════════════
+
+1.1 — CHARLIE in-chat tile href construction (the WORKING one)
+
+  app/charlie/components/ComparableCard.tsx:87-107
+    handleClick = () => {
+      if (!c.listingKey) return
+      const mls = c.listingKey.toLowerCase()
+      const rawAddr = (c.unparsedAddress || '').split(',')[0].trim()
+      const unitStr = c.unitNumber || ''
+      const withoutUnit = unitStr ? rawAddr.replace(<strip>) : rawAddr
+      const addr = withoutUnit
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+      const isCondo = !HOME_TYPES.includes(c.propertySubtype || '')
+      const city = (c.unparsedAddress || '').split(',')[1]?.trim().split(' ')[0].toLowerCase() || ''
+      const url = isCondo
+        ? (unitStr ? `${addr}-unit-${unitStr}-${mls}` : `${addr}-unit-${mls}`)
+        : `${addr}-${city ? city + '-' : ''}${mls}`
+      window.open('/' + url, '_blank')
+    }
+
+  app/charlie/components/ActiveListingCard.tsx:33-53 — SAME pattern,
+    snake_case fields (listing_key, unparsed_address, unit_number,
+    property_subtype). Produces the same descriptive-slug format.
+
+  app/charlie/components/ResultsPanel.tsx:124 — generic listings tile:
+    const url = listing._slug || ('/' + (listing.listing_key || '').toLowerCase())
+    onClick → window.open(url, '_blank')
+
+  Base: relative URL (no host prefix). Browser resolves against the
+  current origin. When user is on walliam.ca, the click → walliam.ca/<slug>.
+  Tenant safety is implicit — same-origin always.
+
+  Canonical working slug format (homes):
+    {addr}-{city}-{mls_lowercase}
+    e.g. '421-pineview-lane-pickering-e12856240'
+
+  Canonical working slug format (condos):
+    {addr}-unit-{unit}-{mls_lowercase}   OR   {addr}-unit-{mls_lowercase}
+
+1.2 — EMAIL link construction (the BROKEN one)
+
+  lib/email/charlie-plan-email-html.ts: baseUrl is a string PROP passed
+  in from the route. Hrefs:
+
+    L82:  buildings tile          `${b.url || baseUrl}`
+    L103: ranking tile             `${r.url || baseUrl}`
+    L293: listings tile            `${baseUrl}${l._slug || '/' + (l.listing_key || '')}`
+    L361: Comparable Sold tile     `${baseUrl}${slug}`   where
+            slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+    L425: Tax-Matched tile         `${baseUrl}${slug}` — same slug build
+    L453: Competing tile           `${baseUrl}${slug}` — c._slug || '/' + listing_key
+    L579: Open WALLiam CTA         `${baseUrl}` (root)
+
+  Base derivation (live route → builder):
+    app/api/charlie/plan-email/route.ts:97  BASE_URL = buildBaseUrl(domain)
+    domain comes from validateSession (lib/utils/validate-session.ts:76):
+      domain: tenant.domain      // tenants table column
+    lib/utils/tenant-brand.ts:112  buildBaseUrl(domain):
+      if (domain) return `https://${domain}`
+      return process.env.NEXT_PUBLIC_APP_URL || ''
+
+  Production DB confirmed: tenants.domain = 'walliam.ca' for the WALLiam
+  tenant (id b16e1039-…). So baseUrl IS 'https://walliam.ca'. Base host
+  is CORRECT for WALLiam. NEXT_PUBLIC_APP_URL is unset in .env.local
+  (would only matter if domain were null, which it isn't here).
+
+1.3 — SIDE-BY-SIDE DIFF — the actual broken case
+
+  Persisted lead 63b48f13's plan_data.sellerEstimate.comparables[0]:
+    listingKey:      'E12856240'
+    _slug:           undefined        ← NOT persisted
+    unparsedAddress: '421 Pineview Lane, Pickering, ON L1V 6X4'
+    propertySubtype: 'Detached'
+
+  CHARLIE (working):
+    handleClick builds → '/421-pineview-lane-pickering-e12856240'
+    Final URL: https://walliam.ca/421-pineview-lane-pickering-e12856240
+    Live status: HTTP 200 OK
+
+  EMAIL (broken):
+    slug = c._slug || (listingKey ? '/' + listingKey.toLowerCase() : '')
+         = undefined || '/e12856240'
+         = '/e12856240'
+    href = baseUrl + slug = https://www.walliam.ca/e12856240
+    Live status: HTTP 404 Not Found  (verified via curl)
+
+    Sampled actual hrefs from rendered email
+    (recon/real-email-fix-render-63b48f13.html):
+      https://www.walliam.ca/e12856240
+      https://www.walliam.ca/e13013782
+      https://www.walliam.ca/e12126821
+      https://www.walliam.ca/e12164416
+      … all bare-MLS, all 404.
+
+  ROOT CAUSE: the email's fallback slug `'/' + listingKey.toLowerCase()`
+  is the BARE MLS key, but walliam.ca expects the descriptive slug
+  format Charlie builds. The persisted plan_data comps do NOT carry
+  `_slug` (the route stamps `estimate.comparables` wholesale at L173
+  of plan-email/route.ts, and the matcher's comp shape doesn't include
+  a `_slug` field).
+
+1.4 — Tenant safety of the eventual fix
+
+  The base host derivation (validateSession → tenant.domain → buildBaseUrl)
+  is ALREADY tenant-correct. Any fix must REUSE that same base — do not
+  introduce a different host source. The fix is the SLUG, not the base.
+
+  The slug-build logic (addr + city + mls) is pure (no auth context); it
+  could be moved into a shared helper. Charlie's ComparableCard +
+  ActiveListingCard already replicate the same logic (duplication). The
+  cleanest path: lift the slug builder to a tenant-agnostic shared helper
+  (lib/utils/property-slug.ts or similar), call it from email's per-tile
+  href construction. Reuses Charlie's proven slug format byte-for-byte.
+
+═══════════════════════════════════════════════════════════════════════════
+ITEM 2 — LEAD PAGE TILES NOT CLICKABLE
+═══════════════════════════════════════════════════════════════════════════
+
+2.1 — Are tiles wrapped in <a> / onClick?
+
+  components/dashboard/CharlieLeadEstimate.tsx:91-130
+    function CompRow({ row, anchorTier, path, kind }) {
+      ...
+      return (
+        <div className="flex border border-slate-200 rounded-lg overflow-hidden bg-white">
+          {row.mediaUrl && (<div className="w-20"><img …/></div>)}
+          <div className="flex-1 px-3 py-2 min-w-0">
+            <TierChip … />
+            <div … truncate>{row.address || '—'}</div>
+            <div … >{beds/baths/sqft/dom}</div>
+          </div>
+          <div … >
+            <div … >{price}</div>
+            <div … >{affordance}</div>
+          </div>
+        </div>
+      )
+    }
+
+    No <a>, no onClick, no cursor:pointer, no window.open. Tiles are
+    static <div>s — non-clickable.
+
+  Used at:
+    L435: Comparable Sold tile     <CompRow … kind="sold" />
+    L465: Tax-Matched tile         <CompRow … kind="tax"  />
+    L479: Competing tile           <CompRow … kind="competing" />
+    All three subsections use the same non-clickable component.
+
+2.2 — What's needed to build the link
+
+  Target: same descriptive-slug format Charlie/email use (ITEM 1).
+  Required fields (from Charlie's builder):
+    listingKey       — needed for the MLS suffix
+    unparsedAddress  — for addr + city derivation
+    propertySubtype  — to choose home (city-suffix) vs condo (unit-suffix) format
+    unitNumber       — condo-only; for the -unit-NN- segment
+
+  Inventory: lib/charlie/seller-estimate-view.ts:41-55 CanonicalCompRow:
+    address           : string | null
+    beds, baths, sqft, dom, price, priceKind                       : various
+    listingKey        : string | null          ← available
+    sourceTier        : TierName | null
+    mediaUrl          : string | null
+    id                : string | null
+
+    NOT carried: propertySubtype, unitNumber.
+
+    propertySubtype can be derived from the lead's path ('home' or
+    'condo') — which IS already passed to CompRow as a prop (L94). So
+    no schema change is needed if path is the sole condo/home decider.
+
+    unitNumber is missing entirely from CanonicalCompRow. For homes
+    this doesn't matter (city-suffix format ignores it). For condos
+    the slug would degrade to '{addr}-unit-{mls}' (no -NN- segment) —
+    Charlie's ComparableCard fallback at the same line (`unitStr ? … : …`)
+    handles this same case identically. So the lead-page tile can build
+    a working slug from address + listingKey + path alone.
+
+2.3 — State of the fix (no fix here)
+
+  Minimum work needed for clickable tiles:
+    - wrap CompRow's outer <div> in an <a href> OR add onClick
+    - href = absolute walliam.ca URL OR relative '/slug' (relative is
+      simpler — admin page is on the same origin as walliam.ca per
+      tenants.domain). NOTE the admin page is /admin-homes/leads/<id>/
+      — clicking a relative '/slug' from there resolves to walliam.ca/slug.
+    - slug = same builder as Charlie/email (ITEM 1.4 shared helper)
+    - target="_blank" + rel="noopener noreferrer" — match Charlie's
+      window.open(_, '_blank') intent
+
+  Build is feasible from CanonicalCompRow + path prop with NO schema
+  change. Shared slug helper (ITEM 1.4) covers this caller too.
+
+═══════════════════════════════════════════════════════════════════════════
+ITEM 3 — CHARLIE TAX-MATCH TIER TAGS vs ESTIMATOR
+═══════════════════════════════════════════════════════════════════════════
+
+3.1 — ESTIMATOR tax-comp tier render
+
+  app/estimator/components/HomeEstimatorResults.tsx:1050-1077
+    {result.taxMatch.comparables.map((comp, idx) => {
+      const tierKey = (comp.sourceTier || result.taxMatch?.bestGeoTier || 'gold')
+        as 'platinum' | 'gold' | 'silver' | 'bronze'
+      const tierLabel = HOME_LABEL_MAP[tierKey]
+      const tierBadgeColor =
+        tierKey === 'platinum' ? 'bg-emerald-600 text-white'
+        : tierKey === 'gold'   ? 'bg-amber-500 text-white'
+        : tierKey === 'silver' ? 'bg-slate-500 text-white'
+        :                        'bg-orange-700 text-white'
+      return (
+        …
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${tierBadgeColor}`}>
+          {tierLabel.emoji} {tierLabel.name} · {tierLabel.sub}
+        </span>
+        …
+      )
+    })
+
+  Driving field: comp.sourceTier (per-tile) with anchor fallback to
+  result.taxMatch.bestGeoTier. labelMap = HOME_LABEL_MAP (or
+  CONDO_LABEL_MAP for condos).
+
+  HOME_LABEL_MAP from app/estimator/components/GeoConfidenceSpread.tsx:46-58:
+    platinum: { name: 'Platinum', sub: 'Same street',     emoji: '◆' }
+    gold:     { name: 'Gold',     sub: 'Community',       emoji: '●' }
+    silver:   { name: 'Silver',   sub: 'Municipality',    emoji: '●' }
+    bronze:   { name: 'Bronze',   sub: 'Area',            emoji: '●' }
+
+  Rendered text format: '◆ Platinum · Same street', '● Gold · Community',
+  '● Silver · Municipality', '● Bronze · Area'.
+
+3.2 — CHARLIE tax-comp tier render (in-chat)
+
+  app/charlie/components/SellerEstimateBlock.tsx:336-345 — tax tile mount:
+    {taxComps.slice(0, 6).map((c, i) => (
+      <ComparableCard
+        comparable={c}
+        isLease={isLease}
+        sourceTier={null}       ← null forces the per-tile fallback inside
+                                  ComparableCard, instead of overriding with
+                                  the geo-tile uniform anchor.
+        path={resolvedPath}
+      />
+    ))}
+
+  app/charlie/components/ComparableCard.tsx:78-86 (tier resolution):
+    const tierKey = (sourceTier || (c.sourceTier as ComparableTier | undefined))
+    const validTier =
+      tierKey === 'platinum' || tierKey === 'gold' ||
+      tierKey === 'silver'   || tierKey === 'bronze' ? tierKey : null
+    const labelMap = path === 'home' ? HOME_LABEL_MAP : CONDO_LABEL_MAP
+    const tierLabel = validTier ? labelMap[validTier] : null
+    const tierColor = validTier ? TIER_COLORS[validTier] : null
+
+  ComparableCard.tsx:153-163 (chip render):
+    {tierLabel && tierColor && (
+      <div style={{ marginBottom: 4 }}>
+        <span style={{
+          display: 'inline-block', fontSize: 10, fontWeight: 700,
+          padding: '2px 7px', borderRadius: 4,
+          background: tierColor, color: '#fff', letterSpacing: '0.02em',
+        }}>{tierLabel.emoji} {tierLabel.name} · {tierLabel.sub}</span>
+      </div>
+    )}
+
+  Driving field: c.sourceTier (per-tile), same as estimator. labelMap
+  is the SAME HOME_LABEL_MAP / CONDO_LABEL_MAP estimator uses (imported
+  from GeoConfidenceSpread.tsx). Rendered text format is IDENTICAL.
+
+  Lead-page variant (CharlieLeadEstimate.tsx:74-86 TierChip + L100
+  CompRow) — same label-and-emoji format via CV-0 tierChipFor helper.
+
+  Email variant (charlie-plan-email-html.ts:343-346 tierChipHtml):
+    function tierChipHtml(tier) {
+      const chip = tierChipFor(tier ?? null, validGeoTier ?? null, sellerPath)
+      if (!chip) return ''
+      return `<div style="font-size:9px;font-weight:700;color:#fff;background:${chip.color};
+        display:inline-block;padding:2px 6px;border-radius:3px;margin-bottom:4px;">
+        ${chip.marker} ${chip.label} &middot; ${chip.sub}</div>`
+    }
+    Email uses CV-0 tierChipFor + the SAME label map. Same text format.
+
+3.3 — DIFF + runtime reconciliation
+
+  Same labelMap, same per-tile field (sourceTier), same fallback (anchor),
+  same emoji marker (◆ for platinum, ● otherwise), same text format
+  ({emoji} {name} · {sub}). The rendering is identical across estimator,
+  Charlie in-chat, Charlie lead-page, and Charlie email.
+
+  RUNTIME EVIDENCE — for 63b48f13 (SAVEPOINT-isolated read):
+    taxMatch.bestGeoTier:    silver
+    taxMatch.matchTier:      MAINT
+    taxMatch.comparables sourceTier distribution: silver × 10
+    (all 10 tax comps are stamped silver — matcher's Platinum and Gold
+    tiers did not qualify for this lead, only Silver.)
+
+  RENDERED EVIDENCE:
+    Lead page (recon/real-leads-fix-rendered.html, Tax-Matched region):
+      10 tier chips, all "● Silver" — matches the data (all 10 comps
+      stamped silver). NO chip is missing. Format identical to
+      HOME_LABEL_MAP['silver'].
+    Charlie in-chat (recon/real-charlie-panel-innerHTML.html, Tax region):
+      6 tier chips visible — Charlie's SellerEstimateBlock.tsx:336 caps
+      at slice(0, 6). Chip count distribution: 5 Gold + 1 Silver
+      (different live run, fresh matcher output, different distribution
+      than the persisted 63b48f13). All 6 rendered correctly.
+    Email (recon/real-email-fix-render-63b48f13.html, Tax-Matched region):
+      Same per-tile silver chips. Format '● Silver · Municipality'.
+
+  ANSWER TO OPERATOR'S QUESTION:
+    "Does Charlie show the chip but not the tier name, or neither?"
+    → Charlie SHOWS the chip WITH the tier name and sub-label — same
+       format as the estimator. No tier-tag information is dropped.
+    "Is the data present in Charlie's tax comps but not rendered, or
+     not present?"
+    → Data is present (c.sourceTier per-tile, populated by the matcher
+       at runHomeTaxMatchCascade in home-comparable-matcher-sales.ts:
+       1359-1377). Charlie READS it and renders it.
+
+  RECONCILIATION with operator's stated complaint:
+    On the captured runtime data we have, Charlie's tax-tile tier tags
+    render correctly and identically to the estimator. The "missing
+    tier tags" claim does not reproduce. Possible explanations:
+      (i)  The operator viewed a tax tile rendered for a comp whose
+           matcher run somehow returned no sourceTier (e.g. legacy data
+           pre-stamping, or a tier-cascade edge case that produced a
+           valid comparable without per-tile tier) — that comp would
+           silent-omit (ComparableCard.tsx:153 gate `tierLabel && tierColor`).
+      (ii) The operator may be referencing a VISUAL difference — chip
+           SHAPE/SIZE/PLACEMENT — between estimator (px-2 py-0.5 pill
+           with rounded-md) and Charlie (px:7 py:2 pill with rounded-4)
+           which are similar but not pixel-identical.
+      (iii) The operator may be conflating per-tile chips with the
+            separate 4-row "Confidence by Area" tier rail (which IS the
+            P/G/S/B grid shown at the top of the seller estimate).
+    Without a specific lead ID or screenshot from the operator's
+    complaint, we cannot pin down which (i/ii/iii) applies. Captured
+    runtime data shows no missing tier tags.
+
+═══════════════════════════════════════════════════════════════════════════
+UNVERIFIABLE / FLAGGED
+═══════════════════════════════════════════════════════════════════════════
+
+  - ITEM 1: production NEXT_PUBLIC_APP_URL value (Vercel env var) is
+    not visible here. Local .env.local has it UNSET. If production has
+    it set to condoleads.ca, that would matter ONLY for leads whose
+    tenants.domain is NULL — which is not the case for WALLiam
+    (verified domain = 'walliam.ca'). So irrelevant for the operator's
+    case.
+
+  - ITEM 1: condo path was not exercised here (63b48f13 is a Detached
+    home). The home path is broken. Condo path would suffer the same
+    bare-MLS fallback unless persisted comps carry _slug. Worth
+    verifying with a condo lead before any fix.
+
+  - ITEM 3: the operator's specific lead ID / screenshot is not in
+    hand. If the operator saw chips missing on a different lead, that
+    lead's persisted tax-comp sourceTier distribution would resolve
+    whether it's data-not-stamped vs render-side bug.
+
+  - ITEM 2: admin/dashboard auth required to render the LIVE admin lead
+    page DOM in chromium — harness has no admin credentials. CompRow's
+    non-clickability is established from source (no onClick / no <a>
+    in the component); harness's renderToStaticMarkup against real
+    plan_data confirms zero href="…" attributes inside CompRow output.

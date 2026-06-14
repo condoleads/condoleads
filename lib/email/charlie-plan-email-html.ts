@@ -19,6 +19,7 @@
 
 import { buildSellerEstimateView } from '@/lib/charlie/seller-estimate-view'
 import { TIER_META, TIER_ORDER, tierChipFor } from '@/lib/charlie/tier-chip'
+import { buildPropertySlug } from '@/lib/utils/property-slug'
 
 const MONTHS_ARR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -290,7 +291,19 @@ export function buildRichPlanEmail(data: {
         ${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (${topListings.length})
       </div>
       ${topListings.map((l: any) => {
-        const url = `${baseUrl}${l._slug || '/' + (l.listing_key || '')}`
+        // W-CHARLIE-FINETUNE-FIX (2026-06-14): bare-MLS fallback (`/${key}`)
+        // produces walliam.ca/x12345 — 404. Use the shared builder so the
+        // email href matches Charlie's working descriptive-slug format
+        // (curl-verified 200 vs prior 404). If the helper returns null
+        // (no listingKey), fall back to baseUrl so the tile is still a
+        // valid link to the brand root rather than a broken URL.
+        const slug = l._slug || buildPropertySlug({
+          listingKey: l.listing_key,
+          unparsedAddress: l.unparsed_address,
+          propertySubtype: l.property_subtype,
+          unitNumber: l.unit_number,
+        })
+        const url = slug ? `${baseUrl}${slug.startsWith('/') ? slug : '/' + slug}` : baseUrl
         const price = l.list_price || l.close_price || 0
         const address = l.unparsed_address || '&mdash;'
         const beds = l.bedrooms_total
@@ -352,7 +365,16 @@ export function buildRichPlanEmail(data: {
       ${sellerComps.map((c: any) => {
         const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
-        const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+        // W-CHARLIE-FINETUNE-FIX (2026-06-14): see listingsHtml above —
+        // shared slug helper produces walliam.ca-resolvable urls. Falls
+        // through to baseUrl if no listingKey (rare; honest non-link).
+        const slugRaw = c._slug || buildPropertySlug({
+          listingKey: c.listingKey || c.listing_key,
+          unparsedAddress: c.unparsedAddress || c.unparsed_address,
+          propertySubtype: c.propertySubtype || c.property_subtype,
+          unitNumber: c.unitNumber || c.unit_number,
+        })
+        const slug = slugRaw ? (slugRaw.startsWith('/') ? slugRaw : '/' + slugRaw) : ''
         // Geo comps are mono-tier — chip falls back to validGeoTier (the
         // anchor) when the comp itself doesn't carry a sourceTier. Mirrors
         // EstimatorResults.tsx:616-617.
@@ -405,6 +427,39 @@ export function buildRichPlanEmail(data: {
           No tax-matched comparables for this property &mdash; the matcher&rsquo;s &plusmn;20% same-municipality tax band did not surface enough comps to qualify a tier. The geo-based comparables above remain the primary value signal.
         </td></tr>
       </table>`
+  // W-CHARLIE-FINETUNE-FIX (2026-06-14) — Tax-Match Confidence rail.
+  // Defined BEFORE taxMatchHtml so the template can interpolate it
+  // between the estimate pill and the tiles (same placement as the
+  // estimator's HomeEstimatorResults.tsx:1035-1048). Gated on
+  // view.present.taxTierRail; when off (legacy lead or no cascade)
+  // it's empty-string and the surrounding tax section silently skips
+  // the rail. Outlook-safe nested-table layout mirrors tierRailHtml
+  // (geo rail) at L532 below.
+  const taxTierRailHtml = view?.present.taxTierRail && view.taxTierRail ? `
+    <div style="margin: 12px 0 14px;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">Tax-Match Confidence</div>
+      ${TIER_ORDER.map(slot => {
+        const tr = view.taxTierRail!.slots[slot]
+        const meta = TIER_META[slot]
+        const sub = sellerPath === 'home' ? meta.homeSub : meta.condoSub
+        const isBest = view.taxTierRail!.bestGeoTier === slot
+        const bg = isBest ? '#ecfdf5' : '#f8fafc'
+        const border = isBest ? '#34d399' : '#e2e8f0'
+        const rightCell = tr
+          ? `<span style="font-size:14px;font-weight:700;color:#0f172a;">${tr.median != null ? '$' + Number(tr.median).toLocaleString('en-CA') : '&mdash;'}</span> <span style="font-size:11px;color:#64748b;margin-left:8px;">${tr.count ?? 0} comp${(tr.count ?? 0) === 1 ? '' : 's'}</span>`
+          : `<span style="font-size:11px;color:#94a3b8;font-style:italic;">no data</span>`
+        return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:6px;"><tr><td style="padding: 10px 12px; background: ${bg}; border: 1px solid ${border}; border-radius: 8px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="vertical-align: middle;">
+            <span style="display:inline-block;background:${meta.color};color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;">${meta.marker} ${meta.label}</span>
+            <span style="font-size:12px;color:#475569;margin-left:8px;">${sub}</span>
+            ${isBest ? '<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#047857;background:#d1fae5;padding:2px 6px;border-radius:3px;margin-left:8px;">Anchor</span>' : ''}
+          </td>
+          <td style="text-align: right; vertical-align: middle; white-space: nowrap;">${rightCell}</td>
+        </tr></table></td></tr></table>`
+      }).join('')}
+    </div>
+  ` : ''
+
   const taxMatchHtml = `
     <div style="margin: 20px 0;">
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">Tax-Matched (${taxComps.length})</div>
@@ -414,10 +469,19 @@ export function buildRichPlanEmail(data: {
         <span style="font-size: 11px; color: #64748b;">Tax-matched estimate</span>
         <span style="font-size: 13px; font-weight: 700; color: #0f172a;">$${Number(taxMatchEst).toLocaleString('en-CA')}${taxMatchRange ? `<span style="font-size:11px;font-weight:400;color:#94a3b8;margin-left:8px;"> &middot; $${Number(taxMatchRange.low).toLocaleString('en-CA')}&ndash;$${Number(taxMatchRange.high).toLocaleString('en-CA')}</span>` : ''}</span>
       </div>` : ''}
+      ${taxTierRailHtml}
       ${taxComps.slice(0, 10).map((c: any) => {
         const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
-        const slug = c._slug || (c.listingKey ? '/' + c.listingKey.toLowerCase() : '')
+        // W-CHARLIE-FINETUNE-FIX (2026-06-14): shared slug helper (see
+        // sellerComps above).
+        const slugRaw = c._slug || buildPropertySlug({
+          listingKey: c.listingKey || c.listing_key,
+          unparsedAddress: c.unparsedAddress || c.unparsed_address,
+          propertySubtype: c.propertySubtype || c.property_subtype,
+          unitNumber: c.unitNumber || c.unit_number,
+        })
+        const slug = slugRaw ? (slugRaw.startsWith('/') ? slugRaw : '/' + slugRaw) : ''
         // Per-tile sourceTier (multi-tier display list). Falls back to anchor
         // tier when the tile doesn't carry one (forward-compat).
         const tileTier = c.sourceTier || validGeoTier
@@ -448,7 +512,15 @@ export function buildRichPlanEmail(data: {
         const price = c.list_price || 0
         const addr = (c.unparsed_address || '').split(',')[0]
         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
-        const slug = c._slug || (c.listing_key ? '/' + c.listing_key : '')
+        // W-CHARLIE-FINETUNE-FIX (2026-06-14): shared slug helper. Same
+        // as sellerComps + taxComps above.
+        const slugRaw = c._slug || buildPropertySlug({
+          listingKey: c.listingKey || c.listing_key,
+          unparsedAddress: c.unparsedAddress || c.unparsed_address,
+          propertySubtype: c.propertySubtype || c.property_subtype,
+          unitNumber: c.unitNumber || c.unit_number,
+        })
+        const slug = slugRaw ? (slugRaw.startsWith('/') ? slugRaw : '/' + slugRaw) : ''
         return `
           <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
             <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>

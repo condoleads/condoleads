@@ -12,6 +12,7 @@ import {
   CONDO_LABEL_MAP,
   type GeoConfidenceLabelMap,
 } from '@/app/estimator/components/GeoConfidenceSpread'
+import { buildPropertySlug } from '@/lib/utils/property-slug'
 
 export type ComparableTier = 'platinum' | 'gold' | 'silver' | 'bronze'
 
@@ -65,7 +66,11 @@ function timeAgo(dateStr: string): string {
   return `${months} months ago`
 }
 
-const HOME_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex']
+// W-CHARLIE-FINETUNE-FIX (2026-06-14): HOME_TYPES literal + slug-build
+// logic lifted to lib/utils/property-slug.ts so the email + lead-page
+// tile builders can call the SAME function and produce byte-identical
+// hrefs (verified). Keeping the local HOME_TYPES const removed —
+// buildPropertySlug owns it.
 
 export default function ComparableCard({ comparable: c, isLease = false, sourceTier, path }: Props) {
   const price = c.adjustedPrice || c.closePrice || c.listPrice
@@ -85,25 +90,19 @@ export default function ComparableCard({ comparable: c, isLease = false, sourceT
   const tierColor = validTier ? TIER_COLORS[validTier] : null
 
   const handleClick = () => {
-    if (!c.listingKey) return
-    const mls = c.listingKey.toLowerCase()
-    const rawAddr = (c.unparsedAddress || '').split(',')[0].trim()
-    const unitStr = c.unitNumber || ''
-    const withoutUnit = unitStr
-      ? rawAddr.replace(new RegExp('\\s+' + unitStr + '\\s*$'), '').trim()
-      : rawAddr
-    const addr = withoutUnit
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-    const isCondo = !HOME_TYPES.includes(c.propertySubtype || '')
-    const city = (c.unparsedAddress || '').split(',')[1]?.trim().split(' ')[0].toLowerCase() || ''
-    const url = isCondo
-      ? (unitStr ? `${addr}-unit-${unitStr}-${mls}` : `${addr}-unit-${mls}`)
-      : `${addr}-${city ? city + '-' : ''}${mls}`
-    window.open('/' + url, '_blank')
+    // W-CHARLIE-FINETUNE-FIX (2026-06-14): delegate slug build to
+    // lib/utils/property-slug — single source so email + lead-page tile
+    // builders produce byte-identical hrefs. Helper's behavior was
+    // byte-verified against the original inline logic across 16 fixtures
+    // (scripts/_slug-byte-test.js) before this refactor.
+    const slug = buildPropertySlug({
+      listingKey: c.listingKey,
+      unparsedAddress: c.unparsedAddress,
+      propertySubtype: c.propertySubtype,
+      unitNumber: c.unitNumber,
+    })
+    if (!slug) return
+    window.open('/' + slug, '_blank')
   }
 
   return (

@@ -45,6 +45,16 @@ interface Props {
       priceRange?: { low: number; high: number }
       count?: number
       bestGeoTier?: TierKey | 'none'
+      // W-CHARLIE-FINETUNE-FIX (2026-06-14): per-slot tier breakdown
+      // populated by runHomeTaxMatchCascade/runCondoTaxMatchCascade.
+      // Same TierResult shape as estimate.tiers (verified on 63b48f13).
+      // Consumed by the in-chat Tax-Match Confidence rail below.
+      tiers?: {
+        platinum: TierSlot | null
+        gold:     TierSlot | null
+        silver:   TierSlot | null
+        bronze:   TierSlot | null
+      }
     }
   }
   comparables: any[]
@@ -332,6 +342,81 @@ export default function SellerEstimateBlock({ estimate, comparables, buildingNam
               </span>
             </div>
           )}
+
+          {/* W-CHARLIE-FINETUNE-FIX (2026-06-14) — Tax-Match Confidence rail
+              (dark theme). Mirrors the geo rail at L195-254 above. Reads
+              estimate.taxMatch.tiers + estimate.taxMatch.bestGeoTier (same
+              TierResult shape as the geo cascade). On 63b48f13: silver
+              populated, others null → only silver shows median+count,
+              others "no data". Heading distinct from "Confidence by Area"
+              so the two rails are never confused. Gated on at-least-one
+              tier-slot OR a valid anchor — when both empty, silent skip
+              (the tax section header + empty-state pill above already
+              cover the no-cascade case). */}
+          {(() => {
+            const taxTiers = estimate.taxMatch?.tiers
+            const taxBest = estimate.taxMatch?.bestGeoTier
+            const taxBestSlot: ComparableTier | null =
+              taxBest === 'platinum' || taxBest === 'gold' || taxBest === 'silver' || taxBest === 'bronze'
+                ? taxBest
+                : null
+            const hasAnyTaxTier = !!taxTiers && (
+              !!taxTiers.platinum || !!taxTiers.gold || !!taxTiers.silver || !!taxTiers.bronze || !!taxBestSlot
+            )
+            if (!hasAnyTaxTier) return null
+            return (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Tax-Match Confidence
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {TIER_ORDER.map(slot => {
+                    const tr = taxTiers?.[slot] || null
+                    const isBest = taxBestSlot === slot
+                    const tierColor = TIER_COLORS[slot]
+                    const slotLabel = labelMap[slot]
+                    const rowBg = isBest ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.03)'
+                    const rowBorder = isBest ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(255,255,255,0.06)'
+                    return (
+                      <div key={slot} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '6px 10px', borderRadius: 6, background: rowBg, border: rowBorder,
+                        flexWrap: 'wrap', gap: 6,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <span style={{
+                            display: 'inline-block', fontSize: 10, fontWeight: 700,
+                            padding: '2px 6px', borderRadius: 4,
+                            background: tierColor, color: '#fff',
+                          }}>{slotLabel.emoji} {slotLabel.name}</span>
+                          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.55)' }}>{slotLabel.sub}</span>
+                          {isBest && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700,
+                              padding: '2px 5px', borderRadius: 4,
+                              background: 'rgba(16,185,129,0.25)', color: '#10b981',
+                              letterSpacing: '0.1em', textTransform: 'uppercase',
+                            }}>Anchor</span>
+                          )}
+                        </div>
+                        {tr ? (
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, color: '#fff' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700 }}>{fmtPrice(tr.median)}</span>
+                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>
+                              {tr.count ?? 0} comp{(tr.count ?? 0) === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 10, fontStyle: 'italic', color: 'rgba(255,255,255,0.3)' }}>no data</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {taxComps.slice(0, 6).map((c: any, i: number) => (
               <ComparableCard
