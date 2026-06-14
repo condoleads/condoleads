@@ -6,9 +6,19 @@
 // builder the live POST handler uses without violating Next.js`s rule
 // that route files may only export HTTP handlers + config.
 //
-// Behavior IDENTICAL to the pre-extract route.ts body — function body +
-// MONTHS_ARR constant moved verbatim. Pure (no I/O, no DB). Tested by
-// scripts/smoke-charlie-email-fixture.js with real production fixtures.
+// W-CHARLIE-CONVERGENCE CV-2 (2026-06-14) — email parity. The email now
+// renders the Property Estimate price card + 4-row tier rail (P/G/S/B with
+// anchor highlight) that the lead page (CV-1) and the in-chat panel
+// already showed. Tier color/label literals migrated to CV-0
+// (lib/charlie/tier-chip.ts) — the inline TIER_COLORS_EMAIL,
+// HOME_LABELS_EMAIL, CONDO_LABELS_EMAIL declarations are GONE. This is the
+// 2nd of 4 tier-chip duplications killed (after CV-1 hit
+// CharlieLeadEstimate). The two remaining are in the in-chat React
+// surfaces (ComparableCard, SellerEstimateBlock) — flagged for a future
+// cleanup pass; out of CV-2 scope.
+
+import { buildSellerEstimateView } from '@/lib/charlie/seller-estimate-view'
+import { TIER_META, TIER_ORDER, tierChipFor } from '@/lib/charlie/tier-chip'
 
 const MONTHS_ARR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -310,39 +320,29 @@ export function buildRichPlanEmail(data: {
     </div>
   ` : ''
 
-  // C-ENHANCE-2-RENDER (2026-06-13): tier chip + label maps. Local literals
-  // (no helper import) — matches the in-chat ComparableCard chip styling +
-  // the dashboard CharlieLeadEstimate chip. Verbatim color values from
-  // EstimatorResults.tsx:619-622 / 862-869. Label maps verbatim from
-  // GeoConfidenceSpread.tsx:46-58 — copied here to keep email-html rendering
-  // dependency-free (no React imports in the email build).
-  const TIER_COLORS_EMAIL: Record<string, string> = {
-    platinum: '#10b981', gold: '#f59e0b', silver: '#64748b', bronze: '#c2410c',
-  }
-  const HOME_LABELS_EMAIL: Record<string, { name: string; sub: string; emoji: string }> = {
-    platinum: { name: 'Platinum', sub: 'Same street',     emoji: '◆' },
-    gold:     { name: 'Gold',     sub: 'Community',       emoji: '●' },
-    silver:   { name: 'Silver',   sub: 'Municipality',    emoji: '●' },
-    bronze:   { name: 'Bronze',   sub: 'Area',            emoji: '●' },
-  }
-  const CONDO_LABELS_EMAIL: Record<string, { name: string; sub: string; emoji: string }> = {
-    platinum: { name: 'Platinum', sub: 'Same Building',   emoji: '◆' },
-    gold:     { name: 'Gold',     sub: 'Community',       emoji: '●' },
-    silver:   { name: 'Silver',   sub: 'Municipality',    emoji: '●' },
-    bronze:   { name: 'Bronze',   sub: 'Area',            emoji: '●' },
-  }
-  // path derived from sellerEstimate (set by SellerEstimateRunner) — falls
-  // back to condo when absent (legacy plan-email shape pre-enhancement).
-  const sellerPath: 'condo' | 'home' = sellerEstimate?.path === 'home' ? 'home' : 'condo'
-  const emailLabelMap = sellerPath === 'home' ? HOME_LABELS_EMAIL : CONDO_LABELS_EMAIL
+  // W-CHARLIE-CONVERGENCE CV-2 (2026-06-14): the previous inline
+  // TIER_COLORS_EMAIL / HOME_LABELS_EMAIL / CONDO_LABELS_EMAIL declarations
+  // (8 lines + 4 hex literals + 8 label entries) are GONE. tierChipFor +
+  // TIER_META + TIER_ORDER come from lib/charlie/tier-chip.ts (CV-0). The
+  // hex / label / marker values are byte-identical (CV-0 cited it; CV-1 +
+  // CV-2 smokes assert the rendered output unchanged).
+  //
+  // Build the canonical view once. buildSellerEstimateView is pure (no
+  // React, no DOM); CV-0 STEP 2 made it safe to import here. View is null
+  // for buyer plans / no-sellerEstimate paths — priceCardHtml and
+  // tierRailHtml below silent-skip in that case (gate on view?.present.*).
+  const view = buildSellerEstimateView({ planType, plan, analytics, sellerEstimate })
+  const sellerPath: 'condo' | 'home' = view?.path ?? (sellerEstimate?.path === 'home' ? 'home' : 'condo')
   const bestGeoTier = sellerEstimate?.estimate?.bestGeoTier as string | undefined
   const validGeoTier = bestGeoTier && bestGeoTier !== 'none' ? bestGeoTier : null
+  // tierChipHtml: per-tile chip with the CV-0 anchor-fallback rule baked in.
+  // Callers pass c.sourceTier directly; tierChipFor falls back to the geo
+  // anchor (validGeoTier) when sourceTier is absent. Returns '' when neither
+  // is a valid TierName.
   function tierChipHtml(tier: string | null | undefined): string {
-    if (!tier || tier === 'none') return ''
-    const color = TIER_COLORS_EMAIL[tier]
-    const label = emailLabelMap[tier]
-    if (!color || !label) return ''
-    return `<div style="font-size:9px;font-weight:700;color:#fff;background:${color};display:inline-block;padding:2px 6px;border-radius:3px;margin-bottom:4px;">${label.emoji} ${label.name} &middot; ${label.sub}</div>`
+    const chip = tierChipFor(tier ?? null, validGeoTier ?? null, sellerPath)
+    if (!chip) return ''
+    return `<div style="font-size:9px;font-weight:700;color:#fff;background:${chip.color};display:inline-block;padding:2px 6px;border-radius:3px;margin-bottom:4px;">${chip.marker} ${chip.label} &middot; ${chip.sub}</div>`
   }
 
   const sellerComps = sellerEstimate?.comparables || comparables || []
@@ -451,6 +451,50 @@ export function buildRichPlanEmail(data: {
     </div>
   ` : ''
 
+  // W-CHARLIE-CONVERGENCE CV-2 (2026-06-14) — Property Estimate price card.
+  // Inline-styled (email-safe) version of the dashboard's white-card price
+  // section. Gated on view.present.priceCard so buyer plans / paths
+  // without an estimate silent-skip.
+  const priceCardHtml = view?.present.priceCard ? `
+    <div style="margin: 20px 0; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px;">
+      <div style="font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em;">Estimated Value</div>
+      <div style="font-size: 28px; font-weight: 900; color: #0f172a; margin-top: 6px;">${view.priceCard.estimatedPrice != null ? '$' + Number(view.priceCard.estimatedPrice).toLocaleString('en-CA') : '&mdash;'}</div>
+      ${view.priceCard.priceRange ? `<div style="font-size: 12px; color: #64748b; margin-top: 4px;">Range $${Number(view.priceCard.priceRange.low).toLocaleString('en-CA')} &ndash; $${Number(view.priceCard.priceRange.high).toLocaleString('en-CA')}</div>` : ''}
+      ${(view.priceCard.confidence || view.priceCard.matchTier) ? `<div style="font-size: 12px; color: #475569; margin-top: 6px;">Confidence: ${view.priceCard.confidence || '&mdash;'}${view.priceCard.matchTier ? ' &middot; ' + view.priceCard.matchTier : ''}</div>` : ''}
+    </div>
+  ` : ''
+
+  // W-CHARLIE-CONVERGENCE CV-2 — 4-row tier rail with anchor highlight.
+  // One nested <table> per row keeps the layout email-client-safe (Outlook
+  // Desktop renders nested tables reliably; CSS grid would not). Tier
+  // metadata (color, label, marker, per-path sub) comes from CV-0
+  // TIER_META — no inline duplication of hex/labels in this file anymore.
+  const tierRailHtml = view?.present.tierRail ? `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Confidence by Area</div>
+      ${TIER_ORDER.map(slot => {
+        const tr = view.tierRail.slots[slot]
+        const meta = TIER_META[slot]
+        const sub = sellerPath === 'home' ? meta.homeSub : meta.condoSub
+        const isBest = view.tierRail.bestGeoTier === slot
+        const bg = isBest ? '#ecfdf5' : '#f8fafc'
+        const border = isBest ? '#34d399' : '#e2e8f0'
+        const rightCell = tr
+          ? `<span style="font-size:14px;font-weight:700;color:#0f172a;">${tr.median != null ? '$' + Number(tr.median).toLocaleString('en-CA') : '&mdash;'}</span> <span style="font-size:11px;color:#64748b;margin-left:8px;">${tr.count ?? 0} comp${(tr.count ?? 0) === 1 ? '' : 's'}</span>`
+          : `<span style="font-size:11px;color:#94a3b8;font-style:italic;">no data</span>`
+        return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:6px;"><tr><td style="padding: 10px 12px; background: ${bg}; border: 1px solid ${border}; border-radius: 8px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="vertical-align: middle;">
+            <span style="display:inline-block;background:${meta.color};color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;">${meta.marker} ${meta.label}</span>
+            <span style="font-size:12px;color:#475569;margin-left:8px;">${sub}</span>
+            ${isBest ? '<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#047857;background:#d1fae5;padding:2px 6px;border-radius:3px;margin-left:8px;">Anchor</span>' : ''}
+          </td>
+          <td style="text-align: right; vertical-align: middle; white-space: nowrap;">${rightCell}</td>
+        </tr></table></td></tr></table>`
+      }).join('')}
+      <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">Narrow spread = high confidence. Wide spread = subject&apos;s block sold differently than the community.</div>
+    </div>
+  ` : ''
+
   const vipHtml = vipCreditUsed ? `
     <div style="background: linear-gradient(135deg, #1e1b4b, #312e81); border: 1px solid rgba(99,102,241,0.3); border-radius: 10px; padding: 14px 18px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between;">
       <div>
@@ -505,6 +549,8 @@ export function buildRichPlanEmail(data: {
         ${blocksHtml}
         ${planCardHtml}
         ${profileHtml}
+        ${priceCardHtml}
+        ${tierRailHtml}
         ${listingsHtml}
         ${comparableSoldHtml}
         ${taxMatchHtml}

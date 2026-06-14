@@ -1716,3 +1716,115 @@ VERIFIED LIVE, not inferred.
           duplication)
   - CV-3: convergence harness — asserts all three surfaces render the same
           canonical set
+
+---
+
+## W-CHARLIE-CONVERGENCE CV-2 — SHIPPED LOCAL (2026-06-14)
+
+Email parity. lib/email/charlie-plan-email-html.ts now imports
+buildSellerEstimateView + tierChipFor + TIER_META + TIER_ORDER from CV-0
+and renders the 2 missing canonical sections (Property Estimate price
+card + 4-row tier rail with anchor highlight) inline-styled to match the
+email's existing theme. The inline TIER_COLORS_EMAIL +
+HOME_LABELS_EMAIL + CONDO_LABELS_EMAIL declarations (8 lines + 4 hex
+literals + 8 label entries) are GONE. 2nd of 4 tier-chip duplications
+killed (after CV-1 hit CharlieLeadEstimate).
+
+System 2 only. S1 untouched. CV-2 scope is email-only; the lead page
+(CV-1, shipped + pushed at 6935f87) and the Charlie in-chat panel are
+NOT touched.
+
+### Files (changes only — backup_cv2_20260614_061331 for each)
+
+  - lib/email/charlie-plan-email-html.ts
+    - L19-20  NEW imports: `import { buildSellerEstimateView } from
+              '@/lib/charlie/seller-estimate-view'` + `import { TIER_META,
+              TIER_ORDER, tierChipFor } from '@/lib/charlie/tier-chip'`
+    - L319-340 REMOVED: const TIER_COLORS_EMAIL + HOME_LABELS_EMAIL +
+              CONDO_LABELS_EMAIL inline declarations (CV-0 cited values
+              byte-identical to pre-CV-2 — proven by Phase 2 chip-parity
+              + CV-2 hex-count assertions).
+    - L321    NEW: `const view = buildSellerEstimateView({ planType,
+              plan, analytics, sellerEstimate })` — single call; the view
+              feeds the new sections + is null-clean for buyer plans.
+    - L328-332 tierChipHtml now reads tierChipFor with anchor-fallback
+              baked in (no more local TIER_COLORS_EMAIL + emailLabelMap
+              lookups). Signature unchanged for callers.
+    - L455-465 NEW: priceCardHtml — inline-styled "Estimated Value" card
+              with estimatedPrice + priceRange + Confidence/matchTier.
+              Gated on view.present.priceCard.
+    - L467-490 NEW: tierRailHtml — 4 rows (P/G/S/B) via TIER_ORDER.map.
+              Each row a nested <table> with the tier chip via TIER_META
+              + home/condo sub + median + comp count. Anchor row gets
+              emerald bg/border + "Anchor" pill (#d1fae5/#34d399).
+              Inline-styled tables (Outlook-Desktop safe). Gated on
+              view.present.tierRail.
+    - L518-519 NEW mount: ${priceCardHtml} + ${tierRailHtml} between
+              ${profileHtml} and ${listingsHtml}.
+
+### Verification — scripts/smoke-cv2-email.js (NEW)
+
+Real fixture lead 63b48f13 → existing test-render-plan-email-probe POSTs
+the canonical payload → buildRichPlanEmail renders → 58 assertions.
+
+  - PRESERVATION (13/13): plan-card grid "Your Seller Strategy", Seller
+    Profile, Market Intelligence, Price by Home Type, Offer Intelligence,
+    Best Time, Comparable Sold (5), Tax-Matched (10), Tax-matched
+    estimate pill, Competing For Sale (2), AI Disclaimer, Open WALLiam
+    CTA, Seller Strategy summary.
+  - COMPLETENESS — price card (6/6): "Estimated Value" label,
+    $1,012,635 value, "Range $931,624 – $1,093,646", "Confidence: Medium
+    · RANGE-ADJ".
+  - COMPLETENESS — tier rail (15/15): heading "Confidence by Area",
+    rows ◆ Platinum / ● Gold / ● Silver / ● Bronze, home-path subs
+    "Same street" / "Community" / "Municipality" / "Area", "Anchor" pill
+    on best row, tier rail gold {$1,127,000 · 5 comps}, silver
+    {$1,118,500 · 32 comps}, platinum + bronze "no data".
+  - CHIP PARITY (4/4): gold hex #f59e0b ≥ 6 (5 comp + 1 tier-rail);
+    silver #64748b ≥ 11 (10 tax + 1 tier-rail) — actual 69 because the
+    silver hex doubles as a body text color on Tax-Matched section
+    subheadings (informational); platinum #10b981 ≥ 1; bronze #c2410c
+    ≥ 1.
+  - DUPLICATION KILLED (9/9): inline TIER_COLORS_EMAIL +
+    HOME_LABELS_EMAIL + CONDO_LABELS_EMAIL all REMOVED; CV-0 imports
+    present (tier-chip module + buildSellerEstimateView + tierChipFor +
+    TIER_META + TIER_ORDER); tierChipHtml now calls tierChipFor.
+  - HYGIENE (7/7): zero undefined / NaN / Invalid Date / >null< / "$0";
+    17 walliam.ca hrefs all well-formed; zero condoleads.ca leak.
+  - NON-IN-SCOPE (4/4): all 4 09b97ef-protected SHAs MATCH (chat route /
+    tools / prompt / Charlie VIP). CV-1 surfaces (CharlieLeadEstimate,
+    LeadDetailClient), in-chat surfaces (ResultsPanel,
+    SellerEstimateBlock, ComparableCard), and plan-email/route logged
+    informationally — none touched this phase.
+
+  Result: 58/58 PASS.
+  OUTPUT: scripts-output/smoke-cv2-email.txt
+
+### Build + S1
+
+  npx tsc --noEmit: exit 0.
+  S1 (condoleads.ca legacy /admin, app/api/chat/*, agent_buildings):
+  zero diff.
+
+### Duplication status (workstream-wide)
+
+  Before CV-1: 4 tier-color duplications (ComparableCard, SellerEstimate-
+               Block, CharlieLeadEstimate, charlie-plan-email-html).
+  After CV-1:  3 duplications (CV-1 killed CharlieLeadEstimate's).
+  After CV-2:  2 duplications (CV-2 killed charlie-plan-email-html's).
+  Remaining:   ComparableCard.tsx:54-58 + SellerEstimateBlock.tsx:75-79
+               (both in the in-chat React surfaces). Flagged as a
+               cleanup pass — out of CV-2 scope. The two surfaces are
+               byte-unchanged at HEAD; a CV-2-followup or CV-3 cleanup
+               can migrate them in one atomic pass without rendering
+               changes.
+
+### Phase status
+
+  - CV-0 (5040a5e): shipped + pushed
+  - CV-1 (6935f87): shipped + pushed; operator confirmed walliam.ca
+                   serving the lead-page parity
+  - CV-2 (this commit): shipped local; HOLD push pending operator
+                       approval + email eyeball
+  - CV-3: convergence harness — asserts all three surfaces render the
+          same canonical set against the same fixture (NEXT)

@@ -1,0 +1,90 @@
+================================================================
+W-CHARLIE-CONVERGENCE CV-2 — email parity smoke
+================================================================
+fixture lead: 63b48f13-8a03-46be-b4ce-91007da0794a
+dev server: http://localhost:3001
+
+returned HTML length: 50380 bytes
+
+── PRESERVATION ──
+PASS  PRESERVE: Seller Strategy heading
+PASS  PRESERVE: Market Intelligence heading
+PASS  PRESERVE: Price by Home Type table
+PASS  PRESERVE: Offer Intelligence heading
+PASS  PRESERVE: Best Time block
+PASS  PRESERVE: Seller Profile heading
+PASS  PRESERVE: Dark plan-card "Your Seller Strategy" label
+PASS  PRESERVE: Comparable Sold (5) header (sellerComps.length === 5)
+PASS  PRESERVE: Tax-Matched (10) header (taxComps.length === 10)
+PASS  PRESERVE: Tax-matched estimate pill label
+PASS  PRESERVE: Competing For Sale (2) header
+PASS  PRESERVE: AI Disclaimer block
+PASS  PRESERVE: Open WALLiam CTA
+
+── COMPLETENESS: Property Estimate price card ──
+PASS  NEW: "Estimated Value" label (price card)
+PASS  NEW: estimatedPrice value rendered
+PASS  NEW: price range low rendered
+PASS  NEW: price range high rendered
+PASS  NEW: confidence rendered
+PASS  NEW: matchTier rendered
+
+── COMPLETENESS: 4-row tier rail with anchor ──
+PASS  NEW: tier rail heading
+PASS  NEW: tier rail row Platinum
+PASS  NEW: tier rail row Gold
+PASS  NEW: tier rail row Silver
+PASS  NEW: tier rail row Bronze
+PASS  NEW: home path platinum sub
+PASS  NEW: home path gold sub
+PASS  NEW: home path silver sub
+PASS  NEW: home path bronze sub
+PASS  NEW: ANCHOR chip on best row
+PASS  NEW: tier rail gold median
+PASS  NEW: tier rail gold count
+PASS  NEW: tier rail silver median
+PASS  NEW: tier rail silver count
+PASS  NEW: tier rail "no data" cells for null slots (platinum, bronze)
+
+── CHIP PARITY ──
+hex counts: gold=7 silver=69 platinum=12 bronze=1
+PASS  gold hex count >= 6 (5 comp tile chips + 1 tier-rail gold row chip; matches pre-CV-2 floor)  [goldHex=7]
+PASS  silver hex count >= 11 (10 tax tile chips + 1 tier-rail silver row chip)  [silverHex=69]
+PASS  platinum hex count >= 1 (tier rail row chip for null-slot tier)  [platinumHex=12]
+PASS  bronze hex count >= 1 (tier rail row chip for null-slot tier)  [bronzeHex=1]
+
+── DUPLICATION KILLED ──
+PASS  inline `const TIER_COLORS_EMAIL` declaration REMOVED
+PASS  inline `const HOME_LABELS_EMAIL` declaration REMOVED
+PASS  inline `const CONDO_LABELS_EMAIL` declaration REMOVED
+PASS  CV-0 imports: tier-chip module imported
+PASS  CV-0 imports: buildSellerEstimateView imported
+PASS  CV-0 imports: tierChipFor named import
+PASS  CV-0 imports: TIER_META named import
+PASS  CV-0 imports: TIER_ORDER named import
+PASS  tierChipHtml now calls tierChipFor (anchor-fallback inside)
+
+── HYGIENE ──
+PASS  zero "undefined" tokens
+PASS  zero "NaN" tokens
+PASS  zero "Invalid Date" tokens
+PASS  zero ">null<" display tokens
+PASS  zero "$0" placeholder prices
+PASS  every walliam.ca href well-formed  [count=17, malformed=0]
+PASS  zero condoleads.ca leak
+
+── NON-IN-SCOPE files — byte-unchanged ──
+PASS  app/api/charlie/route.ts  expected=9c64acba0564, got=9c64acba0564
+PASS  app/charlie/lib/charlie-tools.ts  expected=a02ee7ab48f9, got=a02ee7ab48f9
+PASS  app/charlie/lib/charlie-prompts.ts  expected=fbe7b7de14b9, got=fbe7b7de14b9
+PASS  app/api/walliam/charlie/vip-request/route.ts  expected=97c651e90c6f, got=97c651e90c6f
+INFO  components/dashboard/CharlieLeadEstimate.tsx  sha=5ea528c865d1 (CV-1 — CV-2 should not touch)
+INFO  components/dashboard/LeadDetailClient.tsx     sha=c6dd945fc086 (CV-1)
+INFO  app/charlie/components/ResultsPanel.tsx       sha=72f5d88adef9
+INFO  app/charlie/components/SellerEstimateBlock.tsx sha=564981cd6333
+INFO  app/charlie/components/ComparableCard.tsx     sha=57a70d05ffec
+INFO  app/api/charlie/plan-email/route.ts          sha=4f24d9cd2cc7
+
+================================================================
+OVERALL: PASS  (58/58 passed, 0 failed)
+================================================================
