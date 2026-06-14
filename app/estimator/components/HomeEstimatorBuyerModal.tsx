@@ -534,6 +534,63 @@ export default function HomeEstimatorBuyerModal({
     `${(listing as any).street_number || ''} ${(listing as any).street_name || ''}`.trim() || 'This Property'
   const propertyLabel = listing.property_subtype?.trim() || 'Home'
 
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): up-front gate. Mirrors
+  // the EstimatorBuyerModal pattern — see that file for full rationale.
+  // Render only the register prompt + modal frame when !user; the full
+  // form mounts after AuthContext updates and this component re-renders.
+  if (!user) {
+    return createPortal(
+      <>
+        <div className="fixed inset-0 bg-black/50 z-[99]" onClick={onClose} />
+        <div className="fixed inset-y-0 right-0 z-[100] w-full md:w-[600px] bg-white shadow-2xl overflow-y-auto">
+          <div className={`sticky top-0 bg-gradient-to-r ${isSale ? 'from-emerald-600 to-teal-600' : 'from-sky-600 to-blue-600'} text-white p-6 shadow-lg z-10`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-2xl font-bold mb-1">{isSale ? 'Home Price Estimate' : 'Rental Estimate'}</h2>
+                <p className={`${isSale ? 'text-emerald-100' : 'text-sky-100'} text-sm`}>{propertyLabel} — {displayAddress}</p>
+              </div>
+              <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-colors" aria-label="Close modal">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="p-6">
+            <div className="text-center py-8">
+              <div className="text-3xl mb-3">🏠</div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Sign in to estimate this listing</h3>
+              <p className="text-sm text-slate-600 max-w-md mx-auto mb-6">
+                Create a free account or sign in to access the estimator. We'll match this property
+                against same-street and same-municipality comparables.
+              </p>
+              <button
+                onClick={() => setShowRegister(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+              >
+                Get Started — Free Account
+              </button>
+              <p className="text-xs text-slate-400 mt-3">Already have an account? Click above and choose "Sign In".</p>
+            </div>
+          </div>
+        </div>
+        <RegisterModal
+          isOpen={showRegister}
+          onClose={() => { setShowRegister(false) }}
+          onSuccess={() => {
+            // AuthContext.user updates via supabase.auth.onAuthStateChange;
+            // this component re-renders with user set and the full form mounts.
+            // No checkAndEstimate replay — the form hasn't been filled.
+            setShowRegister(false)
+          }}
+          registrationSource="estimator"
+          agentId={agentId}
+        />
+      </>,
+      document.body
+    )
+  }
+
   return createPortal(
     <>
       {/* Backdrop */}

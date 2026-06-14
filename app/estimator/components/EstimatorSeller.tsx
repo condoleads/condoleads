@@ -23,16 +23,19 @@ interface EstimatorSellerProps {
 export default function EstimatorSeller({ buildingId, buildingSlug, buildingName, buildingAddress, agentId, tenantId }: EstimatorSellerProps) {
   const { user } = useAuth()
 
-  // If no user, show register-gated version
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): up-front gate.
+  // Pre-fix this branch rendered EstimatorSellerInner with userId=null,
+  // which mounted the FULL form for an unauth visitor — the gate then
+  // fired at handleEstimate (the submit button), AFTER the user had
+  // filled the form. Now we render a small register-prompt card BEFORE
+  // the form mounts. RegisterModal opens on click; on success the
+  // parent (AuthContext) updates `user`, this component re-renders, the
+  // !user branch falls through and the form mounts for the now-authed
+  // user. Lead capture (callJoinTenant inside RegisterModal) is
+  // preserved — it runs at register time regardless of whether the
+  // user filled a form first.
   if (!user) {
-    return <EstimatorSellerInner 
-      buildingId={buildingId} 
-      buildingSlug={buildingSlug} 
-      buildingName={buildingName} 
-      buildingAddress={buildingAddress} 
-      agentId={agentId}
-      userId={null}
-    />
+    return <EstimatorSellerGate buildingName={buildingName} agentId={agentId} />
   }
 
   // User logged in - wrap with VIP flow
@@ -44,15 +47,61 @@ export default function EstimatorSeller({ buildingId, buildingSlug, buildingName
       buildingId={buildingId}
       tenantId={tenantId}
     >
-      <EstimatorSellerInner 
-        buildingId={buildingId} 
-        buildingSlug={buildingSlug} 
-        buildingName={buildingName} 
-        buildingAddress={buildingAddress} 
+      <EstimatorSellerInner
+        buildingId={buildingId}
+        buildingSlug={buildingSlug}
+        buildingName={buildingName}
+        buildingAddress={buildingAddress}
         agentId={agentId}
         userId={user.id}
       />
     </EstimatorVipWrapper>
+  )
+}
+
+// W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): pre-form register card.
+// Mirrors the visual frame of EstimatorSellerInner so the user knows
+// they're in the right place; the form just doesn't render until they
+// authenticate. RegisterModal's onSuccess closes the modal; the parent
+// EstimatorSeller re-renders via AuthContext update and the actual form
+// takes over.
+function EstimatorSellerGate({ buildingName, agentId }: { buildingName: string; agentId: string }) {
+  const [showRegister, setShowRegister] = useState(false)
+  return (
+    <section className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8">
+      <div className="text-center">
+        <div className="text-2xl mb-2">💰</div>
+        <h2 className="text-xl font-bold text-slate-900 mb-2">Estimate your home value</h2>
+        <p className="text-sm text-slate-600 max-w-md mx-auto mb-6">
+          Sign in or create a free account to access {buildingName ? `the ${buildingName} ` : 'the '}
+          seller estimator. We'll match you against same-building comparables and tax-band sales.
+        </p>
+        <button
+          onClick={() => setShowRegister(true)}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+        >
+          Get Started — Free Account
+        </button>
+        <p className="text-xs text-slate-400 mt-3">
+          Already have an account? Click above and choose "Sign In".
+        </p>
+      </div>
+      <RegisterModal
+        isOpen={showRegister}
+        onClose={() => setShowRegister(false)}
+        onSuccess={() => {
+          // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): just close the
+          // modal. AuthContext.user updates via supabase.auth.onAuth
+          // StateChange listener and the parent EstimatorSeller re-renders
+          // — the !user branch will fall through and the real form mounts.
+          // We do NOT call handleEstimate here because the form hasn't
+          // been filled yet (the whole point of up-front gating).
+          setShowRegister(false)
+        }}
+        registrationSource="estimator"
+        agentId={agentId}
+      />
+    </section>
   )
 }
 

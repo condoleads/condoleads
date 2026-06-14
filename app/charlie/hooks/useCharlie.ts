@@ -74,6 +74,15 @@ export interface CharlieState {
   gateActive: boolean
   gateReason: 'register' | 'vip_required' | 'chat_limit' | null
   gatePlanType: 'buyer' | 'seller' | null
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): when an unauth user
+  // tries to open a buyer/seller form, requestForm() sets this BEFORE
+  // surfacing the register gate. After register success, resumeAfterGate
+  // promotes pendingForm → initialForm so CharlieOverlay opens the
+  // form the user wanted. Replaces the post-form gate which
+  // historically let the user fill the form before being prompted to
+  // register, and which depended on a stale chat-message replay to
+  // resume the flow.
+  pendingForm: 'buyer' | 'seller' | null
   vipRequestId: string | null
   vipRequestStatus: 'idle' | 'pending' | 'approved' | 'denied'
   vipCreditUsed: boolean
@@ -130,6 +139,8 @@ const INITIAL_STATE: CharlieState = {
   gateActive: false,
   gateReason: null,
   gatePlanType: null,
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): see state interface comment.
+  pendingForm: null,
   vipRequestId: null,
   vipRequestStatus: 'idle',
   vipCreditUsed: false,
@@ -238,7 +249,45 @@ export function useCharlie() {
     setState(s => ({ ...s, leadCaptured: true }))
   }, [])
 
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): centralized form-open
+  // gate. ChatPanel's "I want to buy/sell" chips AND the homepage CTAs
+  // both call this. When userId is null, surface the register modal
+  // BEFORE the form mounts and stash the desired form in pendingForm
+  // so resumeAfterGate can apply it post-register. When userId is
+  // present, set initialForm directly so the form opens immediately
+  // (authed path is byte-equivalent to pre-fix behavior).
+  const requestForm = useCallback((mode: 'buyer' | 'seller') => {
+    const isAuthed = !!creditsRef.current.state.userId
+    if (isAuthed) {
+      setState(s => ({ ...s, isOpen: true, initialForm: mode, pendingForm: null }))
+      return
+    }
+    setState(s => ({
+      ...s,
+      isOpen: true,
+      gateActive: true,
+      gateReason: 'register',
+      gatePlanType: mode,
+      pendingForm: mode,
+      // Make sure no stale form is showing under the modal.
+      initialForm: null,
+    }))
+  }, [])
+
   const open = useCallback((initialMessage?: string, initialForm?: 'buyer' | 'seller') => {
+    // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): when called with an
+    // initialForm but the user isn't authed yet, route through
+    // requestForm so the gate fires BEFORE the form mounts. Without
+    // this, the homepage CTA path (charlie:open event with form prop)
+    // would still open the form for unauth users and the gate would
+    // only fire later on a chat message.
+    if (initialForm && !creditsRef.current.state.userId) {
+      requestForm(initialForm)
+      if (initialMessage && messagesRef.current.length === 0 && !greetingSentRef.current) {
+        lastUserMessageRef.current = initialMessage // resume after register
+      }
+      return
+    }
     setState(s => ({ ...s, isOpen: true, initialForm: initialForm || null }))
     if (initialMessage && messagesRef.current.length === 0 && !greetingSentRef.current) {
       greetingSentRef.current = true
@@ -529,7 +578,30 @@ export function useCharlie() {
 
   const resumeAfterGate = useCallback(() => {
     // W-RECOVERY A1.7 — clear gate first, regardless of whether there's a queued message
-    setState(s => ({ ...s, gateActive: false, gateReason: null, gatePlanType: null }))
+    // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): if the gate fired from
+    // requestForm (pendingForm set), promote it to initialForm so
+    // CharlieOverlay opens the form the user wanted. Do NOT replay the
+    // chat-message in that case — the form is the resume path; the form's
+    // own submit will fire the post-form chat message later with a fresh
+    // userId. When pendingForm is null (legacy chat-gate path), keep the
+    // existing replay behavior (lastUserMessageRef.current).
+    let pending: 'buyer' | 'seller' | null = null
+    setState(s => {
+      pending = s.pendingForm
+      return {
+        ...s,
+        gateActive: false,
+        gateReason: null,
+        gatePlanType: null,
+        pendingForm: null,
+        initialForm: pending ?? s.initialForm,
+      }
+    })
+    if (pending) {
+      // Form path: no chat-message replay needed. The form itself will
+      // mount and produce a fresh message after the user submits it.
+      return
+    }
     const lastMsg = lastUserMessageRef.current
     if (lastMsg) {
       setTimeout(() => sendMessageRef.current?.(lastMsg), 300)
@@ -566,5 +638,7 @@ export function useCharlie() {
     requestVipAccess,
     setLeadCaptured,
     resumeAfterGate,
+    // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14)
+    requestForm,
   }
 }

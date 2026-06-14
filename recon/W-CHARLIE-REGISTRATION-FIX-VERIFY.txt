@@ -1,0 +1,55 @@
+W-CHARLIE-REGISTRATION-FLOW-FIX VERIFY
+run: 2026-06-14T20:25:01.722Z
+base: http://localhost:3004
+
+────────────────────────────────────────────────────────────────────────────
+1 — CHARLIE unauth SELLER plan (charlie:open form=seller from homepage)
+────────────────────────────────────────────────────────────────────────────
+detection: {"modalHeading":2,"sellerStep1":0,"sellerStep2Addr":0,"buyerStep1":0,"buyerLocation":0,"anyForm":0}
+PASS  1 — RegisterModal opens IMMEDIATELY (heading visible)
+PASS  1 — SellerForm does NOT mount (no "Property Address" or Step 1 prompt)  → sellerStep1=0 sellerStep2Addr=0
+────────────────────────────────────────────────────────────────────────────
+2 — CHARLIE unauth BUYER plan (charlie:open form=buyer)
+────────────────────────────────────────────────────────────────────────────
+detection: {"modalHeading":5,"sellerStep1":0,"sellerStep2Addr":0,"buyerStep1":0,"buyerLocation":0,"anyForm":0}
+PASS  2 — RegisterModal opens IMMEDIATELY for buyer intent
+PASS  2 — BuyerForm does NOT mount  → buyerStep1=0 buyerLocation=0
+────────────────────────────────────────────────────────────────────────────
+3 — CHARLIE in-chat chip click (form-mode transition)
+────────────────────────────────────────────────────────────────────────────
+Charlie chat opened; "I want to sell" chip count: 1
+detection: {"modalHeading":5,"sellerStep1":0,"sellerStep2Addr":0,"buyerStep1":0,"buyerLocation":0,"anyForm":0}
+PASS  3 — chip click opens RegisterModal BEFORE the form
+PASS  3 — SellerForm does NOT mount on chip click for unauth
+────────────────────────────────────────────────────────────────────────────
+5 — ESTIMATOR seller (condo) unauth (X2 Condos building page)
+────────────────────────────────────────────────────────────────────────────
+gate detection: heading=1 cta=1 formBedrooms=0 formCalc=0
+PASS  5 — EstimatorSellerGate prompt visible (heading + CTA)
+PASS  5 — Calculator form NOT rendered for unauth (no "Calculate" submit button)
+────────────────────────────────────────────────────────────────────────────
+6 — LOOP-DEAD proof (architectural: refresh receives uidOverride)
+────────────────────────────────────────────────────────────────────────────
+PASS  6 — refresh signature accepts uidOverride
+PASS  6 — refresh prefers uidOverride over user?.id
+PASS  6 — RegisterModal onSuccess emits authData.user.id
+PASS  6 — RegisterModal sign-in onSuccess emits data.user.id
+PASS  6 — CharlieWidget passes confirmedUserId to refresh
+────────────────────────────────────────────────────────────────────────────
+7 — LEAD CAPTURE preserved (callJoinTenant unchanged)
+────────────────────────────────────────────────────────────────────────────
+PASS  7 — RegisterModal still calls callJoinTenant on signUp success
+PASS  7 — RegisterModal still calls callJoinTenant on sign-in success
+────────────────────────────────────────────────────────────────────────────
+4 — AUTHED no-regression (requestForm authed branch is byte-equivalent to setFormMode)
+────────────────────────────────────────────────────────────────────────────
+PASS  4 — requestForm authed branch sets initialForm without gate
+PASS  4 — useCharlie open() routes unauth+initialForm through requestForm
+────────────────────────────────────────────────────────────────────────────
+FINAL
+────────────────────────────────────────────────────────────────────────────
+PASS  0 assertion failure(s)
+
+Files:
+  C:\Condoleads\Project\recon\W-CHARLIE-REGISTRATION-FIX-VERIFY.txt
+  C:\Condoleads\Project\recon\register-fix-screenshots/

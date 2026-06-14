@@ -33,6 +33,8 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
     requestVipAccess,
     setLeadCaptured,
     resumeAfterGate,
+    // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14)
+    requestForm,
   } = useCharlie()
 
   // W-RECOVERY A1.7 — single source of truth for auth state across the app
@@ -170,6 +172,11 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
           onRequestVip={requestVipAccess}
           onDismissGate={dismissGate}
           onOpenRegister={() => setShowRegisterModal(true)}
+          /* W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): up-front
+             form-open gate. ChatPanel chips call this instead of
+             setFormMode directly so unauth users hit the register
+             modal BEFORE the form mounts. See useCharlie.requestForm. */
+          onRequestForm={requestForm}
         />
       )}
 
@@ -181,16 +188,41 @@ export default function CharlieWidget({ pageContext }: CharlieWidgetProps = {}) 
             setShowRegisterModal(false)
             // Do NOT dismiss gate — user must register to proceed
           }}
-          onSuccess={() => {
+          onSuccess={(confirmedUserId?: string) => {
             setShowRegisterModal(false)
-            // W-RECOVERY A1.7 — retry getUser to handle Supabase cookie propagation race after register.
-            // Without this, getUser() can return null immediately post-register, skipping initSession.
-            // singleton -- W-PROPERTY-HYDRATION root cause 1
+            // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): the previous
+            // implementation polled supabase.auth.getUser() until it
+            // returned a user, THEN called creditsCtx.refresh which
+            // internally re-read AuthContext.user — but AuthContext
+            // updates via an async onAuthStateChange listener that had
+            // NOT necessarily fired by the time refresh() ran, so
+            // refresh saw a stale null userId and routed to
+            // loadAnonymousDefaults → state.userId stayed null →
+            // resumeAfterGate's 300ms replay re-fired the register gate
+            // → LOOP. Fix: trust the confirmed user.id that RegisterModal
+            // passes through from supabase.auth.signUp's authData.
+            // Pass it directly to refresh's new uidOverride param so
+            // refresh routes to loadSession with the known-fresh id.
+            //
+            // Fallback path: if RegisterModal couldn't supply the id
+            // (legacy callsite or edge case), retain the original
+            // getUser-poll behavior so we never regress on the
+            // original A1.7 problem.
+            if (confirmedUserId) {
+              creditsCtx.refresh(pageContext, confirmedUserId)
+                .then(() => resumeAfterGate())
+              return
+            }
+            // W-RECOVERY A1.7 fallback — retry getUser to handle Supabase
+            // cookie propagation race after register. Without this,
+            // getUser() can return null immediately post-register,
+            // skipping initSession. singleton -- W-PROPERTY-HYDRATION
+            // root cause 1
             let attempts = 0
             const tryInit = () => {
               supabase.auth.getUser().then(({ data }) => {
                 if (data?.user?.id) {
-                  creditsCtx.refresh(pageContext).then(() => resumeAfterGate())
+                  creditsCtx.refresh(pageContext, data.user.id).then(() => resumeAfterGate())
                 } else if (attempts < 10) {
                   attempts++
                   setTimeout(tryInit, 200)

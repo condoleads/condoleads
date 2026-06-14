@@ -1,0 +1,523 @@
+W-CHARLIE-REGISTRATION-FLOW — RECON (read-only, no edits)
+run: 2026-06-14
+operator complaint:
+  (A) Charlie plan + estimator: registration gate fires AFTER the user
+      fills the form (not before).
+  (B) After successful registration, the registration modal RE-OPENS
+      even though the user is now registered (loops).
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 1 — Current registration trigger trace
+═══════════════════════════════════════════════════════════════════════════
+
+  1.1 — Charlie PLAN flow (seller/buyer)
+  ─────────────────────────────────────────────────────────────────────
+
+  Sequence today (verified file:line):
+
+    a) User clicks the floating "Ask Charlie" bar OR the homepage
+       "Seller Plan" / "Buyer Plan" chips.
+       app/charlie/components/CharlieWidget.tsx:65-72 — handler:
+         window.addEventListener('charlie:open', (e) => open(detail.form))
+       open() opens the CharlieOverlay panel with optional `form` ∈
+       {'buyer'|'seller'} which seeds the form mode.
+
+    b) CharlieOverlay mounts with formMode = 'seller' (or 'buyer').
+       app/charlie/components/CharlieOverlay.tsx:32-33
+         const [formMode, setFormMode] = useState<'none'|'buyer'|'seller'>(
+           state.initialFormMode || 'none'
+         )
+
+    c) SellerForm (or BuyerForm) renders inside the overlay. User
+       fills + submits. NO auth check on form mount.
+       CharlieOverlay.tsx:208-227 — SellerForm onSubmit handler:
+         POST /api/charlie/seller-estimate (NO auth required at
+         the API; route resolves the address and returns
+         buildingId / municipalityId / marketAnalytics)
+         setResolvedSeller(result); setSellerFormData(data);
+         setFormMode('none')
+       CharlieOverlay.tsx:191-200 — BuyerForm onSubmit handler:
+         setFormMode('none'); onSend(longChatMessage)
+
+    d) [SELLER ONLY] SellerEstimateRunner runs the matcher server
+       actions (estimateCondoSale / estimateHomeSale) and on
+       success calls onEstimateReady(data).
+       CharlieOverlay.tsx:234-238 — onEstimateReady:
+         onSellerEstimate?.({...data, subjectAddress: ...})
+         setResolvedSeller(null)
+         const msg = 'I want to sell my Detached at <address>, ...'
+         onSend(msg)   ← THIS is the chat message that hits the gate
+
+    e) onSend === sendMessage (app/charlie/hooks/useCharlie.ts:273).
+       *** GATE FIRES HERE (file:line) ***
+       useCharlie.ts:279-291
+         if (!creditsRef.current.state.userId && !isGreeting) {
+           setState(s => ({
+             ...s,
+             gateActive: true,
+             gateReason: 'register',
+             gatePlanType: null,
+             isStreaming: false,
+           }))
+           return
+         }
+       The /api/charlie call is short-circuited and gateActive=true
+       drives CharlieWidget to open the RegisterModal:
+       CharlieWidget.tsx:85-90
+         useEffect(() => {
+           if (!state.gateActive) return
+           if (state.gateReason === 'register') {
+             setShowRegisterModal(true)
+           }
+         }, [state.gateActive, state.gateReason])
+
+    f) RegisterModal opens. User registers.
+       CharlieWidget.tsx:177-207 — RegisterModal mount.
+
+  Operator's complaint (A) for plans: confirmed. The gate sits at
+  step (e), AFTER the form has been submitted and (for sellers) the
+  matcher has run. There is NO auth check at step (a)/(b)/(c)/(d).
+
+  1.2 — Estimator flow (a DIFFERENT, parallel gate)
+
+    Sequence today (verified file:line):
+
+    a) Page mounts EstimatorSeller (or EstimatorBuyerModal /
+       HomeEstimatorBuyerModal). The component reads
+       `useAuth().user` immediately.
+       app/estimator/components/EstimatorSeller.tsx:23-36
+       If !user → renders EstimatorSellerInner with userId=null
+                  (form STILL renders for anonymous users — no
+                  auth gate at the form-render layer)
+       If  user → wraps in EstimatorVipWrapper, still renders form.
+
+    b) User fills the form (bedrooms, bathrooms, parking, etc.) —
+       no auth check during fill.
+
+    c) User clicks "Get my home value" / "Calculate" → handleEstimate.
+       *** GATE FIRES HERE (file:line) ***
+       EstimatorSeller.tsx:107-112
+         const handleEstimate = async () => {
+           if (!userId) {
+             setShowRegister(true)
+             return
+           }
+           // estimate runs ONLY if userId is present
+           ...
+         }
+
+    d) RegisterModal opens.
+       EstimatorSeller.tsx:357-366
+         <RegisterModal
+           isOpen={showRegister}
+           onClose={() => setShowRegister(false)}
+           onSuccess={() => {
+             setShowRegister(false)
+             handleEstimate()   ← replay the action
+           }}
+           registrationSource="estimator"
+         />
+
+  Operator's complaint (A) for estimator: confirmed. Same shape as
+  plans — form-fill BEFORE auth check. The component-level "if (!user)"
+  at EstimatorSeller.tsx:27 does NOT gate the form; it only routes
+  to the unauth variant that ALSO renders the form.
+
+  1.3 — RegisterModal component + open-state control
+
+    Component:  components/auth/RegisterModal.tsx
+    open prop:  `isOpen` (boolean)
+    triggers:
+      (Charlie)   CharlieWidget.tsx:88   setShowRegisterModal(true)
+                  driven by useEffect watching state.gateActive +
+                  state.gateReason === 'register'
+      (Estimator) EstimatorSeller.tsx:110 setShowRegister(true)
+                  driven directly by handleEstimate's userId check
+
+    Charlie's modal trigger and the estimator's are separate React
+    state hooks in separate components — there is NO single gate
+    component shared between them. Both render the SAME RegisterModal
+    UI but their open/close lifecycles are independent.
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 2 — Root-cause the LOOP (registered but modal re-opens)
+═══════════════════════════════════════════════════════════════════════════
+
+  2.1 — What runs at register-success
+
+    Registration uses supabase.auth.signUp:
+      components/auth/RegisterModal.tsx:136-162
+        const { data: authData, error } = await supabase.auth.signUp({...})
+        if (authData.user) {
+          await callJoinTenant(authData.user.id, fullName, email, phone)
+          if (onSuccess) onSuccess()
+          onClose()
+        }
+
+    Supabase's signUp sets the session cookie BEFORE the promise
+    resolves. So at the moment onSuccess fires, the Supabase auth
+    layer KNOWS about the user. The question is whether the React
+    state layers (AuthContext, CreditSessionContext) have caught up.
+
+    AuthContext (components/auth/AuthContext.tsx:30-43) updates its
+    `user` state via supabase.auth.onAuthStateChange — an async
+    listener. The user-state mutation happens on the NEXT tick
+    AFTER signUp resolves.
+
+  2.2 — Charlie's onSuccess sequence (the loop case)
+
+    CharlieWidget.tsx:184-203:
+      onSuccess={() => {
+        setShowRegisterModal(false)
+        let attempts = 0
+        const tryInit = () => {
+          supabase.auth.getUser().then(({ data }) => {
+            if (data?.user?.id) {                       // L192
+              creditsCtx.refresh(pageContext)            // L193
+                .then(() => resumeAfterGate())
+            } else if (attempts < 10) {
+              attempts++; setTimeout(tryInit, 200)
+            } else {
+              console.error('register succeeded but getUser stayed null after 10 retries')
+              resumeAfterGate()
+            }
+          })
+        }
+        tryInit()
+      }}
+
+    Step 1: supabase.auth.getUser() polls (with 200ms backoff,
+    10 retries) until it returns the freshly-signed-up user. This
+    PROVES the auth layer is settled.
+
+    Step 2: creditsCtx.refresh(pageContext) is called.
+
+    *** THE BUG IS INSIDE refresh(). ***
+
+    components/credits/CreditSessionContext.tsx:235-247
+      const refresh = useCallback(async (pageContext?) => {
+        if (!tenantId) return
+        if (isInertRoute(pathname)) return
+        const userId = user?.id ?? null      ← line 238
+        lastFetchKey.current = null
+        if (userId) {
+          await loadSession(userId, tenantId, pageContext)
+        } else {
+          await loadAnonymousDefaults(tenantId)
+        }
+        ...
+      }, [tenantId, pathname, user?.id, ...])
+
+    `user?.id` at L238 is read from AuthContext (the provider has
+    `const { user, loading: authLoading } = useAuth()` at L104).
+    AuthContext.user is only updated when the
+    supabase.auth.onAuthStateChange listener fires its setUser.
+
+    TIMING RACE:
+      - supabase.auth.signUp resolves → cookie set + session created
+      - onAuthStateChange fires (queued in the event loop)
+      - RegisterModal.onSuccess() runs → CharlieWidget's onSuccess
+        polls getUser() (succeeds quickly since session is set) →
+        calls creditsCtx.refresh
+      - INSIDE refresh, `user?.id` reads AuthContext's user state.
+        If onAuthStateChange has not yet flushed its setUser to
+        the AuthContext value held by CreditSessionProvider's
+        active render, `user` is still null → `userId = null`.
+      - refresh routes to loadAnonymousDefaults(tenantId) which
+        sets state.userId = null (line 128).
+      - resumeAfterGate fires sendMessage(lastMsg) 300ms later.
+      - sendMessage's gate check (useCharlie.ts:282) reads
+        creditsRef.current.state.userId — STILL NULL because
+        refresh wrote it as null.
+      - gateActive=true, gateReason='register' set again.
+      - CharlieWidget's useEffect re-opens the RegisterModal.
+      → LOOP.
+
+    Candidate matrix (operator's list a/b/c/d):
+      (a) auth state after registration isn't propagated to the gate
+          → CONFIRMED ROOT CAUSE. AuthContext.user is the source
+          for refresh()'s userId at L238 of CreditSessionContext.tsx.
+          It propagates via the async onAuthStateChange listener,
+          which has NOT necessarily fired by the time refresh runs.
+      (b) gate re-fires on a re-render because its trigger doesn't
+          account for "already registered" — NOT this case. The gate
+          is in sendMessage, not in a re-render effect, and it does
+          check userId. The check just sees stale null.
+      (c) registration sets one thing, gate checks another — TRUE in
+          spirit but the more precise statement is (a): SAME user
+          state, but two contexts (Supabase auth vs AuthContext) have
+          DIFFERENT propagation timings. supabase.auth has it;
+          AuthContext doesn't yet.
+      (d) form re-mounts after registration — NOT this case.
+          formMode is 'none' by the time the chat message fires.
+
+  2.3 — Estimator's onSuccess sequence
+
+    EstimatorSeller.tsx:360-363:
+      onSuccess={() => {
+        setShowRegister(false)
+        handleEstimate()
+      }}
+
+    handleEstimate at EstimatorSeller.tsx:107 reads `userId` from
+    a closure variable captured at render time:
+      function EstimatorSellerInner({ ..., userId }: ...) {
+        ...
+        const handleEstimate = async () => {
+          if (!userId) {
+            setShowRegister(true)   ← would re-open the modal here
+            return
+          }
+          ...
+
+    userId is passed in from EstimatorSeller's parent (L34, L53)
+    which reads from useAuth(). At the moment the modal's
+    onSuccess fires, the EstimatorSellerInner component may STILL
+    be rendered with userId=null because AuthContext's user state
+    hasn't propagated yet. The handleEstimate closure captures
+    that stale userId → setShowRegister(true) → modal re-opens.
+
+    Same root cause as Charlie: AuthContext propagation race.
+    Different mechanism (closure capture vs context-read inside
+    refresh), but the same source-of-truth divergence: Supabase
+    auth knows; React contexts haven't been notified yet.
+
+  2.4 — Why the existing 10-retry getUser poll in CharlieWidget
+        doesn't catch this
+
+    The poll only confirms that supabase.auth.getUser returns a
+    user. That tells us the SESSION is established and Supabase
+    auth knows. It does NOT wait for AuthContext.user to update
+    (which is downstream of the auth layer via a listener). The
+    poll succeeds the moment session is set; AuthContext may
+    still be sub-tick behind.
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 3 — Desired gate placement
+═══════════════════════════════════════════════════════════════════════════
+
+  3.1 — Charlie: where the up-front gate should live
+
+    The earliest catchable user-intent for Charlie's plan flow is
+    the form-OPEN moment, not the form-SUBMIT moment. Two open
+    points exist:
+
+    Path 1 — Homepage chip + landing CTA:
+      components/HomePageComprehensiveClient.tsx:42-43
+        function openCharlie(form?, message?) {
+          window.dispatchEvent(new CustomEvent('charlie:open',
+            { detail: { form, message } }))
+        }
+      Trigger sites at L463 (Sell), L448 (Buy), L257 (free-form ask).
+
+    Path 2 — In-chat quick-reply chip after Charlie is already open:
+      app/charlie/components/ChatPanel.tsx:139-140
+        if (r === 'I want to buy') { onBuyClick?.(); return }
+        if (r === 'I want to sell') { onSellClick?.(); return }
+      onBuyClick / onSellClick are wired to setFormMode('buyer'|'seller')
+      in CharlieOverlay (line 248-249).
+
+    Cleanest single mount point: CharlieOverlay's setFormMode
+    transitions. When the user transitions formMode 'none' → 'buyer'
+    or → 'seller', check userId first. If null, set
+    state.gateActive=true / state.gateReason='register' BEFORE
+    rendering the form. The form will not mount until the user
+    completes registration.
+
+    Alternative (cleaner for the homepage CTAs): CharlieWidget can
+    intercept the `charlie:open` event handler (L65-72) and, when
+    `detail.form` is present (i.e. user clicked a seller/buyer chip),
+    check userId before calling open(). If unauth, set gateActive
+    + gateReason='register' and store the pending form mode to
+    resume after register.
+
+    Either way, the gate placement is BEFORE setFormMode populates
+    a non-'none' value. No new component is needed; reuses the
+    existing state.gateActive / state.gateReason gate plumbing.
+
+  3.2 — Estimator: where the up-front gate should live
+
+    EstimatorSeller.tsx already checks `if (!user)` at L27. The
+    fix is small: instead of routing unauth users to the SAME form
+    via EstimatorSellerInner with userId=null, render a register-
+    prompt UI (or open the RegisterModal directly). The form
+    stays unmounted until the user is authed.
+
+    EstimatorBuyerModal.tsx (L168 comment "If not logged in, show
+    register") and HomeEstimatorBuyerModal.tsx have the same
+    pattern at the form-render layer; same fix applies.
+
+  3.3 — Plans + estimator: one pattern or two?
+
+    The plumbing differs but the pattern is shared:
+      - Both gate on "is there a registered user".
+      - Both source-of-truth from `useAuth().user`.
+      - Both use the SAME RegisterModal component.
+      - Both have onSuccess handlers that need to "resume" the
+        user's intended action.
+    The DIFFERENCE is the gate-driving state shape:
+      - Charlie:  state.gateActive + state.gateReason (in useCharlie's
+                  state machine)
+      - Estimator: showRegister (local component state)
+
+    A single fix-pattern works for both, but each surface needs its
+    own application of it:
+      1. Move the gate earlier (form-open / panel-open instead of
+         form-submit).
+      2. Fix the post-register replay race (STEP 2.2 root cause) so
+         that when the user does register, the resumed action sees
+         the new userId.
+
+    For the LOOP fix specifically, the cleanest approach is one of:
+      (a) Pass authData.user.id explicitly from RegisterModal's
+          onSuccess so consumers don't have to re-read from
+          AuthContext. Reduces source-of-truth divergence at the
+          cost of an API change to RegisterModal's onSuccess
+          signature.
+      (b) Inside CreditSessionContext.refresh, accept an optional
+          uidOverride and prefer it over the context's user.id.
+          CharlieWidget already polls getUser() at the auth layer;
+          it knows the user.id. Pass it through.
+      (c) Add a "wait until AuthContext.user reflects this id"
+          await inside the onSuccess flow. More fragile than (a)/(b).
+
+  3.4 — What registration mid-flow does today that the fix must preserve
+
+    callJoinTenant (RegisterModal.tsx:153-158) runs at signUp time
+    AND at sign-in time. It is responsible for:
+      - inserting tenant_users row for the (user, tenant)
+      - creating the lead row (Charlie + estimator both rely on this
+        for the post-register lead capture)
+      - assigning agent (geo-routing)
+      - sending the welcome email
+
+    callJoinTenant runs INSIDE RegisterModal — it does NOT depend
+    on whether the user filled a form before or after registering.
+    Moving the gate up front does NOT skip callJoinTenant; the
+    lead is still created at registration time. The user's form
+    answers are sent through Charlie's normal lead-update path
+    AFTER the chat message reaches /api/charlie/plan-email (which
+    inserts/updates the lead with plan_data). All of this happens
+    REGARDLESS of when the gate fires.
+
+    Verdict: lead capture + user context establishment are
+    PRESERVED if we move the gate earlier. The fix is a relocation,
+    not a rewrite.
+
+═══════════════════════════════════════════════════════════════════════════
+STEP 4 — VERDICT
+═══════════════════════════════════════════════════════════════════════════
+
+  (A) WHERE THE GATE FIRES NOW + WHY IT'S POST-FORM
+    Charlie: sendMessage's userId guard at app/charlie/hooks/
+      useCharlie.ts:282. Triggered by the chat-message that the
+      form's onSubmit (buyer) or SellerEstimateRunner's
+      onEstimateReady (seller) fires AFTER the form has been
+      filled and the matcher has run. No upstream auth check.
+    Estimator: handleEstimate's userId guard at app/estimator/
+      components/EstimatorSeller.tsx:109. Triggered by the
+      "Calculate" button AFTER the form is filled. The component-
+      level `if (!user)` at L27 routes unauth users to the same
+      form (does NOT gate the form).
+    Both surfaces let the user spend time filling fields before
+    discovering they need to register. Surface-level UX bug; no
+    technical reason the gate has to wait until submit.
+
+  (B) ROOT CAUSE OF THE LOOP (cited)
+    Candidate (a): the auth state after registration isn't
+    propagated to the gate when the gate's re-fire-check runs.
+
+    The mechanism: RegisterModal's signUp succeeds, supabase.auth
+    has the session, supabase.auth.getUser() returns the new user.
+    BUT AuthContext.user (which CreditSessionContext.refresh reads
+    at line 238 of CreditSessionContext.tsx) is updated by an
+    async supabase.auth.onAuthStateChange listener and has NOT
+    necessarily fired yet.
+    CharlieWidget's onSuccess calls creditsCtx.refresh which, at
+    line 238, reads `userId = user?.id ?? null` from AuthContext
+    → gets null → routes to loadAnonymousDefaults at L244 →
+    sets state.userId = null at L128 → resumeAfterGate fires
+    sendMessage(lastMsg) 300ms later → sendMessage's gate check
+    at useCharlie.ts:282 sees state.userId === null → fires
+    gate → modal re-opens.
+
+    Estimator has the same root cause via a closure-capture
+    mechanism: handleEstimate's userId is captured from the
+    EstimatorSellerInner render at the time the modal opened,
+    which was a render where userId was still null. onSuccess
+    re-runs handleEstimate, which sees the stale closure value.
+
+  (C) WHERE THE GATE SHOULD MOVE + DOWNSTREAM READINESS
+    Charlie:   into CharlieOverlay's setFormMode handler (L248-249)
+               OR into CharlieWidget's `charlie:open` event handler
+               (L65-72). Gate BEFORE setFormMode picks a non-'none'
+               value.
+    Estimator: into the EstimatorSeller component's auth check
+               at L27 — instead of routing unauth users to
+               EstimatorSellerInner with userId=null (which renders
+               the form), open the RegisterModal directly and do
+               NOT render the form until the user is authed.
+
+    Downstream readiness: YES. The form / matcher / chat / plan /
+    estimate flow already works end-to-end for an authed user.
+    Lead capture is performed by callJoinTenant at register time
+    (RegisterModal.tsx:153) — does NOT depend on whether the form
+    was filled before or after. The "register before form" pattern
+    is a relocation of the existing gate, not a rewrite.
+
+  (D) PLANS + ESTIMATOR: SHARE A GATE OR PARALLEL FIXES?
+    Parallel fixes that share a pattern. They use the SAME
+    RegisterModal component, but the gate-driving state lives in
+    different places (useCharlie's state machine vs Estimator's
+    local state). Both need:
+      - Gate moved to form-open (Charlie: CharlieOverlay /
+        CharlieWidget; Estimator: EstimatorSeller pre-form).
+      - Post-register replay must NOT race the AuthContext
+        propagation. The cleanest fix is to pass the freshly-
+        registered user.id explicitly from RegisterModal.onSuccess
+        instead of re-reading useAuth().user inside refresh /
+        handleEstimate.
+
+  WHAT REGISTRATION MID-FLOW CURRENTLY DOES (must be preserved)
+    callJoinTenant at RegisterModal.tsx:153-158:
+      - inserts tenant_users row
+      - creates the lead row
+      - assigns agent (geo-routing)
+      - sends welcome email
+    These all happen INSIDE the RegisterModal's signUp success
+    handler, NOT inside Charlie's chat-message or the estimator's
+    calculate handler. Moving the gate up front does NOT skip
+    them; the lead is created at register time regardless.
+
+═══════════════════════════════════════════════════════════════════════════
+UNVERIFIABLE / FLAGGED
+═══════════════════════════════════════════════════════════════════════════
+
+  - The exact ordering of microtasks between
+    supabase.auth.signUp.resolve → onAuthStateChange.setUser →
+    React.commit is a Supabase / React internal detail. The trace
+    above shows the structural race; the precise number of
+    microtasks of delay depends on the Supabase SDK version and
+    React batching mode at runtime. The structural fix (don't
+    read from AuthContext at the replay site; carry the new
+    user.id explicitly) is correct regardless.
+
+  - There may be additional CHARLIE gate paths I didn't trace
+    (the VIP gate at gateReason==='vip_required' and the chat-limit
+    gate at gateReason==='chat_limit'). Those gates are distinct
+    from the register gate and are out of scope for this recon.
+
+  - The operator's specific "loops" experience may also involve a
+    second click on the form button after register-success while
+    state.userId is briefly null. That double-click would produce
+    an indistinguishable symptom to (B). Recommendation for
+    distinguishing: capture a Charlie console log of state.userId
+    transitions across the register flow (the log would show
+    state.userId going null→null on race vs null→<id>→<click>→<id>
+    on double-click).
+
+  - Estimator's EstimatorBuyerModal / HomeEstimatorBuyerModal
+    weren't fully traced beyond the RegisterModal import and gate
+    location. They follow the same pattern as EstimatorSeller
+    based on the imports + comments; full trace would harden the
+    parallel-fix recommendation in 3.3.

@@ -21,17 +21,37 @@ interface Props {
   onRequestVip?: (planType: 'buyer' | 'seller') => void
   onDismissGate?: () => void
   onOpenRegister?: () => void
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): centralized form-open
+  // gate. The ChatPanel "I want to buy/sell" chips now call this instead
+  // of setFormMode directly so unauth users hit the register modal
+  // BEFORE the form mounts. requestForm() lives in useCharlie and
+  // handles both branches (authed → open form immediately; unauth →
+  // surface register + stash pendingForm for resumeAfterGate).
+  onRequestForm?: (mode: 'buyer' | 'seller') => void
 }
 
 export default function CharlieOverlay({
   state, onClose, onSend, onPanelChange, agent, onSendPlan,
   onSellerEstimate, onSetGeoContext,
-  onLeadCaptured, onRequestVip, onDismissGate, onOpenRegister
+  onLeadCaptured, onRequestVip, onDismissGate, onOpenRegister,
+  onRequestForm,
 }: Props) {
   const hasResults = (state.blocks || []).length > 0 || state.analytics.length > 0 || (state.listingGroups?.length > 0) || state.comparables.length > 0 || !!state.sellerEstimate || (state.searchedBuildings?.length > 0) || state.rankings.length > 0 || state.priceTrends.length > 0 || !!state.seasonalData
   const [formMode, setFormMode] = useState<'none' | 'buyer' | 'seller'>(
     state.initialForm === 'buyer' ? 'buyer' : state.initialForm === 'seller' ? 'seller' : 'none'
   )
+
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): after register success,
+  // useCharlie.resumeAfterGate promotes state.pendingForm → state.initialForm.
+  // This effect picks that up and opens the form. Authed users who picked
+  // a form before register would otherwise have to click the chip a
+  // second time. Includes a guard so the effect doesn't fight with the
+  // user manually closing a form (formMode='none' && initialForm cleared).
+  useEffect(() => {
+    if (state.initialForm === 'buyer' || state.initialForm === 'seller') {
+      if (formMode !== state.initialForm) setFormMode(state.initialForm)
+    }
+  }, [state.initialForm])
   const [resolvedSeller, setResolvedSeller] = useState<any>(null)
   const [communityBuildings, setCommunityBuildings] = useState<{ affordable: any[], premium: any[] }>({ affordable: [], premium: [] })
   const [sellerFormData, setSellerFormData] = useState<any>(null)
@@ -245,8 +265,14 @@ export default function CharlieOverlay({
                 isStreaming={state.isStreaming}
                 assistantName={state.assistantName}
                 onSend={onSend}
-                onBuyClick={() => setFormMode('buyer')}
-                onSellClick={() => setFormMode('seller')}
+                /* W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): route
+                   through onRequestForm so unauth users hit the
+                   register gate BEFORE the form mounts. authed users
+                   get setFormMode immediately inside requestForm. The
+                   () => setFormMode(...) legacy path stays as a
+                   defensive fallback if the prop isn't wired. */
+                onBuyClick={() => onRequestForm ? onRequestForm('buyer') : setFormMode('buyer')}
+                onSellClick={() => onRequestForm ? onRequestForm('seller') : setFormMode('seller')}
                   gateReason={state.gateReason}
                   onOpenRegister={onOpenRegister}
                 />

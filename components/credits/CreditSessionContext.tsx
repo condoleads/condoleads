@@ -51,7 +51,18 @@ interface CreditSessionContextValue {
   /** Bump plans_used locally after a successful plan generation. */
   incrementPlansUsed: (planType: 'buyer' | 'seller') => void
   /** Re-fetch session from server (e.g. after registration completes). */
-  refresh: (pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }) => Promise<void>
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): optional uidOverride.
+  // After register/login success, the calling component already has the
+  // freshly-confirmed user.id (from supabase.auth.signUp's authData) and
+  // would otherwise pass it to AuthContext, but AuthContext's user state
+  // only updates via supabase.auth.onAuthStateChange (async listener),
+  // which has NOT necessarily fired by the time refresh() runs from the
+  // RegisterModal.onSuccess callback. Without an override, refresh()
+  // reads `user?.id` from AuthContext at line ~238, gets the lagged null,
+  // and routes to loadAnonymousDefaults — leaving state.userId = null
+  // and triggering the post-register gate-loop. Override lets the caller
+  // pass the known-fresh id so refresh routes to loadSession correctly.
+  refresh: (pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }, uidOverride?: string | null) => Promise<void>
   /** Reset to defaults (e.g. on sign-out). */
   clear: () => void
 }
@@ -232,10 +243,18 @@ export function CreditSessionProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
-  const refresh = useCallback(async (pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string }) => {
+  const refresh = useCallback(async (
+    pageContext?: { listing_id?: string; building_id?: string; community_id?: string; municipality_id?: string; area_id?: string },
+    uidOverride?: string | null,
+  ) => {
     if (!tenantId) return
     if (isInertRoute(pathname)) return
-    const userId = user?.id ?? null
+    // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): prefer caller-supplied
+    // uidOverride over AuthContext.user.id. See interface comment above.
+    // When undefined OR an explicit empty string, fall through to
+    // AuthContext (preserves pre-fix behavior for every callsite that
+    // does NOT pass the override).
+    const userId = (uidOverride ?? user?.id) ?? null
     // Force refetch by clearing dedupe key
     lastFetchKey.current = null
     if (userId) {

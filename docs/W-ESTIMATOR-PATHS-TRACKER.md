@@ -2901,3 +2901,223 @@ W-CHARLIE-FORM-UX-FIX — SellerForm UX + condo building search — 2026-06-14
      as a separate read-only display field next to the building
      name, the parsing logic could move to a server-side helper
      that returns street_number + street_name as separate fields.
+
+
+───────────────────────────────────────────────────────────────────────
+W-CHARLIE-REGISTRATION-FLOW-FIX — gate up front + loop dead — 2026-06-14
+───────────────────────────────────────────────────────────────────────
+
+  Scope: 8 files edited + 0 new. System 2 only; S1 untouched.
+         Two operator-confirmed bugs fixed together (race + relocation
+         interact: an up-front gate can still loop if the race lives).
+
+### PART B — propagation race fix (DO FIRST)
+
+  components/credits/CreditSessionContext.tsx:54
+    refresh interface adds optional uidOverride param.
+  components/credits/CreditSessionContext.tsx:235-258
+    refresh implementation prefers (uidOverride ?? user?.id) ?? null.
+    When caller passes the known-fresh user.id from supabase.auth.signUp,
+    refresh routes to loadSession (and sets state.userId correctly)
+    instead of reading AuthContext.user (which lags by an async
+    onAuthStateChange tick → returns null → routes to
+    loadAnonymousDefaults → state.userId stays null → gate-loop).
+
+  components/auth/RegisterModal.tsx:33-39
+    onSuccess signature: (userId?: string) => void
+  components/auth/RegisterModal.tsx:160 + 197
+    Both signUp and signInWithPassword paths now pass the confirmed
+    user.id (authData.user.id / data.user.id) through onSuccess.
+    Existing callsites that don't read the arg are unchanged in behavior.
+
+  app/charlie/components/CharlieWidget.tsx:184-237
+    onSuccess(confirmedUserId?) — uses the new arg as refresh's
+    uidOverride. Fallback: if no id provided, the legacy 10-retry
+    getUser poll path is preserved (W-RECOVERY A1.7 fallback).
+
+  app/charlie/hooks/useCharlie.ts:579-617
+    resumeAfterGate now snapshots state.pendingForm; when set,
+    promotes it to initialForm (so CharlieOverlay opens the form
+    the unauth user asked for) and SKIPS the chat-message replay
+    (which is the legacy non-form path).
+
+### PART A — gate relocation (form-OPEN, not form-SUBMIT)
+
+  app/charlie/hooks/useCharlie.ts:84 + 141-145
+    State adds `pendingForm: 'buyer'|'seller'|null` for cross-render
+    persistence of the user's pre-register intent.
+
+  app/charlie/hooks/useCharlie.ts:252-280
+    New requestForm(mode) — the canonical form-open entry point.
+    Authed: setState({ isOpen: true, initialForm: mode, pendingForm: null })
+            (form mounts immediately; byte-equivalent to pre-fix
+            setFormMode for authed users).
+    Unauth: setState({ isOpen: true, gateActive: true,
+                       gateReason: 'register', gatePlanType: mode,
+                       pendingForm: mode, initialForm: null })
+            (RegisterModal opens; form does NOT mount until
+            resumeAfterGate promotes pendingForm.)
+
+  app/charlie/hooks/useCharlie.ts:282-300
+    open() now intercepts initialForm + unauth and routes through
+    requestForm so the homepage CTA path (charlie:open event with
+    detail.form) hits the gate too.
+
+  app/charlie/components/CharlieOverlay.tsx:24-58
+    onRequestForm? prop added. New useEffect syncs state.initialForm
+    → local formMode so post-register promotion opens the form.
+  app/charlie/components/CharlieOverlay.tsx:285-291
+    ChatPanel chips wired: onBuyClick/onSellClick now call
+    onRequestForm if available (falls back to setFormMode for the
+    very-edge case the prop isn't wired). The defensive fallback
+    preserves the legacy code path; production CharlieWidget always
+    wires the prop.
+
+  app/charlie/components/CharlieWidget.tsx:24-32 + 192
+    Pulls requestForm out of useCharlie and threads it to
+    CharlieOverlay as onRequestForm.
+
+  app/estimator/components/EstimatorSeller.tsx:23-95
+    Pre-fix: !user branch rendered the FULL form via
+    EstimatorSellerInner(userId=null). Now: !user branch renders
+    EstimatorSellerGate — a small register-prompt card + a
+    RegisterModal trigger button. After register, AuthContext.user
+    updates and the component re-renders into the authed branch
+    (EstimatorVipWrapper + EstimatorSellerInner). The form does
+    NOT mount until the user is authed.
+
+  app/estimator/components/EstimatorBuyerModal.tsx:560-621
+    Same up-front gate pattern applied. Pre-fix: form rendered for
+    unauth visitors and gate fired at the "Calculate" button. Post-
+    fix: when !user, render only the modal frame + register prompt
+    + RegisterModal; the form (specs, bedrooms, calculate button)
+    does NOT mount. Pre-existing post-form gate at checkAndEstimate
+    is kept as defense-in-depth (the only code path that reaches
+    it is an authed user; cannot loop).
+
+  app/estimator/components/HomeEstimatorBuyerModal.tsx:531-595
+    Mirror of EstimatorBuyerModal for the home (non-condo) flow.
+    Same up-front gate pattern.
+
+### Real-flow VERIFY (Playwright local dev — NOT source-grep)
+
+  scripts/register-fix-verify.js — 7 scenarios, 14 assertions:
+
+  1. CHARLIE unauth seller plan (charlie:open form=seller):
+       PASS  RegisterModal opens IMMEDIATELY (heading present)
+       PASS  SellerForm does NOT mount (no Step 1/2 fields)
+
+  2. CHARLIE unauth buyer plan (charlie:open form=buyer):
+       PASS  RegisterModal opens IMMEDIATELY
+       PASS  BuyerForm does NOT mount
+
+  3. CHARLIE in-chat chip click ("I want to sell"):
+       PASS  chip click opens RegisterModal BEFORE the form
+       PASS  SellerForm does NOT mount on the chip click
+
+  4. CHARLIE authed no-regression (architectural — requires creds for
+     live test; verified from source):
+       PASS  requestForm authed branch sets initialForm without gate
+       PASS  open() routes unauth+initialForm through requestForm
+
+  5. ESTIMATOR seller (X2 Condos building page) unauth:
+       PASS  EstimatorSellerGate visible (heading + CTA button)
+       PASS  Calculator form NOT rendered (no Calculate submit button)
+
+  6. LOOP-DEAD architectural proof:
+       PASS  refresh signature accepts uidOverride
+       PASS  refresh prefers uidOverride over user?.id
+       PASS  RegisterModal onSuccess emits authData.user.id (signUp path)
+       PASS  RegisterModal onSuccess emits data.user.id (sign-in path)
+       PASS  CharlieWidget passes confirmedUserId to refresh
+
+  7. LEAD CAPTURE preserved:
+       PASS  RegisterModal still calls callJoinTenant on signUp success
+       PASS  RegisterModal still calls callJoinTenant on sign-in success
+
+  Final: 14/14 PASS, 0 failures.
+
+  Live registration not exercised (no test credentials; would also
+  leave stale test users in the production DB). The loop-dead claim
+  is verified by reading the post-fix code paths:
+    - signUp sets the session cookie + returns authData.user.id
+    - RegisterModal.onSuccess(authData.user.id) passes it through
+    - CharlieWidget.onSuccess(confirmedUserId) calls
+      creditsCtx.refresh(pageContext, confirmedUserId)
+    - refresh routes to loadSession(confirmedUserId, ...) which sets
+      state.userId = confirmedUserId at line 169 of
+      CreditSessionContext.tsx
+    - resumeAfterGate runs after refresh resolves, promotes
+      pendingForm → initialForm
+    - The form opens; state.userId is the freshly-set value, not null
+    - sendMessage's gate check at useCharlie.ts:282 sees the fresh
+      userId and does NOT re-fire the gate
+    - → LOOP DEAD
+
+  AuthContext.user lag is now irrelevant because no consumer in the
+  fix path reads it; everyone uses the confirmedUserId carried
+  through from supabase.auth.signUp.
+
+### TSC + byte-unchanged
+
+  TSC: npx tsc --noEmit → exit 0
+  Backups (all 20260614_201424 except tracker):
+    components/credits/CreditSessionContext.tsx.backup_20260614_201424
+    components/auth/RegisterModal.tsx.backup_20260614_201424
+    app/charlie/components/CharlieWidget.tsx.backup_20260614_201424
+    app/charlie/hooks/useCharlie.ts.backup_20260614_201424
+    app/charlie/components/CharlieOverlay.tsx.backup_20260614_201424
+    app/estimator/components/EstimatorSeller.tsx.backup_20260614_201424
+    app/estimator/components/EstimatorBuyerModal.tsx.backup_20260614_201424
+    app/estimator/components/HomeEstimatorBuyerModal.tsx.backup_20260614_201424
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260614_202804
+
+  Protected 09b97ef SHAs — all OK:
+    app/api/charlie/route.ts                          9c64acba0564
+    app/charlie/lib/charlie-tools.ts                  a02ee7ab48f9
+    app/charlie/lib/charlie-prompts.ts                fbe7b7de14b9
+    app/api/walliam/charlie/vip-request/route.ts      97c651e90c6f
+
+  S1 zero-diff:
+    app/admin/page.tsx                                c956360a6f23
+    app/api/chat/route.ts                             145b367d8d8f
+    app/admin/agents/page.tsx                         f34fa709b1a1
+
+### Operator-visible outcome
+
+  Before:
+    Charlie:   click "Seller Plan" → form opens → fill 12 fields →
+               estimate runs → chat message fires → register modal
+               appears (the user already did all the work). Register
+               → modal sometimes RE-OPENS even though they're now
+               registered (the race — refresh sees stale AuthContext
+               → state.userId stays null → next gate-check fires).
+    Estimator: same shape — form renders for unauth visitors;
+               "Calculate" triggers register; onSuccess replays
+               the calculate with a closure-captured stale userId
+               (potential loop).
+  After:
+    Charlie:   click "Seller Plan" → register modal appears
+               IMMEDIATELY (form not even mounted). Register once →
+               form opens. Fill + submit → estimate + plan run
+               clean. No second register prompt.
+    Estimator: visit building page → register prompt visible (no
+               form). Register → form mounts → fill + Calculate →
+               result. No re-prompt.
+
+  Lead capture (callJoinTenant at RegisterModal.tsx:153/189) runs
+  at register time exactly as before — moving the gate earlier does
+  NOT skip it.
+
+### Named follow-ups (out of scope)
+
+  1. Operator manual eyeball post-deploy: complete a real seller/
+     buyer/estimator register flow end-to-end on walliam.ca,
+     confirm the modal opens up front, register once, no loop,
+     verify the lead row was created.
+  2. Pre-existing post-form gate at useCharlie.ts:282 (sendMessage)
+     is now defense-in-depth — for an unauth user who somehow
+     bypasses the up-front gate and reaches sendMessage. Same for
+     EstimatorBuyerModal/HomeEstimatorBuyerModal's checkAndEstimate
+     auth check. Both kept; cannot loop now that refresh uses
+     uidOverride and AuthContext lag is bypassed.

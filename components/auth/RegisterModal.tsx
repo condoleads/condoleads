@@ -29,7 +29,14 @@ import { joinTenant } from '@/app/actions/joinTenant'
 interface RegisterModalProps {
   isOpen: boolean
   onClose: () => void
-  onSuccess?: () => void
+  // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): pass the freshly-
+  // confirmed user.id through to onSuccess so consumers (CharlieWidget,
+  // EstimatorSeller, etc.) can use it directly instead of re-reading
+  // AuthContext.user (which lags behind supabase.auth.signUp by an
+  // async onAuthStateChange tick — see CreditSessionContext.refresh
+  // uidOverride comment). The parameter is optional so existing
+  // callsites that don't need the id continue to work.
+  onSuccess?: (userId?: string) => void
   registrationSource?: string
   agentId?: string
   buildingId?: string
@@ -157,7 +164,10 @@ export default function RegisterModal({
           formData.phone
         )
 
-        if (onSuccess) onSuccess()
+        // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): pass the freshly-
+        // confirmed user.id so the consumer can avoid the AuthContext
+        // propagation race in refresh().
+        if (onSuccess) onSuccess(authData.user.id)
         onClose()
       }
     } catch (err: any) {
@@ -194,7 +204,10 @@ export default function RegisterModal({
           formData.phone || (data.user.user_metadata?.phone as string) || ''
         )
 
-        if (onSuccess) onSuccess()
+        // W-CHARLIE-REGISTRATION-FLOW-FIX (2026-06-14): same as the
+        // signUp path — pass the confirmed user.id so the consumer
+        // doesn't race AuthContext.
+        if (onSuccess) onSuccess(data.user.id)
         onClose()
       }
     } catch (err: any) {
