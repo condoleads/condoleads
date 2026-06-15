@@ -44,6 +44,12 @@ export async function POST(req: NextRequest) {
       agent = null,
       geoName = 'Pickering',
       sourceUrl = null,
+      // W-CHARLIE-BUYER-CHUNK2 (2026-06-15): pass-through for the
+      // server-derived buyer Tax-Matched object so the verify harness
+      // can render buyer plans with the same shape the live route
+      // produces. Default null preserves the prior seller-only probe
+      // behavior.
+      buyerTaxMatch = null,
     } = body
     const html = buildRichPlanEmail({
       userName, userEmail, planType, plan, analytics,
@@ -51,6 +57,7 @@ export async function POST(req: NextRequest) {
       comparables, sellerEstimate,
       vipCreditUsed, vipCreditPlansUsed, vipCreditTotal,
       blocks, brandName, domain, baseUrl, sourceUrl,
+      buyerTaxMatch,
     })
     return NextResponse.json({ ok: true, htmlLength: html.length, html })
   } catch (err: any) {

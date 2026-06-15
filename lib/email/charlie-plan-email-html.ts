@@ -46,8 +46,14 @@ export function buildRichPlanEmail(data: {
   domain: string
   baseUrl: string
   sourceUrl?: string | null
+  // W-CHARLIE-BUYER-CHUNK2 (2026-06-15): server-derived buyer tax-band
+  // (null on seller plans; isEmpty=true when the matched-listing set
+  // has fewer than 3 with-tax samples). Replaces the prior buyer-side
+  // Tax-Matched rendering from sellerEstimate (which was state-leak;
+  // Chunk 1 nulled the input).
+  buyerTaxMatch?: import('@/lib/charlie/buyer-tax-match').BuyerTaxMatch | null
 }): string {
-  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl, sourceUrl } = data
+  const { userName, planType, plan, analytics, listings, agent, geoName, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, brandName, domain, baseUrl, sourceUrl, buyerTaxMatch } = data
   const isBuyer = planType === 'buyer'
   const topListings = (listings || []).slice(0, 10)
 
@@ -505,6 +511,72 @@ export function buildRichPlanEmail(data: {
     </div>
   `
 
+  // W-CHARLIE-BUYER-CHUNK2 (2026-06-15): buyer-side Tax-Matched section.
+  // Built from the server-derived buyerTaxMatch (see plan-email/route.ts:
+  // deriveBuyerTaxMatch(listings)). For buyer plans this REPLACES the
+  // seller-shaped taxMatchHtml below (which reads from sellerEstimate
+  // and is null on buyer plans). Honest empty-state when the matched-
+  // listing set is too sparse (<3 with-tax). For seller plans this
+  // string stays empty and the existing taxMatchHtml fires.
+  const buyerTaxMatchHtml = isBuyer && buyerTaxMatch ? (() => {
+    const btm = buyerTaxMatch
+    if (btm.isEmpty) {
+      return `
+        <div style="margin: 20px 0;">
+          <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">Tax-Matched (0)</div>
+          <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Derived from your matched listings&rsquo; own property-tax data.</div>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;">
+            <tr><td style="padding: 12px 14px; font-size: 12px; color: #475569; line-height: 1.5;">
+              ${btm.reason || 'Insufficient tax data on matched listings.'}
+            </td></tr>
+          </table>
+        </div>
+      `
+    }
+    const medianStr = btm.medianTax != null ? '$' + Number(btm.medianTax).toLocaleString('en-CA', { maximumFractionDigits: 0 }) : '&mdash;'
+    const bandStr = btm.taxBand
+      ? '$' + Number(btm.taxBand.low).toLocaleString('en-CA', { maximumFractionDigits: 0 }) + ' &ndash; $' + Number(btm.taxBand.high).toLocaleString('en-CA', { maximumFractionDigits: 0 })
+      : '&mdash;'
+    return `
+      <div style="margin: 20px 0;">
+        <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">Tax-Matched (${btm.samples.length})</div>
+        <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Annual property-tax range across the ${btm.withTaxCount} of ${btm.totalCount} matched listings with tax data &mdash; what you&rsquo;ll pay yearly on a property in this shop window.</div>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td style="font-size: 11px; color: #64748b;">Median annual tax</td>
+            <td style="text-align: right; font-size: 13px; font-weight: 700; color: #0f172a;">${medianStr}<span style="font-size:11px;font-weight:400;color:#94a3b8;margin-left:8px;"> &middot; band ${bandStr}</span></td>
+          </tr></table>
+        </div>
+        ${btm.samples.map(s => {
+          const photo = (s.media && s.media[0] && (s.media[0].media_url || s.media[0].url)) || ''
+          const slugRaw = s._slug || buildPropertySlug({
+            listingKey: s.listingKey,
+            unparsedAddress: s.address,
+            propertySubtype: s.propertySubtype,
+            unitNumber: s.unitNumber,
+          })
+          const slug = slugRaw ? (slugRaw.startsWith('/') ? slugRaw : '/' + slugRaw) : ''
+          const addrShort = (s.address || '').split(',')[0]
+          return `
+            <a href="${baseUrl}${slug}" style="display: block; text-decoration: none; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                ${photo ? `<td width="80" style="vertical-align: top;"><img src="${photo}" width="80" height="72" style="display:block;width:80px;height:72px;"></td>` : ''}
+                <td style="padding: 10px 14px; vertical-align: middle;">
+                  <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${addrShort}</div>
+                  <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[s.bedrooms ? s.bedrooms + ' bed' : '', s.bathrooms ? s.bathrooms + ' bath' : '', s.propertySubtype].filter(Boolean).join(' &middot; ')}</div>
+                </td>
+                <td style="padding: 10px 14px; text-align: right; vertical-align: middle; white-space: nowrap;">
+                  <div style="font-size: 14px; font-weight: 800; color: #0f172a;">$${Number(s.tax).toLocaleString('en-CA', { maximumFractionDigits: 0 })}<span style="font-size:10px;font-weight:400;color:#94a3b8;"> /yr</span></div>
+                  ${s.price ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">List $${Number(s.price).toLocaleString('en-CA')}</div>` : ''}
+                </td>
+              </tr></table>
+            </a>
+          `
+        }).join('')}
+      </div>
+    `
+  })() : ''
+
   const competingHtml = sellerEstimate?.competingListings && sellerEstimate.competingListings.length > 0 ? `
     <div style="margin: 20px 0;">
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Competing For Sale (${sellerEstimate.competingListings.length})</div>
@@ -642,7 +714,7 @@ export function buildRichPlanEmail(data: {
         ${tierRailHtml}
         ${listingsHtml}
         ${comparableSoldHtml}
-        ${taxMatchHtml}
+        ${isBuyer ? buyerTaxMatchHtml : taxMatchHtml}
         ${competingHtml}
         ${vipHtml}
         ${disclaimerHtml}

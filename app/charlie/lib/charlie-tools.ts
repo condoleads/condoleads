@@ -53,7 +53,7 @@ export const CHARLIE_TOOLS = [
   },
   {
     name: 'get_comparables',
-    description: 'Get recent sold listings as comparables for a seller. Use when seller flow is active.',
+    description: 'Get recent SOLD listings as comparable transaction evidence. Pure criteria query (geo + price band + propertyCategory) — accepts no subject address. Sellers call it to anchor a value estimate; buyers call it to see real sold prices alongside the active listings they are shopping.',
     input_schema: {
       type: 'object',
       properties: {

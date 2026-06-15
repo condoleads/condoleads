@@ -291,6 +291,15 @@ function PlanRenderer({ lead }: { lead: Lead }) {
             already renders (Market Intel/Offer Intel/Best Time/Price by
             Home Type/Profile/Summary), so nothing duplicates. */}
         {n.isBuyer && hasListings && <TopListings listings={n.topListings} isBuyer={n.isBuyer} />}
+        {/* W-CHARLIE-BUYER-CHUNK2 (2026-06-15): buyer-side comp-sold +
+            tax-match mounts. Read straight off plan_data — both fields
+            are written by /api/charlie/plan-email/route.ts on buyer
+            plans (plan_data.comparables from get_comparables, plan_data
+            .buyerTaxMatch from deriveBuyerTaxMatch). Honest empty-state
+            on missing/empty (the BuyerCompSold/BuyerTaxMatch components
+            return null when there's no data). */}
+        {n.isBuyer && <BuyerCompSold comparables={lead.plan_data?.comparables} />}
+        {n.isBuyer && <BuyerTaxMatched taxMatch={lead.plan_data?.buyerTaxMatch} />}
         {!n.isBuyer && <SellerEstimateMount lead={lead} />}
         {lead.source_url && <SourceUrl url={lead.source_url} />}
         {lead.agents && <AgentCard agent={lead.agents} />}
@@ -569,6 +578,108 @@ function TopListings({ listings, isBuyer }: { listings: any[]; isBuyer: boolean 
                 {meta && <div className="text-xs text-slate-500 mt-1">{meta}</div>}
               </div>
               <div className="text-base font-extrabold text-blue-700 whitespace-nowrap">{fmtCAD(price)}</div>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+// W-CHARLIE-BUYER-CHUNK2 (2026-06-15): buyer comp-sold tiles on the admin
+// lead page. Renders the SAME shape Charlie's in-chat comparables block
+// uses, fed by plan_data.comparables (written by plan-email/route.ts on
+// buyer plans from Charlie's get_comparables tool output). Null/empty
+// data → null render (honest absence; the disclaimer block above remains).
+function BuyerCompSold({ comparables }: { comparables: any }) {
+  if (!Array.isArray(comparables) || comparables.length === 0) return null
+  return (
+    <section>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+        Comparable Sold ({comparables.length})
+      </h3>
+      <p className="text-xs text-gray-500 mb-3">Recently sold listings in this geo + price band — real transaction evidence alongside the active matched listings.</p>
+      <ul className="space-y-2 list-none p-0 m-0">
+        {comparables.map((c: any, i: number) => {
+          const price = c.close_price || c.list_price || c.closePrice || c.listPrice || 0
+          const addr = c.unparsed_address || c.unparsedAddress || '—'
+          const beds = c.bedrooms_total ?? c.bedrooms ?? null
+          const baths = c.bathrooms_total_integer ?? c.bathrooms ?? null
+          const subtype = c.property_subtype || c.propertySubtype || ''
+          const key = c.listing_key || c.listingKey || 'idx-' + i
+          const meta = [
+            beds !== null && beds !== undefined ? beds + ' bed' : null,
+            baths !== null && baths !== undefined ? baths + ' bath' : null,
+            subtype || null,
+          ].filter(Boolean).join(' · ')
+          return (
+            <li key={key} className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-slate-900 truncate">{(addr as string).split(',')[0]}</div>
+                {meta && <div className="text-xs text-slate-500 mt-1">{meta}</div>}
+              </div>
+              <div className="text-base font-extrabold text-emerald-700 whitespace-nowrap">{fmtCAD(price)}<span className="text-xs font-normal text-gray-400 ml-2">Sold</span></div>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+// W-CHARLIE-BUYER-CHUNK2 (2026-06-15): buyer Tax-Matched on admin lead
+// page. Reads plan_data.buyerTaxMatch (server-derived). Same shape as
+// in-chat + email; honest empty-state when isEmpty=true (renders the
+// derivation's `reason` string). Null buyerTaxMatch → null render
+// (legacy buyer leads written before this chunk landed).
+function BuyerTaxMatched({ taxMatch }: { taxMatch: any }) {
+  if (!taxMatch || typeof taxMatch !== 'object') return null
+  if (taxMatch.isEmpty) {
+    return (
+      <section>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tax-Matched (0)</h3>
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-amber-900 m-0">{taxMatch.reason || 'Insufficient tax data on matched listings.'}</p>
+        </div>
+      </section>
+    )
+  }
+  const samples = Array.isArray(taxMatch.samples) ? taxMatch.samples : []
+  return (
+    <section>
+      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tax-Matched ({samples.length})</h3>
+      <p className="text-xs text-gray-500 mb-3">
+        Annual property-tax range across the {taxMatch.withTaxCount} of {taxMatch.totalCount} matched listings with tax data.
+      </p>
+      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-3 flex items-baseline justify-between">
+        <span className="text-xs text-slate-500">Median annual tax</span>
+        <span className="text-sm font-bold text-slate-900">
+          {taxMatch.medianTax != null ? '$' + Math.round(taxMatch.medianTax).toLocaleString('en-CA') : '—'}
+          {taxMatch.taxBand && (
+            <span className="text-xs font-normal text-slate-400 ml-2">
+              · band ${Math.round(taxMatch.taxBand.low).toLocaleString('en-CA')}–${Math.round(taxMatch.taxBand.high).toLocaleString('en-CA')}
+            </span>
+          )}
+        </span>
+      </div>
+      <ul className="space-y-2 list-none p-0 m-0">
+        {samples.map((s: any, i: number) => {
+          const addr = s.address || '—'
+          const meta = [
+            s.bedrooms != null ? s.bedrooms + ' bed' : null,
+            s.bathrooms != null ? s.bathrooms + ' bath' : null,
+            s.propertySubtype || null,
+          ].filter(Boolean).join(' · ')
+          return (
+            <li key={s.listingKey || 'idx-' + i} className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-semibold text-slate-900 truncate">{(addr as string).split(',')[0]}</div>
+                {meta && <div className="text-xs text-slate-500 mt-1">{meta}</div>}
+              </div>
+              <div className="text-right whitespace-nowrap">
+                <div className="text-sm font-extrabold text-slate-900">${Math.round(s.tax).toLocaleString('en-CA')}<span className="text-[10px] font-normal text-gray-400 ml-1">/yr</span></div>
+                {s.price && <div className="text-xs text-slate-500 mt-0.5">List {fmtCAD(s.price)}</div>}
+              </div>
             </li>
           )
         })}

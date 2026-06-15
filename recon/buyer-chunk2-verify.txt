@@ -1,0 +1,77 @@
+W-CHARLIE-BUYER-CHUNK2 VERIFY — 2026-06-15T12:06:50.776Z
+Mode: direct tsx import (live HTTP-route verify deferred; dev server unresponsive).
+────────────────────────────────────────────────────────────────────────────
+SECTION 1 — deriveBuyerTaxMatch unit tests (4 fixture shapes)
+PASS  U1: isEmpty=false (4 of 5 have tax)
+        → withTaxCount=4/5
+PASS  U2: medianTax = 4950 (median of 4500/4800/5100/5400)
+        → medianTax=4950
+PASS  U3: taxBand low=4725 high=5175 (25/75 quantiles)
+        → taxBand={"low":4725,"high":5175}
+PASS  U4: samples populated
+        → samples.length=4
+PASS  U5: sparse → isEmpty=true
+        → withTaxCount=1/3
+PASS  U6: sparse reason cites N of M
+        → reason="Only 1 of 3 matched listings carry tax data — need at least 3 for a fair median."
+PASS  U7: empty → isEmpty=true, "No matched listings yet"
+PASS  U8: 50%-density (3 of 6 have tax) → derived, median=3700
+        → medianTax=3700 withTaxCount=3/6
+────────────────────────────────────────────────────────────────────────────
+SECTION 2 — buildRichPlanEmail render tests (live fn, buyer + seller)
+PASS  E1: buyer html length > 1000
+        → len=29732
+PASS  E2: buyer has Comparable Sold heading
+PASS  E3: buyer has Tax-Matched heading
+PASS  E4: buyer email contains buyer-derived comp-sold (VFIX-C / Comp St)
+PASS  E5: buyer email contains "Median annual tax" blurb
+PASS  E6: buyer email median displayed = $4,950
+        → searched for $4,950
+PASS  E7: buyer email band displayed = $4,725 – $5,175
+PASS  E8: buyer email contains a buyer tax-sample (Verify Buyer St addr)
+PASS  E9: buyer email does NOT contain seller Tax-Match Confidence rail
+PASS  E10: buyer email does NOT contain Estimated Value (seller priceCard)
+PASS  E11: seller html length > 1000
+        → len=14874
+PASS  E12: seller has Comparable Sold heading
+PASS  E13: seller email still renders sellerEstimate.comparables (STALE-CS / 888 Test Comp)
+PASS  E14: seller email still renders sellerEstimate.taxMatch.comparables (STALE-TM / 999 Test Tax)
+PASS  E15: seller email does NOT contain buyer-derived "Median annual tax" blurb
+PASS  E16: seller email retains Property Estimate price card (Estimated Value)
+PASS  E17: buyer email with leaked seller fixture STILL renders buyer Tax-Matched (not seller)
+        → isBuyer routing wins at template level too
+────────────────────────────────────────────────────────────────────────────
+SECTION 3 — Architectural checks (in-chat / lead-page / prompt wiring)
+PASS  R1: ResultsPanel imports deriveBuyerTaxMatch from same source as server
+        → single source of truth — convergence across surfaces
+PASS  R2: ResultsPanel buyer-flow render gated on hasListings && !hasSellerEstimate
+PASS  R3: ResultsPanel renders Tax-Matched header for buyer in-chat
+        → in-chat heading present (gated on buyer flow)
+PASS  L1: PlanRenderer mounts BuyerCompSold for buyer leads
+PASS  L2: PlanRenderer mounts BuyerTaxMatched for buyer leads
+PASS  L3: PlanRenderer reads plan_data.comparables + plan_data.buyerTaxMatch on buyer branch
+PASS  P1: BUYER FLOW prompt now calls get_comparables between search_listings and generate_plan
+        → present in BUYER FLOW section AND in the CRITICAL one-turn sequence
+PASS  P2: tools.ts get_comparables description no longer says "for a seller" only
+PASS  S1: plan-email route derives buyerTaxMatch from listings (server-side)
+PASS  S2: plan-email route gates derivation by planType === 'buyer'
+PASS  S3: plan-email route persists comparables to plan_data for buyer
+PASS  S4: plan-email route persists buyerTaxMatch to plan_data
+PASS  S5: plan-email route passes buyerTaxMatch to buildRichPlanEmail
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: ALL PASS
+
+Live HTTP-route verify (POST /api/charlie/plan-email + DB plan_data
+readback) is DEFERRED. The local dev server :3004 is non-responsive
+on every API route — probed both /api/charlie/test-render-plan-email-
+probe and /api/walliam/tenant-config (unrelated route) with up to
+240s timeout: both hang. The dev process itself is alive (homepage
+SSR returns 200) and tsc --noEmit passes cleanly. The block is in
+the dev server, not in this chunk's code. To exercise the live
+HTTP path:
+  1. Restart npm run dev
+  2. Run scripts/buyer-chunk2-verify.js (the HTTP version)
+     against a fresh server.
+Pattern matches Chunk-1 verify exactly, which DID pass live; the
+Chunk-2 route changes are minimally additive (one derive call +
+two new plan_data fields + one new email param).

@@ -29,6 +29,12 @@ import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 // builder without violating Next.js's rule that route files may only export
 // HTTP handlers. Behavior identical — function body is verbatim.
 import { buildRichPlanEmail } from '@/lib/email/charlie-plan-email-html'
+// W-CHARLIE-BUYER-CHUNK2 (2026-06-15): server-side derivation of the
+// buyer Tax-Matched band from the matched listings' own tax data. Pure
+// function; safe in this route's serverless context. Output is persisted
+// into plan_data.buyerTaxMatch + passed to buildRichPlanEmail so all
+// three surfaces (in-chat, lead page, email) render the SAME shape.
+import { deriveBuyerTaxMatch, type BuyerTaxMatch } from '@/lib/charlie/buyer-tax-match'
 
 // T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
 
@@ -76,6 +82,19 @@ export async function POST(req: NextRequest) {
     // (planType === 'seller' returns rawSellerEstimate unchanged).
     // Real lead 6d479d84 confirmed the leak in the wild.
     const sellerEstimate = planType === 'seller' ? rawSellerEstimate : null
+
+    // W-CHARLIE-BUYER-CHUNK2 (2026-06-15): derive the buyer Tax-Matched
+    // band from matched listings' tax_annual_amount. Computed only for
+    // buyer plans — seller path is unaffected. The derived value is
+    // (a) persisted into plan_data.buyerTaxMatch so the admin lead page
+    //     can read it without re-deriving, and
+    // (b) passed to buildRichPlanEmail so the email renders the SAME
+    //     shape from the SAME data the in-chat sees (convergence).
+    // Honest sparsity is built into the derivation: <3 with-tax listings
+    // returns isEmpty=true with a reason; renderers show empty-state.
+    const buyerTaxMatch: BuyerTaxMatch | null = planType === 'buyer'
+      ? deriveBuyerTaxMatch(listings)
+      : null
 
     // C-CHARLIE-FOLLOWUP B(ii) (2026-06-13): stale-session detector. When a
     // seller plan arrives with sellerEstimate set but estimate.bestGeoTier
@@ -190,6 +209,13 @@ export async function POST(req: NextRequest) {
           intent: sellerEstimate.intent || 'sale',
           path: sellerEstimate.path || null,
         } : null,
+        // W-CHARLIE-BUYER-CHUNK2 (2026-06-15): buyer-side comp-sold +
+        // tax-match persistence. comparables holds Charlie's
+        // get_comparables tool output (real recent SOLD listings in the
+        // buyer's geo+band); buyerTaxMatch holds the derived tax-band.
+        // Null on seller plans (seller uses sellerEstimate above).
+        comparables: planType === 'buyer' ? (Array.isArray(comparables) ? comparables.slice(0, 6) : []) : null,
+        buyerTaxMatch,
       },
       manager_id: chainManagerId,
       area_manager_id: chainAreaManagerId,
@@ -208,7 +234,7 @@ export async function POST(req: NextRequest) {
       budgetMax: plan?.budgetMax || null,
     })
 
-    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl })
+    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl, buyerTaxMatch })
     const subject = `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
     // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): capture user-email outcome.

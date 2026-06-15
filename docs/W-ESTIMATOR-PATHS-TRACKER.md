@@ -3235,3 +3235,230 @@ This commit closes it at two layers; no other buyer-parity work in scope.
     tax_annual_amount; no buyer-form tax input (recon CHUNK C.3/C.4).
   - Welcome-email dedup-race + fire-and-forget (recon CHUNK A) —
     separate workstream, not buyer-parity-scoped.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-BUYER-CHUNK2 — buyer-derived Comparable Sold + Tax-Matched, 3 surfaces (2026-06-15)
+
+Step 2 of the buyer-side parity work. Chunk 1 nulled out the seller-leak
+into buyer plans; Chunk 2 now POPULATES the same two sections from real
+buyer-shop data: get_comparables-sourced SOLD listings, and a tax-band
+DERIVED from the matched listings' own tax_annual_amount (inversion of
+seller: listings to tax to band, no buyer-form tax input). All three
+surfaces (in-chat, lead page, email) render from the same derivation —
+single source of truth at lib/charlie/buyer-tax-match.ts.
+
+### STEP 0 — DATA FEASIBILITY VERDICT
+
+  Probe: scripts/_chunk2-step0-probe.js (SAVEPOINT read).
+
+  (1) get_comparables tool input contract — pure criteria, NO subject
+      address. Inputs (charlie-tools.ts:55-68): geoType (municipality
+      |community), geoId, propertyCategory, minPrice, maxPrice. Buyer-
+      capable as-is; only the prompt restricted it to seller flow.
+  (2) Sold-comp queryability — /api/geo-listings?tab=sold (which the
+      tool wraps at app/api/charlie/route.ts:745-766) returns Closed
+      listings with the buyer's criteria. Whitby freehold $700K-$900K,
+      180d: 8 rows. Real transaction evidence available.
+  (3) tax_annual_amount density:
+        Lead 6d479d84 matched listings (5):                 4/5  (80%)
+        Recent 3 buyer leads with topListings (14 listings): 12/14 (86%)
+        100% of those leads have at least 1 with-tax listing.
+      Source-wide (mls_listings, last 90d):
+        Residential Freehold:   93,256 / 128,250  (73%)
+        Residential Condo:      29,299 /  72,042  (41%)
+        Commercial:                822 /   1,123  (73%)
+      Verdict: feasible. Condos sparser; derivation enforces a
+      MIN_WITH_TAX=3 threshold and surfaces an honest empty-state
+      below that. NO buyer tax input field; NO fabrication.
+
+  Decision: BUILD with honest empty-state safety net. Both sections
+  derive from real buyer-shop data.
+
+### STEP 1 — IN-CHAT (Charlie ResultsPanel)
+
+  PROMPT EDIT — app/charlie/lib/charlie-prompts.ts BUYER FLOW step 6
+   + CRITICAL one-turn order:
+    Adds: "Call get_comparables (same geoType+geoId+propertyCategory;
+           pass the buyer's minPrice/maxPrice from budget)" between
+    search_listings and generate_plan. SELLER FLOW unchanged.
+  TOOL DESCRIPTION — app/charlie/lib/charlie-tools.ts:56:
+    "Get recent SOLD listings as comparable transaction evidence. Pure
+    criteria query (geo + price band + propertyCategory) — accepts no
+    subject address. Sellers call it to anchor a value estimate; buyers
+    call it to see real sold prices alongside the active listings they
+    are shopping." (was: "for a seller. Use when seller flow is active.")
+
+  RENDER — app/charlie/components/ResultsPanel.tsx:
+    Comp Sold: existing block.type==='comparables' render at L405-415
+      now fires automatically for buyer (the prompt change pushes the
+      block). NO code change at the render site.
+    Tax-Matched: new section post-blocks-map gated on
+      `hasListings && !hasSellerEstimate`. Imports
+      `deriveBuyerTaxMatch` from lib/charlie/buyer-tax-match.ts —
+      same fn the server uses, producing the same shape. Renders
+      median annual tax, 25/75 band, top samples with photo + addr +
+      tax/yr + list price. Honest empty-state when isEmpty=true.
+
+### STEP 2 — EMAIL (charlie-plan-email-html.ts)
+
+  app/api/charlie/plan-email/route.ts:
+    new import: deriveBuyerTaxMatch + BuyerTaxMatch type
+    new const: buyerTaxMatch derived from listings when planType
+      ==='buyer'; null for seller (no behavior change to seller path).
+    plan_data write — new fields:
+              comparables:    Array<from req.body when buyer> | null
+              buyerTaxMatch:  BuyerTaxMatch | null
+    buildRichPlanEmail call now passes buyerTaxMatch.
+
+  lib/email/charlie-plan-email-html.ts:
+    new optional prop buyerTaxMatch.
+    new const buyerTaxMatchHtml — REPLACES the buyer half of the
+             existing taxMatchHtml. Reads buyerTaxMatch (not
+             sellerEstimate). Honest empty-state branch (isEmpty=true)
+             renders the same dashed-border card pattern the seller
+             empty-state uses; populated branch renders median + band
+             + tile-per-sample with photo/addr/tax-per-yr/list-price.
+    body template: `${isBuyer ? buyerTaxMatchHtml : taxMatchHtml}`
+         — single switch. Seller path byte-equivalent to pre-fix
+         (taxMatchHtml string unchanged; only the body-template
+         switch is new).
+    Existing comparableSoldHtml already falls through to top-level
+    comparables when sellerEstimate is null — works as-is for buyer.
+
+### STEP 3 — LEAD PAGE (PlanRenderer)
+
+  components/admin-homes/lead-workbench/PlanRenderer.tsx:
+    new mounts on buyer branch:
+      {n.isBuyer && <BuyerCompSold comparables={lead.plan_data?.comparables} />}
+      {n.isBuyer && <BuyerTaxMatched taxMatch={lead.plan_data?.buyerTaxMatch} />}
+    new components: BuyerCompSold + BuyerTaxMatched. Render from
+      plan_data fields written by plan-email/route.ts. Null/empty
+      data → null render (legacy buyer leads written before this chunk
+      degrade gracefully — they simply lack the section, not show
+      stale data).
+    Seller branch (SellerEstimateMount) UNCHANGED.
+
+### TEST-RENDER PROBE — pass-through
+
+  app/api/charlie/test-render-plan-email-probe/route.ts:
+    Added buyerTaxMatch to body destructure + buildRichPlanEmail
+    call. Default null preserves the prior seller-only probe behavior;
+    enables harness-driven HTML render assertions for buyer plans.
+
+### REAL-FLOW VERIFY
+
+  Live HTTP-route POST verify (POST /api/charlie/plan-email + DB
+  plan_data readback) — DEFERRED. The local dev server (:3004) is
+  non-responsive on every API route during verify execution; probed
+  unrelated routes (/api/walliam/tenant-config, /api/test-estimator-
+  sections) with 240s timeout — same hang. The dev process itself is
+  alive (homepage SSR returns 200, 35.6KB), tsc --noEmit passes
+  cleanly. Block is in the dev server, not in this chunk's code. To
+  exercise: restart npm run dev, run scripts/buyer-chunk2-verify.js.
+
+  In place, direct fn-import verify executed
+  (scripts/buyer-chunk2-verify-direct.ts via tsx):
+
+  SECTION 1 — deriveBuyerTaxMatch unit tests (4 fixtures):
+    U1 isEmpty=false when 4 of 5 have tax              PASS
+    U2 medianTax=4950 (median of 4500/4800/5100/5400)  PASS
+    U3 taxBand low=4725 high=5175 (25/75 quantiles)    PASS
+    U4 samples populated (4 entries)                   PASS
+    U5 sparse (1 of 3 with tax) → isEmpty=true         PASS
+    U6 sparse reason cites N of M ("Only 1 of 3...")   PASS
+    U7 empty array → isEmpty=true                      PASS
+    U8 50% density (3 of 6) → isEmpty=false, median=3700 PASS
+  SECTION 2 — buildRichPlanEmail render (live fn, buyer + seller):
+    E1  buyer html length > 1000 (29732)               PASS
+    E2  buyer has Comparable Sold heading              PASS
+    E3  buyer has Tax-Matched heading                  PASS
+    E4  buyer email contains buyer-derived comp-sold   PASS
+    E5  buyer email contains "Median annual tax"       PASS
+    E6  buyer email median displayed = $4,950           PASS
+    E7  buyer email band $4,725 to $5,175               PASS
+    E8  buyer email contains buyer tax-sample address  PASS
+    E9  buyer does NOT contain Tax-Match Confidence    PASS
+    E10 buyer does NOT contain Estimated Value         PASS
+    E11 seller html length > 1000 (14874)              PASS
+    E12 seller has Comparable Sold heading             PASS
+    E13 seller still renders sellerEstimate.comparables PASS
+    E14 seller still renders sellerEstimate.taxMatch   PASS
+    E15 seller does NOT contain buyer Median blurb     PASS
+    E16 seller retains Property Estimate price card    PASS
+    E17 LEAK-STILL-DEAD: buyer+leaked-SE renders
+         buyer Tax-Matched (template isBuyer routing)  PASS
+  SECTION 3 — architectural (in-chat / lead-page / prompt / server):
+    R1 ResultsPanel imports deriveBuyerTaxMatch        PASS
+    R2 ResultsPanel buyer gate: hasListings && !SE     PASS
+    R3 ResultsPanel renders Tax-Matched header         PASS
+    L1 PlanRenderer mounts BuyerCompSold               PASS
+    L2 PlanRenderer mounts BuyerTaxMatched             PASS
+    L3 PlanRenderer reads plan_data.{comparables,btm}  PASS
+    P1 BUYER FLOW prompt now calls get_comparables     PASS
+    P2 tools.ts description no longer seller-only      PASS
+    S1 plan-email route derives buyerTaxMatch          PASS
+    S2 derivation gated by planType === 'buyer'        PASS
+    S3 route persists comparables to plan_data (buyer) PASS
+    S4 route persists buyerTaxMatch to plan_data       PASS
+    S5 route passes buyerTaxMatch to buildRichPlanEmail PASS
+
+  SUMMARY: 33 of 33 PASS.
+
+### TSC + byte-unchanged
+
+  npx tsc --noEmit → exit 0
+  Files edited (6 src + 1 probe):
+    app/charlie/lib/charlie-prompts.ts
+    app/charlie/lib/charlie-tools.ts
+    app/charlie/components/ResultsPanel.tsx
+    app/api/charlie/plan-email/route.ts
+    lib/email/charlie-plan-email-html.ts
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+    app/api/charlie/test-render-plan-email-probe/route.ts
+  Files created (3 scripts + 1 lib):
+    lib/charlie/buyer-tax-match.ts
+    scripts/buyer-chunk2-verify.js
+    scripts/buyer-chunk2-verify-direct.ts
+    scripts/_chunk2-step0-probe.js
+  Backups taken before edit (timestamp 20260615_072114).
+  S1 zero-diff files (admin/page, api/chat, agents):  UNCHANGED.
+  Seller flow:
+    - sellerEstimate-fed sections (comp-sold, tax-match, priceCard,
+      tier rail, competing) byte-identical in email (verified at
+      render-time E12/E13/E14/E16); seller in-chat path and seller
+      lead-page CharlieLeadEstimate mount UNCHANGED in source.
+    - Chunk-1 leak guard intact (verified E17: even if a buyer plan
+      receives a stale sellerEstimate in the body, the email template
+      routes by isBuyer and renders the buyer Tax-Matched, never the
+      seller's).
+
+### Operator-visible outcome
+
+  Before Chunk 2 (post-Chunk-1 state): buyer plans rendered Comparable
+    Sold + Tax-Matched ONLY via state-leak from prior seller flow in
+    the same session; Chunk 1 closed the leak, leaving both buyer-side
+    sections as honest empty-state on every surface.
+  After Chunk 2: buyer plans render Comparable Sold (recent SOLD
+    listings in the buyer's geo+price band, sourced by Charlie's
+    get_comparables tool) AND Tax-Matched (median annual tax + 25/75
+    band derived from the buyer's matched-listing tax_annual_amount).
+    All three surfaces (in-chat, lead page, email) read from the same
+    derivation. Honest empty-state when <3 matched listings carry
+    tax data (condo searches in new-build areas may hit this).
+
+### Named follow-ups (out of scope for CHUNK 2)
+
+  - CHUNK 3 (deferred): buyer comp-sold tile UPGRADE on lead page
+    (photo + clickable slug + tier-or-temperature badge) — current
+    BuyerCompSold is text-only, mirrors the seller pattern's evolution
+    from text-row to photo tile. Recon W-CHARLIE-BUYER-PARITY.txt
+    CHUNK B documented this; out of scope here to keep the diff
+    bounded.
+  - CHUNK 4 (deferred): add a buyer-side priceCard ("Implied value
+    band from your tax range" — invert the band/value relationship
+    that drives the seller's priceCard).
+  - Dev-server resilience: investigate the wedged-on-recompile
+    behavior that blocked live HTTP-route verify (60+ minute hang on
+    all API routes after a code edit). Separate workstream.
+  - Welcome-email dedup-race + fire-and-forget (recon CHUNK A) —
+    still separate workstream, unchanged.

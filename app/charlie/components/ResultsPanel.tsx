@@ -9,6 +9,11 @@ import ActiveListingCard from './ActiveListingCard'
 import PricingRiskBlock from './PricingRiskBlock'
 import BuyerOfferBlock from './BuyerOfferBlock'
 import BuildingCard from './BuildingCard'
+// W-CHARLIE-BUYER-CHUNK2 (2026-06-15): in-chat buyer Tax-Matched block.
+// Derivation is shared with the server (plan-email route persists it to
+// plan_data; email renders the same shape) — single source of truth at
+// lib/charlie/buyer-tax-match.ts so all three surfaces converge.
+import { deriveBuyerTaxMatch } from '@/lib/charlie/buyer-tax-match'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -477,6 +482,72 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
 
         return null
       })}
+
+      {/* W-CHARLIE-BUYER-CHUNK2 (2026-06-15): in-chat buyer Tax-Matched.
+          Renders once below all listings blocks for buyer flow only
+          (gated on: at least one listings block AND no sellerEstimate
+          block). Same deriveBuyerTaxMatch the server uses for the
+          email + lead page — convergence across all three surfaces.
+          Honest empty-state when <3 matched listings carry tax data. */}
+      {(() => {
+        const hasListings = (blocks || []).some((b: any) => b.type === 'listings')
+        const hasSellerEstimate = (blocks || []).some((b: any) => b.type === 'sellerEstimate')
+        if (!hasListings || hasSellerEstimate) return null
+        const allListings = (listingGroups || []).flatMap(g => g.listings)
+        const btm = deriveBuyerTaxMatch(allListings)
+        return (
+          <div>
+            <SectionHeader title={`Tax-Matched · ${btm.isEmpty ? 0 : btm.samples.length} sampled`} />
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 10, lineHeight: 1.5 }}>
+              {btm.isEmpty
+                ? (btm.reason || 'Insufficient tax data on matched listings.')
+                : `Annual property-tax range across the ${btm.withTaxCount} of ${btm.totalCount} matched listings with tax data — what you’ll pay yearly on a property in this shop window.`}
+            </div>
+            {!btm.isEmpty && (
+              <>
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>Median annual tax</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+                    {btm.medianTax != null ? '$' + Math.round(btm.medianTax).toLocaleString('en-CA') : '—'}
+                    {btm.taxBand && (
+                      <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.4)', marginLeft: 8 }}>
+                        · band ${Math.round(btm.taxBand.low).toLocaleString('en-CA')}–${Math.round(btm.taxBand.high).toLocaleString('en-CA')}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {btm.samples.map((s, i) => {
+                    const photoUrl = (s.media && s.media[0] && (s.media[0].media_url || s.media[0].url)) || ''
+                    const slugRaw = s._slug
+                    const href = slugRaw ? (slugRaw.startsWith('/') ? slugRaw : '/' + slugRaw) : null
+                    const addrShort = (s.address || '').split(',')[0]
+                    const meta = [s.bedrooms != null ? s.bedrooms + ' bed' : '', s.bathrooms != null ? s.bathrooms + ' bath' : '', s.propertySubtype].filter(Boolean).join(' · ')
+                    return (
+                      <div key={s.listingKey || i} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'center', cursor: href ? 'pointer' : 'default' }}
+                        onClick={() => { if (href) window.open(href, '_blank') }}>
+                        <div style={{ width: 64, height: 60, borderRadius: 8, background: 'rgba(255,255,255,0.08)', flexShrink: 0, overflow: 'hidden' }}>
+                          {photoUrl && <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addrShort}</div>
+                          {meta && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 3 }}>{meta}</div>}
+                        </div>
+                        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>
+                            ${Math.round(s.tax).toLocaleString('en-CA')}<span style={{ fontSize: 10, fontWeight: 400, color: 'rgba(255,255,255,0.4)' }}> /yr</span>
+                          </div>
+                          {s.price && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>List ${Number(s.price).toLocaleString('en-CA')}</div>}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Community Buildings - only when no buildings blocks exist in conversation */}
       {!(blocks || []).some((b: any) => b.type === 'buildings') && communityBuildings && (communityBuildings.affordable.length > 0 || communityBuildings.premium.length > 0) && (
