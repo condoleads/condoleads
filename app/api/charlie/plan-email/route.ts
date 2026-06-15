@@ -60,11 +60,22 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
+    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate: rawSellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
 
     if (!sessionId || !userId || !planType) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
+
+    // W-CHARLIE-BUYER-CHUNK1 (2026-06-15): defense-in-depth gate. Buyer
+    // plans must NEVER carry sellerEstimate — neither into plan_data nor
+    // into the rendered email — regardless of what the client sent.
+    // Client (useCharlie.ts:520) already gates by data.type, and
+    // requestForm('buyer') wipes the state field, but a stale or
+    // malicious client could still POST sellerEstimate with planType=
+    // 'buyer'. Drop it here. Seller path is byte-identical to pre-fix
+    // (planType === 'seller' returns rawSellerEstimate unchanged).
+    // Real lead 6d479d84 confirmed the leak in the wild.
+    const sellerEstimate = planType === 'seller' ? rawSellerEstimate : null
 
     // C-CHARLIE-FOLLOWUP B(ii) (2026-06-13): stale-session detector. When a
     // seller plan arrives with sellerEstimate set but estimate.bestGeoTier

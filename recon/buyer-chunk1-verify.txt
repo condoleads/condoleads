@@ -1,0 +1,42 @@
+W-CHARLIE-BUYER-CHUNK1 VERIFY — 2026-06-15T10:59:58.651Z
+local base: http://localhost:3004
+────────────────────────────────────────────────────────────────────────────
+server probe: http://localhost:3004/ -> 200
+test user: 949a8035… (testfinal100@gmail.com)
+tenant source_key: "walliam"
+re-using chat_session: 83efd7c4-2f35-4944-8ad2-47992c2fa145
+────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────
+SCENARIO A — LEAK REPRO (buyer + stale sellerEstimate)
+   expected: plan_data.sellerEstimate === null
+POST plan-email — A buyer+sellerEstimate(fixture)
+  status: 200  body: {"success":true,"userEmailSent":true,"userEmailReason":"delivered","chainEmailSent":true,"chainEmailReason":"delivered"}
+  lead row: 6a4b8fc2…  se_is_dropped=true  se_jsonb_type=null
+PASS  A: plan_data.sellerEstimate dropped by gate (LEAK CLOSED)
+        → plan_data.sellerEstimate JSONB type=null — JS null on write becomes JSONB null; gate working
+────────────────────────────────────────────────────────────────────────────
+SCENARIO B — SELLER NO-REGRESSION (seller + sellerEstimate)
+   expected: plan_data.sellerEstimate IS present (seller path intact)
+POST plan-email — B seller+sellerEstimate(fixture)
+  status: 200  body: {"success":true,"userEmailSent":true,"userEmailReason":"delivered","chainEmailSent":true,"chainEmailReason":"delivered"}
+  lead row: 4e7262c0…  se_is_dropped=false  se_jsonb_type=object
+PASS  B: plan_data.sellerEstimate IS present (seller no-regression)
+        → plan_data.sellerEstimate JSONB type=object  estimate?.estimatedPrice=880000
+────────────────────────────────────────────────────────────────────────────
+SCENARIO C — PURE BUYER (buyer + sellerEstimate=null)
+   expected: plan_data.sellerEstimate === null
+POST plan-email — C buyer+null
+  status: 200  body: {"success":true,"userEmailSent":true,"userEmailReason":"delivered","chainEmailSent":true,"chainEmailReason":"delivered"}
+  lead row: e4242969…  se_is_dropped=true  se_jsonb_type=null
+PASS  C: plan_data.sellerEstimate dropped (pure-buyer baseline)
+        → plan_data.sellerEstimate JSONB type=null
+────────────────────────────────────────────────────────────────────────────
+CLIENT-side gate (useCharlie.ts:520) — architectural check
+PASS  useCharlie POST body gates sellerEstimate by data.type
+        → found one-line guard at the plan-email POST
+PASS  useCharlie requestForm("buyer") wipes sellerEstimate + clears block
+        → found reset in requestForm setState updater
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: ALL PASS
+test session id (will be deleted): 83efd7c4-2f35-4944-8ad2-47992c2fa145
+test lead ids written: [6a4b8fc2, 4e7262c0, e4242969]

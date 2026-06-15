@@ -257,9 +257,31 @@ export function useCharlie() {
   // present, set initialForm directly so the form opens immediately
   // (authed path is byte-equivalent to pre-fix behavior).
   const requestForm = useCallback((mode: 'buyer' | 'seller') => {
+    // W-CHARLIE-BUYER-CHUNK1 (2026-06-15): when switching INTO a buyer flow,
+    // wipe stale seller state so it can't render under the buyer flow OR
+    // thread into the buyer plan-email POST. Real lead 6d479d84 was a buyer
+    // plan that inherited the prior seller flow's sellerEstimate because
+    // nothing cleared it at flow boundaries. We clear:
+    //   - sellerEstimate (the canonical leak source — passed to plan-email
+    //     POST at line ~520; gated there by data.type, but clearing here
+    //     also stops in-chat blocks from rendering stale seller content).
+    //   - blocks of type 'sellerEstimate' (the visible in-chat seller-
+    //     estimate panel that would otherwise stay on screen while the
+    //     user fills the buyer form).
+    // Seller-flow direction (mode === 'seller') is untouched — operators
+    // who switch buyer→seller want the seller estimator to mount fresh,
+    // and a prior buyer flow has nothing equivalent to leak.
     const isAuthed = !!creditsRef.current.state.userId
     if (isAuthed) {
-      setState(s => ({ ...s, isOpen: true, initialForm: mode, pendingForm: null }))
+      setState(s => ({
+        ...s,
+        isOpen: true,
+        initialForm: mode,
+        pendingForm: null,
+        ...(mode === 'buyer'
+          ? { sellerEstimate: null, blocks: s.blocks.filter(b => b.type !== 'sellerEstimate') }
+          : {}),
+      }))
       return
     }
     setState(s => ({
@@ -271,6 +293,9 @@ export function useCharlie() {
       pendingForm: mode,
       // Make sure no stale form is showing under the modal.
       initialForm: null,
+      ...(mode === 'buyer'
+        ? { sellerEstimate: null, blocks: s.blocks.filter(b => b.type !== 'sellerEstimate') }
+        : {}),
     }))
   }, [])
 
@@ -517,7 +542,18 @@ export function useCharlie() {
             vipCreditPlansUsed: stateRef.current.vipCreditPlansUsed,
             vipCreditTotal: stateRef.current.vipCreditTotal,
             comparables: stateRef.current.comparables.slice(0, 6),
-            sellerEstimate: stateRef.current.sellerEstimate,
+            // W-CHARLIE-BUYER-CHUNK1 (2026-06-15): gate sellerEstimate by
+            // the plan TYPE so a buyer plan never carries stale seller-flow
+            // state into the POST. stateRef.current.sellerEstimate is set by
+            // setSellerEstimate (line ~311) during seller flow and never
+            // cleared at flow boundaries — if the same session ran seller
+            // then buyer, the buyer email would render seller comp-sold +
+            // tax-match (real lead 6d479d84 confirms). requestForm('buyer')
+            // also wipes the state field (see edit below) for UX, but this
+            // POST-time guard is the authoritative defense at the actual
+            // network boundary. Server (plan-email/route.ts) gates again
+            // for defense-in-depth.
+            sellerEstimate: data.type === 'seller' ? stateRef.current.sellerEstimate : null,
             blocks: stateRef.current.blocks.filter(b => b.type !== 'plan').slice(0, 20),
           }),
         })

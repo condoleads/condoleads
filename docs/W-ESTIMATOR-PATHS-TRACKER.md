@@ -3121,3 +3121,117 @@ W-CHARLIE-REGISTRATION-FLOW-FIX — gate up front + loop dead — 2026-06-14
      EstimatorBuyerModal/HomeEstimatorBuyerModal's checkAndEstimate
      auth check. Both kept; cannot loop now that refresh uses
      uidOverride and AuthContext lag is bypassed.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-BUYER-CHUNK1 — sellerEstimate leak fix (2026-06-15)
+
+Step 1 of the buyer-side parity work (see recon/W-CHARLIE-BUYER-PARITY.txt
+CHUNK C). Buyer plans were inheriting `sellerEstimate` from a prior seller
+flow in the same session — the buyer email then rendered seller comp-sold +
+tax-match using stale seller data. Real lead 6d479d84 confirmed the leak.
+This commit closes it at two layers; no other buyer-parity work in scope.
+
+### Leak path (cited)
+
+  SET    app/charlie/hooks/useCharlie.ts:311-320   setSellerEstimate
+         writes stateRef.current.sellerEstimate when the seller-estimate
+         API returns. Never cleared at a flow boundary.
+  READ   app/charlie/hooks/useCharlie.ts:520       plan-email POST body
+         unconditionally includes stateRef.current.sellerEstimate
+         regardless of data.type ('buyer' | 'seller').
+  PERSIST app/api/charlie/plan-email/route.ts:172-181  the route writes
+         plan_data.sellerEstimate from req.body.sellerEstimate when
+         truthy, unconditionally — buyer leads inherit the object.
+
+### Fix (two enforcement points, defense-in-depth)
+
+  (1) CLIENT — POST-time gate:
+        app/charlie/hooks/useCharlie.ts:520
+        sellerEstimate: data.type === 'seller'
+          ? stateRef.current.sellerEstimate
+          : null
+        Buyer's plan-email POST body now ALWAYS sends sellerEstimate=null.
+
+      CLIENT — flow-start state reset:
+        app/charlie/hooks/useCharlie.ts:259-289
+        requestForm('buyer') (the centralized form-open gate from
+        W-CHARLIE-REGISTRATION-FLOW-FIX) now wipes:
+          - state.sellerEstimate → null
+          - state.blocks (filtered to drop type==='sellerEstimate')
+        Seller-direction (mode === 'seller') untouched.
+
+  (2) SERVER — defense-in-depth gate at route entry:
+        app/api/charlie/plan-email/route.ts:63 (destructure renames
+        sellerEstimate → rawSellerEstimate; new const at L75):
+        const sellerEstimate = planType === 'seller'
+          ? rawSellerEstimate : null
+        All downstream uses (plan_data write L172-181 + email build at
+        L200) read this gated local. A stale/forged client can't inject
+        sellerEstimate into a buyer plan.
+
+### Real-flow VERIFY (scripts/buyer-chunk1-verify.js, local dev :3004)
+
+  Three POSTs to /api/charlie/plan-email + DB read of resulting leads.
+  Re-uses existing chat_session for test user 949a8035… (testfinal100).
+
+  SCENARIO A — LEAK REPRO
+    POST: planType='buyer' + sellerEstimate=<real fixture>
+    DB:   plan_data.sellerEstimate JSONB type = 'null'
+    PASS  gate dropped the stale sellerEstimate
+  SCENARIO B — SELLER NO-REGRESSION
+    POST: planType='seller' + sellerEstimate=<real fixture>
+    DB:   plan_data.sellerEstimate JSONB type = 'object',
+          estimate.estimatedPrice = 880000 (round-trip intact)
+    PASS  seller path byte-equivalent to pre-fix
+  SCENARIO C — PURE BUYER (baseline)
+    POST: planType='buyer' + sellerEstimate=null
+    DB:   plan_data.sellerEstimate JSONB type = 'null'
+    PASS  baseline clean (no regression on the already-clean path)
+  CLIENT-side gates (architectural — same approach
+   scripts/register-fix-verify.js takes for paths it can't drive headless):
+    PASS  useCharlie POST body gates by data.type
+    PASS  requestForm('buyer') wipes sellerEstimate + sellerEstimate block
+
+  SUMMARY: ALL PASS  (4 of 4 + 2 architectural)
+  test lead ids written: [6a4b8fc2, 4e7262c0, e4242969]
+
+### TSC + byte-unchanged
+
+  npx tsc --noEmit → exit 0
+  Files edited (2):
+    app/charlie/hooks/useCharlie.ts
+    app/api/charlie/plan-email/route.ts
+  Backups taken before edit (timestamp 20260615_064424):
+    app/charlie/hooks/useCharlie.ts.backup_BUYER-CHUNK1_20260615_064424
+    app/api/charlie/plan-email/route.ts.backup_BUYER-CHUNK1_20260615_064424
+  Protected 09b97ef System-2 contracts:           UNCHANGED (this commit)
+  S1 zero-diff files (admin/page, api/chat, agents): UNCHANGED.
+  Pre-existing diagnostic on plan-email/route.ts L93 ('validSession unused')
+    is unrelated to this edit; flagged for separate cleanup.
+
+### Operator-visible outcome
+
+  Before: a user who ran SELLER then BUYER in the same Charlie session
+          got a buyer plan email rendering seller Comparable Sold +
+          Tax-Matched derived from the seller-flow's tax/address —
+          NOT from the buyer's own search. Real lead 6d479d84 shows
+          plan_data.sellerEstimate.estimate.estimatedPrice = $X from
+          a seller estimate on a buyer plan that was supposed to be
+          shopping a different city.
+  After:  buyer plan_data.sellerEstimate is JSONB null in EVERY buyer
+          flow, regardless of session history. Buyer email's
+          Comparable Sold + Tax-Matched render only their honest
+          empty-state until a buyer-side data source is wired (out
+          of scope here — see recon CHUNK B + C for the broader
+          buyer-parity follow-ups).
+
+### Named follow-ups (out of scope for CHUNK 1)
+
+  - CHUNK 2: buyer-side lead-page tile parity (photo / tier-or-temp
+    badge / clickable slug — recon W-CHARLIE-BUYER-PARITY.txt CHUNK B).
+  - CHUNK 3: BUYER in-chat Comparable Sold — prompt edit to add
+    get_comparables to BUYER FLOW (recon CHUNK C).
+  - CHUNK 4: BUYER dynamic Tax-Matched — derive from matched-listing
+    tax_annual_amount; no buyer-form tax input (recon CHUNK C.3/C.4).
+  - Welcome-email dedup-race + fire-and-forget (recon CHUNK A) —
+    separate workstream, not buyer-parity-scoped.
