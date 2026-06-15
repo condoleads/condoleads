@@ -419,6 +419,14 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           // keeping the gate prevents a stale or hand-injected empty
           // block from rendering as "Comparable Sold · 0 found".
           if (!block.listings || block.listings.length === 0) return null
+          // W-CHARLIE-BUYER-CHUNK5 (2026-06-15): render Tax-Matched
+          // IMMEDIATELY below Comparable Sold so the buyer in-chat
+          // surface puts the two sold-comp sections adjacent — same
+          // positioning the email + lead-page have (Defect 1 fix).
+          // Pre-fix Chunk-5 the BuyerTaxMatchInChat block rendered
+          // AFTER blocks.map closed → below the plan card, hard to
+          // find. Now it's a sibling of Comparable Sold within the
+          // same conversation block.
           return (
             <div key={_bi}>
               <SectionHeader title={`Comparable Sold ┬╖ ${block.listings.length} found`} />
@@ -426,6 +434,9 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                 {block.listings.map((c: any, i: number) => (
                   <ComparableCard key={(c.listingKey || c.listing_key) || i} comparable={c} isLease={block.intent === 'lease'} />
                 ))}
+              </div>
+              <div style={{ marginTop: 20 }}>
+                <BuyerTaxMatchInChat listingGroups={listingGroups} geoContext={geoContext} />
               </div>
             </div>
           )
@@ -495,18 +506,18 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         return null
       })}
 
-      {/* W-CHARLIE-BUYER-CHUNK4 (2026-06-15): in-chat buyer Tax-Matched
-          via /api/charlie/buyer-tax-match. Same server derivation
-          plan-email/route.ts uses → identical sold-comp set across
-          in-chat + email + lead page. Renders once below all blocks
-          for the buyer flow only (gated on: ≥1 listings block AND no
-          sellerEstimate block). */}
-      {(() => {
-        const hasListings = (blocks || []).some((b: any) => b.type === 'listings')
-        const hasSellerEstimate = (blocks || []).some((b: any) => b.type === 'sellerEstimate')
-        if (!hasListings || hasSellerEstimate) return null
-        return <BuyerTaxMatchInChat listingGroups={listingGroups} geoContext={geoContext} />
-      })()}
+      {/* W-CHARLIE-BUYER-CHUNK5 (2026-06-15): the standalone bottom-of-
+          panel BuyerTaxMatchInChat render that lived here was REMOVED —
+          the Tax-Matched section is now a sibling of Comparable Sold
+          inside the conversation block (see the comparables-block branch
+          above). This puts the two sold-comp sections adjacent in the
+          buyer in-chat surface, consistent with email + lead page
+          positioning. FALLBACK: if a buyer session has comparables
+          but NO comparables block in state (edge case — get_comparables
+          was never called), the Tax-Matched section is silently absent
+          here. The comparables block IS pushed automatically by the
+          BUYER FLOW prompt (charlie-prompts.ts:40), so this fallback
+          is for prompt-bypass cases only. */}
 
       {/* Community Buildings - only when no buildings blocks exist in conversation */}
       {!(blocks || []).some((b: any) => b.type === 'buildings') && communityBuildings && (communityBuildings.affordable.length > 0 || communityBuildings.premium.length > 0) && (

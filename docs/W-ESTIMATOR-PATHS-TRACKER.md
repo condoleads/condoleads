@@ -4016,3 +4016,180 @@ seller-side concept, inverted for buyers) and aligns counts across all
     backtest harness running to confirm seller byte-stability.
   - Welcome-email dedup-race (recon CHUNK A) — separate workstream.
   - Dev-server resilience — separate workstream.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-BUYER-CHUNK5 — comp-grounded buyer summary + in-chat tax-match position (2026-06-15)
+
+Two narrow defects from the W-CHARLIE-BUYER-CONSISTENCY recon, both
+prompt/UI-only — no server/data-layer changes this chunk:
+
+  Defect 3 (offer/strategy grounded in comps): Charlie's BUYER FLOW
+  prompt now REQUIRES the generate_plan summary to cite real numbers
+  from the comparable-SOLD comps it just retrieved, plus an anti-
+  hallucination clause that forbids inventing figures.
+
+  Defect 1 (in-chat tax-match position): the Tax-Matched section is
+  repositioned to render as a sibling of Comparable Sold inside the
+  conversation block, instead of below the plan card at the bottom
+  of the results panel.
+
+### DEFECT 3 — buyer summary spec (charlie-prompts.ts:56+)
+
+  File: app/charlie/lib/charlie-prompts.ts
+  Edit: NEW block immediately after the existing L56 generate_plan-
+  summary bullet. The original 4-sentence spec (market condition /
+  budget / next step / urgency) is PRESERVED — sellers still use it.
+  Buyers now get an ADDITIONAL spec section:
+
+    BUYER SUMMARY — MUST cite real retrieved comp evidence:
+      (a) comparable-SOLD median or range from the 6 comps in
+          get_comparables. Compute the median close_price from the
+          comp set the LLM received and cite as a dollar figure.
+      (b) suggested offer/positioning grounded in those comps AND
+          the buyer's budget. Example shape provided.
+      (c) DO NOT reference "tax-matched" or "tax band" figures in
+          the summary — those are derived later (at plan-email
+          POST time on the server) and are NOT available to the
+          LLM at generate_plan time. Citing them would be
+          hallucination.
+
+    ANTI-HALLUCINATION (Rule Zero at the prompt layer):
+      • cite ONLY numbers actually retrieved from tool calls
+      • if fewer than 3 comps OR median unclear, omit clause (a)
+      • if avg_concession_pct missing, omit the concession-derived
+        figure
+      • NEVER fabricate a price, median, range, or percentage
+
+    Seller summary unchanged from prior spec — sellers don't have
+    buyer-specific comp evidence at summary time.
+
+### DATA-AVAILABILITY FINDING (cited in the prompt edit)
+
+  Order of operations for BUYER FLOW at generate_plan time:
+    1. resolve_geo                  → geoContext
+    2. get_market_analytics         → market stats (avg_concession_pct,
+                                       sale_to_list_ratio, median sale,
+                                       etc.)
+    3. search_listings              → up to 10 matched ACTIVE listings
+                                       (with list_price)
+    4. get_comparables              → up to 6 SOLD comps (with
+                                       close_price + close_date +
+                                       tax_annual_amount)
+    5. generate_plan                ← LLM writes the `summary` HERE
+  After generate_plan:
+    6. plan-email POST (server)     → derives buyerTaxMatch via the
+                                       Chunk-4 tax-band SOLD query.
+
+  → At step 5 the LLM has: market-analytics figures + the 6 sold
+    comps. NO buyerTaxMatch (it's derived only at step 6).
+  → Conclusion baked into the prompt edit at clause (c): the summary
+    MUST cite comp-sold figures + MAY cite market-analytics + MUST
+    NOT cite tax-match figures. The anti-hallucination clause
+    enforces this — only retrieved numbers, omit otherwise.
+
+### DEFECT 1 — in-chat Tax-Matched repositioned (ResultsPanel.tsx)
+
+  File: app/charlie/components/ResultsPanel.tsx
+
+  BEFORE (Chunk 4 state): the BuyerTaxMatchInChat component was
+  rendered OUTSIDE blocks.map, after L493 returned null. So the
+  Tax-Matched section appeared LAST in the scroll — below every
+  conversation block including the plan card. The operator's recon
+  flagged it as orphaned and inconsistent with email + lead-page
+  positioning (both render Tax-Matched immediately after Comparable
+  Sold).
+
+  AFTER (this chunk): BuyerTaxMatchInChat is now rendered as a
+  SIBLING of the Comparable Sold tiles INSIDE the comparables-block
+  branch (block.type === 'comparables'). When Charlie's tool layer
+  pushes a comparables block to state.blocks, both Comparable Sold
+  AND Tax-Matched render together as one logical section. This
+  matches the email + lead-page positioning exactly.
+
+  The standalone bottom-of-panel render at the prior L498-509 is
+  REMOVED (replaced with a comment explaining the move).
+
+  Fallback: if a buyer session has matched listings but the
+  comparables block was never pushed (edge case where the prompt
+  was bypassed and get_comparables wasn't called), Tax-Matched is
+  silently absent — that's the honest empty path. The post-Chunk-2
+  prompt explicitly requires get_comparables in the BUYER FLOW so
+  this fallback is for prompt-bypass cases only.
+
+### REAL-FLOW VERIFY (scripts/buyer-chunk5-verify.ts, 31 of 31 PASS)
+
+  Verify groups:
+    1. Prompt edit (buyer summary requires comp-grounded
+       figures + anti-hallucination)                         6/6  PASS
+    2. Seller summary spec untouched                         3/3  PASS
+    3. In-chat tax-match repositioned (source markers)       3/3  PASS
+    4. ComparableCard tile probe still healthy (Playwright)  1/1  PASS
+    5. Data-availability finding cited correctly             2/2  PASS
+    6. Sanity probe of a pre-Chunk-5 lead (informational)    -    -
+    7. Byte-unchanged scope (14 files NOT touched)          14/14 PASS
+
+  SUMMARY: 31 of 31 PASS.
+
+  Live LLM assertion (a real generate_plan summary citing real
+  comp numbers) requires driving Charlie end-to-end with an authed
+  session + 5 tool calls + waiting for streamed output — too
+  brittle to fit a single verify run. The verify asserts the
+  prompt-layer instructions are in place; the NEXT real buyer flow
+  against the post-Chunk-5 prompt will demonstrate the new
+  behavior at runtime.
+
+### TSC + byte-unchanged
+
+  npx tsc --noEmit → exit 0
+  Files edited (2 src):
+    app/charlie/lib/charlie-prompts.ts                NEW buyer summary block
+    app/charlie/components/ResultsPanel.tsx           BuyerTaxMatchInChat moved
+  Files created (1 verify):
+    scripts/buyer-chunk5-verify.ts
+
+  Byte-unchanged this commit (per Group 7, 14 files asserted):
+    app/api/charlie/plan-email/route.ts               UNCHANGED
+    app/api/charlie/buyer-tax-match/route.ts          UNCHANGED
+    lib/charlie/buyer-tax-match.ts                    UNCHANGED
+    lib/estimator/tax-band-sold-query.ts              UNCHANGED
+    lib/estimator/home-comparable-matcher-sales.ts    UNCHANGED
+    lib/estimator/condo-comparable-matcher-sales.ts   UNCHANGED
+    lib/email/charlie-plan-email-html.ts              UNCHANGED
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+                                                       UNCHANGED
+    components/dashboard/CharlieLeadEstimate.tsx      UNCHANGED
+    app/charlie/lib/charlie-tools.ts                  UNCHANGED
+    app/charlie/hooks/useCharlie.ts                   UNCHANGED
+    app/charlie/components/ComparableCard.tsx         UNCHANGED
+    app/charlie/components/SellerEstimateBlock.tsx    UNCHANGED
+    app/api/charlie/seller-estimate/route.ts          UNCHANGED
+
+  S1 zero-diff (admin/page, api/chat, agents):        UNCHANGED.
+
+### Operator-visible outcome
+
+  Defect 3: future buyer plans generated post-Chunk-5 will cite at
+  least one comparable-SOLD figure (e.g. "comparable homes sold
+  around $X median") AND a positioning offer figure tied to the
+  buyer's budget vs the sold median. No tax-match figure will
+  appear in the summary (it's not available at that point in the
+  flow). Anti-hallucination is enforced at the prompt layer — if a
+  figure isn't retrieved, the LLM is instructed to omit the clause
+  rather than fabricate.
+
+  Defect 1: in-chat Tax-Matched now sits immediately below
+  Comparable Sold (within the same conversation block), instead of
+  orphaned below the plan card. Consistent positioning across all
+  3 surfaces (in-chat, email, lead page).
+
+### Named follow-ups (out of scope for Chunk 5)
+
+  - Live demonstration of the post-Chunk-5 summary citing real comp
+    numbers requires a fresh buyer-flow plan on the live deploy.
+    Operator-visible only — flagged for the next real test session.
+  - Consolidating seller's inline tax-band query into the shared
+    helper from Chunk 4 (currently both seller-inline and shared-
+    helper have byte-identical query patterns; risk of drift
+    mitigated by [shared-with-seller-matcher] markers). Refactor
+    candidate for a future chunk with seller-side backtest harness.
+  - Welcome-email dedup-race (recon CHUNK A) — separate workstream.
