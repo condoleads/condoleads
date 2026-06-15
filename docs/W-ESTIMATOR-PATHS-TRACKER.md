@@ -4401,3 +4401,102 @@ three surfaces.
     inside the PlanDocument plan card while email + lead surface
     them as standalone sections. Surface-uniform standalone sections
     in-chat would be a design choice; not addressed here.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-CONVERGENCE — run-log for 7214b21 (W-CHARLIE-BUYER-NARRATION)
+
+Leaner convergence log for the buyer-narration commit — the full
+narration run-log already lives above in this file (committed at
+7214b21). This block records the convergence-bundle dispatch and the
+verification status with the source-grep-is-dead flag operator
+locked.
+
+### Bundle dispatched
+  Commit:       7214b21 — feat(charlie): For Sale label + price narration on Comp Sold + Tax-Matched
+  Stacked on:   aecd67d, 95bb4b2, 09139a5, af4ebb2  (already on origin)
+  Local HEAD:   7214b213e98973447a32af9709b31f830cf92613
+  Pushed to:    origin/main
+
+### FIX 1 — relabel "For Sale" (3 sites; tile data unchanged)
+  IN-CHAT  app/charlie/components/ResultsPanel.tsx:123-167
+           headline "For Sale · N found" + secondary block.label
+           ("Homes in Whitby"). Seller path keeps block.label as headline.
+  EMAIL    lib/email/charlie-plan-email-html.ts:297
+           `${isBuyer ? 'For Sale' : 'Comparable Sales'} (N)`
+  LEAD     components/admin-homes/lead-workbench/PlanRenderer.tsx:675-697
+           same `For Sale` swap on the TopListings header.
+  Tile + data shape on all 3 surfaces UNCHANGED — Chunk-3 photo + slug-
+  link work intact.
+
+### FIX 2 — Comparable Sold offer narration
+  NEW LIB  lib/charlie/buyer-narration.ts
+           `buildCompSoldNarration({ comparables, budgetMax, avgConcessionPct })`
+           returns `{ text, median, offerNear }`.
+           - median = median(close_price), dual-shape close_price reads
+           - offerNear = median × (1 − avgConcessionPct/100) when pct is in (0,100)
+           - OMIT (text:null) when < COMP_MIN=3 usable comps   ← Rule Zero
+           - OMIT the offer clause when concession or budget missing
+           Real verify fixture: 6 Whitby sold comps → median $738,495,
+           offer $714,789 (= median × 0.9679).
+  Wired:   email (emerald box), lead (emerald-50 Tailwind), in-chat
+           (rgba(16,185,129,…) tint). Same text + numbers across surfaces.
+
+### FIX 3 — Tax-Matched value narration
+  SAME LIB `buildTaxMatchNarration({ samples, budgetMax, avgConcessionPct })`
+           - TAX_MIN=3, same OMIT rules
+           - Keeps Chunk-4 SOLD-COMP framing (verified no `/yr what-you'll-pay`
+             assessment regression)
+           Real verify fixture: 4 tax-matched samples → median $754,500,
+           offer $730,281.
+  Wired:   email (sky-blue box), lead (blue-50 Tailwind), in-chat
+           (rgba(59,130,246,…) tint).
+
+### VERIFY — scripts/buyer-narration-verify.ts
+  49 of 49 PASS:
+    Group 1  EMAIL render (label + narrations + no assessment regression)  8/8
+    Group 2  LEAD render (label + narrations + stats intact + Chunk-3 tiles) 8/8
+    Group 3  Shared helpers (median/offer math + text content)             6/6
+    Group 4  No-fabrication / Rule Zero (thin/missing data → OMIT)         4/4
+    Group 5  IN-CHAT tile probe no-regression (Playwright)                 1/1
+    Group 6  Cross-surface number equality (EMAIL ↔ LEAD)                  4/4
+    Group 7  Seller no-regression (13 byte-unchanged + 4 email asserts)   17/17
+    Group 8  EMAIL stats no-regression (Market/Offer/Subtype/Tax-Matched)  4/4
+  TSC:       npx tsc --noEmit → exit 0
+  S1:        zero-diff (admin/page, api/chat, agents)
+  Seller:    13 files byte-unchanged across the buyer path's expected
+             untouched surface — backtest stability preserved.
+
+### STATUS
+
+  Verified clean against:
+    - source assertions on the 3 render sites (label swap + narration
+      mount points)
+    - direct in-process buildCompSoldNarration + buildTaxMatchNarration
+      output asserts (median + offerNear + text content)
+    - email render via /api/charlie/test-render-plan-email-probe →
+      asserted real numbers in the live HTML
+    - lead page render via renderToStaticMarkup(PlanTab) → asserted
+      real numbers in the SSR HTML
+    - in-chat Playwright tile probe → no Chunk 2b/3/4 regression
+    - Rule Zero asserted across 4 sparse-data fixtures (n<3, no
+      concession, no budget, empty tax samples)
+    - cross-surface number equality (EMAIL median == LEAD median;
+      EMAIL offer == LEAD offer; same for tax-match)
+    - seller path 13-file byte-unchanged check
+
+  OPERATOR-EYEBALL PENDING:
+    — IN-CHAT live render against a real Charlie buyer session has NOT
+      yet been operator-confirmed. Verify's IN-CHAT assertions are:
+        (a) source assertions on the relabel + narration mount sites,
+        (b) shared-helper output (in-process unit-level), and
+        (c) a tile probe page that confirms ComparableCard renders.
+      The full conversation flow (search_listings → get_comparables →
+      generate_plan → narration boxes rendering with real numbers in
+      the actual ResultsPanel) is NOT exercised end-to-end without
+      auth + LLM streaming.
+      Per the locked source-grep-is-dead lesson: this is **claimed,
+      unverified** for in-chat live render. Email + lead-page real-DOM
+      render IS verified against real numbers.
+    — Real-deploy verify (walliam.ca production with this commit
+      live) NOT exercised. Vercel deploy + operator real-DOM eyeball
+      remain.
