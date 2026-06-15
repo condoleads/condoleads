@@ -20,6 +20,9 @@
 import { buildSellerEstimateView } from '@/lib/charlie/seller-estimate-view'
 import { TIER_META, TIER_ORDER, tierChipFor } from '@/lib/charlie/tier-chip'
 import { buildPropertySlug } from '@/lib/utils/property-slug'
+// W-CHARLIE-BUYER-NARRATION (2026-06-15): shared narration builders so
+// in-chat + email + lead-page cite the SAME numbers + SAME text.
+import { buildCompSoldNarration, buildTaxMatchNarration } from '@/lib/charlie/buyer-narration'
 
 const MONTHS_ARR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -294,7 +297,7 @@ export function buildRichPlanEmail(data: {
   const listingsHtml = topListings.length > 0 ? `
     <div style="margin: 20px 0;">
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">
-        ${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (${topListings.length})
+        ${isBuyer ? 'For Sale' : 'Comparable Sales'} (${topListings.length})
       </div>
       ${topListings.map((l: any) => {
         // W-CHARLIE-FINETUNE-FIX (2026-06-14): bare-MLS fallback (`/${key}`)
@@ -365,9 +368,24 @@ export function buildRichPlanEmail(data: {
   }
 
   const sellerComps = sellerEstimate?.comparables || comparables || []
+  // W-CHARLIE-BUYER-NARRATION (2026-06-15): buyer-only offer narration
+  // under the Comp Sold header. Computes median(close_price) from the
+  // SAME comp set the tiles render. Seller path: narration omitted
+  // (seller has its own priceCard / tierRail for value anchoring).
+  const compSoldNarrationLine = isBuyer
+    ? buildCompSoldNarration({
+        comparables: sellerComps,
+        budgetMax: plan?.budgetMax,
+        avgConcessionPct: analytics?.avg_concession_pct,
+      })
+    : { text: null, median: null, offerNear: null }
   const comparableSoldHtml = sellerComps.length > 0 ? `
     <div style="margin: 20px 0;">
       <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Comparable Sold (${sellerComps.length})</div>
+      ${compSoldNarrationLine.text ? `
+      <div style="margin-bottom: 12px; padding: 10px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; font-size: 12px; color: #166534; line-height: 1.5;">
+        ${compSoldNarrationLine.text}
+      </div>` : ''}
       ${sellerComps.map((c: any) => {
         const price = c.closePrice || c.close_price || c.listPrice || c.list_price || 0
         const photo = c.mediaUrl || (c.media && c.media[0]?.media_url) || ''
@@ -536,10 +554,23 @@ export function buildRichPlanEmail(data: {
     const bandStr = btm.taxBand
       ? '$' + Number(btm.taxBand.low).toLocaleString('en-CA', { maximumFractionDigits: 0 }) + ' &ndash; $' + Number(btm.taxBand.high).toLocaleString('en-CA', { maximumFractionDigits: 0 })
       : '&mdash;'
+    // W-CHARLIE-BUYER-NARRATION (2026-06-15): tax-match value narration.
+    // Uses the SAME shared builder + the SAME samples + the SAME
+    // analytics.avg_concession_pct as the comp-sold narration above —
+    // so the numbers stay consistent in the email.
+    const taxMatchNarrationLine = buildTaxMatchNarration({
+      samples: btm.samples,
+      budgetMax: plan?.budgetMax,
+      avgConcessionPct: analytics?.avg_concession_pct,
+    })
     return `
       <div style="margin: 20px 0;">
         <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">Tax-Matched (${btm.samples.length})</div>
         <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Recently sold homes matched by property-tax band &mdash; real transaction evidence anchored to the ${btm.withTaxCount} of ${btm.totalCount} matched listings carrying tax data.</div>
+        ${taxMatchNarrationLine.text ? `
+        <div style="margin-bottom: 12px; padding: 10px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 12px; color: #1e40af; line-height: 1.5;">
+          ${taxMatchNarrationLine.text}
+        </div>` : ''}
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;">
           <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
             <td style="font-size: 11px; color: #64748b;">Tax band (derived)</td>

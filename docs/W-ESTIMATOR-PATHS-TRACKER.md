@@ -4193,3 +4193,211 @@ prompt/UI-only — no server/data-layer changes this chunk:
     mitigated by [shared-with-seller-matcher] markers). Refactor
     candidate for a future chunk with seller-side backtest harness.
   - Welcome-email dedup-race (recon CHUNK A) — separate workstream.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-BUYER-NARRATION — For-Sale label + price narration on Comp Sold + Tax-Matched (2026-06-15)
+
+W-CHARLIE-BUYER-STRUCTURE recon confirmed: (a) For Sale section is
+present on all 3 surfaces but mislabeled ("Homes in Whitby" in-chat,
+"Matched Listings" in email + lead) which created an operator
+discoverability gap; (b) Comparable Sold + Tax-Matched tiles ship
+without per-section price narration tying solds to an offer. This
+chunk fixes both with one shared narration helper consumed by all
+three surfaces.
+
+### FIX 1 — Relabel "For Sale" on all 3 surfaces
+
+  IN-CHAT  app/charlie/components/ResultsPanel.tsx:123-167
+    Listings-block branch (was "{block.label} · N found", data-
+    driven to e.g. "Homes in Whitby"). Now renders:
+      headline: "For Sale · N found"
+      subtitle: original block.label ("Homes in Whitby")
+    Seller flow (sellerEstimate block present) keeps the original
+    block.label as headline — only buyer flow gets the For Sale
+    relabel.
+
+  EMAIL    lib/email/charlie-plan-email-html.ts:297
+    Was `${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (N)`.
+    Now `${isBuyer ? 'For Sale' : 'Comparable Sales'} (N)`.
+
+  LEAD     components/admin-homes/lead-workbench/PlanRenderer.tsx:
+   PAGE    675-697 TopListings
+    Was `${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (N)`.
+    Now `${isBuyer ? 'For Sale' : 'Comparable Sales'} (N)`.
+
+  Tiles + data shape on all 3 surfaces UNCHANGED — Chunk 3's photo +
+  slug-link work intact.
+
+### FIX 2 — Comparable Sold offer narration
+
+  NEW SHARED LIB: lib/charlie/buyer-narration.ts
+    `buildCompSoldNarration({ comparables, budgetMax, avgConcessionPct })`
+    returns `{ text, median, offerNear }`.
+    Logic:
+      • Filter comparables by usable close_price (dual-shape:
+        close_price | closePrice | price).
+      • If fewer than COMP_MIN (3) usable comps → returns text:null
+        (Rule Zero — no fabrication).
+      • Compute median(close_price).
+      • If avgConcessionPct in (0, 100): offerNear = median × (1 − pct/100).
+      • If both median + budget + concession available, text =
+        "Comparable homes sold at a median of $X. At your $A budget,
+         an offer near $B is well-positioned (median minus C% avg
+         concession)."
+      • If concession missing, text = "...At your $A budget, you're
+        well-positioned versus this median."
+      • If budget missing, text = "Comparable homes sold at a median
+        of $X." (median-only).
+
+  Wired into:
+    EMAIL  lib/email/charlie-plan-email-html.ts:367-410 inside
+           comparableSoldHtml. Renders the narration line in an
+           emerald-tinted box directly below the section header,
+           above the tile list. Empty-state-safe (text:null → empty
+           string interpolated).
+    LEAD   components/admin-homes/lead-workbench/PlanRenderer.tsx:
+   PAGE    307-311 (BuyerCompSold mount now passes budgetMax +
+           avgConcessionPct from plan_data) + L704-735 BuyerCompSold
+           renders the narration in an emerald-50 Tailwind box.
+    IN-CHAT  app/charlie/components/ResultsPanel.tsx comparables-
+           block render (block.type === 'comparables'). Reads
+           plan?.budgetMax + analytics's latest snapshot
+           .avg_concession_pct. Narration box uses rgba(16,185,129,…)
+           green tint matching the dark-panel aesthetic.
+
+### FIX 3 — Tax-Matched value narration
+
+  SAME SHARED LIB: `buildTaxMatchNarration({ samples, budgetMax,
+   avgConcessionPct })` returns `{ text, median, offerNear }`.
+    Logic:
+      • Filter samples by usable price (dual-shape).
+      • If fewer than TAX_MIN (3) usable samples → text:null.
+      • median = median(sample close prices).
+      • If avgConcessionPct: offerNear = median × (1 − pct/100).
+      • text = "Homes in this property-tax range recently sold around
+                $Z — validating a fair value near $W for what you're
+                shopping." (when offerNear present)
+      • Else: "...around $Z — a fair value anchor for your search."
+
+  Wired into all 3 surfaces alongside the FIX 2 narration:
+    EMAIL  lib/email/charlie-plan-email-html.ts:514-580 inside
+           buyerTaxMatchHtml. Sky-blue box below the band rail.
+    LEAD   PlanRenderer.tsx BuyerTaxMatched: blue-50 Tailwind box.
+   PAGE
+    IN-CHAT ResultsPanel.tsx BuyerTaxMatchInChat: rgba(59,130,246,…)
+           blue tint, sits between the band rail and the tile list.
+
+  KEEPS THE CHUNK-4 SOLD-COMP FRAMING — narration does NOT reintroduce
+  any "/yr what-you'll-pay" assessment wording (verified at 1.8).
+
+### REAL-FLOW VERIFY (scripts/buyer-narration-verify.ts, 49 of 49 PASS)
+
+  Live dev server (already 200 at run start). EMAIL via test-render-
+  plan-email-probe; LEAD via renderToStaticMarkup of PlanRenderer;
+  IN-CHAT helper verification + tile probe.
+
+  Real numbers used (real Whitby data shape):
+    comparables (6 sold):     670K / 690K / 710K / 766,990 / 775K / 799K
+    sorted-median:            (710K + 766,990) / 2 = $738,495
+    avg_concession_pct:       3.21%
+    offerNear from comps:     $738,495 × 0.9679 = $714,789
+    tax-match samples (4):    670K / 710K / 799K / 940K
+    tax-match median:         (710K + 799K) / 2 = $754,500
+    offerNear from tax-match: $754,500 × 0.9679 = $730,281
+    budgetMax:                $900,000
+
+  Groups:
+    1. EMAIL render — 8/8 PASS
+       • For-Sale label = "For Sale" (1.1)
+       • Comp narration cites $738,495 / $900,000 / $714,789 / 3.21% (1.2-1.5)
+       • Tax narration cites $754,500 / $730,281 (1.6-1.7)
+       • No assessment framing regression (1.8)
+    2. LEAD-PAGE render — 8/8 PASS
+       • For-Sale label = "For Sale" (2.1)
+       • Comp narration cites same numbers as email (2.2-2.4)
+       • Tax narration cites same numbers as email (2.5-2.6)
+       • Stats sections all render (2.7)
+       • For Sale tiles have photos + clickable slug links (Chunk 3
+         intact) (2.8)
+    3. Shared helpers (in-process) — 6/6 PASS
+       • Median + offerNear computations match expected exactly (3.1, 3.2, 3.4, 3.5)
+       • Text contains all required figures (3.3, 3.6)
+    4. No-fabrication / Rule Zero — 4/4 PASS
+       • Thin comp data (n<3) → narration OMITTED entirely (4.1)
+       • Missing avg_concession_pct → median + budget only, NO
+         invented offer figure (4.2)
+       • Missing budget → median only, no positioning clause (4.3)
+       • Empty tax-match samples → narration OMITTED (4.4)
+    5. IN-CHAT tile probe (Chunk 2b/3/4 no-regression) — 1/1 PASS
+    6. Cross-surface number equality — 4/4 PASS
+       • $738,495 median appears on EMAIL + LEAD (6.1)
+       • $714,789 offer appears on EMAIL + LEAD (6.2)
+       • $754,500 tax median appears on EMAIL + LEAD (6.3)
+       • $730,281 tax offer appears on EMAIL + LEAD (6.4)
+    7. Seller no-regression — 17/17 PASS
+       • 13 byte-unchanged files (buyer-tax-match, tax-band SQL,
+         seller matchers, plan-email route, useCharlie, prompts,
+         tools, ComparableCard, SellerEstimateBlock, CharlieLeadEstimate,
+         seller-estimate route)
+       • Seller email still renders sellerEstimate.comparables (7.S1)
+       • Seller email retains Property Estimate price card (7.S2)
+       • Seller email does NOT use buyer "For Sale" label (7.S3)
+       • Seller email does NOT carry buyer narration phrasing (7.S4)
+    8. EMAIL stats no-regression — 4/4 PASS
+       • Market Intelligence, Offer Intelligence, Price by Home Type,
+         Tax-Matched SOLD framing all intact
+
+  SUMMARY: 49 of 49 PASS.
+
+### TSC + byte-unchanged
+
+  npx tsc --noEmit → exit 0
+  Files edited (3):
+    app/charlie/components/ResultsPanel.tsx              FIX 1+2+3 in-chat
+    lib/email/charlie-plan-email-html.ts                 FIX 1+2+3 email
+    components/admin-homes/lead-workbench/PlanRenderer.tsx FIX 1+2+3 lead
+  Files created (2):
+    lib/charlie/buyer-narration.ts                       shared narration helpers
+    scripts/buyer-narration-verify.ts                    live verify
+
+  Byte-unchanged this commit (13 files asserted in Group 7):
+    lib/charlie/buyer-tax-match.ts                       UNCHANGED
+    lib/estimator/tax-band-sold-query.ts                 UNCHANGED
+    lib/estimator/home-comparable-matcher-sales.ts       UNCHANGED
+    lib/estimator/condo-comparable-matcher-sales.ts      UNCHANGED
+    app/api/charlie/plan-email/route.ts                  UNCHANGED
+    app/api/charlie/buyer-tax-match/route.ts             UNCHANGED
+    app/api/charlie/seller-estimate/route.ts             UNCHANGED
+    app/charlie/hooks/useCharlie.ts                      UNCHANGED
+    app/charlie/lib/charlie-prompts.ts                   UNCHANGED
+    app/charlie/lib/charlie-tools.ts                     UNCHANGED
+    app/charlie/components/ComparableCard.tsx            UNCHANGED
+    app/charlie/components/SellerEstimateBlock.tsx       UNCHANGED
+    components/dashboard/CharlieLeadEstimate.tsx         UNCHANGED
+
+  S1 zero-diff (admin/page, api/chat, agents):           UNCHANGED.
+
+### Operator-visible outcome
+
+  Before: For Sale section was operator-invisible (in-chat label
+          "Homes in Whitby · 10 found", email/lead "Matched Listings
+          (N)"). Comparable Sold + Tax-Matched were bare tile lists
+          with no per-section price narration.
+  After:  For Sale clearly labeled on all 3 surfaces. Comparable Sold
+          shows a green-tinted narration line citing real median +
+          buyer budget + suggested offer (median minus avg concession).
+          Tax-Matched shows a blue-tinted narration line citing the
+          tax-cluster median + value anchor. Same numbers appear on
+          all 3 surfaces for the same buyer plan (cross-surface
+          convergence). Sparse data → narration OMITTED entirely
+          (Rule Zero, no fabrication).
+
+### Named follow-ups (out of scope for this chunk)
+
+  - Future tax-band tightening (vary TAX_BAND_PCT for buyer-specific
+    backtest) — separate workstream.
+  - Welcome-email dedup-race (recon CHUNK A) — separate workstream.
+  - In-chat layout adjustment: Best Time + Strategy Summary live
+    inside the PlanDocument plan card while email + lead surface
+    them as standalone sections. Surface-uniform standalone sections
+    in-chat would be a design choice; not addressed here.

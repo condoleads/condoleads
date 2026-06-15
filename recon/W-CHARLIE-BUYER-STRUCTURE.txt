@@ -1,0 +1,385 @@
+W-CHARLIE-BUYER-STRUCTURE — RECON
+Generated: 2026-06-15 (UTC)
+Scope: confirm For Sale (active matched listings) regression status,
+       confirm stats not regressed, check comp-section narration,
+       produce full structure spec per surface.
+Constraints: read-only — no edits, no commits, no fixes.
+
+==========================================================================
+STEP 1 — What happened to FOR SALE (the regression)
+==========================================================================
+
+1.1 FOR SALE render code is STILL PRESENT on all 3 surfaces
+
+  IN-CHAT  app/charlie/components/ResultsPanel.tsx:122-161
+           `if (block.type === 'listings') { ... }`
+           Renders one tile per matched listing — photo (media[0]),
+           list_price OR close_price, address, beds/baths/subtype,
+           click→ window.open(_slug, '_blank').
+           Header: `{block.label} · {block.listings.length} found`
+           Block pushed at useCharlie.ts:519:
+             setState(s => ({ ..., blocks: [...s.blocks,
+                                            { type:'listings',
+                                              label: data.label || 'Matched Listings',
+                                              listings: data.listings }] }))
+           `data.label` comes from the search_listings tool result
+           (app/api/charlie/route.ts:665):
+             `label: (cat + ' in ' + geoName + ' ' + sortLabel).trim()`
+           where cat ∈ {'Homes','Condos','Listings'} per propertyCategory.
+           → Live header reads e.g. "Homes in Whitby · 10 found" NOT
+             "For Sale" or "Matched Listings". This is a LABEL surprise
+             worth flagging — the operator may have scrolled past the
+             section without recognizing it as "For Sale".
+
+  EMAIL    lib/email/charlie-plan-email-html.ts:294-340 (listingsHtml)
+           Renders matched listings as tiles (photo + addr + meta +
+           list_price + "View →" link).
+           Header at L297: `${isBuyer ? 'Matched Listings' : 'Comparable Sales'} (${topListings.length})`
+           → Live header reads "Matched Listings (N)" — explicit.
+           Gated on topListings.length > 0.
+           Composed into the body at L715:
+             `${listingsHtml}` — appears AFTER conditionHtml, marketHtml,
+             offerIntelHtml, bestTimeHtml, summaryHtml, blocksHtml,
+             planCardHtml, profileHtml, priceCardHtml (null for buyer),
+             tierRailHtml (null for buyer) AND BEFORE comparableSoldHtml
+             + buyerTaxMatchHtml + competingHtml.
+
+  LEAD     components/admin-homes/lead-workbench/PlanRenderer.tsx:300
+   PAGE    `{n.isBuyer && hasListings && <TopListings listings={n.topListings} isBuyer={n.isBuyer} />}`
+           TopListings at L675-697 — renders with header
+             `{isBuyer ? 'Matched Listings' : 'Comparable Sales'} ({listings.length})`
+           Gated on `n.isBuyer && hasListings` where
+             `hasListings = n.topListings.length > 0` (L246).
+           Tiles use the Chunk-3 BuyerListingTile (photo + slug-link +
+           dual-shape reads).
+
+1.2 NO commit deleted/renamed/buried the For-Sale section
+
+  git log -p across the 10 recent buyer-stack commits shows NO
+  deletion of `block.type === 'listings'` (in-chat), of `listingsHtml`
+  (email), or of `<TopListings>` (lead page). Across:
+    8e95585 (FINETUNE-FIX), af4ebb2 (EMAIL-FIX), 09139a5 (LEADS-FIX),
+    d1844d5 (CHUNK2), 6b4323e (INCHAT-FIX), 7502066 (CHUNK3),
+    79f1b21 (CHUNK4), 5cc75dc (CHUNK5):
+    the For-Sale render block at each surface is byte-equivalent in
+    SHAPE to its pre-stack state. Chunk 4 raised the lead-page
+    persistence slice from 5 to 10 (so the cap matches in-chat +
+    email), but the render gate (`hasListings = topListings.length > 0`)
+    is unchanged.
+
+1.3 The operator's perceived "regression" is structural/optical, not a
+    code deletion
+
+  Likely causes given the screenshots and current code:
+
+  (a) ORDER-AND-HEIGHT effect on in-chat:
+      Conversation order at render time follows tool-call order:
+        analytics → listings (For Sale) → comparables (Comp Sold +
+        Tax-Matched sibling per Chunk 5) → plan (PlanDocument card)
+      The Comp Sold + Tax-Matched sibling section is now LARGE (12
+      tiles × 3 lines each + tax band rail + narration row). On a
+      mobile-height viewport, scrolling down from the analytics
+      block lands the user mid-comp-sold; For-Sale sits ABOVE that
+      and is easy to miss.
+
+  (b) LABEL surprise on in-chat:
+      For-Sale section header is "Homes in Whitby · 10 found" — NOT
+      "For Sale" or "Matched Listings". The operator may have looked
+      for the literal phrase "For Sale" and not found it. The block
+      IS present; the LABEL is just data-driven from search_listings.
+
+  (c) DATA EMPTY-GATE on lead page:
+      Lead-page TopListings is gated `n.isBuyer && hasListings` where
+      `hasListings = n.topListings.length > 0`. If plan_data
+      .topListings is empty for the lead in question, the section is
+      ABSENT. Pre-Chunk-4 buyer leads were capped at 5 in plan_data
+      persistence; if the LLM didn't populate topListings (rare), the
+      lead page section is empty.
+
+  (d) DATA EMPTY-GATE on email:
+      listingsHtml gates on `topListings.length > 0`. If the POST
+      body's `listings` field is empty (e.g. search_listings returned
+      0 — unlikely but possible), the section is suppressed.
+
+==========================================================================
+STEP 2 — Stats sections did NOT regress
+==========================================================================
+
+  Per-surface confirmation of the 5 stats sections (Market Intel,
+  Offer Intel, Best Time, Price by Home Type, strategy summary):
+
+  IN-CHAT  app/charlie/components/ResultsPanel.tsx
+    block.type==='analytics' branch (L86-120):
+      • "Market Intelligence · {geoName}" header + 6 metric tiles
+        (Median PSF / Avg DOM / Sale-to-List / Active / Sold 90d /
+        Absorption)                                        PRESENT ✓
+      • Market-condition pill                              PRESENT ✓
+      • BuyerOfferBlock (L117), gated on
+        `!hasSellerEstimate`, renders:
+          – Offer Intelligence (Offer At / Avg Room /
+            Decide In)                                     PRESENT ✓
+          – PSF benchmark line                             PRESENT ✓
+          – 24-month PSF Trend chart (condo)               PRESENT ✓
+          – 24-month Sale Price Trend chart (homes)        PRESENT ✓
+          – Price by Bedroom Type table (condo)            PRESENT ✓
+          – Price by Home Type table (homes)               PRESENT ✓
+    Strategy summary: lives inside the plan card (PlanDocument), as
+      a rendered prose block within the plan-result section.
+                                                           PRESENT ✓
+    Best Time to Buy: PlanDocument:232-238 — inside the plan card.
+                                                           PRESENT ✓
+
+  EMAIL    lib/email/charlie-plan-email-html.ts
+    Composed into body at L705-720, in order:
+      • conditionHtml (market-condition pill at L130-137) PRESENT ✓
+      • marketHtml (L139-195) — Market Intelligence grid
+        (6 metrics) + insight-seasonal Best Time +
+        Price by Home Type table (L175-185)                PRESENT ✓
+      • offerIntelHtml (L198-220) — Offer Intelligence    PRESENT ✓
+      • bestTimeHtml (L225-235)                           PRESENT ✓
+      • summaryHtml (L238-249) — strategy summary         PRESENT ✓
+      • blocksHtml (analytics + buildings + rankings)     PRESENT ✓
+      • planCardHtml (plan card with buyer profile)       PRESENT ✓
+      • profileHtml — buyer profile fields                PRESENT ✓
+
+  LEAD     components/admin-homes/lead-workbench/PlanRenderer.tsx:286-291
+   PAGE      • <MarketIntel> (L287)                       PRESENT ✓
+             • <OfferIntel> (L288)                        PRESENT ✓
+             • <BestTime> (L289)                          PRESENT ✓
+             • <SubtypeBreakdown> (L290) — Price by Home Type
+                                                           PRESENT ✓
+             • <Summary> (L291) — strategy summary        PRESENT ✓
+             • <Profile> (L292)                           PRESENT ✓
+
+  → NONE of the 5 stats sections is regressed on any surface.
+    The fix must NOT alter these sections.
+
+==========================================================================
+STEP 3 — Narration state on Comparable Sold + Tax-Matched
+==========================================================================
+
+3.1 Comparable Sold — bare tile list, NO offer narration
+
+  EMAIL  lib/email/charlie-plan-email-html.ts:367-407
+    Header:     "Comparable Sold (N)" (L370)
+    Subtitle:   NONE — header sits directly above tiles
+    Tiles:      photo + tier chip + addr + meta + close_price +
+                "Sold →" affordance
+    Narration:  NONE. No "median $X → suggested offer $Y" line, no
+                cited offer figure.
+
+  LEAD   components/admin-homes/lead-workbench/PlanRenderer.tsx:704-719
+   PAGE  BuyerCompSold
+    Header:     "Comparable Sold (N)" (L709)
+    Subtitle:   L711 "Recently sold listings in this geo + price band —
+                real transaction evidence alongside the active matched
+                listings." (descriptive, NOT a cited median or offer)
+    Tiles:      BuyerListingTile (photo + slug-link + addr + meta +
+                close_price + "Sold" label)
+    Narration:  NONE. The subtitle frames the section but cites no
+                numbers.
+
+  IN-CHAT  app/charlie/components/ResultsPanel.tsx:422-433
+    Header:     "Comparable Sold · N found" (L424)
+    Subtitle:   NONE
+    Tiles:      ComparableCard (per-tile photo + addr + price +
+                meta + temperature/quality chip)
+    Narration:  NONE.
+
+  STRATEGY SUMMARY connection: Chunk 5 prompt edit (charlie-prompts.ts:
+   58+) instructs the LLM to cite comparable-sold median + offer
+   positioning in the 3-4 sentence summary at the top of the plan
+   card. That narration sits SEPARATE from the Comparable Sold section
+   itself; the section header + tiles never narrate.
+
+3.2 Tax-Matched — bare list + tax-band rail, NO offer narration
+
+  EMAIL  lib/email/charlie-plan-email-html.ts:521-578 (post Chunk 4)
+    Header:     "Tax-Matched (N)" (L542)
+    Subtitle:   L543 "Recently sold homes matched by property-tax band
+                — real transaction evidence anchored to the X of Y
+                matched listings carrying tax data." (descriptive,
+                cites the matched-listing fraction but NOT median or
+                offer)
+    Rail:       L544-549 "Tax band (derived) $low – $high /yr"
+    Tiles:      photo + addr + meta + tax/yr (on meta) +
+                close_price (emerald) + "Sold" label
+    Narration:  NONE that ties comps to an offer figure. The band
+                rail explains how the comps were FILTERED, not what
+                they imply for the buyer's pricing.
+
+  LEAD   PlanRenderer.tsx:721-779 (post Chunk 4)
+   PAGE  BuyerTaxMatched
+    Header:     "Tax-Matched (N)" (L741)
+    Subtitle:   L742-744 "Recently sold homes matched by property-tax
+                band — real transaction evidence anchored to the X of
+                Y matched listings carrying tax data."
+    Rail:       L745-754 "Tax band (derived) $low–$high /yr"
+    Tiles:      BuyerListingTile kind='sold'
+    Narration:  NONE.
+
+  IN-CHAT  app/charlie/components/ResultsPanel.tsx:680-723 BuyerTaxMatchInChat
+    Header:     `Tax-Matched · ${samples.length} sold comp${...}` (L684)
+    Subtitle:   L686-690 "Recently sold homes matched by property-tax
+                band — real transaction evidence anchored to the X of
+                Y matched listings carrying tax data."
+    Rail:       L693-700 "Tax band (derived) $low – $high /yr"
+    Tiles:      ComparableCard per sample
+    Footer:     L721-723 "Band derived from your matched-listings tax
+                median, ±{pct}%. Cap: 6 comps."
+    Narration:  NONE that cites an offer or median connection.
+
+  → Tax-Matched is NOT showing assessment / "/yr what-you'll-pay"
+    framing post Chunk 4 (operator's prior concern is fixed). The
+    framing is correctly SOLD-COMP. But there's no narration tying
+    the tax-band cluster to an OFFER POSITIONING — that's the new
+    gap.
+
+3.3 Data available to author narration
+
+  Chunk 5 prompt edit already establishes the LLM cites comp-sold
+  median + offer figure in the STRATEGY SUMMARY. The same numbers
+  CAN be exposed inside the section subtitles directly (computed
+  server-side or rendered from the comp set already in scope).
+
+  AT EMAIL/LEAD render time:
+    • comparables array is in scope at the comparableSoldHtml +
+      BuyerCompSold call sites → median(close_price) is trivial.
+    • buyerTaxMatch.samples + plan.budgetMax are both in scope at
+      buyerTaxMatchHtml + BuyerTaxMatched call sites → median, plus
+      gap-to-budget, plus avg_concession_pct (already in
+      plan_data.analytics) → suggested offer = median ×
+      (1 − avg_concession_pct/100), or some other simple derivation.
+
+  AT IN-CHAT render time:
+    • state.comparables is in scope at the comparables-block render.
+    • The /api/charlie/buyer-tax-match endpoint returns the SAME
+      samples + band as email/lead.
+    • analyticsRef.current.avg_concession_pct is in scope.
+
+  → All inputs available on every surface. Narration is a render-
+    layer addition; no new server query required.
+
+==========================================================================
+STEP 4 — Full ordered structure spec (per surface)
+==========================================================================
+
+  Operator-locked spec for the BUYER PLAN, all 3 surfaces, in order:
+
+  ┌────────────────────────────────────────────────────────────────────┐
+  │ #  │ Section                  │ Status across surfaces             │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  1 │ Market Intelligence      │ PRESENT — in-chat ✓ email ✓ lead ✓  │
+  │    │   (condition pill + 6    │                                    │
+  │    │    metrics grid)         │                                    │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  2 │ Offer Intelligence       │ PRESENT — in-chat ✓ email ✓ lead ✓  │
+  │    │   (Offer At / Concession │                                    │
+  │    │    / Decide In)          │                                    │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  3 │ Best Time to Buy         │ PRESENT — in-chat ✓ (inside        │
+  │    │   (best month +          │           PlanDocument)            │
+  │    │    seasonal rank)        │           email ✓ lead ✓           │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  4 │ Price by Home Type /     │ PRESENT — in-chat ✓ (inside        │
+  │    │   Bedroom Type           │           BuyerOfferBlock)         │
+  │    │   (subtype table)        │           email ✓ (inside          │
+  │    │                          │           marketHtml) lead ✓       │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  5 │ Strategy Summary         │ PRESENT — Chunk 5 added comp       │
+  │    │   (3-4 sentence prose,   │           citation requirement to  │
+  │    │    NOW comp-grounded     │           the LLM-generated text   │
+  │    │    per Chunk 5)          │                                    │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  6 │ Buyer Profile            │ PRESENT — in-chat ✓ (inside        │
+  │    │   (budget / type /       │           PlanDocument)            │
+  │    │    timeline)             │           email ✓ lead ✓           │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  7 │ FOR SALE                 │ PRESENT — in-chat ✓ (block.type    │
+  │    │   (active matched        │           ='listings', label data- │
+  │    │    listings, what the    │           driven "Homes in Whitby  │
+  │    │    buyer can buy)        │           · N found")              │
+  │    │                          │           email ✓ ("Matched        │
+  │    │                          │           Listings (N)")           │
+  │    │                          │           lead ✓ ("Matched         │
+  │    │                          │           Listings (N)")           │
+  │    │                          │   FLAG: in-chat label is NOT       │
+  │    │                          │   "For Sale" — operator-visible    │
+  │    │                          │   discoverability gap.             │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  8 │ COMPARABLE SOLD          │ PRESENT (tiles) — in-chat ✓        │
+  │    │   (real solds informing  │           email ✓ lead ✓           │
+  │    │    the offer)            │   NEEDS-NARRATION: section is      │
+  │    │                          │   currently bare list + Sold       │
+  │    │                          │   label. No median/offer line      │
+  │    │                          │   inside the section.              │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │  9 │ TAX-MATCHED              │ PRESENT (tiles + band rail) —      │
+  │    │   (solds matched by      │           in-chat ✓ email ✓ lead ✓ │
+  │    │    tax band, validates   │   FRAMING ✓ — correctly SOLD-comp   │
+  │    │    value)                │   post Chunk 4 (not assessment).   │
+  │    │                          │   NEEDS-NARRATION: section is      │
+  │    │                          │   currently band rail + tiles, no  │
+  │    │                          │   offer/value-validation line.     │
+  ├────┼──────────────────────────┼────────────────────────────────────┤
+  │ 10 │ Plan Card / CTA          │ PRESENT — in-chat ✓ (PlanDocument) │
+  │    │   (lead-capture form +   │           email ✓ (planCardHtml +  │
+  │    │    agent block)          │           CTA)                     │
+  │    │                          │           lead ✓ (Profile +        │
+  │    │                          │           AgentCard)               │
+  └────┴──────────────────────────┴────────────────────────────────────┘
+
+  CROSS-SURFACE OBSERVATIONS:
+
+  • All 3 surfaces have ALL 10 sections rendered (no structural
+    regression). Most likely operator-perceived "regression" is the
+    in-chat For-Sale section being unrecognized due to its data-
+    driven label ("Homes in Whitby · 10 found", NOT "For Sale").
+
+  • The 3 surfaces have CONSISTENT section ORDER (stats → summary →
+    profile → For Sale → Comp Sold → Tax-Matched → CTA). Email +
+    lead align exactly; in-chat follows the same conversation order
+    but the plan card is at the END (after comparables/tax-match),
+    not before.
+
+  • TWO sections need narration:
+    – Comparable Sold: add a "Median sold $X — at your $A budget,
+      offering near $B is well-positioned" line (or similar)
+      inside or directly under the section subtitle.
+    – Tax-Matched: add a "Tax-band cluster suggests homes in this
+      tax range sold around $Y — validates a fair price near $Z
+      for what you're shopping" line.
+
+  • In-chat For-Sale label fix worth considering: change "Homes in
+    Whitby · N found" to "For Sale (matched) · N found" or
+    "Matched Listings · N found" for surface consistency with email
+    + lead.
+
+==========================================================================
+FLAGGED / UNVERIFIABLE
+==========================================================================
+  - Operator's screenshots not accessible from here; the "missing
+    For Sale" claim is interpreted as a discoverability issue per
+    code evidence (sections are present in render code on all 3
+    surfaces). If the operator's specific lead has empty
+    plan_data.topListings (e.g. lead pre-dating Chunk 4's cap raise
+    AND the LLM didn't populate the field), the lead-page section
+    would genuinely be absent for THAT lead. A live SAVEPOINT read
+    on the exact lead would confirm. Not pursued here per directive.
+  - In-chat Best Time + Strategy Summary live INSIDE the
+    PlanDocument plan card — they don't appear as standalone sections
+    in ResultsPanel like email + lead do. If the operator wants
+    surface-uniform standalone sections, that's a design choice
+    flagged for the fix.
+  - Avg-concession-pct for the offer derivation comes from
+    analytics.avg_concession_pct, which is populated only for some
+    geos (depending on get_market_analytics's data coverage). If
+    missing, the offer line must omit the concession-derived figure
+    rather than fabricate.
+  - The Chunk 5 anti-hallucination clause already governs the
+    LLM's summary citations; per-section narration in email/lead
+    would be RENDER-LAYER computation (server-side), not LLM-
+    generated, so no hallucination risk there — only data-
+    availability fallback questions (median-of-zero, etc.).
+
+No fix attempted. Stopping per directive.

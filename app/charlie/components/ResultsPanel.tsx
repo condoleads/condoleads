@@ -17,6 +17,8 @@ import BuildingCard from './BuildingCard'
 // "assessment / what you'll pay yearly" framing.
 import type { BuyerTaxMatch } from '@/lib/charlie/buyer-tax-match'
 import { BUYER_COMP_SOLD_CAP } from '@/lib/charlie/buyer-tax-match'
+// W-CHARLIE-BUYER-NARRATION (2026-06-15): shared narration builders.
+import { buildCompSoldNarration, buildTaxMatchNarration } from '@/lib/charlie/buyer-narration'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -120,13 +122,22 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           )
         }
 
-        /* ΓöÇΓöÇ LISTINGS ΓöÇΓöÇ */
+        /* ΓöÇΓöÇ LISTINGS (For Sale) ΓöÇΓöÇ */
         if (block.type === 'listings') {
+          // W-CHARLIE-BUYER-NARRATION (2026-06-15): clear "For Sale"
+          // headline + the original geo label as secondary. The block
+          // label (data-driven from search_listings, e.g. "Homes in
+          // Whitby") was the operator-visible discoverability gap.
+          // Tiles and data shape unchanged from Chunk 3.
+          const hasSellerEstimate = (blocks||[]).some((b: any) => b.type === 'sellerEstimate')
           return (
             <div key={_bi}>
-              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 12, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                {block.label} ┬╖ {block.listings.length} found
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 4, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                {hasSellerEstimate ? `${block.label}` : 'For Sale'} ┬╖ {block.listings.length} found
               </div>
+              {!hasSellerEstimate && block.label && (
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 12 }}>{block.label}</div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {block.listings.map((listing: any) => {
                   const url = listing._slug || ('/' + (listing.listing_key || '').toLowerCase())
@@ -427,16 +438,38 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           // AFTER blocks.map closed → below the plan card, hard to
           // find. Now it's a sibling of Comparable Sold within the
           // same conversation block.
+          // W-CHARLIE-BUYER-NARRATION (2026-06-15): offer narration —
+          // shared builder. Reads analytics (most-recent snapshot) for
+          // avg_concession_pct + plan?.budgetMax. Omits clause when
+          // data is thin (Rule Zero).
+          const _aSnap = analytics[analytics.length - 1] || null
+          const _budgetMax = plan?.budgetMax
+          const _avgConc = _aSnap?.avg_concession_pct ?? null
+          const _compNarr = buildCompSoldNarration({
+            comparables: block.listings,
+            budgetMax: _budgetMax,
+            avgConcessionPct: _avgConc,
+          })
           return (
             <div key={_bi}>
               <SectionHeader title={`Comparable Sold ┬╖ ${block.listings.length} found`} />
+              {_compNarr.text && (
+                <div style={{ marginBottom: 12, padding: '10px 12px', background: 'rgba(16,185,129,0.10)', border: '1px solid rgba(16,185,129,0.30)', borderRadius: 10, fontSize: 12, color: '#a7f3d0', lineHeight: 1.5 }}>
+                  {_compNarr.text}
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {block.listings.map((c: any, i: number) => (
                   <ComparableCard key={(c.listingKey || c.listing_key) || i} comparable={c} isLease={block.intent === 'lease'} />
                 ))}
               </div>
               <div style={{ marginTop: 20 }}>
-                <BuyerTaxMatchInChat listingGroups={listingGroups} geoContext={geoContext} />
+                <BuyerTaxMatchInChat
+                  listingGroups={listingGroups}
+                  geoContext={geoContext}
+                  budgetMax={_budgetMax}
+                  avgConcessionPct={_avgConc}
+                />
               </div>
             </div>
           )
@@ -637,9 +670,11 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
 // Hits /api/charlie/buyer-tax-match whenever the matched-listings
 // signature changes; renders the SAME shape email + lead page render.
 // Sold-comp framing (NOT "what you'll pay yearly").
-function BuyerTaxMatchInChat({ listingGroups, geoContext }: {
+function BuyerTaxMatchInChat({ listingGroups, geoContext, budgetMax, avgConcessionPct }: {
   listingGroups: { label: string; listings: any[] }[]
   geoContext: { geoType: string; geoId: string; geoName: string } | null
+  budgetMax?: number | null
+  avgConcessionPct?: number | null
 }) {
   const [btm, setBtm] = useState<BuyerTaxMatch | null>(null)
   const [loading, setLoading] = useState(false)
@@ -679,6 +714,10 @@ function BuyerTaxMatchInChat({ listingGroups, geoContext }: {
   }
   if (!btm) return null
 
+  // W-CHARLIE-BUYER-NARRATION (2026-06-15): value narration line.
+  const _taxNarr = btm.isEmpty
+    ? { text: null }
+    : buildTaxMatchNarration({ samples: btm.samples, budgetMax: budgetMax ?? null, avgConcessionPct: avgConcessionPct ?? null })
   return (
     <div>
       <SectionHeader title={`Tax-Matched · ${btm.isEmpty ? 0 : btm.samples.length} sold comp${btm.isEmpty || btm.samples.length === 1 ? '' : 's'}`} />
@@ -687,6 +726,11 @@ function BuyerTaxMatchInChat({ listingGroups, geoContext }: {
           ? (btm.reason || 'No sold comps matched the derived tax band.')
           : `Recently sold homes matched by property-tax band — real transaction evidence anchored to the ${btm.withTaxCount} of ${btm.totalCount} matched listings carrying tax data.`}
       </div>
+      {_taxNarr.text && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', background: 'rgba(59,130,246,0.10)', border: '1px solid rgba(59,130,246,0.30)', borderRadius: 10, fontSize: 12, color: '#bfdbfe', lineHeight: 1.5 }}>
+          {_taxNarr.text}
+        </div>
+      )}
       {!btm.isEmpty && btm.taxBand && (
         <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>Tax band (derived)</span>

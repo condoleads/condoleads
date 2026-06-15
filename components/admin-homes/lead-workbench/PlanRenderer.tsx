@@ -36,6 +36,8 @@ import { buildSellerEstimateView } from '@/lib/charlie/seller-estimate-view'
 // SAME helper so all four surfaces produce byte-identical hrefs
 // (walliam.ca-resolvable descriptive slug, NOT bare-MLS 404).
 import { buildPropertySlug } from '@/lib/utils/property-slug'
+// W-CHARLIE-BUYER-NARRATION (2026-06-15): shared narration builders.
+import { buildCompSoldNarration, buildTaxMatchNarration } from '@/lib/charlie/buyer-narration'
 
 interface Agent {
   id?: string
@@ -305,8 +307,16 @@ function PlanRenderer({ lead }: { lead: Lead }) {
             .buyerTaxMatch from deriveBuyerTaxMatch). Honest empty-state
             on missing/empty (the BuyerCompSold/BuyerTaxMatch components
             return null when there's no data). */}
-        {n.isBuyer && <BuyerCompSold comparables={lead.plan_data?.comparables} />}
-        {n.isBuyer && <BuyerTaxMatched taxMatch={lead.plan_data?.buyerTaxMatch} />}
+        {n.isBuyer && <BuyerCompSold
+          comparables={lead.plan_data?.comparables}
+          budgetMax={n.budgetMax}
+          avgConcessionPct={a?.avg_concession_pct}
+        />}
+        {n.isBuyer && <BuyerTaxMatched
+          taxMatch={lead.plan_data?.buyerTaxMatch}
+          budgetMax={n.budgetMax}
+          avgConcessionPct={a?.avg_concession_pct}
+        />}
         {!n.isBuyer && <SellerEstimateMount lead={lead} />}
         {lead.source_url && <SourceUrl url={lead.source_url} />}
         {lead.agents && <AgentCard agent={lead.agents} />}
@@ -676,7 +686,11 @@ function TopListings({ listings, isBuyer }: { listings: any[]; isBuyer: boolean 
   return (
     <section>
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-        {isBuyer ? 'Matched Listings' : 'Comparable Sales'} ({listings.length})
+        {/* W-CHARLIE-BUYER-NARRATION (2026-06-15): "Matched Listings" →
+           "For Sale" so the section reads consistently as the active-
+           buyable surface alongside email + in-chat. Seller path label
+           ("Comparable Sales") unchanged. */}
+        {isBuyer ? 'For Sale' : 'Comparable Sales'} ({listings.length})
       </h3>
       <div className="flex flex-col gap-2">
         {/* W-CHARLIE-BUYER-CHUNK3 (2026-06-15): matched-listings tiles
@@ -701,14 +715,23 @@ function TopListings({ listings, isBuyer }: { listings: any[]; isBuyer: boolean 
 // — photo, slug-driven link, dual-shape fields. Same tile pattern the
 // matched-listings section uses; one consistent buyer tile shape across
 // the entire lead page.
-function BuyerCompSold({ comparables }: { comparables: any }) {
+function BuyerCompSold({ comparables, budgetMax, avgConcessionPct }: { comparables: any; budgetMax?: number | null; avgConcessionPct?: number | null }) {
   if (!Array.isArray(comparables) || comparables.length === 0) return null
+  // W-CHARLIE-BUYER-NARRATION (2026-06-15): offer narration line from the
+  // shared builder. Cites real median + offer figure if avg_concession_pct
+  // is available; omits the offer clause if not (no fabrication).
+  const narr = buildCompSoldNarration({ comparables, budgetMax: budgetMax ?? null, avgConcessionPct: avgConcessionPct ?? null })
   return (
     <section>
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
         Comparable Sold ({comparables.length})
       </h3>
       <p className="text-xs text-gray-500 mb-3">Recently sold listings in this geo + price band — real transaction evidence alongside the active matched listings.</p>
+      {narr.text && (
+        <div className="mb-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 leading-relaxed">
+          {narr.text}
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         {comparables.map((c: any, i: number) => (
           <BuyerListingTile key={c.listing_key || c.listingKey || 'idx-' + i} listing={c} kind="sold" index={i} />
@@ -725,7 +748,7 @@ function BuyerCompSold({ comparables }: { comparables: any }) {
 // BuyerListingTile that matched-listings + comp-sold sections use →
 // photo + slug-driven link, dual-shape reads, ONE consistent buyer
 // tile shape across every section of the buyer lead page.
-function BuyerTaxMatched({ taxMatch }: { taxMatch: any }) {
+function BuyerTaxMatched({ taxMatch, budgetMax, avgConcessionPct }: { taxMatch: any; budgetMax?: number | null; avgConcessionPct?: number | null }) {
   if (!taxMatch || typeof taxMatch !== 'object') return null
   if (taxMatch.isEmpty) {
     return (
@@ -739,12 +762,19 @@ function BuyerTaxMatched({ taxMatch }: { taxMatch: any }) {
     )
   }
   const samples = Array.isArray(taxMatch.samples) ? taxMatch.samples : []
+  // W-CHARLIE-BUYER-NARRATION (2026-06-15): value narration line.
+  const narr = buildTaxMatchNarration({ samples, budgetMax: budgetMax ?? null, avgConcessionPct: avgConcessionPct ?? null })
   return (
     <section>
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tax-Matched ({samples.length})</h3>
       <p className="text-xs text-gray-500 mb-3">
         Recently sold homes matched by property-tax band — real transaction evidence anchored to the {taxMatch.withTaxCount} of {taxMatch.totalCount} matched listings carrying tax data.
       </p>
+      {narr.text && (
+        <div className="mb-3 p-3 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-900 leading-relaxed">
+          {narr.text}
+        </div>
+      )}
       {taxMatch.taxBand && (
         <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-3 flex items-baseline justify-between">
           <span className="text-xs text-slate-500">Tax band (derived)</span>
