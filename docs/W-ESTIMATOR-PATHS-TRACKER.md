@@ -3462,3 +3462,155 @@ single source of truth at lib/charlie/buyer-tax-match.ts.
     all API routes after a code edit). Separate workstream.
   - Welcome-email dedup-race + fire-and-forget (recon CHUNK A) —
     still separate workstream, unchanged.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-BUYER-INCHAT-FIX — ComparableCard dual-shape + empty-block gates (2026-06-15)
+
+Chunk 2 shipped buyer Comparable Sold + Tax-Matched across all 3 surfaces.
+Email + lead page rendered correctly (dual-shape readers); IN-CHAT
+rendered 6 EMPTY tiles + "0 found" header because ComparableCard reads
+camelCase only and the buyer comp data is snake_case (raw mls_listings
+columns from /api/geo-listings via get_comparables, passed through
+unchanged). Root cause confirmed in recon W-CHARLIE-BUYER-INCHAT-EMPTY.txt.
+
+### STEP 1 — ComparableCard dual-shape (Option A, surgical)
+
+  app/charlie/components/ComparableCard.tsx
+    L75-100: new normalized locals at the top of the component. Every
+      camelCase primary read gets a `|| c.snake_case` (strings) or
+      `?? c.snake_case` (numbers/prices, so 0 is not masked) fallback.
+      Mirrors charlie-plan-email-html.ts:372-394 + PlanRenderer.tsx:
+      604-609 verbatim — ComparableCard is now the third dual-shape
+      consumer (convergence across all 3 surfaces).
+        price        = c.adjustedPrice ?? c.adjusted_price ??
+                       c.closePrice    ?? c.close_price    ??
+                       c.listPrice     ?? c.list_price
+        unparsedAddress = c.unparsedAddress || c.unparsed_address
+        bedrooms     = c.bedrooms        ?? c.bedrooms_total
+        bathrooms    = c.bathrooms       ?? c.bathrooms_total_integer
+        daysOnMarket = c.daysOnMarket    ?? c.days_on_market
+        closeDate    = c.closeDate       || c.close_date
+        listingKey   = c.listingKey      || c.listing_key
+        mediaUrl     = c.mediaUrl        || c.media?.[0]?.media_url
+                                          || c.media?.[0]?.url
+        unitNumber   = c.unitNumber      || c.unit_number
+        propertySubtype = c.propertySubtype || c.property_subtype
+        livingAreaRange = c.livingAreaRange || c.living_area_range
+    L107-126: handleClick now uses the normalized locals so the slug
+      build resolves for buyer comps too (pre-fix the slug builder
+      received all-undefined camelCase reads and returned null,
+      making buyer tiles non-clickable).
+    L137-138, 168, 188, 191-196: replaced all `c.camelCase` reads in
+      the JSX with the normalized locals.
+
+  Seller no-regression: camelCase remains the primary read; the
+  fallback only fires when the camelCase field is missing.
+
+### STEP 2 — empty-block gates ("0 found" cosmetic)
+
+  app/charlie/hooks/useCharlie.ts:610-619
+    Push site now requires `Array.isArray(data.listings) && data.listings.length > 0`.
+    Pre-fix the bare `data.listings` truthiness check allowed `[]`
+    through, producing a zero-length comparables block. After the
+    edit an empty get_comparables result is a silent no-op.
+
+  app/charlie/components/ResultsPanel.tsx:410-426
+    Defense-in-depth gate on the render branch:
+      `if (!block.listings || block.listings.length === 0) return null`
+    Suppresses any zero-length comparables block even if a stale
+    one slips past the push-site gate.
+
+  Tile-key fallback also updated at L420 to use
+  `c.listingKey || c.listing_key` so buyer comps don't all share
+  the same React key (`i`), which would warn in the console.
+
+### REAL-DOM VERIFY — Playwright (NOT import-only this time)
+
+  Dev server was wedged at start of this chunk. Killed + restarted
+  per directive ("if wedged, fix/restart it first, do NOT defer the
+  live verify again"). Restarted process served the homepage + API
+  in seconds. Verify driven via scripts/buyer-inchat-fix-verify.js
+  against the live dev server :3004 with headless Chromium.
+
+  PROBE SEAM: app/test-comparable-tile-probe/page.tsx — renders
+  ComparableCard with three side-by-side fixtures (seller camelCase,
+  buyer snake_case, hollow=no-fields) and is exempted from middleware's
+  comprehensive-site rewrite via the /test- prefix (middleware.ts:87).
+
+  RESULTS (20 of 20 PASS, full evidence in
+   recon/buyer-inchat-fix-verify.txt and screenshot
+   recon/buyer-inchat-fix-screenshots/1-all-fixtures.png):
+
+  SECTION 1 — BUYER snake_case fixture (THE FIX, real DOM via Playwright innerText)
+    B1 address "101 Buyer Snake St" rendered                  PASS
+       Playwright innerText: "Buyer (snake_case — the fix)
+       $705,000  101 Buyer Snake St  4 bed  3 bath  22d DOM"
+    B2 price "$705,000" rendered                              PASS
+    B3 "4 bed" rendered                                       PASS
+    B4 "3 bath" rendered                                      PASS
+    B5 "22d DOM" rendered                                     PASS
+    B6 buyer-photo.jpg image present (snake media[0])         PASS
+    B7 placeholder 🏠 NOT rendered (real photo wins)          PASS
+  SECTION 2 — SELLER camelCase fixture (NO-REGRESSION)
+    S1 address "888 Seller Cam St" rendered                   PASS
+    S2 price "$870,000" rendered                              PASS
+    S3 "3 bed" rendered                                       PASS
+    S4 "2 bath" rendered                                      PASS
+    S5 "18d DOM" rendered                                     PASS
+    S6 seller-photo.jpg image present (camelCase mediaUrl)    PASS
+  SECTION 3 — HOLLOW fixture (legitimate-empty path)
+    H1 hollow address fallback "—" rendered                   PASS
+    H2 no cross-contamination from other fixtures             PASS
+  SECTION 4 — runtime errors
+    R1 no console.error / pageerror during render             PASS
+  SECTION 5 — Empty-block gates (source asserts)
+    G1 useCharlie push requires data.listings.length > 0      PASS
+    G2 ResultsPanel render suppresses zero-length blocks      PASS
+  SECTION 6 — Byte-unchanged proofs (email + lead-page DID NOT MOVE)
+    U1 lib/email/charlie-plan-email-html.ts unchanged         PASS
+    U2 components/admin-homes/lead-workbench/PlanRenderer.tsx unchanged PASS
+    U3 app/api/charlie/plan-email/route.ts unchanged          PASS
+
+  SUMMARY: ALL PASS.
+
+### TSC + byte-unchanged
+
+  npx tsc --noEmit → exit 0
+  Files edited (3):
+    app/charlie/components/ComparableCard.tsx
+    app/charlie/hooks/useCharlie.ts
+    app/charlie/components/ResultsPanel.tsx
+  Files created (3, test/verify infra):
+    app/test-comparable-tile-probe/page.tsx
+    scripts/buyer-inchat-fix-verify.js
+  Backups taken before edit (timestamp 20260615_111309).
+  S1 zero-diff files (admin/page, api/chat, agents):     UNCHANGED.
+  Email + lead-page + plan-email-route + buyer-tax-match: UNCHANGED.
+  Charlie prompts + tools (from Chunk 2):                 UNCHANGED.
+
+### Operator-visible outcome
+
+  Before:  buyer in-chat Comparable Sold rendered 6 hollow tiles
+           (placeholder house icon + '—' price + '—' address) and a
+           "0 found" ghost header from a stale empty block.
+  After:   buyer in-chat Comparable Sold renders 6 POPULATED tiles
+           with real address + sold price + beds/bath/DOM + clickable
+           slug to the property page — exact same shape email + lead
+           page already showed. Stale empty blocks are suppressed at
+           both the push site and the render branch. Seller flow's
+           seller-estimate-shaped comps (camelCase) still render
+           correctly via the unchanged camelCase primary read.
+
+### Named follow-ups (out of scope for this fix)
+
+  - Dev-server resilience: the wedged-on-recompile state from Chunk
+    2's verify was killed + restarted cleanly here. The wedge itself
+    (Next.js dev compilation loop after rapid file edits) remains
+    unexplained and may recur — separate workstream.
+  - timeAgo() shows "-3 months ago" when closeDate is in the FUTURE
+    (test fixture has a 2026-08-15 date and "now" is 2026-06-15).
+    Cosmetic only; real production data has past close_date values
+    so this never surfaces. Trivial Math.max(0, …) fix when next
+    touching ComparableCard. NOT this chunk.
+  - Welcome-email dedup-race (recon CHUNK A) — still separate
+    workstream.

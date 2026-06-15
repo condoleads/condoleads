@@ -408,16 +408,25 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         }
 
         /* ΓöÇΓöÇ COMPARABLES (standalone, non-seller) ΓöÇΓöÇ */
-        if (block.type === 'comparables') { if ((blocks||[]).some((b) => b.type === 'sellerEstimate')) return null; return (
-          <div key={_bi}>
-            <SectionHeader title={`Comparable Sold ┬╖ ${block.listings.length} found`} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {block.listings.map((c: any, i: number) => (
-                <ComparableCard key={c.listingKey || i} comparable={c} isLease={block.intent === 'lease'} />
-              ))}
+        if (block.type === 'comparables') {
+          if ((blocks||[]).some((b) => b.type === 'sellerEstimate')) return null
+          // W-CHARLIE-BUYER-INCHAT-FIX (2026-06-15): defense-in-depth gate.
+          // The push site (useCharlie.ts:610-612) now refuses empty
+          // arrays, so this branch should not normally see length===0;
+          // keeping the gate prevents a stale or hand-injected empty
+          // block from rendering as "Comparable Sold · 0 found".
+          if (!block.listings || block.listings.length === 0) return null
+          return (
+            <div key={_bi}>
+              <SectionHeader title={`Comparable Sold ┬╖ ${block.listings.length} found`} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {block.listings.map((c: any, i: number) => (
+                  <ComparableCard key={(c.listingKey || c.listing_key) || i} comparable={c} isLease={block.intent === 'lease'} />
+                ))}
+              </div>
             </div>
-          </div>
-          ) }
+          )
+        }
 
         if (block.type === 'plan') {
           const p = block.data

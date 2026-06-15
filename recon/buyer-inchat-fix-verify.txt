@@ -1,0 +1,45 @@
+W-CHARLIE-BUYER-INCHAT-FIX VERIFY — 2026-06-15T15:45:58.335Z
+local base: http://localhost:3004
+────────────────────────────────────────────────────────────────────────────
+dev server API probe: 200 (tenant-config served).
+screenshot: C:\Condoleads\Project\recon\buyer-inchat-fix-screenshots\1-all-fixtures.png
+────────────────────────────────────────────────────────────────────────────
+SECTION 1 — BUYER snake_case fixture (THE FIX)
+PASS  B1: buyer tile renders address "101 Buyer Snake St" (NOT —)
+        → innerText: "Buyer (snake_case — the fix)\n$705,000\n101 Buyer Snake St\n4 bed\n3 bath\n22d DOM\n-3 months ago"
+PASS  B2: buyer tile renders price "$705,000" (NOT —)
+PASS  B3: buyer tile renders "4 bed" (visible text)
+PASS  B4: buyer tile renders "3 bath" (visible text)
+PASS  B5: buyer tile renders "22d DOM" (visible text)
+PASS  B6: buyer tile photo present (img with media_url from snake_case media[0])
+PASS  B7: buyer tile does NOT render placeholder house emoji (real photo wins)
+────────────────────────────────────────────────────────────────────────────
+SECTION 2 — SELLER camelCase fixture (NO-REGRESSION)
+PASS  S1: seller tile renders address "888 Seller Cam St"
+PASS  S2: seller tile renders price "$870,000"
+PASS  S3: seller tile renders "3 bed" (visible text)
+PASS  S4: seller tile renders "2 bath" (visible text)
+PASS  S5: seller tile renders "18d DOM" (visible text)
+PASS  S6: seller tile photo present (camelCase mediaUrl)
+────────────────────────────────────────────────────────────────────────────
+SECTION 3 — HOLLOW fixture (legitimate-empty path)
+PASS  H1: hollow tile renders address fallback "—"
+        → em-dash present
+PASS  H2: hollow tile does NOT render any concrete address
+        → no cross-contamination from other fixtures
+────────────────────────────────────────────────────────────────────────────
+SECTION 4 — runtime errors during render
+PASS  R1: no console.error / pageerror during probe page render
+        → clean
+────────────────────────────────────────────────────────────────────────────
+SECTION 5 — Empty-block gate (source asserts on the two gates)
+PASS  G1: useCharlie push site requires data.listings.length > 0
+PASS  G2: ResultsPanel comparables-render gate suppresses zero-length
+────────────────────────────────────────────────────────────────────────────
+SECTION 6 — Byte-unchanged proofs (email + lead-page must NOT have moved this commit)
+PASS  U1: lib/email/charlie-plan-email-html.ts unchanged this commit
+PASS  U2: components/admin-homes/lead-workbench/PlanRenderer.tsx unchanged this commit
+PASS  U3: app/api/charlie/plan-email/route.ts unchanged this commit
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: ALL PASS
+screenshots: C:\Condoleads\Project\recon\buyer-inchat-fix-screenshots/1-all-fixtures.png

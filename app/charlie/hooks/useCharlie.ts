@@ -607,7 +607,14 @@ export function useCharlie() {
     if (tool === 'get_seasonal_trends' && data.insight_seasonal) {
         setState(s => ({ ...s, rankings: [...s.rankings, { type: 'seasonal', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'seasonal', data }], activePanel: 'results' }))
     }
-    if (tool === 'get_comparables' && data.listings) {
+    if (tool === 'get_comparables' && Array.isArray(data.listings) && data.listings.length > 0) {
+      // W-CHARLIE-BUYER-INCHAT-FIX (2026-06-15): empty-array push
+      // suppressed. Previously `data.listings` was a bare truthiness
+      // check — `[]` (empty result from get_comparables) is truthy, so
+      // an empty comparables block could be pushed alongside a later
+      // populated block, producing the "Comparable Sold · 0 found"
+      // ghost header above the real tiles. Now we only push when at
+      // least one row is returned; an empty result silently no-ops.
       setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), blocks: [...s.blocks, { type: 'comparables', listings: data.listings, intent: '' }], activePanel: 'results' }))
     }
   }

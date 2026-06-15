@@ -1,0 +1,326 @@
+W-CHARLIE-BUYER-INCHAT-EMPTY — RECON
+Generated: 2026-06-15 (UTC)
+Scope: Chunk-2 buyer Comparable Sold renders REAL data in EMAIL + LEAD
+       PAGE but EMPTY tiles in CHARLIE IN-CHAT. Find why.
+Constraints: read-only — no edits, no commits, no fixes.
+
+==========================================================================
+STEP 1 — buyer comp shape vs ComparableCard field reads
+==========================================================================
+
+1.1  What shape does get_comparables return for BUYER criteria?
+
+  app/api/charlie/route.ts:745-766 (get_comparables handler):
+    Calls /api/geo-listings?tab=sold&geoType=...&geoId=... with the
+    buyer's criteria.
+    Wraps each result with { ...l, _slug, _isHome }.
+    Returns: { listings: listingsWithSlugs, total: data.total || 0 }
+
+  /api/geo-listings field shape — LISTING_SELECT [geo-listings/route.ts:9]:
+    'id, building_id, community_id, municipality_id, listing_id,
+     listing_key, standard_status, transaction_type, list_price,
+     close_price, close_date, unit_number, unparsed_address,
+     bedrooms_total, bathrooms_total_integer, property_type,
+     property_subtype, living_area_range, square_foot_source,
+     parking_total, locker, association_fee, tax_annual_amount,
+     days_on_market, listing_contract_date, building_area_total,
+     lot_width, lot_depth, lot_size_dimensions, lot_size_area,
+     lot_size_area_units, frontage_length, basement, garage_type,
+     garage_yn, approximate_age, legal_stories, architectural_style,
+     cooling, pool_features, fireplace_yn'
+
+  All snake_case (Postgres column names passed through as-is).
+  get_comparables adds two camelCase-prefixed-underscore extras:
+  `_slug`, `_isHome`. NO camelCase conversion of the listing fields.
+
+  Effective per-comp shape (buyer flow):
+    {
+      listing_key:                'X12345...'
+      unparsed_address:           '101 Buyer Test St, Whitby, ON ...'
+      close_price:                685000
+      close_date:                 '2026-08-28'
+      list_price:                 699000
+      bedrooms_total:             3
+      bathrooms_total_integer:    2
+      living_area_range:          '1500-2000'
+      property_subtype:           'Detached'
+      property_type:              'Residential Freehold'
+      days_on_market:             18
+      tax_annual_amount:          5400
+      unit_number:                null
+      // ... other snake_case mls_listings columns
+      _slug:                      '101-buyer-test-st-whitby-x12345'
+      _isHome:                    true
+    }
+
+1.2  What fields does ComparableCard READ?
+
+  app/charlie/components/ComparableCard.tsx:19-44 (Props interface)
+  + L75-184 (rendering body):
+
+    Field read (line)            | Used to render
+    -----------------------------|----------------------------------
+    c.adjustedPrice              | price (L76 — falls through)
+    c.closePrice                 | price (L76 — camelCase)
+    c.listPrice                  | price (L76 — camelCase)
+    c.exactSqft                  | sqft (L77)
+    c.livingAreaRange            | sqft fallback (L77 — camelCase)
+    c.unparsedAddress            | address (L177 — camelCase)
+    c.bedrooms                   | "X bed" (L180 — camelCase, NOT bedrooms_total)
+    c.bathrooms                  | "X bath" (L181 — camelCase)
+    c.daysOnMarket               | "Xd DOM" (L183 — camelCase)
+    c.closeDate                  | "X months ago" (L184 — camelCase)
+    c.matchQuality               | quality chip (L167)
+    c.temperature                | HOT/WARM/COLD chip (L136)
+    c.listingKey                 | slug build + key prop (L98, L116)
+    c.mediaUrl                   | photo img src (L131 — camelCase, NOT media[0].media_url)
+    c.unitNumber                 | slug build (L102 — camelCase)
+    c.propertySubtype            | slug isCondo check (L101 — camelCase)
+    c.sourceTier                 | tier chip (L83 — camelCase)
+
+  Every field ComparableCard reads is CAMELCASE.
+
+1.3  THE MISMATCH (side by side)
+
+    Display field    | Buyer comp shape       | ComparableCard reads | Match?
+    -----------------|------------------------|---------------------|-------
+    Address          | unparsed_address       | unparsedAddress     | NO ✗
+    Sold price       | close_price            | closePrice          | NO ✗
+    List price       | list_price             | listPrice           | NO ✗
+    Beds             | bedrooms_total         | bedrooms            | NO ✗
+    Baths            | bathrooms_total_integer| bathrooms           | NO ✗
+    Days on market   | days_on_market         | daysOnMarket        | NO ✗
+    Close date       | close_date             | closeDate           | NO ✗
+    Living area      | living_area_range      | livingAreaRange     | NO ✗
+    Listing key      | listing_key            | listingKey          | NO ✗
+    Photo URL        | media[0].media_url     | mediaUrl            | NO ✗
+                     | (or _slug? not photo)  |                     |
+    Unit number      | unit_number            | unitNumber          | NO ✗
+    Property subtype | property_subtype       | propertySubtype     | NO ✗
+
+  NONE of the ComparableCard-expected fields exist on the buyer comp
+  row. Every read returns undefined. Per the render body:
+
+    L76:  price = c.adjustedPrice || c.closePrice || c.listPrice
+                = undefined || undefined || undefined = undefined
+          → L165 renders '—'
+    L131: c.mediaUrl is undefined → L134 renders the 🏠 placeholder
+    L177: c.unparsedAddress is undefined → renders '—'
+    L180-184: c.bedrooms, c.bathrooms, c.daysOnMarket, c.closeDate all
+          undefined → no metadata rendered
+    L98-103: slug build receives all-undefined props → buildPropertySlug
+          returns null → click does nothing (L104: `if (!slug) return`)
+
+  Net rendered tile: placeholder house icon + '—' price + '—' address
+  + no metadata. That matches the operator's "blank address, no
+  price" description exactly.
+
+  Pre-existing context: ComparableCard was originally written for the
+  SELLER seller-estimate path, where comps come from the seller-
+  estimate API which emits CAMELCASE shapes. The ResultsPanel.tsx
+  L405-415 `block.type === 'comparables'` render path was historically
+  GATED off whenever a sellerEstimate block existed (L406:
+  `if ((blocks||[]).some((b) => b.type === 'sellerEstimate')) return null`),
+  so pre-Chunk-2 the seller flow never hit it (the seller comp UI
+  lives in SellerEstimateBlock, not ComparableCard). Chunk-2's
+  prompt edit now makes the BUYER flow push comparables blocks
+  (and the buyer flow has no sellerEstimate block to suppress them),
+  so L405-415 fires for the FIRST TIME with the BUYER snake_case
+  shape — which ComparableCard was never designed to read.
+
+==========================================================================
+STEP 2 — why email + lead page render fine
+==========================================================================
+
+2.1  Email comparableSoldHtml [lib/email/charlie-plan-email-html.ts:367-407]
+
+    L367: const sellerComps = sellerEstimate?.comparables
+                              || comparables       // ← top-level POST field
+                              || []
+    L372: const price = c.closePrice || c.close_price
+                        || c.listPrice || c.list_price || 0
+    L378: listingKey: c.listingKey || c.listing_key
+    L379: unparsedAddress: c.unparsedAddress || c.unparsed_address
+    L380: propertySubtype: c.propertySubtype || c.property_subtype
+    L381: unitNumber: c.unitNumber || c.unit_number
+    L394: ${(c.unparsedAddress || c.unparsed_address || '').split(',')[0]}
+    L395: ${c.bedrooms_total ? ... + ' bed' : ''}    ← snake_case only
+                ${c.bathrooms_total_integer ? ... + ' bath' : ''}
+                ${c.daysOnMarket ? ...}              ← camelCase
+
+  The email template is DUAL-SHAPE-AWARE: every primary field read
+  has a `camelCase || snake_case` fallback. It was written to handle
+  both the seller-estimate camelCase shape (for sellerEstimate.
+  comparables) AND the raw mls_listings snake_case shape (for the
+  top-level comparables fallback). The buyer flow hits the second
+  fallback and renders correctly.
+
+  Note: line 395's beds/baths use snake_case only (bedrooms_total,
+  bathrooms_total_integer). That works for buyer because buyer
+  comp shape IS snake_case. (If a seller-estimate camelCase comp
+  ever reached this branch, beds/baths would silently disappear —
+  a latent bug for the seller direction. Out of scope here.)
+
+  Top-level `comparables` is filled in plan-email/route.ts:200 from
+  the POST body. useCharlie.ts:544 sends
+  `comparables: stateRef.current.comparables.slice(0, 6)`.
+  `stateRef.current.comparables` accumulates from get_comparables tool
+  results (useCharlie.ts:611 — same snake_case shape that the in-chat
+  block reads). The EMAIL renders the SAME bytes the in-chat fails
+  to render; the difference is purely in the renderer's field
+  expectations.
+
+2.2  Lead page BuyerCompSold [PlanRenderer.tsx:597-628]
+
+    L604: const price = c.close_price || c.list_price
+                       || c.closePrice || c.listPrice || 0
+    L605: const addr  = c.unparsed_address || c.unparsedAddress || '—'
+    L606: const beds  = c.bedrooms_total ?? c.bedrooms ?? null
+    L607: const baths = c.bathrooms_total_integer ?? c.bathrooms ?? null
+    L608: const subtype = c.property_subtype || c.propertySubtype || ''
+    L609: const key   = c.listing_key || c.listingKey || 'idx-' + i
+
+  Same dual-shape pattern (snake_case OR camelCase on every field).
+  Reads plan_data.comparables, which is written by plan-email/
+  route.ts:215 (Chunk-2 addition):
+    `comparables: planType === 'buyer'
+                  ? (Array.isArray(comparables) ? comparables.slice(0, 6) : [])
+                  : null`
+  Same snake_case shape from the POST body → renders correctly
+  thanks to the dual-shape reads.
+
+2.3  RECONCILE — one source shape, two reader styles
+
+  All three surfaces consume the SAME buyer-comp data shape (snake_case
+  from /api/geo-listings via get_comparables, passed through useCharlie
+  state and POST body without conversion):
+
+    SOURCE → state.comparables (snake_case)
+       ↓                     ↓                          ↓
+       in-chat               POST → plan-email          POST → plan-email
+       block.listings        → plan_data.comparables    → comparables arg
+       (snake_case)          (snake_case)               (snake_case)
+       ↓                     ↓                          ↓
+       ComparableCard        BuyerCompSold              comparableSoldHtml
+       reads CAMELCASE       reads DUAL                 reads DUAL
+       → ALL EMPTY           → renders OK               → renders OK
+
+  ComparableCard is the only consumer that doesn't read snake_case.
+  Email + lead page were authored with dual-shape defaults; in-chat
+  was authored before this code path was buyer-reachable.
+
+==========================================================================
+STEP 3 — the "0 found" header (likely 2 simultaneous comparables blocks)
+==========================================================================
+
+  Header source: ResultsPanel.tsx:413
+    `<SectionHeader title={`Comparable Sold · ${block.listings.length} found`} />`
+
+  Tile source: ResultsPanel.tsx:415
+    `{block.listings.map((c: any, i: number) => (`
+
+  Both read `block.listings`. Length and map iterate the SAME array
+  for any single block — so a single block CANNOT render "0 found"
+  with 6 tiles. If a block has 6 listings, the header reads "6 found"
+  and 6 tiles render; if it has 0, header reads "0 found" and 0
+  tiles render.
+
+  ⚠ Likely cause of the operator's "0 found header + 6 empty tiles"
+  observation: TWO separate `comparables` blocks rendered back-to-
+  back in the conversation.
+    push site: useCharlie.ts:610-612
+      `if (tool === 'get_comparables' && data.listings) {
+         setState(s => ({ ...s, blocks: [...s.blocks, { type:
+         'comparables', listings: data.listings, intent: '' }] }))
+       }`
+    The `if (data.listings)` truthiness check passes on `[]` (empty
+    array). If Charlie's tool returned an EMPTY result on one call
+    and a 6-item result on another (across the conversation), BOTH
+    blocks render. The render loop iterates every block; user sees:
+      "Comparable Sold · 0 found"   [0 tiles — header from empty block]
+      "Comparable Sold · 6 found"   [6 empty tiles — shape mismatch]
+    Operator likely read the FIRST header and combined it with the
+    SECOND block's tiles in their description.
+
+  Alternative interpretation: the operator's screenshot may have
+  shown "6 found" header (correct) with 6 empty tiles, and "0 found"
+  is a misread. The empty-tile bug is the substantive issue
+  regardless; the count text is a cosmetic detail.
+
+  Flagged unverifiable: can't see the operator's screenshot from
+  here, can't replay the exact flow without driving the live
+  buyer chat path. The 2-block hypothesis is consistent with the
+  truthiness check at L610 and the operator's description; it is
+  not the focus of the fix — the empty-tiles bug is.
+
+==========================================================================
+STEP 4 — VERDICT
+==========================================================================
+
+  ROOT CAUSE: field-shape mismatch in the in-chat render layer.
+  ComparableCard reads camelCase only; the buyer comp data is
+  snake_case (raw mls_listings columns from /api/geo-listings,
+  passed through unchanged by get_comparables). Every field read
+  returns undefined → tiles render with placeholder icon + '—'
+  price + '—' address + no metadata + no click handler.
+
+  Email + lead page render correctly because their renderers were
+  authored with DUAL-SHAPE fallbacks (`c.camelCase || c.snake_case`)
+  on every field — they were defensively written to handle both
+  the seller-estimate camelCase shape AND the mls_listings snake_case
+  shape. ComparableCard was authored only for the seller-estimate
+  shape and pre-Chunk-2 was unreachable from the buyer path (gated
+  off whenever a sellerEstimate block existed).
+
+  EXACT FIX OPTIONS (Claude's call once authorized — do NOT pick now):
+
+  Option A (cheapest, mirrors email/lead-page pattern):
+    Edit ComparableCard to add `|| c.snake_case` fallbacks on every
+    field read (lines 76-77, 80-83, 101-103, 131, 177, 180-184).
+    Symmetric with the email + lead-page renderers. ~10 line edits,
+    surgical. Risk: zero — seller-estimate camelCase shape still
+    matches first, snake_case only fires when the camelCase field
+    is missing.
+
+  Option B (cleanest, single source of truth):
+    Normalize the buyer comp shape at the push site (useCharlie.ts:
+    610-612). Build a small mapper that converts snake_case →
+    camelCase BEFORE pushing block.listings. Risk: low, but
+    requires touching the push, the email POST body shape, and
+    the lead-page plan_data write — three sites, three churns;
+    invalidates the dual-shape reads in email/lead-page (which
+    aren't broken).
+
+  Option C (defer; only fix the count-display):
+    Treat the empty-tile bug as a UI-styling issue and just hide
+    the section when block.listings is empty. Doesn't address the
+    actual data the buyer wanted to see. NOT recommended.
+
+  Recommended: Option A. Surgical, mirrors the existing pattern in
+  email/lead-page, makes ComparableCard's render layer the third
+  dual-shape-aware consumer (matching the convergence principle).
+
+  COUNT-DISPLAY FIX (separate concern):
+    Gate the block render on `block.listings.length > 0` in
+    ResultsPanel.tsx:411-419 so an empty comparables block is
+    SKIPPED entirely (no "0 found" header). This is a one-line
+    change and would suppress the cosmetic confusion if the
+    2-block hypothesis (step 3) is correct.
+
+==========================================================================
+FLAGGED / UNVERIFIABLE
+==========================================================================
+  - Operator's screenshot not accessible from here; "0 found"
+    header observation is treated as one of two possibilities:
+    (a) two simultaneous comparables blocks (consistent with the
+        push-site code path), or
+    (b) misread of "6 found".
+    The empty-tile bug stands regardless.
+  - Live driving of a buyer chat to confirm the live block.listings
+    contents requires interactive auth + Charlie tool invocation;
+    deferred. Static evidence (the get_comparables handler returns
+    raw geo-listings output, /api/geo-listings explicitly selects
+    snake_case columns, ComparableCard reads camelCase) is
+    sufficient for the verdict.
+
+No fix attempted. Stopping per directive.

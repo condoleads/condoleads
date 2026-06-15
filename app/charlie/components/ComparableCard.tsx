@@ -73,8 +73,33 @@ function timeAgo(dateStr: string): string {
 // buildPropertySlug owns it.
 
 export default function ComparableCard({ comparable: c, isLease = false, sourceTier, path }: Props) {
-  const price = c.adjustedPrice || c.closePrice || c.listPrice
-  const sqft = c.exactSqft || (c.livingAreaRange ? parseInt(c.livingAreaRange.split('-')[0]) + 50 : null)
+  // W-CHARLIE-BUYER-INCHAT-FIX (2026-06-15): dual-shape field reads —
+  // ComparableCard now consumes both the seller-estimate API camelCase
+  // shape (its original input) AND the raw mls_listings snake_case
+  // shape (the buyer comp shape that get_comparables → /api/geo-
+  // listings passes through unchanged). Mirrors the email template
+  // (charlie-plan-email-html.ts:372-394) and the lead-page renderer
+  // (PlanRenderer.tsx:604-609), which were already dual-shape. The
+  // camelCase primary preserves seller no-regression — only when the
+  // camel field is missing does the snake fallback fire.
+  //
+  // Numeric/price fields use ?? (so 0 isn't masked). String/optional
+  // fields use || (matches email/lead pattern).
+  const c_anon = c as any
+  const price = (c.adjustedPrice ?? c_anon.adjusted_price)
+    ?? (c.closePrice ?? c_anon.close_price)
+    ?? (c.listPrice ?? c_anon.list_price)
+  const livingAreaRange = c.livingAreaRange || c_anon.living_area_range
+  const sqft = c.exactSqft || (livingAreaRange ? parseInt(String(livingAreaRange).split('-')[0]) + 50 : null)
+  const unparsedAddress = c.unparsedAddress || c_anon.unparsed_address
+  const bedrooms = c.bedrooms ?? c_anon.bedrooms_total
+  const bathrooms = c.bathrooms ?? c_anon.bathrooms_total_integer
+  const daysOnMarket = c.daysOnMarket ?? c_anon.days_on_market
+  const closeDate = c.closeDate || c_anon.close_date
+  const listingKey = c.listingKey || c_anon.listing_key
+  const mediaUrl = c.mediaUrl || c_anon.media?.[0]?.media_url || c_anon.media?.[0]?.url
+  const unitNumber = c.unitNumber || c_anon.unit_number
+  const propertySubtype = c.propertySubtype || c_anon.property_subtype
 
   // Tier chip — prefer explicit prop (e.g. uniform-tier from estimate
   // .bestGeoTier for geo comparables) over per-tile sourceTier (mixed-tier
@@ -95,11 +120,16 @@ export default function ComparableCard({ comparable: c, isLease = false, sourceT
     // builders produce byte-identical hrefs. Helper's behavior was
     // byte-verified against the original inline logic across 16 fixtures
     // (scripts/_slug-byte-test.js) before this refactor.
+    // W-CHARLIE-BUYER-INCHAT-FIX (2026-06-15): use the normalized
+    // dual-shape locals (defined at the top of the component) so the
+    // buyer snake_case shape resolves a slug too — previously only
+    // c.camelCase reads fed the slug builder, which returned null
+    // on buyer comps and made tiles non-clickable.
     const slug = buildPropertySlug({
-      listingKey: c.listingKey,
-      unparsedAddress: c.unparsedAddress,
-      propertySubtype: c.propertySubtype,
-      unitNumber: c.unitNumber,
+      listingKey,
+      unparsedAddress,
+      propertySubtype,
+      unitNumber,
     })
     if (!slug) return
     window.open('/' + slug, '_blank')
@@ -113,7 +143,7 @@ export default function ComparableCard({ comparable: c, isLease = false, sourceT
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 14,
         overflow: 'hidden',
-        cursor: c.listingKey ? 'pointer' : 'default',
+        cursor: listingKey ? 'pointer' : 'default',
         transition: 'border-color 0.15s',
         display: 'flex',
         gap: 0,
@@ -128,8 +158,8 @@ export default function ComparableCard({ comparable: c, isLease = false, sourceT
         overflow: 'hidden',
         position: 'relative',
       }}>
-        {c.mediaUrl ? (
-          <img src={c.mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {mediaUrl ? (
+          <img src={mediaUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🏠</div>
         )}
@@ -174,14 +204,14 @@ export default function ComparableCard({ comparable: c, isLease = false, sourceT
           )}
         </div>
         <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {c.unparsedAddress?.split(',')[0] || '—'}
+          {unparsedAddress?.split(',')[0] || '—'}
         </div>
         <div style={{ display: 'flex', gap: 10, fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
-          {c.bedrooms && <span>{c.bedrooms} bed</span>}
-          {c.bathrooms && <span>{c.bathrooms} bath</span>}
+          {bedrooms != null && <span>{bedrooms} bed</span>}
+          {bathrooms != null && <span>{bathrooms} bath</span>}
           {sqft && <span>{sqft} sqft</span>}
-          {c.daysOnMarket != null && <span>{c.daysOnMarket}d DOM</span>}
-          {c.closeDate && <span style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.25)' }}>{timeAgo(c.closeDate)}</span>}
+          {daysOnMarket != null && <span>{daysOnMarket}d DOM</span>}
+          {closeDate && <span style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.25)' }}>{timeAgo(closeDate)}</span>}
         </div>
       </div>
     </div>
