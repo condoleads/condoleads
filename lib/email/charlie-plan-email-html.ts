@@ -511,43 +511,42 @@ export function buildRichPlanEmail(data: {
     </div>
   `
 
-  // W-CHARLIE-BUYER-CHUNK2 (2026-06-15): buyer-side Tax-Matched section.
-  // Built from the server-derived buyerTaxMatch (see plan-email/route.ts:
-  // deriveBuyerTaxMatch(listings)). For buyer plans this REPLACES the
-  // seller-shaped taxMatchHtml below (which reads from sellerEstimate
-  // and is null on buyer plans). Honest empty-state when the matched-
-  // listing set is too sparse (<3 with-tax). For seller plans this
-  // string stays empty and the existing taxMatchHtml fires.
+  // W-CHARLIE-BUYER-CHUNK4 (2026-06-15): buyer Tax-Matched section —
+  // RE-FRAMED to "recently sold homes matched by property-tax band"
+  // (NOT the prior "what you'll pay yearly" assessment framing). The
+  // server-derived buyerTaxMatch.samples are now SOLD comps fetched
+  // via the shared tax-band SOLD query (lib/estimator/tax-band-sold-
+  // query.ts — same query the seller matcher uses). Each tile shows
+  // the comp's sold price + close_date + tax/yr.
   const buyerTaxMatchHtml = isBuyer && buyerTaxMatch ? (() => {
-    const btm = buyerTaxMatch
+    const btm: any = buyerTaxMatch
     if (btm.isEmpty) {
       return `
         <div style="margin: 20px 0;">
           <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">Tax-Matched (0)</div>
-          <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Derived from your matched listings&rsquo; own property-tax data.</div>
+          <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Recently sold homes matched by property-tax band &mdash; comparable value evidence.</div>
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;">
             <tr><td style="padding: 12px 14px; font-size: 12px; color: #475569; line-height: 1.5;">
-              ${btm.reason || 'Insufficient tax data on matched listings.'}
+              ${btm.reason || 'No SOLD comps matched the derived tax band.'}
             </td></tr>
           </table>
         </div>
       `
     }
-    const medianStr = btm.medianTax != null ? '$' + Number(btm.medianTax).toLocaleString('en-CA', { maximumFractionDigits: 0 }) : '&mdash;'
     const bandStr = btm.taxBand
       ? '$' + Number(btm.taxBand.low).toLocaleString('en-CA', { maximumFractionDigits: 0 }) + ' &ndash; $' + Number(btm.taxBand.high).toLocaleString('en-CA', { maximumFractionDigits: 0 })
       : '&mdash;'
     return `
       <div style="margin: 20px 0;">
         <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">Tax-Matched (${btm.samples.length})</div>
-        <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Annual property-tax range across the ${btm.withTaxCount} of ${btm.totalCount} matched listings with tax data &mdash; what you&rsquo;ll pay yearly on a property in this shop window.</div>
+        <div style="font-size: 12px; color: #64748b; margin-bottom: 10px;">Recently sold homes matched by property-tax band &mdash; real transaction evidence anchored to the ${btm.withTaxCount} of ${btm.totalCount} matched listings carrying tax data.</div>
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;">
           <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-            <td style="font-size: 11px; color: #64748b;">Median annual tax</td>
-            <td style="text-align: right; font-size: 13px; font-weight: 700; color: #0f172a;">${medianStr}<span style="font-size:11px;font-weight:400;color:#94a3b8;margin-left:8px;"> &middot; band ${bandStr}</span></td>
+            <td style="font-size: 11px; color: #64748b;">Tax band (derived)</td>
+            <td style="text-align: right; font-size: 13px; font-weight: 700; color: #0f172a;">${bandStr}<span style="font-size:11px;font-weight:400;color:#94a3b8;margin-left:8px;">/yr</span></td>
           </tr></table>
         </div>
-        ${btm.samples.map(s => {
+        ${btm.samples.map((s: any) => {
           const photo = (s.media && s.media[0] && (s.media[0].media_url || s.media[0].url)) || ''
           const slugRaw = s._slug || buildPropertySlug({
             listingKey: s.listingKey,
@@ -564,10 +563,11 @@ export function buildRichPlanEmail(data: {
                 <td style="padding: 10px 14px; vertical-align: middle;">
                   <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${addrShort}</div>
                   <div style="font-size: 12px; color: #64748b; margin-top: 3px;">${[s.bedrooms ? s.bedrooms + ' bed' : '', s.bathrooms ? s.bathrooms + ' bath' : '', s.propertySubtype].filter(Boolean).join(' &middot; ')}</div>
+                  ${s.tax ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">$${Number(s.tax).toLocaleString('en-CA', { maximumFractionDigits: 0 })}/yr tax</div>` : ''}
                 </td>
                 <td style="padding: 10px 14px; text-align: right; vertical-align: middle; white-space: nowrap;">
-                  <div style="font-size: 14px; font-weight: 800; color: #0f172a;">$${Number(s.tax).toLocaleString('en-CA', { maximumFractionDigits: 0 })}<span style="font-size:10px;font-weight:400;color:#94a3b8;"> /yr</span></div>
-                  ${s.price ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">List $${Number(s.price).toLocaleString('en-CA')}</div>` : ''}
+                  <div style="font-size: 14px; font-weight: 800; color: #059669;">${s.price != null ? '$' + Number(s.price).toLocaleString('en-CA') : '&mdash;'}</div>
+                  <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Sold</div>
                 </td>
               </tr></table>
             </a>

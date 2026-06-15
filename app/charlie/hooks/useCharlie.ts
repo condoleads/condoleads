@@ -608,14 +608,33 @@ export function useCharlie() {
         setState(s => ({ ...s, rankings: [...s.rankings, { type: 'seasonal', data }], blocks: [...s.blocks, { type: 'rankings', rankType: 'seasonal', data }], activePanel: 'results' }))
     }
     if (tool === 'get_comparables' && Array.isArray(data.listings) && data.listings.length > 0) {
-      // W-CHARLIE-BUYER-INCHAT-FIX (2026-06-15): empty-array push
-      // suppressed. Previously `data.listings` was a bare truthiness
-      // check — `[]` (empty result from get_comparables) is truthy, so
-      // an empty comparables block could be pushed alongside a later
-      // populated block, producing the "Comparable Sold · 0 found"
-      // ghost header above the real tiles. Now we only push when at
-      // least one row is returned; an empty result silently no-ops.
-      setState(s => ({ ...s, comparables: [...s.comparables, ...data.listings].filter((l, i, arr) => arr.findIndex(x => x.id === l.id) === i), blocks: [...s.blocks, { type: 'comparables', listings: data.listings, intent: '' }], activePanel: 'results' }))
+      // W-CHARLIE-BUYER-CHUNK4 (2026-06-15): MERGE results into a single
+      // comparables block + cap at BUYER_COMP_SOLD_CAP (6) so in-chat
+      // count matches email + lead exactly. Pre-fix Chunk-4 multiple
+      // get_comparables calls each pushed a new block, so the in-chat
+      // total could be 12+ while email + lead were capped at 6 by the
+      // POST/persistence slice — inconsistency the operator flagged.
+      // Now: state.comparables is the dedup'd union (by listing id;
+      // falls through to listing_key when id is absent), capped at 6.
+      // The single 'comparables' block in state.blocks ALWAYS reflects
+      // that capped union — so if a second get_comparables call adds
+      // 2 new dedup'd comps, the block grows from 6 to 6 (capped) and
+      // re-renders the same shape email + lead will see.
+      const BUYER_COMP_CAP = 6
+      setState(s => {
+        const merged = [...s.comparables, ...data.listings].filter((l, i, arr) =>
+          arr.findIndex(x => (x.id ?? x.listing_key) === (l.id ?? l.listing_key)) === i
+        ).slice(0, BUYER_COMP_CAP)
+        // Replace any existing comparables block with the freshly-merged
+        // one (single section render — no more multi-block stacking).
+        const withoutOldComp = s.blocks.filter(b => b.type !== 'comparables')
+        return {
+          ...s,
+          comparables: merged,
+          blocks: [...withoutOldComp, { type: 'comparables', listings: merged, intent: '' }],
+          activePanel: 'results',
+        }
+      })
     }
   }
 

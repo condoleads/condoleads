@@ -1,0 +1,84 @@
+W-CHARLIE-BUYER-CHUNK4 VERIFY — 2026-06-15T18:50:42.145Z
+local base: http://localhost:3004
+────────────────────────────────────────────────────────────────────────────
+dev server: 200 — proceeding with LIVE verify.
+────────────────────────────────────────────────────────────────────────────
+GROUP 1 — Live API call → SOLD comps in derived tax band (real DB)
+PASS  1.1 API returns 200
+        → status=200
+PASS  1.2 API returns ok:true with buyerTaxMatch object
+  bandCenter:    5020.73
+  taxBand:       {"low":4016.584,"high":6024.875999999999}
+  taxYearWindow: {"low":2025,"high":2026}
+  withTaxCount:  4 of 5
+  isEmpty:       false
+  reason:        (none)
+  samples (6):
+    E13158732  $940,000  14 Heber Down Crescent  tier=muni  tax=5405.03  close=2026-08-31
+    E13169330  $799,000  507 Dunlop Street W  tier=muni  tax=5648.37  close=2026-08-28
+    E13194904  $670,000  10 Plantation Court  tier=muni  tax=4822  close=2026-08-28
+    E13182312  $710,000  75 Magpie Way  tier=muni  tax=4822  close=2026-08-28
+    E13156072  $690,000  52 Anchorage Avenue  tier=muni  tax=5022  close=2026-08-28
+    E13168976  $865,000  56 Rimrock Crescent  tier=muni  tax=5670  close=2026-08-27
+PASS  1.3 Derived band exists (matched-listings had ≥3 with-tax)
+PASS  1.4 Tax-year window exists
+PASS  1.5 bandCenter is the median of with-tax matched listings (≈5020.79)
+        → bandCenter=5020.73
+PASS  1.6 Samples have SOLD shape (closePrice + closeDate present, not just listPrice)
+PASS  1.7 Every sample's tax falls inside the derived band
+────────────────────────────────────────────────────────────────────────────
+GROUP 2 — DB cross-check (samples are real Closed rows)
+PASS  2.1 Every sample exists in mls_listings
+        → db rows=6 of 6
+PASS  2.2 Every sample has standard_status="Closed" (real SOLD comp, not Active)
+PASS  2.3 Every sample's DB tax matches the derived band
+────────────────────────────────────────────────────────────────────────────
+GROUP 3 — Re-framed text on all 3 surfaces (Defect 2 fix)
+PASS  3.1 EMAIL renders Tax-Matched section
+PASS  3.2 EMAIL has SOLD framing ("Recently sold homes matched by property-tax band")
+PASS  3.3 EMAIL has NO old assessment wording ("what you'll pay yearly")
+PASS  3.4 EMAIL has NO "Median annual tax" assessment label
+PASS  3.5 EMAIL tile labels show "Sold" (not "/yr" as primary price)
+────────────────────────────────────────────────────────────────────────────
+GROUP 4 — Lead page render via direct tsx import
+PASS  4.1 LEAD-PAGE renders Tax-Matched section
+PASS  4.2 LEAD-PAGE has SOLD framing
+PASS  4.3 LEAD-PAGE has NO old assessment wording
+PASS  4.4 LEAD-PAGE has NO "Median annual tax" label
+PASS  4.5 LEAD-PAGE tax-match tiles use BuyerListingTile (have photo placeholder OR img + slug-format href)
+        → tiles wrap in <a target=_blank>
+────────────────────────────────────────────────────────────────────────────
+GROUP 5 — In-chat tile rendering (Playwright)
+PASS  5.1 IN-CHAT (existing tile-probe) snake_case fixture renders populated tile
+        → no-regression on Chunk 2b: "Buyer (snake_case — the fix)\n$705,000\n101 Buyer Snake St\n4 bed\n3 bath\n22d DOM\n-3 months ago"
+────────────────────────────────────────────────────────────────────────────
+GROUP 6 — Cap consistency (Defect 4 fix)
+PASS  6.1 useCharlie comp-sold dedup+cap at 6 (single block)
+PASS  6.2 plan-email comp-sold persistence cap = 6 (unchanged)
+PASS  6.3 plan-email topListings cap RAISED to 10 (was 5)
+PASS  6.4 buyer-tax-match cap = TAX_MATCH_DISPLAY_CAP_BUYER (6)
+────────────────────────────────────────────────────────────────────────────
+GROUP 7 — Empty-state when matched listings lack tax
+PASS  7.1 Empty-tax fixture → isEmpty=true
+        → isEmpty=true
+PASS  7.2 Empty-tax fixture cites reason (no fake number)
+PASS  7.3 Empty-tax fixture has no samples
+────────────────────────────────────────────────────────────────────────────
+GROUP 8 — Seller no-regression (verify untouched paths)
+PASS  8.1 Seller matcher home-comparable-matcher-sales.ts unchanged this commit
+PASS  8.2 Seller matcher condo-comparable-matcher-sales.ts unchanged
+PASS  8.3 SellerEstimateBlock unchanged
+PASS  8.4 seller-estimate route unchanged
+PASS  8.5 CharlieLeadEstimate unchanged
+PASS  8.6 SELLER email still renders sellerEstimate.comparables (STALE-CS / 888 Stale Comp)
+PASS  8.7 SELLER email still renders Tax-Match Confidence rail OR taxMatch.comparables
+PASS  8.8 SELLER email retains Property Estimate price card
+PASS  8.9 SELLER email has NO buyer-side "Recently sold homes matched by property-tax band" blurb
+────────────────────────────────────────────────────────────────────────────
+GROUP 9 — Shared tax-band SOLD query (lib/estimator/tax-band-sold-query.ts)
+PASS  9.1 Shared helper exports queryTaxBandSolds
+PASS  9.2 Shared helper re-exports TAX_BAND_PCT, TAX_MIN_VALUE, TAX_MATCH_DISPLAY_CAP
+PASS  9.3 Buyer derivation IMPORTS the shared helper (not a parallel query)
+PASS  9.4 Seller matcher unchanged this commit (preserves backtest stability)
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: ALL PASS

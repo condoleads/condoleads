@@ -3802,3 +3802,217 @@ reusing the shared buildPropertySlug helper the seller comp tile uses.
     real buyer lead's tile.
   - Welcome-email dedup-race (recon CHUNK A) — separate workstream.
   - Dev-server resilience (wedged-on-recompile) — separate workstream.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-BUYER-CHUNK4 — tax-match FRAMING fix (SOLD comps) + canonical counts (2026-06-15)
+
+Pre-Chunk-4 the buyer Tax-Matched section was built backwards: it sampled
+ACTIVE matched-listings' own tax_annual_amount and labeled them "annual
+property-tax range / what you'll pay yearly." Real lead 6d479d84 + the
+W-CHARLIE-BUYER-CONSISTENCY recon DEFECT 2 confirmed the framing was
+inverted. Chunk 4 rewrites the derivation as SOLD-comp matching (the
+seller-side concept, inverted for buyers) and aligns counts across all
+3 surfaces.
+
+### PART 1 — Shared tax-band SOLD query (Defect 2 fix)
+
+  NEW FILE: lib/estimator/tax-band-sold-query.ts
+    - EXTRACTED from home-comparable-matcher-sales.ts:1242-1292 verbatim
+      so both seller and buyer sides reuse ONE tax-band SOLD query
+      pattern. The seller's home-comparable-matcher-sales.ts CONTINUES
+      USING its inline copy of the same constants + same query (zero
+      regression risk; backtest stability preserved). The shared
+      helper is the [shared-with-seller-matcher] mirror so the buyer
+      side can call it without touching the seller path.
+    - Exports: queryTaxBandSolds, TAX_BAND_PCT, TAX_MIN_VALUE,
+      TAX_MATCH_DISPLAY_CAP.
+    - Query shape: same as seller — community + muni pools queried in
+      parallel, Closed + transaction_type='For Sale' + tax band ±
+      TAX_BAND_PCT + tax_year window + 2-year close_date floor.
+
+  REWRITTEN: lib/charlie/buyer-tax-match.ts
+    - New signature: async deriveBuyerTaxMatch({ supabase, matchedListings,
+      geoContext, subtypes?, asOfDate? }): Promise<BuyerTaxMatch>
+    - Logic:
+        1. Compute tax-band center from matched-listings' median tax
+           (with-tax filter > TAX_MIN_VALUE; require MIN_WITH_TAX=3).
+        2. Apply ±TAX_BAND_PCT → taxLow, taxHigh.
+        3. tax_year window: currentYear ± 1 (currentYear=asOfDate or now).
+        4. Subtypes inferred from matched listings when not provided.
+        5. Call queryTaxBandSolds({ communityId, municipalityId, ... }).
+        6. Dedup by listing_key, community-tier preferred over muni.
+        7. Cap at TAX_MATCH_DISPLAY_CAP_BUYER (= 6 per Defect-4 spec).
+    - HONEST EMPTY-STATE on EITHER:
+        (a) <3 matched listings with usable tax data (band underivable), OR
+        (b) zero geo/subtype derivable, OR
+        (c) band query returns 0 sold comps.
+      Each empty-state cites the specific reason (no fake data).
+    - Sample shape: SOLD listing record with closePrice + closeDate +
+      sourceTier ('community' | 'muni') — what the renderers consume.
+
+### PART 2 — Server wiring
+
+  app/api/charlie/plan-email/route.ts:86-110
+    - Now AWAITS the new async derivation (was sync).
+    - Passes geoContext through from POST body, normalizes
+      municipalityId/communityId from geoType + geoId.
+    - plan_data.buyerTaxMatch persistence shape is the new BuyerTaxMatch
+      (sold-comp samples).
+
+  app/api/charlie/plan-email/route.ts:209-213
+    - plan_data.topListings cap raised from slice(0, 5) to slice(0, 10)
+      so admin lead page count matches in-chat + email count exactly
+      (Defect-4 spec).
+
+  NEW FILE: app/api/charlie/buyer-tax-match/route.ts
+    - Thin POST endpoint the in-chat Charlie component calls.
+    - Input: { matchedListings, geoContext }.
+    - Output: { ok: true, buyerTaxMatch: BuyerTaxMatch }.
+    - Calls the same deriveBuyerTaxMatch the plan-email route uses
+      → identical sold-comp set across in-chat, email, lead.
+
+### PART 3 — In-chat client wiring
+
+  app/charlie/components/ResultsPanel.tsx — REPLACED the inline sync
+  derivation with a new BuyerTaxMatchInChat sub-component:
+    - useEffect watches listingGroups + geoContext.
+    - Fires POST to /api/charlie/buyer-tax-match when the signature
+      (listing keys + geoId) changes.
+    - Renders BuyerTaxMatch shape; tiles use ComparableCard (sold
+      framing — close_price + close_date + tax-on-meta) so the in-
+      chat tile shape matches the existing sold-comp tile.
+
+### PART 4 — Re-framed text (3 surfaces × 1 fix)
+
+  EMAIL — lib/email/charlie-plan-email-html.ts:514-580
+    BEFORE: "Annual property-tax range across the X of Y matched
+            listings with tax data — what you'll pay yearly on a
+            property in this shop window." + "Median annual tax · band"
+    AFTER:  "Recently sold homes matched by property-tax band — real
+            transaction evidence anchored to the X of Y matched
+            listings carrying tax data." + "Tax band (derived)"
+    Tile suffix changed from "$X/yr" + "List $Y" to sold-price (emerald)
+    + "Sold" label, with tax-on-meta showing in the listing's meta row.
+
+  LEAD PAGE — components/admin-homes/lead-workbench/PlanRenderer.tsx:
+   721-779 BuyerTaxMatched
+    BEFORE: "Annual property-tax range across the X of Y matched
+            listings with tax data." + "Median annual tax" + text-only
+            <li> rows (no photo, no link — Defect 5 from the recon).
+    AFTER:  "Recently sold homes matched by property-tax band — real
+            transaction evidence anchored to..." + "Tax band (derived)"
+            + BuyerListingTile per sample (photo + slug-driven link +
+            sold price + "Sold" label). Defect 5 fixed at the same time.
+
+  IN-CHAT — app/charlie/components/ResultsPanel.tsx BuyerTaxMatchInChat
+    BEFORE: "Annual property-tax range across the X of Y matched
+            listings with tax data — what you'll pay yearly..." +
+            "Median annual tax · band" + per-tile "$X/yr" + "List $Y"
+    AFTER:  "Recently sold homes matched by property-tax band — real
+            transaction evidence anchored to..." + "Tax band (derived)"
+            + ComparableCard per sample (sold-comp tile shape).
+
+### PART 5 — Canonical counts (Defect 4 fix)
+
+  Comparable Sold = 6 across all 3 surfaces.
+    - useCharlie.ts:610-637 MERGE+DEDUP in-chat comparables into ONE
+      block + cap at BUYER_COMP_CAP=6. Multiple get_comparables tool
+      calls now produce one section, not stacked sections.
+    - plan-email/route.ts:217 persistence slice(0, 6) UNCHANGED.
+    - Email comparableSoldHtml consumes the same 6 from POST body.
+  Matched Listings = 10 across all 3 surfaces.
+    - useCharlie POST slice(0, 10) UNCHANGED.
+    - plan-email/route.ts:213 persistence slice(0, 5) RAISED to
+      slice(0, 10).
+    - Email + lead render whatever plan_data.topListings has.
+  Tax-Matched = 6 across all 3 surfaces.
+    - lib/charlie/buyer-tax-match.ts TAX_MATCH_DISPLAY_CAP_BUYER = 6.
+
+### REAL-FLOW VERIFY (scripts/buyer-chunk4-verify.ts, 39 of 39 PASS)
+
+  Live API call via the new /api/charlie/buyer-tax-match endpoint
+  against real lead 6d479d84's matched-listings:
+
+    bandCenter:    $5,020.73 (median of with-tax listings)
+    taxBand:       $4,016 – $6,024 /yr (±20%)
+    taxYearWindow: 2025 – 2026
+    withTaxCount:  4 of 5
+    samples (6, all Closed, all tax-in-band):
+      E13158732  $940,000  14 Heber Down Crescent  tax=$5,405  close=2026-08-31
+      E13169330  $799,000  507 Dunlop Street W     tax=$5,648  close=2026-08-28
+      E13194904  $670,000  10 Plantation Court     tax=$4,822  close=2026-08-28
+      E13182312  $710,000  75 Magpie Way           tax=$4,822  close=2026-08-28
+      E13156072  $690,000  52 Anchorage Avenue     tax=$5,022  close=2026-08-28
+      E13168976  $865,000  56 Rimrock Crescent     tax=$5,670  close=2026-08-27
+
+  Verify groups:
+    1. Live API → SOLD comps in derived band                          7/7  PASS
+    2. DB cross-check (all samples are Closed rows, in-band)          3/3  PASS
+    3. EMAIL re-framed text (sold framing; no /yr-assessment)         5/5  PASS
+    4. LEAD-PAGE re-framed text + BuyerListingTile tiles              5/5  PASS
+    5. IN-CHAT no-regression on Chunk 2b tile probe                   1/1  PASS
+    6. Canonical caps (cited at every site)                           4/4  PASS
+    7. Empty-state when matched listings lack tax                     3/3  PASS
+    8. SELLER no-regression (8 byte-unchanged + email render checks)  9/9  PASS
+    9. Shared tax-band SOLD query (exists + imported in buyer)        4/4  PASS
+
+  SUMMARY: 39 of 39 PASS.
+
+### TSC + byte-unchanged
+
+  npx tsc --noEmit → exit 0
+  Files edited (4 src + 1 probe-updated):
+    lib/charlie/buyer-tax-match.ts                    REWRITTEN
+    app/api/charlie/plan-email/route.ts               wired + topListings cap
+    app/charlie/hooks/useCharlie.ts                   comp-sold dedup+cap
+    lib/email/charlie-plan-email-html.ts              re-framed buyerTaxMatchHtml
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+                                                       re-framed BuyerTaxMatched
+                                                       + BuyerListingTile adoption
+    app/charlie/components/ResultsPanel.tsx           BuyerTaxMatchInChat sub
+  Files created (3):
+    lib/estimator/tax-band-sold-query.ts              shared SQL helper
+    app/api/charlie/buyer-tax-match/route.ts          in-chat fetch endpoint
+    scripts/buyer-chunk4-verify.ts                    live verify
+
+  Byte-unchanged this commit (per assertions 8.1-8.5 + 9.4):
+    lib/estimator/home-comparable-matcher-sales.ts    UNCHANGED
+    lib/estimator/condo-comparable-matcher-sales.ts   UNCHANGED
+    app/charlie/components/SellerEstimateBlock.tsx    UNCHANGED
+    app/api/charlie/seller-estimate/route.ts          UNCHANGED
+    components/dashboard/CharlieLeadEstimate.tsx      UNCHANGED
+
+  S1 zero-diff (admin/page, api/chat, agents):        UNCHANGED.
+
+### Operator-visible outcome
+
+  Before:  buyer Tax-Matched section showed ACTIVE for-sale listings
+           with their annual tax + list price, framed as "what you'll
+           pay yearly". An assessment range, not comparable value
+           evidence. Counts differed across 3 surfaces (in-chat ~10,
+           email 6, lead 6 for comp-sold; in-chat/email 10, lead 5
+           for matched).
+  After:   buyer Tax-Matched is SOLD comps in the derived tax band,
+           framed as "recently sold homes matched by property-tax
+           band — real transaction evidence". Each tile shows the
+           sold price + close date + tax/yr. All 3 surfaces share
+           the same derivation (same DB query, same band, same
+           samples). Comparable Sold = 6 across all 3. Matched
+           Listings = 10 across all 3. Tax-Matched = 6 across all 3.
+           Lead-page tax-match tiles now have photos + clickable
+           slug-format links (Defect 5 fixed inline).
+
+### Named follow-ups (out of scope for Chunk 4)
+
+  - Defect 3 (offer/strategy grounded in comps): NOT addressed this
+    chunk. Charlie's generate_plan summary still references market-
+    stats only. Requires prompt edit + a new section in the plan-
+    summary spec. Separate chunk.
+  - Eventually consolidate seller's inline tax-band query into the
+    shared helper (currently both seller-inline and shared-helper
+    have byte-identical query patterns; risk of drift mitigated by
+    the [shared-with-seller-matcher] markers in the helper file).
+    Refactor candidate for a future chunk where the operator has
+    backtest harness running to confirm seller byte-stability.
+  - Welcome-email dedup-race (recon CHUNK A) — separate workstream.
+  - Dev-server resilience — separate workstream.

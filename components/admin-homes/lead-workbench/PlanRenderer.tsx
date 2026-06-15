@@ -718,19 +718,22 @@ function BuyerCompSold({ comparables }: { comparables: any }) {
   )
 }
 
-// W-CHARLIE-BUYER-CHUNK2 (2026-06-15): buyer Tax-Matched on admin lead
-// page. Reads plan_data.buyerTaxMatch (server-derived). Same shape as
-// in-chat + email; honest empty-state when isEmpty=true (renders the
-// derivation's `reason` string). Null buyerTaxMatch → null render
-// (legacy buyer leads written before this chunk landed).
+// W-CHARLIE-BUYER-CHUNK4 (2026-06-15): buyer Tax-Matched on admin lead
+// page — RE-FRAMED as "recently sold homes matched by property-tax
+// band" (NOT the prior assessment framing). Samples are SOLD comps
+// from the shared tax-band SOLD query, rendered through the same
+// BuyerListingTile that matched-listings + comp-sold sections use →
+// photo + slug-driven link, dual-shape reads, ONE consistent buyer
+// tile shape across every section of the buyer lead page.
 function BuyerTaxMatched({ taxMatch }: { taxMatch: any }) {
   if (!taxMatch || typeof taxMatch !== 'object') return null
   if (taxMatch.isEmpty) {
     return (
       <section>
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tax-Matched (0)</h3>
+        <p className="text-xs text-gray-500 mb-3">Recently sold homes matched by property-tax band — comparable value evidence.</p>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="text-xs text-amber-900 m-0">{taxMatch.reason || 'Insufficient tax data on matched listings.'}</p>
+          <p className="text-xs text-amber-900 m-0">{taxMatch.reason || 'No SOLD comps matched the derived tax band.'}</p>
         </div>
       </section>
     )
@@ -740,41 +743,39 @@ function BuyerTaxMatched({ taxMatch }: { taxMatch: any }) {
     <section>
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tax-Matched ({samples.length})</h3>
       <p className="text-xs text-gray-500 mb-3">
-        Annual property-tax range across the {taxMatch.withTaxCount} of {taxMatch.totalCount} matched listings with tax data.
+        Recently sold homes matched by property-tax band — real transaction evidence anchored to the {taxMatch.withTaxCount} of {taxMatch.totalCount} matched listings carrying tax data.
       </p>
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-3 flex items-baseline justify-between">
-        <span className="text-xs text-slate-500">Median annual tax</span>
-        <span className="text-sm font-bold text-slate-900">
-          {taxMatch.medianTax != null ? '$' + Math.round(taxMatch.medianTax).toLocaleString('en-CA') : '—'}
-          {taxMatch.taxBand && (
-            <span className="text-xs font-normal text-slate-400 ml-2">
-              · band ${Math.round(taxMatch.taxBand.low).toLocaleString('en-CA')}–${Math.round(taxMatch.taxBand.high).toLocaleString('en-CA')}
-            </span>
-          )}
-        </span>
+      {taxMatch.taxBand && (
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-3 flex items-baseline justify-between">
+          <span className="text-xs text-slate-500">Tax band (derived)</span>
+          <span className="text-sm font-bold text-slate-900">
+            ${Math.round(taxMatch.taxBand.low).toLocaleString('en-CA')}–${Math.round(taxMatch.taxBand.high).toLocaleString('en-CA')}<span className="text-xs font-normal text-slate-400 ml-2">/yr</span>
+          </span>
+        </div>
+      )}
+      <div className="flex flex-col gap-2">
+        {samples.map((s: any, i: number) => (
+          <BuyerListingTile
+            key={s.listingKey || 'idx-' + i}
+            kind="sold"
+            index={i}
+            listing={{
+              listing_key: s.listingKey,
+              unparsed_address: s.address,
+              close_price: s.price,
+              close_date: s.closeDate,
+              bedrooms_total: s.bedrooms,
+              bathrooms_total_integer: s.bathrooms,
+              property_subtype: s.propertySubtype,
+              unit_number: s.unitNumber,
+              days_on_market: s.daysOnMarket,
+              tax_annual_amount: s.tax,
+              _slug: s._slug,
+              media: s.media,
+            }}
+          />
+        ))}
       </div>
-      <ul className="space-y-2 list-none p-0 m-0">
-        {samples.map((s: any, i: number) => {
-          const addr = s.address || '—'
-          const meta = [
-            s.bedrooms != null ? s.bedrooms + ' bed' : null,
-            s.bathrooms != null ? s.bathrooms + ' bath' : null,
-            s.propertySubtype || null,
-          ].filter(Boolean).join(' · ')
-          return (
-            <li key={s.listingKey || 'idx-' + i} className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-slate-900 truncate">{(addr as string).split(',')[0]}</div>
-                {meta && <div className="text-xs text-slate-500 mt-1">{meta}</div>}
-              </div>
-              <div className="text-right whitespace-nowrap">
-                <div className="text-sm font-extrabold text-slate-900">${Math.round(s.tax).toLocaleString('en-CA')}<span className="text-[10px] font-normal text-gray-400 ml-1">/yr</span></div>
-                {s.price && <div className="text-xs text-slate-500 mt-0.5">List {fmtCAD(s.price)}</div>}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
     </section>
   )
 }

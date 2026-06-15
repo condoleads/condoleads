@@ -83,17 +83,30 @@ export async function POST(req: NextRequest) {
     // Real lead 6d479d84 confirmed the leak in the wild.
     const sellerEstimate = planType === 'seller' ? rawSellerEstimate : null
 
-    // W-CHARLIE-BUYER-CHUNK2 (2026-06-15): derive the buyer Tax-Matched
-    // band from matched listings' tax_annual_amount. Computed only for
-    // buyer plans — seller path is unaffected. The derived value is
-    // (a) persisted into plan_data.buyerTaxMatch so the admin lead page
-    //     can read it without re-deriving, and
-    // (b) passed to buildRichPlanEmail so the email renders the SAME
-    //     shape from the SAME data the in-chat sees (convergence).
-    // Honest sparsity is built into the derivation: <3 with-tax listings
-    // returns isEmpty=true with a reason; renderers show empty-state.
+    // W-CHARLIE-BUYER-CHUNK4 (2026-06-15): tax-match is now SOLD-comp
+    // matching, not assessment. Derivation:
+    //   1. Compute tax-band center from matched-listings' median tax.
+    //   2. Query Closed listings in band (±TAX_BAND_PCT) via the SHARED
+    //      tax-band SOLD query (lib/estimator/tax-band-sold-query.ts —
+    //      same query the seller matcher uses).
+    // Now async because of the DB roundtrip; the route handler is
+    // already async, so this just becomes an await.
+    // Honest empty-state when EITHER matched-listings tax is sparse OR
+    // the band query returns 0 sold comps. NO FAKE.
+    const _bSupabase = createServiceClient()
     const buyerTaxMatch: BuyerTaxMatch | null = planType === 'buyer'
-      ? deriveBuyerTaxMatch(listings)
+      ? await deriveBuyerTaxMatch({
+          supabase: _bSupabase,
+          matchedListings: listings,
+          geoContext: {
+            geoType: geoContext?.geoType,
+            geoId: geoContext?.geoId,
+            municipalityId: geoContext?.municipalityId
+              ?? (geoContext?.geoType === 'municipality' ? geoContext?.geoId : null),
+            communityId: geoContext?.communityId
+              ?? (geoContext?.geoType === 'community' ? geoContext?.geoId : null),
+          },
+        })
       : null
 
     // C-CHARLIE-FOLLOWUP B(ii) (2026-06-13): stale-session detector. When a
@@ -198,7 +211,10 @@ export async function POST(req: NextRequest) {
       // buyer plans and any path without seller-estimate this session.
       plan_data: {
         planType, plan, analytics,
-        topListings: (listings || []).slice(0, 5),
+        // W-CHARLIE-BUYER-CHUNK4 (2026-06-15): raise cap from 5 to 10
+        // so admin lead page matches in-chat (10) + email (10). Lead-
+        // page TopListings render iterates all of plan_data.topListings.
+        topListings: (listings || []).slice(0, 10),
         sellerEstimate: sellerEstimate ? {
           estimate: sellerEstimate.estimate || null,
           comparables: sellerEstimate.comparables || [],

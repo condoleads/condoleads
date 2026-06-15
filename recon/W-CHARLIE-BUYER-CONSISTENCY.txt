@@ -1,0 +1,457 @@
+W-CHARLIE-BUYER-CONSISTENCY — RECON
+Generated: 2026-06-15 (UTC)
+Scope: 5 related defects on the buyer path; root issue is 3 surfaces
+       diverging + tax-match was built with WRONG framing.
+Constraints: read-only — no edits, no commits, no fixes.
+
+==========================================================================
+DEFECT 1 — Charlie IN-CHAT missing Tax-Matched entirely
+==========================================================================
+
+1.1 In-chat render code exists and IS wired
+
+  app/charlie/components/ResultsPanel.tsx:495-557
+  Block of code added by Chunk 2 (commit d1844d5). Pseudocode:
+
+    {(() => {
+      const hasListings        = (blocks || []).some(b => b.type === 'listings')
+      const hasSellerEstimate  = (blocks || []).some(b => b.type === 'sellerEstimate')
+      if (!hasListings || hasSellerEstimate) return null      // ← gate
+      const allListings = (listingGroups || []).flatMap(g => g.listings)
+      const btm = deriveBuyerTaxMatch(allListings)
+      return (
+        <div>
+          <SectionHeader title={`Tax-Matched · ${btm.isEmpty ? 0 : btm.samples.length} sampled`} />
+          {/* ... always renders the header + description even on isEmpty ... */}
+        </div>
+      )
+    })()}
+
+  Code path IS wired. For a pure buyer flow that:
+    (a) called search_listings (push of 'listings' block at
+        useCharlie.ts:518-520), and
+    (b) has NO sellerEstimate block,
+  the section renders.
+
+  Render LOCATION is the issue worth flagging: the JSX above sits AFTER
+  the `blocks.map(...)` closes at L493 — meaning it renders BELOW every
+  block in conversation order, INCLUDING the 'plan' block (which is
+  itself a block pushed at useCharlie.ts:500). So in the ResultsPanel
+  scroll, the section appears AFTER the plan card.
+
+  Possible "absent from screenshot" causes (not exclusive):
+    (a) Screenshot scroll position cut off below the plan card. The
+        operator's Image 1 may simply not have scrolled to the Tax-
+        Matched section.
+    (b) deriveBuyerTaxMatch returned isEmpty=true (no listing had a
+        non-null tax_annual_amount). Even then, the section header + the
+        cited reason DO render — unless the operator's screenshot
+        compressed the empty-state into a hard-to-see strip.
+    (c) The listings block was not pushed because Charlie's flow this
+        session never called search_listings (e.g. the user used the
+        seller form path or estimator path; or Charlie's prompt was
+        overridden mid-conversation).
+  None of these are a code defect. The render path is intact.
+
+1.2 Data-source divergence (in-chat vs email vs lead)
+
+  IN-CHAT:
+    Source:  client-side derivation, INLINE per render
+    Code:    ResultsPanel.tsx:505-506
+             `const allListings = listingGroups.flatMap(g => g.listings)`
+             `const btm = deriveBuyerTaxMatch(allListings)`
+    Reads:   the IN-MEMORY listingGroups state at render time (only what
+             search_listings has pushed in this conversation).
+
+  EMAIL:
+    Source:  server-derived ONCE at plan-email POST time
+    Code:    app/api/charlie/plan-email/route.ts:95
+             `const buyerTaxMatch: BuyerTaxMatch | null = planType === 'buyer'
+                ? deriveBuyerTaxMatch(listings) : null`
+    POST:    buyerTaxMatch is passed to buildRichPlanEmail at L237.
+    Reads:   the `listings` POST-body field (capped at 10 by useCharlie's
+             POST slice at L539).
+
+  LEAD PAGE:
+    Source:  same server derivation; PERSISTED into plan_data
+    Code:    plan-email/route.ts:218 stamps plan_data.buyerTaxMatch
+    Reads:   lead.plan_data?.buyerTaxMatch (PlanRenderer.tsx:306)
+
+  The SAME `deriveBuyerTaxMatch` function feeds all three; only the
+  input timing differs (in-chat: live state; email/lead: snapshot at
+  POST). All three should yield identical output IF the input set
+  is identical.
+
+==========================================================================
+DEFECT 2 — WRONG FRAMING (assessment vs sold-comps)
+==========================================================================
+
+2.1 What deriveBuyerTaxMatch CURRENTLY computes — assessment framing
+
+  lib/charlie/buyer-tax-match.ts:69-130
+
+  Logic:
+    1. Filter listings to those with tax_annual_amount > 0
+    2. If fewer than MIN_WITH_TAX (3) → isEmpty=true
+    3. medianTax  = quantile(sortedTax, 0.5)
+       taxBand   = { low: quantile(.25), high: quantile(.75) }
+       samples   = listings sorted by ABS(tax - medianTax), take 5,
+                   sort that 5 by tax ascending
+
+  Input set: MATCHED LISTINGS, which are ACTIVE for-sale listings
+  (search_listings returns standard_status='Active' /
+   transaction_type='For Sale').
+
+  Output framing: "median annual tax + 25/75 band of what these ACTIVE
+  listings carry as annual property-tax" — an ASSESSMENT range, not a
+  set of SOLD-comp evidence.
+
+2.2 What the surfaces RENDER — confirms assessment framing
+
+  EMAIL (lib/email/charlie-plan-email-html.ts:521-578):
+    L527: "Derived from your matched listings' own property-tax data."
+    L543: "Annual property-tax range across the X of Y matched listings
+           with tax data — what you'll pay yearly on a property in this
+           shop window."
+    L569: each tile shows  "$X /yr"  +  "List $Y"
+    → Renders ACTIVE listings with their annual tax + list price.
+      Frames the section as "your expected annual tax."
+
+  LEAD PAGE (components/admin-homes/lead-workbench/PlanRenderer.tsx:
+   726-780, BuyerTaxMatched):
+    L731: "Tax-Matched (0)" (empty-state)
+    L743: "Annual property-tax range across the X of Y matched listings
+           with tax data."
+    L771: each row shows  "$X /yr"  +  "List $Y"
+    → Same assessment framing as email.
+
+  IN-CHAT (ResultsPanel.tsx:509-554):
+    L513: "Annual property-tax range across the X of Y matched listings
+           with tax data — what you'll pay yearly on a property in this
+           shop window."
+    L546-549: per-tile  "$X /yr"  +  "List $Y"
+    → Same assessment framing.
+
+  All three surfaces share the assessment framing because they share
+  the same derivation + the same row shape.
+
+2.3 CORRECT framing — recently SOLD comps matched by TAX BAND
+
+  The seller-side matcher (lib/estimator/home-comparable-matcher-
+   sales.ts) already implements exactly this for sellers:
+
+    Function:  home-comparable-matcher-sales.ts:1220-1290 (the tax-
+               cascade getter inside `getMatchedSales` or similar entry
+               point — function signature shown at L1220 returning
+               HomeMatchResult['taxMatch'])
+    Inputs:    specs.subjectTaxAnnualAmount (the SELLER's subject tax)
+    Constants: TAX_BAND_PCT       (e.g. ±20%; cited at L1242-1243:
+               `taxLow = subjTax * (1 - TAX_BAND_PCT)`,
+               `taxHigh = subjTax * (1 + TAX_BAND_PCT)`)
+    Query:     mls_listings WHERE
+                 community_id = ... AND
+                 transaction_type = 'For Sale' AND
+                 standard_status = 'Closed' AND        ← SOLD
+                 close_price NOT NULL AND
+                 close_date >= twoYearsAgo AND
+                 tax_annual_amount BETWEEN taxLow AND taxHigh AND
+                 tax_year BETWEEN yearLo AND yearHi
+               ORDER BY close_date DESC
+               LIMIT 300 (community pool) + 500 (muni pool)
+    Output shape (interface HomeMatchResult['taxMatch'] at L120-132):
+      { matchTier, comparables: ComparableSale[], winnerComparables,
+        count, tiers, bestGeoTier }
+      → comparables is a list of SOLD listings, each with full
+        close_price + close_date + sourceTier stamps.
+
+  Reusability for BUYER: YES. The function takes:
+    - subjTax → which CAN be derived from buyer's matched-listings
+                 median (or from the get_comparables result's own median).
+    - tax_year window → derivable from "current year ± 1" since the
+                 buyer doesn't have a specific subject year.
+    - community_id / municipality_id → from the buyer's geoContext
+                 (already in state).
+
+  The matcher's output (SOLD listings filtered to a tax band) is
+  exactly what the operator's CORRECT design demands. The current
+  buyer derivation in lib/charlie/buyer-tax-match.ts builds the
+  WRONG thing — it samples ACTIVE listings instead of querying
+  Closed/SOLD ones.
+
+  The seller matcher's geo-level cascade (community → muni → area)
+  also produces a tier signal (`sourceTier`); buyer tiles could
+  carry that same tier badge, which today they cannot because they
+  have no `sourceTier`.
+
+==========================================================================
+DEFECT 3 — Offer/Strategy not grounded in comps
+==========================================================================
+
+3.1 Where the buyer strategy text is generated
+
+  Source: Charlie's LLM, via `summary` field on the generate_plan tool.
+  Tool schema (app/charlie/lib/charlie-tools.ts:194-214):
+    `name: 'generate_plan'`
+    `input_schema.properties.summary: { type: 'string' }`
+    Charlie generates the summary string IN-MODEL when calling
+    generate_plan. It is then surfaced on three surfaces (plan card
+    in PlanDocument, plan_data.plan.summary on lead page, summaryHtml
+    in email).
+
+  What the prompt instructs (app/charlie/lib/charlie-prompts.ts:56):
+    "Always populate the summary field in generate_plan with 3-4
+     sentences: market condition, what their budget gets them,
+     recommended next step, and urgency signal."
+
+  Observed in real lead 6d479d84's plan_data.plan.summary:
+    "Whitby is currently a Buyer's Market with 4.88 months of
+     inventory and a median home sale price of $885K — your $900K
+     budget puts you right in the sweet spot. Homes are averaging
+     just 20 days on market and 58% sell under asking, giving you
+     solid negotiation leverage (avg 3.21% below ask). Within your
+     budget, you'll find great options ranging from townhouses
+     starting at $599K up to detached homes around $699-$900K. With
+     your 3-6 month timeline, you're well-positioned to move
+     strategically — July is historically the strongest month for
+     volume, so acting before peak season could save you money."
+
+  Citations the LLM made: market_analytics (4.88 months, $885K
+  median, 20 days DOM, 58% under-ask, 3.21% below-ask, July
+  seasonality). NO citation to a SPECIFIC comparable-sold property
+  or a tax-matched sale.
+
+3.2 What data IS available at strategy-generation time
+
+  When Charlie calls generate_plan for a BUYER (post-Chunk-2 prompt
+  edit), it has already called:
+    1. resolve_geo → geoContext
+    2. get_market_analytics → market stats
+    3. search_listings → 10 matched ACTIVE listings (full mls_listings shape)
+    4. get_comparables → up to 6 SOLD comps (full mls_listings shape;
+       pageSize=6 hardcoded at app/api/charlie/route.ts:751)
+
+  Charlie can READ all of these from the conversation transcript
+  because tool results are returned to him as messages he sees. He
+  COULD ground the summary in: "Comparable sold median: $X (last 90
+  days). Tax-matched cluster around $Y/yr (typical assessment).
+  Recommend offering 3.2% below ask, in line with the Whitby market
+  average."
+
+  But the prompt at L56 does NOT instruct him to. The prompt names
+  the 4 sentences as "market condition / budget / next step /
+  urgency" — comp-grounded numbers are not in the spec.
+
+  Bottom line: data is available; prompt instruction is the gap.
+
+==========================================================================
+DEFECT 4 — COUNT inconsistency across surfaces
+==========================================================================
+
+  Every cap point in the buyer path, sorted by what it touches:
+
+  COMPARABLE SOLD
+    Source              : get_comparables tool (pageSize=6 hard-coded)
+                          app/api/charlie/route.ts:751
+    In-chat state       : accumulates across multiple tool calls;
+                          dedup by id at useCharlie.ts:611-619
+    In-chat render      : iterates blocks.map; each comparables block
+                          renders block.listings without slicing.
+                          ResultsPanel.tsx:411-419
+                          → If Charlie calls get_comparables 2× during
+                            a session (5 dedup'd + 5 new = ~10),
+                            in-chat shows ~10 across TWO Comparable
+                            Sold sections.
+    POST to plan-email  : state.comparables.slice(0, 6)
+                          useCharlie.ts:544
+                          → max 6 sent to server
+    Email (POST body)   : passes `comparables` straight through to
+                          buildRichPlanEmail; comparableSoldHtml renders
+                          all of it (no further slice in email).
+                          lib/email/charlie-plan-email-html.ts:362-407
+                          → 6 max (capped upstream by useCharlie slice)
+    Lead persistence    : (comparables || []).slice(0, 6) into plan_data
+                          app/api/charlie/plan-email/route.ts:217
+    Lead render         : BuyerCompSold iterates plan_data.comparables
+                          without further slicing
+                          PlanRenderer.tsx:704-719
+                          → 6 max
+
+    → INCONSISTENT. In-chat: up to ~10 (across multiple calls).
+      Email + lead: capped at 6.
+
+  MATCHED LISTINGS (active)
+    Source              : search_listings tool (default limit=10 per
+                          prompt, allows override). app/api/charlie/
+                          route.ts:643
+    In-chat state       : appended to listingGroups; rendered as one
+                          'listings' block per call.
+                          ResultsPanel.tsx:116-153 renders all of
+                          block.listings (no slice)
+                          → typically 10 per call.
+    POST to plan-email  : listingGroups.flatMap(g => g.listings).slice(0, 10)
+                          useCharlie.ts:539
+                          → max 10 sent.
+    Email (POST body)   : `topListings = (listings || []).slice(0, 10)`
+                          lib/email/charlie-plan-email-html.ts:58
+                          → 10 max
+    Lead persistence    : `topListings: (listings || []).slice(0, 5)`
+                          app/api/charlie/plan-email/route.ts:201
+                          → 5 max in plan_data
+    Lead render         : TopListings iterates plan_data.topListings
+                          PlanRenderer.tsx:668-684
+                          → 5 max
+
+    → INCONSISTENT. In-chat: 10. Email: 10. Lead: 5.
+
+  TAX-MATCH SAMPLES
+    Source              : deriveBuyerTaxMatch(listings) — single
+                          derivation across the 3 surfaces.
+    Sample cap          : `.slice(0, 5)` at lib/charlie/buyer-tax-match.ts:106
+    In-chat render      : ResultsPanel.tsx:529 iterates btm.samples (5 max)
+    Email render        : lib/email/charlie-plan-email-html.ts:550 same
+    Lead render         : PlanRenderer.tsx:757 same
+
+    → CONSISTENT at 5.
+
+  Summary count table (per surface × section):
+
+    Section          | In-chat        | Email     | Lead page
+    -----------------|----------------|-----------|----------
+    Comparable Sold  | up to ~10 *    | 6 (capped)| 6 (capped)
+    Matched Listings | 10             | 10        | 5 (capped)
+    Tax-Matched      | 5              | 5         | 5
+
+    * In-chat shows N×6 when get_comparables fires N times in the
+      session (deduped by listing id). Operator's Image 1 ~10 fits
+      this pattern with 2 tool calls.
+
+==========================================================================
+DEFECT 5 — Lead-page tax-match tiles missing pics/links
+==========================================================================
+
+  Tax-match tile render per surface:
+
+  IN-CHAT (ResultsPanel.tsx:528-552):
+    DOES render photo: L539 `<img src={photoUrl} ...>` reading
+      s.media[0].media_url
+    DOES render clickable: L536-537 onClick = window.open(href, '_blank')
+      where href = s._slug || null
+    → Photo + clickable: YES ✓
+
+  EMAIL (lib/email/charlie-plan-email-html.ts:550-575):
+    DOES render photo: L563 `<img src="${photo}" ...>` reading
+      s.media[0].media_url
+    DOES render clickable: L561 `<a href="${baseUrl}${slug}">`
+    → Photo + link: YES ✓
+
+  LEAD PAGE (PlanRenderer.tsx:756-777, BuyerTaxMatched):
+    NO photo: L765 renders only `<div>` with addr + meta (no <img>)
+    NO link: L765 is a plain `<li>`, NOT an `<a>` (and no onClick)
+    → Photo + link: NO ✗
+
+  Why DIDN'T Chunk 3 upgrade BuyerTaxMatched?
+    Chunk 3's diff scope (commit 7502066) edited PlanRenderer.tsx
+    only at the matched-listings + comp-sold sections (TopListings +
+    BuyerCompSold). BuyerTaxMatched was NOT included in Chunk 3's
+    upgrade — the chunk text says "Both kinds [matched + sold]
+    share the same dual-shape reads, the same slug helper, and the
+    same photo-or-placeholder + link behavior" — explicitly two
+    sections, not three. BuyerTaxMatched was left at its Chunk-2
+    text-row shape.
+
+  BuyerListingTile (the shared component added at PlanRenderer.tsx:
+   558-650 in Chunk 3) handles only `kind: 'matched' | 'sold'`. To
+  add tax-match tiles, either a third `kind: 'tax'` or a re-shape
+  of the tax-match section to use the same component would be needed.
+
+==========================================================================
+CROSS-CUTTING — consistency matrix
+==========================================================================
+
+  For BUYER plans, current state per (surface × section):
+
+  ╔══════════════════════╦═══════════════════╦═══════════════════╦═══════════════════╗
+  ║ Section              ║ In-chat           ║ Email             ║ Lead page         ║
+  ╠══════════════════════╬═══════════════════╬═══════════════════╬═══════════════════╣
+  ║ Matched Listings     ║ rendered ✓        ║ rendered ✓        ║ rendered ✓        ║
+  ║                      ║ count: up to 10   ║ count: up to 10   ║ count: up to 5  ⚠ ║
+  ║                      ║ photos: yes (L130)║ photos: yes (L323)║ photos: yes ✓     ║
+  ║                      ║ links:  yes ✓     ║ links:  yes ✓     ║ links:  yes ✓     ║
+  ╠══════════════════════╬═══════════════════╬═══════════════════╬═══════════════════╣
+  ║ Comparable Sold      ║ rendered ✓        ║ rendered ✓        ║ rendered ✓        ║
+  ║                      ║ count: ~10 *      ║ count: capped 6 ⚠ ║ count: capped 6 ⚠ ║
+  ║                      ║ photos: per CCard ║ photos: yes ✓     ║ photos: yes ✓     ║
+  ║                      ║ links:  yes ✓     ║ links:  yes ✓     ║ links:  yes ✓     ║
+  ║                      ║ framing: ACTIVE   ║                   ║                   ║
+  ║                      ║   listings ⚠ TBD  ║ SOLD ✓            ║ SOLD ✓            ║
+  ╠══════════════════════╬═══════════════════╬═══════════════════╬═══════════════════╣
+  ║ Tax-Matched          ║ rendered code ✓   ║ rendered ✓        ║ rendered ✓        ║
+  ║                      ║ but possibly ⚠    ║                   ║                   ║
+  ║                      ║ below plan card   ║                   ║                   ║
+  ║                      ║ count: 5          ║ count: 5          ║ count: 5          ║
+  ║                      ║ photos: yes ✓     ║ photos: yes ✓     ║ photos: NO    ✗   ║
+  ║                      ║ links:  yes ✓     ║ links:  yes ✓     ║ links:  NO    ✗   ║
+  ║                      ║ framing: ASSESS ⚠ ║ ASSESSMENT ⚠      ║ ASSESSMENT  ⚠     ║
+  ║                      ║                   ║ (ALL 3 wrong)     ║                   ║
+  ╚══════════════════════╩═══════════════════╩═══════════════════╩═══════════════════╝
+
+  * In-chat Comparable Sold accumulates: N tool calls × pageSize 6,
+    dedup'd by listing id. One call → 6. Two calls → up to 12 (less
+    overlap). Email/lead capped at 6 (POST + persistence slices).
+
+  Consistency spec the fix must hit (per the operator's framing):
+
+    1. SAME SECTIONS on all 3 surfaces:
+         Matched Listings | Comparable Sold | Tax-Matched
+
+    2. SAME COUNTS across surfaces. Pick ONE cap per section and apply
+       it at the EARLIEST shared layer (likely a single shared
+       constant + a single cap point inside deriveBuyerCompSold /
+       deriveBuyerTaxMatch / matched-listings normalization).
+
+    3. SAME TILE TREATMENT on all 3 surfaces:
+         photo + slug-helper link + dual-shape reads
+       In-chat already uses ComparableCard (dual-shape post Chunk 2b);
+       email already uses inline <a>+<img> tiles; lead page uses
+       BuyerListingTile (post Chunk 3). The OUTLIER is lead-page
+       BuyerTaxMatched, which still renders text-only rows.
+
+    4. SAME CORRECT FRAMING for Tax-Matched:
+         Query SOLD listings whose tax_annual_amount falls in a band
+         derived from the buyer's matched-listing range (or from a
+         seller-matcher-style ±TAX_BAND_PCT around a derived center).
+         Re-use the seller matcher's tax-band SQL query (home-
+         comparable-matcher-sales.ts:1242-1292) with derived band
+         endpoints, fed through a buyer-side wrapper that doesn't
+         require a subject tax.
+
+    5. OFFER/STRATEGY grounded in comps:
+         Update charlie-prompts.ts:56 generate_plan-summary spec to
+         REQUIRE references to (a) comparable-sold median + count,
+         (b) tax-matched cluster signal, (c) suggested offer % +
+         cited evidence.
+
+==========================================================================
+FLAGGED / UNVERIFIABLE
+==========================================================================
+  - Whether the operator's Image 1 (no Tax-Matched in-chat) is a
+    scroll-cutoff vs a real absence cannot be confirmed without driving
+    the live session. Code path is wired (D1.1); the section IS
+    below the plan-card render in the same column.
+  - The exact pageSize=6 cap in get_comparables (route.ts:751) is
+    hardcoded; expanding the cap would let the in-chat count grow
+    and the email/lead caps would need to follow. Fix-time decision.
+  - The seller home matcher's tax cascade is gated on
+    `subjTax > 500 && subjectTaxYear != null && municipalityId`. For
+    buyer reuse, all three need substitutes:
+      subjTax → derived center (median of matched-listing or comps)
+      subjectTaxYear → likely "currentYear" with ±1 window
+      municipalityId → from buyer's geoContext (already in state)
+    The reuse is structurally sound but introduces new edge cases
+    (subjTax derivation when matched-listings tax data is sparse).
+  - Two count caps differ by accident vs intent: the slice(0,5) for
+    topListings at plan-email/route.ts:201 (Lead) vs slice(0,10) at
+    email-builder L58 (Email). One must be picked; there's no docs
+    indicating which is correct.
+
+No fix attempted. Stopping per directive.

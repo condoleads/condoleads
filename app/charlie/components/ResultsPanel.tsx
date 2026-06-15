@@ -1,6 +1,6 @@
 ﻿// app/charlie/components/ResultsPanel.tsx
 'use client'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import PlanDocument from './PlanDocument'
 import SellerEstimateBlock from './SellerEstimateBlock'
@@ -9,11 +9,14 @@ import ActiveListingCard from './ActiveListingCard'
 import PricingRiskBlock from './PricingRiskBlock'
 import BuyerOfferBlock from './BuyerOfferBlock'
 import BuildingCard from './BuildingCard'
-// W-CHARLIE-BUYER-CHUNK2 (2026-06-15): in-chat buyer Tax-Matched block.
-// Derivation is shared with the server (plan-email route persists it to
-// plan_data; email renders the same shape) — single source of truth at
-// lib/charlie/buyer-tax-match.ts so all three surfaces converge.
-import { deriveBuyerTaxMatch } from '@/lib/charlie/buyer-tax-match'
+// W-CHARLIE-BUYER-CHUNK4 (2026-06-15): in-chat buyer Tax-Matched now
+// queries the SAME server endpoint that plan-email/route.ts persists
+// from — /api/charlie/buyer-tax-match. Tax-match is SOLD-comp
+// matching (real Closed listings whose tax falls in a band derived
+// from the buyer's matched-listings tax median), NOT the prior
+// "assessment / what you'll pay yearly" framing.
+import type { BuyerTaxMatch } from '@/lib/charlie/buyer-tax-match'
+import { BUYER_COMP_SOLD_CAP } from '@/lib/charlie/buyer-tax-match'
 
 const AnalyticsSection = dynamic(() => import('@/components/analytics/AnalyticsSection'), { ssr: false })
 
@@ -492,70 +495,17 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         return null
       })}
 
-      {/* W-CHARLIE-BUYER-CHUNK2 (2026-06-15): in-chat buyer Tax-Matched.
-          Renders once below all listings blocks for buyer flow only
-          (gated on: at least one listings block AND no sellerEstimate
-          block). Same deriveBuyerTaxMatch the server uses for the
-          email + lead page — convergence across all three surfaces.
-          Honest empty-state when <3 matched listings carry tax data. */}
+      {/* W-CHARLIE-BUYER-CHUNK4 (2026-06-15): in-chat buyer Tax-Matched
+          via /api/charlie/buyer-tax-match. Same server derivation
+          plan-email/route.ts uses → identical sold-comp set across
+          in-chat + email + lead page. Renders once below all blocks
+          for the buyer flow only (gated on: ≥1 listings block AND no
+          sellerEstimate block). */}
       {(() => {
         const hasListings = (blocks || []).some((b: any) => b.type === 'listings')
         const hasSellerEstimate = (blocks || []).some((b: any) => b.type === 'sellerEstimate')
         if (!hasListings || hasSellerEstimate) return null
-        const allListings = (listingGroups || []).flatMap(g => g.listings)
-        const btm = deriveBuyerTaxMatch(allListings)
-        return (
-          <div>
-            <SectionHeader title={`Tax-Matched · ${btm.isEmpty ? 0 : btm.samples.length} sampled`} />
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 10, lineHeight: 1.5 }}>
-              {btm.isEmpty
-                ? (btm.reason || 'Insufficient tax data on matched listings.')
-                : `Annual property-tax range across the ${btm.withTaxCount} of ${btm.totalCount} matched listings with tax data — what you’ll pay yearly on a property in this shop window.`}
-            </div>
-            {!btm.isEmpty && (
-              <>
-                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>Median annual tax</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
-                    {btm.medianTax != null ? '$' + Math.round(btm.medianTax).toLocaleString('en-CA') : '—'}
-                    {btm.taxBand && (
-                      <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.4)', marginLeft: 8 }}>
-                        · band ${Math.round(btm.taxBand.low).toLocaleString('en-CA')}–${Math.round(btm.taxBand.high).toLocaleString('en-CA')}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {btm.samples.map((s, i) => {
-                    const photoUrl = (s.media && s.media[0] && (s.media[0].media_url || s.media[0].url)) || ''
-                    const slugRaw = s._slug
-                    const href = slugRaw ? (slugRaw.startsWith('/') ? slugRaw : '/' + slugRaw) : null
-                    const addrShort = (s.address || '').split(',')[0]
-                    const meta = [s.bedrooms != null ? s.bedrooms + ' bed' : '', s.bathrooms != null ? s.bathrooms + ' bath' : '', s.propertySubtype].filter(Boolean).join(' · ')
-                    return (
-                      <div key={s.listingKey || i} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'center', cursor: href ? 'pointer' : 'default' }}
-                        onClick={() => { if (href) window.open(href, '_blank') }}>
-                        <div style={{ width: 64, height: 60, borderRadius: 8, background: 'rgba(255,255,255,0.08)', flexShrink: 0, overflow: 'hidden' }}>
-                          {photoUrl && <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addrShort}</div>
-                          {meta && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 3 }}>{meta}</div>}
-                        </div>
-                        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          <div style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>
-                            ${Math.round(s.tax).toLocaleString('en-CA')}<span style={{ fontSize: 10, fontWeight: 400, color: 'rgba(255,255,255,0.4)' }}> /yr</span>
-                          </div>
-                          {s.price && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>List ${Number(s.price).toLocaleString('en-CA')}</div>}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        )
+        return <BuyerTaxMatchInChat listingGroups={listingGroups} geoContext={geoContext} />
       })()}
 
       {/* Community Buildings - only when no buildings blocks exist in conversation */}
@@ -667,6 +617,99 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── BuyerTaxMatchInChat ────────────────────────────────────────────────
+// W-CHARLIE-BUYER-CHUNK4 (2026-06-15): the in-chat Tax-Matched block.
+// Hits /api/charlie/buyer-tax-match whenever the matched-listings
+// signature changes; renders the SAME shape email + lead page render.
+// Sold-comp framing (NOT "what you'll pay yearly").
+function BuyerTaxMatchInChat({ listingGroups, geoContext }: {
+  listingGroups: { label: string; listings: any[] }[]
+  geoContext: { geoType: string; geoId: string; geoName: string } | null
+}) {
+  const [btm, setBtm] = useState<BuyerTaxMatch | null>(null)
+  const [loading, setLoading] = useState(false)
+  const lastSigRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const matched = (listingGroups || []).flatMap(g => g.listings)
+    // Signature: listing keys + geoId. Skip refetch when nothing changed.
+    const sig = matched.map(l => l?.listing_key || l?.listingKey).filter(Boolean).join(',') +
+                '|' + (geoContext?.geoType || '') + ':' + (geoContext?.geoId || '')
+    if (sig === lastSigRef.current) return
+    if (matched.length === 0 || !geoContext?.geoId) {
+      lastSigRef.current = sig
+      setBtm(null)
+      return
+    }
+    lastSigRef.current = sig
+    setLoading(true)
+    fetch('/api/charlie/buyer-tax-match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matchedListings: matched, geoContext }),
+    })
+      .then(r => r.json())
+      .then(j => { if (j?.ok && j.buyerTaxMatch) setBtm(j.buyerTaxMatch) })
+      .catch(err => console.error('[BuyerTaxMatchInChat] fetch error:', err))
+      .finally(() => setLoading(false))
+  }, [listingGroups, geoContext])
+
+  if (loading && !btm) {
+    return (
+      <div>
+        <SectionHeader title="Tax-Matched · loading…" />
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', padding: '8px 0' }}>Computing tax-band-matched sold comps…</div>
+      </div>
+    )
+  }
+  if (!btm) return null
+
+  return (
+    <div>
+      <SectionHeader title={`Tax-Matched · ${btm.isEmpty ? 0 : btm.samples.length} sold comp${btm.isEmpty || btm.samples.length === 1 ? '' : 's'}`} />
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 10, lineHeight: 1.5 }}>
+        {btm.isEmpty
+          ? (btm.reason || 'No sold comps matched the derived tax band.')
+          : `Recently sold homes matched by property-tax band — real transaction evidence anchored to the ${btm.withTaxCount} of ${btm.totalCount} matched listings carrying tax data.`}
+      </div>
+      {!btm.isEmpty && btm.taxBand && (
+        <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 12px', marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>Tax band (derived)</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>
+            ${Math.round(btm.taxBand.low).toLocaleString('en-CA')} – ${Math.round(btm.taxBand.high).toLocaleString('en-CA')}<span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.4)', marginLeft: 8 }}>/yr</span>
+          </span>
+        </div>
+      )}
+      {!btm.isEmpty && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {btm.samples.map((s, i) => {
+            // _slug not stamped here — buyer in-chat uses ComparableCard
+            // when possible. Reuse the ComparableCard look via its dual-
+            // shape reads. Pass listingKey + close_price so the price-
+            // resolution logic in ComparableCard treats it as a sold comp.
+            const comp = {
+              listingKey: s.listingKey || undefined,
+              unparsedAddress: s.address || undefined,
+              closePrice: s.price ?? undefined,
+              closeDate: s.closeDate || undefined,
+              bedrooms: s.bedrooms ?? undefined,
+              bathrooms: s.bathrooms ?? undefined,
+              propertySubtype: s.propertySubtype || undefined,
+              unitNumber: s.unitNumber || undefined,
+              daysOnMarket: s.daysOnMarket ?? undefined,
+              sourceTier: s.sourceTier || undefined,
+            }
+            return <ComparableCard key={s.listingKey || i} comparable={comp as any} />
+          })}
+        </div>
+      )}
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 8, lineHeight: 1.4 }}>
+        Band derived from your matched-listings tax median, ±{Math.round((((btm.taxBand?.high ?? 0) - (btm.taxBand?.low ?? 0)) / 2 / (btm.bandCenter || 1)) * 100)}%. Cap: {BUYER_COMP_SOLD_CAP} comps.
+      </div>
     </div>
   )
 }
