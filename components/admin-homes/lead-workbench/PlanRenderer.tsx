@@ -29,6 +29,13 @@
 import { useState } from 'react'
 import CharlieLeadEstimate from '@/components/dashboard/CharlieLeadEstimate'
 import { buildSellerEstimateView } from '@/lib/charlie/seller-estimate-view'
+// W-CHARLIE-BUYER-CHUNK3 (2026-06-15): shared property-slug helper that
+// the seller comp tile (CharlieLeadEstimate.tsx:109) + email tile
+// (charlie-plan-email-html.ts:377-382) + Charlie in-chat tile already
+// use. Buyer matched-listings + comp-sold tiles below now adopt the
+// SAME helper so all four surfaces produce byte-identical hrefs
+// (walliam.ca-resolvable descriptive slug, NOT bare-MLS 404).
+import { buildPropertySlug } from '@/lib/utils/property-slug'
 
 interface Agent {
   id?: string
@@ -552,36 +559,135 @@ function SellerEstimateMount({ lead }: { lead: Lead }) {
   )
 }
 
+// W-CHARLIE-BUYER-CHUNK3 (2026-06-15): single buyer tile renderer used
+// by BOTH TopListings (matched/active) AND BuyerCompSold (sold). Mirrors
+// the seller CompRow tile in CharlieLeadEstimate.tsx:96-165 — photo +
+// dual-shape field reads + buildPropertySlug-driven clickable wrapper +
+// optional temperature badge — but Tailwind-styled for the admin
+// lead page and with no tier chip (buyer comps have no anchor tier;
+// per recon they don't carry sourceTier either, so we honestly omit
+// the chip rather than fabricate one).
+//
+// `kind` controls only the affordance ("For sale" vs "Sold") and the
+// price-row accent color. Both kinds share the same dual-shape reads,
+// the same slug helper, and the same photo-or-placeholder + link
+// behavior so the admin sees ONE consistent tile shape for every
+// buyer-side listing on the lead page.
+function BuyerListingTile({ listing, kind, index }: { listing: any; kind: 'matched' | 'sold'; index: number }) {
+  // Dual-shape reads — mirror the email + ComparableCard pattern from
+  // Chunks 2 + 2b. Numerics use ?? so 0 isn't masked; strings use ||.
+  const price = (listing.adjustedPrice ?? listing.adjusted_price)
+    ?? (kind === 'sold'
+        ? (listing.closePrice ?? listing.close_price ?? listing.listPrice ?? listing.list_price)
+        : (listing.listPrice ?? listing.list_price ?? listing.closePrice ?? listing.close_price))
+    ?? listing.price
+    ?? null
+  const unparsedAddress = listing.unparsedAddress || listing.unparsed_address || listing.address || ''
+  const bedrooms = listing.bedrooms_total ?? listing.bedrooms ?? null
+  const bathrooms = listing.bathrooms_total_integer ?? listing.bathrooms ?? null
+  const subtype = listing.property_subtype || listing.propertySubtype || ''
+  const daysOnMarket = listing.days_on_market ?? listing.daysOnMarket ?? null
+  const listingKey = listing.listing_key || listing.listingKey || null
+  const unitNumber = listing.unit_number || listing.unitNumber || null
+  const mediaUrl = listing.mediaUrl
+    || listing.media?.[0]?.media_url
+    || listing.media?.[0]?.url
+    || null
+  // Temperature: geo-listings (the buyer comp source) does NOT return
+  // a `temperature` field — confirmed via LISTING_SELECT at
+  // app/api/geo-listings/route.ts:9. The badge only renders if the
+  // listing happens to carry one (forward-compat). NO fabricated tier.
+  const temperature = listing.temperature || null
+
+  // Slug via the shared helper — same one CharlieLeadEstimate.tsx:109
+  // and the email template (charlie-plan-email-html.ts:377-382) and
+  // ComparableCard use. When listingKey is missing the helper returns
+  // null and we render an honest un-wrapped tile (no broken link).
+  const slug = buildPropertySlug({
+    listingKey,
+    unparsedAddress,
+    propertySubtype: subtype,
+    unitNumber,
+  })
+  const href = slug ? '/' + slug : null
+  const addrShort = (unparsedAddress as string).split(',')[0] || '—'
+  const meta = [
+    bedrooms != null ? bedrooms + ' bed' : null,
+    bathrooms != null ? bathrooms + ' bath' : null,
+    subtype || null,
+    daysOnMarket != null ? daysOnMarket + 'd DOM' : null,
+  ].filter(Boolean).join(' · ')
+  const priceColor = kind === 'sold' ? 'text-emerald-700' : 'text-blue-700'
+  const affordance = kind === 'sold' ? 'Sold' : 'For sale'
+  const tempColor: Record<string, string> = {
+    HOT: 'bg-red-500', WARM: 'bg-amber-500', COLD: 'bg-blue-500', FROZEN: 'bg-slate-400',
+  }
+
+  const tileInner = (
+    <>
+      <div className="w-20 h-[72px] flex-shrink-0 bg-slate-100 overflow-hidden relative">
+        {mediaUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={mediaUrl} alt="" className="block w-20 h-[72px] object-cover" />
+        ) : (
+          <div className="w-20 h-[72px] flex items-center justify-center text-2xl text-slate-300">🏠</div>
+        )}
+        {temperature && (
+          <div className={`absolute top-1 left-1 ${tempColor[temperature] || 'bg-slate-400'} text-white text-[9px] font-bold px-1.5 py-0.5 rounded`}>
+            {temperature}
+          </div>
+        )}
+      </div>
+      <div className="flex-1 px-3 py-2 min-w-0">
+        <div className="text-sm font-bold text-slate-900 truncate">{addrShort}</div>
+        {meta && <div className="text-xs text-slate-500 mt-0.5 truncate">{meta}</div>}
+      </div>
+      <div className="px-3 py-2 text-right whitespace-nowrap">
+        <div className={`text-base font-extrabold ${priceColor}`}>
+          {price != null ? fmtCAD(price) : '—'}
+        </div>
+        <div className="text-[11px] text-slate-400 mt-0.5">{affordance}</div>
+      </div>
+    </>
+  )
+
+  const key = listingKey || 'idx-' + index
+  if (href) {
+    return (
+      <a
+        key={key}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex border border-slate-200 rounded-lg overflow-hidden bg-white hover:bg-slate-50 hover:border-slate-300 transition-colors no-underline"
+      >
+        {tileInner}
+      </a>
+    )
+  }
+  return (
+    <div key={key} className="flex border border-slate-200 rounded-lg overflow-hidden bg-white">
+      {tileInner}
+    </div>
+  )
+}
+
 function TopListings({ listings, isBuyer }: { listings: any[]; isBuyer: boolean }) {
   return (
     <section>
       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
         {isBuyer ? 'Matched Listings' : 'Comparable Sales'} ({listings.length})
       </h3>
-      <ul className="space-y-2 list-none p-0 m-0">
-        {listings.map((l: any, i: number) => {
-          const price = l.list_price || l.close_price || l.price || 0
-          const addr = l.unparsed_address || l.address || '—'
-          const beds = l.bedrooms_total ?? l.bedrooms ?? null
-          const baths = l.bathrooms_total_integer ?? l.bathrooms ?? null
-          const subtype = l.property_subtype || ''
-          const key = l.listing_key || l.listingKey || 'idx-' + i
-          const meta = [
-            beds !== null && beds !== undefined ? beds + ' bed' : null,
-            baths !== null && baths !== undefined ? baths + ' bath' : null,
-            subtype || null,
-          ].filter(Boolean).join(' · ')
-          return (
-            <li key={key} className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-slate-900 truncate">{addr}</div>
-                {meta && <div className="text-xs text-slate-500 mt-1">{meta}</div>}
-              </div>
-              <div className="text-base font-extrabold text-blue-700 whitespace-nowrap">{fmtCAD(price)}</div>
-            </li>
-          )
-        })}
-      </ul>
+      <div className="flex flex-col gap-2">
+        {/* W-CHARLIE-BUYER-CHUNK3 (2026-06-15): matched-listings tiles
+            now match the seller-comp tile shape — photo + dual-shape
+            address/price/meta + clickable slug-based href. Photoless
+            legacy slim-shape leads fall through to the 🏠 placeholder
+            (honest, not broken). */}
+        {listings.map((l: any, i: number) => (
+          <BuyerListingTile key={l.listing_key || l.listingKey || 'idx-' + i} listing={l} kind="matched" index={i} />
+        ))}
+      </div>
     </section>
   )
 }
@@ -591,6 +697,10 @@ function TopListings({ listings, isBuyer }: { listings: any[]; isBuyer: boolean 
 // uses, fed by plan_data.comparables (written by plan-email/route.ts on
 // buyer plans from Charlie's get_comparables tool output). Null/empty
 // data → null render (honest absence; the disclaimer block above remains).
+// W-CHARLIE-BUYER-CHUNK3 (2026-06-15): upgraded to shared BuyerListingTile
+// — photo, slug-driven link, dual-shape fields. Same tile pattern the
+// matched-listings section uses; one consistent buyer tile shape across
+// the entire lead page.
 function BuyerCompSold({ comparables }: { comparables: any }) {
   if (!Array.isArray(comparables) || comparables.length === 0) return null
   return (
@@ -599,30 +709,11 @@ function BuyerCompSold({ comparables }: { comparables: any }) {
         Comparable Sold ({comparables.length})
       </h3>
       <p className="text-xs text-gray-500 mb-3">Recently sold listings in this geo + price band — real transaction evidence alongside the active matched listings.</p>
-      <ul className="space-y-2 list-none p-0 m-0">
-        {comparables.map((c: any, i: number) => {
-          const price = c.close_price || c.list_price || c.closePrice || c.listPrice || 0
-          const addr = c.unparsed_address || c.unparsedAddress || '—'
-          const beds = c.bedrooms_total ?? c.bedrooms ?? null
-          const baths = c.bathrooms_total_integer ?? c.bathrooms ?? null
-          const subtype = c.property_subtype || c.propertySubtype || ''
-          const key = c.listing_key || c.listingKey || 'idx-' + i
-          const meta = [
-            beds !== null && beds !== undefined ? beds + ' bed' : null,
-            baths !== null && baths !== undefined ? baths + ' bath' : null,
-            subtype || null,
-          ].filter(Boolean).join(' · ')
-          return (
-            <li key={key} className="bg-white border border-slate-200 rounded-lg p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-slate-900 truncate">{(addr as string).split(',')[0]}</div>
-                {meta && <div className="text-xs text-slate-500 mt-1">{meta}</div>}
-              </div>
-              <div className="text-base font-extrabold text-emerald-700 whitespace-nowrap">{fmtCAD(price)}<span className="text-xs font-normal text-gray-400 ml-2">Sold</span></div>
-            </li>
-          )
-        })}
-      </ul>
+      <div className="flex flex-col gap-2">
+        {comparables.map((c: any, i: number) => (
+          <BuyerListingTile key={c.listing_key || c.listingKey || 'idx-' + i} listing={c} kind="sold" index={i} />
+        ))}
+      </div>
     </section>
   )
 }

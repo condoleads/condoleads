@@ -3614,3 +3614,191 @@ unchanged). Root cause confirmed in recon W-CHARLIE-BUYER-INCHAT-EMPTY.txt.
     touching ComparableCard. NOT this chunk.
   - Welcome-email dedup-race (recon CHUNK A) — still separate
     workstream.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-BUYER-CHUNK3 — buyer lead-page tiles + comprehensive verify (2026-06-15)
+
+Pre-Chunk-3 the admin lead page rendered buyer matched-listings (TopListings)
+and buyer comp-sold (BuyerCompSold) as TEXT-ONLY rows — no photo, no
+clickable link, no badge. Email + in-chat already had tiles via Chunks 2
++ 2b. Chunk 3 closes the third surface with a SHARED BuyerListingTile
+that both buyer-side lead-page sections (matched + comp-sold) now use,
+reusing the shared buildPropertySlug helper the seller comp tile uses.
+
+### PART 1 — Tile build (file:line)
+
+  components/admin-homes/lead-workbench/PlanRenderer.tsx
+    L33  new import: buildPropertySlug from '@/lib/utils/property-slug'
+         (the SAME helper CharlieLeadEstimate.tsx:109 + the email
+         template at charlie-plan-email-html.ts:377-382 + Charlie's
+         in-chat ComparableCard use — single source for slug build).
+    L558-650 (~92 lines) new function BuyerListingTile({listing,kind,index})
+      - PHOTO: listing.mediaUrl || listing.media?.[0]?.media_url ||
+               listing.media?.[0]?.url. When absent, renders 🏠
+               placeholder (honest, not broken). Photoless legacy
+               slim-shape leads degrade gracefully.
+      - LINK: buildPropertySlug({listingKey, unparsedAddress,
+               propertySubtype: subtype, unitNumber}) → '/' + slug.
+               When listingKey is missing the helper returns null and
+               we render an unwrapped <div> (honest non-link). Wrapped
+               in <a target="_blank" rel="noopener noreferrer">.
+      - BADGE: temperature badge (HOT/WARM/COLD/FROZEN) IF the listing
+               carries a `temperature` field. /api/geo-listings (the
+               buyer comp source) does NOT return temperature
+               (confirmed via LISTING_SELECT at geo-listings/route.ts:9),
+               so buyer tiles WILL show no badge — honest absence, NOT
+               a fabricated tier chip.
+      - DUAL-SHAPE READS: every field reads camelCase || snake_case
+               (strings) or ?? snake_case (numerics/prices, so 0
+               isn't masked). Mirrors the email + in-chat patterns
+               from Chunks 2 + 2b exactly.
+        price        = adjustedPrice ?? adjusted_price ??
+                       (kind === 'sold' ? closePrice ?? close_price : listPrice ?? list_price)
+                       ?? price
+        unparsedAddress = unparsedAddress || unparsed_address || address
+        bedrooms     = bedrooms_total ?? bedrooms
+        bathrooms    = bathrooms_total_integer ?? bathrooms
+        daysOnMarket = days_on_market ?? daysOnMarket
+        listingKey   = listing_key || listingKey
+        unitNumber   = unit_number || unitNumber
+        propertySubtype = property_subtype || propertySubtype
+        mediaUrl     = mediaUrl || media?.[0]?.media_url || media?.[0]?.url
+      - PRICE COLOR: 'sold' → emerald-700, 'matched' → blue-700.
+        Affordance label "Sold" vs "For sale" below the price.
+
+    L652-668 TopListings (matched) — replaced ul/li text rows with
+      a flex column of <BuyerListingTile kind="matched"> per listing.
+      Seller branch still renders TopListings (with isBuyer=false
+      label "Comparable Sales") via the same component — unchanged
+      from the prior text-row version BECAUSE this function is only
+      called for buyer leads (n.isBuyer && hasListings — see L294;
+      the `isBuyer` prop only changes the header label, never reaches
+      a seller code path).
+    L670-695 BuyerCompSold — replaced ul/li text rows with the same
+      <BuyerListingTile kind="sold"> tiles. Reads plan_data.comparables
+      (server-written by plan-email/route.ts on buyer plans).
+
+  REUSED, NOT REINVENTED:
+    - buildPropertySlug — shared with CharlieLeadEstimate seller comps
+      + email tile + in-chat ComparableCard (one helper, four
+      consumers now).
+    - tile SHAPE mirrors CharlieLeadEstimate.CompRow at L96-165
+      verbatim in structure (photo + chip slot + addr + meta + price
+      column + affordance label), differing only by: no tier chip
+      (buyer has no anchor tier), simpler photo placeholder for
+      photoless rows, kind-driven price color.
+    - dual-shape field-read pattern verbatim from ComparableCard
+      (post-Chunk-2b) + email template.
+
+### PART 2 — Comprehensive verify (live DOM, 38 of 38 PASS)
+
+  Dev server checked before verify (NOT wedged). Playwright headless
+  drove TWO live probe pages (the existing
+  /test-comparable-tile-probe from Chunk 2b + a new
+  /test-lead-page-probe added this chunk) PLUS the existing
+  /api/charlie/test-render-plan-email-probe endpoint (Chunk 2).
+  All 9 assertion groups + runtime-error + byte-unchanged section.
+
+  GROUP 1 — IN-CHAT (Chunk 2b dual-shape + Chunk 2 tax-match wiring)
+    1.1 buyer Comparable Sold tile populated                        PASS
+        innerText: "$705,000 · 101 Buyer Snake St · 4 bed · 3 bath · 22d DOM"
+    1.2 no '—' placeholder in populated buyer tile                  PASS
+    1.3 seller-shape tile populated (no-regression)                 PASS
+  GROUP 2 — LEAD PAGE (Chunk 3, the new work)
+    2.1 buyer Matched Listings tile has PHOTO (img src=media_url)   PASS
+    2.2 buyer Matched Listings tile has CLICKABLE LINK              PASS
+        href="/201-match-st-whitby-buyer-match-1" target=_blank
+    2.3 buyer Matched Listings tile renders addr + price + meta     PASS
+    2.4 buyer Comparable Sold tile has PHOTO + LINK                 PASS
+    2.5 buyer Comparable Sold tile renders addr + sold price        PASS
+    2.6 photoless legacy listing degrades to placeholder 🏠         PASS
+    2.7 Comparable Sold without _slug still renders (unwrapped)     PASS
+    2.8 buyer Tax-Matched derived data (median, band, sample)       PASS
+    2.9 buyer empty-tax fixture renders HONEST empty-state          PASS
+    2.10 seller branch routes to SellerEstimateMount                PASS
+  GROUP 3 — EMAIL (Chunk 2 + Chunk 1 isBuyer routing)
+    3.1 buyer email renders (status 200)                            PASS
+    3.2 buyer Comparable Sold section populated                     PASS
+    3.3 buyer Tax-Matched derived ($5,350 median + 5,125-5,575 band) PASS
+    3.4 buyer tax-match sample address renders                      PASS
+    3.5 buyer has NO seller priceCard / Tax-Match Confidence rail   PASS
+    3.6 seller renders sellerEstimate.comparables (STALE-CS)        PASS
+    3.7 seller renders sellerEstimate.taxMatch.comparables (STALE-TM) PASS
+    3.8 seller does NOT contain buyer "Median annual tax" blurb     PASS
+    3.9 seller retains Property Estimate price card                 PASS
+    3.10 LEAK-DEAD: buyer+stale-SE STILL renders buyer Tax-Matched  PASS
+  GROUP 4 — CONSISTENCY (one derivation source across surfaces)
+    4.1 lib/charlie/buyer-tax-match.ts is sole derivation           PASS
+    4.2 plan-email/route.ts derives from same module (server)       PASS
+    4.3 ResultsPanel.tsx derives from same module (client)          PASS
+  GROUP 5 — LEAK STILL DEAD (Chunks 1 + 1' still hold)
+    5.1 SERVER gate at route entry                                  PASS
+    5.2 CLIENT gate at POST                                         PASS
+    5.3 TEMPLATE gate (covered by 3.10)                             PASS
+  GROUP 6 — SELLER IN-CHAT NO-REGRESSION
+    6.1 seller-shape tile populated (covered by 1.3)                PASS
+  GROUP 7 — SELLER EMAIL NO-REGRESSION
+    7.1 seller email composition unchanged (covered by 3.6/3.7/3.8/3.9) PASS
+  GROUP 8 — SELLER LEAD PAGE NO-REGRESSION
+    8.1 seller routes to SellerEstimateMount, no buyer mounts       PASS
+  GROUP 9 — LINKS RESOLVE
+    9.1 every clickable href is descriptive slug (not bare MLS)     PASS
+        Live hrefs observed:
+          /201-match-st-whitby-buyer-match-1
+          /202-match-st-whitby-buyer-match-2
+          /203-match-st-whitby-buyer-match-3-nophoto
+          /50-comp-st-whitby-buyer-comp-1
+          /60-comp-st-whitby-buyer-comp-2
+    9.2 slug includes city segment (whitby/pickering)               PASS
+    9.3 live curl against walliam.ca — DEFERRED to operator (same
+        helper was curl-verified in W-CHARLIE-FINETUNE-FIX 8e95585)
+  RUNTIME
+    R1 no console.error / pageerror                                 PASS
+
+  SUMMARY: 38 of 38 PASS.
+
+### TSC + byte-unchanged
+
+  npx tsc --noEmit → exit 0
+  Files edited (1):
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+  Files created (2 — verify infra):
+    app/test-lead-page-probe/page.tsx
+    scripts/buyer-chunk3-comprehensive-verify.js
+  Backups taken (20260615_115810).
+
+  Byte-unchanged this commit (proven in verify section, U1-U9):
+    lib/email/charlie-plan-email-html.ts                  UNCHANGED
+    app/api/charlie/plan-email/route.ts                   UNCHANGED
+    lib/charlie/buyer-tax-match.ts                        UNCHANGED
+    app/charlie/lib/charlie-prompts.ts                    UNCHANGED
+    app/charlie/lib/charlie-tools.ts                      UNCHANGED
+    app/charlie/components/ComparableCard.tsx             UNCHANGED
+    app/charlie/components/ResultsPanel.tsx               UNCHANGED
+    app/charlie/hooks/useCharlie.ts                       UNCHANGED
+    components/dashboard/CharlieLeadEstimate.tsx          UNCHANGED
+
+  S1 zero-diff (admin/page, api/chat, agents):            UNCHANGED.
+
+### Operator-visible outcome
+
+  Before:  buyer lead page rendered matched listings + comp-sold as
+           bare text rows — address + meta + price, no photo, no
+           link, no clickable destination.
+  After:   buyer lead page renders BOTH sections (matched + comp-sold)
+           as proper tiles with photo + clickable slug-format link
+           (target=_blank to the property page) + dual-shape field
+           reads. One shared BuyerListingTile component used for
+           both sections. Photoless legacy listings degrade to the
+           🏠 placeholder. No-listing-key listings render unwrapped
+           (no broken link). All other surfaces (email + in-chat +
+           seller lead page) byte-unchanged this commit.
+
+### Named follow-ups (out of scope for Chunk 3)
+
+  - Live curl-verify against walliam.ca for buyer tile hrefs (9.3).
+    The shared helper was already verified against prod in
+    W-CHARLIE-FINETUNE-FIX 8e95585; operator can re-confirm on a
+    real buyer lead's tile.
+  - Welcome-email dedup-race (recon CHUNK A) — separate workstream.
+  - Dev-server resilience (wedged-on-recompile) — separate workstream.

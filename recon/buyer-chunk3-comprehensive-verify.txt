@@ -1,0 +1,88 @@
+W-CHARLIE-BUYER-CHUNK3 COMPREHENSIVE VERIFY — 2026-06-15T16:05:51.139Z
+local base: http://localhost:3004
+────────────────────────────────────────────────────────────────────────────
+dev server probe: 200 — proceeding with LIVE verify.
+────────────────────────────────────────────────────────────────────────────
+GROUP 1 — IN-CHAT (Chunk 2b dual-shape + Chunk 2 tax-match wiring)
+PASS  1.1 IN-CHAT buyer Comparable Sold tile populated (snake_case fixture)
+        → innerText: "Buyer (snake_case — the fix)\n$705,000\n101 Buyer Snake St\n4 bed\n3 bath\n22d DOM\n-3 months ago"
+PASS  1.2 IN-CHAT no "—" placeholder in populated buyer tile
+PASS  1.3 IN-CHAT seller-shape tile still populated (no-regression, camelCase fixture)
+────────────────────────────────────────────────────────────────────────────
+GROUP 2 — LEAD PAGE (Chunk 3 tile upgrade)
+PASS  2.1 LEAD-PAGE buyer Matched Listings tile has PHOTO (img element with media_url)
+PASS  2.2 LEAD-PAGE buyer Matched Listings tile has CLICKABLE LINK (slug-format href)
+PASS  2.3 LEAD-PAGE buyer Matched Listings tile renders address + price + meta (visible text)
+PASS  2.4 LEAD-PAGE buyer Comparable Sold tile has PHOTO + LINK
+PASS  2.5 LEAD-PAGE buyer Comparable Sold tile renders address + sold price (visible text)
+PASS  2.6 LEAD-PAGE photoless legacy listing degrades to placeholder 🏠 (honest, no broken img)
+PASS  2.7 LEAD-PAGE Comparable Sold without _slug still renders (unwrapped, no broken link)
+        → BUYER-COMP-2 has no _slug; tile should still render
+PASS  2.8 LEAD-PAGE buyer Tax-Matched renders derived data (median, band, sample)
+PASS  2.9 LEAD-PAGE buyer empty-tax fixture renders HONEST empty-state (cited reason, no fake number)
+PASS  2.10 LEAD-PAGE seller branch routes to SellerEstimateMount (no buyer-section mounts)
+        → seller fixture should NOT render BuyerTaxMatched
+────────────────────────────────────────────────────────────────────────────
+GROUP 3 — EMAIL (Chunk 2 buyer derivation + Chunk 1 isBuyer routing)
+PASS  3.1 EMAIL buyer renders with status 200
+        → status=200
+PASS  3.2 EMAIL buyer Comparable Sold section populated (40/50 Email Comp St)
+PASS  3.3 EMAIL buyer Tax-Matched derived data ($5,350 median + 5,125–5,575 band)
+PASS  3.4 EMAIL buyer tax-match sample address renders (303 Email Match St)
+PASS  3.5 EMAIL buyer has NO seller priceCard / Tax-Match Confidence rail
+PASS  3.6 EMAIL seller renders sellerEstimate.comparables (STALE-CS / 888 Stale Comp Ave)
+PASS  3.7 EMAIL seller renders sellerEstimate.taxMatch.comparables (999 Tax Match Ln)
+PASS  3.8 EMAIL seller does NOT contain buyer-derived "Median annual tax" blurb
+PASS  3.9 EMAIL seller retains Property Estimate price card (Estimated Value)
+PASS  3.10 EMAIL LEAK-DEAD: buyer+stale-sellerEstimate STILL renders buyer Tax-Matched
+────────────────────────────────────────────────────────────────────────────
+GROUP 4 — CONSISTENCY (one fixture across 3 surfaces)
+PASS  4.1 CONSISTENCY: lib/charlie/buyer-tax-match.ts is the sole derivation source
+PASS  4.2 CONSISTENCY: plan-email/route.ts derives from the same module (server → email + lead-page persistence)
+PASS  4.3 CONSISTENCY: ResultsPanel.tsx derives from the same module (client → in-chat)
+────────────────────────────────────────────────────────────────────────────
+GROUP 5 — LEAK STILL DEAD (Chunk 1 holds; server gate + email template double-guard)
+PASS  5.1 SERVER gate at route entry: planType !== seller → sellerEstimate := null
+PASS  5.2 CLIENT gate at POST: data.type !== seller → sellerEstimate := null
+5.3 TEMPLATE: covered by assertion 3.10 (buyer+stale-SE STILL renders buyer Tax-Matched).
+────────────────────────────────────────────────────────────────────────────
+GROUP 6 — SELLER IN-CHAT NO-REGRESSION
+PASS  6.1 IN-CHAT seller-shape (camelCase) tile populated — see assertion 1.3 above
+────────────────────────────────────────────────────────────────────────────
+GROUP 7 — SELLER EMAIL NO-REGRESSION
+PASS  7.1 SELLER email composition unchanged across 3.6/3.7/3.8/3.9
+────────────────────────────────────────────────────────────────────────────
+GROUP 8 — SELLER LEAD PAGE NO-REGRESSION
+PASS  8.1 SELLER lead routes to SellerEstimateMount (no BuyerCompSold/BuyerTaxMatched on seller)
+────────────────────────────────────────────────────────────────────────────
+GROUP 9 — LINKS
+buyer-lead clickable hrefs: 5
+  /201-match-st-whitby-buyer-match-1
+  /202-match-st-whitby-buyer-match-2
+  /203-match-st-whitby-buyer-match-3-nophoto
+  /50-comp-st-whitby-buyer-comp-1
+  /60-comp-st-whitby-buyer-comp-2
+PASS  9.1 LINKS: every clickable buyer-tile href is descriptive slug (not bare MLS)
+        → sample: /201-match-st-whitby-buyer-match-1, /202-match-st-whitby-buyer-match-2, /203-match-st-whitby-buyer-match-3-nophoto
+PASS  9.2 LINKS: slug includes city segment (whitby) — matches the seller-fix walliam.ca-resolvable format
+9.3 LINKS: live curl against walliam.ca per built slug — DEFERRED to operator
+       (the seller-side W-CHARLIE-FINETUNE-FIX already curl-verified the
+       SAME shared buildPropertySlug helper produces a 200 vs bare-MLS 404).
+────────────────────────────────────────────────────────────────────────────
+RUNTIME — console errors / pageerrors across all probes
+PASS  R1 no console.error / pageerror this run
+        → clean
+────────────────────────────────────────────────────────────────────────────
+BYTE-UNCHANGED proofs (Chunk 3 touched only PlanRenderer + new probe page)
+PASS  U: lib/email/charlie-plan-email-html.ts byte-unchanged this commit
+PASS  U: app/api/charlie/plan-email/route.ts byte-unchanged this commit
+PASS  U: lib/charlie/buyer-tax-match.ts byte-unchanged this commit
+PASS  U: app/charlie/lib/charlie-prompts.ts byte-unchanged this commit
+PASS  U: app/charlie/lib/charlie-tools.ts byte-unchanged this commit
+PASS  U: app/charlie/components/ComparableCard.tsx byte-unchanged this commit
+PASS  U: app/charlie/components/ResultsPanel.tsx byte-unchanged this commit
+PASS  U: app/charlie/hooks/useCharlie.ts byte-unchanged this commit
+PASS  U: components/dashboard/CharlieLeadEstimate.tsx byte-unchanged this commit
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: ALL PASS
+screenshots: C:\Condoleads\Project\recon\buyer-chunk3-screenshots/
