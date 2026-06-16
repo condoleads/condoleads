@@ -1,0 +1,259 @@
+W-CHARLIE-INCHAT-FORSALE-TAXMATCH-MISSING — RECON (read-only)
+Date: 2026-06-16
+System: 2 (walliam.ca)
+Surfaces:
+  IN-CHAT (Charlie results panel)   — MISSING For Sale + Tax-Matched
+  EMAIL                              — renders both WITH photos (operator confirmed)
+  ADMIN LEAD PAGE                    — renders both WITH photos (operator confirmed)
+
+═══════════════════════════════════════════════════════════════════════════
+VERDICT (one line)
+═══════════════════════════════════════════════════════════════════════════
+
+  PRE-EXISTING IN-CHAT-ONLY. NOT a regression from this session.
+  In-chat blocks are purely client-session-driven; the server-side
+  backfill shipped in 9de2112 was designed to repair the PERSISTED
+  surfaces (plan_data.topListings → email + lead) and has NO PATH
+  to the in-chat panel by construction.
+
+═══════════════════════════════════════════════════════════════════════════
+RECON 1 — REGRESSION CHECK across 7214b21, 9de2112, a589f10
+═══════════════════════════════════════════════════════════════════════════
+
+Files audited: app/charlie/components/ResultsPanel.tsx
+               app/charlie/hooks/useCharlie.ts
+
+  7214b21 (W-CHARLIE-BUYER-NARRATION)
+    Touches ResultsPanel.tsx (+49/-5):
+      • Imports buildCompSoldNarration, buildTaxMatchNarration
+      • For-Sale block: header relabel + secondary line. The GATE
+        `block.type === 'listings'` (L122 then, same line now) is
+        BYTE-UNCHANGED. The render conditions are identical.
+      • Comparables block: adds narration line INSIDE the existing
+        branch + threads budgetMax + avgConcessionPct into
+        BuyerTaxMatchInChat as PROPS. Gate `block.type === 'comparables'`
+        (L437 then, ~L437 now) is BYTE-UNCHANGED.
+      • BuyerTaxMatchInChat: adds 2 props, adds narration line INSIDE
+        the existing render branch. Self-fetch gate (listingGroups
+        signature → /api/charlie/buyer-tax-match) is BYTE-UNCHANGED.
+    Does NOT touch useCharlie.ts.
+    → Render gates: byte-identical. No new condition. No removed
+      condition.
+
+  9de2112 (W-CHARLIE-BUYER-FORSALE-BACKFILL)
+    `git show --stat 9de2112 -- ResultsPanel.tsx useCharlie.ts` →
+      EMPTY. NEITHER file touched.
+    Touched: app/api/charlie/plan-email/route.ts only.
+    → No in-chat surface area whatsoever.
+
+  a589f10 (W-CHARLIE-TAXMATCH-PHOTOS)
+    Touches ResultsPanel.tsx (+6/-0):
+      Only BuyerTaxMatchInChat's `comp` literal (~L749-761) widened
+      with `mediaUrl: s.media?.[0]?.media_url || …`. No gate change.
+    Does NOT touch useCharlie.ts.
+    → Render gates: byte-identical.
+
+  GATE EVIDENCE (in-chat For-Sale and Tax-Match render conditions today):
+
+    For-Sale (in-chat) — ResultsPanel.tsx:124
+      if (block.type === 'listings') { … render tiles … }
+        (block coming from props.blocks; same gate predates this
+        session — neither 7214b21 nor a589f10 modified it.)
+
+    Tax-Match (in-chat) — ResultsPanel.tsx:447-457 + 685+
+      Rendered as a SIBLING inside the `if (block.type === 'comparables')`
+      branch:
+        <BuyerTaxMatchInChat listingGroups={…} … />
+      BuyerTaxMatchInChat itself gates on:
+        listingGroups.flatMap(g => g.listings).length > 0
+          → POST /api/charlie/buyer-tax-match
+          → renders when btm not null
+        (Self-fetch + render branch byte-unchanged across all 3 commits.)
+
+  ▶ RECON 1 VERDICT: PRE-EXISTING. The in-chat gates ALL byte-unchanged
+    across 7214b21, 9de2112, a589f10. The block is absent because its
+    data source is empty in-session, not because a gate flipped.
+
+═══════════════════════════════════════════════════════════════════════════
+RECON 2 — IN-CHAT DATA SOURCE vs PERSISTED — does backfill reach in-chat?
+═══════════════════════════════════════════════════════════════════════════
+
+  (a) In-chat For-Sale block reads:
+      • Push site: app/charlie/hooks/useCharlie.ts:518-519
+          if (tool === 'search_listings' && data.listings) {
+            setState(s => ({ ...s,
+              listingGroups: [...s.listingGroups, { label, listings }],
+              blocks: [...s.blocks, { type: 'listings', label, listings }],
+              activePanel: 'results' }))
+          }
+      • Render: ResultsPanel.tsx L122-167 iterates blocks; the 'listings'
+        block exists ⇔ search_listings tool fired in-session.
+      • SOURCE: 100% client-session, populated by Charlie's search_listings
+        tool result via the streaming chat response. Read-only after.
+
+  (b) In-chat Tax-Match block reads (TWO inputs):
+      • PARENT GATE: BuyerTaxMatchInChat is rendered as a sibling INSIDE
+        the comparables block branch (ResultsPanel.tsx:466-470). The
+        'comparables' block is push site useCharlie.ts:634:
+            if (tool === 'get_comparables' && data.listings?.length > 0) {
+              setState(s => ({ ...s,
+                comparables: merged,
+                blocks: [...withoutOldComp, { type: 'comparables', listings: merged, intent: '' }],
+                activePanel: 'results' }))
+            }
+        So no get_comparables tool call → no 'comparables' block → no
+        BuyerTaxMatchInChat render AT ALL.
+      • SELF-FETCH: When mounted, BuyerTaxMatchInChat POSTs to
+        /api/charlie/buyer-tax-match with
+            { listings: listingGroups.flatMap(g => g.listings), geoContext }
+        If listingGroups is empty (no search_listings), the endpoint
+        receives empty listings → deriveBuyerTaxMatch falls back to
+        the empty/sparse branch → returns btm.isEmpty=true.
+      • SOURCE: 100% client-session — both parent gate AND self-fetch
+        input depend on tools having fired in-session.
+
+  (c) Does 9de2112's server-side backfill reach in-chat?
+      • The client POSTs to /api/charlie/plan-email after generate_plan
+        fires (useCharlie.ts:530-559). POST body's `listings` field is
+        `stateRef.current.listingGroups.flatMap(g => g.listings).slice(0, 10)`
+        — EMPTY when search_listings didn't fire.
+      • Server route runs the backfill (plan-email/route.ts:86-160) and
+        writes the backfilled `effectiveListings` to lead.plan_data.topListings
+        (L322) + plan_data.buyerTaxMatch (derived from effectiveListings).
+      • Server's JSON response (plan-email/route.ts:423-429):
+            return NextResponse.json({
+              success: true,
+              userEmailSent: userOutcome.sent,
+              userEmailReason: userOutcome.reason,
+              chainEmailSent: chainOutcome.sent,
+              chainEmailReason: chainOutcome.reason,
+            })
+        NO topListings. NO comparables. NO buyerTaxMatch. NO backfilled
+        listings whatsoever.
+      • Client (useCharlie.ts:560-566) reads only `planEmailData?.userEmailSent`
+        to set planEmailWarning. The response payload is otherwise ignored.
+
+      ▶ STATED PLAINLY:
+        The server-side backfill has NO path to the in-chat panel. The
+        backfill writes ONLY to the persisted lead.plan_data (read by
+        email + admin lead). The in-chat panel is empty whenever the
+        live session lacked search_listings (For-Sale) and/or
+        get_comparables (Tax-Match parent) — regardless of whether
+        backfill ran successfully server-side.
+
+  This matches operator observation: email + admin lead render BOTH
+  blocks WITH photos (persisted plan_data complete + photos fix from
+  a589f10 attached). In-chat misses BOTH blocks because in this
+  session Charlie skipped search_listings AND/OR get_comparables —
+  the same race condition 9de2112 was designed to defend, but it
+  defended only the PERSISTED surfaces.
+
+  (Notable: the generate_plan tool itself returns only metadata
+  — see app/api/charlie/route.ts:728-743 — no topListings, no
+  comparables embedded. So even on `state.plan`, the client has
+  zero copy of the backfilled listings.)
+
+═══════════════════════════════════════════════════════════════════════════
+RECON 3 — FIX SHAPE (flag only, do NOT implement)
+═══════════════════════════════════════════════════════════════════════════
+
+  Q: Is plan_data available client-side at in-chat render time?
+  A: NO. The persisted lead.plan_data is written by the SERVER inside
+     plan-email/route.ts. The client has:
+       • state.plan       = generate_plan tool result (thin metadata,
+                            no listings/comparables/buyerTaxMatch)
+       • state.listingGroups, state.comparables = tool-driven only
+     There is currently no GET endpoint the client uses to read its
+     own lead's plan_data back. A fetch is needed, OR the existing
+     plan-email response needs widening.
+
+  CANDIDATE FIX (cleanest, minimal, additive):
+    Mirror the backfill outward. The server route already computes
+    `effectiveListings` (the backfilled For-Sale set) and persists
+    `plan_data.buyerTaxMatch` derived from those listings. Return
+    both in the plan-email JSON response. Client dispatches them
+    through the SAME state-update path search_listings + get_comparables
+    use, so the existing in-chat render code path Just Works.
+
+    THREE-LOC CHANGE FOOTPRINT (flag only):
+
+      app/api/charlie/plan-email/route.ts:423-429
+        Widen the existing return shape:
+          return NextResponse.json({
+            success: true,
+            userEmailSent, userEmailReason,
+            chainEmailSent, chainEmailReason,
+            // NEW: pass the backfill's product to the client so in-chat
+            // can converge with email + lead on a single source of truth.
+            backfilledListings: effectiveListings ?? [],
+            backfilledTaxMatch: buyerTaxMatch ?? null,
+            // (and optionally backfilledComparables if get_comparables
+            // also missed in-session — but those are NOT currently re-
+            // computed in plan-email; would need a parallel comp fetch.)
+          })
+
+      app/charlie/hooks/useCharlie.ts:560-566 (the .then handler)
+        On planEmailData with backfilledListings.length > 0 AND state.
+        listingGroups empty, dispatch through the EXISTING search_listings
+        path:
+          setState(s => ({ ...s,
+            listingGroups: [...s.listingGroups, { label: 'Matched Listings', listings: backfilledListings }],
+            blocks: [...s.blocks, { type: 'listings', label: 'Matched Listings', listings: backfilledListings }],
+          }))
+        This makes the For-Sale block appear in-chat with the SAME
+        listings email + lead already render — single source of truth.
+
+      Tax-Match (the harder half):
+        The Tax-Match in-chat block requires the 'comparables' block to
+        exist (because it's rendered as its sibling). Two options:
+
+        OPTION T-A — simpler: decouple BuyerTaxMatchInChat from the
+          comparables-block branch in ResultsPanel.tsx:466-470. Render
+          it as a TOP-LEVEL conditional block: whenever the buyer's
+          plan is ready AND a tax-match result is available, render it
+          standalone. Doesn't depend on get_comparables having fired.
+
+        OPTION T-B — heavier: also backfill get_comparables on the
+          server (parallel to listings backfill) and return
+          backfilledComparables in the plan-email response. Then
+          dispatch through the get_comparables push path
+          (useCharlie.ts:610-637) so the 'comparables' block appears
+          in-chat. Tax-Match block then renders inside it as before,
+          via the existing self-fetch path.
+
+        Recommendation: T-A. It also makes the in-chat Tax-Match block
+        survive when ONLY comparables backfill is missing — strictly
+        more robust. Email + lead don't care about this gate; they
+        read plan_data.buyerTaxMatch directly.
+
+  NO-REGRESSION SHAPE:
+    • Server response shape becomes a SUPERSET (additive). Existing
+      readers (the current useCharlie .then handler reads only
+      `userEmailSent`) unaffected.
+    • Client backfill hydration only fires when listingGroups is
+      already empty — the WORKING in-session path (search_listings did
+      fire) gets no behavior change. Single defensive flag.
+    • Seller path: gate before the dispatch on plan.type === 'buyer'
+      so seller plans still receive no listings hydration.
+    • Persisted surfaces (email + admin lead) are READ-ONLY of the
+      same plan_data they read today. Zero change in their inputs.
+
+═══════════════════════════════════════════════════════════════════════════
+SCOPE + DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+  Files that would be edited in the FIX phase (NOT this phase):
+    app/api/charlie/plan-email/route.ts        (response widening only)
+    app/charlie/hooks/useCharlie.ts            (.then hydration on empty)
+    app/charlie/components/ResultsPanel.tsx    (Option T-A: hoist BuyerTaxMatchInChat to top-level)
+
+  Files NOT to touch:
+    lib/charlie/buyer-tax-match.ts             (already correct; serves all 3 surfaces)
+    lib/email/charlie-plan-email-html.ts       (already correct)
+    components/admin-homes/lead-workbench/PlanRenderer.tsx (already correct)
+    lib/estimator/tax-band-sold-query.ts       (already correct post-a589f10)
+    All seller paths.
+
+  Deliverable for THIS phase:
+    recon/inchat-forsale-taxmatch.txt   ← this file
+    NO code edits. NO commit.

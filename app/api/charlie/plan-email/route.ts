@@ -426,6 +426,18 @@ export async function POST(req: NextRequest) {
       userEmailReason: userOutcome.reason,
       chainEmailSent: chainOutcome.sent,
       chainEmailReason: chainOutcome.reason,
+      // W-CHARLIE-INCHAT-CONVERGENCE (2026-06-16): expose the same
+      // backfilled artifacts the route just persisted to plan_data so
+      // the in-chat panel can hydrate when the live session never
+      // received search_listings + get_comparables. Buyer-only —
+      // seller response shape is byte-identical (these fields are
+      // `undefined` on seller, which JSON.stringify omits entirely;
+      // the 5 original fields above remain the only seller payload).
+      // The client (useCharlie.ts) consumes these only when its own
+      // session state is empty (empty-only guard); the in-order path
+      // is a strict no-op.
+      backfilledListings: planType === 'buyer' ? effectiveListings : undefined,
+      backfilledTaxMatch: planType === 'buyer' ? buyerTaxMatch : undefined,
     })
 
   } catch (error) {

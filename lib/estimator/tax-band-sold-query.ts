@@ -147,15 +147,38 @@ export async function queryTaxBandSolds(params: TaxBandSoldQueryParams): Promise
   for (const r of commSales) if (r?.id) allListingIds.push(r.id)
   for (const r of muniSales) if (r?.id) allListingIds.push(r.id)
   if (allListingIds.length > 0) {
-    const { data: mediaRows } = await supabase
-      .from('media')
-      .select('listing_id, media_url, order_number')
-      .in('listing_id', allListingIds)
-      .eq('variant_type', 'thumbnail')
-      .order('order_number', { ascending: true })
+    // W-CHARLIE-INCHAT-CONVERGENCE (2026-06-16) — CHUNK the .in() lookup.
+    // The W-CHARLIE-INCHAT-CONVERGENCE verify surfaced a latent bug in
+    // the original a589f10 single-shot .in(allListingIds, ...) call:
+    // a wide-pool buyer (e.g. backfilled Whitby Active + the muni pool
+    // limit=500 SOLD comps in band) sends a ~18 KB URI to Supabase,
+    // exceeds PostgREST's transport limit, and the request throws
+    // `TypeError: fetch failed`. The original code destructured only
+    // `data`, so the error was swallowed and every comp's media stayed
+    // empty (silent placeholder regression in email + lead + in-chat).
+    //
+    // Fix: paginate the .in() over CHUNK_SIZE-sized batches and union
+    // the responses into a single thumbnailMap. Strictly additive — no
+    // change to row count, row order, or which media each comp resolves
+    // to (the FIRST media_url per listing_id in order_number ASC, same
+    // as before).
+    const CHUNK_SIZE = 200
     const thumbnailMap: Record<string, string> = {}
-    for (const m of mediaRows || []) {
-      if (!thumbnailMap[m.listing_id]) thumbnailMap[m.listing_id] = m.media_url
+    for (let i = 0; i < allListingIds.length; i += CHUNK_SIZE) {
+      const chunk = allListingIds.slice(i, i + CHUNK_SIZE)
+      const { data: mediaRows, error: mediaErr } = await supabase
+        .from('media')
+        .select('listing_id, media_url, order_number')
+        .in('listing_id', chunk)
+        .eq('variant_type', 'thumbnail')
+        .order('order_number', { ascending: true })
+      if (mediaErr) {
+        console.warn('[tax-band-sold-query] media chunk lookup failed', { offset: i, size: chunk.length, error: mediaErr.message })
+        continue
+      }
+      for (const m of mediaRows || []) {
+        if (!thumbnailMap[m.listing_id]) thumbnailMap[m.listing_id] = m.media_url
+      }
     }
     for (const r of commSales) {
       r.media = thumbnailMap[r.id]

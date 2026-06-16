@@ -5007,3 +5007,203 @@ the source-grep-is-dead status flag operator locked.
 ### Commit
 
   W-CHARLIE-TAXMATCH-PHOTOS: a589f10
+
+
+## W-CHARLIE-INCHAT-CONVERGENCE — in-chat hydrates from backfill (2026-06-16)
+
+### Defect
+
+  In-chat Charlie panel was missing the For-Sale block AND the Tax-
+  Matched block on sessions where Charlie called get_comparables
+  before search_listings (or where search_listings never fired in-
+  session). Email + admin lead BOTH rendered the same blocks WITH
+  photos correctly off persisted plan_data — the W-CHARLIE-BUYER-
+  FORSALE-BACKFILL fix from 9de2112 repaired those PERSISTED
+  surfaces. The recon (recon/inchat-forsale-taxmatch.txt) confirmed
+  PRE-EXISTING IN-CHAT-ONLY: not a regression from 7214b21/9de2112/
+  a589f10 (in-chat render gates byte-identical across all three).
+  The in-chat panel is purely client-session-driven; the server
+  backfill writes only to lead.plan_data, which the in-chat panel
+  never reads.
+
+### Root cause
+
+  3-surface source divergence:
+    • IN-CHAT  reads state.listingGroups (search_listings tool
+      result) and renders BuyerTaxMatchInChat as a sibling INSIDE
+      the comparables block branch (which gated on get_comparables
+      tool firing in-session).
+    • EMAIL    reads persisted plan_data.topListings + plan_data.
+      buyerTaxMatch.
+    • LEAD     same as email.
+  The 9de2112 backfill repaired persisted plan_data for failing-
+  path sessions but had no path back to the in-chat panel — the
+  plan-email response returned only userEmailSent outcomes, not
+  the backfilled artifacts the in-chat panel needed.
+
+### Fix (3 declared edits + 1 latent-bug fix surfaced by verify)
+
+  EDIT 1 — app/api/charlie/plan-email/route.ts response widening
+    Additive widening (buyer-only): expose effectiveListings as
+    backfilledListings and buyerTaxMatch as backfilledTaxMatch.
+    Seller plans get `undefined` for these → JSON.stringify omits
+    them → seller response shape byte-identical (5 original fields
+    only). The 5 original fields (success, userEmailSent,
+    userEmailReason, chainEmailSent, chainEmailReason) preserved
+    exactly in all paths.
+
+  EDIT 2 — app/charlie/hooks/useCharlie.ts .then hydration handler
+    In the existing plan-email response handler, EMPTY-ONLY hydrate
+    the For-Sale block from response.backfilledListings using the
+    SAME state-update path search_listings uses (push 'listings'
+    block + set listingGroups). Guard:
+      if (s.listingGroups.length > 0) return s   // strict no-op
+    The hoisted BuyerTaxMatchInChat (Edit 3) self-fetches on
+    listingGroups change, so seeding listingGroups is sufficient
+    to wake the tax-match block too — no extra state plumbing.
+
+  EDIT 3 — app/charlie/components/ResultsPanel.tsx single-render hoist
+    Hoist BuyerTaxMatchInChat OUT of the comparables-block branch
+    (~L466-473 sibling REMOVED). Add a TOP-LEVEL single invocation
+    just below the conversation blocks (wrapped in an IIFE that
+    computes budgetMax + avgConcessionPct from analytics + plan).
+    Single invocation site → guaranteed single render regardless of
+    which path (in-session OR hydrate) provided the listings.
+    BuyerTaxMatchInChat self-gates: returns null when btm is null
+    and not loading. Non-buyer / no-listingGroups sessions render
+    no DOM here.
+
+  EDIT 4 (added per operator approval) —
+       lib/estimator/tax-band-sold-query.ts media-join chunking
+    The convergence verify surfaced a latent bug in W-CHARLIE-
+    TAXMATCH-PHOTOS's helper (a589f10): single-shot
+    .in(allListingIds, ...) with the FULL muni-pool (limit=500
+    SOLD comps) produces ~18 KB URI that exceeds PostgREST's
+    transport cap → fetch throws `TypeError: fetch failed` →
+    mediaRows is null → all sampled comps silently lose photos.
+    The original verify (5 matched listings → narrow band → small
+    pool) didn't hit the threshold; convergence verify (10 backfilled
+    listings → wider band → 500-cap pool) did.
+
+    Fix: paginate .in() in CHUNK_SIZE=200 batches, union responses
+    into a single thumbnailMap. Strictly additive: row count, row
+    order, and the FIRST-thumbnail-per-listing semantics byte-
+    identical to original a589f10. Also added error logging via
+    the previously-discarded `error` field — failures now surface
+    in logs instead of silently dropping photos.
+
+    Required for the convergence promise: in-chat hydration uses
+    the SAME plan-email backfill the persisted surfaces use, so
+    photos must reach all 3 surfaces uniformly. Without this sub-
+    fix, wide-pool buyer sessions would show placeholders on email
+    + lead too. The fix preserves the seller's byte-identity (the
+    home/condo seller matchers do not import this helper).
+
+### No-regression — HARD ASSERT proof
+
+  EMAIL + LEAD — byte-identical:
+    lib/email/charlie-plan-email-html.ts                   → git diff HEAD empty
+    components/admin-homes/lead-workbench/PlanRenderer.tsx → git diff HEAD empty
+    Inputs they read (plan_data.topListings + plan_data.buyerTaxMatch)
+    populate the SAME way as before — Edit 1 just exposes the same
+    data in the response.
+
+  SELLER — byte-identical:
+    Response on seller POSTs has the 5 original fields exactly
+    (success, userEmailSent, userEmailReason, chainEmailSent,
+    chainEmailReason). New fields are `undefined` → JSON omits.
+    home-comparable-matcher-sales.ts   → git diff HEAD empty
+    condo-comparable-matcher-sales.ts  → git diff HEAD empty
+    Neither imports tax-band-sold-query.ts (per file comment +
+    grep + import-graph proof from W-CHARLIE-TAXMATCH-PHOTOS).
+
+  IN-ORDER IN-CHAT — byte-identical:
+    Pure-logic simulation of the .then hydration (Section B):
+      empty state    + backfill    → state hydrated (B1.1, B1.2)
+      non-empty state + backfill   → state JSON byte-identical (B2.1-3)
+      empty state    + no backfill → state byte-identical (B3.1)
+    The in-order path (search_listings tool fired) populates
+    listingGroups before plan-email's .then resolves; the guard
+    `s.listingGroups.length > 0` ⇒ strict no-op.
+
+  IN-CHAT SINGLE-RENDER — proved by source:
+    exactly ONE `<BuyerTaxMatchInChat` invocation in ResultsPanel
+    (C1); old comparables-branch sibling REMOVED (C2); top-level
+    invocation wrapped in IIFE with budgetMax + avgConcessionPct
+    (C3). Single invocation → cannot double-render.
+
+### DATA-LAYER VERIFY — scripts/inchat-convergence-verify.ts (48/48 PASS)
+
+  Live POST + DB readback + pure-logic state-machine simulation +
+  source-level proofs:
+
+    A. Edit 1 — response widening (live POST, 3 scenarios)
+       A1 buyer failing-path (listings=[]):
+          A1.1-6   5 original fields present                          6/6
+          A1.7-10  backfilledListings: 10 real Whitby Active          4/4
+          A1.11-14 backfilledTaxMatch: 6 samples + real trreb URLs    4/4
+       A2 buyer in-order (listings populated):
+          A2.1-4   backfill no-op + tax-match derived                 4/4
+       A3 seller plan:
+          A3.1-5   no buyer-only fields; 5 original preserved         5/5
+    B. Edit 2 — hydration guard (pure-logic simulation)              6/6
+    C. Edit 3 — ResultsPanel single-render                            4/4
+    D. Cross-surface convergence (DB readback)                        5/5
+       D5     persisted samples carry REAL photos (6/6 trreb-image URLs) PASS
+    E. Byte-identity (email + lead + seller + helper-additive)
+       E1-3   email-html + PlanRenderer + buyer-tax-match unchanged   3/3
+       E4     tax-band-sold-query.ts additive chunking — 11 SOLD+media
+              predicates preserved + CHUNK_SIZE added                  PASS
+       E5-6   home + condo comparable-matcher byte-identical          2/2
+       E7-8   geo-listings + charlie route byte-identical              2/2
+    F. Edit-set identity                                              2/2
+
+  TSC: npx tsc --noEmit → exit 0
+  S1:  zero-diff (admin/page, api/chat, agents)
+  Pre-existing dirty (predates this session, EXCLUDED from commit):
+       app/api/charlie/municipalities/route.ts
+       scripts/r-w-territory-master-p2-data-phantom-fix.js
+       scripts/r-w-territory-master-p4-check-fix.js
+
+  SUMMARY: 48 of 48 PASS.
+
+### STATUS
+
+  DATA LAYER + STATE-MACHINE — VERIFIED:
+    - Failing-path POST returns backfilledListings (10 real Whitby
+      Active rows) + backfilledTaxMatch (6 samples, all carrying
+      trreb-image.ampre.ca URLs).
+    - In-order POST returns backfill no-op (response listings ===
+      input listings); client hydration guard makes it a strict
+      no-op (state JSON byte-identical).
+    - Seller POST returns the 5 original fields, no buyer-only
+      additions — seller response shape byte-identical.
+    - DB persistence matches response (D2/D4) and persists photos
+      (D5: 6/6 samples carry real URLs).
+    - tax-band-sold-query chunking fix prevents silent photo
+      regression on wide-pool sessions across all 3 surfaces.
+
+  LIVE-DOM IN-CHAT — CLAIMED, UNVERIFIED:
+    - Per source-grep-is-dead lock (CLAUDE.md), live-DOM in-chat
+      render (For-Sale block + tax-match block WITH photos appearing
+      in the panel) is the operator's eyeball gate on walliam.ca
+      post-deploy.
+    - REAL-DEPLOY verify: operator opens walliam.ca, runs a buyer
+      flow that skips search_listings (e.g. asks Charlie to "give
+      me my plan" without browsing), generates the plan, confirms
+      For-Sale tiles + Tax-Matched tiles appear IN-CHAT with real
+      photos, same listings as the email + lead surfaces show.
+      Until that happens, this fix is **claimed, unverified** for
+      production.
+
+### Named observation
+
+  - tax-band-sold-query.ts is buyer-only (per file comment + import-
+    graph). The chunking fix (Edit 4) is additive to that helper;
+    seller home/condo comparable-matchers retain their own inline
+    copy of the tax-band query and DO NOT pull this helper. Seller
+    behavior is byte-identical.
+
+### Commit
+
+  W-CHARLIE-INCHAT-CONVERGENCE: <SHA-PLACEHOLDER>

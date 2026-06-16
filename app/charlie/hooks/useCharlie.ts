@@ -562,6 +562,34 @@ export function useCharlie() {
             if (planEmailData?.userEmailSent === false) {
               setState(s => ({ ...s, planEmailWarning: "Plan generated — we couldn't email it to you. Save this page or contact your agent." }))
             }
+            // W-CHARLIE-INCHAT-CONVERGENCE (2026-06-16): hydrate the
+            // in-chat panel from the server's backfilled artifacts so
+            // all 3 surfaces (in-chat, email, lead) converge on a
+            // single source of truth. EMPTY-ONLY guard: only fires
+            // when state.listingGroups is empty (the failing-path
+            // session that skipped search_listings). In-order sessions
+            // (search_listings + get_comparables fired in sequence)
+            // see no change — the existing tool-pushed listingGroups
+            // is preserved verbatim.
+            //
+            // We dispatch the For-Sale listings through the SAME
+            // state-update path search_listings uses (line ~518-519
+            // pattern) so the existing in-chat 'listings' block render
+            // Just Works — single shaping source. BuyerTaxMatchInChat
+            // self-fetches on listingGroups change, so seeding
+            // listingGroups is sufficient to wake the hoisted tax-
+            // match block — no additional state plumbing required.
+            const _bfl = planEmailData?.backfilledListings
+            if (Array.isArray(_bfl) && _bfl.length > 0) {
+              setState(s => {
+                if (s.listingGroups.length > 0) return s
+                return {
+                  ...s,
+                  listingGroups: [{ label: 'Matched Listings', listings: _bfl }],
+                  blocks: [...s.blocks, { type: 'listings', label: 'Matched Listings', listings: _bfl }],
+                }
+              })
+            }
           })
           .catch(err => console.error('[useCharlie] plan email error:', err))
     }

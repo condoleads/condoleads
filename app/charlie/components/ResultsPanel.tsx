@@ -463,14 +463,12 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                   <ComparableCard key={(c.listingKey || c.listing_key) || i} comparable={c} isLease={block.intent === 'lease'} />
                 ))}
               </div>
-              <div style={{ marginTop: 20 }}>
-                <BuyerTaxMatchInChat
-                  listingGroups={listingGroups}
-                  geoContext={geoContext}
-                  budgetMax={_budgetMax}
-                  avgConcessionPct={_avgConc}
-                />
-              </div>
+              {/* W-CHARLIE-INCHAT-CONVERGENCE (2026-06-16): BuyerTaxMatchInChat
+                  sibling REMOVED from this branch — hoisted to a top-level
+                  block that renders below the conversation blocks. Single
+                  invocation site → guaranteed single render regardless of
+                  whether the in-session get_comparables path OR the
+                  backfill-hydration path provided the listings. */}
             </div>
           )
         }
@@ -539,18 +537,36 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         return null
       })}
 
-      {/* W-CHARLIE-BUYER-CHUNK5 (2026-06-15): the standalone bottom-of-
-          panel BuyerTaxMatchInChat render that lived here was REMOVED —
-          the Tax-Matched section is now a sibling of Comparable Sold
-          inside the conversation block (see the comparables-block branch
-          above). This puts the two sold-comp sections adjacent in the
-          buyer in-chat surface, consistent with email + lead page
-          positioning. FALLBACK: if a buyer session has comparables
-          but NO comparables block in state (edge case — get_comparables
-          was never called), the Tax-Matched section is silently absent
-          here. The comparables block IS pushed automatically by the
-          BUYER FLOW prompt (charlie-prompts.ts:40), so this fallback
-          is for prompt-bypass cases only. */}
+      {/* W-CHARLIE-INCHAT-CONVERGENCE (2026-06-16): BuyerTaxMatchInChat
+          mounted as a TOP-LEVEL block. Single invocation site, so this
+          is the ONLY place the component renders — guarantees no double-
+          render regardless of which path provided data:
+            • In-session path: search_listings + get_comparables fired
+              normally → listingGroups populated → BuyerTaxMatchInChat
+              self-fetches via /api/charlie/buyer-tax-match (existing
+              behavior, unchanged).
+            • Backfill-hydration path: search_listings did not fire in-
+              session → plan-email response's backfilledListings hydrates
+              listingGroups (useCharlie.ts:560+) → BuyerTaxMatchInChat
+              self-fetches against the hydrated listings → same data
+              persisted plan_data carries → cross-surface convergence.
+          BuyerTaxMatchInChat self-gates: returns null when btm is null
+          and not loading; only renders when its self-fetch resolves
+          with data. So a non-buyer (no listingGroups) session sees no
+          DOM output here. */}
+      {(() => {
+        const _aSnap = analytics[analytics.length - 1] || null
+        const _budgetMax = plan?.budgetMax ?? null
+        const _avgConc = _aSnap?.avg_concession_pct ?? null
+        return (
+          <BuyerTaxMatchInChat
+            listingGroups={listingGroups}
+            geoContext={geoContext}
+            budgetMax={_budgetMax}
+            avgConcessionPct={_avgConc}
+          />
+        )
+      })()}
 
       {/* Community Buildings - only when no buildings blocks exist in conversation */}
       {!(blocks || []).some((b: any) => b.type === 'buildings') && communityBuildings && (communityBuildings.affordable.length > 0 || communityBuildings.premium.length > 0) && (

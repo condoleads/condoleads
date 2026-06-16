@@ -1,0 +1,99 @@
+W-CHARLIE-INCHAT-CONVERGENCE FIX-VERIFY — 2026-06-16T15:56:17.726Z
+base: http://localhost:3004
+────────────────────────────────────────────────────────────────────────────
+dev server: 200 — proceeding with LIVE verify.
+test session: 7136cc76…  user: c4094ecc…
+────────────────────────────────────────────────────────────────────────────
+SECTION A — Edit 1: plan-email response widening (live POST)
+PASS  A1.1: POST 200
+        → status=200
+PASS  A1.2: response.success === true
+PASS  A1.3: response.userEmailSent present (boolean)
+PASS  A1.4: response.userEmailReason present
+PASS  A1.5: response.chainEmailSent present (boolean)
+PASS  A1.6: response.chainEmailReason present
+PASS  A1.7: NEW response.backfilledListings present
+        → backfilledListings.length=10
+PASS  A1.8: backfilledListings has > 0 real rows (Whitby Active)
+        → count=10
+PASS  A1.9: backfilledListings keys exist in mls_listings
+        → 3/3 found
+PASS  A1.10: backfilledListings are all standard_status=Active
+        → E13076082=Active, E13426702=Active, E13435006=Active
+PASS  A1.11: NEW response.backfilledTaxMatch present
+        → taxMatch=OBJECT
+PASS  A1.12: backfilledTaxMatch.isEmpty === false
+        → reason=null
+PASS  A1.13: backfilledTaxMatch.samples.length > 0
+        → samples=6
+PASS  A1.14: backfilledTaxMatch samples carry real trreb-image URLs
+        → 6/6 samples carry trreb-image URL
+────────────────────────────────────────────────────────────────────────────
+SECTION D — cross-surface convergence (DB readback, executed before scenarios B/C overwrite the lead)
+PASS  D1: plan_data.topListings populated post-POST
+        → topListings.length=10
+PASS  D2: plan_data.topListings ⊆ response.backfilledListings (same source)
+        → response=10 keys, persisted=10 keys, subset=true
+PASS  D3: plan_data.buyerTaxMatch populated
+        → samples=6
+PASS  D4: plan_data.buyerTaxMatch.samples === response.backfilledTaxMatch.samples
+        → response=6 keys, persisted=6 keys
+PASS  D5: plan_data.buyerTaxMatch.samples carry real photos (chunking fix persists)
+        → 6/6 samples carry real URL
+────────────────────────────────────────────────────────────────────────────
+PASS  A2.1: POST 200
+PASS  A2.2: response.success === true
+PASS  A2.3: backfilledListings reflects backfill no-op (== input listings)
+        → backfilled=5 input=5
+PASS  A2.4: backfilledTaxMatch derived from input listings (samples>0)
+        → samples=6
+────────────────────────────────────────────────────────────────────────────
+PASS  A3.1: seller POST 200
+        → status=200 body={"success":true,"userEmailSent":true,"userEmailReason":"delivered","chainEmailSent":true,"chainEmailReason":"delivered"}
+PASS  A3.2: seller response.success === true
+PASS  A3.3: seller response carries NO backfilledListings field
+        → keys=success,userEmailSent,userEmailReason,chainEmailSent,chainEmailReason
+PASS  A3.4: seller response carries NO backfilledTaxMatch field
+        → keys=success,userEmailSent,userEmailReason,chainEmailSent,chainEmailReason
+PASS  A3.5: seller response has the 5 ORIGINAL fields (byte-identical shape)
+        → keys=success,userEmailSent,userEmailReason,chainEmailSent,chainEmailReason
+────────────────────────────────────────────────────────────────────────────
+SECTION B — Edit 2: useCharlie hydration guard (pure-logic simulation)
+PASS  B1.1: empty state hydrates listingGroups
+        → length=1, listings=10
+PASS  B1.2: empty state pushes a listings block
+        → blocks=plan,listings
+PASS  B2.1: non-empty state — listingGroups byte-identical (no-op)
+        → before=4782 chars, after=4782 chars
+PASS  B2.2: non-empty state — blocks byte-identical (no-op)
+PASS  B2.3: in-order state byte-identical before/after hydration call
+PASS  B3.1: empty state + empty backfilled → no-op
+────────────────────────────────────────────────────────────────────────────
+SECTION C — Edit 3: ResultsPanel single-render proof
+PASS  C1: exactly ONE <BuyerTaxMatchInChat invocation in ResultsPanel.tsx
+        → count=1
+PASS  C2: comparables-branch sibling removed (no `<div style={{ marginTop: 20 }}>` before <BuyerTaxMatchInChat`)
+        → old sibling pattern absent
+PASS  C3: top-level invocation wrapped in IIFE that computes budgetMax + avgConcessionPct
+PASS  C4: convergence marker present
+────────────────────────────────────────────────────────────────────────────
+SECTION E — byte-identity (email + lead + seller paths unchanged)
+PASS  E1: lib/email/charlie-plan-email-html.ts byte-identical to HEAD
+PASS  E2: components/admin-homes/lead-workbench/PlanRenderer.tsx byte-identical to HEAD
+PASS  E3: lib/charlie/buyer-tax-match.ts byte-identical to HEAD
+PASS  E4: tax-band-sold-query.ts — additive chunking edit (all SOLD + media predicates preserved)
+        → 11 predicates preserved + chunking added
+PASS  E5: lib/estimator/home-comparable-matcher-sales.ts byte-identical to HEAD
+PASS  E6: lib/estimator/condo-comparable-matcher-sales.ts byte-identical to HEAD
+PASS  E7: app/api/geo-listings/route.ts byte-identical to HEAD
+PASS  E8: app/api/charlie/route.ts byte-identical to HEAD
+────────────────────────────────────────────────────────────────────────────
+SECTION F — edit-set identity
+PASS  F1: all 3 declared targets in `M` list
+        → M files: app/api/charlie/municipalities/route.ts, app/api/charlie/plan-email/route.ts, app/charlie/components/ResultsPanel.tsx, app/charlie/hooks/useCharlie.ts, lib/estimator/tax-band-sold-query.ts, scripts/r-w-territory-master-p2-data-phantom-fix.js, scripts/r-w-territory-master-p4-check-fix.js
+PASS  F2: no NEW unexpected source files modified
+        → pre-existing dirty are excluded from commit
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: 48 PASS, 0 FAIL
+STATUS: data-layer + state-machine verified.
+NOTE: live-DOM in-chat render (For Sale + tax-match blocks WITH photos appearing in the panel) = operator eyeball gate on walliam.ca post-deploy per source-grep-is-dead lock (CLAUDE.md).
