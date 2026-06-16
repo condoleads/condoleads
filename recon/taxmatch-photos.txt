@@ -1,0 +1,195 @@
+W-CHARLIE-TAXMATCH-PHOTOS — RECON (read-only)
+Date: 2026-06-16
+Surfaces audited: in-chat (ResultsPanel.BuyerTaxMatchInChat) + email (charlie-plan-email-html buyerTaxMatchHtml) + admin lead page (PlanRenderer.BuyerTaxMatched)
+System: 2 (walliam.ca)
+
+═══════════════════════════════════════════════════════════════════════════
+VERDICT
+═══════════════════════════════════════════════════════════════════════════
+
+  QUERY FIX. Not a render bug. Not honest no-media.
+
+  The tax-band SOLD query never fetches thumbnails. Every Tax-Matched
+  sample reaches all three render surfaces with `media: null` hardcoded.
+  All three surfaces correctly fall through to the placeholder icon
+  branch — they are doing the right thing with empty data.
+
+  The DB has the photos. The code never asks for them.
+
+═══════════════════════════════════════════════════════════════════════════
+DB REALITY (RECON 5 — read-only Postgres probe, BEGIN/ROLLBACK)
+═══════════════════════════════════════════════════════════════════════════
+
+Probe: scripts/_taxmatch-photos-probe.js (read-only, transaction-bound).
+
+  RECON A — 10 most-recent Closed Whitby Residential Freehold:
+    All 10 found. Real listing_keys (E13074986, E13145642, …).
+
+  RECON B — media rows for those 10:
+    10 of 10 carry ≥1 thumbnail. Each has total=2, thumbnails=1.
+
+  RECON C — sample media URLs:
+    Real trreb-image.ampre.ca CDN URLs, variant=thumbnail, order=0:
+      https://trreb-image.ampre.ca/qAGpau3GOlTGyUPgIFuB3anpYNJwDvsxPO2CkY0sE4M/...
+      https://trreb-image.ampre.ca/NtlEW7YYf-jdgw6_oKPYzSkUFtsREypmpFAEMXu8gps/...
+      https://trreb-image.ampre.ca/U0_LEzUQg7VsexeMVl9fye4nc3W54Y0SW0kgnSPfIEw/...
+      (these resolve — same CDN that powers For-Sale tiles)
+
+  RECON D — coverage on Active Whitby (control group):
+    10 of 10 Active Whitby listings carry a thumbnail.
+
+  RECON E — macro coverage on the whole Closed Whitby pool:
+    3,384 of 3,388 Closed Residential Freehold carry a thumbnail = 99.9%.
+    Active and Closed have IDENTICAL coverage. The PropTx sync does NOT
+    drop media on sold listings.
+
+  → This rules out HONEST NO-MEDIA.
+
+═══════════════════════════════════════════════════════════════════════════
+DATA PATH — where media gets lost
+═══════════════════════════════════════════════════════════════════════════
+
+For-Sale path (WORKS — photos visible):
+  charlie/route.ts search_listings → /api/geo-listings?tab=for-sale
+    → app/api/geo-listings/route.ts:9    LISTING_SELECT (no media col, by design)
+    → app/api/geo-listings/route.ts:128  SEPARATE query against `media` table
+    → app/api/geo-listings/route.ts:142  attaches media:[{media_url,…}] to each row
+    → plan-email/route.ts L86-160       backfill route uses geo-listings response unchanged
+  Result: plan_data.topListings[i].media = [{media_url:'https://…'}]
+  All three render surfaces read .media[0].media_url → photo renders.
+
+Tax-Matched path (BROKEN — placeholders only):
+  Caller: lib/charlie/buyer-tax-match.ts:198  deriveBuyerTaxMatch
+    →   lib/estimator/tax-band-sold-query.ts:138  queryTaxBandSolds
+        DEFAULT_TAX_BAND_SELECT (lines 138-142):
+          'id, listing_key, listing_id, unparsed_address, list_price, close_price,
+           close_date, bedrooms_total, bathrooms_total_integer, days_on_market,
+           property_type, property_subtype, unit_number, tax_annual_amount,
+           tax_year, living_area_range, square_foot_source, community_id,
+           municipality_id, building_area_total, lot_size_area, garage_type,
+           garage_yn'
+        NO "media" — and there is no media column on mls_listings to select.
+        media lives in a separate table joined on listing_id.
+        queryTaxBandSolds does NOT perform that second-query join (unlike
+        geo-listings).
+    ← rows come back with NO media attached.
+  buyer-tax-match.ts sample mapping (line ~220):
+      const samples: BuyerTaxMatchSample[] = dedup.slice(0, CAP).map(({row,tier}) => ({
+        listingKey: row.listing_key ?? null,
+        address: row.unparsed_address ?? null,
+        price: …,
+        closeDate: …,
+        …
+        media: null,    ← HARDCODED. No attempt to read row.media.
+      }))
+  Result: plan_data.buyerTaxMatch.samples[i].media = null  (always)
+
+═══════════════════════════════════════════════════════════════════════════
+PER-SURFACE RENDER CONSISTENCY (all three read media[0].media_url)
+═══════════════════════════════════════════════════════════════════════════
+
+Admin lead page — components/admin-homes/lead-workbench/PlanRenderer.tsx
+  BuyerTaxMatched (~L728-804): passes `media: s.media` (i.e. null) → BuyerListingTile
+  BuyerListingTile (L602-604):
+    const mediaUrl = listing.mediaUrl || listing.media?.[0]?.media_url || listing.media?.[0]?.url
+    L639:  {mediaUrl ? <img …/> : <PlaceholderIcon/>}   ← takes the placeholder branch
+  Render path: CORRECT. Data path: broken.
+
+Email — lib/email/charlie-plan-email-html.ts
+  L581 (buyerTaxMatchHtml):
+    const photo = (s.media && s.media[0] && (s.media[0].media_url || s.media[0].url)) || ''
+    → photo === '' → tile falls back to placeholder
+  Render path: CORRECT. Data path: broken.
+
+In-chat — app/charlie/components/ResultsPanel.tsx
+  BuyerTaxMatchInChat fetches /api/charlie/buyer-tax-match → btm.samples (each media:null)
+  L749-761 maps each sample to a `comp` literal that ALSO does not include
+  any media/mediaUrl field — it only forwards listingKey/address/price/etc.
+  Then renders <ComparableCard comparable={comp}/>.
+  ComparableCard.tsx L100:
+    const mediaUrl = c.mediaUrl || c_anon.media?.[0]?.media_url || c_anon.media?.[0]?.url
+    L161:  {mediaUrl ? <img …/> : <PlaceholderIcon/>}   ← takes the placeholder branch
+  Render path: CORRECT (would render if media were present). Data path: broken
+  AND additionally the comp literal at L749-761 needs to be widened so the
+  downstream-attached media survives the projection (otherwise even fixing
+  the upstream still won't reach ComparableCard in-chat).
+
+═══════════════════════════════════════════════════════════════════════════
+FIX SHAPE (DO NOT APPLY — recon only)
+═══════════════════════════════════════════════════════════════════════════
+
+Two edits (and one downstream projection widening):
+
+1. lib/estimator/tax-band-sold-query.ts
+   After the community+muni Promise.all (around L127-132), perform the same
+   pattern geo-listings/route.ts uses:
+     • collect listing.id values from commSales+muniSales
+     • single SELECT against `media` filtered to variant_type='thumbnail',
+       ordered by order_number ASC
+     • build {listing_id → first media_url} map
+     • mutate each row to add row.media = [{media_url}] (or [] if none)
+   This is the exact pattern proven on the For-Sale path.
+
+2. lib/charlie/buyer-tax-match.ts
+   In the sample-mapping block (lines ~213-222), replace `media: null` with:
+     media: Array.isArray(row.media) ? row.media : null
+   (BuyerTaxMatchSample.media is already typed `any[] | null`, no type change.)
+
+3. app/charlie/components/ResultsPanel.tsx
+   BuyerTaxMatchInChat L749-761: widen the comp literal:
+     const comp = {
+       listingKey: s.listingKey || undefined,
+       …
+       mediaUrl: s.media?.[0]?.media_url || s.media?.[0]?.url || undefined,
+     }
+   so the photo survives the sample→comp projection in-chat.
+   (Email + admin pages pass `s` directly, so they pick it up from edit #2
+    alone — only in-chat needs this projection widening.)
+
+═══════════════════════════════════════════════════════════════════════════
+WHY THIS SLIPPED PAST EARLIER CHUNKS
+═══════════════════════════════════════════════════════════════════════════
+
+Chunk 4 rewrote tax-match as SOLD-comp matching using the shared seller-
+estimator query helper. The seller side never renders tiles with photos —
+the estimator pipeline reads tax/price/beds/dom and computes a number, not
+a tile. So the SELECT had no reason to fetch media. The buyer reuses the
+same query but THEN renders tiles, which is the new requirement that wasn't
+flowed into the query.
+
+Honest no-media was a plausible hypothesis (SOLD listings sometimes lose
+media at close). The DB ruled it out: 99.9% coverage on Closed Whitby.
+
+═══════════════════════════════════════════════════════════════════════════
+SCOPE
+═══════════════════════════════════════════════════════════════════════════
+
+  Files to edit (FIX phase, not this phase):
+    lib/estimator/tax-band-sold-query.ts
+    lib/charlie/buyer-tax-match.ts
+    app/charlie/components/ResultsPanel.tsx
+
+  Files NOT to edit (already correct):
+    components/admin-homes/lead-workbench/PlanRenderer.tsx (render path correct)
+    lib/email/charlie-plan-email-html.ts (render path correct)
+    app/api/geo-listings/route.ts (already does it right — reference pattern)
+
+  Risk surface for the FIX:
+    tax-band-sold-query.ts is shared with the seller estimator. Adding a
+    media-attach step is additive (extra rows on the result objects), but
+    needs verification that the seller path doesn't break on the new field.
+    The seller path reads explicit columns — adding row.media at the helper
+    boundary should be a pure superset.
+
+  Backup pattern (FIX phase):
+    Copy-Item .backup_W-CHARLIE-TAXMATCH-PHOTOS_<ts>  on all three files
+    before edit, per CLAUDE.md.
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLES (RECON ONLY — no code applied)
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/taxmatch-photos.txt          ← this file
+  scripts/_taxmatch-photos-probe.js  ← read-only DB probe (kept for re-run)
+
+  Verdict: QUERY FIX. Awaiting operator go to author the fix.

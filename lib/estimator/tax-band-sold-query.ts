@@ -129,6 +129,46 @@ export async function queryTaxBandSolds(params: TaxBandSoldQueryParams): Promise
     qMuni.then((r: any) => r.data || []),
   ])
 
+  // W-CHARLIE-TAXMATCH-PHOTOS (2026-06-16) — additive media-table join.
+  // Mirrors app/api/geo-listings/route.ts:128-147 verbatim: the listing
+  // SELECT above intentionally has no media column (none exists on
+  // mls_listings); thumbnails live in a separate `media` table joined
+  // on listing_id. Without this step, buyer Tax-Matched tiles render
+  // the placeholder house icon on all 3 surfaces even though 99.9% of
+  // Closed Whitby listings carry a thumbnail.
+  //
+  // This step is ADDITIVE ONLY: row count, row order, and every scoring
+  // column on the rows are untouched. Each row gains a `media` property
+  // (array of {media_url} or empty). The seller home/condo matchers do
+  // NOT import this helper (they have their own inline copy of the
+  // query in home-comparable-matcher-sales.ts / condo-comparable-
+  // matcher-sales.ts), so they are unaffected.
+  const allListingIds: string[] = []
+  for (const r of commSales) if (r?.id) allListingIds.push(r.id)
+  for (const r of muniSales) if (r?.id) allListingIds.push(r.id)
+  if (allListingIds.length > 0) {
+    const { data: mediaRows } = await supabase
+      .from('media')
+      .select('listing_id, media_url, order_number')
+      .in('listing_id', allListingIds)
+      .eq('variant_type', 'thumbnail')
+      .order('order_number', { ascending: true })
+    const thumbnailMap: Record<string, string> = {}
+    for (const m of mediaRows || []) {
+      if (!thumbnailMap[m.listing_id]) thumbnailMap[m.listing_id] = m.media_url
+    }
+    for (const r of commSales) {
+      r.media = thumbnailMap[r.id]
+        ? [{ media_url: thumbnailMap[r.id], variant_type: 'thumbnail', order_number: 0 }]
+        : []
+    }
+    for (const r of muniSales) {
+      r.media = thumbnailMap[r.id]
+        ? [{ media_url: thumbnailMap[r.id], variant_type: 'thumbnail', order_number: 0 }]
+        : []
+    }
+  }
+
   return { commSales, muniSales }
 }
 

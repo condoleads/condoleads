@@ -245,7 +245,11 @@ export async function deriveBuyerTaxMatch(params: DeriveBuyerTaxMatchParams): Pr
     daysOnMarket: row.days_on_market ?? null,
     sourceTier: tier,
     _slug: null,
-    media: null,
+    // W-CHARLIE-TAXMATCH-PHOTOS (2026-06-16) — read row.media attached
+    // by queryTaxBandSolds's additive media-join step. Tile renderers on
+    // all 3 surfaces (in-chat, email, admin) read media[0].media_url and
+    // honestly fall through to placeholder when row has no media row.
+    media: Array.isArray(row.media) ? row.media : null,
   }))
 
   // Mark commKeys-used to avoid TS6133 unused-variable lint.

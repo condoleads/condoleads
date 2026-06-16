@@ -757,6 +757,12 @@ function BuyerTaxMatchInChat({ listingGroups, geoContext, budgetMax, avgConcessi
               unitNumber: s.unitNumber || undefined,
               daysOnMarket: s.daysOnMarket ?? undefined,
               sourceTier: s.sourceTier || undefined,
+              // W-CHARLIE-TAXMATCH-PHOTOS (2026-06-16): forward thumbnail
+              // from sample so ComparableCard renders the real photo
+              // instead of the placeholder. Email + admin pass `s`
+              // directly so they pick this up from buyer-tax-match.ts
+              // edit alone; only this in-chat projection needed widening.
+              mediaUrl: s.media?.[0]?.media_url || s.media?.[0]?.url || undefined,
             }
             return <ComparableCard key={s.listingKey || i} comparable={comp as any} />
           })}

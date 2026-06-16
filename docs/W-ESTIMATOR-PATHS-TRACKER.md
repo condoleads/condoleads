@@ -4840,3 +4840,170 @@ the source-grep-is-dead status flag operator locked.
   - Prompt hardening + client-side guard at the POST site remain
     possible future work.
   - Welcome-email dedup-race (recon CHUNK A) — unchanged.
+
+
+## W-CHARLIE-TAXMATCH-PHOTOS — buyer Tax-Matched tile photos (2026-06-16)
+
+### Defect
+
+  Tax-Matched tiles rendered correctly on all 3 surfaces (in-chat,
+  email, admin lead page) — address, price, beds, DOM, band, narration
+  all present — but showed the orange-house PLACEHOLDER icon instead of
+  real photos. For Sale and Comparable Sold tiles DO show real photos
+  (from /api/geo-listings and get_comparables respectively).
+
+### Root cause
+
+  Shared seller-estimator query queryTaxBandSolds (lib/estimator/tax-
+  band-sold-query.ts:80) was extracted from home-comparable-matcher-
+  sales.ts:1242-1292 verbatim. The seller path renders NO tiles — it
+  reads tax/price/beds/dom for SCORING only and produces a number, not
+  a photo. So the SELECT had no reason to fetch media.
+
+  Buyer reuses the same query at lib/charlie/buyer-tax-match.ts:198
+  and then RENDERS tiles (a new requirement that wasn't flowed into
+  the query). The sample mapping at L235-249 hardcoded `media: null`,
+  so every Tax-Matched sample reached all 3 render surfaces with no
+  media — the surfaces correctly fell through to the placeholder
+  branch (they were doing the right thing with empty data).
+
+  DB reality (RECON E in recon/taxmatch-photos.txt): Closed Whitby
+  Residential Freehold carries thumbnails at 3,384 of 3,388 (99.9%).
+  Identical to Active coverage. Real trreb-image.ampre.ca CDN URLs.
+  → QUERY FIX, not HONEST NO-MEDIA, not render bug.
+
+### Fix (3 edits, additive only)
+
+  EDIT #1 — lib/estimator/tax-band-sold-query.ts
+    After the SOLD fetch Promise.all, ADDITIVE post-fetch step that
+    mirrors app/api/geo-listings/route.ts:128-147 verbatim:
+      collect listing.id values from commSales + muniSales
+      SELECT listing_id, media_url, order_number FROM media
+        WHERE listing_id = ANY(...) AND variant_type='thumbnail'
+        ORDER BY order_number ASC
+      build {listing_id → first media_url} map
+      mutate each row: r.media = [{media_url}] or []
+    NO change to DEFAULT_TAX_BAND_SELECT, WHERE, ORDER, LIMIT —
+    row set byte-identical. Media is purely an additional property.
+
+  EDIT #2 — lib/charlie/buyer-tax-match.ts:235-249
+    Sample mapping: replace `media: null` with
+      `media: Array.isArray(row.media) ? row.media : null`
+    Reads the attached media from edit #1; honest null when row has
+    no media row.
+
+  EDIT #3 — app/charlie/components/ResultsPanel.tsx:749-761
+    BuyerTaxMatchInChat comp literal widened with:
+      mediaUrl: s.media?.[0]?.media_url || s.media?.[0]?.url || undefined
+    Email + admin pass `s` directly so they pick up edit #2 alone;
+    only the in-chat projection-into-ComparableCard needed widening.
+
+### Seller no-regression — HARD PROOF
+
+  E1 IMPORT-GRAPH: grep across lib/estimator confirms neither
+       home-comparable-matcher-sales.ts NOR condo-comparable-matcher-
+       sales.ts imports from tax-band-sold-query. Both retain their
+       own inline copy of the query (per the file's own comment at
+       lib/estimator/tax-band-sold-query.ts:10-17).
+
+  E2 GIT STATUS: home-comparable-matcher-sales.ts and condo-comparable-
+       matcher-sales.ts do not appear in git status —  byte-unchanged
+       on disk.
+
+  E3 SELECT BYTE-IDENTITY: all 4 fragments of DEFAULT_TAX_BAND_SELECT
+       present in current file unchanged.
+
+  E4 GIT DIFF HEAD: `git diff HEAD -- lib/estimator/home-comparable-
+       matcher-sales.ts` and the condo equivalent both return EMPTY.
+       This is the strongest possible statement of byte-identity —
+       and combined with E1 (no import), it is mathematically
+       equivalent to running the seller scoring flow BEFORE and AFTER
+       and asserting identical output: the seller code path is the
+       same bytes, exercising the same machine code.
+
+### DATA-LAYER VERIFY — scripts/taxmatch-photos-fix-verify.ts (29/29 PASS)
+
+  Runs the REAL deriveBuyerTaxMatch function on the same Whitby
+  freehold buyer's matched-listings used by buyer-chunk4-verify.
+
+    A. deriveBuyerTaxMatch — REAL function, Whitby buyer, n=5 matched   8/8
+       A1 btm.isEmpty === false                                          PASS
+       A2 btm.samples.length === 6                                       PASS
+       A3.0-5  all 6 samples carry trreb-image.ampre.ca URLs             6/6
+       A5 realCount + nullCount === samples.length                       PASS
+       A6 at least one real URL (99.9% Whitby coverage)                  PASS
+    B. URLs cross-check as REAL media-table rows                          3/3
+       B1-3 each helper_url EXISTS as a thumbnail of its listing          PASS
+       NOTE: many listings carry MULTIPLE thumbnail rows per order_
+       number (e.g. E13169330 has 67 thumbnails, 2 at order=0). The
+       helper picks A real thumbnail (mirrors geo-listings' pattern),
+       but the choice is non-deterministic. Upstream data observation.
+    C. Honest no-media fallthrough                                        2/2
+       C1 no-media row → media = [] (NOT fabricated URL)                  PASS
+       C2 !url → tile renderer falls through to placeholder               PASS
+    D. Cross-surface same-URL projection (single shaping source)          3/3
+       D1 email url === sample url                                        PASS
+       D2 admin (BuyerListingTile) url === sample url                     PASS
+       D3 in-chat (comp.mediaUrl) url === sample url                      PASS
+    E. Seller no-regression                                              5/5
+       E1 seller files do NOT import tax-band-sold-query                  PASS
+       E2 seller files byte-unchanged on disk (git status)                PASS
+       E3 DEFAULT_TAX_BAND_SELECT byte-unchanged (4 fragments)            PASS
+       E4a home-comparable-matcher-sales.ts byte-IDENTICAL to HEAD        PASS
+       E4b condo-comparable-matcher-sales.ts byte-IDENTICAL to HEAD       PASS
+    F. For Sale + Comparable Sold no-regression                          4/4
+       F1 app/api/geo-listings/route.ts unchanged                         PASS
+       F2 app/api/charlie/route.ts unchanged                              PASS
+       F3 lib/email/charlie-plan-email-html.ts unchanged                  PASS
+       F4 PlanRenderer.tsx unchanged                                      PASS
+    G. Edit-set identity                                                  2/2
+       G1 all 3 expected targets in `M` list                              PASS
+       G2 no NEW unexpected source files modified                         PASS
+
+  TSC: npx tsc --noEmit → exit 0
+  S1:  zero-diff (admin/page, api/chat, agents)
+  Pre-existing dirty (predates session, EXCLUDED from commit):
+       app/api/charlie/municipalities/route.ts (trailing-newline only)
+       scripts/r-w-territory-master-p2-data-phantom-fix.js
+       scripts/r-w-territory-master-p4-check-fix.js
+
+  SUMMARY: 29 of 29 PASS.
+
+### STATUS
+
+  DATA LAYER — VERIFIED:
+    - deriveBuyerTaxMatch returns 6 samples; each carries a real
+      trreb-image.ampre.ca thumbnail URL cross-verified against the
+      media table.
+    - Honest empty-state preserved when row has no thumbnail
+      (the 0.1%): media = [] → tile renders placeholder honestly.
+    - Cross-surface same-URL: in-chat / email / admin all derive
+      from the SAME sample.media[0].media_url shape (single shaping
+      source = buyer-tax-match.ts edit #2).
+    - Seller scoring is mathematically guaranteed byte-identical
+      BEFORE/AFTER: helper file is byte-unchanged AND seller code
+      path doesn't import the edited helper.
+
+  LIVE-DOM ALL 3 SURFACES — CLAIMED, UNVERIFIED:
+    - Per the source-grep-is-dead lock (CLAUDE.md), live-DOM photo
+      render is the operator's eyeball gate on walliam.ca post-
+      deploy. This verify harness asserts the DATA reaches each
+      surface with a real URL; whether the <img> actually paints
+      is the operator's eyeball gate.
+    - REAL-DEPLOY verify: operator opens walliam.ca, runs the
+      Whitby buyer flow, confirms Tax-Matched tiles render REAL
+      photos on all 3 surfaces (in-chat, email, admin lead page).
+      Until that happens, this fix is **claimed, unverified** for
+      production.
+
+### Named observations (out of scope)
+
+  - Many listings carry multiple thumbnail rows per order_number
+    (e.g. E13169330 has 67 thumbnails, 2 at order=0). Both helper
+    and geo-listings pick non-deterministically among same-order
+    rows. Affects For Sale too — pre-existing upstream data issue,
+    not introduced by this fix. Tracked here for visibility.
+
+### Commit
+
+  W-CHARLIE-TAXMATCH-PHOTOS: 38d8439

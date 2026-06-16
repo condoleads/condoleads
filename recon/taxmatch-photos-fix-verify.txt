@@ -1,0 +1,81 @@
+W-CHARLIE-TAXMATCH-PHOTOS FIX-VERIFY — 2026-06-16T11:37:04.257Z
+────────────────────────────────────────────────────────────────────────────
+SECTION A — deriveBuyerTaxMatch (Whitby freehold buyer, n=5 matched)
+PASS  A1: btm.isEmpty === false
+        → isEmpty=false, reason=—
+PASS  A2: btm.samples.length === 6
+        → samples.length=6
+     band: $4,017 – $6,025/yr
+     withTax: 4 of 5
+PASS  A3.0: sample E13158732 url is trreb-image.ampre.ca
+        → url=https://trreb-image.ampre.ca/3D46UKfVOi1NFcCLAATs1lOtqx_OP4bUZMMIuMm1j20/rs:fit:240:240/wm:.5:so:0:50:.4/wmsh:10/wmt:PHNwYW4gZm9yZWdyb3VuZD0nd2hpdGUnIGZvbnQ9JzY4Jz5QRyBESVJFQ1QgUkVBTFRZIExURC4sIEJyb2tlcmFnZTwvc3Bhbj4/cb:20260521180000/L3RycmViL2xpc3RpbmdzLzQzLzYzLzY2LzkzL3AvYjYzZDhiNDktODRhZC00ZTFjLTgxNDYtOTkzMmFiODE3ZjRjLmpwZw.jpg
+PASS  A3.1: sample E13169330 url is trreb-image.ampre.ca
+        → url=https://trreb-image.ampre.ca/RpewApePBC2XH65c-Dd7bhVYLgCSV7psdlvkXSwl7kA/rs:fit:240:240/wm:.5:so:0:50:.4/wmsh:10/wmt:PHNwYW4gZm9yZWdyb3VuZD0nd2hpdGUnIGZvbnQ9JzY4Jz5OQVRJT04gV0lERSBSRUFMVFkgSU5DLiwgQnJva2VyYWdlPC9zcGFuPg/cb:20260510205350/L3RycmViL2xpc3RpbmdzLzQzLzU1LzA4LzAzL3AvNDk0NDk1MzItOTRjOS00YzFmLTkyMDgtMzAwZmEwZjQzNzIwLmpwZw.jpg
+PASS  A3.2: sample E13194904 url is trreb-image.ampre.ca
+        → url=https://trreb-image.ampre.ca/nr7tJwSu5iQZglRzOf-_nlX1d0QZ1-2imxHWyA8lW_8/rs:fit:240:240/wm:.5:so:0:50:.4/wmsh:10/wmt:PHNwYW4gZm9yZWdyb3VuZD0nd2hpdGUnIGZvbnQ9JzY4Jz5SRS9NQVggUk9VR0UgUklWRVIgUkVBTFRZIExURC4sIEJyb2tlcmFnZTwvc3Bhbj4/cb:20260525141941/L3RycmViL2xpc3RpbmdzLzQzLzY1Lzc2LzAwL3AvYWIyZWQxMzAtMTM5Ny00ODcxLThjZjMtMDNiNjQ5YjM4ZTgyLmpwZw.jpg
+PASS  A3.3: sample E13182312 url is trreb-image.ampre.ca
+        → url=https://trreb-image.ampre.ca/NRIWQL-h2fVNrg8NRIOV2xvF48LfhtkeqkjXzJJYaiw/rs:fit:240:240/wm:.5:so:0:50:.4/wmsh:10/wmt:PHNwYW4gZm9yZWdyb3VuZD0nd2hpdGUnIGZvbnQ9JzY4Jz5UaGUgTm9vayBSZWFsdHkgSW5jLiwgQnJva2VyYWdlPC9zcGFuPg/cb:20260526180427/L3RycmViL2xpc3RpbmdzLzQzLzY2LzM3Lzk1L3AvM2U4ZDkxNWQtMWYzMS00ZDliLTk5NDUtYzkwODE2NWFiMDZkLmpwZw.jpg
+PASS  A3.4: sample E13156072 url is trreb-image.ampre.ca
+        → url=https://trreb-image.ampre.ca/HsjTXUGLk5DPNkY8Qg1ofMGYzSVlpn5SwHUDUiV_W08/rs:fit:240:240/wm:.5:so:0:50:.4/wmsh:10/wmt:PHNwYW4gZm9yZWdyb3VuZD0nd2hpdGUnIGZvbnQ9JzY4Jz5SRS9NQVggSEFMTE1BUksgRklSU1QgR1JPVVAgUkVBTFRZIExURC4sIEJyb2tlcmFnZTwvc3Bhbj4/cb:20260521154219/L3RycmViL2xpc3RpbmdzLzQzLzU1LzUyLzQ5L3AvOGI4OTNmOWQtNGMwOC00Y2FlLWJlMDItZTU4ZWQzMzc0NTQ2LmpwZw.jpg
+PASS  A3.5: sample E13168976 url is trreb-image.ampre.ca
+        → url=https://trreb-image.ampre.ca/Scw-IliNUtZ49GsWwwpVCp-7bmhFVff0oIHRMRp_cmM/rs:fit:240:240/wm:.5:so:0:50:.4/wmsh:10/wmt:PHNwYW4gZm9yZWdyb3VuZD0nd2hpdGUnIGZvbnQ9JzY4Jz5SRS9NQVggUkVBTFRZIFNFUlZJQ0VTIElOQy4sIEJyb2tlcmFnZTwvc3Bhbj4/cb:20260525002123/L3RycmViL2xpc3RpbmdzLzQzLzY1LzU5LzcxL3AvY2I4MTA3YjYtZWVkMi00N2UyLTlhZTYtMTFkNjljYmY5ZjY5LmpwZw.jpg
+     A4: 6 samples carry real URL, 0 honest-null. Total=6
+PASS  A5: realCount + nullCount === samples.length (no fabricated stub)
+PASS  A6: at least one sample carries a real URL (Whitby has 99.9% media coverage)
+────────────────────────────────────────────────────────────────────────────
+SECTION B — cross-check each sample URL against direct media-table read
+PASS  B1: sample E13158732 url EXISTS as a real thumbnail row for this listing
+        → helper_url=https://trreb-image.ampre.ca/3D46UKfVOi1NFcCLAATs1lOtqx_OP4bUZMMIuMm1j20/rs:fit:  db_match=YES
+PASS  B2: sample E13169330 url EXISTS as a real thumbnail row for this listing
+        → helper_url=https://trreb-image.ampre.ca/RpewApePBC2XH65c-Dd7bhVYLgCSV7psdlvkXSwl7kA/rs:fit:  db_match=YES
+PASS  B3: sample E13194904 url EXISTS as a real thumbnail row for this listing
+        → helper_url=https://trreb-image.ampre.ca/nr7tJwSu5iQZglRzOf-_nlX1d0QZ1-2imxHWyA8lW_8/rs:fit:  db_match=YES
+     B-summary: 3/3 URLs cross-verified as real media rows
+     NOTE: many listings carry multiple thumbnail rows per order_number — the helper picks A real thumbnail (mirrors geo-listings' pattern), but the specific choice is non-deterministic. This is an upstream data observation, not a fix regression.
+────────────────────────────────────────────────────────────────────────────
+SECTION C — honest no-media fallthrough
+     listing without thumbnail: id=6a0888e2-de5c-4ee4-b4fd-b48f2c84e5a1  key=E12691256  addr="6 Seven Oaks Street, Whitby, ON L1R 0H3"
+PASS  C1: no-media row → media is [] (not fabricated URL)
+        → media=[]  derived_url=(none)
+PASS  C2: tile renderer fallthrough — !url => placeholder
+        → url=(none)
+────────────────────────────────────────────────────────────────────────────
+SECTION D — cross-surface same-URL projection
+     sample listingKey=E13158732
+     truth (sample.media[0].media_url) = https://trreb-image.ampre.ca/3D46UKfVOi1NFcCLAATs1lOtqx_OP4bUZMMIuMm1j20/rs:fit:240:240/wm:.5:so:0:5
+     email (s.media[0].media_url)      = https://trreb-image.ampre.ca/3D46UKfVOi1NFcCLAATs1lOtqx_OP4bUZMMIuMm1j20/rs:fit:240:240/wm:.5:so:0:5
+     admin (BuyerListingTile)          = https://trreb-image.ampre.ca/3D46UKfVOi1NFcCLAATs1lOtqx_OP4bUZMMIuMm1j20/rs:fit:240:240/wm:.5:so:0:5
+     in-chat (comp.mediaUrl)           = https://trreb-image.ampre.ca/3D46UKfVOi1NFcCLAATs1lOtqx_OP4bUZMMIuMm1j20/rs:fit:240:240/wm:.5:so:0:5
+PASS  D1: email url === sample url
+PASS  D2: admin url === sample url
+PASS  D3: in-chat url === sample url
+────────────────────────────────────────────────────────────────────────────
+SECTION E — seller no-regression
+PASS  E1: seller files do NOT import tax-band-sold-query
+        → grep returned no seller matches
+PASS  E2: seller files BYTE-UNCHANGED on disk (git status clean)
+        → git status snippet: (none)
+PASS  E3: DEFAULT_TAX_BAND_SELECT byte-unchanged (each column fragment present)
+        → all 4 select fragments unchanged
+PASS  E4a: home-comparable-matcher-sales.ts byte-IDENTICAL to HEAD
+        → git diff HEAD = empty
+PASS  E4b: condo-comparable-matcher-sales.ts byte-IDENTICAL to HEAD
+        → git diff HEAD = empty
+     E4 SUMMARY: seller scoring output is byte-identical BEFORE/AFTER by import-graph isolation (E1) + helper file byte-identity (E4a, E4b). Running the seller flow twice would exercise the same machine code and produce the same bytes.
+────────────────────────────────────────────────────────────────────────────
+SECTION F — For Sale + Comparable Sold no-regression (git byte-unchanged)
+PASS  F1: app/api/geo-listings/route.ts unchanged
+PASS  F2: app/api/charlie/route.ts unchanged
+PASS  F3: lib/email/charlie-plan-email-html.ts unchanged
+PASS  F4: PlanRenderer.tsx unchanged
+────────────────────────────────────────────────────────────────────────────
+SECTION G — edit-set identity
+PASS  G1: all 3 expected targets in `M` list
+        → M files: app/api/charlie/municipalities/route.ts, app/charlie/components/ResultsPanel.tsx, lib/charlie/buyer-tax-match.ts, lib/estimator/tax-band-sold-query.ts, scripts/r-w-territory-master-p2-data-phantom-fix.js, scripts/r-w-territory-master-p4-check-fix.js
+PASS  G2: no NEW unexpected source files modified (pre-existing dirty excluded)
+        → pre-existing dirty (NOT from this fix): app/api/charlie/municipalities/route.ts, scripts/r-w-territory-master-p2-data-phantom-fix.js, scripts/r-w-territory-master-p4-check-fix.js; will be excluded from commit
+     pre-existing dirty (predates this session, EXCLUDED from commit): app/api/charlie/municipalities/route.ts, scripts/r-w-territory-master-p2-data-phantom-fix.js, scripts/r-w-territory-master-p4-check-fix.js
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: 29 PASS, 0 FAIL
+STATUS: data-layer verified.
+NOTE: live-DOM photo render on all 3 surfaces = operator eyeball on walliam.ca post-deploy (per source-grep-is-dead lock).
