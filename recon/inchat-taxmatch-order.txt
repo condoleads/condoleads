@@ -1,0 +1,233 @@
+W-CHARLIE-INCHAT-TAXMATCH-ORDER — RECON (read-only)
+Date: 2026-06-16
+Operator report: live walliam.ca, failing-path buyer session (post-384fa51)
+  Tax-Matched NOW renders WITH photos (hydrate fix confirmed).
+  Only issue: DOM ORDER.
+    Current order: Comparable Sold → Plan (PlanDocument + scheduler + AI Disclaimer) → Tax-Matched
+    Desired order: Comparable Sold → Tax-Matched → Plan (PlanDocument + scheduler + AI Disclaimer)
+
+═══════════════════════════════════════════════════════════════════════════
+1. JSX RENDER ORDER around the hoisted BuyerTaxMatchInChat
+═══════════════════════════════════════════════════════════════════════════
+
+  app/charlie/components/ResultsPanel.tsx (current state on origin/main):
+
+    L89:    <div style={{...}}>
+    L90:      {(blocks || []).map((block, _bi) => {
+    L93:        if (block.type === 'analytics')      → renders Market Intel
+    L122:       if (block.type === 'listings')      → renders For Sale tiles
+    L180:       if (block.type === 'buildings')     → renders Buildings
+    L211:       if (block.type === 'rankings')      → renders Rankings
+    L257:       if (block.type === 'priceTrends')   → renders Price Trends
+    L272:       if (block.type === 'sellerEstimate')→ (seller-only)
+    L430:       if (block.type === 'comparables') {
+                 → renders SectionHeader "Comparable Sold · N found"
+                 → renders compNarr line
+                 → renders <ComparableCard> tiles
+                 → // tax-match sibling REMOVED in W-CHARLIE-INCHAT-CONVERGENCE
+                 returns the comparables <div>
+    L481:       if (block.type === 'plan') {
+                 → renders VIP banner (if vipCreditUsed)
+                 → renders <PlanDocument …/>      ← AppointmentForm
+                                                    (Book a Viewing) is
+                                                    NESTED INSIDE this,
+                                                    at PlanDocument.tsx:306
+                 → renders AI Disclaimer card     ← ResultsPanel.tsx:533-537
+                 returns the plan <div>
+    L542:       return null
+    L543:     })}
+    L545-561: /* W-CHARLIE-INCHAT-CONVERGENCE comment */
+    L562:     {(() => {
+    L563:       const _aSnap = analytics[analytics.length - 1] || null
+    L564:       const _budgetMax = plan?.budgetMax ?? null
+    L565:       const _avgConc = _aSnap?.avg_concession_pct ?? null
+    L566:       return (
+    L567:         <BuyerTaxMatchInChat
+                    listingGroups={listingGroups}
+                    geoContext={geoContext}
+                    budgetMax={_budgetMax}
+                    avgConcessionPct={_avgConc}
+                    initialBtm={backfilledTaxMatch ?? null}
+                  />
+                )
+    L569:     })()}
+    L578+:    {/* Community Buildings fallback */}
+    L600+:    {/* VIP Credit fallback */}
+    L623+:    {/* Plan fallback */}
+    L670+:    {/* Empty state */}
+
+  CONFIRMED RENDER ORDER for a typical buyer session
+  (state.blocks = [analytics, listings, comparables, plan]):
+
+      analytics            ← from blocks.map()
+      For Sale tiles       ← from blocks.map()
+      Comparable Sold      ← from blocks.map() L430-478
+      Plan: PlanDocument   ← from blocks.map() L481-540
+        ↳ scheduler        ← NESTED inside PlanDocument
+        ↳ AI Disclaimer    ← ResultsPanel.tsx:533-537
+      ─────────  blocks.map() closes here L543  ─────────
+      Tax-Matched          ← hoisted IIFE L562-569       ← OPERATOR'S COMPLAINT
+
+  This matches the operator's report exactly.
+
+═══════════════════════════════════════════════════════════════════════════
+2. IS COMPARABLE SOLD IN-MAP OR STANDALONE?
+═══════════════════════════════════════════════════════════════════════════
+
+  Comparable Sold renders INSIDE blocks.map() — it is a branch of the
+  block-type switch (L430-478), gated by `block.type === 'comparables'`.
+  It is NOT a standalone JSX element below the map.
+
+  The plan block (which embeds the scheduler + AI Disclaimer) is ALSO
+  inside blocks.map() at L481-540, also gated by `block.type === 'plan'`.
+
+  Both are children of the SAME iteration. They render in the order
+  they appear in state.blocks. The hoisted tax-match invocation is a
+  SIBLING of blocks.map() output — it renders AFTER the entire map
+  completes, which means AFTER the last in-map element (the plan
+  block, with its nested scheduler + disclaimer).
+
+  Consequence for repositioning: tax-match cannot trivially interleave
+  between two specific in-map siblings as a standalone sibling of the
+  map. To get tax-match between Comparable Sold and Plan, either
+    (a) tax-match's invocation must move INSIDE the map (rendered as
+        part of the comparables-iteration's return value), OR
+    (b) the plan-iteration must move OUT of the map (extracted to a
+        sibling rendered AFTER the hoist).
+
+═══════════════════════════════════════════════════════════════════════════
+3. THE TWO REPOSITION OPTIONS — what each costs
+═══════════════════════════════════════════════════════════════════════════
+
+  OPTION (i) — render INSIDE the comparables branch + keep top-level
+                hoist as a FALLBACK for no-comparables sessions
+
+    Diff:
+      • Add the BuyerTaxMatchInChat invocation inside the comparables
+        branch return (L458-477), as a SIBLING of the ComparableCard
+        tile list — UNGATED by anything specific to that branch
+        (no `if btm`, no `if listingGroups.length > 0`). The component
+        self-gates internally (returns null when no data).
+      • Add a single gate to the existing top-level hoist (L562-569):
+        only render when the comparables block is NOT in state.blocks.
+        Pseudo:
+          {!(blocks||[]).some(b => b.type === 'comparables') && (
+            (() => { ... return <BuyerTaxMatchInChat ... /> })()
+          )}
+
+    Mutual exclusion → SINGLE invocation site per render:
+      • Has 'comparables' block → branch renders tax-match (right after
+        the comp tiles). Hoist gate false → hoist skipped.
+      • No 'comparables' block → branch never executes. Hoist gate
+        true → hoist renders tax-match.
+      One mount per render. Component still UNCONDITIONALLY invoked on
+      its active path (no `if btm` wrapper). Self-gating preserved.
+
+    Why this is NOT "re-coupling to the comparables block conditional":
+      • COUPLING (what we must avoid): tax-match render would DEPEND
+        on the comparables block existing → no comparables → no tax-
+        match → mount-null bug returns for no-comparables sessions.
+      • OPTION (i): tax-match has TWO potential JSX positions but
+        mutually exclusive gates ensure exactly ONE invocation per
+        render. The "no comparables" session still renders tax-match
+        via the hoist fallback. Mount is unconditional from the
+        component's perspective — invoked in exactly one position
+        per render.
+
+    Risk surface:
+      • Small diff (~10 lines: insertion + hoist gate).
+      • Plan block conversation-order preserved.
+      • Any post-plan follow-up blocks render in their natural
+        chronological position (no order disturbance).
+      • Component self-gate (`return null` when no btm) preserved —
+        no DOM if no data, on either path.
+
+    Concern noted from operator's directive language:
+      Operator wrote "do NOT nest it back inside the comparables
+      branch or gate it" — the spirit is "don't reintroduce the
+      mount-null bug by tying tax-match render to comparables-block
+      existence". Option (i) honors that spirit via the hoist
+      fallback: no-comparables sessions still render via the hoist.
+      What option (i) DOES nest is the rendering position, not the
+      mount condition. Worth flagging this to the operator explicitly
+      since the language could be read more strictly.
+
+  OPTION (ii) — keep hoist top-level, MOVE the plan-block render
+                 OUT of blocks.map() to AFTER the hoist
+
+    Diff:
+      • In blocks.map(): the `if (block.type === 'plan')` branch
+        returns null instead of rendering. The plan block iteration
+        contributes no visual output to the map.
+      • After the hoist (L569): add a new sibling that finds the plan
+        block in state.blocks and renders the SAME PlanDocument +
+        disclaimer JSX. Pseudo:
+          {(() => {
+            const planBlock = (blocks||[]).find(b => b.type === 'plan')
+            if (!planBlock) return null
+            const p = planBlock.data, aSnap = planBlock.analyticsSnapshot, …
+            return (<div>{vipCreditUsed && …}<PlanDocument …/>… disclaimer …</div>)
+          })()}
+
+    Result order:
+      analytics → For Sale → Comparable Sold → (nothing for plan in map)
+      → Tax-Matched (hoist) → Plan (extracted) → scheduler/disclaimer
+      → fallbacks…
+
+    Risk surface:
+      • Larger diff (~30 lines: extract plan render block, replicate
+        VIP banner gate + PlanDocument props + disclaimer JSX).
+      • Plan block CONVERSATION-ORDER broken: was rendered chronologically
+        per state.blocks position; now ALWAYS rendered last (between
+        tax-match and the fallback group). Any follow-up tool calls
+        that push blocks AFTER generate_plan would now render BEFORE
+        the plan, not after. In practice rare (generate_plan is
+        usually the terminal tool), but a documented regression on
+        the "render in conversation order" contract from L89.
+      • Duplicates the PlanDocument-construction JSX in two places
+        (the now-null branch and the new extracted render); if either
+        drifts, the two diverge. Risk of future maintenance bugs.
+      • Tax-match's hoist stays the single invocation site —
+        structurally cleanest from a "where does the component
+        mount" perspective.
+
+═══════════════════════════════════════════════════════════════════════════
+4. RECOMMENDATION
+═══════════════════════════════════════════════════════════════════════════
+
+  OPTION (i) is lower-risk and the minimal reposition.
+
+  • Smaller diff. Touches one branch (insert tax-match invocation
+    inside the comparables return) + one outer gate (skip hoist when
+    comparables exists). No JSX extraction, no replicated render
+    logic, no conversation-order regression.
+  • Plan block stays in its natural chronological position; any
+    future post-plan blocks render in correct order.
+  • Mutual exclusion via the gate keeps the SINGLE invocation site
+    guarantee from the W-CHARLIE-INCHAT-CONVERGENCE Edit 3 (one
+    mount, no double-render).
+  • Component still self-gates: returns null when btm is null,
+    regardless of which JSX position invokes it.
+  • Restores the W-CHARLIE-BUYER-CHUNK5 visual placement intent
+    (tax-match adjacent to Comparable Sold, matching email + lead),
+    while preserving the W-CHARLIE-INCHAT-CONVERGENCE fix for no-
+    comparables-block sessions.
+
+  OPERATOR LANGUAGE CHECK: operator's directive says "do NOT nest
+  it back inside the comparables branch or gate it". Option (i)
+  does place an INVOCATION inside the comparables branch — strictly
+  read, this contradicts the language. But the SPIRIT is "don't tie
+  rendering to the comparables-block conditional in a way that
+  reintroduces the mount-null bug". Option (i) preserves unconditional
+  mount via the hoist fallback. Worth surfacing to operator: if the
+  strict-reading-of-language wins, only option (ii) is available
+  (with its larger surface area + conversation-order regression).
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/inchat-taxmatch-order.txt  ← this file
+
+  NO code edits. NO commit. Awaiting operator decision between option
+  (i) [recommended] and option (ii) before implementation.

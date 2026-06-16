@@ -468,12 +468,23 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                   <ComparableCard key={(c.listingKey || c.listing_key) || i} comparable={c} isLease={block.intent === 'lease'} />
                 ))}
               </div>
-              {/* W-CHARLIE-INCHAT-CONVERGENCE (2026-06-16): BuyerTaxMatchInChat
-                  sibling REMOVED from this branch — hoisted to a top-level
-                  block that renders below the conversation blocks. Single
-                  invocation site → guaranteed single render regardless of
-                  whether the in-session get_comparables path OR the
-                  backfill-hydration path provided the listings. */}
+              {/* W-CHARLIE-INCHAT-TAXMATCH-ORDER (2026-06-16): tax-match
+                  invocation re-introduced inside this branch so it renders
+                  immediately after the Comparable Sold tiles, matching
+                  email + lead order (operator report on 90439cf). UNGATED
+                  by any condition local to this branch — the component
+                  self-gates (returns null on no btm). The top-level hoist
+                  below is mutual-exclusion gated to `!some(comparables)`
+                  so exactly ONE invocation site fires per render — the
+                  W-CHARLIE-INCHAT-CONVERGENCE single-render guarantee is
+                  preserved via mutual exclusion, not via single-site. */}
+              <BuyerTaxMatchInChat
+                listingGroups={listingGroups}
+                geoContext={geoContext}
+                budgetMax={_budgetMax}
+                avgConcessionPct={_avgConc}
+                initialBtm={backfilledTaxMatch ?? null}
+              />
             </div>
           )
         }
@@ -542,24 +553,20 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
         return null
       })}
 
-      {/* W-CHARLIE-INCHAT-CONVERGENCE (2026-06-16): BuyerTaxMatchInChat
-          mounted as a TOP-LEVEL block. Single invocation site, so this
-          is the ONLY place the component renders — guarantees no double-
-          render regardless of which path provided data:
-            • In-session path: search_listings + get_comparables fired
-              normally → listingGroups populated → BuyerTaxMatchInChat
-              self-fetches via /api/charlie/buyer-tax-match (existing
-              behavior, unchanged).
-            • Backfill-hydration path: search_listings did not fire in-
-              session → plan-email response's backfilledListings hydrates
-              listingGroups (useCharlie.ts:560+) → BuyerTaxMatchInChat
-              self-fetches against the hydrated listings → same data
-              persisted plan_data carries → cross-surface convergence.
-          BuyerTaxMatchInChat self-gates: returns null when btm is null
-          and not loading; only renders when its self-fetch resolves
-          with data. So a non-buyer (no listingGroups) session sees no
-          DOM output here. */}
-      {(() => {
+      {/* W-CHARLIE-INCHAT-TAXMATCH-ORDER (2026-06-16): top-level hoist
+          is now MUTUAL-EXCLUSION gated against the comparables-branch
+          invocation. When state.blocks has a 'comparables' block, that
+          branch renders tax-match immediately after the comp tiles
+          (matching email + lead order). When NO 'comparables' block
+          exists (sessions where get_comparables didn't fire — common
+          on the backfill-hydration path), this hoist renders tax-
+          match here. Exactly ONE invocation site fires per render
+          → exactly one mount, no double-render. The component itself
+          stays unconditionally invoked on whichever path applies —
+          the mount-null protection from W-CHARLIE-INCHAT-CONVERGENCE
+          / W-CHARLIE-INCHAT-TAXMATCH-HYDRATE survives via the fallback
+          hoist. */}
+      {!(blocks || []).some((b: any) => b.type === 'comparables') && (() => {
         const _aSnap = analytics[analytics.length - 1] || null
         const _budgetMax = plan?.budgetMax ?? null
         const _avgConc = _aSnap?.avg_concession_pct ?? null

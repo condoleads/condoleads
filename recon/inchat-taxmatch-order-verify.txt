@@ -1,0 +1,74 @@
+W-CHARLIE-INCHAT-TAXMATCH-ORDER FIX-VERIFY — 2026-06-16T18:04:34.731Z
+Render method: react-dom/server.renderToStaticMarkup on the REAL default-
+exported ResultsPanel. Exercises blocks.map() + hoist together so DOM
+ORDER can be asserted via string-index positions of the section headers.
+────────────────────────────────────────────────────────────────────────────
+PASS  0.0: ResultsPanel exported as default
+        → typeof default = function
+SECTION 1 — Comparables-present buyer session (branch fires)
+     markup length: 36032 bytes
+PASS  1.1: exactly ONE "Tax-Matched" header in markup (single invocation)
+        → count=1
+     index "Comparable Sold": 6096
+     index "Tax-Matched":     8399
+     index "AI Disclaimer":   35821
+PASS  1.2: "Comparable Sold" header present in markup
+        → idx=6096
+PASS  1.3: "Tax-Matched" header present in markup
+        → idx=8399
+PASS  1.4: "Tax-Matched" appears AFTER "Comparable Sold"
+        → 8399 > 6096
+PASS  1.5: "Tax-Matched" appears BEFORE "AI Disclaimer" (plan block content)
+        → Tax-Matched=8399 < AI Disclaimer=35821
+     trreb-image URL hits: 9 (For Sale + Comp Sold + Tax-Matched all carry photos)
+PASS  1.6: all 6 Tax-Matched sample URLs in markup (tiles with photos)
+        → sample-URL hits: 6/6
+PASS  1.7: Comparable Sold "2 found" count present
+        → comparable count rendered
+────────────────────────────────────────────────────────────────────────────
+SECTION 2 — No-comparables session (failing-path / hydration; hoist fires)
+     markup length: 33723 bytes
+PASS  2.1: exactly ONE "Tax-Matched" header in markup (hoist fires)
+        → count=1
+PASS  2.2: NO "Comparable Sold" header (no comparables block)
+PASS  2.3: all 6 Tax-Matched sample URLs present (mount-null fix intact)
+        → sample-URL hits: 6/6
+     index "Tax-Matched":   26050
+     index "AI Disclaimer": 25643
+     (in no-comp path, hoist position is unchanged — tax-match still appears after plan/disclaimer; this is the pre-existing position and the operator was not complaining about THIS scenario, only the comparables-present scenario)
+────────────────────────────────────────────────────────────────────────────
+SECTION 3 — Mutual exclusion (never two Tax-Matched headers)
+PASS  3.1: comparables-present render has 1 Tax-Matched (branch only)
+PASS  3.2: no-comparables render has 1 Tax-Matched (hoist only)
+PASS  3.3: never zero, never two (mutual exclusion holds)
+        → with-comp=1, no-comp=1
+────────────────────────────────────────────────────────────────────────────
+SECTION 4 — SOURCE-LEVEL: gate + branch invocation present
+PASS  4.1: top-level hoist gated with !(blocks||[]).some(b => b.type === "comparables")
+PASS  4.2: exactly 2 <BuyerTaxMatchInChat invocation sites in source
+        → invocation count: 2
+PASS  4.3: both invocations pass `initialBtm={backfilledTaxMatch ?? null}`
+        → identical props at both sites
+PASS  4.4: W-CHARLIE-INCHAT-TAXMATCH-ORDER markers present in both sites
+────────────────────────────────────────────────────────────────────────────
+SECTION 5 — Byte-identity (ONE file changed)
+PASS  5.1: lib/email/charlie-plan-email-html.ts unchanged
+PASS  5.2: components/admin-homes/lead-workbench/PlanRenderer.tsx unchanged
+PASS  5.3: lib/charlie/buyer-tax-match.ts unchanged
+PASS  5.4: lib/estimator/tax-band-sold-query.ts unchanged
+PASS  5.5: lib/estimator/home-comparable-matcher-sales.ts unchanged
+PASS  5.6: lib/estimator/condo-comparable-matcher-sales.ts unchanged
+PASS  5.7: app/api/charlie/plan-email/route.ts unchanged
+PASS  5.8: app/api/charlie/buyer-tax-match/route.ts unchanged
+PASS  5.9: app/charlie/hooks/useCharlie.ts unchanged (hydration kept verbatim)
+PASS  5.10: app/charlie/components/CharlieOverlay.tsx unchanged (prop-drill kept verbatim)
+────────────────────────────────────────────────────────────────────────────
+SECTION 6 — edit-set identity
+PASS  6.1: ResultsPanel.tsx in M list
+        → M: app/api/charlie/municipalities/route.ts, app/charlie/components/ResultsPanel.tsx, scripts/r-w-territory-master-p2-data-phantom-fix.js, scripts/r-w-territory-master-p4-check-fix.js
+PASS  6.2: no NEW unexpected source files modified
+        → pre-existing dirty excluded
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: 30 PASS, 0 FAIL
+STATUS: ORDER + single-invocation verified.
+NOTE: live-DOM final order = operator eyeball on walliam.ca post-deploy.

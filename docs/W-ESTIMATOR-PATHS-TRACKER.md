@@ -5410,3 +5410,173 @@ the source-grep-is-dead status flag operator locked.
 ### Commit
 
   W-CHARLIE-INCHAT-TAXMATCH-HYDRATE: 384fa51
+
+
+## W-CHARLIE-INCHAT-TAXMATCH-ORDER — Tax-Matched immediately after Comparable Sold (2026-06-16)
+
+### Defect
+
+  After 384fa51 shipped the W-CHARLIE-INCHAT-TAXMATCH-HYDRATE fix,
+  operator confirmed: in-chat Tax-Matched NOW renders WITH photos
+  (hydrate works). Only remaining issue is DOM ORDER. Tax-Matched
+  appears AFTER the plan card (which contains the scheduler /
+  AppointmentForm + AI Disclaimer) because the W-CHARLIE-INCHAT-
+  CONVERGENCE Edit-3 hoist placed BuyerTaxMatchInChat as a sibling
+  of blocks.map() output — which means it renders AFTER the last
+  in-map block (the plan block).
+
+  Desired order matches email + lead:
+    Comparable Sold → Tax-Matched → Plan (PlanDocument + scheduler) → AI Disclaimer
+
+### Root cause
+
+  The W-CHARLIE-INCHAT-CONVERGENCE Edit-3 hoist removed
+  BuyerTaxMatchInChat from inside the comparables-block branch and
+  placed it at the top-level outside blocks.map(). That fix solved the
+  W-CHARLIE-INCHAT-FORSALE-TAXMATCH-MISSING bug (block didn't mount
+  when no comparables block existed) but introduced an unintended
+  ordering shift: tax-match renders AFTER the entire map completes,
+  which is AFTER the plan block content.
+
+### Decision log
+
+  Recon (recon/inchat-taxmatch-order.txt) presented two options:
+    (i) Render inside comparables branch + keep hoist as fallback
+        gated to no-comparables sessions. Mutual exclusion → exactly
+        ONE invocation per render. Smaller diff, preserves plan
+        block's chronological position.
+    (ii) Extract plan-block render out of blocks.map() and place
+         AFTER the hoist. Larger surface, conversation-order
+         regression (post-plan blocks would render BEFORE plan).
+
+  Operator decision: OPTION (i).
+
+  The directive language "do NOT nest it back inside the comparables
+  branch or gate it" was reconciled with the INTENT ("don't reintroduce
+  mount-null by tying render to comparables-block existence"). Option
+  (i) places an INVOCATION inside the comparables branch but PRESERVES
+  unconditional mount via the hoist fallback for no-comparables
+  sessions — the mount-null protection holds via mutual exclusion, not
+  via single-site. Intent over letter.
+
+### Fix (1 file, ~10-line additive diff)
+
+  EDIT 1 — ResultsPanel.tsx comparables-block branch return
+    AFTER the ComparableCard tile list (the
+    `<div>{block.listings.map(... <ComparableCard/>)}</div>`), add:
+      <BuyerTaxMatchInChat
+        listingGroups={listingGroups}
+        geoContext={geoContext}
+        budgetMax={_budgetMax}
+        avgConcessionPct={_avgConc}
+        initialBtm={backfilledTaxMatch ?? null}
+      />
+    The _budgetMax and _avgConc are already in scope (declared at the
+    top of the comparables-block branch for buildCompSoldNarration).
+    UNGATED by branch-local data — the component self-gates internally.
+
+  EDIT 2 — ResultsPanel.tsx top-level hoist gate
+    Wrap the existing hoist IIFE with a mutual-exclusion gate:
+      {!(blocks || []).some((b: any) => b.type === 'comparables') && (() => {
+        // ...existing IIFE body unchanged...
+      })()}
+    Comparables present → branch renders tax-match, hoist short-
+    circuits. No comparables → branch never runs, hoist renders.
+
+### No-regression — HARD ASSERT
+
+  SINGLE INVOCATION:
+    - Comparables-present render: 1 "Tax-Matched" header in markup
+      (branch fires, hoist gated off).
+    - No-comparables render: 1 "Tax-Matched" header (hoist fires,
+      branch never enters because no 'comparables'-type block).
+    - Never zero, never two → mutual exclusion holds.
+
+  ORDER (comparables-present buyer session):
+    Index in static markup:
+      "Comparable Sold": 6096
+      "Tax-Matched":     8399
+      "AI Disclaimer":  35821
+    Tax-Matched is AFTER Comparable Sold and BEFORE the plan block
+    content (PlanDocument + scheduler + disclaimer).
+
+  MOUNT-NULL FIX INTACT (no-comparables / hydration path):
+    Tax-Matched STILL renders via the hoist with all 6 sample URLs
+    populated. The W-CHARLIE-INCHAT-TAXMATCH-HYDRATE direct-hydrate
+    fix survives — backfilledTaxMatch flows through to initialBtm at
+    BOTH invocation sites identically.
+
+  EMAIL + LEAD + SELLER + OTHER PATHS:
+    Only ResultsPanel.tsx modified in this commit. 10 byte-identity
+    files git diff HEAD = empty (charlie-plan-email-html, PlanRenderer,
+    buyer-tax-match.ts, tax-band-sold-query.ts, both seller matchers,
+    plan-email + buyer-tax-match routes, useCharlie.ts, CharlieOverlay).
+
+  CONVERSATION ORDER PRESERVED:
+    Plan block stays in blocks.map() — no extraction, no rearrangement.
+    Any future post-plan blocks render in their natural chronological
+    position after the plan block. No regression on the "rendered in
+    conversation order, never overwritten" contract.
+
+### RENDER-GATE + ORDER VERIFY — scripts/inchat-taxmatch-order-verify.ts (30/30 PASS)
+
+  Render method: react-dom/server.renderToStaticMarkup on the REAL
+  default-exported ResultsPanel. Exercises blocks.map() + hoist
+  together so DOM order can be asserted via string-index positions
+  of section headers.
+
+    0.0  ResultsPanel exported as default                          PASS
+
+    SECTION 1 — Comparables-present:
+      1.1  exactly ONE "Tax-Matched" header (single invocation)    PASS
+      1.2  "Comparable Sold" header present (idx=6096)              PASS
+      1.3  "Tax-Matched" header present (idx=8399)                  PASS
+      1.4  Tax-Matched AFTER Comparable Sold (8399 > 6096)          PASS
+      1.5  Tax-Matched BEFORE AI Disclaimer (8399 < 35821)          PASS
+      1.6  all 6 sample URLs in markup (tiles with photos)          PASS
+      1.7  Comparable Sold "2 found" count present                  PASS
+
+    SECTION 2 — No-comparables (hoist fires, mount-null fix intact):
+      2.1  exactly ONE "Tax-Matched" header                         PASS
+      2.2  NO "Comparable Sold" header                              PASS
+      2.3  all 6 sample URLs present (mount-null fix intact)        PASS
+
+    SECTION 3 — Mutual exclusion:
+      3.1  with-comp render: 1 Tax-Matched                          PASS
+      3.2  no-comp render:   1 Tax-Matched                          PASS
+      3.3  never zero, never two                                    PASS
+
+    SECTION 4 — Source-level (gate + branch invocation):
+      4.1  hoist gated with !(blocks||[]).some(b => 'comparables')  PASS
+      4.2  exactly 2 <BuyerTaxMatchInChat invocation sites          PASS
+      4.3  both sites pass `initialBtm={backfilledTaxMatch ?? null}` PASS
+      4.4  W-CHARLIE-INCHAT-TAXMATCH-ORDER markers present          PASS
+
+    SECTION 5 — Byte-identity (10 files unchanged)                10/10
+    SECTION 6 — Edit-set identity                                  2/2
+
+  TSC: npx tsc --noEmit → exit 0
+  S1: zero-diff (admin/page, api/chat, agents)
+  Pre-existing dirty (predates session, EXCLUDED from commit):
+    app/api/charlie/municipalities/route.ts
+    scripts/r-w-territory-master-p2-data-phantom-fix.js
+    scripts/r-w-territory-master-p4-check-fix.js
+
+  SUMMARY: 30 of 30 PASS.
+
+### STATUS
+
+  ORDER + single-invocation — VERIFIED via static markup index positions:
+    Comparable Sold (6096) → Tax-Matched (8399) → AI Disclaimer (35821).
+    Mutual exclusion proven in both scenarios.
+
+  LIVE-DOM IN-CHAT order — CLAIMED, UNVERIFIED:
+    Per source-grep-is-dead lock (CLAUDE.md), the live-DOM eyeball on
+    walliam.ca is the final gate. Operator opens a comparables-present
+    buyer session, confirms Tax-Matched now sits immediately below
+    Comparable Sold tiles, BEFORE the plan card / scheduler / AI
+    Disclaimer — matching email + lead order.
+
+### Commit
+
+  W-CHARLIE-INCHAT-TAXMATCH-ORDER: <SHA-PLACEHOLDER>
