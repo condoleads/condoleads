@@ -5207,3 +5207,206 @@ the source-grep-is-dead status flag operator locked.
 ### Commit
 
   W-CHARLIE-INCHAT-CONVERGENCE: 06dc1bd
+
+
+## W-CHARLIE-INCHAT-TAXMATCH-HYDRATE — in-chat tax-match direct-hydrate (2026-06-16)
+
+### Defect
+
+  After 06dc1bd shipped, operator reported live walliam.ca: in-chat
+  For-Sale rendered WITH photos (convergence's listings-hydration
+  worked), Comparable Sold rendered WITH photos (in-session
+  get_comparables fired), but Tax-Matched was ABSENT from the in-chat
+  DOM. Email + admin lead rendered Tax-Matched correctly off persisted
+  plan_data. So data was correct; the in-chat tax-match RENDER chain
+  did not produce DOM.
+
+### Root cause
+
+  BuyerTaxMatchInChat MOUNTED unconditionally per the W-CHARLIE-INCHAT-
+  CONVERGENCE Edit 3 hoist (IIFE with no gate). But it rendered NULL
+  because its self-fetch to /api/charlie/buyer-tax-match never resolved
+  with populated btm on the failing-path session (silent-fail; could
+  be auth, network, race — not deterministically diagnosable from
+  static trace). The chain has multiple silent-failure modes:
+    - non-2xx response swallowed by .catch
+    - response shape with j.buyerTaxMatch null
+    - component unmount-while-pending
+    - thrown error in the response pipeline
+  Any one of them leaves btm null + loading false → return null.
+
+  Critical realization: response.backfilledTaxMatch from Edit 1 of the
+  convergence commit was ALREADY reaching the client (verified in the
+  prior commit's data-layer harness: A1.11-A1.14 + D5 PASS, 6/6
+  samples carry real trreb-image URLs). But useCharlie's .then handler
+  only consumed `backfilledListings`, ignoring `backfilledTaxMatch`.
+  The fix: hydrate tax-match DIRECTLY from the response we already
+  have, bypassing the silently-failing self-fetch on the failing path.
+
+### Fix (4 edits, 3 source files)
+
+  EDIT 1 — app/charlie/hooks/useCharlie.ts state shape
+    Add `backfilledTaxMatch: BuyerTaxMatch | null` to CharlieState
+    interface + INITIAL_STATE (null). Additive only; no existing
+    field changed. Imports BuyerTaxMatch type from
+    @/lib/charlie/buyer-tax-match.
+
+  EDIT 2 — app/charlie/hooks/useCharlie.ts .then handler
+    Alongside the existing _bfl listings hydration (UNCHANGED), add a
+    parallel _bfm dispatch with empty-only semantics captured PRE-
+    dispatch via _preHydrateEmpty = stateRef.current.listingGroups
+    .length === 0. Without that capture, the sequential setStates
+    would see the post-_bfl state and the _bfm guard would never
+    short-circuit on the in-order path. _preHydrateEmpty preserves
+    "in-session path leaves backfilledTaxMatch null".
+
+  EDIT 3 — prop-drill via CharlieOverlay + ResultsPanel
+    CharlieOverlay.tsx <ResultsPanel> mount: add
+      backfilledTaxMatch={state.backfilledTaxMatch}
+    ResultsPanel.tsx Props: add
+      backfilledTaxMatch?: BuyerTaxMatch | null
+    Destructure, pass to the hoisted BuyerTaxMatchInChat invocation:
+      initialBtm={backfilledTaxMatch ?? null}
+    Prop-drill only; no logic in the intermediates.
+
+  EDIT 4 — ResultsPanel.tsx BuyerTaxMatchInChat consume + bypass
+    Added `export` keyword (so the render-gate verify harness can
+    mount it in isolation — the only way to assert the block NODE
+    appears in the rendered DOM).
+    Added initialBtm?: BuyerTaxMatch | null to props.
+    PRE-SEED useState:
+      const [btm, setBtm] = useState<BuyerTaxMatch | null>(initialBtm ?? null)
+    This is the line that produces the FIRST-PAINT DOM on the
+    hydration path.
+    BYPASS self-fetch when initialBtm provided:
+      useEffect(() => {
+        if (initialBtm) {
+          setBtm(prev => prev ?? initialBtm)
+          setLoading(false)
+          return
+        }
+        // ...existing self-fetch logic unchanged...
+      }, [listingGroups, geoContext, initialBtm])
+    Functional setBtm(prev => prev ?? initialBtm) handles the late-
+    arrival case (initialBtm transitions null → populated after
+    mount). The `prev ??` form refuses to clobber a btm already
+    populated by an earlier self-fetch (in-session path's behavior
+    preserved). Deps include initialBtm so late-arrival triggers
+    re-evaluation.
+
+### No-regression — HARD ASSERT
+
+  IN-SESSION IN-CHAT path (byte-identical to today):
+    state.backfilledTaxMatch stays null in the in-session path (the
+    _preHydrateEmpty guard short-circuits when listingGroups was non-
+    empty pre-dispatch). → initialBtm prop is null → useState(null)
+    → useEffect runs the same code path as today (the
+    `if (initialBtm)` early-return doesn't fire) → matched.length,
+    sig, lastSigRef, fetch all behave EXACTLY as today.
+
+  EMAIL + LEAD + SELLER (no server change at all):
+    All 4 edits are client-state only. Server code unchanged.
+    git diff HEAD on the following = empty:
+      lib/email/charlie-plan-email-html.ts
+      components/admin-homes/lead-workbench/PlanRenderer.tsx
+      lib/charlie/buyer-tax-match.ts
+      lib/estimator/tax-band-sold-query.ts (Edit 4 from prior commit holds)
+      lib/estimator/home-comparable-matcher-sales.ts
+      lib/estimator/condo-comparable-matcher-sales.ts
+      app/api/charlie/plan-email/route.ts
+      app/api/charlie/buyer-tax-match/route.ts
+      app/api/geo-listings/route.ts
+      app/api/charlie/route.ts
+
+  FOR SALE + COMPARABLE SOLD IN-CHAT blocks (UNCHANGED render path):
+    For Sale renders from listingGroups (Edit-2 backfill hydration
+    from prior commit, unchanged in this commit). Comparable Sold
+    renders from state.blocks 'comparables'-type block (unchanged).
+    Neither touched by this commit's 4 edits.
+
+### RENDER-GATE VERIFY — scripts/inchat-taxmatch-hydrate-verify.ts (31/31 PASS)
+
+  Render method: react-dom/server.renderToStaticMarkup on the REAL
+  EXPORTED BuyerTaxMatchInChat function. Effects do NOT run in
+  static markup, so the useState(initialBtm ?? null) PRE-SEED is the
+  line that must produce DOM on FIRST PAINT — the gate that was
+  missing every prior round.
+
+    0.0  BuyerTaxMatchInChat exported (typeof === function)        PASS
+
+    1. HYDRATION PATH (initialBtm populated, failing-path session):
+       1.1  hydration markup is NOT empty (BLOCK NODE EXISTS)        PASS
+       1.2  "Tax-Matched" header present                              PASS
+       1.3  heading shows "6 sold comps"                              PASS
+       1.4  tax-band footer renders ($4,218 – $6,328/yr)              PASS
+       1.5  6 trreb-image.ampre.ca URL hits                           PASS
+       1.6  6 <img> tags (one per sample)                             PASS
+       1.7  sample addresses survive to markup                        PASS
+
+    2. EMPTY PATH (initialBtm null, no listingGroups):
+       2.1  returns null, zero markup                                 PASS
+
+    3. ISEMPTY PATH (initialBtm.isEmpty=true, honest empty-state):
+       3.1  "0 sold comps" heading rendered                            PASS
+       3.2  reason text surfaced (no fabricated tiles)                 PASS
+       3.3  zero <img src="trreb-image..."> tags                       PASS
+
+    4. CONVERGENCE (deterministic render):
+       4.1  same btm → same markup byte-by-byte                       PASS
+
+    5. SOURCE-LEVEL (in-session byte-identity protection):
+       5.1  `export function BuyerTaxMatchInChat` present              PASS
+       5.2  initialBtm typed `BuyerTaxMatch | null`                    PASS
+       5.3  useState pre-seeded with `initialBtm ?? null`              PASS
+       5.4  useEffect bypass `if (initialBtm) … return`                PASS
+       5.5  useEffect deps include initialBtm                          PASS
+       5.6  self-fetch logic unchanged (lastSigRef + endpoint URL)    PASS
+
+    6. BYTE-IDENTITY (10 files git diff HEAD empty)                 10/10
+    7. EDIT-SET (exactly 3 declared targets in M list)              2/2
+
+  TSC: npx tsc --noEmit → exit 0
+  S1: zero-diff (admin/page, api/chat, agents)
+  Pre-existing dirty (predates session, EXCLUDED from commit):
+    app/api/charlie/municipalities/route.ts
+    scripts/r-w-territory-master-p2-data-phantom-fix.js
+    scripts/r-w-territory-master-p4-check-fix.js
+
+  SUMMARY: 31 of 31 PASS.
+
+### STATUS
+
+  RENDER GATE — VERIFIED:
+    The Tax-Matched section NODE is asserted present in the static
+    markup whenever initialBtm has populated data. This is the
+    gate that every prior round of fixes left unverified.
+
+  LIVE-DOM ALL 3 SURFACES — CLAIMED, UNVERIFIED:
+    Per source-grep-is-dead lock (CLAUDE.md), the live-DOM eyeball
+    on walliam.ca is the final gate. Operator opens the failing-path
+    session (e.g. comparables-first, no search_listings), generates
+    the plan, confirms the Tax-Matched block now appears in-chat
+    with the same 6 samples + photos email + lead show.
+
+### Named follow-up (out of scope for this commit)
+
+  The in-session self-fetch silent-fail path remains latent. The
+  hydration path now bypasses it, but a session that DID fire
+  search_listings in-order (and thus has listingGroups populated
+  pre-POST) still depends on the self-fetch to /api/charlie/buyer-
+  tax-match. If that fetch silently fails on the in-order path
+  too, in-chat tax-match would be absent (email + lead still fine
+  because they read persisted plan_data). Belt-and-suspenders
+  future work:
+    - Surface fetch errors visibly (loading=false + error-state UI
+      instead of silent null on .catch)
+    - Server-side log of /api/charlie/buyer-tax-match outcomes for
+      audit trail when in-chat block is blank
+    - Apply the SAME direct-hydrate pattern to the in-session path:
+      pre-seed initialBtm from a server-side derivation embedded in
+      get_comparables tool output. Eliminates the self-fetch round-
+      trip entirely.
+
+### Commit
+
+  W-CHARLIE-INCHAT-TAXMATCH-HYDRATE: <SHA-PLACEHOLDER>

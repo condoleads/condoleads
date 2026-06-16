@@ -3,6 +3,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTenantId } from '@/hooks/useTenantId'
 import { useCreditSession } from '@/components/credits/CreditSessionContext'
+// W-CHARLIE-INCHAT-TAXMATCH-HYDRATE (2026-06-16): direct-hydrate path
+// stashes plan-email response.backfilledTaxMatch here so the in-chat
+// Tax-Matched block can render without depending on its self-fetch
+// (which silently fails on the failing-path session per operator
+// report on a589f10/06dc1bd post-deploy).
+import type { BuyerTaxMatch } from '@/lib/charlie/buyer-tax-match'
 
 export type MessageRole = 'user' | 'assistant'
 export type ConversationBlock =
@@ -97,6 +103,14 @@ export interface CharlieState {
   blocks: ConversationBlock[]
   // Assistant name (per-tenant)
   assistantName: string
+  // W-CHARLIE-INCHAT-TAXMATCH-HYDRATE (2026-06-16): stash slot for the
+  // plan-email route's already-derived buyerTaxMatch. Populated by the
+  // .then handler when the session was on the failing-path (listings
+  // were empty pre-POST). Read by BuyerTaxMatchInChat via initialBtm
+  // prop so the block renders without depending on its self-fetch.
+  // null in every in-session code path — see the empty-only guard in
+  // the .then handler.
+  backfilledTaxMatch: BuyerTaxMatch | null
 }
 
 const INITIAL_STATE: CharlieState = {
@@ -154,6 +168,7 @@ const INITIAL_STATE: CharlieState = {
   vipCreditPlanType: null,
   blocks: [],
   assistantName: 'Charlie',
+  backfilledTaxMatch: null,
 }
 
 export function useCharlie() {
@@ -579,6 +594,14 @@ export function useCharlie() {
             // self-fetches on listingGroups change, so seeding
             // listingGroups is sufficient to wake the hoisted tax-
             // match block — no additional state plumbing required.
+            // Capture pre-dispatch listingGroups state BEFORE the _bfl
+            // dispatch mutates it. The _bfm dispatch below uses this to
+            // mirror the SAME empty-only semantics — without it, the
+            // sequential setStates would see the post-_bfl state and
+            // the _bfm guard would never short-circuit on the in-order
+            // path. stateRef.current reflects the latest committed
+            // state per the setState wrapper at line ~167-173.
+            const _preHydrateEmpty = stateRef.current.listingGroups.length === 0
             const _bfl = planEmailData?.backfilledListings
             if (Array.isArray(_bfl) && _bfl.length > 0) {
               setState(s => {
@@ -588,6 +611,23 @@ export function useCharlie() {
                   listingGroups: [{ label: 'Matched Listings', listings: _bfl }],
                   blocks: [...s.blocks, { type: 'listings', label: 'Matched Listings', listings: _bfl }],
                 }
+              })
+            }
+            // W-CHARLIE-INCHAT-TAXMATCH-HYDRATE (2026-06-16): stash
+            // backfilledTaxMatch alongside listings hydration. Same
+            // empty-only guard semantics via _preHydrateEmpty — if
+            // the session ran in-order (search_listings + get_comparables
+            // fired before generate_plan), listingGroups was already
+            // non-empty PRE-dispatch, so this no-ops and the existing
+            // self-fetch path drives the in-chat tax-match render
+            // (byte-identical to today). Only the failing-path
+            // session (empty listingGroups pre-POST) populates this
+            // slot, which BuyerTaxMatchInChat consumes via initialBtm.
+            const _bfm = planEmailData?.backfilledTaxMatch
+            if (_preHydrateEmpty && _bfm && _bfm.isEmpty === false) {
+              setState(s => {
+                if (s.backfilledTaxMatch) return s
+                return { ...s, backfilledTaxMatch: _bfm }
               })
             }
           })

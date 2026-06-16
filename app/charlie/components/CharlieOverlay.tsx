@@ -304,6 +304,7 @@ export default function CharlieOverlay({
                   priceTrends={state.priceTrends || []}
                   seasonalData={state.seasonalData || []}
                   blocks={state.blocks || []}
+                  backfilledTaxMatch={state.backfilledTaxMatch}
               />
             </div>
           )}

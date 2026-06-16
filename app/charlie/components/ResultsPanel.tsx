@@ -44,6 +44,11 @@ interface Props {
   priceTrends: any[]
   seasonalData?: any | null
   blocks?: any[]
+  // W-CHARLIE-INCHAT-TAXMATCH-HYDRATE (2026-06-16): hydrated buyerTaxMatch
+  // from plan-email response (failing-path session). Threaded to
+  // BuyerTaxMatchInChat as initialBtm so it renders without depending
+  // on the silent-failing self-fetch. Null on the in-session path.
+  backfilledTaxMatch?: BuyerTaxMatch | null
 }
 
 const fmt = (n: number | null | undefined, prefix = '', suffix = '') =>
@@ -68,7 +73,7 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate, communityBuildings, sessionId, userId, onLeadCaptured, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, searchedBuildings, rankings, priceTrends, seasonalData, blocks }: Props) {
+export default function ResultsPanel({ analytics, listingGroups, comparables, geoContext, plan, agent, onSendPlan, leadCaptured, sellerEstimate, communityBuildings, sessionId, userId, onLeadCaptured, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, searchedBuildings, rankings, priceTrends, seasonalData, blocks, backfilledTaxMatch }: Props) {
 
   return (
     <div style={{
@@ -564,6 +569,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
             geoContext={geoContext}
             budgetMax={_budgetMax}
             avgConcessionPct={_avgConc}
+            initialBtm={backfilledTaxMatch ?? null}
           />
         )
       })()}
@@ -686,17 +692,45 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
 // Hits /api/charlie/buyer-tax-match whenever the matched-listings
 // signature changes; renders the SAME shape email + lead page render.
 // Sold-comp framing (NOT "what you'll pay yearly").
-function BuyerTaxMatchInChat({ listingGroups, geoContext, budgetMax, avgConcessionPct }: {
+// W-CHARLIE-INCHAT-TAXMATCH-HYDRATE (2026-06-16): exported so the
+// render-gate verify harness (scripts/inchat-taxmatch-hydrate-verify.ts)
+// can mount the component in isolation with initialBtm pre-seeded and
+// assert the Tax-Matched block NODE appears in the static output. The
+// in-app caller (ResultsPanel) uses the same function — single source
+// of truth, no duplication.
+export function BuyerTaxMatchInChat({ listingGroups, geoContext, budgetMax, avgConcessionPct, initialBtm }: {
   listingGroups: { label: string; listings: any[] }[]
   geoContext: { geoType: string; geoId: string; geoName: string } | null
   budgetMax?: number | null
   avgConcessionPct?: number | null
+  // W-CHARLIE-INCHAT-TAXMATCH-HYDRATE: pre-derived buyerTaxMatch from
+  // the plan-email response (failing-path session). When provided,
+  // bypass the self-fetch entirely — single source of truth with the
+  // buyerTaxMatch persisted to plan_data and rendered in email + lead.
+  initialBtm?: BuyerTaxMatch | null
 }) {
-  const [btm, setBtm] = useState<BuyerTaxMatch | null>(null)
+  // Pre-seed btm with initialBtm so the FIRST render already produces
+  // the Tax-Matched DOM. Without this, useState(null) would show the
+  // empty branch (return null) until the late-arriving effect set btm,
+  // and on the failing path the self-fetch silently failed entirely.
+  const [btm, setBtm] = useState<BuyerTaxMatch | null>(initialBtm ?? null)
   const [loading, setLoading] = useState(false)
   const lastSigRef = useRef<string | null>(null)
 
   useEffect(() => {
+    // W-CHARLIE-INCHAT-TAXMATCH-HYDRATE (2026-06-16): direct-hydrate
+    // path. When initialBtm is provided (failing-path session, parent
+    // hydrated us from plan-email response.backfilledTaxMatch), skip
+    // the self-fetch entirely AND make sure btm is set even when
+    // initialBtm arrives AFTER first render (useState only respects
+    // its initial value on mount; subsequent prop changes need this
+    // explicit setBtm). Use prev-state-functional setBtm so a btm
+    // already populated by an earlier self-fetch is not clobbered.
+    if (initialBtm) {
+      setBtm(prev => prev ?? initialBtm)
+      setLoading(false)
+      return
+    }
     const matched = (listingGroups || []).flatMap(g => g.listings)
     // Signature: listing keys + geoId. Skip refetch when nothing changed.
     const sig = matched.map(l => l?.listing_key || l?.listingKey).filter(Boolean).join(',') +
@@ -718,7 +752,7 @@ function BuyerTaxMatchInChat({ listingGroups, geoContext, budgetMax, avgConcessi
       .then(j => { if (j?.ok && j.buyerTaxMatch) setBtm(j.buyerTaxMatch) })
       .catch(err => console.error('[BuyerTaxMatchInChat] fetch error:', err))
       .finally(() => setLoading(false))
-  }, [listingGroups, geoContext])
+  }, [listingGroups, geoContext, initialBtm])
 
   if (loading && !btm) {
     return (

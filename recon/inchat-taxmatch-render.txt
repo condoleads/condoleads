@@ -1,0 +1,293 @@
+W-CHARLIE-INCHAT-TAXMATCH-RENDER — RECON (read-only)
+Date: 2026-06-16
+Operator report: live walliam.ca, failing-path buyer session
+  • For Sale            renders WITH photos    ← Edit 2 hydration worked
+  • Comparable Sold     renders WITH photos    ← in-session get_comparables fired
+  • Tax-Matched         ABSENT from DOM        ← what this recon explains
+
+═══════════════════════════════════════════════════════════════════════════
+ONE-LINE VERDICT
+═══════════════════════════════════════════════════════════════════════════
+
+  The component IS mounting. It is rendering null because its self-
+  fetch never resolves with a populated btm on this session. The
+  cheapest robust fix is the operator's hypothesis: PUSH the server-
+  already-derived response.backfilledTaxMatch into state during
+  Edit-2 hydration so BuyerTaxMatchInChat can READ it as a pre-
+  seeded initial value, bypassing the self-fetch entirely on the
+  hydration path. The wire data is already there (Edit 1); the
+  client just doesn't consume it for tax-match today.
+
+═══════════════════════════════════════════════════════════════════════════
+1. MOUNT CONDITION — when does BuyerTaxMatchInChat enter the React tree?
+═══════════════════════════════════════════════════════════════════════════
+
+  app/charlie/components/ResultsPanel.tsx:557-569 (the Edit 3 hoist):
+
+      {(() => {
+        const _aSnap   = analytics[analytics.length - 1] || null
+        const _budgetMax = plan?.budgetMax ?? null
+        const _avgConc = _aSnap?.avg_concession_pct ?? null
+        return (
+          <BuyerTaxMatchInChat
+            listingGroups={listingGroups}
+            geoContext={geoContext}
+            budgetMax={_budgetMax}
+            avgConcessionPct={_avgConc}
+          />
+        )
+      })()}
+
+  The IIFE has NO conditional gate around the returned JSX. It is a
+  bare child of the ResultsPanel root <div>, rendered as a sibling
+  of (blocks || []).map(...). So:
+
+    • Mount fires whenever ResultsPanel itself mounts.
+    • Mount does NOT depend on a 'comparables' block in state.blocks
+      — the original sibling-of-comparables placement (pre-Edit-3)
+      is gone. The failing-path session (where get_comparables DID
+      fire AND search_listings did NOT) still mounts the component.
+    • Mount does NOT depend on listingGroups being non-empty.
+    • Mount does NOT depend on backfilledTaxMatch being available.
+
+  Operator's For-Sale block renders → ResultsPanel is mounted →
+  BuyerTaxMatchInChat IS mounted too. The mount condition is met.
+
+  Then why no DOM? Because the COMPONENT returns null (see §3).
+
+═══════════════════════════════════════════════════════════════════════════
+2. SELF-FETCH — does it fire on the hydration path?
+═══════════════════════════════════════════════════════════════════════════
+
+  app/charlie/components/ResultsPanel.tsx:699-721:
+
+      const [btm, setBtm] = useState<BuyerTaxMatch | null>(null)
+      const [loading, setLoading] = useState(false)
+      const lastSigRef = useRef<string | null>(null)
+
+      useEffect(() => {
+        const matched = (listingGroups || []).flatMap(g => g.listings)
+        const sig = matched.map(l => l?.listing_key || l?.listingKey)
+                          .filter(Boolean).join(',')
+                  + '|' + (geoContext?.geoType || '') + ':' + (geoContext?.geoId || '')
+        if (sig === lastSigRef.current) return            // dedup
+        if (matched.length === 0 || !geoContext?.geoId) { // early-exit
+          lastSigRef.current = sig
+          setBtm(null)
+          return
+        }
+        lastSigRef.current = sig
+        setLoading(true)
+        fetch('/api/charlie/buyer-tax-match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ matchedListings: matched, geoContext }),
+        })
+          .then(r => r.json())
+          .then(j => { if (j?.ok && j.buyerTaxMatch) setBtm(j.buyerTaxMatch) })
+          .catch(err => console.error('[BuyerTaxMatchInChat] fetch error:', err))
+          .finally(() => setLoading(false))
+      }, [listingGroups, geoContext])
+
+  Deps: [listingGroups, geoContext]. The effect fires on reference
+  change of EITHER prop.
+
+  Hydration flow (app/charlie/hooks/useCharlie.ts:582-592):
+
+      const _bfl = planEmailData?.backfilledListings
+      if (Array.isArray(_bfl) && _bfl.length > 0) {
+        setState(s => {
+          if (s.listingGroups.length > 0) return s     // empty-only guard
+          return {
+            ...s,
+            listingGroups: [{ label: 'Matched Listings', listings: _bfl }],
+            blocks: [...s.blocks, { type: 'listings', ... }],
+          }
+        })
+      }
+
+  This setState produces a NEW listingGroups ARRAY (the [{...}] literal).
+  React's useEffect with [listingGroups] in deps does a strict !==
+  reference check. New reference → effect runs.
+
+  STATIC TRACE — what the effect sees post-hydration:
+    matched.length     = 10                        (backfilled)
+    geoContext.geoId   = WHITBY_MUNI               (set by resolve_geo)
+    sig new            = "<10 listing_keys>|municipality:WHITBY_MUNI"
+    lastSigRef.current = "|municipality:WHITBY_MUNI"  (set on prev empty run)
+    → sig !== lastSigRef → proceed
+    → matched.length > 0 AND geoContext.geoId set → fetch IS scheduled
+
+  But the operator's evidence (no DOM) says the fetch round-trip
+  ultimately leaves btm null. The static trace cannot tell us why —
+  it just confirms the effect SHOULD fire. Plausible runtime causes
+  (none confirmable without live console/network access):
+
+    (a) /api/charlie/buyer-tax-match returned ok=false or a non-JSON
+        response (silently caught by .catch → btm never set). 401
+        from middleware on a missing/expired tenant header is a
+        candidate; this route does not auth-gate but middleware
+        runs before route code.
+    (b) The fetch resolved but with j.buyerTaxMatch = null (helper
+        threw an error pre-derivation). The route would return
+        { ok: true, buyerTaxMatch: <object> } in the happy path;
+        an upstream error would land in the .catch.
+    (c) React StrictMode double-effect: in dev StrictMode, the
+        effect runs twice with the same deps. With our lastSigRef
+        guard, the second invocation no-ops. Not relevant to prod.
+    (d) Race with component unmount: if ResultsPanel unmounts and
+        remounts before the fetch resolves (e.g. activePanel flip),
+        setBtm runs on a stale component instance — but in current
+        code the component stays mounted on a single ResultsPanel
+        lifetime.
+
+  Net: the self-fetch SHOULD fire, but the chain has multiple
+  silent-failure modes (any non-2xx response, any thrown error in
+  the response pipeline, any unmount-while-pending). Even one of
+  them aborting the chain leaves btm null and the component renders
+  nothing.
+
+  Diagnostic that would PROVE which mode is hitting on production:
+  open browser devtools → Network tab → look for the
+  /api/charlie/buyer-tax-match POST after the plan-email POST
+  resolves. Either:
+    • the POST is absent → effect never fired (something we can't
+      see from static trace; likely listingGroups reference issue)
+    • the POST returns non-200 → server-side fail
+    • the POST returns 200 + buyerTaxMatch populated → the chain
+      is healthy and the issue is post-setBtm (rerender, dom)
+
+  The recon cannot make this diagnosis from the file system alone.
+
+═══════════════════════════════════════════════════════════════════════════
+3. MOUNT vs NULL — which is it?
+═══════════════════════════════════════════════════════════════════════════
+
+  Distinguishing the two:
+
+  MOUNT FAILS         — component never enters the tree. The IIFE
+                        returned a falsy/null value. NOT the case here:
+                        the IIFE unconditionally returns the JSX.
+                        Result: zero DOM, zero side-effects, useEffect
+                        never runs.
+
+  MOUNTS, RENDERS NULL — component enters tree, useEffect schedules,
+                        but the return value resolves to `return null`.
+                        Result: zero DOM nodes, useEffect DID run, fetch
+                        may or may not have fired.
+
+  BuyerTaxMatchInChat render branches (L723-729 + L715):
+
+      if (loading && !btm) return <SectionHeader title="loading…" />
+      if (!btm) return null
+
+  So:
+    • loading=true,  btm=null  → renders "Tax-Matched · loading…"
+    • loading=false, btm=null  → returns null (NO DOM)
+    • btm populated            → renders full block
+
+  Operator says "ABSENT from DOM" — no loading header visible,
+  nothing at the tax-match position. Both `loading=true,btm=null`
+  AND `loading=false,btm=null` are plausible, but loading=true
+  produces visible "Tax-Matched · loading…" text in the panel. If
+  the operator did NOT see that text, then loading is false too
+  → btm is null AND not loading → the effect ran the early-exit
+  path OR the fetch resolved without setting btm OR the .finally
+  setLoading(false) ran without the .then(setBtm) firing.
+
+  CONCLUSION: MOUNTS, RENDERS NULL. The fix is not "mount it"
+  (already mounting) but "give it data that survives the self-
+  fetch round-trip".
+
+═══════════════════════════════════════════════════════════════════════════
+4. CHEAPEST ROBUST FIX — direct-hydrate from response.backfilledTaxMatch
+═══════════════════════════════════════════════════════════════════════════
+
+  THE WIRE DATA IS ALREADY THERE.
+
+  Edit 1 returns `backfilledTaxMatch: buyerTaxMatch` on every buyer
+  POST (verified live, scripts/inchat-convergence-verify.ts:
+  A1.11–A1.14 PASS, A1.14 confirms 6/6 samples carry real trreb-
+  image URLs). The plan-email response that hydrates For Sale via
+  backfilledListings ALSO carries backfilledTaxMatch on the same
+  envelope. We just don't consume it for tax-match today — Edit 2
+  reads only `planEmailData?.backfilledListings`, ignoring
+  `planEmailData?.backfilledTaxMatch`.
+
+  Fix shape (flag only — DO NOT IMPLEMENT until operator approves):
+
+    1. useCharlie.ts state shape: add a new state slot
+         backfilledTaxMatch: BuyerTaxMatch | null
+       INITIAL_STATE adds the field.
+
+    2. useCharlie.ts .then handler: alongside the existing _bfl
+       dispatch, also stash response.backfilledTaxMatch into state
+       under the SAME empty-only guard semantics (only hydrate
+       when no in-session tax-match exists yet — but the in-chat
+       has no canonical "do I have it" flag; one option is "hydrate
+       only when state.backfilledTaxMatch is null" so a re-POST
+       does not stomp a populated value).
+
+    3. CharlieOverlay.tsx <ResultsPanel> mount: thread the new
+       state slot through as a prop.
+
+    4. ResultsPanel.tsx Props + the hoisted IIFE: thread it
+       through to BuyerTaxMatchInChat as an `initialBtm` prop.
+
+    5. BuyerTaxMatchInChat: accept the new prop, and BEFORE the
+       useEffect's signature check, if (initialBtm && !btm)
+       setBtm(initialBtm). This bypasses the self-fetch entirely
+       when hydrated data is available — single source of truth
+       with what email + lead read from plan_data.
+
+  WHY THIS IS BETTER THAN THE CURRENT PATH:
+    • No second round-trip → no network failure mode → no silent-
+      fail in the chain.
+    • Single source of truth: the same buyerTaxMatch the route
+      persisted to plan_data flows directly to the in-chat tile.
+      Email + lead + in-chat literally consume the SAME object.
+    • Survives every plausible silent-fail mode listed in §2 (auth,
+      JSON, unmount race) because no fetch occurs.
+    • The in-SESSION path (search_listings + get_comparables fired)
+      remains unchanged: initialBtm is null (state.backfilledTaxMatch
+      never set because the empty-only guard short-circuits at the
+      listingGroups check higher up), and the existing self-fetch
+      drives btm. So in-order behavior is byte-identical.
+
+  CONFIRMING THE PATH IS OPEN (live evidence):
+
+    From scripts/inchat-convergence-verify.ts data-layer verify
+    (last run on this branch, 48/48 PASS):
+
+      A1.11 backfilledTaxMatch present in response       PASS
+      A1.12 backfilledTaxMatch.isEmpty === false         PASS
+      A1.13 backfilledTaxMatch.samples.length > 0        PASS (samples=6)
+      A1.14 samples carry real trreb-image.ampre.ca URLs PASS (6/6)
+      D5    persisted plan_data.buyerTaxMatch.samples
+            carry real photos                            PASS (6/6)
+
+    So response.backfilledTaxMatch IS reaching the client today —
+    Edit 2 just doesn't read it. The fix is plumbing-only:
+    add a state slot → thread → consume as initialBtm.
+
+═══════════════════════════════════════════════════════════════════════════
+NAMED FOLLOW-UP (out of scope for the fix shape above)
+═══════════════════════════════════════════════════════════════════════════
+
+  Once the direct-hydrate fix lands, the self-fetch failure path in
+  §2 is still a latent silent-fail. The in-SESSION path still
+  depends on it. Worth a future task to:
+    • surface fetch errors visibly (loading=false + error-state UI
+      instead of silently returning null on .catch)
+    • log /api/charlie/buyer-tax-match call outcomes server-side so
+      we have an audit trail when the in-chat block is blank
+
+  Both are belt-and-suspenders; not blockers for the current fix.
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLES (RECON ONLY)
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/inchat-taxmatch-render.txt   ← this file
+
+  NO code edits. NO commit. Awaiting operator go on the FIX phase.
