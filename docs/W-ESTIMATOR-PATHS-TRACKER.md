@@ -4500,3 +4500,179 @@ locked.
     — Real-deploy verify (walliam.ca production with this commit
       live) NOT exercised. Vercel deploy + operator real-DOM eyeball
       remain.
+
+────────────────────────────────────────────────────────────────────────────
+## W-CHARLIE-BUYER-FORSALE-BACKFILL — server-side topListings backfill + push-state correction (2026-06-16)
+
+### CORRECTION — push state of prior bundle
+
+  Previous BUYER-NARRATION run-log noted 7214b21 as "HOLD push." That
+  was inaccurate at write time and now confirmed wrong:
+    git rev-parse origin/main → 6fbd9631…
+    git log origin/main -3 → 6fbd963, 7214b21, 5cc75dc
+  7214b21 IS LIVE on origin/main (pushed alongside the convergence
+  log 6fbd963). This block corrects the prior "held" note.
+
+### Root cause (from W-CHARLIE-BUYER-FORSALE-MISSING recon)
+
+  Real lead a9b1dbf2 + operator's screenshots showed FOR SALE block
+  absent on all 3 surfaces + Tax-Matched (0). DB readback:
+    plan_data.topListings: length=0           ← the bug
+    plan_data.comparables: length=6           (get_comparables fired)
+    plan_data.buyerTaxMatch: isEmpty=true, reason="No matched listings yet."
+
+  The render is wired correctly to plan_data.topListings on lead/email
+  and to state.listingGroups in-chat. The KEY IS EMPTY because the
+  POST body's `listings` field arrived empty — either the LLM
+  violated BUYER FLOW order (skipped search_listings before
+  generate_plan) or generate_plan's fire-and-forget POST raced
+  search_listings's setState. Both pre-existing, not from 7214b21
+  (which only swapped 3 string-literal labels — render conditions
+  byte-identical before/after).
+
+### Fix — server-side backfill in plan-email/route.ts
+
+  app/api/charlie/plan-email/route.ts:86-160 (NEW block, before the
+  existing deriveBuyerTaxMatch call):
+    - Gate: `planType === 'buyer'`
+            AND `effectiveListings.length === 0`
+            AND `geoContext?.geoType + geoContext?.geoId + plan?.budgetMax`
+    - Fetch the SAME production for-sale path search_listings uses
+      (app/api/charlie/route.ts:653-664) — `/api/geo-listings?
+      tab=for-sale&geoType=...&geoId=...&pageSize=10&propertyCategory=...
+      &minPrice=...&maxPrice=...&beds=...&sort=price_asc`.
+    - Apply the SAME _slug + _isHome stamps search_listings applies
+      (lib/utils/slugs generateHomePropertySlug / generatePropertySlug)
+      so backfilled rows are byte-shape-equivalent to a Charlie-tool-
+      pushed listing.
+    - Cap at 10 (already in the URL pageSize) → slice into plan_data.
+    - 0 rows → leave effectiveListings=[] → honest empty-state
+      preserved (Rule Zero — no fabrication).
+    - Wrapped in try/catch; non-2xx or thrown error → log + leave
+      empty (honest fallback, never throw).
+
+  Tenant scope: server-to-server fetch carries
+  `x-tenant-id: ${req.headers.get('x-tenant-id')}` so the inner
+  /api/geo-listings call runs in the route's resolved tenant
+  authority via middleware. (mls_listings is shared across tenants
+  per CLAUDE.md "mls_listings has NO tenant_id" — the SQL itself
+  doesn't filter on tenant; the header propagation matches the
+  established multi-tenant pattern for shared-MLS queries.)
+
+  Downstream wiring updated:
+    - plan_data.topListings now reads from `effectiveListings.slice(0, 10)`
+      (line ~316) — what hydrates lead-page TopListings + email listingsHtml.
+    - deriveBuyerTaxMatch input changed from `listings` to
+      `effectiveListings` (line ~96) — tax-match repopulates
+      automatically when backfill succeeds.
+    - buildRichPlanEmail call now passes `listings: effectiveListings`
+      (line ~352) so the For-Sale email section renders.
+
+### REAL-FLOW VERIFY (scripts/buyer-forsale-backfill-verify.ts) — 40/40 PASS
+
+  Live route POST + DB readback + cross-surface render. NO static-
+  render substitute (per the source-grep-is-dead lock — that's what
+  let the bug ship in the first place).
+
+  SCENARIO A — FAILING PATH (POST listings=[], backfill fires):
+    A1 plan_data.topListings has rows                          PASS (length=10)
+    A2 length ≤ 10 (slice cap respected)                       PASS
+    A3 every row carries canonical shape                       PASS
+    A4 every row carries _slug (Charlie-stamped)               PASS
+    A5 backfilled rows match canonical /api/geo-listings        PASS
+    A6 rows are real Active rows in Whitby (DB cross-check)    PASS (10/10 Active, all Whitby muni)
+    A7 buyerTaxMatch repopulates (band+samples)                PASS (samples=6, bandCenter=5273.085)
+    A8 buyerTaxMatch.taxBand has low+high                      PASS
+
+  SCENARIO B — IN-ORDER PATH (POST listings populated, backfill no-ops):
+    B1 in-order listings preserved (no double-query)           PASS (length=5)
+    B2 distinguishable _slug retained (backfill didn't overwrite) PASS
+
+  SCENARIO C — SELLER (backfill is buyer-only):
+    C1 SELLER plan topListings UNCHANGED (stays empty)         PASS
+    C2 SELLER plan_data.sellerEstimate intact                  PASS
+
+  EMAIL render via test-render-plan-email-probe (Scenario A data):
+    E1 EMAIL renders "For Sale" header                         PASS
+    E2 EMAIL includes ≥1 real backfilled address               PASS
+    E3 EMAIL Tax-Matched renders SOLD-comp framing (Chunk-4)   PASS
+
+  LEAD-PAGE render via renderToStaticMarkup(PlanTab):
+    L1 LEAD renders "For Sale" header                          PASS
+    L2 LEAD shows ≥1 backfilled address                        PASS
+    L3 LEAD stats sections intact                              PASS
+
+  IN-CHAT tile probe (Chunk 2b/3/4 no-regression):
+    I1 ComparableCard probe still renders populated tile        PASS
+
+  TENANT SCOPE (grep verification):
+    T1 backfill reads route's resolved x-tenant-id              PASS
+    T2 backfill forwards x-tenant-id header on geo-listings fetch PASS
+    T3 backfill gated by planType === 'buyer'                   PASS
+
+  Byte-unchanged scope (17 files):
+    U: lib/charlie/buyer-tax-match.ts                           UNCHANGED
+    U: lib/estimator/tax-band-sold-query.ts                     UNCHANGED
+    U: lib/estimator/home-comparable-matcher-sales.ts           UNCHANGED
+    U: lib/estimator/condo-comparable-matcher-sales.ts          UNCHANGED
+    U: app/charlie/components/ResultsPanel.tsx                  UNCHANGED
+    U: components/admin-homes/lead-workbench/PlanRenderer.tsx   UNCHANGED
+    U: lib/email/charlie-plan-email-html.ts                     UNCHANGED
+    U: app/charlie/hooks/useCharlie.ts                          UNCHANGED
+    U: app/charlie/lib/charlie-prompts.ts                       UNCHANGED
+    U: app/charlie/lib/charlie-tools.ts                         UNCHANGED
+    U: app/charlie/components/ComparableCard.tsx                UNCHANGED
+    U: components/dashboard/CharlieLeadEstimate.tsx             UNCHANGED
+    U: app/charlie/components/SellerEstimateBlock.tsx           UNCHANGED
+    U: app/api/charlie/seller-estimate/route.ts                 UNCHANGED
+    U: app/api/charlie/buyer-tax-match/route.ts                 UNCHANGED
+    U: lib/charlie/buyer-narration.ts                           UNCHANGED
+    U: app/api/charlie/route.ts                                 UNCHANGED
+
+  SUMMARY: ALL PASS (40/40).
+
+### TSC + S1 + scope
+
+  npx tsc --noEmit → exit 0
+  Files edited (1):
+    app/api/charlie/plan-email/route.ts                         backfill + downstream wiring
+  Files created (1):
+    scripts/buyer-forsale-backfill-verify.ts                    live verify
+  Backups taken before edit (timestamp 20260616_061634).
+  S1 zero-diff (admin/page, api/chat, agents):                  UNCHANGED.
+
+### Operator-visible outcome
+
+  Before: when Charlie violated tool order (skipped search_listings
+          before generate_plan), the plan-email POST persisted
+          plan_data.topListings=[] → For Sale section silent-omitted
+          on all 3 surfaces + Tax-Matched (0) with "No matched
+          listings yet." reason. Real lead a9b1dbf2 evidenced this.
+  After:  plan-email/route.ts backfills topListings via the SAME
+          production /api/geo-listings path that search_listings
+          would have used (same params, same _slug stamps). Lead
+          page + email For-Sale section renders the backfilled
+          rows; tax-match derives from them so the (0) becomes a
+          real band + count when comps exist (or honest-empty when
+          the geo+budget+subtype combo has no Closed comps).
+
+  Status:
+    - LIVE ROUTE VERIFIED: 8 assertions on scenario A (POST listings=[]
+      → backfilled lead row in DB with 10 real Whitby Active rows
+      and a real buyerTaxMatch).
+    - LIVE-DEPLOY VERIFY pending — operator real-DOM eyeball on
+      walliam.ca after Vercel ships this commit is the final gate.
+      Per the source-grep-is-dead lock, this is **claimed,
+      unverified** for the production deploy until that eyeball.
+
+### Named follow-ups (out of scope)
+
+  - Race vs LLM-order detection: a session-replay log (Charlie tool-
+    call timestamps) would distinguish (a) skipped-search_listings
+    from (c) tool-result race. Both are now defended against by the
+    server backfill — but the LLM-order issue may still cause
+    in-chat misses (Charlie's UI shows what state has at that moment;
+    if search_listings never fired, the UI never shows For-Sale tiles
+    even though the email + lead-page now will). Prompt hardening +
+    client-side guard may be future work.
+  - Welcome-email dedup-race (recon CHUNK A) — unchanged.

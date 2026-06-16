@@ -1,0 +1,95 @@
+W-CHARLIE-BUYER-FORSALE-BACKFILL VERIFY — 2026-06-16T10:35:52.209Z
+local base: http://localhost:3004
+────────────────────────────────────────────────────────────────────────────
+dev server: 200 — proceeding with LIVE verify.
+test user: c4094ecc… (finaltest1000@gmail.com)
+chat_session: 7136cc76-3889-45eb-9d26-c7e371958971
+
+Pre-fetch canonical /api/geo-listings for cross-check…
+canonical for-sale rows: 10
+canonical sample (first 3):
+  E13426702  28 Pallock Hill Way, Whitby, ON L1R 0N5  $629,000  Att/Row/Townhouse
+  E13076082  28 Pallock Hill Way, Whitby, ON L1R 0N5  $649,000  Att/Row/Townhouse
+  E13430496  18 Threadgold Court, Whitby, ON L1P 1L9  $699,000  Link
+────────────────────────────────────────────────────────────────────────────
+SCENARIO A — POST with listings=[] (failing path; backfill fires)
+  status: 200  userEmailSent=true  chainEmailSent=true
+  lead: 00809c65-b920-4a40-8de5-6fd503ed46c0
+  plan_data.topListings: length=10
+  plan_data.buyerTaxMatch: isEmpty=false, samples=6, bandCenter=5273.085, reason=null
+    E13426702  28 Pallock Hill Way, Whitby, ON L1R 0N5  $629000
+    E13076082  28 Pallock Hill Way, Whitby, ON L1R 0N5  $649000
+    E13430496  18 Threadgold Court, Whitby, ON L1P 1L9  $699000
+PASS  A1 plan_data.topListings has rows (backfill ran)
+        → length=10
+PASS  A2 plan_data.topListings count ≤ 10 (slice cap respected)
+        → length=10
+PASS  A3 every backfilled row carries the canonical mls_listings shape (listing_key + unparsed_address + list_price)
+PASS  A4 every backfilled row carries _slug (Charlie-stamped — search_listings-equivalent shape)
+        → sample _slugs: /28-pallock-hill-way-whitby-e13426702 | /28-pallock-hill-way-whitby-e13076082 | /18-threadgold-court-whitby-e13430496
+PASS  A5 backfilled rows match canonical /api/geo-listings result (cross-check)
+PASS  A6 backfilled rows are REAL active Whitby listings (DB cross-check on listing_keys)
+        → see DB cross-check
+PASS  A6 backfilled rows are real Active rows in Whitby (DB cross-check)
+        → db rows=10/10, allActive=true, allWhitby=true
+PASS  A7 buyerTaxMatch repopulated (band+samples) from backfilled topListings
+        → isEmpty=false samples=6 bandCenter=5273.085
+PASS  A8 buyerTaxMatch.taxBand derived from the backfill (low+high present)
+────────────────────────────────────────────────────────────────────────────
+SCENARIO B — POST with listings populated (in-order path; backfill is a no-op)
+  status: 200  userEmailSent=true
+  plan_data.topListings: length=5
+  first _slug: /e13426702-prepush
+PASS  B1 in-order listings preserved (no double-query)
+        → length=5
+PASS  B2 in-order rows retained their distinguishable _slug suffix (backfill did NOT overwrite)
+        → _slug check: /e13426702-prepush | /e13076082-prepush
+────────────────────────────────────────────────────────────────────────────
+SCENARIO C — SELLER POST (backfill is buyer-only; seller path untouched)
+  status: 200  userEmailSent=true
+  seller plan_data.topListings: length=0
+  seller plan_data.sellerEstimate IS object: true
+PASS  C1 SELLER plan topListings UNCHANGED (backfill is buyer-only — stays empty for seller)
+        → length=0
+PASS  C2 SELLER plan_data.sellerEstimate intact (seller path no-regression)
+────────────────────────────────────────────────────────────────────────────
+EMAIL render (via test-render-plan-email-probe, using SCENARIO A's effective listings)
+PASS  E1 EMAIL renders "For Sale" header (Chunk-narration label intact)
+PASS  E2 EMAIL includes ≥1 real backfilled address
+PASS  E3 EMAIL Tax-Matched renders SOLD-comp framing (Chunk-4 intact)
+────────────────────────────────────────────────────────────────────────────
+LEAD-PAGE render via renderToStaticMarkup(PlanTab) with the backfilled lead
+PASS  L1 LEAD renders "For Sale" header
+PASS  L2 LEAD shows ≥1 backfilled address
+PASS  L3 LEAD stats sections intact (Market Intel / Offer Intel / Strategy Summary)
+────────────────────────────────────────────────────────────────────────────
+IN-CHAT tile probe (Chunk 2b/3/4 no-regression)
+PASS  I1 IN-CHAT ComparableCard probe still renders populated tile
+────────────────────────────────────────────────────────────────────────────
+TENANT SCOPE — grep added backfill code for x-tenant-id forwarding
+PASS  T1 backfill reads route's resolved x-tenant-id from req.headers
+PASS  T2 backfill forwards x-tenant-id header on the geo-listings fetch
+        → header propagated through middleware so /api/geo-listings runs in the tenant's authority
+PASS  T3 backfill is gated by planType === 'buyer' (seller path untouched)
+────────────────────────────────────────────────────────────────────────────
+Byte-unchanged scope (Chunk touches ONLY plan-email/route.ts)
+PASS  U: lib/charlie/buyer-tax-match.ts byte-unchanged
+PASS  U: lib/estimator/tax-band-sold-query.ts byte-unchanged
+PASS  U: lib/estimator/home-comparable-matcher-sales.ts byte-unchanged
+PASS  U: lib/estimator/condo-comparable-matcher-sales.ts byte-unchanged
+PASS  U: app/charlie/components/ResultsPanel.tsx byte-unchanged
+PASS  U: components/admin-homes/lead-workbench/PlanRenderer.tsx byte-unchanged
+PASS  U: lib/email/charlie-plan-email-html.ts byte-unchanged
+PASS  U: app/charlie/hooks/useCharlie.ts byte-unchanged
+PASS  U: app/charlie/lib/charlie-prompts.ts byte-unchanged
+PASS  U: app/charlie/lib/charlie-tools.ts byte-unchanged
+PASS  U: app/charlie/components/ComparableCard.tsx byte-unchanged
+PASS  U: components/dashboard/CharlieLeadEstimate.tsx byte-unchanged
+PASS  U: app/charlie/components/SellerEstimateBlock.tsx byte-unchanged
+PASS  U: app/api/charlie/seller-estimate/route.ts byte-unchanged
+PASS  U: app/api/charlie/buyer-tax-match/route.ts byte-unchanged
+PASS  U: lib/charlie/buyer-narration.ts byte-unchanged
+PASS  U: app/api/charlie/route.ts byte-unchanged
+─────────────────────────────────────────────────────────────────────────────
+SUMMARY: ALL PASS (40/40 assertions; verify process exited cleanly per task-notification)
+screenshot: recon/buyer-forsale-backfill-screenshots/1-tile-probe.png

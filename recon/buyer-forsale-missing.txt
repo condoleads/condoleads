@@ -1,0 +1,324 @@
+W-CHARLIE-BUYER-FORSALE-MISSING — RECON
+Generated: 2026-06-15 (UTC)
+Scope: 3 surfaces show "For Sale" absent + "Tax-Matched (0)" on lead
+       a9b1dbf2 — pre-existing data flow, NOT 7214b21 regression.
+Constraints: read-only — no edits, no commits, no fixes.
+
+==========================================================================
+NOTE — push state
+==========================================================================
+  Operator directive says "7214b21 push is NOT yet pushed (operator
+  caught this before push)." That is INCORRECT for the working repo:
+
+    git rev-parse origin/main → 6fbd9631...
+    git log origin/main -3 → 6fbd963, 7214b21, 5cc75dc
+
+  7214b21 IS on origin/main (pushed together with the convergence
+  log 6fbd963 in the prior turn's `git push origin main`). If the
+  finding below required an amend-or-revert, that would happen on
+  top of 7214b21. RECON 1 below says revert is NOT needed.
+
+==========================================================================
+RECON 1 — IS THIS A REGRESSION FROM 7214b21?
+==========================================================================
+  git show 7214b21 touched exactly three render files (plus the new
+  shared lib + verify script):
+
+    app/charlie/components/ResultsPanel.tsx        | 54 ++++++++++++++++++--
+    components/admin-homes/lead-workbench/PlanRenderer.tsx | 40 ++++++++++++--
+    lib/email/charlie-plan-email-html.ts           | 33 ++++++++++++-
+
+  Per-file diff against the For-Sale block render CONDITION:
+
+  IN-CHAT  app/charlie/components/ResultsPanel.tsx:123-167
+    Diff (7214b21~1 → 7214b21):
+      • L122-125 header: label changed from
+          "{block.label} · {block.listings.length} found"
+        to
+          "{hasSellerEstimate ? block.label : 'For Sale'} ·
+           {block.listings.length} found"
+        (PLUS a new optional subtitle row showing block.label when
+         not a seller flow).
+      • Tile rendering inside the block: BYTE-IDENTICAL
+        — `block.listings.map((listing: any) => { ... })`
+        unchanged in the diff window.
+      • Gate `if (block.type === 'listings')` UNCHANGED.
+      • Block push site at useCharlie.ts:519 UNCHANGED in
+        7214b21 (label swap is in the render, not the push).
+    VERDICT: label-only edit. Render condition byte-identical.
+
+  EMAIL  lib/email/charlie-plan-email-html.ts:294-297
+    Diff (7214b21~1 → 7214b21):
+      • L297: '${isBuyer ? 'Matched Listings' : 'Comparable Sales'}
+        (${topListings.length})'
+        →
+        '${isBuyer ? 'For Sale' : 'Comparable Sales'}
+        (${topListings.length})'
+      • `const listingsHtml = topListings.length > 0 ? ... : ''`
+        UNCHANGED.
+      • `const topListings = (listings || []).slice(0, 10)` at L58
+        UNCHANGED (not in this commit's diff).
+    VERDICT: label-only edit. Render condition byte-identical.
+
+  LEAD-PAGE  components/admin-homes/lead-workbench/PlanRenderer.tsx:
+   675-697 TopListings
+    Diff (7214b21~1 → 7214b21):
+      • L686 header label
+          '{isBuyer ? "Matched Listings" : "Comparable Sales"}'
+        →
+          '{isBuyer ? "For Sale" : "Comparable Sales"}'
+      • Tile loop + slug-helper + photo handling UNCHANGED.
+      • Caller gate at L300
+          `{n.isBuyer && hasListings && <TopListings ... />}`
+        UNCHANGED.
+      • `hasListings = n.topListings.length > 0` (L246) UNCHANGED.
+    VERDICT: label-only edit. Render condition byte-identical.
+
+  RECON 1 VERDICT: PRE-EXISTING, NOT a 7214b21 regression.
+  7214b21 changed three string-literal labels on three render sites.
+  Every render CONDITION (gate, data source, slice cap) is byte-
+  identical before/after the commit. Revert of 7214b21 would NOT
+  restore the For-Sale block on a lead whose plan_data.topListings
+  is empty — the empty-data path renders the SAME way (section
+  silently omitted) regardless of label.
+
+==========================================================================
+RECON 2 — WHERE THE FOR-SALE LISTINGS WENT
+==========================================================================
+  Probe: scripts/_forsale-missing-probe.js (SAVEPOINT read).
+
+  Lead a9b1dbf2 plan_data shape:
+    plan_data top-level keys: [plan, planType, analytics, comparables,
+                               topListings, buyerTaxMatch, sellerEstimate]
+    plan_data.planType:        "buyer"
+    plan_data.topListings:     Array, length=0       ← EMPTY
+    plan_data.comparables:     Array, length=6        ← populated
+    plan_data.buyerTaxMatch:   isEmpty=true, samples=0
+    plan_data.analytics:       fully populated (avg_concession_pct=3.21,
+                               sale_to_list_ratio=101.14, etc.)
+    plan_data.plan.geoName:    "Whitby"
+    plan_data.plan.budgetMax:  900000
+
+  Render-source-of-truth mapping (verified against current render code):
+
+    SURFACE     READS FROM                            STATUS
+    ─────────────────────────────────────────────────────────
+    IN-CHAT     state.listingGroups (in-memory)        Not in DB; depends
+                                                       on whether
+                                                       search_listings
+                                                       was called THIS
+                                                       browser session.
+    EMAIL       POST body field `listings`             Sourced from
+                  → useCharlie.ts:539                  state.listingGroups
+                  state.listingGroups.flatMap(...)     at POST time.
+                  .slice(0, 10)
+                  → plan-email/route.ts:201
+                  topListings: listings.slice(0, 10)
+    LEAD-PAGE   plan_data.topListings (server-         EMPTY for this lead
+                persisted)                              → render silent-
+                                                       omits per
+                                                       PlanRenderer.tsx
+                                                       L300 gate
+                                                       `hasListings &&`
+
+  The wiring IS correct — render reads the right key. The KEY IS EMPTY.
+  Render gates correctly: `hasListings = n.topListings.length > 0` →
+  false → TopListings NOT rendered. Same for email's
+  `topListings.length > 0` short-circuit (returns ''). In-chat reads
+  in-memory state and silently has nothing to render when
+  state.listingGroups is empty.
+
+  WHY plan_data.topListings is empty for THIS lead:
+
+    plan_data was written by plan-email/route.ts at POST time. The POST
+    body's `listings` field came from useCharlie.ts:539:
+      `listings: stateRef.current.listingGroups.flatMap(g => g.listings)
+                  .slice(0, 10)`
+    state.listingGroups gets populated by useCharlie.ts:519 when the
+    LLM calls `search_listings`:
+      `if (tool === 'search_listings' && data.listings) {
+         setState(s => ({ ..., listingGroups: [...s.listingGroups,
+                                               { label, listings }] }))
+       }`
+
+    For lead a9b1dbf2, state.listingGroups was EMPTY when plan-email
+    POST fired. The only way to reach that state at generate_plan
+    time is one of:
+      (a) the LLM never called search_listings before generate_plan,
+      (b) search_listings was called but returned `data.listings = []`
+          (geo-listings returned zero rows — unlikely; the user said
+          listings were visible later),
+      (c) generate_plan's planReady tool-result was dispatched and
+          fired the POST before search_listings's tool-result reached
+          the state setter.
+
+    Evidence rules out (b): plan.summary (665 chars) cites the
+    Buyer's-Market signal + comparable median ($808K) + offer
+    positioning ($820-$850K) — Charlie HAD the comparables and market
+    data in his conversational context at generate_plan time, but
+    he authored the summary WITHOUT a matched-listings sentence
+    (no "homes you're shopping at $X-$Y" clause). That's the LLM's
+    behavior, not a data hole.
+
+    Most-likely cause: (a) — the LLM skipped search_listings for this
+    session and went straight to get_comparables → generate_plan,
+    contradicting the BUYER FLOW prompt order (charlie-prompts.ts:40
+    "ALWAYS call search_listings FIRST"). Comparables (6) populated
+    state.comparables but NOT state.listingGroups, so the POST body's
+    `listings` was empty.
+
+    Possible cause: (c) — a tool-result race where generate_plan
+    completed BEFORE search_listings's setState committed
+    state.listingGroups. The plan-email POST is fire-and-forget at
+    useCharlie.ts:505 inside the `if (tool === 'generate_plan' &&
+    data.planReady)` branch; if Charlie called search_listings and
+    generate_plan in the same streaming turn and their tool-results
+    arrived close together, React's state batching could have the
+    POST's `stateRef.current.listingGroups` snapshot empty.
+    Distinguishing (a) vs (c) needs a session-replay log; we don't
+    have one here.
+
+  RECON 2 VERDICT: The render is wired correctly to the right key on
+  every surface. The key is empty BECAUSE the data wasn't in state
+  when plan-email POSTed — either Charlie skipped search_listings
+  (LLM-order bug) or a tool-result race captured an empty
+  state.listingGroups snapshot. Both are PRE-EXISTING issues
+  unrelated to the 7214b21 label swap.
+
+==========================================================================
+RECON 3 — TAX-MATCH (0) ROOT CAUSE
+==========================================================================
+  Probe replayed the buyer tax-match derivation against the live DB
+  using the same params the live route uses.
+
+  persisted buyerTaxMatch on lead a9b1dbf2:
+    isEmpty: true
+    reason:  "No matched listings yet."
+    bandCenter:    null
+    taxBand:       null
+    taxYearWindow: null
+    withTaxCount:  0 of 0
+    samples:       0
+
+  The derivation in lib/charlie/buyer-tax-match.ts:69-100 short-circuits
+  when fewer than MIN_WITH_TAX=3 matched-listings have usable tax data.
+  With totalCount=0, withTax.length=0 < 3 → isEmpty=true with reason
+  "No matched listings yet." — that reason string is the FIRST branch
+  in the ternary at L86-90:
+    total === 0
+      ? 'No matched listings yet.'
+      : withTax.length === 0
+        ? `Tax data isn't populated on the ${total} matched listings...`
+        : `Only ${withTax.length} of ${total}...`
+
+  So the empty-state cited a TOTAL-COUNT of 0. The function received
+  matchedListings=[] (or matchedListings=undefined). That input matches
+  the POST body's `listings: []` — same root cause as RECON 2.
+
+  Probe re-derivation attempt (would have caught a mis-scoped geo or
+  bad year window if applicable):
+    geo: plan.geoName=Whitby | plan.geoId(muni)=null
+    subtypes inferred from topListings: []     ← empty (topListings=[])
+    band from persisted buyerTaxMatch:  null
+    taxYearWindow from persisted btm:   null
+    Whitby muni from DB:    70103aef-1b32-4939-9ff8-264e859a5587
+      (independently resolvable; not a missing-geo problem)
+    (re-derivation skipped — only 0 listings carry tax, MIN_WITH_TAX=3)
+
+  Diagnostic note: had topListings had even 3 with-tax entries, the
+  shared queryTaxBandSolds (lib/estimator/tax-band-sold-query.ts)
+  would have run the seller-style query against Whitby muni
+  (70103aef…). The W-CHARLIE-BUYER-CHUNK4 verify run from yesterday
+  did exactly that against lead 6d479d84's 5 matched listings and
+  returned 6 real Closed Whitby comps in a $4,016-$6,024/yr band —
+  proving the shared query works when its input has tax data.
+
+  RECON 3 VERDICT: CORRECT-EMPTY. The tax-match returned (0) because
+  its INPUT was empty (topListings=[]). The derivation was NOT mis-
+  scoped — no DB query was even attempted, because MIN_WITH_TAX=3
+  gates the query upstream. Same root cause as RECON 2.
+
+==========================================================================
+ROOT CAUSE SUMMARY
+==========================================================================
+  Both symptoms ("For Sale missing" + "Tax-Matched (0)") share ONE
+  root cause:
+
+    state.listingGroups was empty when the plan-email POST fired
+    for lead a9b1dbf2.
+
+  Downstream consequences:
+    • POST body.listings = []
+    • plan-email/route.ts:201 → plan_data.topListings = []
+    • plan-email/route.ts:95-110 → deriveBuyerTaxMatch({matchedListings: []})
+      → isEmpty=true reason="No matched listings yet."
+    • plan_data.buyerTaxMatch.isEmpty = true → all 3 surfaces render
+      the empty-state badge "Tax-Matched (0)".
+    • Email + lead For-Sale gates `topListings.length > 0` and
+      `hasListings = n.topListings.length > 0` → silent omit.
+    • In-chat For-Sale gate `block.type === 'listings'` → no listings
+      block pushed (search_listings was never called in this session,
+      OR its push happened post-POST but didn't backfill plan_data).
+
+  Most likely upstream cause (probabilistic, not verifiable without
+  session replay):
+    (a) LLM tool-order violation — Charlie skipped search_listings
+        and went straight from get_market_analytics →
+        get_comparables → generate_plan. The BUYER FLOW prompt
+        (charlie-prompts.ts:34-43) requires search_listings FIRST.
+    (c) Tool-result race — generate_plan completed and fired the
+        fire-and-forget POST before search_listings's setState
+        committed state.listingGroups. Both tools called in same
+        streaming turn.
+
+  NOT a regression from 7214b21. Revert would not change render
+  behavior for this empty-data lead.
+
+==========================================================================
+FIX DIRECTIONS (recon flag only — not implementing)
+==========================================================================
+  Three angles the operator may consider for a forward fix (recon
+  doesn't pick one):
+
+  1. Server-side fallback for For-Sale data — when POST body
+     `listings` is empty BUT plan.geoName + plan.budgetMax are set,
+     plan-email/route.ts could call get_comparables-equivalent
+     SQL (or simply re-run the same query against /api/geo-listings
+     tab='for-sale') to backfill plan_data.topListings. Same DB,
+     same shape get_comparables uses. Eliminates the LLM-order
+     dependency.
+
+  2. Client-side guard at the POST site — useCharlie.ts:505 wraps the
+     plan-email POST in a setTimeout(..., 0) so the POST fires on the
+     next tick, after React has flushed setState batches from
+     concurrent tool-results. Closes the (c) race window without
+     touching the server.
+
+  3. Prompt-side hardening — charlie-prompts.ts BUYER FLOW step 6
+     already says "ALWAYS call search_listings FIRST." Stronger
+     language ("If you call get_comparables OR generate_plan before
+     search_listings, you have violated this contract; call
+     search_listings now even if the user is impatient") may improve
+     LLM compliance. Weakest of the three.
+
+  Option 1 is the most Rule-Zero-aligned (deterministic, no LLM
+  trust) and re-uses existing query infrastructure. Option 2 is
+  cheapest. Option 3 is fragile.
+
+==========================================================================
+FLAGGED / UNVERIFIABLE
+==========================================================================
+  - Distinguishing (a) "LLM skipped search_listings" vs (c) "tool-
+    result race" requires a session-replay log (Charlie tool-call
+    timestamps) that this recon doesn't have. The data evidence
+    (state.listingGroups empty at POST time) is identical for both.
+  - Operator's note that the in-chat "Most Affordable First" list
+    showed 10 listings could be: (i) a subsequent search_listings
+    call AFTER plan-email POSTed (which wouldn't backfill plan_data),
+    OR (ii) recall from a different similar session. Hard to verify
+    without a screenshot.
+  - The 7214b21 push state directive note ("not yet pushed") is
+    inaccurate for the working repo; 7214b21 is on origin/main via
+    the prior push (5cc75dc..6fbd963). Flag for operator review.
+
+No fix attempted. Stopping per directive.

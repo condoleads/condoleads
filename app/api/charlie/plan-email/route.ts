@@ -35,6 +35,10 @@ import { buildRichPlanEmail } from '@/lib/email/charlie-plan-email-html'
 // into plan_data.buyerTaxMatch + passed to buildRichPlanEmail so all
 // three surfaces (in-chat, lead page, email) render the SAME shape.
 import { deriveBuyerTaxMatch, type BuyerTaxMatch } from '@/lib/charlie/buyer-tax-match'
+// W-CHARLIE-BUYER-FORSALE-BACKFILL (2026-06-16): same slug stampers
+// search_listings (app/api/charlie/route.ts:660-664) uses, so a
+// backfilled listing has byte-identical shape to a tool-pushed one.
+import { generatePropertySlug, generateHomePropertySlug } from '@/lib/utils/slugs'
 
 // T6f — BASE_URL relocated to handler scope (tenant-aware via buildBaseUrl(domain))
 
@@ -83,6 +87,96 @@ export async function POST(req: NextRequest) {
     // Real lead 6d479d84 confirmed the leak in the wild.
     const sellerEstimate = planType === 'seller' ? rawSellerEstimate : null
 
+    // W-CHARLIE-BUYER-FORSALE-BACKFILL (2026-06-16): server-side backfill.
+    // Root cause from W-CHARLIE-BUYER-FORSALE-MISSING recon: when the
+    // LLM violates BUYER FLOW order (charlie-prompts.ts:40 "ALWAYS call
+    // search_listings FIRST") or when generate_plan races
+    // search_listings's setState, the POST body's `listings` arrives
+    // empty. That cascades to plan_data.topListings=[] (Defect 1: "For
+    // Sale missing") + buyerTaxMatch.isEmpty=true with reason "No
+    // matched listings yet." (Defect 2: "Tax-Matched (0)") on real
+    // lead a9b1dbf2.
+    //
+    // Backfill strategy: when topListings is empty for a buyer plan
+    // AND we have enough geo + budget context to re-query, hit the
+    // SAME production for-sale path (/api/geo-listings?tab=for-sale)
+    // that search_listings would have used. Apply the same _slug +
+    // _isHome stamps so the resulting rows are byte-shape-equivalent
+    // to a tool-pushed listing (renders identically through
+    // BuyerListingTile + email listingsHtml + ResultsPanel listings
+    // block).
+    //
+    // Honest empty-state preserved: if the backfill query returns 0
+    // rows, effectiveListings stays [] and downstream consumers
+    // (plan_data.topListings, deriveBuyerTaxMatch, listingsHtml)
+    // silently omit their sections (Rule Zero — no fabrication).
+    //
+    // Seller path: untouched. The backfill only runs when
+    // planType === 'buyer' AND incoming listings is empty.
+    //
+    // Tenant scope: server-to-server fetch carries the x-tenant-id
+    // header. mls_listings is shared across tenants (per CLAUDE.md:
+    // "mls_listings has NO tenant_id") so the SQL itself doesn't
+    // filter on tenant — but the header propagates the route's
+    // resolved tenant authority through middleware to /api/geo-
+    // listings, matching the multi-tenant pattern.
+    const _resolvedTenantHeader = req.headers.get('x-tenant-id') || ''
+    let effectiveListings: any[] = Array.isArray(listings) ? listings : []
+    let backfillUsed = false
+    if (
+      planType === 'buyer' &&
+      effectiveListings.length === 0 &&
+      geoContext?.geoType &&
+      geoContext?.geoId &&
+      plan?.budgetMax
+    ) {
+      try {
+        const params = new URLSearchParams()
+        params.set('geoType', geoContext.geoType)
+        params.set('geoId', geoContext.geoId)
+        params.set('tab', 'for-sale')
+        params.set('page', '1')
+        params.set('pageSize', '10')
+        if (plan.propertyType && plan.propertyType !== 'any') {
+          params.set('propertyCategory', plan.propertyType)
+        }
+        if (plan.budgetMin) params.set('minPrice', String(plan.budgetMin))
+        params.set('maxPrice', String(plan.budgetMax))
+        if (plan.bedrooms && Number(plan.bedrooms) > 0) params.set('beds', String(plan.bedrooms))
+        params.set('sort', 'price_asc')
+
+        const proto = req.headers.get('x-forwarded-proto') || 'http'
+        const host = req.headers.get('host') || `localhost:${process.env.PORT || 3000}`
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${proto}://${host}`
+        const url = `${baseUrl}/api/geo-listings?${params.toString()}`
+        const r = await fetch(url, {
+          method: 'GET',
+          headers: { 'x-tenant-id': _resolvedTenantHeader },
+        })
+        if (r.ok) {
+          const data = await r.json()
+          const CONDO_TYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment', 'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']
+          const HOME_SUBTYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']
+          const stamped = (data.listings || []).map((l: any) => {
+            const isHome = l.property_type === 'Residential Freehold' || (!CONDO_TYPES.includes(l.property_subtype) && HOME_SUBTYPES.includes(l.property_subtype))
+            const slug = isHome ? generateHomePropertySlug(l) : generatePropertySlug(l)
+            return { ...l, _slug: slug, _isHome: isHome }
+          })
+          if (stamped.length > 0) {
+            effectiveListings = stamped
+            backfillUsed = true
+            console.log(`[plan-email][forsale-backfill] populated ${stamped.length} for-sale listings for buyer plan in geo=${geoContext.geoType}:${geoContext.geoId}`)
+          } else {
+            console.log(`[plan-email][forsale-backfill] query returned 0 rows for geo=${geoContext.geoType}:${geoContext.geoId} budgetMax=${plan.budgetMax} — honest empty-state preserved`)
+          }
+        } else {
+          console.warn(`[plan-email][forsale-backfill] geo-listings returned ${r.status}; staying with empty listings`)
+        }
+      } catch (err) {
+        console.warn('[plan-email][forsale-backfill] error (non-fatal):', err)
+      }
+    }
+
     // W-CHARLIE-BUYER-CHUNK4 (2026-06-15): tax-match is now SOLD-comp
     // matching, not assessment. Derivation:
     //   1. Compute tax-band center from matched-listings' median tax.
@@ -93,11 +187,15 @@ export async function POST(req: NextRequest) {
     // already async, so this just becomes an await.
     // Honest empty-state when EITHER matched-listings tax is sparse OR
     // the band query returns 0 sold comps. NO FAKE.
+    // W-CHARLIE-BUYER-FORSALE-BACKFILL (2026-06-16): now feeds the
+    // backfilled `effectiveListings` (which equals `listings` when the
+    // POST body already had matched listings) so tax-match repopulates
+    // when the backfill succeeded.
     const _bSupabase = createServiceClient()
     const buyerTaxMatch: BuyerTaxMatch | null = planType === 'buyer'
       ? await deriveBuyerTaxMatch({
           supabase: _bSupabase,
-          matchedListings: listings,
+          matchedListings: effectiveListings,
           geoContext: {
             geoType: geoContext?.geoType,
             geoId: geoContext?.geoId,
@@ -108,6 +206,7 @@ export async function POST(req: NextRequest) {
           },
         })
       : null
+    void backfillUsed
 
     // C-CHARLIE-FOLLOWUP B(ii) (2026-06-13): stale-session detector. When a
     // seller plan arrives with sellerEstimate set but estimate.bestGeoTier
@@ -214,7 +313,13 @@ export async function POST(req: NextRequest) {
         // W-CHARLIE-BUYER-CHUNK4 (2026-06-15): raise cap from 5 to 10
         // so admin lead page matches in-chat (10) + email (10). Lead-
         // page TopListings render iterates all of plan_data.topListings.
-        topListings: (listings || []).slice(0, 10),
+        // W-CHARLIE-BUYER-FORSALE-BACKFILL (2026-06-16): persist the
+        // backfilled `effectiveListings` (POST body listings || []
+        // when present, else server-fetched for-sale listings when
+        // backfill ran, else [] for honest empty-state). This is what
+        // hydrates the lead-page TopListings + email listingsHtml on
+        // future renders.
+        topListings: effectiveListings.slice(0, 10),
         sellerEstimate: sellerEstimate ? {
           estimate: sellerEstimate.estimate || null,
           comparables: sellerEstimate.comparables || [],
@@ -250,7 +355,11 @@ export async function POST(req: NextRequest) {
       budgetMax: plan?.budgetMax || null,
     })
 
-    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: listings || [], agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl, buyerTaxMatch })
+    // W-CHARLIE-BUYER-FORSALE-BACKFILL (2026-06-16): email build now
+    // consumes `effectiveListings` so the For-Sale section renders
+    // when the backfill populated rows (Defect 1 fix carries through
+    // to the email surface).
+    const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: effectiveListings, agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl, buyerTaxMatch })
     const subject = `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
     // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): capture user-email outcome.
