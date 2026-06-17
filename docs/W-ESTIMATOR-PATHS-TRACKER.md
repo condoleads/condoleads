@@ -5930,3 +5930,172 @@ the source-grep-is-dead status flag operator locked.
 
   W-OFFER-MODAL-WALLIAM-GATE: dd8f2ca
 
+──────────────────────────────────────────────────────────────────────
+W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17) — FIX
+──────────────────────────────────────────────────────────────────────
+
+### Decision locked
+
+  All 3 lead-generating actions (Get Estimate, Sale Offer, Lease Offer)
+  fire the lead + the full-content agent email ON GENERATE — when the
+  estimate result resolves (the data the agent will see in the email).
+  The existing contact form is the OPTIONAL second step that
+  ENRICHES the same lead with contact_name / contact_phone / message
+  on the SAME row: no second lead, no email re-fire, no second
+  activity log.
+
+  NO UI CHANGE. Every modal, form, button label, copy, layout is
+  byte-identical to pre-fix. The change is entirely in the lifecycle
+  hooks behind the existing surfaces.
+
+  Offer modal must run the SAME estimator engine + workingDoc builder
+  the Get Estimate path uses. Result is not displayed — it ships in
+  the email.
+
+### Scope
+
+  Authed users:
+    - modal open → engine run (silent for offer paths) → result
+      resolves → fire-on-generate writes the rich lead + helper-driven
+      6-layer email + per-action activity
+    - form submit (optional follow-up) → forceNew=false dedup-hits
+      the same row → updateLeadEnrichment writes contact fields
+      onto the SAME row, no second email, no second activity
+
+  Anonymous users:
+    - Get Estimate: existing RegisterModal gate inside the buyer modal
+      catches them first; fire-on-generate never reaches them
+    - Sale Offer / Lease Offer: no parent-side register gate today;
+      the new fire-on-generate effect short-circuits on !user.email,
+      so anonymous offer-modal users fall through to the LEGACY
+      form-submit path (forceNew=true + thin propertyDetails + the
+      activity log). Their lead/email flow is byte-identical to
+      pre-fix behaviour.
+
+### Files edited
+
+  ADDITIVE — no contract change:
+    lib/actions/leads.ts:
+      + export `updateLeadEnrichment({ leadId, tenantId, contactName?,
+        contactPhone?, message? })` after createLead. Tenant-scoped
+        UPDATE on contact_name / contact_phone / message + updated_at.
+        Returns { success, lead } | { success, error }. createLead +
+        getOrCreateLead byte-unchanged.
+
+    app/actions/updateLeadEnrichmentFromForm.ts (NEW):
+      + Client-callable server-action wrapper. Reads x-tenant-id from
+        headers (uses the e79c670 middleware fix). Refuses if absent.
+        Forwards to updateLeadEnrichment.
+
+  Estimator UI (mirror pair):
+    app/estimator/components/EstimatorResults.tsx:
+      + import useRef + updateLeadEnrichmentFromForm
+      + new state: generatedLeadId, generateFiredRef
+      + buildWorkingDoc() helper — shape verbatim from prior
+        L171-251 in-handler construction
+      + useEffect: gates on user.email + agentId + result, fingerprint
+        fire-once guard. Builds workingDoc + calls submitLeadFromForm
+        forceNew=true with the rich payload + submitActivityFromForm
+        with per-action activity_type (estimator|sale_offer_inquiry|
+        lease_offer_inquiry). Captures leadId.
+      + handleContactSubmit rewritten: forceNew=FALSE dedup-hit path
+        when generatedLeadId is unset (race), then
+        updateLeadEnrichmentFromForm onto the resolved leadId. NO
+        second activity log.
+
+    app/estimator/components/HomeEstimatorResults.tsx:
+      + same shape as EstimatorResults — type='home' workingDoc,
+        em-dash unit-number separator preserved, listingId prop
+        threaded into the subject + the engine spec.
+
+  Offer modal:
+    components/property/OfferInquiryModal.tsx:
+      + import useRef + useEffect + useAuth + updateLeadEnrichmentFromForm
+        + estimateHomeSale + estimateCondoSale
+      + props widened: listing typed MLSListing; additive isHome,
+        tenantId, buildingId, buildingSlug, buildingAddress, exactSqft
+        (all optional — System 1 / agent-domain callers pre-dating this
+        keep working without specifying)
+      + buildOfferWorkingDoc() top-level helper mirrors the two
+        Results.tsx builders
+      + pre-fill useEffect (from auth context) + close-reset useEffect
+      + fire-on-generate useEffect: silently runs estimateHomeSale or
+        estimateCondoSale (based on isHome) using listing fields,
+        inline-fetches /api/charlie/competing-listings to avoid the
+        useState-lag race in the shared hook, builds workingDoc, fires
+        submitLeadFromForm forceNew=true + submitActivityFromForm
+      + handleSubmit branches on generatedLeadId presence:
+        (A) authed/engine-succeeded → updateLeadEnrichmentFromForm
+        (B) anonymous/engine-failed → LEGACY forceNew=true + activity
+            log (byte-equivalent to pre-fix behaviour)
+      + UI body unchanged — same form, same submitted state, same copy
+
+  Parent prop pass:
+    app/property/[id]/HomePropertyPageClient.tsx:
+      + threads isHome={true} + tenantId={walliamTenantId||undefined} +
+        buildingAddress={listing.unparsed_address||''} +
+        exactSqft={listing.building_area_total||null} to
+        OfferInquiryModal at the mount gate (L284-298).
+
+    app/property/[id]/PropertyPageClient.tsx:
+      + threads isHome={false} + tenantId + buildingId={listing
+        .building_id} + buildingSlug + buildingAddress + exactSqft.
+
+### Static verification (this session)
+
+  TSC clean — full project pass after each edit. No new errors.
+
+  Source diffs reviewed:
+    - createLead body byte-unchanged (only an additive export
+      below it)
+    - working-doc-render.ts not touched — the email-rendering
+      contract stays the same; new payloads slot into the existing
+      shape
+    - Charlie + seller estimator + middleware untouched
+    - System 1 paths untouched (no /app/api/chat, /admin, or
+      agent_buildings code referenced)
+    - Pre-existing dirty files NOT in this commit:
+        app/api/charlie/municipalities/route.ts
+        scripts/r-w-territory-master-p2-data-phantom-fix.js
+        scripts/r-w-territory-master-p4-check-fix.js
+
+  Backups in place (timestamp suffix
+  `W-ESTIMATOR-FIRE-ON-GENERATE_20260617_134000`):
+    lib/actions/leads.ts
+    app/estimator/components/EstimatorResults.tsx
+    app/estimator/components/HomeEstimatorResults.tsx
+    components/property/OfferInquiryModal.tsx
+    app/property/[id]/HomePropertyPageClient.tsx
+    app/property/[id]/PropertyPageClient.tsx
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### STATUS
+
+  CODE COMPLETE — TSC clean. Backups in place. Additive only:
+  legacy paths untouched, anonymous offer-modal flow falls through to
+  pre-fix behaviour.
+
+  LIVE-DOM VERIFY UNRUN — per CLAUDE.md, source-grep is not a gate.
+  Operator must drive the three actions on walliam.ca authed:
+    1) Get Estimate → result renders → confirm one new leads row +
+       one user_activities row (activity_type='estimator') under
+       WALLiam/King Shah with workingDoc.comparableSold.tiles
+       non-empty in the payload, agent email + buyer copy + admin BCC
+       delivered. Then submit the contact form → confirm
+       contact_name/contact_phone/message UPDATED on the SAME leads
+       row (same id), NO new leads row, NO second user_activities
+       row, NO additional email.
+    2) Sale Offer → modal opens → confirm same leads + activity row
+       with activity_type='sale_offer_inquiry' and workingDoc payload
+       fully populated. Submit form → enrich-only on same row.
+    3) Lease Offer → ditto with 'lease_offer_inquiry'.
+
+  ANONYMOUS PATHS:
+    - Get Estimate: blocked by RegisterModal (unchanged from pre-fix).
+    - Sale/Lease Offer: legacy form-submit path still works (one
+      lead, one email) — fire-on-generate skipped on !user.email.
+
+### Commit
+
+  W-ESTIMATOR-FIRE-ON-GENERATE: (HOLD push — operator approval gate)
+

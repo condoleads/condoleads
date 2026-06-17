@@ -1,7 +1,7 @@
 ﻿// app/estimator/components/EstimatorResults.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { EstimateResult, TEMPERATURE_CONFIG } from '@/lib/estimator/types'
 import { formatPrice } from '@/lib/utils/formatters'
 import GeoConfidenceSpread, { CONDO_LABEL_MAP } from './GeoConfidenceSpread'
@@ -10,6 +10,11 @@ import { generateHomePropertySlug } from '@/lib/utils/slugs'
 import { MessageSquare, AlertTriangle, Phone } from 'lucide-react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
+// W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): additive enrichment action
+// for the optional contact-form follow-up. Generate-fire already created
+// the lead with the rich workingDoc; this action updates contact fields
+// on the SAME row, no email re-fire, no second lead.
+import { updateLeadEnrichmentFromForm } from '@/app/actions/updateLeadEnrichmentFromForm'
 import { useAuth } from '@/components/auth/AuthContext'
 
 interface EstimatorResultsProps {
@@ -63,6 +68,201 @@ export default function EstimatorResults({
     }
   }, [user])
   const [submitted, setSubmitted] = useState(false)
+  // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): persisted leadId from the
+  // fire-on-generate write. The optional contact-form submit reads this
+  // to ENRICH the same row (not create a second). null until generate-
+  // fire succeeds.
+  const [generatedLeadId, setGeneratedLeadId] = useState<string | null>(null)
+  // Fire-once guard so React re-renders don't double-fire submitLeadFromForm
+  // for the same result. Reset whenever the underlying result changes.
+  const generateFiredRef = useRef<string | null>(null)
+
+  // W-ESTIMATOR-FIRE-ON-GENERATE: extracted workingDoc builder. Shape is
+  // BYTE-IDENTICAL to the prior in-handleContactSubmit construction at
+  // L171-251 of the pre-fix file — so the rich 3-section payload that
+  // worked from the form path now ALSO ships from the generate path.
+  // Pure function, no state reads. Caller supplies the values.
+  function buildWorkingDoc(): any {
+    return {
+      version: 1,
+      type: 'condo',
+      subject: {
+        buildingName,
+        buildingAddress,
+        unitNumber,
+        bedrooms: propertySpecs?.bedrooms ?? null,
+        bathrooms: propertySpecs?.bathrooms ?? null,
+        livingAreaRange: propertySpecs?.livingAreaRange ?? null,
+      },
+      estimate: {
+        estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+        priceRange: result.priceRange ?? null,
+        matchTier: result.matchTier ?? null,
+        bestGeoTier: (result as any).bestGeoTier ?? null,
+        confidence: result.confidence ?? null,
+        confidenceMessage: result.confidenceMessage ?? null,
+      },
+      comparableSold: Array.isArray(result.comparables) && result.comparables.length > 0
+        ? {
+            bestGeoTier: (result as any).bestGeoTier ?? null,
+            count: (result as any).tiers?.[(result as any).bestGeoTier]?.count ?? result.comparables.length,
+            estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+            median: (result as any).tiers?.[(result as any).bestGeoTier]?.median ?? null,
+            tiles: result.comparables.slice(0, 10).map((c: any) => ({
+              listingKey: c.listingKey ?? null,
+              closePrice: c.closePrice ?? null,
+              adjustedPrice: c.adjustedPrice ?? null,
+              closeDate: c.closeDate ?? null,
+              daysOnMarket: c.daysOnMarket ?? null,
+              bedrooms: c.bedrooms ?? null,
+              bathrooms: c.bathrooms ?? null,
+              livingAreaRange: c.livingAreaRange ?? null,
+              unitNumber: c.unitNumber ?? null,
+              unparsedAddress: c.unparsedAddress ?? null,
+              matchTier: c.matchTier ?? null,
+              sourceTier: c.sourceTier ?? null,
+              temperature: c.temperature ?? null,
+            })),
+          }
+        : null,
+      taxMatch: (result as any).taxMatch && Array.isArray((result as any).taxMatch.comparables) && (result as any).taxMatch.comparables.length > 0
+        ? {
+            bestGeoTier: (result as any).taxMatch.bestGeoTier ?? null,
+            count: (result as any).taxMatch.count ?? (result as any).taxMatch.comparables.length,
+            estimatedPrice: (result as any).taxMatch.estimatedPrice ?? null,
+            tiles: (result as any).taxMatch.comparables.slice(0, 10).map((c: any) => ({
+              listingKey: c.listingKey ?? null,
+              closePrice: c.closePrice ?? null,
+              adjustedPrice: c.adjustedPrice ?? null,
+              closeDate: c.closeDate ?? null,
+              daysOnMarket: c.daysOnMarket ?? null,
+              bedrooms: c.bedrooms ?? null,
+              bathrooms: c.bathrooms ?? null,
+              livingAreaRange: c.livingAreaRange ?? null,
+              unitNumber: c.unitNumber ?? null,
+              unparsedAddress: c.unparsedAddress ?? null,
+              matchTier: c.matchTier ?? null,
+              sourceTier: c.sourceTier ?? null,
+              temperature: c.temperature ?? null,
+            })),
+          }
+        : null,
+      competing: Array.isArray(competingListings) && competingListings.length > 0
+        ? {
+            count: competingListings.length,
+            tiles: competingListings.slice(0, 10).map((c: any) => ({
+              id: c.id ?? null,
+              listingKey: c.listing_key ?? null,
+              listPrice: c.list_price ?? null,
+              daysOnMarket: c.days_on_market ?? null,
+              bedrooms: c.bedrooms_total ?? null,
+              bathrooms: c.bathrooms_total_integer ?? null,
+              livingAreaRange: c.living_area_range ?? null,
+              unitNumber: c.unit_number ?? null,
+              unparsedAddress: c.unparsed_address ?? null,
+            })),
+          }
+        : null,
+    }
+  }
+
+  // W-ESTIMATOR-FIRE-ON-GENERATE: fire-on-generate effect. Once the
+  // estimate result is ready AND the user is authed AND we know which
+  // agent to route to, write the lead with the full workingDoc payload
+  // and log the activity. forceNew=true → creates a fresh lead +
+  // triggers the helper-driven email fan-out (agent TO + chain CC/BCC
+  // + buyer copy via working-doc-render.ts).
+  //
+  // Anonymous gate: if user is null, do NOT fire (the parent modal
+  // shows RegisterModal first). If agentId is missing (public context),
+  // do NOT fire — matches the existing handleContactSubmit early-exit
+  // at L111-116 of the pre-fix file.
+  //
+  // Fire-once: keyed on the result identity (we use the listings'
+  // joined keys + estimatedPrice as a cheap stable fingerprint). React
+  // re-renders for state changes (e.g. setSubmitted) do not re-fire.
+  useEffect(() => {
+    if (!user || !user.email) return
+    if (!agentId) return
+    if (!result) return
+    // Build a stable fingerprint of THIS result so re-renders for the
+    // same result don't re-fire. Different result on the same component
+    // (rare — usually the parent re-mounts) re-fires.
+    const fingerprint = `${result.estimatedPrice ?? 'n'}|${result.priceRange?.low ?? 'n'}|${result.priceRange?.high ?? 'n'}|${(result.comparables || []).map((c: any) => c.listingKey ?? '').join(',')}`
+    if (generateFiredRef.current === fingerprint) return
+    generateFiredRef.current = fingerprint
+
+    // Capture for the async IIFE so TS narrows past the closure boundary.
+    const userEmail = user.email
+
+    ;(async () => {
+      const workingDoc = buildWorkingDoc()
+      const message = result.showPrice
+        ? `Received estimate for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Estimate generated automatically.`
+        : `Requesting valuation for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}. ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Unit requires professional analysis - no automated estimate available.`
+      try {
+        const leadResult = await submitLeadFromForm({
+          agentId,
+          // Use auth-context data; name/phone may be empty until the
+          // optional form-submit enriches. email is required and known
+          // because of the !user.email guard above.
+          contactName: contactForm.name || user.user_metadata?.full_name || user.user_metadata?.name || '',
+          contactEmail: userEmail,
+          contactPhone: contactForm.phone || user.user_metadata?.phone || '',
+          source: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
+          buildingId,
+          listingId: propertySpecs?.listingId,
+          message,
+          estimatedValueMin: result.showPrice ? result.priceRange.low : undefined,
+          estimatedValueMax: result.showPrice ? result.priceRange.high : undefined,
+          propertyDetails: {
+            ...(propertySpecs || {}),
+            buildingName,
+            buildingAddress,
+            unitNumber,
+            estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+            confidence: result.confidence,
+            matchTier: result.matchTier,
+            marketSpeed: result.marketSpeed?.status,
+            workingDoc,
+          },
+          forceNew: true,
+        })
+        if (leadResult?.success && 'lead' in leadResult && leadResult.lead?.id) {
+          setGeneratedLeadId(leadResult.lead.id)
+        } else {
+          const errMsg = leadResult && 'error' in leadResult ? leadResult.error : 'unknown'
+          console.error('[EstimatorResults] fire-on-generate lead-write failed:', errMsg)
+        }
+        // Activity log (per-action type)
+        await submitActivityFromForm({
+          contactEmail: userEmail,
+          agentId,
+          activityType: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
+          activityData: {
+            buildingId,
+            buildingName,
+            buildingAddress,
+            unitNumber,
+            estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+            priceRangeLow: result.showPrice ? result.priceRange.low : null,
+            priceRangeHigh: result.showPrice ? result.priceRange.high : null,
+            confidence: result.confidence,
+            matchTier: result.matchTier,
+            bedrooms: propertySpecs?.bedrooms,
+            bathrooms: propertySpecs?.bathrooms,
+            sqft: propertySpecs?.livingAreaRange,
+          },
+        })
+      } catch (err) {
+        console.error('[EstimatorResults] fire-on-generate error:', err)
+      }
+    })()
+  // contactForm fields are READ inside the effect for prefill, but the
+  // effect MUST NOT re-run when the user types in the form — that would
+  // re-fire the lead-create. Deps deliberately omit contactForm.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.email, agentId, result, type, buildingId, buildingName, buildingAddress, unitNumber, propertySpecs, competingListings])
 
   const confidenceColors: Record<string, string> = {
     'High': 'text-emerald-700 bg-emerald-50 border-emerald-200',
@@ -101,173 +301,96 @@ export default function EstimatorResults({
     setIsSubmitting(true)
     setSubmitError(null)
 
+    // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): inverted from
+    // "create lead + email" to "enrich the same lead". The lead+email
+    // already fired ON generate (useEffect above) using the rich
+    // workingDoc payload + helper-driven 6-layer fan-out. This handler
+    // is the OPTIONAL follow-up: it writes contact_name / contact_phone
+    // / message onto the SAME row. No second lead. No email re-fire.
+    // No second activity log.
     const specs = propertySpecs || {}
-    const message = result.showPrice 
+    const message = result.showPrice
       ? `Received estimate for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Would like to discuss accurate valuation.`
       : `Requesting valuation for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}. ${specs.bedrooms || 'N/A'}BR/${specs.bathrooms || 'N/A'}BA, ${specs.livingAreaRange || 'N/A'} sqft. Unit requires professional analysis - no automated estimate available.`
 
-    console.log('🔍 DEBUG EstimatorResults:', { agentId, buildingId, buildingName })
-
     if (!agentId) {
-      console.log('⚠ No agentId - skipping lead creation (public context)')
+      // Public context (no agent routing): nothing to enrich; just
+      // acknowledge the submit. Matches prior behaviour.
       setSubmitted(true)
       setShowContactForm(false)
+      setIsSubmitting(false)
       return
     }
 
+    // Resolve the target leadId.
+    //   1) Prefer the leadId captured by the fire-on-generate effect.
+    //   2) Fallback (race / rare failure of generate-fire) — call
+    //      submitLeadFromForm with forceNew=FALSE so createLead's dedup
+    //      helper returns the existing row. The helper does NOT re-fire
+    //      the email when the dedup key (email, tenant, listing|building)
+    //      hits. Worst case (no row at all → generate-fire really did
+    //      fail), the dedup miss DOES insert + email — that recovers
+    //      the lead. Either way, exactly one lead, at most one email.
+    let targetLeadId = generatedLeadId
+    let enrichSucceeded = false
+
     try {
-      await submitActivityFromForm({
-        contactEmail: contactForm.email,
-        agentId: agentId,
-        activityType: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
-        activityData: {
+      if (!targetLeadId) {
+        const dedupResult = await submitLeadFromForm({
+          agentId,
+          contactName: contactForm.name,
+          contactEmail: contactForm.email,
+          contactPhone: contactForm.phone,
+          source: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
           buildingId,
-          buildingName,
-          buildingAddress,
-          unitNumber,
-          estimatedPrice: result.showPrice ? result.estimatedPrice : null,
-          priceRangeLow: result.showPrice ? result.priceRange.low : null,
-          priceRangeHigh: result.showPrice ? result.priceRange.high : null,
-          confidence: result.confidence,
-          matchTier: result.matchTier,
-          bedrooms: specs.bedrooms,
-          bathrooms: specs.bathrooms,
-          sqft: specs.livingAreaRange
-        }
-      })
-      console.log('✅ Activity tracked successfully')
-    } catch (error) {
-      console.error('❌ submitActivityFromForm error:', error)
-    }
-
-    console.log('✅ Now creating lead...')
-    // P-LEADS-FIX (2026-06-12): track lead-write outcome so we don't show a
-    // false "submitted" success state when the FK / network / resolver fails.
-    let leadSucceeded = false
-    try {
-      const leadResult = await submitLeadFromForm({
-        agentId,
-        contactName: contactForm.name,
-        contactEmail: contactForm.email,
-        contactPhone: contactForm.phone,
-        source: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
-        buildingId,
-        message,
-        estimatedValueMin: result.showPrice ? result.priceRange.low : undefined,
-        estimatedValueMax: result.showPrice ? result.priceRange.high : undefined,
-        propertyDetails: {
-          ...(propertySpecs || {}),
-          buildingName,
-          buildingAddress,
-          unitNumber,
-          estimatedPrice: result.showPrice ? result.estimatedPrice : null,
-          confidence: result.confidence,
-          matchTier: result.matchTier,
-          marketSpeed: result.marketSpeed?.status,
-          // P-WORKING-DOC (2026-06-12): persist the full 3-section working
-          // document on the lead row so email + dashboard read from ONE
-          // source of truth without re-running the matcher. The schema is
-          // defined in lib/email/working-doc-render.ts (WorkingDoc).
-          workingDoc: {
-            version: 1,
-            type: 'condo',
-            subject: {
-              buildingName,
-              buildingAddress,
-              unitNumber,
-              bedrooms: propertySpecs?.bedrooms ?? null,
-              bathrooms: propertySpecs?.bathrooms ?? null,
-              livingAreaRange: propertySpecs?.livingAreaRange ?? null,
-            },
-            estimate: {
-              estimatedPrice: result.showPrice ? result.estimatedPrice : null,
-              priceRange: result.priceRange ?? null,
-              matchTier: result.matchTier ?? null,
-              bestGeoTier: (result as any).bestGeoTier ?? null,
-              confidence: result.confidence ?? null,
-              confidenceMessage: result.confidenceMessage ?? null,
-            },
-            comparableSold: Array.isArray(result.comparables) && result.comparables.length > 0
-              ? {
-                  bestGeoTier: (result as any).bestGeoTier ?? null,
-                  count: (result as any).tiers?.[(result as any).bestGeoTier]?.count ?? result.comparables.length,
-                  estimatedPrice: result.showPrice ? result.estimatedPrice : null,
-                  median: (result as any).tiers?.[(result as any).bestGeoTier]?.median ?? null,
-                  tiles: result.comparables.slice(0, 10).map((c: any) => ({
-                    listingKey: c.listingKey ?? null,
-                    closePrice: c.closePrice ?? null,
-                    adjustedPrice: c.adjustedPrice ?? null,
-                    closeDate: c.closeDate ?? null,
-                    daysOnMarket: c.daysOnMarket ?? null,
-                    bedrooms: c.bedrooms ?? null,
-                    bathrooms: c.bathrooms ?? null,
-                    livingAreaRange: c.livingAreaRange ?? null,
-                    unitNumber: c.unitNumber ?? null,
-                    unparsedAddress: c.unparsedAddress ?? null,
-                    matchTier: c.matchTier ?? null,
-                    sourceTier: c.sourceTier ?? null,
-                    temperature: c.temperature ?? null,
-                  })),
-                }
-              : null,
-            taxMatch: (result as any).taxMatch && Array.isArray((result as any).taxMatch.comparables) && (result as any).taxMatch.comparables.length > 0
-              ? {
-                  bestGeoTier: (result as any).taxMatch.bestGeoTier ?? null,
-                  count: (result as any).taxMatch.count ?? (result as any).taxMatch.comparables.length,
-                  estimatedPrice: (result as any).taxMatch.estimatedPrice ?? null,
-                  tiles: (result as any).taxMatch.comparables.slice(0, 10).map((c: any) => ({
-                    listingKey: c.listingKey ?? null,
-                    closePrice: c.closePrice ?? null,
-                    adjustedPrice: c.adjustedPrice ?? null,
-                    closeDate: c.closeDate ?? null,
-                    daysOnMarket: c.daysOnMarket ?? null,
-                    bedrooms: c.bedrooms ?? null,
-                    bathrooms: c.bathrooms ?? null,
-                    livingAreaRange: c.livingAreaRange ?? null,
-                    unitNumber: c.unitNumber ?? null,
-                    unparsedAddress: c.unparsedAddress ?? null,
-                    matchTier: c.matchTier ?? null,
-                    sourceTier: c.sourceTier ?? null,
-                    temperature: c.temperature ?? null,
-                  })),
-                }
-              : null,
-            competing: Array.isArray(competingListings) && competingListings.length > 0
-              ? {
-                  count: competingListings.length,
-                  tiles: competingListings.slice(0, 10).map((c: any) => ({
-                    id: c.id ?? null,
-                    listingKey: c.listing_key ?? null,
-                    listPrice: c.list_price ?? null,
-                    daysOnMarket: c.days_on_market ?? null,
-                    bedrooms: c.bedrooms_total ?? null,
-                    bathrooms: c.bathrooms_total_integer ?? null,
-                    livingAreaRange: c.living_area_range ?? null,
-                    unitNumber: c.unit_number ?? null,
-                    unparsedAddress: c.unparsed_address ?? null,
-                  })),
-                }
-              : null,
+          listingId: propertySpecs?.listingId,
+          message,
+          estimatedValueMin: result.showPrice ? result.priceRange.low : undefined,
+          estimatedValueMax: result.showPrice ? result.priceRange.high : undefined,
+          propertyDetails: {
+            ...(propertySpecs || {}),
+            buildingName,
+            buildingAddress,
+            unitNumber,
+            estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+            confidence: result.confidence,
+            matchTier: result.matchTier,
+            marketSpeed: result.marketSpeed?.status,
+            workingDoc: buildWorkingDoc(),
           },
-        },
-        forceNew: true
-      })
+          forceNew: false,
+        })
+        if (dedupResult?.success && 'lead' in dedupResult && dedupResult.lead?.id) {
+          targetLeadId = dedupResult.lead.id
+          setGeneratedLeadId(dedupResult.lead.id)
+        } else {
+          const errMsg = dedupResult && 'error' in dedupResult ? dedupResult.error : undefined
+          console.error('[EstimatorResults] dedup-resolve failed:', errMsg)
+          setSubmitError(errMsg || 'We could not submit your request right now. Please try again.')
+        }
+      }
 
-      console.log('🎯 Lead creation result:', leadResult)
-
-      if (!leadResult.success) {
-        console.error('❌ Lead creation failed:', leadResult)
-        setSubmitError(leadResult.error || 'We could not submit your request right now. Please try again.')
-      } else {
-        leadSucceeded = true
+      if (targetLeadId) {
+        const enrichResult = await updateLeadEnrichmentFromForm({
+          leadId: targetLeadId,
+          contactName: contactForm.name,
+          contactPhone: contactForm.phone,
+          message,
+        })
+        if (enrichResult.success) {
+          enrichSucceeded = true
+        } else {
+          console.error('[EstimatorResults] updateLeadEnrichment failed:', enrichResult.error)
+          setSubmitError(enrichResult.error || 'We could not submit your request right now. Please try again.')
+        }
       }
     } catch (error) {
-      console.error('❌ Exception during lead creation:', error)
+      console.error('[EstimatorResults] enrichment exception:', error)
       setSubmitError('We could not submit your request right now. Please try again.')
     }
 
     setIsSubmitting(false)
-    if (leadSucceeded) {
+    if (enrichSucceeded) {
       setSubmitted(true)
       setShowContactForm(false)
     }

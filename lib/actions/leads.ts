@@ -391,6 +391,60 @@ export async function createLead(params: CreateLeadParams) {
   return { success: true, lead }
 }
 
+// ─── updateLeadEnrichment ────────────────────────────────────────────────────
+// W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): ADDITIVE write helper for the
+// estimator/offer form-submit ENRICHMENT step. When fire-on-generate has
+// already created the lead (with the rich workingDoc), the optional contact
+// form that follows updates ONLY the contact_name / contact_phone / message
+// fields onto the SAME lead row. NO email re-fire (this function does not
+// touch sendTenantEmail or the helper fan-out). NO change to dedup
+// semantics (createLead / getOrCreateLead bodies untouched).
+//
+// Tenant-scoped: the WHERE clause requires (id AND tenant_id) so a hostile
+// or stale client cannot enrich a lead it doesn't own.
+//
+// Returns { success: true, lead } on success or { success: false, error }
+// on failure. Caller decides what to surface; existing UX shows a soft
+// warning on enrichment failure (the lead row + emails already fired
+// at generate time, so this is a strictly additive write).
+export async function updateLeadEnrichment(params: {
+  leadId: string
+  tenantId: string
+  contactName?: string
+  contactPhone?: string
+  message?: string
+}) {
+  if (!params.leadId || !params.tenantId) {
+    return { success: false, error: 'leadId and tenantId are required' }
+  }
+  const supabase = createServiceClient()
+  // Only set fields the caller actually provided; never null an existing
+  // value just because the caller skipped it.
+  const patch: Record<string, any> = { updated_at: new Date().toISOString() }
+  if (typeof params.contactName === 'string' && params.contactName.trim()) {
+    patch.contact_name = params.contactName.trim()
+  }
+  if (typeof params.contactPhone === 'string' && params.contactPhone.trim()) {
+    patch.contact_phone = params.contactPhone.trim()
+  }
+  if (typeof params.message === 'string' && params.message.trim()) {
+    patch.message = params.message.trim()
+  }
+  // No fields to set besides updated_at — caller may just want a bump.
+  const { data: lead, error } = await supabase
+    .from('leads')
+    .update(patch)
+    .eq('id', params.leadId)
+    .eq('tenant_id', params.tenantId)
+    .select()
+    .single()
+  if (error) {
+    console.error('[leads] updateLeadEnrichment error:', error)
+    return { success: false, error: error.message }
+  }
+  return { success: true, lead }
+}
+
 // ─── Email body ──────────────────────────────────────────────────────────────
 // Mirrors the visual shape used by walliam/contact for consistency across all
 // chain notifications. No agent-specific branding here — the helper resolves

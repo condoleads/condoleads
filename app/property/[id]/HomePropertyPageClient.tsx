@@ -293,6 +293,13 @@ export default function HomePropertyPageClient({
             isSale={isSale}
             agentId={offerAgentId}
             agentName={offerAgentName}
+            // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): silently run the
+            // home estimator engine on mount to build the rich workingDoc
+            // for the agent email. UI unchanged.
+            isHome={true}
+            tenantId={walliamTenantId || undefined}
+            buildingAddress={listing.unparsed_address || ''}
+            exactSqft={listing.building_area_total || null}
           />
         ) : null
       })()}

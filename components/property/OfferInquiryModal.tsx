@@ -1,8 +1,14 @@
-﻿'use client'
+'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
+import { updateLeadEnrichmentFromForm } from '@/app/actions/updateLeadEnrichmentFromForm'
+import { estimateHomeSale } from '@/app/estimator/actions/estimate-home-sale'
+import { estimateCondoSale } from '@/app/estimator/actions/estimate-condo-sale'
+import { useAuth } from '@/components/auth/AuthContext'
+import type { MLSListing } from '@/lib/types/building'
+import type { EstimateResult } from '@/lib/estimator/types'
 
 // W-OFFER-MODAL-WALLIAM-GATE (2026-06-17): props refactored.
 // Was `agent: { id, full_name }` — a non-null object the parent could
@@ -18,22 +24,128 @@ import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 // hardcoded WALLiam-specific anything. Matches the working
 // HomeEstimatorBuyerModal pattern at HomePropertyPageClient.tsx:268.
 //
-// Non-hero (e.g. agent-domain System 1 sites) still works: agent.id
-// and agent.full_name flow through unchanged, just at the parent.
+// W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): listing prop widened to the
+// full MLSListing row and additive props (isHome, tenantId, buildingId,
+// buildingSlug, buildingAddress, exactSqft) added so the modal can run
+// the SAME estimator engine + workingDoc builder the Get Estimate path
+// uses. Engine runs silently on mount — UI is UNCHANGED — purely to
+// produce the rich 3-section payload that ships in the agent email.
 interface OfferInquiryModalProps {
   isOpen: boolean
   onClose: () => void
-  listing: {
-    id: string
-    unit_number?: string
-    unparsed_address?: string
-    building_id: string
-    list_price: number
-  }
+  listing: MLSListing
   buildingName: string
   isSale: boolean
   agentId: string
   agentName: string
+  // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17) additive — all optional so
+  // System 1 / agent-domain callers that pre-date this change continue
+  // to work; without these the modal falls back to the legacy thin-
+  // payload form-submit path (no engine run, no fire-on-generate).
+  isHome?: boolean
+  tenantId?: string
+  buildingId?: string
+  buildingSlug?: string
+  buildingAddress?: string
+  exactSqft?: number | null
+}
+
+// W-ESTIMATOR-FIRE-ON-GENERATE: workingDoc shape MUST mirror lib/email/
+// working-doc-render.ts (WorkingDoc) so the email + dashboard read from
+// one source of truth. Tile shapes mirror EstimatorResults.tsx and
+// HomeEstimatorResults.tsx — same fields, same slice(0,10) cap, same
+// null-coalescing.
+function buildOfferWorkingDoc(args: {
+  type: 'home' | 'condo'
+  listing: MLSListing
+  buildingName: string
+  buildingAddress?: string
+  result: EstimateResult | null
+  competingListings: any[]
+}): any {
+  const { type, listing, buildingName, buildingAddress, result, competingListings } = args
+  return {
+    version: 1,
+    type,
+    subject: {
+      listingId: listing.id,
+      buildingName,
+      buildingAddress: buildingAddress || listing.unparsed_address || null,
+      unitNumber: listing.unit_number || null,
+      bedrooms: listing.bedrooms_total ?? null,
+      bathrooms: listing.bathrooms_total_integer ?? null,
+      livingAreaRange: listing.living_area_range ?? null,
+    },
+    estimate: result ? {
+      estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+      priceRange: result.priceRange ?? null,
+      matchTier: result.matchTier ?? null,
+      bestGeoTier: (result as any).bestGeoTier ?? null,
+      confidence: result.confidence ?? null,
+      confidenceMessage: result.confidenceMessage ?? null,
+    } : null,
+    comparableSold: result && Array.isArray(result.comparables) && result.comparables.length > 0
+      ? {
+          bestGeoTier: (result as any).bestGeoTier ?? null,
+          count: (result as any).tiers?.[(result as any).bestGeoTier]?.count ?? result.comparables.length,
+          estimatedPrice: result.showPrice ? result.estimatedPrice : null,
+          median: (result as any).tiers?.[(result as any).bestGeoTier]?.median ?? null,
+          tiles: result.comparables.slice(0, 10).map((c: any) => ({
+            listingKey: c.listingKey ?? null,
+            closePrice: c.closePrice ?? null,
+            adjustedPrice: c.adjustedPrice ?? null,
+            closeDate: c.closeDate ?? null,
+            daysOnMarket: c.daysOnMarket ?? null,
+            bedrooms: c.bedrooms ?? null,
+            bathrooms: c.bathrooms ?? null,
+            livingAreaRange: c.livingAreaRange ?? null,
+            unitNumber: c.unitNumber ?? null,
+            unparsedAddress: c.unparsedAddress ?? null,
+            matchTier: c.matchTier ?? null,
+            sourceTier: c.sourceTier ?? null,
+            temperature: c.temperature ?? null,
+          })),
+        }
+      : null,
+    taxMatch: result && (result as any).taxMatch && Array.isArray((result as any).taxMatch.comparables) && (result as any).taxMatch.comparables.length > 0
+      ? {
+          bestGeoTier: (result as any).taxMatch.bestGeoTier ?? null,
+          count: (result as any).taxMatch.count ?? (result as any).taxMatch.comparables.length,
+          estimatedPrice: (result as any).taxMatch.estimatedPrice ?? null,
+          tiles: (result as any).taxMatch.comparables.slice(0, 10).map((c: any) => ({
+            listingKey: c.listingKey ?? null,
+            closePrice: c.closePrice ?? null,
+            adjustedPrice: c.adjustedPrice ?? null,
+            closeDate: c.closeDate ?? null,
+            daysOnMarket: c.daysOnMarket ?? null,
+            bedrooms: c.bedrooms ?? null,
+            bathrooms: c.bathrooms ?? null,
+            livingAreaRange: c.livingAreaRange ?? null,
+            unitNumber: c.unitNumber ?? null,
+            unparsedAddress: c.unparsedAddress ?? null,
+            matchTier: c.matchTier ?? null,
+            sourceTier: c.sourceTier ?? null,
+            temperature: c.temperature ?? null,
+          })),
+        }
+      : null,
+    competing: Array.isArray(competingListings) && competingListings.length > 0
+      ? {
+          count: competingListings.length,
+          tiles: competingListings.slice(0, 10).map((c: any) => ({
+            id: c.id ?? null,
+            listingKey: c.listing_key ?? null,
+            listPrice: c.list_price ?? null,
+            daysOnMarket: c.days_on_market ?? null,
+            bedrooms: c.bedrooms_total ?? null,
+            bathrooms: c.bathrooms_total_integer ?? null,
+            livingAreaRange: c.living_area_range ?? null,
+            unitNumber: c.unit_number ?? null,
+            unparsedAddress: c.unparsed_address ?? null,
+          })),
+        }
+      : null,
+  }
 }
 
 export default function OfferInquiryModal({
@@ -44,7 +156,14 @@ export default function OfferInquiryModal({
   isSale,
   agentId,
   agentName,
+  isHome,
+  tenantId,
+  buildingId,
+  buildingSlug,
+  buildingAddress,
+  exactSqft,
 }: OfferInquiryModalProps) {
+  const { user } = useAuth()
   const defaultMessage = isSale
     ? `I'm interested in making an offer on Unit ${listing.unit_number || ''} at ${buildingName}. Please contact me to discuss.`
     : `I'm interested in applying for the lease on Unit ${listing.unit_number || ''} at ${buildingName}. Please contact me to discuss.`
@@ -57,6 +176,232 @@ export default function OfferInquiryModal({
   })
   const [submitted, setSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): leadId captured by the
+  // fire-on-generate effect. Form-submit reads this to ENRICH the same
+  // row (no second lead, no email re-fire).
+  const [generatedLeadId, setGeneratedLeadId] = useState<string | null>(null)
+  const generateFiredRef = useRef<string | null>(null)
+
+  // Pre-fill form from auth context when available
+  useEffect(() => {
+    if (user) {
+      setFormData(prev => ({
+        ...prev,
+        name: prev.name || user.user_metadata?.full_name || user.user_metadata?.name || '',
+        email: prev.email || user.email || '',
+        phone: prev.phone || user.user_metadata?.phone || '',
+      }))
+    }
+  }, [user])
+
+  // Reset transient state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSubmitted(false)
+      setGeneratedLeadId(null)
+      generateFiredRef.current = null
+    }
+  }, [isOpen])
+
+  // W-ESTIMATOR-FIRE-ON-GENERATE: silently run the estimator engine +
+  // competing-listings fetch when the modal opens. The result is NOT
+  // displayed (modal UI is unchanged); the engine runs purely to build
+  // the rich workingDoc payload + write the lead + fire the helper-
+  // driven 6-layer email fan-out.
+  //
+  // Gates:
+  //   - user.email required (anonymous users fall through to the legacy
+  //     form-submit path which still works — same as pre-fix behaviour)
+  //   - agentId required (public/un-routed context falls through)
+  //   - listing.id required (cold render guard)
+  //
+  // Fire-once via fingerprint ref so re-renders / re-mounts don't
+  // double-fire for the same (listing, agent) pair.
+  useEffect(() => {
+    if (!isOpen) return
+    if (!user || !user.email) return
+    if (!agentId) return
+    if (!listing?.id) return
+    const fingerprint = `${listing.id}|${agentId}|${isSale ? 's' : 'l'}`
+    if (generateFiredRef.current === fingerprint) return
+    generateFiredRef.current = fingerprint
+
+    const userEmail = user.email
+    const isHomePath = !!isHome
+
+    ;(async () => {
+      try {
+        let result: EstimateResult | null = null
+        let competing: any[] = []
+
+        // 1) Engine
+        if (isHomePath) {
+          const streetNumParsed = parseInt(String((listing as any).street_number ?? ''), 10)
+          const subjectStreetNameRaw = (listing as any).street_name as string | undefined
+          const homeSpecs: any = {
+            bedrooms: listing.bedrooms_total || 0,
+            bathrooms: listing.bathrooms_total_integer || 0,
+            propertySubtype: listing.property_subtype?.trim() || 'Detached',
+            communityId: (listing as any).community_id || null,
+            municipalityId: (listing as any).municipality_id || null,
+            livingAreaRange: listing.living_area_range || '',
+            parking: listing.parking_total || 0,
+            lotWidth: listing.lot_width ? parseFloat(String(listing.lot_width)) : null,
+            lotDepth: listing.lot_depth ? parseFloat(String(listing.lot_depth)) : null,
+            lotArea: listing.lot_size_area ? parseFloat(String(listing.lot_size_area)) : null,
+            lotSizeUnits: (listing as any).lot_size_units || null,
+            garageType: listing.garage_type || null,
+            basement: Array.isArray(listing.basement) ? listing.basement.join(', ') : listing.basement || null,
+            basementRaw: Array.isArray(listing.basement) ? listing.basement : listing.basement ? [listing.basement] : null,
+            architecturalStyle: Array.isArray((listing as any).architectural_style) ? (listing as any).architectural_style[0] || null : null,
+            poolFeatures: Array.isArray((listing as any).pool_features) ? (listing as any).pool_features : null,
+            approximateAge: listing.approximate_age || null,
+            agentId,
+            ...(exactSqft != null && { exactSqft }),
+            ...(subjectStreetNameRaw ? { subjectStreetName: subjectStreetNameRaw } : {}),
+            ...(!Number.isNaN(streetNumParsed) ? { subjectStreetNumber: streetNumParsed } : {}),
+            ...((listing as any).tax_annual_amount != null ? { subjectTaxAnnualAmount: parseFloat(String((listing as any).tax_annual_amount)) } : {}),
+            ...((listing as any).tax_year != null ? { subjectTaxYear: parseInt(String((listing as any).tax_year), 10) } : {}),
+          }
+          const resp = await estimateHomeSale(homeSpecs, false)
+          if (resp?.success && resp.data) {
+            result = resp.data
+            // 2) Competing listings (inline fetch so we can capture the
+            // result synchronously into workingDoc — using the shared hook
+            // would lag a render and miss the first email payload).
+            if (homeSpecs.propertySubtype && homeSpecs.municipalityId) {
+              try {
+                const cres = await fetch('/api/charlie/competing-listings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    path: 'home',
+                    communityId: homeSpecs.communityId,
+                    municipalityId: homeSpecs.municipalityId,
+                    bedrooms: homeSpecs.bedrooms,
+                    bathrooms: homeSpecs.bathrooms,
+                    livingAreaRange: homeSpecs.livingAreaRange,
+                    propertySubtype: homeSpecs.propertySubtype,
+                    architecturalStyle: homeSpecs.architecturalStyle,
+                    approximateAge: homeSpecs.approximateAge,
+                  }),
+                })
+                const cdata = await cres.json()
+                if (cdata?.success && Array.isArray(cdata.listings)) competing = cdata.listings
+              } catch { competing = [] }
+            }
+          }
+        } else {
+          // Condo path
+          const condoSpecs: any = {
+            bedrooms: listing.bedrooms_total || 0,
+            bathrooms: listing.bathrooms_total_integer || 0,
+            livingAreaRange: listing.living_area_range || '',
+            parking: listing.parking_total || 0,
+            hasLocker: !!(listing.locker && listing.locker !== 'None'),
+            buildingId: buildingId || listing.building_id || '',
+            buildingSlug: buildingSlug || '',
+            agentId,
+            ...(exactSqft != null && { exactSqft }),
+            ...(listing.association_fee && { associationFee: listing.association_fee }),
+            ...((listing as any).tax_annual_amount != null ? { subjectTaxAnnualAmount: parseFloat(String((listing as any).tax_annual_amount)) } : {}),
+            ...((listing as any).tax_year != null ? { subjectTaxYear: parseInt(String((listing as any).tax_year), 10) } : {}),
+            ...(tenantId ? { tenantId } : {}),
+          }
+          const resp = await estimateCondoSale(condoSpecs, false)
+          if (resp?.success && resp.data) {
+            result = resp.data
+            if (tenantId && (listing as any).community_id && listing.bedrooms_total != null) {
+              try {
+                const cres = await fetch('/api/charlie/competing-listings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    path: 'condo',
+                    communityId: (listing as any).community_id,
+                    bedrooms: listing.bedrooms_total,
+                    livingAreaRange: listing.living_area_range || null,
+                  }),
+                })
+                const cdata = await cres.json()
+                if (cdata?.success && Array.isArray(cdata.listings)) competing = cdata.listings
+              } catch { competing = [] }
+            }
+          }
+        }
+
+        // 3) workingDoc + lead/email + activity. forceNew=true triggers
+        // the helper-driven email fan-out (agent TO + chain CC/BCC +
+        // buyer copy) for this specific action.
+        const message = isSale
+          ? `Offer inquiry: Unit ${listing.unit_number || ''} at ${buildingName}${listing.unparsed_address ? ` (${listing.unparsed_address})` : ''}. List price: $${(listing.list_price || 0).toLocaleString()}.`
+          : `Lease inquiry: Unit ${listing.unit_number || ''} at ${buildingName}${listing.unparsed_address ? ` (${listing.unparsed_address})` : ''}. List price: $${(listing.list_price || 0).toLocaleString()}.`
+
+        const workingDoc = buildOfferWorkingDoc({
+          type: isHomePath ? 'home' : 'condo',
+          listing,
+          buildingName,
+          buildingAddress,
+          result,
+          competingListings: competing,
+        })
+
+        const leadResult = await submitLeadFromForm({
+          agentId,
+          contactName: formData.name || user.user_metadata?.full_name || user.user_metadata?.name || '',
+          contactEmail: userEmail,
+          contactPhone: formData.phone || user.user_metadata?.phone || '',
+          source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+          buildingId: buildingId || listing.building_id || undefined,
+          listingId: listing.id,
+          message,
+          estimatedValueMin: result?.showPrice ? result.priceRange.low : undefined,
+          estimatedValueMax: result?.showPrice ? result.priceRange.high : undefined,
+          propertyDetails: {
+            buildingName,
+            buildingAddress: buildingAddress || listing.unparsed_address || '',
+            unitNumber: listing.unit_number || '',
+            listPrice: listing.list_price,
+            estimatedPrice: result?.showPrice ? result.estimatedPrice : null,
+            confidence: result?.confidence,
+            matchTier: result?.matchTier,
+            marketSpeed: result?.marketSpeed?.status,
+            workingDoc,
+          },
+          forceNew: true,
+        })
+        if (leadResult?.success && 'lead' in leadResult && leadResult.lead?.id) {
+          setGeneratedLeadId(leadResult.lead.id)
+        } else {
+          const errMsg = leadResult && 'error' in leadResult ? leadResult.error : 'unknown'
+          console.error('[OfferInquiryModal] fire-on-generate lead-write failed:', errMsg)
+        }
+        await submitActivityFromForm({
+          contactEmail: userEmail,
+          agentId,
+          activityType: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+          activityData: {
+            buildingId: buildingId || listing.building_id || '',
+            buildingName,
+            listingId: listing.id,
+            listingAddress: listing.unparsed_address || '',
+            unitNumber: listing.unit_number || '',
+            listPrice: listing.list_price,
+            estimatedPrice: result?.showPrice ? result.estimatedPrice : null,
+            priceRangeLow: result?.showPrice ? result.priceRange.low : null,
+            priceRangeHigh: result?.showPrice ? result.priceRange.high : null,
+            confidence: result?.confidence,
+            matchTier: result?.matchTier,
+          },
+        })
+      } catch (err) {
+        console.error('[OfferInquiryModal] fire-on-generate error:', err)
+      }
+    })()
+  // contactForm fields are intentionally OMITTED from deps — typing in
+  // the form must NOT re-trigger fire-on-generate.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, user?.email, agentId, listing?.id, isSale, isHome, tenantId, buildingId])
 
   if (!isOpen) return null
 
@@ -65,44 +410,67 @@ export default function OfferInquiryModal({
     setIsSubmitting(true)
 
     try {
-      // Create or get lead
-      const lead = await submitLeadFromForm({
-        contactName: formData.name,
-        contactEmail: formData.email,
-        contactPhone: formData.phone,
-        source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
-        agentId: agentId,
-        buildingId: listing.building_id,
-        listingId: listing.id,
-        message: formData.message,
-        forceNew: true,
-        propertyDetails: {
-          buildingName: buildingName,
-          buildingAddress: listing.unparsed_address || '',
-          unitNumber: listing.unit_number || '',
-          listPrice: listing.list_price
+      // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): branch on whether the
+      // fire-on-generate effect already wrote the lead.
+      //
+      // (A) Authed user, engine succeeded → enrich path:
+      //     - Update contact_name / contact_phone / message on the SAME
+      //       row via updateLeadEnrichmentFromForm. No second lead, no
+      //       second email, no second activity.
+      //
+      // (B) Anonymous user (no auth, engine never ran) → legacy fallback:
+      //     - Create the lead from the form-typed email with forceNew=
+      //       true. Mirrors the pre-fix behaviour exactly. Activity log
+      //       fires here too (it didn't in the authed path because the
+      //       fire-on-generate effect already logged it).
+      if (generatedLeadId) {
+        const enrich = await updateLeadEnrichmentFromForm({
+          leadId: generatedLeadId,
+          contactName: formData.name,
+          contactPhone: formData.phone,
+          message: formData.message,
+        })
+        if (!enrich.success) {
+          console.error('[OfferInquiryModal] updateLeadEnrichment failed:', enrich.error)
         }
-      })
-
-      if (lead) {
-        // Track activity
-        await submitActivityFromForm({
+        setSubmitted(true)
+      } else {
+        const lead = await submitLeadFromForm({
+          contactName: formData.name,
           contactEmail: formData.email,
+          contactPhone: formData.phone,
+          source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
           agentId: agentId,
-          activityType: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
-          activityData: {
-            buildingId: listing.building_id,
+          buildingId: buildingId || listing.building_id || undefined,
+          listingId: listing.id,
+          message: formData.message,
+          forceNew: true,
+          propertyDetails: {
             buildingName: buildingName,
-            listingId: listing.id,
-            listingAddress: listing.unparsed_address || '',
+            buildingAddress: buildingAddress || listing.unparsed_address || '',
             unitNumber: listing.unit_number || '',
-            message: formData.message,
             listPrice: listing.list_price
           }
         })
-      }
 
-      setSubmitted(true)
+        if (lead) {
+          await submitActivityFromForm({
+            contactEmail: formData.email,
+            agentId: agentId,
+            activityType: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+            activityData: {
+              buildingId: buildingId || listing.building_id || '',
+              buildingName: buildingName,
+              listingId: listing.id,
+              listingAddress: listing.unparsed_address || '',
+              unitNumber: listing.unit_number || '',
+              message: formData.message,
+              listPrice: listing.list_price
+            }
+          })
+        }
+        setSubmitted(true)
+      }
     } catch (error) {
       console.error('Error submitting offer inquiry:', error)
     } finally {
@@ -125,7 +493,7 @@ export default function OfferInquiryModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
-      
+
       {/* Modal */}
       <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
         {/* Close button */}

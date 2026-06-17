@@ -324,6 +324,15 @@ export default function PropertyPageClient({
             isSale={isSale}
             agentId={offerAgentId}
             agentName={offerAgentName}
+            // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): silently run the
+            // condo estimator engine on mount to build the rich workingDoc
+            // for the agent email. UI unchanged.
+            isHome={false}
+            tenantId={walliamTenantId || undefined}
+            buildingId={listing.building_id}
+            buildingSlug={building?.slug || ''}
+            buildingAddress={building?.canonical_address || ''}
+            exactSqft={listing.building_area_total || null}
           />
         ) : null
       })()}
