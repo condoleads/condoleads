@@ -272,17 +272,30 @@ export default function HomePropertyPageClient({
         />
       )}
 
-      {/* Offer Inquiry Modal */}
-      {showOfferModal && agent && (
-        <OfferInquiryModal
-          isOpen={showOfferModal}
-          onClose={() => setShowOfferModal(false)}
-          listing={listing}
-          buildingName={shortAddress}
-          isSale={isSale}
-          agent={agent}
-        />
-      )}
+      {/* Offer Inquiry Modal — W-OFFER-MODAL-WALLIAM-GATE (2026-06-17):
+          mount gate mirrors L268 (the Get Estimate modal pattern). Was
+          `showOfferModal && agent &&`, which short-circuited on the
+          walliam hero render (parent passes agent=null when isHero=true)
+          → modal never mounted → no form, no submit, no leads/activities.
+          Now resolves an agentId string from the SAME walliam-aware
+          fallback chain, and gates on its truthiness. Display name
+          falls back through agent.full_name → assistantName → 'our team'
+          so the success-state copy never reads off a null object. */}
+      {(() => {
+        const offerAgentId = agent?.id || walliamAgentId || ''
+        const offerAgentName = agent?.full_name || assistantName || 'our team'
+        return showOfferModal && offerAgentId ? (
+          <OfferInquiryModal
+            isOpen={showOfferModal}
+            onClose={() => setShowOfferModal(false)}
+            listing={listing}
+            buildingName={shortAddress}
+            isSale={isSale}
+            agentId={offerAgentId}
+            agentName={offerAgentName}
+          />
+        ) : null
+      })()}
 
       {/* Exit Intent Popup */}
       <ExitIntentPopup

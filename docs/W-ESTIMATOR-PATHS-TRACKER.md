@@ -5754,3 +5754,179 @@ the source-grep-is-dead status flag operator locked.
   W-ESTIMATOR-TENANT-HEADER: e79c670
 
 
+
+
+## W-OFFER-MODAL-WALLIAM-GATE — Offer modal mount-gate walliam-aware (2026-06-17)
+
+### Defect
+
+  After e79c670 (middleware x-tenant-id fix), joinTenant successfully
+  wrote a lead post-deploy (server-action header path works). But the
+  Sale Offer + Lease Offer buttons on walliam.ca still produced 0
+  rows in either leads or user_activities. The differentiator: those
+  buttons mount a modal that the server never sees, because the
+  parent's JSX render-gate short-circuits BEFORE any submit can fire.
+
+  Pre-fix gate (HomePropertyPageClient.tsx:276 + PropertyPageClient.tsx:310):
+       {showOfferModal && agent && (<OfferInquiryModal ... />)}
+
+  On walliam.ca, parents pass `agent={isHero ? null : agent}` → client
+  receives agent=null. Click sets showOfferModal=true; gate evaluates
+  `true && null` = falsy → OfferInquiryModal never mounts → no form,
+  no submit, no server-action POST.
+
+  Get Estimate at L268 already solved this:
+       agentId={agent?.id || walliamAgentId || ''}
+  Offer needed the same fallback + a modal that accepts an agentId
+  string instead of a non-null agent object.
+
+### Root cause
+
+  Two-part mismatch:
+    1. PARENT GATE hard-depended on `agent && ...`. The walliamAgentId
+       fallback was threaded as a prop already, but the Offer gate
+       didn't consult it.
+    2. MODAL SHAPE required `agent: { id, full_name }` — a non-null
+       object the parent could not produce on hero. The modal read
+       agent.id (server actions L59 + L76) and agent.full_name
+       (display L135 + L214) directly.
+
+### Pre-fix verify — walliamAgentId source is tenant-driven
+
+  HomePropertyPage.tsx:91-103:
+    host = headersList.get('host')                  ← from request
+    walliamTenantId = await getCurrentTenantId()     ← host-resolved
+    SELECT * FROM agents
+      WHERE tenant_id = walliamTenantId AND can_create_children = true
+
+  Per-tenant by construction:
+    walliam.ca → King Shah (fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe)
+    aily.ca    → Aily's can_create_children agent (DB-resolved)
+  No hardcoded tenant ids anywhere in the resolution path. Safe to
+  consult in the new mount gate.
+
+### Fix (3 files, additive)
+
+  EDIT 1 — components/property/OfferInquiryModal.tsx
+    Signature changed:
+      agent: { id: string; full_name: string }   ← REMOVED
+      agentId: string                              ← NEW (required)
+      agentName: string                            ← NEW (required, display)
+
+    Reads converted (4 sites):
+      L59  agentId: agent.id          → agentId: agentId
+      L76  agentId: agent.id          → agentId: agentId
+      L135 {agent.full_name}          → {agentName}
+      L214 {agent.full_name}          → {agentName}
+
+    No .id / .full_name reads off a possibly-null agent object —
+    null-crash path eliminated.
+
+  EDIT 2 — app/property/[id]/HomePropertyPageClient.tsx
+    Replaced the mount block with an IIFE mirroring L268's chain:
+      const offerAgentId   = agent?.id || walliamAgentId || ''
+      const offerAgentName = agent?.full_name || assistantName || 'our team'
+      return showOfferModal && offerAgentId
+        ? <OfferInquiryModal ... agentId={offerAgentId} agentName={offerAgentName} />
+        : null
+
+  EDIT 3 — app/property/[id]/PropertyPageClient.tsx (condo)
+    Same shape as Edit 2 (TSC caught this 2nd caller; same
+    walliamAgentId + assistantName props already on this client).
+
+### No-regression — HARD ASSERT
+
+  GET ESTIMATE path untouched:
+    Verify 4.9-4.10 — HomeEstimatorBuyerModal + EstimatorBuyerModal
+    mount lines byte-identical (still use `agent?.id || walliamAgentId
+    || ''`).
+
+  NON-HERO render (real agent object):
+    offerAgentId = agent.id; offerAgentName = agent.full_name. Byte-
+    identical to pre-fix behavior — only gate machinery changed.
+
+  DOWNSTREAM LEAD + ACTIVITY:
+    OfferInquiryModal still calls submitLeadFromForm +
+    submitActivityFromForm with identical params (source types,
+    forceNew=true, propertyDetails). Only agentId SOURCE changes
+    when agent=null. Helper-driven email fan-out downstream byte-
+    identical.
+
+  SYSTEM 1 + Seller estimator + Charlie + middleware:
+    git diff HEAD = empty on middleware.ts, submitLeadFromForm.ts,
+    submitActivityFromForm.ts, lib/actions/leads.ts,
+    plan-email/route.ts, HomeEstimatorBuyerModal.tsx,
+    HomeEstimatorResults.tsx (verify 6.3-6.9 all PASS).
+
+  MULTI-TENANT:
+    Verify section 5 confirms no WALLiam/Aily UUID, no walliam.ca,
+    no King Shah literal in new code (8/8 PASS).
+
+### Render-trace verify — scripts/offer-modal-gate-verify.ts (44/44 PASS)
+
+  react-dom/server.renderToStaticMarkup on the REAL exported
+  OfferInquiryModal with parent-gate replicated in pure JS.
+
+    Section 1 — walliam hero                                          7/7
+       1.1 gate evaluates TRUE (was FALSE pre-fix)
+       1.2 agentId = King Shah UUID via walliamAgentId fallback
+       1.3 agentName = "WALLiam" via assistantName fallback
+       1.4 modal renders 2152 bytes
+       1.5 form inputs (text/email/tel) present
+       1.6 submit button present
+       1.7 disclaimer reads "WALLiam"
+
+    Section 2 — non-hero (real agent)                                 6/6
+       gate TRUE, real agent.id / agent.full_name flow through.
+
+    Section 3 — failure modes                                         4/4
+       empty + null walliamAgentId → gate FALSE, no crash;
+       agentName falls through to "our team"; showOfferModal=false
+       → gate FALSE.
+
+    Section 4 — source-level (comments stripped before grep)         10/10
+       OfferInquiryModal: no agent.id / agent.full_name reads;
+       signature uses agentId + agentName; both PageClient gates
+       use fallback chain; old gate pattern removed; Get Estimate
+       mount byte-identical.
+
+    Section 5 — multi-tenant: zero hardcoded literals                 8/8
+       no WALLiam/Aily UUID, no walliam.ca, no King Shah literal in
+       either new block.
+
+    Section 6 — edit-set + byte-identity of unrelated paths           9/9
+       3 declared targets in M list; 7 unrelated paths git diff HEAD
+       empty.
+
+  TSC: npx tsc --noEmit → exit 0
+  Pre-existing dirty (predates session, EXCLUDED from commit):
+    app/api/charlie/municipalities/route.ts
+    scripts/r-w-territory-master-p2-data-phantom-fix.js
+    scripts/r-w-territory-master-p4-check-fix.js
+
+  SUMMARY: 44 of 44 PASS.
+
+### STATUS
+
+  RENDER-GATE VERIFIED:
+    Walliam hero mounts OfferInquiryModal with King Shah's UUID +
+    'WALLiam' display name. Non-hero unchanged. Empty fallback chain
+    guarded (mount returns null, no null-crash). Get Estimate path
+    byte-identical.
+
+  LIVE-FLOW UNVERIFIED:
+    Operator clicks Sale Offer (or Lease Offer) on walliam.ca, fills
+    form + submits, confirms:
+      - new user_activities row: activity_type =
+        sale_offer_inquiry (or lease_offer_inquiry), tenant_id =
+        WALLiam, agent_id = King Shah
+      - new leads row under WALLiam + King Shah with full hierarchy
+        chain stamped (per W-ESTIMATOR-HIERARCHY-CONFORMANCE)
+      - agent email + admin BCC arrive via helper-driven fan-out
+    The x-tenant-id fix from e79c670 already clears the server-action
+    null-check on this path.
+
+### Commit
+
+  W-OFFER-MODAL-WALLIAM-GATE: <SHA-PLACEHOLDER>
+

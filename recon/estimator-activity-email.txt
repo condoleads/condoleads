@@ -1,0 +1,328 @@
+W-ESTIMATOR-ACTIVITY-EMAIL — RECON (read-only)
+Date: 2026-06-17
+Premise to test:
+  Operator hypothesized the Offer/Estimate buttons fire through
+  lib/email/sendActivityEmail.ts (CRITICAL_ACTIVITIES list) and prior
+  recons checked the wrong path. Test the hypothesis from code + live DB.
+
+═══════════════════════════════════════════════════════════════════════════
+HEADLINE — the hypothesis is FALSE.
+═══════════════════════════════════════════════════════════════════════════
+
+  lib/email/sendActivityEmail.ts has ZERO production callers. It's
+  DEAD CODE — only the function definition (L320) exists; nothing in
+  app/, components/, or lib/ imports or calls it. The header comment
+  at lib/actions/leads.ts:8 records that it was REPLACED:
+    "Email fan-out replaced: was 3 sequential sendActivityEmail calls
+     (agent → manager → admin loop with receive_*_emails flags),
+     now single getLeadEmailRecipients + sendTenantEmail with TO/CC/
+     BCC (open chain, no suppression per Q1)"
+
+  The Offer/Estimate buttons on the property page do NOT fire
+  sendActivityEmail. They fire TWO server actions:
+    1. submitLeadFromForm (creates a leads row + email fan-out via
+       getLeadEmailRecipients in lib/actions/leads.ts — the
+       contract-conformant path verified in the prior recon).
+    2. submitActivityFromForm (writes a user_activities row only;
+       no email cascade — trackActivity:128-129 says explicitly
+       "Actual email cascade lives in getOrCreateLead, not here").
+
+  BOTH server actions read headers().get('x-tenant-id') and return
+  {success:false} on null — same gate as the estimator's
+  submitLeadFromForm. Pre-e79c670 the gate fired, BOTH actions
+  refused the work, NEITHER lead NOR activity got written. That
+  explains the live DB pattern:
+    Last sale_offer_inquiry activity under WALLiam:  2025-12-21
+    Last lease_offer_inquiry:                          2025-12-16
+    Last estimator_used:                               2025-11-26
+    Last estimator_contact_submitted:                  2026-04-17
+    Activities in scope, last 24h:                     ZERO
+
+  The offer + estimate path has been dead for months because BOTH
+  server actions silently early-exit on missing x-tenant-id, same
+  root cause e79c670 addresses.
+
+  Additional finding: sendActivityEmail (the dead code) is also
+  fundamentally SYSTEM 1 — it uses process.env.RESEND_API_KEY +
+  HARDCODED `from: 'CondoLeads <notifications@condoleads.ca>'` +
+  HARDCODED `https://condoleads.ca/dashboard/...` URL. Even if
+  it had callers, it would send from condoleads.ca for any tenant,
+  including walliam. It is not a viable hierarchy-fan-out path.
+
+═══════════════════════════════════════════════════════════════════════════
+R1 — THE THREE BUTTONS, WHAT THEY FIRE
+═══════════════════════════════════════════════════════════════════════════
+
+  Property page (System 2 / WALLiam): app/property/[id]/HomePropertyPageClient.tsx
+
+    Sale Offer button:
+      L114, L259: onOfferClick={() => setShowOfferModal(true)}
+      → opens OfferInquiryModal (components/property/OfferInquiryModal.tsx)
+      → handleSubmit at L48-96:
+          L54: await submitLeadFromForm({ source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry', forceNew: true, ... })
+          L74: await submitActivityFromForm({ activityType: 'sale_offer_inquiry', ... })
+      → activity log: YES (via submitActivityFromForm → trackActivity → user_activities.insert)
+      → email fire:   YES indirectly (submitLeadFromForm → createLead →
+                       getLeadEmailRecipients + sendTenantEmail TO/CC/BCC
+                       full chain — same as the verified contract path)
+      → does NOT call sendActivityEmail.
+
+    Lease Offer button:
+      Same OfferInquiryModal as Sale Offer (isSale=false branch).
+      Logs activity_type='lease_offer_inquiry'. Same code path.
+
+    Get Estimate button:
+      L113, L211, L234, L258, L292: onEstimateClick={() => setShowEstimatorModal(true)}
+      → opens HomeEstimatorBuyerModal (app/estimator/components/HomeEstimatorBuyerModal.tsx)
+      → renders HomeEstimatorResults (app/estimator/components/HomeEstimatorResults.tsx)
+      → on contact form submit (HomeEstimatorResults.tsx:217):
+          await submitLeadFromForm({ source: 'estimator', forceNew: true, ... })
+          (and submitActivityFromForm at ~L188 with
+           activityType: 'estimator')
+      → activity log: YES
+      → email fire:   YES (same path)
+      → does NOT call sendActivityEmail.
+
+  ▶ R1 VERDICT: ALL THREE buttons fire submitLeadFromForm +
+    submitActivityFromForm. NONE fires sendActivityEmail. Activity
+    is logged; email cascade is downstream of submitLeadFromForm
+    via the contract helper.
+
+═══════════════════════════════════════════════════════════════════════════
+R2 — sendActivityEmail: WIRED + REACHED?
+═══════════════════════════════════════════════════════════════════════════
+
+  Grep across the codebase for callers of `sendActivityEmail`:
+
+    Project/app/...           — 0 hits  (no caller)
+    Project/components/...    — 0 hits  (no caller)
+    Project/lib/...           — 1 hit: the export at lib/email/sendActivityEmail.ts:320
+    Project/...               — only recon/tracker mentions
+
+  CONFIRMED: sendActivityEmail is DEAD CODE. It has no production
+  caller in app/, components/, or lib/. The only mention outside the
+  file itself is the historical comment at lib/actions/leads.ts:8
+  saying the 3-step loop was REPLACED.
+
+  HOW THE FILE WOULD BEHAVE IF CALLED (System-1 architecture):
+
+    L7:    const resend = new Resend(process.env.RESEND_API_KEY)
+              ↑ platform-level env var, NOT tenant's resend_api_key.
+                A walliam-tenanted user activity would be sent through
+                the SYSTEM 1 platform key, not WALLiam's Resend key.
+
+    L479:  from: 'CondoLeads <notifications@condoleads.ca>'
+              ↑ HARDCODED System 1 from-address. WALLiam-tenanted
+                activity would email FROM condoleads.ca, not WALLiam's
+                send_from='WALLiam <notifications@condoleads.ca>'.
+
+    L480:  to: agentEmail
+              ↑ SINGLE recipient. No CC/BCC chain. No manager,
+                area_manager, tenant_admin, manager_platform, or
+                admin_platform. ALL the layers the locked Lead+Email
+                contract requires.
+
+    L467:  leadUrl: `https://condoleads.ca/dashboard/leads/${leadId}`
+              ↑ HARDCODED System 1 dashboard URL. WALLiam emails
+                would route recipients to condoleads.ca, not
+                walliam.ca.
+
+  ▶ R2 VERDICT: sendActivityEmail is NOT wired to any button.
+    It is also fundamentally NOT contract-conformant — it's System 1
+    code by construction (platform key, hardcoded from-address,
+    single recipient, hardcoded dashboard URL). Even if it had
+    callers, it would NOT be the contract-compliant path the
+    operator's hypothesis assumed. The system's actual contract-
+    compliant path is lib/actions/leads.ts:createLead →
+    getLeadEmailRecipients → sendTenantEmail, which IS called by
+    every offer/estimate button via submitLeadFromForm.
+
+═══════════════════════════════════════════════════════════════════════════
+R3 — ACTIVITY ROWS UNDER WALLIAM (live DB, BEGIN READ ONLY)
+═══════════════════════════════════════════════════════════════════════════
+
+  Schema confirmation:
+    user_activities columns: id, contact_email, agent_id,
+      activity_type, activity_data, page_url, user_agent,
+      created_at, tenant_id
+
+  Counts by activity_type under WALLiam (8 in-scope types):
+
+    activity_type                        n     newest
+    estimator_contact_submitted          16    2026-04-17 10:25:44
+    sale_offer_inquiry                   53    2025-12-21 16:59:43
+    lease_offer_inquiry                  21    2025-12-16 16:33:05
+    sale_evaluation_request              19    2025-11-28 11:44:57
+    estimator                             5    2025-11-28 11:42:12
+    estimator_used                       27    2025-11-26 15:41:16
+
+    sale_evaluation_request,
+    lease_evaluation_request,
+    clicked_get_estimate_cta              0    (NEVER)
+
+  Of those, clicked_get_estimate_cta has ZERO rows across ALL
+  tenants (cross-tenant total = 0). Either the CTA-click logger
+  was never deployed or it was never instrumented.
+
+  Last 24h (any activity_type) under WALLiam:
+    plan_generated                       22    2026-06-16 19:25:01
+    (NO other types)
+
+  Last 24h, the 8 in-scope types: ZERO rows.
+
+  Time cliff for the offer types (where activity logging died):
+    sale_offer_inquiry:        cliff at 2025-12-21    (~6 months silent)
+    lease_offer_inquiry:       cliff at 2025-12-16    (~6 months silent)
+    estimator_used:            cliff at 2025-11-26    (~7 months silent)
+    estimator_contact_submitted: cliff at 2026-04-17  (~2 months silent)
+
+  All four types historically logged hundreds of times across many
+  contacts; then went silent. The cliff dates cluster around the
+  W-TENANT-AUTH Phase 3 migration window (client→server-action +
+  tenant-via-header pattern), per submitLeadFromForm.ts file
+  header.
+
+  ▶ R3 VERDICT: ZERO in-scope activity rows under WALLiam in months.
+    The 30-day count is ZERO. The 24h count is ZERO. The break is
+    UPSTREAM of email — the activity is never written because the
+    server-action's null-check at submitActivityFromForm.ts:32-40
+    is firing on x-tenant-id missing, same root cause as the lead
+    leg.
+
+═══════════════════════════════════════════════════════════════════════════
+R4 — SYSTEM 1 vs SYSTEM 2 SPLIT
+═══════════════════════════════════════════════════════════════════════════
+
+  Operator's "killer question": is the property-page offer/estimate
+  CTA + activity-email wiring a SYSTEM 1 feature that was never
+  ported to System 2 (walliam)?
+
+  Component-level mapping:
+
+    UI surface (button)            Render system    Underlying action       Server side
+    ─────────────────────────────  ───────────────  ──────────────────────  ──────────────
+    Sale Offer (OfferInquiryModal) System 2 (port)  submitLeadFromForm +    server actions
+                                                    submitActivityFromForm   (page route POST)
+    Lease Offer (same modal)        System 2         (same)                   server actions
+    Get Estimate (HomeEstimator-    System 2         (same)                   server actions
+        BuyerModal +                                  (HomeEstimatorResults
+        HomeEstimatorResults)                          submits via the same
+                                                       two server actions)
+
+  All three buttons go through System 2 server actions and
+  ULTIMATELY call:
+    submitLeadFromForm → lib/actions/leads.ts:createLead
+                       → walkHierarchy + leads.insert + 5 chain fields
+                       → getLeadEmailRecipients
+                       → sendTenantEmail (tenant-keyed resend_api_key)
+    submitActivityFromForm → lib/actions/user-activity.ts:trackActivity
+                           → user_activities.insert (no email)
+
+  This is FULLY contract-conformant + System 2 native:
+    • sendTenantEmail reads tenant's resend_api_key + send_from
+      (not platform env var).
+    • Helper resolves 6-layer chain (agent + manager + area_manager
+      + tenant_admin + manager_platform + admin_platform).
+    • Activity log is tenant-scoped (tenant_id stamped on
+      user_activities row).
+
+  The DEAD sendActivityEmail.ts is NOT the System 1 path the offer/
+  estimate buttons use. It is a legacy artifact that nothing calls
+  anymore. The OPERATOR'S HYPOTHESIS ("estimator triggers fire through
+  the ACTIVITY email system in sendActivityEmail.ts") is incorrect —
+  the migration to the helper-based hierarchy fan-out happened in
+  the W-HIERARCHY workstream, replacing the sequential
+  sendActivityEmail calls with one helper-driven send.
+
+  ▶ R4 VERDICT: NO unported System-1-vs-System-2 split. The buttons
+    are wired to System-2-native code. The dead sendActivityEmail
+    file would have been System 1 IF it were called, but it isn't.
+    The reason the offer/estimate path is silently failing is the
+    same x-tenant-id-on-server-actions root cause e79c670 addresses
+    — it affects BOTH the lead leg AND the activity-log leg of the
+    same submit handler.
+
+═══════════════════════════════════════════════════════════════════════════
+ROOT CAUSE
+═══════════════════════════════════════════════════════════════════════════
+
+  The offer/estimate activity-email path "fails" at TWO server-
+  action null-checks that fire when x-tenant-id is absent from the
+  request header:
+
+    app/actions/submitLeadFromForm.ts:50-58
+        const tenantId = headersList.get('x-tenant-id')
+        if (!tenantId) {
+          return { success: false, error: 'Tenant context unavailable...' }
+        }
+
+    app/actions/submitActivityFromForm.ts:32-40
+        const tenantId = headersList.get('x-tenant-id')
+        if (!tenantId) {
+          return { success: false, error: 'Tenant context unavailable.' }
+        }
+
+  Both fire on EVERY button submit on walliam.ca page routes until
+  middleware.ts started injecting x-tenant-id on server-action POSTs
+  (the e79c670 commit). The cliff dates in R3 (Dec 2025 – April 2026)
+  align with the W-TENANT-AUTH Phase 3 migration that moved these
+  callers from /api/ routes to server actions — the new server-
+  action path was never paired with a middleware update for that
+  pathname class, so they have been silently failing since.
+
+  The operator's "estimator-via-activity-email" hypothesis is wrong:
+    • sendActivityEmail has no production callers (dead code).
+    • The activity row insert is gated by the same x-tenant-id check
+      as the lead insert.
+    • The email cascade for offer/estimate has ALWAYS been routed
+      through lib/actions/leads.ts:createLead (the contract-conformant
+      helper path), not through sendActivityEmail.
+
+  The fix e79c670 addresses the SHARED root cause for:
+    • lead row creation (submitLeadFromForm)
+    • activity row creation (submitActivityFromForm)
+    • email cascade (downstream of lead, via the helper)
+  All three legs unblock at once when x-tenant-id reaches the
+  server action.
+
+═══════════════════════════════════════════════════════════════════════════
+WHAT TO DO NEXT
+═══════════════════════════════════════════════════════════════════════════
+
+  This recon NEITHER vindicates nor invalidates e79c670 by itself.
+  It DOES rule out the operator's "activity-email pipeline" theory
+  and re-anchor the symptom on the same root cause prior recons
+  identified.
+
+  Concrete proof-of-life requires either:
+    (a) Operator clicks any of the three buttons on walliam.ca with
+        devtools console + Network tab open; capture the server-
+        action POST status + response body; confirm a new row appears
+        in BOTH `leads` AND `user_activities`. If both rows appear,
+        the path is alive end-to-end. If neither appears, header
+        propagation is still failing in the live runtime (see prior
+        recon for the four candidates).
+    (b) Query the live DB IMMEDIATELY after an attempted submit:
+            SELECT activity_type, contact_email, created_at
+              FROM user_activities
+             WHERE tenant_id = 'b16e1039-...'
+               AND created_at >= NOW() - INTERVAL '5 minutes'
+             ORDER BY created_at DESC;
+        Any new row = trackActivity succeeded = x-tenant-id is
+        reaching submitActivityFromForm. ANY new row also implies
+        submitLeadFromForm should have succeeded (same gate).
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/estimator-activity-email.txt                          ← this file
+  scripts/_estimator-activities-walliam-probe.js              ← R3 DB read
+
+  NO code edits. NO commit. The "activity-email pipeline" the operator
+  expected does not exist as a wired pipeline — sendActivityEmail is
+  dead code. The actual wired path (submitLeadFromForm +
+  submitActivityFromForm → contract helper) is gated by the same
+  x-tenant-id null-check e79c670 addresses. Confirming whether
+  e79c670 is effective live requires an operator action on the
+  buttons + an immediate post-submit DB query.

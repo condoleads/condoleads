@@ -306,17 +306,27 @@ export default function PropertyPageClient({
         />
       )}
       
-      {/* Offer Inquiry Modal */}
-      {showOfferModal && agent && (
-        <OfferInquiryModal
-          isOpen={showOfferModal}
-          onClose={() => setShowOfferModal(false)}
-          listing={listing}
-          buildingName={building?.building_name || ''}
-          isSale={isSale}
-          agent={agent}
-        />
-      )}
+      {/* Offer Inquiry Modal — W-OFFER-MODAL-WALLIAM-GATE (2026-06-17):
+          mount gate refactored to consult walliamAgentId fallback so
+          the modal renders on the walliam hero path (where parent
+          passes agent=null). Same pattern + same fallback chain as the
+          condo Get Estimate path at L302. agentId + agentName now strings
+          (no more reading off a possibly-null agent object). */}
+      {(() => {
+        const offerAgentId = agent?.id || walliamAgentId || ''
+        const offerAgentName = agent?.full_name || assistantName || 'our team'
+        return showOfferModal && offerAgentId ? (
+          <OfferInquiryModal
+            isOpen={showOfferModal}
+            onClose={() => setShowOfferModal(false)}
+            listing={listing}
+            buildingName={building?.building_name || ''}
+            isSale={isSale}
+            agentId={offerAgentId}
+            agentName={offerAgentName}
+          />
+        ) : null
+      })()}
       
       {/* Exit Intent Popup - Desktop Only */}
       <ExitIntentPopup

@@ -1,0 +1,70 @@
+W-OFFER-MODAL-WALLIAM-GATE FIX-VERIFY — 2026-06-17T11:25:58.641Z
+────────────────────────────────────────────────────────────────────────────
+SECTION 1 — Walliam hero (agent=null on parent; walliamAgentId=King Shah)
+PASS  1.1: gate evaluates to TRUE on walliam hero (was FALSE pre-fix)
+        → mounts=true
+PASS  1.2: agentId resolves to King Shah UUID via walliamAgentId fallback
+        → agentId=fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe
+PASS  1.3: agentName resolves to "WALLiam" via assistantName fallback
+        → agentName=WALLiam
+PASS  1.4: modal renders non-empty markup on walliam hero
+        → len=2152
+PASS  1.5: modal renders the form (input fields present)
+PASS  1.6: modal renders the submit button
+PASS  1.7: disclaimer mentions resolved agentName ("WALLiam")
+────────────────────────────────────────────────────────────────────────────
+SECTION 2 — Non-hero (real agent object)
+PASS  2.1: gate evaluates to TRUE with real agent
+        → mounts=true
+PASS  2.2: agentId pulled from real agent.id (not fallback)
+        → agentId=a-real-agent-uuid
+PASS  2.3: agentName pulled from real agent.full_name (not fallback)
+        → agentName=Jane Realtor
+PASS  2.4: non-hero modal renders non-empty markup
+PASS  2.5: disclaimer mentions real agent name "Jane Realtor"
+PASS  2.6: lease branch (isSale=false) shows "Apply for Lease" title
+────────────────────────────────────────────────────────────────────────────
+SECTION 3 — failure modes
+PASS  3.1: empty agent + null walliamAgentId → gate FALSE (no mount, no crash)
+PASS  3.2: agentId is empty string in that case (server-action would never be called)
+PASS  3.3: agentName falls through to "our team" generic
+PASS  3.4: showOfferModal=false → gate FALSE (modal closed)
+────────────────────────────────────────────────────────────────────────────
+SECTION 4 — source-level proofs
+PASS  4.1: OfferInquiryModal source does NOT read agent.id (refactored to agentId prop)
+PASS  4.2: OfferInquiryModal source does NOT read agent.full_name
+PASS  4.3: OfferInquiryModal prop signature uses agentId + agentName
+PASS  4.4: OfferInquiryModal prop signature does NOT have agent: { id, ... }
+PASS  4.5: HomePropertyPageClient mount gate uses fallback chain
+PASS  4.6: PropertyPageClient mount gate uses fallback chain
+PASS  4.7: old "showOfferModal && agent &&" gate removed from HomePropertyPageClient
+PASS  4.8: old "showOfferModal && agent &&" gate removed from PropertyPageClient
+PASS  4.9: HomeEstimatorBuyerModal mount still uses `agent?.id || walliamAgentId || ''`
+PASS  4.10: EstimatorBuyerModal mount in PropertyPageClient unchanged
+────────────────────────────────────────────────────────────────────────────
+SECTION 5 — multi-tenant zero hardcoding (new code only)
+PASS  5.1a: HomePropertyPageClient new block contains no WALLiam UUID literal
+PASS  5.2a: HomePropertyPageClient new block contains no Aily UUID literal
+PASS  5.3a: HomePropertyPageClient new block contains no walliam.ca hostname literal
+PASS  5.4a: HomePropertyPageClient new block contains no King Shah UUID literal
+PASS  5.1b: PropertyPageClient new block contains no WALLiam UUID literal
+PASS  5.2b: PropertyPageClient new block contains no Aily UUID literal
+PASS  5.3b: PropertyPageClient new block contains no walliam.ca hostname literal
+PASS  5.4b: PropertyPageClient new block contains no King Shah UUID literal
+────────────────────────────────────────────────────────────────────────────
+SECTION 6 — edit-set identity
+PASS  6.1: all 3 declared targets in M list
+        → M: app/api/charlie/municipalities/route.ts, app/property/[id]/HomePropertyPageClient.tsx, app/property/[id]/PropertyPageClient.tsx, components/property/OfferInquiryModal.tsx, scripts/r-w-territory-master-p2-data-phantom-fix.js, scripts/r-w-territory-master-p4-check-fix.js
+PASS  6.2: no NEW unexpected source files modified
+        → pre-existing dirty excluded
+PASS  6.3: middleware.ts unchanged (last commit was e79c670; not touched here)
+PASS  6.4: app/actions/submitLeadFromForm.ts unchanged
+PASS  6.5: app/actions/submitActivityFromForm.ts unchanged
+PASS  6.6: lib/actions/leads.ts unchanged
+PASS  6.7: app/api/charlie/plan-email/route.ts unchanged
+PASS  6.8: app/estimator/components/HomeEstimatorBuyerModal.tsx unchanged
+PASS  6.9: app/estimator/components/HomeEstimatorResults.tsx unchanged
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: 44 PASS, 0 FAIL
+STATUS: Offer modal mount-gate verified for walliam hero + non-hero + failure modes.
+NOTE: live verification = operator clicks Sale Offer on walliam.ca, modal opens, completes form, confirms activity_type=sale_offer_inquiry row + lead row + agent/admin email (the x-tenant-id fix from e79c670 already clears the server-action gate for the path).

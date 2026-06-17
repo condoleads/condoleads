@@ -4,6 +4,22 @@ import { useState } from 'react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 
+// W-OFFER-MODAL-WALLIAM-GATE (2026-06-17): props refactored.
+// Was `agent: { id, full_name }` — a non-null object the parent could
+// not produce on the WALLiam hero render (parent passes agent=null when
+// isHero=true at HomePropertyPage.tsx:308). The modal's mount gate at
+// HomePropertyPageClient.tsx:276 therefore short-circuited on the hero
+// path and the modal never rendered — no form, no submit, no server
+// action, no leads/activities written. Buttons looked dead.
+//
+// New shape: agentId + agentName as plain strings. The parent computes
+// both from `agent?.id || walliamAgentId` and `agent?.full_name ||
+// assistantName || 'our team'` — host-resolved, tenant-driven, no
+// hardcoded WALLiam-specific anything. Matches the working
+// HomeEstimatorBuyerModal pattern at HomePropertyPageClient.tsx:268.
+//
+// Non-hero (e.g. agent-domain System 1 sites) still works: agent.id
+// and agent.full_name flow through unchanged, just at the parent.
 interface OfferInquiryModalProps {
   isOpen: boolean
   onClose: () => void
@@ -16,10 +32,8 @@ interface OfferInquiryModalProps {
   }
   buildingName: string
   isSale: boolean
-  agent: {
-    id: string
-    full_name: string
-  }
+  agentId: string
+  agentName: string
 }
 
 export default function OfferInquiryModal({
@@ -28,7 +42,8 @@ export default function OfferInquiryModal({
   listing,
   buildingName,
   isSale,
-  agent
+  agentId,
+  agentName,
 }: OfferInquiryModalProps) {
   const defaultMessage = isSale
     ? `I'm interested in making an offer on Unit ${listing.unit_number || ''} at ${buildingName}. Please contact me to discuss.`
@@ -56,7 +71,7 @@ export default function OfferInquiryModal({
         contactEmail: formData.email,
         contactPhone: formData.phone,
         source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
-        agentId: agent.id,
+        agentId: agentId,
         buildingId: listing.building_id,
         listingId: listing.id,
         message: formData.message,
@@ -73,7 +88,7 @@ export default function OfferInquiryModal({
         // Track activity
         await submitActivityFromForm({
           contactEmail: formData.email,
-          agentId: agent.id,
+          agentId: agentId,
           activityType: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
           activityData: {
             buildingId: listing.building_id,
@@ -132,7 +147,7 @@ export default function OfferInquiryModal({
             </div>
             <h3 className="text-xl font-bold text-slate-900 mb-2">Inquiry Sent!</h3>
             <p className="text-slate-600 mb-6">
-              {agent.full_name} will contact you shortly to discuss Unit {listing.unit_number}.
+              {agentName} will contact you shortly to discuss Unit {listing.unit_number}.
             </p>
             <button
               onClick={handleClose}
@@ -211,7 +226,7 @@ export default function OfferInquiryModal({
             </form>
 
             <p className="text-xs text-slate-500 mt-4 text-center">
-              By submitting, you agree to be contacted by {agent.full_name} regarding this property.
+              By submitting, you agree to be contacted by {agentName} regarding this property.
             </p>
           </>
         )}

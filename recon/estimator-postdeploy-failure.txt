@@ -1,0 +1,385 @@
+W-ESTIMATOR-TENANT-HEADER — POST-DEPLOY FAILURE RECON (read-only)
+Date: 2026-06-17
+Operator claim: fix e79c670 deployed; estimator STILL produces no lead, no email.
+Method: git state inspection, live-deployed code, live DB read. No
+        Vercel-Functions log access (operator-restricted).
+
+═══════════════════════════════════════════════════════════════════════════
+HEADLINE
+═══════════════════════════════════════════════════════════════════════════
+
+  LIVE-DB EVIDENCE STRONGLY SUGGESTS THE FIX IS WORKING:
+
+  A different server action (`joinTenant`, at app/actions/joinTenant.ts:30-79)
+  that uses the IDENTICAL `headers().get('x-tenant-id')` read pattern
+  as `submitLeadFromForm` successfully created a lead on the
+  deployed walliam.ca runtime AT 2026-06-17 09:47:32 — POST-deploy.
+  Source row: `source='site_header'` from finaltest1001@gmail.com.
+  If `joinTenant` reads the header successfully, `submitLeadFromForm`
+  reads it too (same Next.js header-propagation mechanism).
+
+  The "estimator still produces no lead" observation likely means:
+  the OPERATOR has not actually clicked submit on the estimator
+  form since the deploy. The DB shows zero estimator-sourced rows
+  in the last 24 hours — but it also shows zero estimator-sourced
+  rows since 2026-06-08 (9 days), so the absence of a fresh estimator
+  row does NOT prove the fix failed; it only proves no one has
+  submitted the estimator form recently.
+
+  Cannot fully rule out a downstream estimator-specific break
+  without (a) the operator actually submitting the form and
+  capturing the result/console, OR (b) Vercel Functions log access
+  for "[submitLeadFromForm]" entries. R3 below enumerates the
+  remaining downstream failure surfaces.
+
+═══════════════════════════════════════════════════════════════════════════
+R1 — IS THE FIX ACTUALLY LIVE?
+═══════════════════════════════════════════════════════════════════════════
+
+  git rev-parse origin/main:
+    96ac9247a6faeeab32aed5dbb95122011c1a13c8
+
+  git log origin/main --oneline -3:
+    96ac924  docs(estimator): W-ESTIMATOR-TENANT-HEADER tracker commit SHA backfill (e79c670)
+    e79c670  fix(middleware): inject x-tenant-id on Next.js server-action POSTs
+             (host-resolved, per-tenant) so estimator submitLeadFromForm reaches lead + email
+    268eb4d  docs(charlie): W-CHARLIE-INCHAT-TAXMATCH-ORDER tracker commit SHA backfill (fe6228f)
+
+  Live deployed source inspection (`git show origin/main:middleware.ts`):
+    The new branch IS present in origin/main, exactly as committed:
+      if (
+        request.method === 'POST' &&
+        request.headers.get('next-action') &&
+        !pathname.startsWith('/api') &&
+        !pathname.startsWith('/_next') &&
+        !pathname.startsWith('/admin')
+      ) {
+        const host = request.headers.get('host') || ''
+        const tenantId = await resolveTenantIdFromHost(supabase, host)
+        if (tenantId) {
+          supabaseResponse.headers.set('x-tenant-id', tenantId)
+        }
+      }
+
+  CANNOT verify directly: whether Vercel's CURRENT production deploy
+  has the e79c670 commit live, or is still serving a pre-deploy build.
+  No access to Vercel's deploy log via this recon. Operator confirmed
+  "build ready"; assuming this means e79c670 is in fact deployed.
+  If the operator can confirm the deploy SHA matches `e79c670` (or
+  any descendant of it) in the Vercel dashboard, R1 is settled.
+
+  ▶ R1 VERDICT: fix IS on origin/main. Live deploy of e79c670 ASSUMED
+    based on operator confirmation; not independently verifiable from
+    this recon.
+
+═══════════════════════════════════════════════════════════════════════════
+R2 — DID THE LIVE SERVER ACTION GET THE HEADER?
+═══════════════════════════════════════════════════════════════════════════
+
+  Cannot read Vercel Functions logs directly. Two indirect signals:
+
+  SIGNAL A — A DIFFERENT server action that uses the SAME pattern
+  succeeded POST-DEPLOY.
+
+  app/actions/joinTenant.ts is a server action (file header L1:
+  'use server'). At L75-79 it reads x-tenant-id IDENTICALLY to
+  submitLeadFromForm:
+
+      const headersList = headers()
+      const tenantId = headersList.get('x-tenant-id')
+      if (!tenantId) {
+        console.error('[joinTenant] x-tenant-id header missing')
+        ...returns failure...
+      }
+
+  Live DB evidence (scripts/_estimator-postdeploy-leads-probe.js,
+  BEGIN READ ONLY):
+
+      2026-06-17 09:47:32   source=site_header     finaltest1001@gmail.com
+
+  `site_header` traces to components/navigation/SiteHeaderClient.tsx
+  → VIPAIAccess → RegisterModal.tsx → callJoinTenant
+  (app/actions/joinTenant.ts via `joinTenant({...})` at L96).
+
+  A new lead row in the DB means joinTenant completed past its
+  x-tenant-id null-check at L78. The only way it could have done that
+  is if `headers().get('x-tenant-id')` returned a non-null value on
+  the live deployed runtime — meaning the middleware IS propagating
+  the header to server actions on origin/main + the active Vercel deploy.
+
+  If joinTenant gets the header, submitLeadFromForm gets it too —
+  same Next.js header API, same propagation path.
+
+  SIGNAL B — pre-fix vs post-fix DB delta.
+
+  Before deploy (pre-2026-06-17 09:00 UTC): Vercel was serving the
+  pre-e79c670 build. No server-action lead path could have worked.
+  After deploy: a server-action lead path created a lead at 09:47.
+
+  This delta is consistent with "the fix took effect at deploy time."
+
+  SIGNAL C (NEGATIVE EVIDENCE) — no estimator-sourced lead in last 24h.
+
+  Estimator-sourced leads under WALLiam in the last 24h: ZERO.
+  Newest estimator lead overall: 2026-06-08 (9 days ago).
+
+  TWO INTERPRETATIONS:
+    (i)  Operator submitted the estimator form post-deploy, it
+         still failed, no row appeared. Real downstream break.
+    (ii) Operator did NOT submit the estimator form post-deploy
+         (only Charlie + site_header submissions in the last 24h
+         visible in the DB). Absence-of-evidence is not evidence-
+         of-absence.
+
+  WITHOUT ACCESS to Vercel Functions logs (the operator's task
+  asked for "[submitLeadFromForm] x-tenant-id header missing"
+  search there), I CANNOT distinguish (i) from (ii) directly.
+
+  ▶ R2 VERDICT: header IS reaching server actions on the live deploy
+    (proven by joinTenant lead-write at 09:47). Whether the operator
+    actually retested the estimator submit since the deploy is
+    INDETERMINATE from DB evidence. The absence of estimator-source
+    rows in the last 24h does NOT prove the fix failed — the same
+    DB pattern (zero estimator rows) has held for 9 days, including
+    multiple days BEFORE my session even started.
+
+═══════════════════════════════════════════════════════════════════════════
+R3 — IF HEADER PRESENT, WHERE DOES IT DIE DOWNSTREAM?
+═══════════════════════════════════════════════════════════════════════════
+
+  Given the joinTenant evidence in R2, assuming header IS present.
+
+  Failure surfaces between submitLeadFromForm:L58 (post-header-check)
+  and the actual lead row insert at lib/actions/leads.ts:208:
+
+  POSSIBILITY 1 — server action never invoked (CLIENT-SIDE break)
+
+    EstimatorResults.tsx:111-116 and HomeEstimatorResults.tsx:178-185
+    have a `if (!agentId) skip` early-exit BEFORE submitLeadFromForm.
+    The runtime probe (recon/estimator-agentid-runtime.txt) proved
+    agentId resolves to King Shah's UUID on both surfaces server-
+    side. But the prop reaches the CLIENT bundle — if the client
+    bundle is stale (Vercel serving a cached old client that resolves
+    agentId differently, or a hydration mismatch), the client could
+    have agentId='' and silent-skip locally.
+
+    DIAGNOSIS PROOF needed:
+      Operator opens devtools console on a failing estimator submit
+      and looks for either:
+        (a) "🔍 DEBUG EstimatorResults: { agentId: '...', ... }"
+            (EstimatorResults.tsx:109; HomeEstimatorResults.tsx:178)
+        (b) "⚠ No agentId - skipping lead creation (public context)"
+            (the early-exit branch)
+        (c) "✅ Now creating lead..." then "❌ Lead creation failed:"
+            (the post-server-action error path)
+        (d) NOTHING happens after clicking submit (network never
+            fires; React state never updates)
+
+  POSSIBILITY 2 — server action fires, returns {success:false}
+                  with a DIFFERENT error than "Tenant context unavailable"
+
+    submitLeadFromForm calls getOrCreateLead → createLead. Failure
+    points downstream:
+      a. lib/actions/leads.ts:175 resolveAgentForLead RPC.
+         If the RPC returns null, lead is admin-routed, not failed.
+         Doesn't cause "no lead."
+      b. lib/actions/leads.ts:208 supabase.from('leads').insert.
+         Already cross-checked in RECON 2 (BEGIN/ROLLBACK insert
+         with WALLiam + King Shah succeeded). If the insert is
+         erroring on the live deploy with a different shape (e.g.
+         a property_details JSON field too large; an unfamiliar
+         FK constraint added recently), error is logged at L236:
+         "[leads] Insert error:". Not visible to this recon.
+
+  POSSIBILITY 3 — server action fires, lead row IS created, but
+                  email throws AND swallows.
+
+    All catch blocks at lib/actions/leads.ts:329-337 + L379-387
+    print console.warn/error but return {success: true} regardless.
+    If a row IS being inserted but the operator only checks for
+    email and sees none, they perceive "no lead, no email" even
+    though leads ARE persisting.
+
+    DIAGNOSIS PROOF needed:
+      Query the leads table for the operator's test contact_email
+      AFTER they submit. If a row exists, R3-Possibility-3 is the
+      actual issue (lead works, email fails silently — which we
+      eliminated send_from = NULL for; the throw would have to be
+      something else).
+
+  POSSIBILITY 4 — Vercel deploy hasn't rolled out e79c670.
+
+    Vercel sometimes serves a previous build for a few minutes
+    after the new build is "ready" depending on edge cache + region.
+    If the operator submitted within that window, they'd hit the
+    old middleware → header missing → submitLeadFromForm returns
+    success:false. Once full rollout completes, retest would
+    succeed.
+
+    DIAGNOSIS PROOF: operator confirms which commit SHA is in the
+    Vercel "Production" row of the deployment list AND the time
+    they tested.
+
+  ▶ R3 VERDICT: cannot pinpoint a specific downstream failure from
+    code + DB alone. Four candidate failure surfaces enumerated
+    above. Resolution requires: operator's devtools console output
+    on a failed submit, OR the leads-table query for their test
+    contact_email post-submit, OR Vercel Functions log access.
+
+═══════════════════════════════════════════════════════════════════════════
+R4 — RECONCILE WITH THE 9-DAY TIMELINE
+═══════════════════════════════════════════════════════════════════════════
+
+  Commits between 2026-06-07 and 2026-06-09 (the window around the
+  "last estimator lead" timestamp of 2026-06-08 08:36:49):
+
+    48dc6ee feat(estimator): property-tax similarity score band
+    02118df docs(estimator): home_adjustments migration applied clean
+    ed0cd76 fix(estimator): verifier branches policy check by polcmd
+    6ae7f55 fix(estimator): apply-runner transaction boundary
+    34e1db6 feat(estimator): per-community adjustment layer
+    f7f3c6e feat(estimator): 4-tier geo display
+    03b85f9 feat(estimator): frontage-as-gate
+    417ea2b feat(estimator): street-level matching
+    e501e0a fix(estimator): defensive subtype normalization
+    c57c2dd feat(estimator): converged Charlie tiles + competing rail
+    ecf2f94 feat(estimator): multi-unit goes from route-to-agent to priced
+    974b79c fix(estimator): add missing home-adjustment-math.js
+    e35c254 fix(leads): per-(email,tenant,listing_id) dedup
+
+  Files touched by these commits: matchers (home-comparable-matcher-
+  sales.ts), pricing-related code (home-adjustment-math.js), the
+  buyer modal (HomeEstimatorBuyerModal.tsx), HomeEstimatorResults.tsx.
+  NONE touch:
+    - middleware.ts
+    - app/actions/submitLeadFromForm.ts
+    - lib/actions/leads.ts (the createLead path)
+    - EstimatorResults.tsx
+    - the lead-create or x-tenant-id mechanism
+
+  Post-2026-06-09 commits that DID touch the relevant files:
+    f4b555c (2026-06-12)  fix(leads): property-page hero threads
+                          resolved agent id, not tenant uuid
+    b9336dc (2026-06-12)  feat(leads): full working-document
+    45f5441 (2026-06-12)  feat(leads): VIP buyer-email enrichment
+
+  All three are AFTER the 2026-06-08 last-estimator-lead timestamp.
+
+  → No commit between 2026-06-07 and 2026-06-09 plausibly killed
+    the estimator's lead-write leg. The fact that 2026-06-08 was
+    the last estimator lead probably reflects WHEN someone last
+    submitted the form, not a code change that broke it that day.
+
+  → The DEEPER question is: was the estimator's submitLeadFromForm
+    path EVER consistently working on WALLiam? If middleware always
+    only injected x-tenant-id for /api/* paths (which is the
+    pre-e79c670 status quo), submitLeadFromForm would have ALWAYS
+    failed for the estimator on WALLiam. The June 8 row might have
+    been a one-off — maybe via a non-server-action path, or during
+    a brief window where middleware behaved differently.
+
+    Looking at the 30-day estimator-source rows in RECON 2:
+      2026-06-08:  1   source='estimator'
+      2026-05-18:  2   source='walliam_estimator_vip_request' (different path: /api/walliam/estimator/vip-questionnaire/route.ts — an /api/* route, no header issue)
+    (and nothing else in 30 days)
+
+    The ONE 2026-06-08 row is anomalous. Without more telemetry I
+    can't say how it slipped through. One plausible explanation:
+    the f4b555c "property-page hero threads resolved agent id" fix
+    on 2026-06-12 was for a real bug that was breaking property-
+    page leads consistently — and there was a SEPARATE x-tenant-id
+    issue that has ALSO been silently breaking estimator leads
+    indefinitely. f4b555c addressed agentId but didn't address
+    x-tenant-id; e79c670 addresses x-tenant-id but not agentId
+    (which was already fixed). Two separate bugs, both addressed
+    in sequence.
+
+  ▶ R4 VERDICT: no commit between 2026-06-07 and 2026-06-09 is a
+    plausible cause for the estimator's lead-write leg going dead.
+    The 9-day silence is more consistent with "the path has been
+    broken indefinitely + nobody noticed because real users either
+    didn't submit or submitted via /api/* paths (VIP questionnaire,
+    contact form) that worked." e79c670 addresses the
+    x-tenant-id-for-server-actions root cause that has likely
+    affected ALL server-action lead writes from WALLiam pages
+    going back to whenever submitLeadFromForm was adopted.
+
+═══════════════════════════════════════════════════════════════════════════
+ROOT CAUSE WITH LIVE EVIDENCE
+═══════════════════════════════════════════════════════════════════════════
+
+  Direct LIVE evidence of fix-works: joinTenant succeeded in writing
+  a new lead row at 2026-06-17 09:47:32 (post-deploy of e79c670).
+  joinTenant uses `headers().get('x-tenant-id')` identically to
+  submitLeadFromForm. This proves the middleware is propagating
+  x-tenant-id to server actions on the live deployed runtime.
+
+  No live evidence of fix-fails for the estimator. The DB shows
+  zero estimator-source rows in the last 24h, but the same DB
+  shows zero estimator-source rows for the prior 9 days too. Absence
+  of a new row does not prove submitLeadFromForm is still rejecting
+  — it might prove nobody submitted the form.
+
+  Most likely scenarios in descending probability:
+    A. Operator's "still no lead" claim is based on checking the
+       DB without actually clicking submit on the form post-deploy.
+       → Action: operator clicks submit + watches for both a new
+         leads row AND the on-page setSubmitError state.
+    B. Vercel cache served a pre-e79c670 build at the moment of
+       their test. → Action: hard refresh + retest.
+    C. A client-side issue (stale bundle; agentId='' on the rendered
+       page) is silent-skipping submitLeadFromForm BEFORE the
+       header check is reached. → Action: devtools console capture.
+    D. A new downstream failure (FK, insert shape, email throw) is
+       firing AFTER the header check. → Action: server logs.
+
+  RECONFIRMING e79c670's correctness:
+    - middleware.ts new branch IS on origin/main (R1).
+    - DB write via server action POST-deploy confirmed (R2 via joinTenant).
+    - Pre-fix verify proved per-tenant host resolution (last commit's
+      verify; walliam.ca→WALLiam, aily.ca→Aily).
+    - No commit between 2026-06-07 and 2026-06-09 plausibly broke
+      this path (R4); the fix addresses a long-standing latent bug.
+
+═══════════════════════════════════════════════════════════════════════════
+RECOMMENDED NEXT-STEP DIAGNOSTICS (operator decision)
+═══════════════════════════════════════════════════════════════════════════
+
+  1. Operator submits the estimator on walliam.ca with devtools
+     console open AND Network tab recording. Capture:
+        - The "🔍 DEBUG EstimatorResults: { agentId: '...', ... }"
+          log line.
+        - Any of: "⚠ No agentId", "✅ Now creating lead...",
+          "🎯 Lead creation result:", "❌ Lead creation failed:".
+        - The setSubmitError text shown on the page (or "submitted"
+          success card).
+        - The Network row for the server-action POST: target URL,
+          status code, response body.
+
+  2. Immediately after the submit, query the live DB:
+       SELECT id, source, agent_id, tenant_id, contact_email,
+              created_at
+         FROM leads
+        WHERE contact_email = '<the test email used>'
+        ORDER BY created_at DESC LIMIT 1;
+     If a row appears: lead-write works; the perceived "no lead"
+     was wrong.
+     If no row appears: capture the client console + server logs
+     and we have a real downstream issue to diagnose.
+
+  3. Confirm Vercel "Production" deployment row points at e79c670
+     (or a descendant). If it's still on an older SHA, the fix
+     hasn't actually deployed yet.
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/estimator-postdeploy-failure.txt                ← this file
+  scripts/_estimator-postdeploy-leads-probe.js          ← R2 DB read
+
+  NO code edits. NO commit. Live runtime evidence (joinTenant lead at
+  09:47:32 post-deploy) suggests the fix IS working. The "estimator
+  still broken" claim cannot be reproduced from code or DB alone —
+  needs operator's devtools capture or server logs. Three concrete
+  next-step diagnostics enumerated above.

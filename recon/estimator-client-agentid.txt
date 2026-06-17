@@ -1,0 +1,301 @@
+W-ESTIMATOR-CLIENT-AGENTID — RECON (read-only)
+Date: 2026-06-17
+Hypothesis: the click doesn't reach the server because agentId is
+empty on the rendered client page, firing the silent skip.
+
+═══════════════════════════════════════════════════════════════════════════
+HEADLINE
+═══════════════════════════════════════════════════════════════════════════
+
+  THE SALE OFFER AND LEASE OFFER BUTTONS ARE DEAD ON walliam.ca AT
+  THE CLIENT RENDER GATE — BEFORE the server is ever called. The
+  modal that holds the submit form is gated on `agent && ...` in the
+  parent client component, and on walliam.ca (`isHero=true`) the
+  parent server component passes `agent={null}`. Click sets
+  `showOfferModal = true`, but `{showOfferModal && agent && (...)}`
+  evaluates to falsy → the modal never mounts → no form ever
+  renders → no submit ever fires → no x-tenant-id null-check ever
+  reached → 0 leads + 0 activities.
+
+  THE GET ESTIMATE BUTTON renders correctly. Its modal mount condition
+  is `{showEstimatorModal && (...)}` with NO `agent &&` qualifier,
+  and `agentId={agent?.id || walliamAgentId || ''}` resolves to
+  King Shah's UUID via the walliamAgentId fallback. The
+  HomeEstimatorResults `if (!agentId) skip` at L180 does NOT fire
+  for walliam.ca. If the operator filled and submitted the estimator
+  form, that path should reach the server.
+
+  ROOT CAUSE (Sale + Lease Offer): mismatched client gate at
+    app/property/[id]/HomePropertyPageClient.tsx:276
+        {showOfferModal && agent && (
+          <OfferInquiryModal ... agent={agent} />
+        )}
+  The `agent &&` short-circuits to null on the WALLiam hero path.
+  Either the gate should also check walliamAgentId (or read agent
+  from a hero-aware resolution helper), or OfferInquiryModal should
+  receive a resolved `agentId` string (`agent?.id || walliamAgentId
+  || ''`) instead of a full `agent` object — same pattern the
+  HomeEstimatorBuyerModal mount at L268 already uses.
+
+═══════════════════════════════════════════════════════════════════════════
+R1 — agentId PROP CHAIN (server resolve → button render)
+═══════════════════════════════════════════════════════════════════════════
+
+  THREE BUTTONS, TWO DIFFERENT MODAL MOUNT PATTERNS.
+
+  ────────────────────────────────────────────────────────────────────
+  PROP CHAIN for the GET ESTIMATE button:
+  ────────────────────────────────────────────────────────────────────
+
+    SERVER RESOLVE
+      app/property/[id]/HomePropertyPage.tsx:92    getDisplayAgentForHome(host)
+        → returns siteOwner / displayAgent  (NULL on walliam.ca custom
+                                              domain — the WALLiam tenant
+                                              doesn't have custom_domain
+                                              set on an agent row)
+      app/property/[id]/HomePropertyPage.tsx:94-103  WALLiam fallback:
+        SELECT * FROM agents WHERE tenant_id = walliamTenantId
+                              AND can_create_children = true
+        → King Shah (fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe)
+      app/property/[id]/HomePropertyPage.tsx:105    if (!agent) notFound()
+
+    PROPS PASSED TO HomePropertyPageClient
+      app/property/[id]/HomePropertyPage.tsx:308    agent={isHero ? null : agent}
+      app/property/[id]/HomePropertyPage.tsx:314    walliamAgentId={agent?.id ?? null}
+      → On WALLiam (isHero=true), the CLIENT receives:
+          agent           = null
+          walliamAgentId  = fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe  (King Shah, via fallback)
+
+    CLIENT COMPONENT GATE for HomeEstimatorBuyerModal
+      app/property/[id]/HomePropertyPageClient.tsx:263-273
+        {showEstimatorModal && (
+          <HomeEstimatorBuyerModal
+            ...
+            agentId={agent?.id || walliamAgentId || ''}    ← L268
+            ...
+          />
+        )}
+      → No `agent &&` qualifier on the mount gate.
+      → agentId on WALLiam = null || 'fafcd5b1-...' || '' = 'fafcd5b1-...'  ✓
+
+    INNER MODAL → CONTACT FORM SUBMIT
+      app/estimator/components/HomeEstimatorBuyerModal.tsx:765
+        <HomeEstimatorResults ... agentId={agentId} />
+      app/estimator/components/HomeEstimatorResults.tsx:180
+        if (!agentId) { /* skip */ }
+      → agentId on WALLiam = King Shah's UUID (truthy) → skip DOES NOT fire.
+        submitLeadFromForm + submitActivityFromForm ARE called.
+
+    NET: GET ESTIMATE button is healthy in terms of client agentId
+    threading. If the operator submitted, the path should write rows.
+
+  ────────────────────────────────────────────────────────────────────
+  PROP CHAIN for the SALE OFFER + LEASE OFFER buttons:
+  ────────────────────────────────────────────────────────────────────
+
+    SERVER RESOLVE (same as above — King Shah via WALLiam fallback)
+
+    PROPS PASSED TO HomePropertyPageClient (same as above)
+      agent           = null   (on walliam, isHero=true)
+      walliamAgentId  = King Shah's UUID
+
+    CLIENT COMPONENT GATE for OfferInquiryModal — THE BUG
+      app/property/[id]/HomePropertyPageClient.tsx:275-284
+        {/* Offer Inquiry Modal */}
+        {showOfferModal && agent && (                ← L276
+          <OfferInquiryModal
+            isOpen={showOfferModal}
+            onClose={() => setShowOfferModal(false)}
+            listing={listing}
+            buildingName={shortAddress}
+            isSale={isSale}
+            agent={agent}                            ← L283: prop is `agent`, not `agentId`
+          />
+        )}
+
+      On walliam.ca: agent=null → `showOfferModal && null` = falsy →
+      OfferInquiryModal NEVER MOUNTS.
+      → The user clicks the Sale Offer or Lease Offer button.
+      → onOfferClick fires: setShowOfferModal(true).
+      → React re-renders. The render evaluates L276:
+          showOfferModal (true) && agent (null) → falsy
+        → Modal is NOT rendered.
+      → User sees nothing happen (no modal, no form). They walk away.
+      → Zero network requests. Zero server actions. Zero rows.
+
+    INNER MODAL (would-be path, never reached)
+      components/property/OfferInquiryModal.tsx:48-96
+      Calls submitLeadFromForm + submitActivityFromForm (the same
+      pair the Get Estimate path uses). But this code is dead on
+      walliam.ca because the modal never mounts.
+
+  ▶ R1 VERDICT:
+      • GET ESTIMATE: agentId reaches the client correctly via the
+        walliamAgentId fallback at HomePropertyPageClient.tsx:268.
+        Server-action call should fire on submit.
+      • SALE OFFER + LEASE OFFER: the parent's modal gate at
+        HomePropertyPageClient.tsx:276 short-circuits on `agent &&`
+        with agent=null. The modal NEVER mounts on walliam.ca. The
+        OfferInquiryModal's own `if (!agent)` inner-check is moot
+        because the modal never renders.
+
+═══════════════════════════════════════════════════════════════════════════
+R2 — WALLIAM AGENT RESOLUTION ON THE CLIENT PATH
+═══════════════════════════════════════════════════════════════════════════
+
+  WHERE `agent` COMES FROM (server-side, in HomePropertyPage.tsx):
+    L92:   const { displayAgent } = await getDisplayAgentForHome(host)
+    L94:   let agent: any = displayAgent
+    L95-103: if (!agent), fall back to tenant default agent
+               (agents.tenant_id = WALLIAM AND can_create_children = true)
+               → King Shah
+    L105:  if (!agent) notFound()
+    Result: agent is non-null after L105 (either custom-domain match
+    or WALLiam fallback).
+
+  WHERE `agent` REACHES THE CLIENT (HomePropertyPage.tsx:308):
+    agent={isHero ? null : agent}
+    On walliam.ca:  isHero=true → client receives agent=null.
+
+  WHERE `walliamAgentId` COMES FROM (HomePropertyPage.tsx:314):
+    walliamAgentId={agent?.id ?? null}
+    → uses the OUTER agent var (King Shah) at the moment of prop
+      assignment. Since agent is non-null by L105, walliamAgentId
+      is always a real UUID on walliam.
+    Net on walliam.ca: walliamAgentId IS threaded; client receives
+      walliamAgentId='fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe'.
+
+  THE TWO USAGES IN HomePropertyPageClient:
+    • L268 (HomeEstimatorBuyerModal mount):
+        agentId={agent?.id || walliamAgentId || ''}
+        → resolves walliam to King Shah's UUID. ✓
+    • L276 (OfferInquiryModal mount gate):
+        {showOfferModal && agent && (...)}
+        → ignores walliamAgentId entirely. agent=null kills the gate. ✗
+
+  The OfferInquiryModal mount also takes `agent={agent}` (full object,
+  not `agentId={...}` string) per L283. So even if we relaxed the
+  gate, the inner modal's handler reads `agent.id` at
+  components/property/OfferInquiryModal.tsx:59 — passing agent=null
+  would crash. The mount-gate AND the prop-shape both need to be
+  walliam-aware, OR (cleaner) the modal should accept an
+  `agentId: string` like HomeEstimatorBuyerModal does.
+
+  ▶ R2 VERDICT: walliamAgentId IS correctly threaded to
+    HomePropertyPageClient (proof: HomeEstimatorBuyerModal at L268
+    successfully resolves it). It is NOT consulted by the
+    OfferInquiryModal mount gate at L276 — the gate hard-depends on
+    the nulled `agent` prop. The Sale/Lease Offer buttons are dead
+    on walliam.ca by this gate alone.
+
+═══════════════════════════════════════════════════════════════════════════
+R3 — CONFIRM THE SKIP IS THE GATE (not the header)
+═══════════════════════════════════════════════════════════════════════════
+
+  Two distinct skips in play. Different layers, different effects:
+
+  SKIP TYPE 1 — Modal-mount short-circuit (the actual bug)
+    app/property/[id]/HomePropertyPageClient.tsx:276
+        {showOfferModal && agent && (<OfferInquiryModal .../>)}
+    On walliam: agent=null → the JSX expression becomes `null` →
+    React renders NOTHING for that branch. NO inner component
+    mounts. NO form. NO submit handler bound. NO network request.
+    NO server action invocation.
+
+  SKIP TYPE 2 — agentId early-return inside the submit handler
+    (already-known, NOT the cause here)
+    app/estimator/components/HomeEstimatorResults.tsx:180
+        console.log('🔍 DEBUG EstimatorResults:', { agentId, buildingId, buildingName })
+        if (!agentId) {
+          console.log('⚠ No agentId - skipping lead creation (public context)')
+          setSubmitted(true)
+          setShowContactForm(false)
+          return
+        }
+    Same pattern in EstimatorResults.tsx:111-116.
+    This is INSIDE the form-submit handler. It fires AFTER the user
+    clicks "Submit" inside an already-rendered form. The early-return
+    prevents the server-action calls (submitActivityFromForm +
+    submitLeadFromForm) from happening. UI sets submitted=true so
+    the user sees a success state even though nothing was written.
+
+    On walliam.ca, the Get Estimate path has agentId=King Shah's
+    UUID → this skip does NOT fire. Estimator should work.
+
+  WHICH SKIP IS HITTING THE OPERATOR:
+    Operator's "0 activity, 0 lead in last 10 min" → no rows from
+    EITHER server action means the server actions were not invoked
+    at all. That rules out the L180 skip on the estimator (since
+    agentId is truthy there) AND it rules out the x-tenant-id header
+    null-check (since the server actions weren't even reached).
+
+    The only remaining explanation among the candidates we've traced
+    is SKIP TYPE 1 — the user clicked Sale Offer or Lease Offer,
+    the parent gate at L276 evaluated `showOfferModal && agent` to
+    `true && null` = falsy, the modal never rendered, and the
+    operator saw "nothing happened" and reported failure.
+
+    ALTERNATIVE for the Get Estimate path: user opened the modal
+    (which IS visible because that gate has no `agent &&`) but
+    didn't actually complete the form submit, or completed it but
+    the inner result was the post-submit success-without-write
+    state from the `if (!agentId) skip` … which doesn't apply on
+    walliam (agentId IS truthy). So Get Estimate would write rows
+    if the user submitted.
+
+  ▶ R3 VERDICT: SKIP TYPE 1 (the JSX render-gate at
+    HomePropertyPageClient.tsx:276) is the gate firing for the
+    Offer buttons. It happens BEFORE the server action call and
+    BEFORE any agentId check inside the modal. The server never
+    runs. The x-tenant-id header fix is irrelevant on this path —
+    it never gets exercised because the modal never mounts.
+
+═══════════════════════════════════════════════════════════════════════════
+ROOT CAUSE (per button)
+═══════════════════════════════════════════════════════════════════════════
+
+  SALE OFFER + LEASE OFFER buttons:
+    File: app/property/[id]/HomePropertyPageClient.tsx
+    Line: 276
+    Gate: `{showOfferModal && agent && (...)}`
+    On walliam.ca (isHero=true), parent server component passes
+    `agent={isHero ? null : agent}` at HomePropertyPage.tsx:308,
+    so the client receives `agent=null`. The mount short-circuits;
+    OfferInquiryModal never renders; no form, no submit, no server
+    action, no row in either table.
+    The mount gate must be walliam-aware — either also accept
+    walliamAgentId (mirror the Estimator's L268 fallback chain)
+    OR refactor OfferInquiryModal to take an `agentId: string`
+    prop instead of `agent: AgentObject` so the same fallback
+    pattern can be reused without keeping a full agent object.
+
+  GET ESTIMATE button:
+    File: app/property/[id]/HomePropertyPageClient.tsx
+    Line: 263-273
+    Gate: `{showEstimatorModal && (...)}`  (no agent qualifier)
+    agentId={agent?.id || walliamAgentId || ''} at L268 resolves to
+    King Shah's UUID on walliam. HomeEstimatorResults.tsx:180's
+    `if (!agentId) skip` does NOT fire. The path is healthy
+    end-to-end. If the operator submitted the form and still got 0
+    rows, suspects shift to:
+      - Did the user actually complete the multi-step modal flow
+        (auth gate / VIP / actual contact form submit)?
+      - If the user clicked outside the form mid-flow, no submit
+        fires (no server-action POST in Network tab).
+      - If the user IS authed and clicked submit and STILL got no
+        row, then we're back to the x-tenant-id question and
+        should look at server logs for
+        '[submitLeadFromForm] x-tenant-id header missing'.
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/estimator-client-agentid.txt    ← this file
+
+  NO code edits. NO commit. The Sale/Lease Offer modal-mount gate at
+  HomePropertyPageClient.tsx:276 is the bug. Its sibling at L268
+  (HomeEstimatorBuyerModal) demonstrates the correct walliam-aware
+  pattern. Operator decision needed on fix shape (relax the gate to
+  consult walliamAgentId, OR convert OfferInquiryModal to take an
+  agentId string like HomeEstimatorBuyerModal does).
