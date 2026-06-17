@@ -103,6 +103,12 @@ function buildOfferWorkingDoc(args: {
             matchTier: c.matchTier ?? null,
             sourceTier: c.sourceTier ?? null,
             temperature: c.temperature ?? null,
+            // W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-PHOTOS (2026-06-17):
+            // ComparableSale already carries `mediaUrl` populated by the
+            // matcher's attachMediaUrls (condo-comparable-matcher-sales.ts
+            // :220-234, home-comparable-matcher-sales.ts equivalent). Tile
+            // builder just needs to forward it.
+            mediaUrl: c.mediaUrl ?? null,
           })),
         }
       : null,
@@ -125,6 +131,7 @@ function buildOfferWorkingDoc(args: {
             matchTier: c.matchTier ?? null,
             sourceTier: c.sourceTier ?? null,
             temperature: c.temperature ?? null,
+            mediaUrl: c.mediaUrl ?? null,
           })),
         }
       : null,
@@ -141,6 +148,10 @@ function buildOfferWorkingDoc(args: {
             livingAreaRange: c.living_area_range ?? null,
             unitNumber: c.unit_number ?? null,
             unparsedAddress: c.unparsed_address ?? null,
+            // W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-PHOTOS (2026-06-17):
+            // competing endpoint already returns mediaUrl per listing
+            // (app/api/charlie/competing-listings/route.ts:62-71). Forward.
+            mediaUrl: c.mediaUrl ?? null,
           })),
         }
       : null,

@@ -583,7 +583,11 @@ function SellerEstimateMount({ lead }: { lead: Lead }) {
 // the same slug helper, and the same photo-or-placeholder + link
 // behavior so the admin sees ONE consistent tile shape for every
 // buyer-side listing on the lead page.
-function BuyerListingTile({ listing, kind, index }: { listing: any; kind: 'matched' | 'sold'; index: number }) {
+// W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P3 (2026-06-17): exported so the
+// Estimator tab can REUSE the exact tile shape Plan uses — same photo,
+// same slug-driven href via buildPropertySlug, same dual-shape field
+// reads, same placeholder fallback. NO new tile component.
+export function BuyerListingTile({ listing, kind, index }: { listing: any; kind: 'matched' | 'sold'; index: number }) {
   // Dual-shape reads — mirror the email + ComparableCard pattern from
   // Chunks 2 + 2b. Numerics use ?? so 0 isn't masked; strings use ||.
   const price = (listing.adjustedPrice ?? listing.adjusted_price)

@@ -122,6 +122,10 @@ export default function EstimatorResults({
               matchTier: c.matchTier ?? null,
               sourceTier: c.sourceTier ?? null,
               temperature: c.temperature ?? null,
+              // W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-PHOTOS (2026-06-17):
+              // forward mediaUrl from the matcher (populated by
+              // attachMediaUrls in condo / home matcher).
+              mediaUrl: c.mediaUrl ?? null,
             })),
           }
         : null,
@@ -144,6 +148,7 @@ export default function EstimatorResults({
               matchTier: c.matchTier ?? null,
               sourceTier: c.sourceTier ?? null,
               temperature: c.temperature ?? null,
+              mediaUrl: c.mediaUrl ?? null,
             })),
           }
         : null,
@@ -160,6 +165,9 @@ export default function EstimatorResults({
               livingAreaRange: c.living_area_range ?? null,
               unitNumber: c.unit_number ?? null,
               unparsedAddress: c.unparsed_address ?? null,
+              // W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-PHOTOS (2026-06-17):
+              // competing endpoint already returns mediaUrl per listing.
+              mediaUrl: c.mediaUrl ?? null,
             })),
           }
         : null,

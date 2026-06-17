@@ -6252,5 +6252,197 @@ W-ESTIMATOR-OFFER-FIRE-ONCE (2026-06-17) — FIX (post-verify-gate)
 
 ### Commit
 
-  W-ESTIMATOR-OFFER-FIRE-ONCE: (HOLD push — operator approval gate)
+  W-ESTIMATOR-OFFER-FIRE-ONCE: abf8a6c
+
+──────────────────────────────────────────────────────────────────────
+W-ESTIMATOR-LEAD-RENDER-AND-EMAIL (2026-06-17) — FIX
+──────────────────────────────────────────────────────────────────────
+
+### Recon findings carried over
+
+  recon/estimator-lead-render-email.txt:
+    P1 missing email sections   → DATA-ABSENT (correct gate, not code)
+    P2 tile link 404s           → wrong URL pattern in renderer
+    P2 tile photos missing      → tile builders dropped mediaUrl
+    P3 admin Estimator tab JSON → no structured renderer
+    P4 one workingDoc per lead  → leadFamily is the multi-event home;
+                                  Plan's pill-selector pattern fits
+
+### Fixes shipped this turn
+
+  P1  NOT a code fix. Engine gates at lib/estimator/condo-comparable-
+      matcher-sales.ts:306-309 (subjectTaxAnnualAmount > 500 +
+      subjectTaxYear + municipalityId) are CORRECT — same gates Get
+      Estimate uses. Operator verifies on a listing whose MLS row has
+      tax_annual_amount + tax_year populated → all 3 sections appear.
+      No file touched for P1.
+
+  P2-LINKS  lib/email/working-doc-render.ts:
+      - import { buildPropertySlug } from '@/lib/utils/property-slug'
+      - tileHref rewritten: builds `${baseUrl}/${buildPropertySlug({
+          listingKey, unparsedAddress, unitNumber, path: docType })}`
+        — the same `/<slug>` format Charlie email
+        (lib/email/charlie-plan-email-html.ts:309) + admin Plan tab
+        tiles (PlanRenderer.tsx:616-622) use, which property-slug.ts
+        header verifies returns 200 on walliam.ca (bare-MLS 404s).
+      - renderSection / renderTile / renderWorkingDocSections gained a
+        `docType: 'home' | 'condo'` arg, threaded from doc.type.
+      - idMap is now functionally unused inside the renderer (kept in
+        the signature so call sites in lib/actions/leads.ts compile
+        unchanged; safe to clean up in a follow-up turn).
+
+  P2-PHOTOS — DISCOVERY: the matcher already populates mediaUrl
+      The condo + home matchers (condo-comparable-matcher-sales.ts
+      :220-234 attachMediaUrls; home-comparable-matcher-sales.ts
+      :720-748 equivalent) ALREADY attach mediaUrl on every
+      ComparableSale returned, including the tax-match cascade
+      (matchAcrossBuildings → attachMediaUrls path). So the bug was
+      NEVER a missing media join — it was a forwarding gap in the
+      three inline workingDoc tile builders that DROPPED the field.
+
+      Three tile builders updated to forward c.mediaUrl onto the
+      persisted tile JSON:
+        components/property/OfferInquiryModal.tsx
+          buildOfferWorkingDoc — comparableSold/taxMatch/competing
+        app/estimator/components/EstimatorResults.tsx
+          buildWorkingDoc — comparableSold/taxMatch/competing
+        app/estimator/components/HomeEstimatorResults.tsx
+          buildWorkingDoc — comparableSold/taxMatch/competing
+      For competing tiles, mediaUrl comes from the
+      /api/charlie/competing-listings endpoint which already returns
+      it (app/api/charlie/competing-listings/route.ts:62-71 condo
+      inline; findActiveCompetition home path also stamps).
+
+      Matcher byte-unchanged — no new helper, no SELECT change, no
+      attachMediaUrls call site moved. Seller estimator scoring
+      (shares the matcher) is byte-identical: same row set, same
+      order, same scoring columns; the mediaUrl field has always
+      existed on ComparableSale (lib/estimator/types.ts:84) — only
+      the tile-builder forward was missing.
+
+  P3  app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx:
+      - inline render at L151-211 (raw JSON.stringify in a <pre>)
+        replaced with <EstimatorTab anchorLead={...} leadFamily={...} />
+      - new EstimatorTab component (~200 LOC):
+          * filters leadFamily for source ∈ {estimator,
+            sale_offer_inquiry, lease_offer_inquiry} carrying
+            property_details.workingDoc
+          * empty → graceful "No estimator data" with SourceContext
+          * 1+ → renders selected lead's workingDoc:
+              estimate header card (price + range + confidence +
+                source + timestamp)
+              Comparable Sold section (tiles via BuyerListingTile
+                kind='sold')
+              Tax-Matched section (tiles via BuyerListingTile
+                kind='sold')
+              Competing For Sale section (tiles via BuyerListingTile
+                kind='matched')
+          * >1 → pill selector (same shape as PlanSelector
+            PlanRenderer.tsx:185-223). Pills labeled
+            "<intent> · <subject>#<unit> · <date>". Anchor marked.
+      - BuyerListingTile reused via a NEW EXPORT from PlanRenderer
+        .tsx (1-keyword change). NO new tile component, NO duplicate.
+        Plan tab call sites unchanged; Plan tab renders bit-for-bit
+        identical output.
+
+      WorkingDocTile → BuyerListingTile shape adaptation: the tile
+      reads both snake_case and camelCase (PlanRenderer.tsx:589-622
+      dual-shape pattern). Adapters in EstimatorRender forward both
+      forms + `property_subtype` derived from docType (Detached on
+      home docs → home slug; null on condo docs → condo slug, same
+      as BuyerListingTile's existing `path` decider via
+      buildPropertySlug).
+
+### No-regression assertions (this turn)
+
+  TSC clean — full project pass.
+
+  git diff scope:
+    M  app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+    M  app/estimator/components/EstimatorResults.tsx
+    M  app/estimator/components/HomeEstimatorResults.tsx
+    M  components/admin-homes/lead-workbench/PlanRenderer.tsx
+    M  components/property/OfferInquiryModal.tsx
+    M  lib/email/working-doc-render.ts
+    + docs/W-ESTIMATOR-PATHS-TRACKER.md
+    (6 source files + tracker. Matches declared scope.)
+
+  Plan tab semantics — PlanRenderer.tsx diff is ONE keyword (`export`)
+    + 4-line comment header on BuyerListingTile. Function body byte-
+    identical. All Plan tab internal call sites (BuyerCompSold,
+    BuyerTaxMatched, TopListings) reference the same symbol; Plan
+    tab output is bit-for-bit unchanged. Operator: this is a
+    visibility modifier to ENABLE reuse, not a refactor — see the
+    spec contradiction note in the verify report.
+
+  Charlie:                     untouched (charlie-plan-email-html.ts,
+                                lib/charlie/*, app/api/chat,
+                                app/charlie)
+  Estimator matchers + tax-band query: untouched (already populated
+                                       mediaUrl)
+  Estimator actions (estimate-condo-sale.ts / estimate-home-sale.ts):
+                               untouched
+  lib/actions/leads.ts:        untouched (createLead/getOrCreateLead/
+                                dedup + buildLeadEmail call sites)
+  lib/email/lead-email-recipients.ts:  untouched
+  lib/email/hierarchy.ts:      untouched
+  middleware.ts:               untouched
+  System 1 (/admin, app/api/chat, agent_buildings):  untouched
+  Parent property pages (PropertyPageClient.tsx,
+                         HomePropertyPageClient.tsx): untouched
+  Pre-existing dirty files (charlie/municipalities,
+                            r-w-territory-master scripts):
+                                                    NOT staged
+
+  Matcher row set: byte-identical (no matcher code touched). Seller
+    estimator scoring (shares the matcher) is byte-identical.
+
+  Click-fire payload still ships FULL workingDoc — payload not
+  stripped. PASS.
+
+### Behaviour after this fix
+
+  Email tiles (agent + buyer):
+    - LINKS resolve to the descriptive walliam.ca slug → return 200
+      (same path Charlie email already uses).
+    - PHOTOS render the matcher-attached thumbnail. Listings with no
+      media row → empty cell (honest, no broken IMG).
+
+  Admin Lead Estimator tab:
+    - Pill selector when >1 estimator-source lead in family; click
+      switches the selected workingDoc.
+    - Estimate header card + Comparable Sold + Tax-Matched +
+      Competing sections, each rendering BuyerListingTile (same
+      tile shape as the Plan tab next door).
+    - Tiles carry photos (after P2-PHOTOS) + slug-driven hrefs
+      (after P2-LINKS).
+
+  Get Estimate path:
+    - Email + lead now ALSO get correct links + correct photos
+      (same shared renderer + shared tile builder). Improved, not
+      broken.
+
+  P1 verification target:
+    - Operator clicks Sale Offer on a listing whose mls_listings row
+      has tax_annual_amount + tax_year populated → email shows
+      Tax-Matched section populated (proves engine gate is
+      data-driven). Clicking on a listing without those fields →
+      Tax-Matched correctly omitted (gate behaves correctly).
+
+### Backups in place
+
+  Suffix: `W-ESTIMATOR-LEAD-RENDER-AND-EMAIL_20260617_103612`
+    lib/email/working-doc-render.ts
+    app/estimator/actions/estimate-condo-sale.ts (no-op, backed up)
+    app/estimator/actions/estimate-home-sale.ts  (no-op, backed up)
+    components/property/OfferInquiryModal.tsx
+    app/estimator/components/EstimatorResults.tsx
+    app/estimator/components/HomeEstimatorResults.tsx
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+    app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Commit
+
+  W-ESTIMATOR-LEAD-RENDER-AND-EMAIL: (HOLD push — operator approval gate)
 

@@ -20,6 +20,15 @@
 // modify existing email infrastructure.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+// W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-LINKS (2026-06-17): swap the bare-
+// UUID `/property/<id>` href for the descriptive `/<slug>` pattern that
+// walliam.ca's route actually resolves. buildPropertySlug is the SAME
+// helper Charlie's plan email (lib/email/charlie-plan-email-html.ts) and
+// the admin lead Plan tab tiles (components/admin-homes/lead-workbench/
+// PlanRenderer.tsx BuyerListingTile) already use; reusing it keeps the
+// estimator email URLs byte-equivalent to Charlie's (which are curl-
+// verified to return 200 — see property-slug.ts header).
+import { buildPropertySlug } from '@/lib/utils/property-slug'
 
 // ─── Persisted JSON shape ────────────────────────────────────────────────────
 
@@ -136,10 +145,28 @@ function escapeHtml(s: string | null | undefined): string {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-function tileHref(baseUrl: string, tile: WorkingDocTile, idMap: Record<string, string>): string | null {
-  const id = tile.id || (tile.listingKey ? idMap[tile.listingKey] : null)
-  if (!id) return null
-  return `${baseUrl}/property/${id}`
+// W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-LINKS (2026-06-17): switched from
+// bare `/property/<uuid>` (404s on walliam.ca per property-slug.ts header
+// comment — getDisplayAgentForBuilding miss on comparable buildings →
+// notFound() at app/property/[id]/page.tsx:153) to the descriptive
+// `/<slug>` pattern Charlie's email + the admin Plan tab tiles use.
+// idMap is now unused — kept in the signature so callers don't change
+// in this turn (buildLeadEmail / buildBuyerWorkingDocEmail will pass it
+// harmlessly until a follow-up turn cleans the call sites).
+function tileHref(
+  baseUrl: string,
+  tile: WorkingDocTile,
+  _idMap: Record<string, string>,
+  docType: 'home' | 'condo',
+): string | null {
+  const slug = buildPropertySlug({
+    listingKey: tile.listingKey ?? null,
+    unparsedAddress: tile.unparsedAddress ?? null,
+    unitNumber: tile.unitNumber ?? null,
+    path: docType,
+  })
+  if (!slug) return null
+  return `${baseUrl}/${slug}`
 }
 
 function tierLabel(t?: string | null): string {
@@ -157,8 +184,9 @@ function renderTile(
   baseUrl: string,
   idMap: Record<string, string>,
   priceKind: 'close' | 'list',
+  docType: 'home' | 'condo',
 ): string {
-  const href = tileHref(baseUrl, tile, idMap)
+  const href = tileHref(baseUrl, tile, idMap, docType)
   const price = priceKind === 'list' ? tile.listPrice : tile.closePrice
   const adjusted = tile.adjustedPrice && tile.adjustedPrice !== price ? tile.adjustedPrice : null
   const addr = escapeHtml(tile.unparsedAddress || 'Address unavailable')
@@ -228,9 +256,10 @@ function renderSection(
   baseUrl: string,
   idMap: Record<string, string>,
   priceKind: 'close' | 'list',
+  docType: 'home' | 'condo',
 ): string {
   if (!section || !section.tiles || section.tiles.length === 0) return ''
-  const tilesHtml = section.tiles.slice(0, 10).map(t => renderTile(t, baseUrl, idMap, priceKind)).join('')
+  const tilesHtml = section.tiles.slice(0, 10).map(t => renderTile(t, baseUrl, idMap, priceKind, docType)).join('')
   const median = section.median != null ? `Median ${fmtPrice(section.median)}` : ''
   const est = section.estimatedPrice != null ? `Section estimate ${fmtPrice(section.estimatedPrice)}` : ''
   const anchor = section.bestGeoTier ? `${tierLabel(section.bestGeoTier)} anchor` : ''
@@ -261,13 +290,16 @@ export function renderWorkingDocSections(
   opts: RenderOptions,
 ): string {
   if (!doc) return ''
+  // W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-LINKS (2026-06-17): thread the
+  // doc.type into the chain so tileHref picks home- vs condo-style slug.
+  const docType: 'home' | 'condo' = doc.type === 'home' ? 'home' : 'condo'
   const sold = renderSection(
     'Comparable Sold',
     opts.audience === 'agent'
       ? 'Recent sold comparables in the area, scored against the subject.'
       : 'Recent sold homes in your area that match your property.',
     doc.comparableSold,
-    baseUrl, idMap, 'close',
+    baseUrl, idMap, 'close', docType,
   )
   const tax = renderSection(
     'Tax-Matched',
@@ -275,7 +307,7 @@ export function renderWorkingDocSections(
       ? 'Comparables in the same property-tax band (±20%).'
       : 'Recent sales of homes paying similar property tax to yours.',
     doc.taxMatch,
-    baseUrl, idMap, 'close',
+    baseUrl, idMap, 'close', docType,
   )
   const competing = renderSection(
     'Competing For Sale',
@@ -283,7 +315,7 @@ export function renderWorkingDocSections(
       ? 'Currently active listings competing for the same buyer.'
       : 'Other homes currently for sale that buyers may compare with yours.',
     doc.competing,
-    baseUrl, idMap, 'list',
+    baseUrl, idMap, 'list', docType,
   )
   if (!sold && !tax && !competing) return ''
   return sold + tax + competing

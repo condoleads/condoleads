@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import PlanTab from '@/components/admin-homes/lead-workbench/PlanRenderer'
+import PlanTab, { BuyerListingTile } from '@/components/admin-homes/lead-workbench/PlanRenderer'
 import UserCreditPanel, { UserCreditData } from '@/components/admin-homes/lead-workbench/UserCreditPanel'
 import ActivityTab, { ActivityFeedItem } from '@/components/admin-homes/lead-workbench/ActivityTab'
 import EmailsTab, { EmailLogRow } from '@/components/admin-homes/lead-workbench/EmailsTab'
@@ -149,67 +149,7 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
         ) : tab === 'plan' ? (
           <PlanTab anchorLead={anchorLead} leadFamily={leadFamily} />
         ) : tab === 'estimator' ? (
-
-          <div className="space-y-6">
-
-            {anchorLead.source_url && (
-
-
-              <div className="text-sm">
-
-
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submitted from </span>
-
-
-                <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
-
-
-                  {anchorLead.source_url} ↗
-
-
-                </a>
-
-
-              </div>
-
-
-            )}
-
-
-            <SourceContextSection lead={anchorLead} />
-
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Estimator Submission</h3>
-
-            <div className="grid grid-cols-2 gap-x-12 gap-y-4">
-
-              <Field label="Estimated Value Min" value={anchorLead.estimated_value_min ? `${Number(anchorLead.estimated_value_min).toLocaleString()}` : null} />
-
-              <Field label="Estimated Value Max" value={anchorLead.estimated_value_max ? `${Number(anchorLead.estimated_value_max).toLocaleString()}` : null} />
-
-              <Field label="Budget Max" value={anchorLead.budget_max ? `${Number(anchorLead.budget_max).toLocaleString()}` : null} />
-
-            </div>
-
-            {anchorLead.property_details && (
-
-              <div className="mt-6">
-
-                <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Property Details</h4>
-
-                <pre className="text-xs bg-gray-50 p-3 rounded border overflow-auto whitespace-pre-wrap">{JSON.stringify(anchorLead.property_details, null, 2)}</pre>
-
-              </div>
-
-            )}
-
-            {!anchorLead.estimated_value_min && !anchorLead.estimated_value_max && !anchorLead.property_details && (
-
-              <p className="text-sm text-gray-500 italic">No estimator data captured for this lead.</p>
-
-            )}
-
-          </div>
-
+          <EstimatorTab anchorLead={anchorLead} leadFamily={leadFamily} />
         ) : tab === 'estimator_questionnaire' ? (
 
           <div className="space-y-6">
@@ -268,6 +208,253 @@ export default function LeadWorkbenchClient({ anchorLead, leadFamily, currentRol
           <PlaceholderTab name={activeTabMeta.label} phase={activeTabMeta.phase} />
         )}
       </div>
+    </div>
+  )
+}
+
+// =============================================================================
+// W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P3 (2026-06-17): EstimatorTab
+//
+// Mirrors the PlanTab pattern (components/admin-homes/lead-workbench/
+// PlanRenderer.tsx:152-183):
+//   - filter leadFamily for leads carrying an estimator workingDoc
+//   - if >1 estimator lead → pill selector across them, exactly like
+//     PlanSelector
+//   - render the selected lead's workingDoc as estimate header + 3
+//     sections (Comparable Sold / Tax-Matched / Competing) using the
+//     SAME BuyerListingTile that PlanRenderer's BuyerCompSold +
+//     BuyerTaxMatched + TopListings already use (photo + slug href via
+//     buildPropertySlug + dual-shape reads + 🏠 placeholder on no
+//     media)
+//
+// NO new tile component. We only adapt WorkingDocTile → the snake_case
+// shape BuyerListingTile expects (it already handles dual-shape).
+// =============================================================================
+const ESTIMATOR_SOURCES = new Set(['estimator', 'sale_offer_inquiry', 'lease_offer_inquiry'])
+
+function hasWorkingDoc(lead: any): boolean {
+  return !!lead?.property_details?.workingDoc && ESTIMATOR_SOURCES.has(lead.source)
+}
+
+function estimatorPillLabel(lead: any): string {
+  const wd = lead?.property_details?.workingDoc
+  const src = lead.source as string
+  const intent =
+    src === 'sale_offer_inquiry' ? 'Sale Offer' :
+    src === 'lease_offer_inquiry' ? 'Lease Offer' :
+    'Get Estimate'
+  const subj = wd?.subject?.buildingName
+    || wd?.subject?.buildingAddress
+    || (lead.property_details?.buildingName ?? '—')
+  const unit = wd?.subject?.unitNumber ? ` #${wd.subject.unitNumber}` : ''
+  const date = lead.created_at
+    ? new Date(lead.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—'
+  return `${intent} · ${subj}${unit} · ${date}`
+}
+
+function EstimatorTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily: any[] }) {
+  const estimators = (leadFamily || []).filter(hasWorkingDoc)
+  const defaultId = hasWorkingDoc(anchorLead) ? anchorLead.id : (estimators[0]?.id ?? null)
+  const [selectedId, setSelectedId] = useState<string | null>(defaultId)
+
+  if (estimators.length === 0) {
+    return (
+      <div className="space-y-6">
+        {anchorLead.source_url && (
+          <div className="text-sm">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submitted from </span>
+            <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+              {anchorLead.source_url} ↗
+            </a>
+          </div>
+        )}
+        <SourceContextSection lead={anchorLead} />
+        <p className="text-sm text-gray-500 italic">No estimator data captured for this lead family.</p>
+      </div>
+    )
+  }
+
+  const selected = estimators.find(l => l.id === selectedId) || estimators[0]
+  const wd = selected.property_details.workingDoc
+  const docType: 'home' | 'condo' = wd?.type === 'home' ? 'home' : 'condo'
+
+  return (
+    <div className="space-y-6">
+      {anchorLead.source_url && (
+        <div className="text-sm">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Submitted from </span>
+          <a href={anchorLead.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">
+            {anchorLead.source_url} ↗
+          </a>
+        </div>
+      )}
+      <SourceContextSection lead={anchorLead} />
+
+      {/* Pill selector — same shape as PlanSelector */}
+      {estimators.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 pb-3 border-b border-gray-200">
+          <span className="text-xs text-gray-500 pr-1">
+            Estimator events in family ({estimators.length}):
+          </span>
+          {estimators.map(l => {
+            const isAnchor = l.id === anchorLead.id
+            const isSelected = l.id === selected.id
+            const cls = 'px-3 py-1.5 text-xs rounded-full border transition-colors ' + (
+              isSelected
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            )
+            return (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setSelectedId(l.id)}
+                className={cls}
+              >
+                {estimatorPillLabel(l)}
+                {isAnchor && <span className="ml-1 opacity-70">(anchor)</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <EstimatorRender lead={selected} workingDoc={wd} docType={docType} />
+    </div>
+  )
+}
+
+function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc: any; docType: 'home' | 'condo' }) {
+  const subj = workingDoc?.subject || {}
+  const est = workingDoc?.estimate || {}
+  const subjectLine = [subj.buildingName, subj.buildingAddress, subj.unitNumber ? '#' + subj.unitNumber : '']
+    .filter(Boolean)
+    .join(' · ')
+  const priceFmt = (n: any) => (n != null && Number.isFinite(Number(n))
+    ? '$' + Math.round(Number(n)).toLocaleString('en-CA')
+    : '—')
+
+  // Sections — adapt the WorkingDocTile (camelCase) into the dual-shape
+  // BuyerListingTile expects. The tile reads snake_case OR camelCase, so
+  // forwarding both name forms is safe.
+  const adaptSoldTile = (t: any) => ({
+    listing_key: t.listingKey,
+    listingKey: t.listingKey,
+    unparsed_address: t.unparsedAddress,
+    unparsedAddress: t.unparsedAddress,
+    close_price: t.closePrice,
+    closePrice: t.closePrice,
+    adjusted_price: t.adjustedPrice,
+    adjustedPrice: t.adjustedPrice,
+    close_date: t.closeDate,
+    closeDate: t.closeDate,
+    bedrooms_total: t.bedrooms,
+    bedrooms: t.bedrooms,
+    bathrooms_total_integer: t.bathrooms,
+    bathrooms: t.bathrooms,
+    living_area_range: t.livingAreaRange,
+    livingAreaRange: t.livingAreaRange,
+    unit_number: t.unitNumber,
+    unitNumber: t.unitNumber,
+    days_on_market: t.daysOnMarket,
+    daysOnMarket: t.daysOnMarket,
+    property_subtype: docType === 'home' ? 'Detached' : null,  // docType decides slug shape; passing a HOME_TYPES value forces home slug
+    mediaUrl: t.mediaUrl,
+    temperature: t.temperature,
+  })
+  const adaptCompetingTile = (t: any) => ({
+    id: t.id,
+    listing_key: t.listingKey,
+    listingKey: t.listingKey,
+    unparsed_address: t.unparsedAddress,
+    unparsedAddress: t.unparsedAddress,
+    list_price: t.listPrice,
+    listPrice: t.listPrice,
+    bedrooms_total: t.bedrooms,
+    bedrooms: t.bedrooms,
+    bathrooms_total_integer: t.bathrooms,
+    bathrooms: t.bathrooms,
+    living_area_range: t.livingAreaRange,
+    livingAreaRange: t.livingAreaRange,
+    unit_number: t.unitNumber,
+    unitNumber: t.unitNumber,
+    days_on_market: t.daysOnMarket,
+    daysOnMarket: t.daysOnMarket,
+    property_subtype: docType === 'home' ? 'Detached' : null,
+    mediaUrl: t.mediaUrl,
+  })
+
+  return (
+    <div className="space-y-6">
+      {/* Estimate header — analogous to PlanRenderer's structured header card */}
+      <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Estimator working document</div>
+        {subjectLine && (
+          <div className="text-sm font-bold text-slate-900 mt-1">{subjectLine}</div>
+        )}
+        <div className="flex flex-wrap items-baseline gap-4 mt-2">
+          {est.estimatedPrice != null && (
+            <div className="text-2xl font-extrabold text-slate-900">{priceFmt(est.estimatedPrice)}</div>
+          )}
+          {est.priceRange && (
+            <div className="text-xs text-slate-500">Range {priceFmt(est.priceRange.low)} – {priceFmt(est.priceRange.high)}</div>
+          )}
+        </div>
+        {(est.confidence || est.matchTier) && (
+          <div className="text-xs text-slate-600 mt-2">
+            {est.confidence && <span>Confidence: {est.confidence}</span>}
+            {est.confidence && est.matchTier ? ' · ' : ''}
+            {est.matchTier && <span>{est.matchTier}</span>}
+          </div>
+        )}
+        <div className="text-xs text-slate-400 mt-3">
+          Source: <span className="font-semibold">{lead.source}</span>
+          {lead.created_at ? ' · ' + new Date(lead.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
+        </div>
+      </section>
+
+      {/* Comparable Sold */}
+      {Array.isArray(workingDoc?.comparableSold?.tiles) && workingDoc.comparableSold.tiles.length > 0 && (
+        <section>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            Comparable Sold ({workingDoc.comparableSold.tiles.length})
+          </h3>
+          <div className="flex flex-col gap-2">
+            {workingDoc.comparableSold.tiles.map((t: any, i: number) => (
+              <BuyerListingTile key={t.listingKey || 'cs-' + i} listing={adaptSoldTile(t)} kind="sold" index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Tax-Matched */}
+      {Array.isArray(workingDoc?.taxMatch?.tiles) && workingDoc.taxMatch.tiles.length > 0 && (
+        <section>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            Tax-Matched ({workingDoc.taxMatch.tiles.length})
+          </h3>
+          <div className="flex flex-col gap-2">
+            {workingDoc.taxMatch.tiles.map((t: any, i: number) => (
+              <BuyerListingTile key={t.listingKey || 'tm-' + i} listing={adaptSoldTile(t)} kind="sold" index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Competing For Sale */}
+      {Array.isArray(workingDoc?.competing?.tiles) && workingDoc.competing.tiles.length > 0 && (
+        <section>
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            Competing For Sale ({workingDoc.competing.tiles.length})
+          </h3>
+          <div className="flex flex-col gap-2">
+            {workingDoc.competing.tiles.map((t: any, i: number) => (
+              <BuyerListingTile key={t.listingKey || t.id || 'cp-' + i} listing={adaptCompetingTile(t)} kind="matched" index={i} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
