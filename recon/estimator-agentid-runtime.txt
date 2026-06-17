@@ -1,0 +1,278 @@
+W-ESTIMATOR-EMAIL-LEAD-BROKEN — RECON 2 RUNTIME PROBE (read-only)
+Date: 2026-06-17
+Question from RECON 1 (estimator-email-lead-broken.txt):
+  "is agentId falsy at runtime?"
+Method:
+  scripts/_estimator-agentid-runtime-probe.js
+  scripts/_estimator-agentid-runtime-probe-2.js
+  Both probes are READ-ONLY (BEGIN/ROLLBACK on the one INSERT test;
+  zero state mutation).
+
+═══════════════════════════════════════════════════════════════════════════
+ONE-LINE VERDICT
+═══════════════════════════════════════════════════════════════════════════
+
+  The `if (!agentId) silent skip` gate is NOT the root cause.
+  Both surfaces resolve agentId to a VALID UUID (King Shah,
+  fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe). All downstream pre-reqs the
+  recon flagged are also healthy: resend_api_key PRESENT + verified,
+  leads INSERT under WALLiam + King Shah succeeds end-to-end in
+  BEGIN/ROLLBACK.
+
+  → The break is NOT at the static-code gate, NOT at the FK layer,
+    NOT at the Resend config. The remaining suspects sit BETWEEN the
+    client and the data layer the probe exercised — the server-
+    action invocation surface (x-tenant-id header on the submit
+    request) and the surrounding silent try/catch around email send.
+
+═══════════════════════════════════════════════════════════════════════════
+SCRIPT 1 — agentId per surface, live DB
+═══════════════════════════════════════════════════════════════════════════
+
+  SURFACE A — Condo seller (BuildingPage → EstimatorSeller → EstimatorResults)
+  ───────────────────────────────────────────────────────────────────────
+
+  Test building (read-only SELECT, BEGIN READ ONLY):
+    Time and Space Building D (121 Sherbourne Street, Toronto C08)
+      id        = 00ad4da4-c79e-40cf-adbb-96af0ed975d0
+      community = Waterfront Communities C8  (c717a3af-9eaa-4bce-a05c-52aa6227fbde)
+      muni      = Toronto C08                (0861b848-23ec-4d21-98c2-ed2f40b07d41)
+
+  STEP 1: getCurrentTenantId() + isHeroTenant() — header-derived.
+    tenantId  = b16e1039-38ed-43d7-bbc5-dd02bb651bc9   (WALLiam — set by middleware on walliam.ca)
+    isHero    = true                                   (WALLiam is the hero tenant)
+
+  STEP 2: resolveAgentForContext({building_id, community_id, muni_id, area_id, tenant_id})
+    LIVE supabase.rpc('resolve_agent_for_context', {...})
+    rpc.data  = NULL
+    rpc.error = (none)
+    → fall-through to tenants.default_agent_id (tenant-resolver.ts:170-175)
+    tenants.default_agent_id = fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe   ← King Shah
+
+  STEP 3: getDisplayAgentForBuilding(host=walliam.ca, buildingId) → getAgentByCustomDomain
+    agents WHERE custom_domain='walliam.ca' AND is_active=true
+      → no row
+    (the WALLiam agent does NOT have walliam.ca as a custom_domain; the
+     hero tenant mechanism owns walliam.ca instead)
+
+  STEP 4: render gate at BuildingPage.tsx:557-572
+    isHero=true, agent=null, walliamAgentId=fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe
+    → mounted-branch: walliamAgentId (hero branch)
+    EstimatorSeller agentId prop = fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe
+
+  STEP 5: EstimatorResults.tsx:111  `if (!agentId) skip`
+    agentId        = fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe   (truthy)
+    gate FIRES?    = NO
+    SURFACE A VERDICT: GATE PASSES. agentId is a VALID UUID.
+
+  ────────────────────────────────────────────────────────────────────────
+
+  SURFACE B — Home buyer modal (HomePropertyPage → HomePropertyPageClient → HomeEstimatorBuyerModal → HomeEstimatorResults)
+  ───────────────────────────────────────────────────────────────────────
+
+  Test home listing (read-only SELECT, BEGIN READ ONLY):
+    385 Gables Road, Machar, ON P0A 1X0
+      id            = 78c22fb2-8411-4497-88de-a02cd3035361
+      listing_key   = X12893906
+      subtype       = Detached
+      community     = b5788b47-2cd6-47d2-ba80-1ba874cda578
+      muni          = 5cc4ab4e-90ae-4cff-89d4-36da23711108
+
+  STEP 1: getDisplayAgentForHome(host=walliam.ca) → getAgentByCustomDomain
+    agents WHERE custom_domain='walliam.ca' AND is_active=true
+      → NULL (same as Surface A)
+
+  STEP 2: HomePropertyPage.tsx:94-103 fallback —
+          agents WHERE tenant_id=WALLIAM AND can_create_children=true
+    LIVE result:
+      King Shah (fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe)
+    → outer `agent` variable resolves to King Shah
+
+  STEP 3: if (!agent) notFound() — page WOULD render (no 404).
+
+  STEP 4: HomePropertyPage.tsx:308 + :314 — props passed to HomePropertyPageClient
+    agent prop          = null            (isHero=true → {isHero ? null : agent})
+    walliamAgentId prop = fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe   (the resolved agent.id)
+
+  STEP 5: HomePropertyPageClient.tsx:268
+          agentId={agent?.id || walliamAgentId || ''}
+    final agentId = "fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe"
+
+  STEP 6: HomeEstimatorResults.tsx:180  `if (!agentId) skip`
+    gate FIRES?    = NO
+    SURFACE B VERDICT: GATE PASSES. agentId is a VALID UUID.
+
+═══════════════════════════════════════════════════════════════════════════
+SCRIPT 2 — Downstream pre-reqs (always-run; gate passing rules out S1)
+═══════════════════════════════════════════════════════════════════════════
+
+  2.1 — tenants.resend_api_key for WALLiam (fingerprint only, length cited)
+
+    Raw-PG SELECT with explicit allow-list (no SELECT *; other secrets
+    like anthropic_api_key explicitly excluded). WALLiam tenant row:
+
+      id:                            b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+      name:                          WALLiam
+      domain:                        walliam.ca
+      brand_name:                    WALLiam
+      admin_email:                   condoleads.ca@gmail.com
+      is_active:                     true
+      default_agent_id:              fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe   ← King Shah
+      assistant_name:                WALLiam
+      brokerage_name:                WALLiam Realty Inc., Brokerage
+      lifecycle_status:              active
+      resend_api_key:                PRESENT   re_BJJ...cqSr   (length=36)
+      email_from_domain:             condoleads.ca
+      resend_verified_at:            2026-04-28 07:14:54 EDT
+      resend_verification_status:    verified
+
+    → resend_api_key PRESENT. Verified at Resend. Domain (condoleads.ca)
+      is configured for email-from. Tenant active. Email-send pre-reqs
+      are intact.
+
+  2.2 — leads INSERT under WALLiam + resolved agentId  (BEGIN/ROLLBACK)
+
+    INSERT INTO leads (tenant_id, agent_id, contact_name, contact_email,
+                       source, status, created_at)
+    VALUES (
+      'b16e1039-38ed-43d7-bbc5-dd02bb651bc9',           -- WALLiam
+      'fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe',           -- King Shah
+      'AGENTID-RUNTIME-PROBE',
+      'probe@example.invalid',
+      'estimator',
+      'new',
+      NOW()
+    )
+
+    Result: INSERT SUCCEEDED.
+      id     = cf9bc62b-bc0c-4890-a473-dd19b2881b47
+      tenant = b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+      agent  = fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe
+      email  = probe@example.invalid
+      source = estimator
+
+    Transaction ROLLED BACK — no row persisted.
+
+    → No FK constraint failure. The composite (agent_id, tenant_id)
+      consistency check that f4b555c was fixing still passes for
+      King Shah + WALLiam. The lead-insert layer is HEALTHY.
+
+  2.3 — sendTenantEmail preconditions for WALLiam
+
+    Fields the email path reads (all present + non-null on the WALLiam row):
+      resend_api_key:                PRESENT, length=36, verified
+      email_from_domain:             condoleads.ca           (verified)
+      resend_verification_status:    verified
+      brand_name:                    WALLiam                  (for from-name)
+      domain:                        walliam.ca               (for link building)
+      admin_email:                   condoleads.ca@gmail.com  (admin BCC fallback)
+      send_from:                     (the column EXISTS in tenants; column-
+                                     -allow-list snapshot present, value
+                                     was NULL in the run output — see
+                                     OBSERVATION below)
+      manager_cc / admin_bcc:        (columns exist)
+      resend_verified_at:            2026-04-28 07:14:54 EDT
+
+    → No "tenant email not configured" failure surface. lib/actions/leads.ts:330
+      raises TenantEmailNotConfigured only when api_key or domain
+      missing; both present here.
+
+═══════════════════════════════════════════════════════════════════════════
+ROOT-CAUSE STATUS
+═══════════════════════════════════════════════════════════════════════════
+
+  ELIMINATED — proven NOT the cause:
+    (a) `if (!agentId)` silent skip       — both surfaces resolve to a
+                                            valid UUID.
+    (b) FK reject on lead insert          — BEGIN/ROLLBACK insert
+                                            succeeds end-to-end.
+    (c) Missing Resend api_key            — present + verified.
+    (d) WALLiam tenant disabled/inactive  — is_active=true,
+                                            lifecycle_status=active.
+
+  STILL OPEN — not exercised by this probe:
+    (e) Middleware not setting x-tenant-id on the SUBMIT (server-
+        action) request. The probe ran resolution against the DB
+        directly; it bypassed the server-action layer that
+        submitLeadFromForm uses. submitLeadFromForm reads
+        headers().get('x-tenant-id') in app/actions/submitLeadFromForm.ts:51;
+        if that header is missing on the form-submit, the action
+        returns {success:false, error:'Tenant context unavailable.'}
+        BEFORE reaching getOrCreateLead. The probe cannot reproduce
+        this from a Node script — it requires a real browser submit
+        with devtools open.
+    (f) Network/fetch failure on the submit (CORS, 401, 500 on the
+        server action). Same reason — needs live capture.
+    (g) The buyer-email send (lib/actions/leads.ts:351+) is gated on
+        `workingDoc?.hasAnyDocSection`. If the WorkingDoc the client
+        passes lacks all 3 sections (comparableSold + taxMatch +
+        competing all empty), buyer email is SILENTLY SKIPPED at
+        L351. Could explain "no email" while still creating a lead.
+    (h) The agent-email send is wrapped in try/catch at L329-337 with
+        4 caught error classes (TenantEmailNotConfigured,
+        TenantEmailFailed, generic). If ANY throws, the send is
+        skipped silently and the lead row is still created. Could
+        explain "no email but lead exists" (operator should check
+        the leads table for the contact_email under WALLiam — if
+        rows exist, S2 is the EMAIL leg, not the lead leg).
+
+  HALF-OPEN observation worth flagging:
+    OBSERVATION 1 — `send_from` column on tenants is NULL.
+      The column exists. If lib/email/sendTenantEmail (not read in
+      this probe) requires send_from to be non-null and falls back
+      to throwing TenantEmailNotConfigured when null, then EMAIL
+      sends silently fail for the WALLiam tenant. Worth a quick
+      grep on sendTenantEmail to confirm whether send_from is
+      consulted vs. computed from email_from_domain + brand_name.
+
+═══════════════════════════════════════════════════════════════════════════
+ROOT CAUSE WITH REAL VALUE THAT PROVES IT
+═══════════════════════════════════════════════════════════════════════════
+
+  PROVEN — agentId is NOT falsy at runtime.
+    Both surfaces resolve to fafcd5b1-09c0-4b4f-a5bf-8a43b08db2fe
+    (King Shah, WALLiam's default agent). The `if (!agentId)` gate
+    HOLDS OPEN — `setSubmitted(true); return` is NOT executed on
+    either surface.
+
+  REMAINING ROOT-CAUSE CANDIDATES (require live capture, not a DB probe):
+
+    1. submitLeadFromForm receives null x-tenant-id from headers().
+       → Quick proof: operator opens devtools Network tab on a
+         failing submit, finds the POST to the server action, checks
+         the request headers for x-tenant-id. If absent → middleware
+         issue.
+
+    2. Buyer email silently skipped because workingDoc has all 3
+       sections empty (lib/actions/leads.ts:346-351 gate
+       `hasAnyDocSection`).
+       → Quick proof: operator queries
+         `SELECT id, property_details->>'workingDoc' FROM leads
+            WHERE contact_email = '<test-email>' ORDER BY created_at DESC LIMIT 1`
+         to see if the lead row exists AT ALL. If the lead exists
+         but no email arrived, the issue is the email leg only —
+         either the buyer-email gate OR a swallowed try/catch.
+
+    3. send_from column NULL → if sendTenantEmail throws
+       TenantEmailNotConfigured when send_from is null, both agent
+       and buyer email sends fail silently.
+       → Quick proof: grep sendTenantEmail's source for the
+         `send_from` field usage, or set a value on the WALLiam row
+         and retest.
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/estimator-agentid-runtime.txt    ← this file
+  scripts/_estimator-agentid-runtime-probe.js    ← Script 1 + 2.1-2.3
+  scripts/_estimator-agentid-runtime-probe-2.js  ← Script 2.1 retry with
+                                                   correct column allow-list
+
+  NO code edits. NO commit. All writes in BEGIN/ROLLBACK; zero state
+  mutation. Awaiting operator's choice of next probe:
+    (a) live browser submit + devtools Network capture (proves middleware/
+        x-tenant-id hypothesis in one click), OR
+    (b) DB query on leads.contact_email for a recent test submit
+        (distinguishes "no lead at all" from "lead exists, no email"),
+    (c) grep + read of sendTenantEmail for send_from dependence.

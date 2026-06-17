@@ -5580,3 +5580,177 @@ the source-grep-is-dead status flag operator locked.
 ### Commit
 
   W-CHARLIE-INCHAT-TAXMATCH-ORDER: fe6228f
+
+
+## W-ESTIMATOR-TENANT-HEADER — server-action x-tenant-id injection (2026-06-17)
+
+### Defect
+
+  Operator reported: seller estimator (homes + condos) was generating
+  no leads + no email. RECON 1 → RECON 3 settled this from code + live DB:
+    - The estimator form-submit path uses a Next.js SERVER ACTION
+      (app/actions/submitLeadFromForm.ts) that POSTs to the PAGE
+      route, NOT /api/*.
+    - middleware.ts:108-115 injects x-tenant-id ONLY for
+      pathname.startsWith('/api') — so server-action POSTs never
+      receive the header.
+    - submitLeadFromForm.ts:50-58 reads headers().get('x-tenant-id')
+      → null → returns {success:false, error:'Tenant context
+      unavailable.'} BEFORE reaching getOrCreateLead. No lead row.
+      No email attempt.
+    - Charlie's plan-email path is an /api/* route, so it gets the
+      header and creates leads daily. The estimator's last lead
+      under WALLiam was 2026-06-08; Charlie's most recent was
+      2026-06-16 19:25:01 (same tenant, same agent, same DB).
+
+  RECON 2 ALSO flagged "send_from = NULL" as a candidate cause of the
+  email-leg failure. That observation was a PROBE SCRIPT BUG — the
+  column-allow-list regex filter excluded send_from from the printed
+  output, so it appeared empty. Direct PG SELECT confirms:
+       send_from = 'WALLiam <notifications@condoleads.ca>'
+  sendTenantEmail does NOT throw TenantEmailNotConfigured for WALLiam.
+  The "send_from = NULL" line in RECON 2 is RETRACTED. The actual break
+  is upstream of the email-send code.
+
+### Root cause
+
+  middleware.ts:108-115's x-tenant-id injection is scoped to /api/*
+  paths only. Server-action POSTs (a Next.js 14.2.5 mechanism that
+  targets the page route with a `Next-Action` request header) never
+  match this branch — so the estimator's submitLeadFromForm receives
+  null tenant context, refuses the request, no lead is created, no
+  email is sent.
+
+  PER-TENANT NOTE: this break affects EVERY tenant whose forms use
+  server actions — not WALLiam-specific. It just manifests most
+  visibly on WALLiam because WALLiam is the tenant with active
+  estimator + property-page traffic right now.
+
+### Fix (1 file, additive)
+
+  middleware.ts — append a new injection branch AFTER the existing
+  /api/* branch (which stays byte-identical):
+
+    if (
+      request.method === 'POST' &&
+      request.headers.get('next-action') &&
+      !pathname.startsWith('/api') &&
+      !pathname.startsWith('/_next') &&
+      !pathname.startsWith('/admin')
+    ) {
+      const host = request.headers.get('host') || ''
+      const tenantId = await resolveTenantIdFromHost(supabase, host)
+      if (tenantId) {
+        supabaseResponse.headers.set('x-tenant-id', tenantId)
+      }
+    }
+
+  Detection (Next.js 14.2.5):
+    Per node_modules/next/dist/client/components/app-router-headers.js:52
+      const ACTION = "Next-Action"
+    and node_modules/next/dist/esm/server/lib/server-action-request-meta.js
+      isFetchAction = Boolean(actionId !== undefined && typeof actionId === "string" && req.method === "POST")
+    Next.js gates server-action detection on (method==='POST' AND
+    next-action header non-null). The middleware branch matches the
+    same signal.
+
+  Resolution: the SAME resolveTenantIdFromHost(supabase, host) the
+  /api/* branch uses — DB-backed for unknown domains, fast-path
+  for known. Per-tenant by construction:
+    walliam.ca → b16e1039-38ed-43d7-bbc5-dd02bb651bc9 (WALLiam)
+    aily.ca    → e2619717-6401-4159-8d4c-d5f87651c8d6 (Aily)
+  ZERO hardcoded tenant ids / hostnames in the new branch (grep-
+  proven; verify SECTION 5 confirms).
+
+  Scope exclusions:
+    !startsWith('/api')   — the /api/* branch above already handled
+                             it; do not double-inject.
+    !startsWith('/_next') — Next.js internals; server actions never
+                             live there.
+    !startsWith('/admin') — System 1 isolation; the new branch must
+                             not affect S1 admin paths.
+
+### Pre-fix verify — per-tenant host resolution PROVEN
+
+  scripts/_estimator-host-resolution-probe.js, live DB:
+    walliam.ca       → b16e1039-38ed-43d7-bbc5-dd02bb651bc9   (fast-path)
+    www.walliam.ca   → b16e1039-38ed-43d7-bbc5-dd02bb651bc9   (fast-path)
+    aily.ca          → e2619717-6401-4159-8d4c-d5f87651c8d6   (DB lookup)
+    www.aily.ca      → e2619717-6401-4159-8d4c-d5f87651c8d6   (DB lookup)
+  Aily tenant row exists, active, lifecycle_status='active'.
+  Per-tenant correctness confirmed BEFORE the middleware edit.
+
+### No-regression — HARD ASSERT
+
+  /api/* branch byte-identical:
+    The 8-line if-block at middleware.ts:108-115 is unchanged.
+    SECTION 3 compares the block REGION against the pre-fix backup
+    byte-for-byte. Result: match=true.
+    → Charlie + walliam/contact + walliam/estimator/vip-questionnaire
+      keep working unchanged.
+
+  Comprehensive-site rewrite branch byte-identical:
+    The block around middleware.ts:85-106 is unchanged. SECTION 3.3
+    confirms byte-equal vs pre-fix backup.
+
+  System 1 isolation:
+    New branch excludes /admin (verify 4.1) — S1 routes never receive
+    the new injection. New branch does NOT touch /api/chat or any S1
+    file (verify 4.4).
+
+  No double-inject:
+    New branch excludes /api/* (verify 4.2). When a request hits an
+    API route, only the original /api/* branch fires.
+
+  No false-positive injection:
+    Plain POST without Next-Action header → does NOT trigger (verify
+    2.6). GET with the header → ignored (verify 2.7).
+
+### Per-tenant verify — scripts/estimator-tenant-header-verify.ts (30/30 PASS)
+
+  Section 1 — host resolution                                       5/5
+  Section 2 — middleware new-branch simulation                     10/10
+  Section 3 — /api/* + rewrite branches byte-identical             3/3
+  Section 4 — System 1 isolation                                   4/4
+  Section 5 — zero hardcoded tenant/hostname literals              6/6
+  Section 6 — edit-set identity                                    2/2
+
+  TSC: npx tsc --noEmit → exit 0
+  Pre-existing dirty (predates session, EXCLUDED from commit):
+    app/api/charlie/municipalities/route.ts
+    scripts/r-w-territory-master-p2-data-phantom-fix.js
+    scripts/r-w-territory-master-p4-check-fix.js
+
+  SUMMARY: 30 of 30 PASS.
+
+### STATUS
+
+  HEADER-INJECTION VERIFIED:
+    Server-action POSTs from walliam.ca page routes now receive
+    x-tenant-id = WALLiam id; from aily.ca, Aily id. Per-tenant
+    correctness proven via DB-backed host resolution + middleware
+    branch simulation. /api/* and comprehensive-site branches
+    byte-identical to pre-fix. S1 isolated by path exclude.
+
+  LIVE-FLOW UNVERIFIED:
+    Per source-grep-is-dead lock (CLAUDE.md), the final gate is
+    operator submitting the estimator on walliam.ca post-deploy
+    and confirming (a) a real leads row appears under the WALLiam
+    tenant + King Shah agent, (b) the agent email + buyer email
+    arrive. Aily verifiable once aily.ca DNS goes live — the fix
+    already supports Aily by construction.
+
+### Named follow-up (out of scope for this commit)
+
+  - RECON 2's "send_from = NULL" line was a probe-script regex-
+    filter bug. The recon report and RECON 3 both correct it in
+    writing. Worth a small probe-script convention note for future
+    tenant-row reads: enumerate via information_schema.columns
+    rather than name-substring filters, to avoid silently dropping
+    non-matching columns from the printout.
+
+### Commit
+
+  W-ESTIMATOR-TENANT-HEADER: <SHA-PLACEHOLDER>
+
+

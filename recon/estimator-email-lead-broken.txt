@@ -1,0 +1,457 @@
+W-ESTIMATOR-EMAIL-LEAD-BROKEN — RECON (read-only)
+Date: 2026-06-16
+Operator symptoms:
+  S1 — Homes estimator renders "old/stale code"; condos estimator renders correctly.
+  S2 — NEITHER homes nor condos estimator generates email OR creates a lead.
+  S3 — Possible regression from this session's Charlie commits.
+
+═══════════════════════════════════════════════════════════════════════════
+TL;DR
+═══════════════════════════════════════════════════════════════════════════
+
+  RECON 1  Estimator email/lead path is SEPARATE from Charlie plan-email.
+           They share the leads TABLE and sendTenantEmail helper, but
+           the call sequence is independent.
+           This session's 6 Charlie commits touched ZERO estimator files.
+           → SEPARATE-PATH. NOT a regression from this session's work.
+
+  RECON 2  S2 prime suspect: the silent `if (!agentId)` early-exit in
+           both EstimatorResults.tsx:111 AND HomeEstimatorResults.tsx:180.
+           When agentId arrives as null/'', BOTH estimator paths skip
+           submitLeadFromForm + submitActivityFromForm + email entirely
+           — only setSubmitted(true) fires. This single shared gate
+           explains "both fail identically."
+           Cannot tell from static code whether agentId is actually
+           arriving as null at runtime — needs live console capture.
+           No commit in the relevant timeline reverts f4b555c's agent-
+           id threading fix; the prop is still wired through.
+
+  RECON 3  S1 cannot be definitively root-caused from the code alone
+           without knowing which surface the operator means by "homes
+           estimator". The candidate surfaces are listed; both
+           HomeEstimatorResults + EstimatorResults were last touched in
+           the SAME commit b9336dc (2026-06-12) — not a stale-vs-fresh
+           split. The likely "old code" is one of (a) the
+           HomeEstimatorBuyerModal-based path on the home property page
+           rendering a different visual shape, (b) the home seller flow
+           routed through Charlie's SellerEstimateRunner rendering
+           SellerEstimateBlock (which has its own visual treatment),
+           or (c) there is NO dedicated home-seller standalone estimator
+           page — confirm with operator.
+
+  RECON 4  Prior fixes that targeted this exact failure mode:
+             f4b555c  "property-page hero threads resolved agent id,
+                       not tenant uuid; stop false-submit on failure"
+                       (2026-06-12) — fixed the agentId=tenantUuid bug
+                       that nullified lead inserts. STILL IN PLACE.
+             b9336dc  "full working-document in agent + buyer estimate
+                       emails; persist result on lead row" (2026-06-12)
+                       — added workingDoc enrichment to both paths.
+                       STILL IN PLACE.
+             45f5441  "complete estimator VIP buyer-email working-
+                       document enrichment (Step 3)" (2026-06-12)
+                       — VIP buyer email. STILL IN PLACE.
+           NO commit between these and HEAD touches any of the relevant
+           files (lib/actions/leads.ts, app/actions/submitLeadFromForm.ts,
+           app/estimator/*, lib/email/working-doc-render.ts).
+           → If something was working and is now broken, the break is
+              NOT from code changes after b9336dc. Suspect runtime/env
+              (x-tenant-id header, agent resolution, FK constraints).
+
+═══════════════════════════════════════════════════════════════════════════
+RECON 1 — SHARED vs SEPARATE: is the estimator path Charlie's?
+═══════════════════════════════════════════════════════════════════════════
+
+  ESTIMATOR PATH (both homes + condos):
+    Client trigger:
+      app/estimator/components/EstimatorResults.tsx:148
+        → const leadResult = await submitLeadFromForm({...})
+      app/estimator/components/HomeEstimatorResults.tsx:217
+        → const leadResult = await submitLeadFromForm({...})
+
+    Server action:
+      app/actions/submitLeadFromForm.ts:49
+        export async function submitLeadFromForm(params)
+          reads x-tenant-id from headers()
+          delegates to getOrCreateLead from '@/lib/actions/leads'
+
+    Insert + email send:
+      lib/actions/leads.ts:122  getOrCreateLead(params)
+                                  if forceNew → createLead
+      lib/actions/leads.ts:165  createLead(params)
+        L208  supabase.from('leads').insert({...}).select().single()
+        L308  sendTenantEmail({...})                  ← agent email
+        L351  buildBuyerWorkingDocEmail + sendTenantEmail ← buyer email
+
+  CHARLIE PLAN-EMAIL PATH (Charlie buyer/seller plans only):
+    Client trigger:
+      app/charlie/hooks/useCharlie.ts:530
+        → fetch('/api/charlie/plan-email', {POST, body: {sessionId, ...}})
+
+    Server route:
+      app/api/charlie/plan-email/route.ts:294
+        const { data: lead, error: leadError } =
+          await supabase.from('leads').insert({...})    ← OWN inline insert
+      app/api/charlie/plan-email/route.ts:418
+        await supabase.from('leads').update({lead_email_delivery_status: ...})
+      Then sends user-email + chain-email via sendTenantEmail in the
+      same route handler.
+
+    NOTE: Charlie plan-email does its OWN supabase.from('leads').insert
+    inline — it does NOT call getOrCreateLead or createLead from
+    lib/actions/leads.ts. The two paths share only:
+      • the `leads` TABLE (different insert sites, same destination)
+      • the sendTenantEmail helper (same email-send wrapper)
+      • the agent-resolution helpers (resolveAgentForLead, walkHierarchy)
+
+  SESSION'S CHARLIE COMMITS — what they touched, byte-evidence:
+    7214b21 buyer-narration              → app/charlie/components/ResultsPanel.tsx,
+                                           lib/charlie/buyer-narration.ts,
+                                           lib/email/charlie-plan-email-html.ts,
+                                           components/admin-homes/lead-workbench/PlanRenderer.tsx
+    9de2112 forsale-backfill             → app/api/charlie/plan-email/route.ts
+    a589f10 taxmatch-photos              → lib/estimator/tax-band-sold-query.ts,
+                                           lib/charlie/buyer-tax-match.ts,
+                                           app/charlie/components/ResultsPanel.tsx
+    06dc1bd inchat-convergence           → app/api/charlie/plan-email/route.ts,
+                                           app/charlie/hooks/useCharlie.ts,
+                                           app/charlie/components/ResultsPanel.tsx,
+                                           lib/estimator/tax-band-sold-query.ts
+    384fa51 taxmatch-hydrate             → app/charlie/hooks/useCharlie.ts,
+                                           app/charlie/components/CharlieOverlay.tsx,
+                                           app/charlie/components/ResultsPanel.tsx
+    fe6228f taxmatch-order               → app/charlie/components/ResultsPanel.tsx
+
+    `git show --stat <sha> -- app/estimator/ lib/actions/leads.ts
+      app/actions/submitLeadFromForm.ts lib/email/working-doc-render.ts`
+      → EMPTY for ALL 6 session commits.
+
+    Conclusion: this session's commits did NOT touch the estimator path
+    files. No regression from the session is possible at the code level.
+
+  ▶ RECON 1 VERDICT: SEPARATE-PATH. The estimator email/lead pipeline
+    (submitLeadFromForm → getOrCreateLead → createLead → leads.insert +
+    sendTenantEmail) is independent code from Charlie's inline plan-
+    email lead-insert. This session's commits did not touch any of
+    those files. Not a regression from the Charlie work.
+
+═══════════════════════════════════════════════════════════════════════════
+RECON 2 — S2 root cause: why BOTH estimator types fail
+═══════════════════════════════════════════════════════════════════════════
+
+  Both EstimatorResults (condos) and HomeEstimatorResults (homes) have
+  IDENTICAL submission paths. They differ only in the workingDoc.type
+  literal ("condo" vs "home") and a few visual details. Both call
+  submitActivityFromForm THEN submitLeadFromForm.
+
+  THE SHARED EARLY-EXIT — prime S2 suspect:
+
+    EstimatorResults.tsx:109-116:
+      console.log('🔍 DEBUG EstimatorResults:', { agentId, buildingId, buildingName })
+      if (!agentId) {
+        console.log('⚠ No agentId - skipping lead creation (public context)')
+        setSubmitted(true)
+        setShowContactForm(false)
+        return     ← EXITS BEFORE submitActivityFromForm + submitLeadFromForm
+      }
+
+    HomeEstimatorResults.tsx:178-185:    (BYTE-IDENTICAL gate)
+      console.log('🔍 DEBUG EstimatorResults:', { agentId, buildingId, buildingName })
+      if (!agentId) {
+        console.log('⚠ No agentId - skipping lead creation (public context)')
+        setSubmitted(true)
+        setShowContactForm(false)
+        return
+      }
+
+  When this gate fires:
+    • submitActivityFromForm NEVER runs           → no user_activities row
+    • submitLeadFromForm NEVER runs              → no leads row
+    • sendTenantEmail NEVER runs (downstream)    → no agent email, no buyer email
+    • The user sees the "submitted" success state because setSubmitted(true)
+      runs unconditionally before the return — operator's observation that
+      "neither generates email or creates a lead" but the UI looks like
+      submission succeeded.
+
+  WHERE agentId COMES FROM (condo seller path, confirmed):
+    app/[slug]/BuildingPage.tsx:557-572:
+      {agent && !isHero ? (
+        <EstimatorSeller ... agentId={agent.id} />
+      ) : isHero && walliamAgentId && tenantId ? (
+        <EstimatorSeller ... agentId={walliamAgentId} tenantId={tenantId} />
+      ) : null}
+
+    The CONDO seller estimator card does NOT render at all when both
+    `agent` (non-hero path) is null AND walliamAgentId+tenantId (hero
+    path) are missing. If it DOES render but agent.id or walliamAgentId
+    resolves to '' (empty string), the EstimatorResults gate fires.
+
+  WHERE agentId COMES FROM (home buyer modal — the closest home-side path):
+    app/property/[id]/HomePropertyPageClient.tsx:264-272:
+      <HomeEstimatorBuyerModal
+        agentId={agent?.id || walliamAgentId || ''}  ← falls back to ''
+        ...
+      />
+
+    If agent is null AND walliamAgentId is null/'', agentId=''. Empty
+    string is FALSY in JS → the `if (!agentId)` gate fires → silent
+    skip on HomeEstimatorResults submit.
+
+  CAVEAT: this recon cannot prove agentId is actually arriving as null/''
+  at runtime without live console capture. The structural shared-failure
+  point IS the `if (!agentId)` gate; the runtime ROOT (why agentId is
+  null) needs:
+    (a) operator opens devtools console on the broken page
+    (b) clicks the submit button
+    (c) reads the "🔍 DEBUG EstimatorResults: { agentId: ... }" log
+      • If agentId is '' or null → the gate fires; investigate WHY agent
+        / walliamAgentId resolved to empty (auth context, tenant context,
+        agent_geo_buildings cache miss, etc.)
+      • If agentId is a valid UUID → the gate does NOT fire; investigate
+        the next failure point (submitActivityFromForm error swallowed
+        in try/catch at L139-141 of EstimatorResults; submitLeadFromForm
+        returning {success:false} with the error message — visible in
+        setSubmitError; createLead's silent email error handlers at
+        lib/actions/leads.ts:329-337 for agent-email and L385+ for
+        buyer-email)
+
+  Could not determine from static code alone whether agentId is null in
+  the operator's session. Needs live console capture per above.
+
+  GIT BLAME on the shared step (last 10 commits, ALL the files involved):
+    lib/actions/leads.ts          last touched b9336dc  (2026-06-12)
+    app/actions/submitLeadFromForm.ts  last touched 7dd818d (older)
+    app/estimator/components/EstimatorResults.tsx       last touched b9336dc
+    app/estimator/components/HomeEstimatorResults.tsx   last touched b9336dc
+    lib/email/working-doc-render.ts  last touched in P-WORKING-DOC chain
+    app/[slug]/BuildingPage.tsx     last touched 673685b (Charlie reg-flow)
+
+    No commit in the 40-ish commits after b9336dc touched the shared
+    pipeline. No revert. The lead-create + email-send code is identical
+    to the day it was shipped.
+
+  ▶ RECON 2 VERDICT: ROOT CAUSE candidate = the silent
+    `if (!agentId)` early-exit in BOTH EstimatorResults.tsx:111 and
+    HomeEstimatorResults.tsx:180. Both estimator types share this gate
+    → both fail identically when agentId arrives null/''. CANNOT confirm
+    from static code; needs the "🔍 DEBUG EstimatorResults" console log
+    on the broken page. If agentId IS valid, next-step debugging targets
+    the silent try/catch in createLead's email-send path.
+
+═══════════════════════════════════════════════════════════════════════════
+RECON 3 — S1 "homes shows old code, condos correct"
+═══════════════════════════════════════════════════════════════════════════
+
+  AMBIGUITY: the operator's "homes estimator" could mean any of three
+  surfaces. Which one matters depends on which surface they had open
+  side-by-side with the working condo one:
+
+    (A) HOME-PROPERTY BUYER ESTIMATOR
+        app/property/[id]/HomePropertyPageClient.tsx → HomeEstimatorBuyerModal
+        → HomeEstimatorResults
+        (1,362 lines, last touched 2026-06-12 b9336dc)
+
+    (B) CONDO-PROPERTY BUYER ESTIMATOR (parallel, visible alongside (A))
+        app/property/[id]/PropertyPageClient.tsx → EstimatorBuyerModal
+        → EstimatorResults
+        (1,132 lines, last touched 2026-06-12 b9336dc)
+
+    (C) CONDO-BUILDING SELLER ESTIMATOR (the only standalone seller path
+        for condos)
+        app/[slug]/BuildingPage.tsx → EstimatorSeller → EstimatorResults
+
+    (D) HOMES SELLER — NO DEDICATED STANDALONE PAGE FOUND.
+        The grep for `<HomeEstimatorSeller`, `HomeSeller`, "estimator
+        page for homes" returns nothing. The home-seller path runs
+        through Charlie's in-chat SellerEstimateRunner →
+        SellerEstimateBlock, which is a DIFFERENT visual shape than the
+        condo standalone EstimatorResults. If the operator compared
+        Charlie's in-chat seller estimate vs the condo standalone
+        EstimatorSeller card, "looks like old code" could be the
+        different visual treatment of SellerEstimateBlock vs
+        EstimatorResults — not stale code, just a different surface.
+
+  GIT-HISTORY DIVERGENCE — what static evidence rules out:
+
+    HomeEstimatorResults.tsx: last touched 2026-06-12 b9336dc
+    EstimatorResults.tsx:     last touched 2026-06-12 b9336dc
+    SAME COMMIT, SAME TIMESTAMP — both files were updated in lockstep.
+    Neither was left behind a refactor (b9336dc was the working-doc
+    enrichment that touched BOTH simultaneously).
+
+    Recent estimator-section commits all touched home + condo together:
+      aeb36f3 "tax-match spread labeled + tier chip on Comparable Sold tiles (condo + home)"
+      df4419d "tax-match tier shown in tile body, not on photo (condo + home)"
+    Both files participate in the same change train. Static evidence
+    does NOT support a "homes-left-behind" theory.
+
+  WHAT static code DOES show as DIFFERENT between homes and condos:
+    • HomeEstimatorResults.tsx is 1,362 lines vs EstimatorResults.tsx's
+      1,132 lines — homes is LARGER. The home version includes the
+      CompetingListing type definition (imported by the condo file),
+      plus a few home-specific sections.
+    • The workingDoc.type literal: 'home' vs 'condo'.
+    • A few label-string differences (e.g., "Property requires
+      professional analysis" vs "Unit requires professional analysis").
+    • Both call submitLeadFromForm with the SAME shape.
+
+  COULD NOT DETERMINE root cause for S1 from static evidence. Needs
+  operator to clarify which surface they mean by "homes estimator
+  renders old code":
+    • Side-by-side screenshot would be conclusive.
+    • Without it, the static evidence rules out "homes file is older
+      code that was left behind" — both files were updated in
+      lockstep through 2026-06-12.
+
+  ▶ RECON 3 VERDICT: NEEDS OPERATOR DISAMBIGUATION. The static evidence
+    does NOT show one file being stale relative to the other; both
+    were last touched in the same commit on the same day. The "old
+    code" perception likely refers to a different surface or visual
+    treatment (Charlie's SellerEstimateBlock vs the standalone
+    EstimatorResults card, OR HomeEstimatorBuyerModal vs
+    EstimatorBuyerModal visual differences). Need a screenshot to
+    identify which surface is "old".
+
+═══════════════════════════════════════════════════════════════════════════
+RECON 4 — "was it fixed before?" regression timeline
+═══════════════════════════════════════════════════════════════════════════
+
+  Prior fixes that targeted estimator email + lead failures:
+
+    f4b555c (2026-06-12 11:12)  fix(leads): property-page hero threads
+                                resolved agent id, not tenant uuid;
+                                stop false-submit on failure
+      Body: "walliam.ca property pages passed the tenant UUID
+      (auto-CTA) or '' (button-modal) as agentId; both FK-rejected at
+      lead insert (single + composite agent/tenant consistency), so
+      every property-page lead was lost — zero orphans, leads never
+      persisted." Fix added walliamAgentId prop threading + stopped
+      EstimatorResults showing false success when the lead write fails.
+
+    b9336dc (2026-06-12 12:35)  feat(leads): full working-document in
+                                agent + buyer estimate emails; persist
+                                result on lead row
+      Body: workingDoc enrichment on both home + condo paths,
+      persisted on lead row. Both EstimatorResults + HomeEstimatorResults
+      last touched in this commit.
+
+    45f5441 (2026-06-12)  feat(leads): complete estimator VIP buyer-
+                          email working-document enrichment (Step 3)
+
+  Files audited for post-b9336dc regressions:
+    `git log --oneline --after="2026-06-12" -- <relevant files>`
+
+    lib/actions/leads.ts                           → no post-b9336dc commits
+    app/actions/submitLeadFromForm.ts              → last touched 7dd818d (old)
+    app/estimator/components/EstimatorResults.tsx  → no post-b9336dc commits
+    app/estimator/components/HomeEstimatorResults.tsx → no post-b9336dc commits
+    app/[slug]/BuildingPage.tsx                    → only 673685b (Charlie reg-flow
+                                                     fix in the auth gate scope —
+                                                     does NOT touch EstimatorSeller
+                                                     mount conditional)
+    app/property/[id]/HomePropertyPageClient.tsx   → walliamAgentId prop still
+                                                     present at L50/L210/L268
+    components/property/HomePropertyEstimateCTA.tsx → unchanged
+
+  Possible regression vectors NOT in code:
+    (a) MIDDLEWARE: x-tenant-id header — if middleware fails to set it
+        on certain routes, submitLeadFromForm returns {success: false,
+        error: 'Tenant context unavailable'}. Visible in console as
+        '[submitLeadFromForm] x-tenant-id header missing'.
+    (b) AGENT RESOLUTION: resolveAgentForLead at lib/actions/leads.ts:175
+        — if the RPC returns null, lead is admin-routed (still
+        inserted). Doesn't cause "no lead" symptom.
+    (c) FK CONSTRAINTS: lead insert at L208 — if agent_id violates
+        leads_agent_tenant_consistency, insert fails. f4b555c was
+        specifically a fix for this with tenantUuid as agentId. If
+        walliamAgentId resolved as the tenant UUID again (a server-side
+        regression on the resolved-agent SELECT), the insert fails
+        silently in the catch block.
+    (d) TENANT.RESEND_API_KEY: TenantEmailNotConfigured at
+        lib/actions/leads.ts:330 — if tenant.resend_api_key is null or
+        revoked, agent email is skipped silently (console.warn). Same
+        path swallows buyer email failures at L385+.
+
+  ▶ RECON 4 VERDICT: NO CODE REGRESSION between b9336dc (2026-06-12)
+    and HEAD (268eb4d, 2026-06-16) on any file in the estimator email/
+    lead pipeline. The prior fixes (f4b555c, b9336dc, 45f5441) are
+    STILL IN PLACE in the source. If the operator's "was working,
+    is now broken" claim is accurate, the regression is NOT in source
+    code committed during this period — it's likely:
+      • a Vercel build/cache artifact
+      • an environment / config / middleware change
+      • a per-tenant data state (resend_api_key revoked, agent
+        deactivation, FK constraint violation)
+      • the dev server local vs deployed state mismatch
+    Needs live console capture + DB inspection on the affected
+    tenant + Vercel deploy log review to localize.
+
+═══════════════════════════════════════════════════════════════════════════
+SUMMARY MATRIX
+═══════════════════════════════════════════════════════════════════════════
+
+  RECON   QUESTION                                          STATUS
+  ─────   ──────────────────────────────────────────────    ──────────────────
+  1       Estimator path shared with Charlie plan-email?     SEPARATE
+          Did session's Charlie commits touch estimator?     NO
+                                                             → Not a Charlie
+                                                                 regression.
+
+  2       Why do BOTH homes + condos fail email + lead?      `if (!agentId)`
+                                                             early-exit at
+                                                             EstimatorResults:111
+                                                             and HomeEstimator
+                                                             Results:180 — same
+                                                             gate, both surfaces.
+                                                             Needs live console
+                                                             log to confirm.
+
+  3       Why does homes show "old code"?                    AMBIGUOUS — static
+                                                             evidence does NOT
+                                                             show divergence;
+                                                             both files last
+                                                             touched in same
+                                                             commit (b9336dc).
+                                                             Needs operator
+                                                             screenshot to
+                                                             identify surface.
+
+  4       Was it fixed before? Did anything revert it?       Prior fixes
+                                                             (f4b555c, b9336dc,
+                                                             45f5441) STILL IN
+                                                             PLACE. NO post-
+                                                             b9336dc code change
+                                                             on the pipeline.
+                                                             Regression vector
+                                                             is NOT in code.
+
+═══════════════════════════════════════════════════════════════════════════
+RECOMMENDED NEXT STEPS (not implementation — operator decision)
+═══════════════════════════════════════════════════════════════════════════
+
+  1. Operator opens devtools console on the broken estimator page,
+     submits, and reads the "🔍 DEBUG EstimatorResults: { agentId, ... }"
+     log. PROVES or DISPROVES the agentId-null hypothesis in one click.
+
+  2. If agentId is valid, look for:
+     - "[submitLeadFromForm] x-tenant-id header missing"     (middleware)
+     - "[leads] Insert error:" with FK error message         (constraint)
+     - "[leads] tenant email not configured"                 (Resend key)
+     in the server logs (Vercel Functions tab).
+
+  3. Operator screenshots BOTH the broken homes estimator AND the
+     working condo estimator side-by-side. That identifies which surface
+     (A/B/C/D from RECON 3) we're talking about and rules out the
+     "homes file is stale" theory.
+
+  4. Optional: re-run `git log --after b9336dc --` on the pipeline files
+     to confirm no commits after the recon timestamp slipped through.
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/estimator-email-lead-broken.txt    ← this file
+
+  NO code edits. NO commit. Awaiting operator's live-console capture
+  and a side-by-side screenshot to converge on the actual root cause(s).

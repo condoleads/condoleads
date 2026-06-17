@@ -1,0 +1,62 @@
+W-ESTIMATOR-TENANT-HEADER FIX-VERIFY — 2026-06-17T09:28:27.382Z
+────────────────────────────────────────────────────────────────────────────
+SECTION 1 — per-tenant host resolution
+PASS  1.1: walliam.ca resolves to WALLiam id
+        → b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+PASS  1.2: www.walliam.ca resolves to WALLiam id
+        → b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+PASS  1.3: aily.ca resolves to Aily id (NOT WALLiam)
+        → e2619717-6401-4159-8d4c-d5f87651c8d6
+PASS  1.4: www.aily.ca resolves to Aily id
+        → e2619717-6401-4159-8d4c-d5f87651c8d6
+PASS  1.5: walliam.ca and aily.ca resolve to DIFFERENT tenant ids
+        → walliam=b16e1039-38ed-43d7-bbc5-dd02bb651bc9 aily=e2619717-6401-4159-8d4c-d5f87651c8d6
+────────────────────────────────────────────────────────────────────────────
+SECTION 2 — simulated middleware: server-action POST injection
+PASS  2.1: server-action POST from walliam.ca page route -> x-tenant-id injected
+        → tenantId=b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+PASS  2.2: injected tenantId === WALLiam id
+        → expected=b16e1039-38ed-43d7-bbc5-dd02bb651bc9 got=b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+PASS  2.3: server-action POST from aily.ca page route -> x-tenant-id injected
+        → tenantId=e2619717-6401-4159-8d4c-d5f87651c8d6
+PASS  2.4: injected tenantId === Aily id (NOT WALLiam)
+        → expected=e2619717-6401-4159-8d4c-d5f87651c8d6 got=e2619717-6401-4159-8d4c-d5f87651c8d6
+PASS  2.5: server-action POST to /[slug] (BuildingPage) on walliam.ca -> WALLiam id
+PASS  2.6: plain POST (no Next-Action header) -> branch SKIPS (no false-positive)
+        → injected=false
+PASS  2.7: GET with Next-Action header -> branch SKIPS (method gate)
+PASS  2.8: POST to /api/* SKIPS the new branch (already handled by /api/* branch)
+PASS  2.9: POST to /admin/* SKIPS the new branch (S1 isolation)
+PASS  2.10: POST to /_next/* SKIPS the new branch
+────────────────────────────────────────────────────────────────────────────
+SECTION 3 — /api/* branch byte-identical (the canonical Charlie + walliam/contact + walliam/estimator/vip-questionnaire path)
+PASS  3.1: /api/* injection block byte-identical to pre-fix
+PASS  3.2: /api/* block region byte-identical vs pre-fix backup
+        → match: true
+PASS  3.3: comprehensive-site rewrite branch byte-identical vs pre-fix
+────────────────────────────────────────────────────────────────────────────
+SECTION 4 — System 1 isolation (no /admin, no app/api/chat impact)
+PASS  4.1: new branch excludes /admin (S1 isolation)
+PASS  4.2: new branch excludes /api (no double-inject; preserves /api/* branch verbatim)
+PASS  4.3: new branch excludes /_next (Next.js internals)
+PASS  4.4: new branch does NOT touch app/api/chat or System 1 paths
+────────────────────────────────────────────────────────────────────────────
+SECTION 5 — zero hardcoded tenant ids / hostnames in new code
+PASS  5.1: new branch marker present in file
+        → marker offset=5075
+PASS  5.2: new branch CODE contains no WALLiam UUID literal
+        → excerpt: W-ESTIMATOR-TENANT-HEADER (2026-06-17): Next.js server actions. if ( request.method === 'POST' && reque
+PASS  5.3: new branch CODE contains no Aily UUID literal
+PASS  5.4: new branch CODE contains no walliam.ca hostname literal
+PASS  5.5: new branch CODE contains no aily.ca hostname literal
+PASS  5.6: new branch CODE delegates to resolveTenantIdFromHost (host-resolved)
+────────────────────────────────────────────────────────────────────────────
+SECTION 6 — edit-set identity
+PASS  6.1: middleware.ts in M list
+        → M: app/api/charlie/municipalities/route.ts, middleware.ts, scripts/r-w-territory-master-p2-data-phantom-fix.js, scripts/r-w-territory-master-p4-check-fix.js
+PASS  6.2: no NEW unexpected source files modified
+        → pre-existing dirty excluded
+────────────────────────────────────────────────────────────────────────────
+SUMMARY: 30 PASS, 0 FAIL
+STATUS: tenant-header injection verified per-tenant + /api/* preserved + S1 isolated.
+NOTE: live verification = operator submits the estimator on walliam.ca post-deploy and confirms (a) a leads row appears and (b) email is delivered. Aily verifiable once aily.ca DNS goes live.

@@ -114,6 +114,50 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // W-ESTIMATOR-TENANT-HEADER (2026-06-17): Next.js server actions.
+  // Server actions POST to the PAGE route (e.g. /[slug], /property/[id]),
+  // NOT /api/* -- so the branch above never matches them. Without
+  // x-tenant-id, every server action that uses headers().get('x-tenant-id')
+  // (e.g. app/actions/submitLeadFromForm.ts:51) returns
+  // {success:false, error:'Tenant context unavailable.'} BEFORE the work
+  // executes. The estimator's lead-create + email-send leg has been
+  // dead since this regression -- last estimator lead under WALLiam was
+  // 2026-06-08, while Charlie (which IS an /api/* route) creates leads
+  // daily on the same tenant.
+  //
+  // Detection: Next.js 14.2.5 (per node_modules/next/dist/client/
+  // components/app-router-headers.js:52: `const ACTION = "Next-Action"`)
+  // sets the `Next-Action` request header on POST invocations from
+  // `'use server'` actions (the fetch-action path used by client->action
+  // calls). The companion checker getServerActionRequestMetadata
+  // (node_modules/next/dist/esm/server/lib/server-action-request-meta.js)
+  // gates on `method==='POST' && headers.get('next-action')`. We match
+  // the tighter signal: POST + next-action header non-null.
+  //
+  // Resolution: the SAME resolveTenantIdFromHost(supabase, host) the
+  // /api/* branch uses. Per-tenant by construction -- walliam.ca -> WALLiam
+  // id, aily.ca -> Aily id (DB-backed), zero hardcoded tenant. New
+  // tenants Just Work the moment their tenants.domain row is active.
+  //
+  // Scope: ONLY when pathname does NOT start with /api (the /api/*
+  // branch already handled it above -- do not double-inject), /_next
+  // (Next.js internals -- server actions never live there), or /admin
+  // (System 1 -- must stay isolated). All other POSTs with the
+  // Next-Action header are server-action invocations on page routes.
+  if (
+    request.method === 'POST' &&
+    request.headers.get('next-action') &&
+    !pathname.startsWith('/api') &&
+    !pathname.startsWith('/_next') &&
+    !pathname.startsWith('/admin')
+  ) {
+    const host = request.headers.get('host') || ''
+    const tenantId = await resolveTenantIdFromHost(supabase, host)
+    if (tenantId) {
+      supabaseResponse.headers.set('x-tenant-id', tenantId)
+    }
+  }
+
   return supabaseResponse
 }
 

@@ -1,0 +1,336 @@
+W-ESTIMATOR-EMAIL-LEAD-BROKEN — RECON 3 (read-only)
+Date: 2026-06-17
+Question: settle (1) the send_from / TenantEmailNotConfigured hypothesis
+          and (2) whether the estimator is even creating leads.
+Method:  code-read of sendTenantEmail.ts + the two catch blocks in
+          lib/actions/leads.ts; DB-read of leads table; code-read of
+          middleware.ts.
+Writes:  none. All probes BEGIN/ROLLBACK or pure SELECT.
+
+═══════════════════════════════════════════════════════════════════════════
+TL;DR — ONE break, not two. send_from was a RED HERRING.
+═══════════════════════════════════════════════════════════════════════════
+
+  CORRECTION TO RECON 2:
+    The "send_from = NULL" observation in RECON 2 was a PROBE SCRIPT BUG
+    — the column-allow-list filter excluded send_from from the printed
+    output, so it appeared NULL. The actual value is populated:
+       send_from = 'WALLiam <notifications@condoleads.ca>'
+    sendTenantEmail does NOT throw TenantEmailNotConfigured for WALLiam
+    on this field. Email-config preconditions are healthy.
+
+  ACTUAL ROOT CAUSE:
+    middleware.ts:109 — x-tenant-id is injected ONLY for `/api/*` paths.
+    Server actions (submitLeadFromForm) are POSTed to the PAGE route
+    (e.g. /[slug] or /property/[id]/...), which is NOT /api/*. The
+    middleware never injects x-tenant-id on those requests. So
+    submitLeadFromForm.ts:51 reads `headers().get('x-tenant-id')` →
+    null → returns `{success:false, error:'Tenant context unavailable.
+    Please refresh and try again.'}` at L53-58 — BEFORE reaching
+    getOrCreateLead. No lead created. No email attempted.
+
+    "No email" and "no lead" are downstream of the SAME break —
+    not two breaks, one. The estimator form-submit path is dead at
+    the server-action header layer.
+
+═══════════════════════════════════════════════════════════════════════════
+PROBE 1 — send_from / sendTenantEmail throw-and-swallow logic
+═══════════════════════════════════════════════════════════════════════════
+
+  EXACT LOGIC (lib/email/sendTenantEmail.ts:80-136):
+
+    L85-89:  SELECT resend_api_key, email_from_domain, send_from,
+                    resend_verification_status, brand_name
+               FROM tenants WHERE id = params.tenantId
+
+    L98-110: missing[] = []
+             if (!tenant.resend_api_key) missing.push('resend_api_key')
+             else if (!looksLikeValidResendKey(tenant.resend_api_key))
+                missing.push('resend_api_key invalid (placeholder or malformed)')
+             if (!tenant.email_from_domain) missing.push('email_from_domain')
+             if (!tenant.send_from) missing.push('send_from')             ← line 107
+             if (tenant.resend_verification_status !== 'verified')
+                missing.push('domain not verified (...)')
+
+    L111-113: if (missing.length > 0)
+                throw new TenantEmailNotConfigured(tenantId, missing)
+
+    L115:    const resend = new Resend(tenant.resend_api_key!)
+    L117-126: resend.emails.send({ from: tenant.send_from!, to, ..., html })
+
+    Decision: if `send_from` is NULL, the function THROWS
+    TenantEmailNotConfigured before reaching the Resend SDK call.
+    If `send_from` is non-null AND every other field is healthy, the
+    function PROCEEDS to send.
+
+  REAL VALUE FOR WALLIAM — settled via direct PG SELECT
+  (scripts/_estimator-tenant-sendfrom-recheck.js):
+
+    id:                          b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+    name:                        WALLiam
+    domain:                      walliam.ca
+    brand_name:                  WALLiam
+    send_from:                   WALLiam <notifications@condoleads.ca>
+    email_from_domain:           condoleads.ca
+    resend_verification_status:  verified
+    has_resend_key:              true
+    key_len:                     36
+
+    → All FIVE preflight fields healthy:
+        resend_api_key:               PRESENT (36 chars, valid prefix)
+        email_from_domain:            'condoleads.ca'
+        send_from:                    'WALLiam <notifications@condoleads.ca>'
+        resend_verification_status:   'verified'
+        missing.length === 0          → does NOT throw
+
+  RECON 2 BUG ACKNOWLEDGED:
+    scripts/_estimator-agentid-runtime-probe-2.js used a regex filter
+      /resend|email|api_key|secret|domain|brand|name|default_agent|can_send|status|active/i
+    to pick "interesting" columns. `send_from` matches NONE of those
+    tokens (no "from" in regex; no "send" in regex). It was silently
+    excluded from the printed output, leaving an empty slot. RECON 2's
+    OBSERVATION 1 read "send_from was NULL in the run output" — that
+    was a printout omission, not a NULL. The follow-up rerun above is
+    explicit on the column with no filter — value is populated.
+
+  ▶ PROBE 1 VERDICT: send_from is NOT the cause.
+    sendTenantEmail PROCEEDS (no preflight throw) for WALLiam.
+    Eliminates the "TenantEmailNotConfigured throws + swallowed"
+    hypothesis. Email path is healthy IF the upstream lead-create
+    succeeds — which it doesn't (see Probe 2).
+
+  Swallow behavior, recorded for completeness — the try/catch surfaces
+  in lib/actions/leads.ts:329-337 (agent email) and :379-387 (buyer
+  email) would have swallowed any throw if one had occurred. Same
+  pattern, both sites:
+      try { await sendTenantEmail(...) }
+      catch (err) {
+        if (err instanceof TenantEmailNotConfigured) console.warn(...)
+        else if (err instanceof TenantEmailFailed)   console.error(...)
+        else                                          console.error(...)
+      }
+  The function returns `{ success: true, lead }` at L391 regardless
+  of which catch branch fired. Client sees leadResult.success===true.
+  So IF send_from were NULL, the user would still see "submitted"
+  success while emails silently failed. This is the operator-described
+  pattern — but it's not what's happening, since send_from is set.
+
+═══════════════════════════════════════════════════════════════════════════
+PROBE 2 — leads-table evidence: ONE break or TWO?
+═══════════════════════════════════════════════════════════════════════════
+
+  Query: WALLiam-scoped, last 20 leads (any source). Live DB,
+         BEGIN READ ONLY → ROLLBACK.
+  Script: scripts/_estimator-leads-recent-probe.js
+
+  Last 20 WALLiam leads — ALL from source `walliam_charlie`:
+    created_at            source              intent    agent_id
+    2026-06-16 19:25:01   walliam_charlie     seller    fafcd5b1
+    2026-06-16 19:21:16   walliam_charlie     buyer     fafcd5b1
+    2026-06-16 17:18:04   walliam_charlie     buyer     fafcd5b1
+    2026-06-16 16:06:18   walliam_charlie     buyer     fafcd5b1
+    2026-06-16 15:56:33   walliam_charlie     seller    fafcd5b1
+    ... (15 more rows, ALL walliam_charlie, all 2026-06-16)
+
+  Estimator-sourced leads (source LIKE '%estimator%'):
+    The newest match has source = 'estimator' on 2026-06-08 08:36:49.
+    Every other "estimator" hit in the last 30 days is
+    `walliam_estimator_vip_request` — which is a DIFFERENT path
+    (app/api/walliam/estimator/vip-questionnaire/route.ts, an
+    /api/* route that goes through middleware's tenant-header
+    branch). Newest of those: 2026-05-18 15:26:53.
+
+  Daily estimator-lead counts under WALLiam, last 30 days:
+    2026-06-08:  1   (source='estimator')
+    2026-05-18:  2   (source='walliam_estimator_vip_request')
+    (everything else: zero)
+
+  Age of newest estimator-source lead vs now:
+    Newest estimator (source='estimator') created_at: 2026-06-08 08:36:49
+    Age: ~9 days
+
+  Charlie-sourced leads (cross-reference):
+    10 recent rows, all 2026-06-16, all walliam_charlie. The Charlie
+    plan-email POST path is CREATING LEADS DAILY for the same
+    WALLiam tenant. Most recent: 2026-06-16 19:25:01 (a few hours
+    before this recon was run).
+
+  ▶ PROBE 2 VERDICT:
+      Estimator's `submitLeadFromForm` path has NOT created a lead
+      under WALLiam in 8+ days (since 2026-06-08).
+      Charlie's `/api/charlie/plan-email/route.ts` path IS creating
+      leads daily — same tenant, same agent, same DB.
+      → "no lead" symptom is REAL — estimator's lead-create leg is
+         dead.
+      → "no email" symptom follows automatically: with no lead
+         created, no email attempt is made. ONE break manifests
+         as both symptoms.
+
+═══════════════════════════════════════════════════════════════════════════
+PROBE 3 — middleware x-tenant-id scope for server actions
+═══════════════════════════════════════════════════════════════════════════
+
+  Source: middleware.ts (full file scanned).
+  L30:   export async function middleware(request: NextRequest)
+  L85-106: comprehensive-site rewrite branch — sets x-tenant-id on
+           a REWRITE response when the agent.site_type==='comprehensive'.
+           Path-gated to NOT match: /admin*, /api*, /login*,
+           /reset-password*, /test-*, /_next*, /favicon*.
+           This branch sets x-tenant-id on the rewrite response —
+           only when the rewrite happens. Not the path the
+           submitLeadFromForm server action uses.
+
+  L108-115: API ROUTES — the only other x-tenant-id injection point:
+
+      // ─── API routes ─ inject tenant header ─────────────────
+      if (pathname.startsWith('/api')) {
+        const host = request.headers.get('host') || ''
+        const tenantId = await resolveTenantIdFromHost(supabase, host)
+        if (tenantId) {
+          supabaseResponse.headers.set('x-tenant-id', tenantId)
+        }
+      }
+
+      return supabaseResponse
+
+  L250-253: export const config = { matcher: [ ... ] }
+            (Standard Next.js matcher; covers all non-static routes.)
+
+  CRITICAL: x-tenant-id is set ONLY in those two scopes:
+    (a) comprehensive-site REWRITE response  (L99)  — agent-domain pages only
+    (b) /api/* paths                         (L113) — API-route requests only
+
+  Next.js SERVER ACTIONS:
+    A server action invocation POSTs to the page URL where it was
+    rendered (NOT to /api/*). Next.js identifies it via a special
+    `Next-Action` header. From the middleware's perspective, this is
+    a POST to /[slug] or /property/[id] — pathname does NOT start
+    with /api/. Branch (b) does NOT match. Branch (a) only fires
+    when the rewrite is being performed for a comprehensive-site
+    agent — which is NOT the WALLiam hero path. So neither branch
+    sets x-tenant-id on the server-action request.
+
+  Result at submitLeadFromForm.ts:50-58:
+      const headersList = headers()
+      const tenantId = headersList.get('x-tenant-id')
+      if (!tenantId) {
+        console.error('[submitLeadFromForm] x-tenant-id header missing
+                       — middleware should set this on every request')
+        return {
+          success: false,
+          error: 'Tenant context unavailable. Please refresh and try again.'
+        }
+      }
+      return await getOrCreateLead({ tenantId, ... })
+
+    `tenantId` is null → returns `{success:false}` BEFORE
+    getOrCreateLead is called. No INSERT into leads. No
+    sendTenantEmail attempt.
+
+  Client-side at EstimatorResults.tsx:256-263:
+      console.log('🎯 Lead creation result:', leadResult)
+      if (!leadResult.success) {
+        console.error('❌ Lead creation failed:', leadResult)
+        setSubmitError(leadResult.error || 'We could not submit your request right now. Please try again.')
+      } else {
+        leadSucceeded = true
+      }
+
+    The user-visible state: setSubmitError fires with the message.
+    HomeEstimatorResults.tsx:256-263 has the identical block.
+
+  Cross-reference — why CHARLIE works:
+    app/api/charlie/plan-email/route.ts is an `/api/*` route. Middleware
+    branch (b) at L109 sets x-tenant-id on it. The route's own
+    `req.headers.get('x-tenant-id')` is non-null. It does its own
+    inline `from('leads').insert` (L294) and `attemptTenantEmail` (L366).
+    Both succeed for WALLiam, matching the daily walliam_charlie lead
+    rows in Probe 2.
+
+  ▶ PROBE 3 VERDICT: middleware x-tenant-id injection scope is
+    /api/* ONLY. Server-action POSTs (which target the PAGE route,
+    not /api/*) never receive the header. submitLeadFromForm's
+    null-check at L51-58 fires, returns `{success:false}`, no lead
+    created, no email path reached. This is the SINGLE root cause
+    for both estimator symptoms.
+
+═══════════════════════════════════════════════════════════════════════════
+ROOT CAUSE — final
+═══════════════════════════════════════════════════════════════════════════
+
+  middleware.ts:108-115 injects x-tenant-id ONLY when pathname
+  starts with `/api`. Server actions (submitLeadFromForm) target the
+  page route (e.g. /[slug] or /property/[id]/...), not /api/*. The
+  estimator's submit handler reads `headers().get('x-tenant-id')` at
+  app/actions/submitLeadFromForm.ts:51, gets null, returns
+  `{success:false}` before reaching getOrCreateLead. No lead row
+  inserted; no email send attempted.
+
+  EVIDENCE:
+    (a) Probe 2: last WALLiam lead from `source='estimator'` is
+        2026-06-08 (~9 days ago). Charlie path (an /api/* route)
+        created leads as recently as 2026-06-16 19:25. Same tenant,
+        same agent, same DB — the differentiator is the route type.
+    (b) Probe 3: middleware.ts:109 makes this scope-gating
+        explicit.
+    (c) Probe 1: eliminates the send_from / TenantEmailNotConfigured
+        red herring. The email-config path is healthy IF
+        submitLeadFromForm succeeds — but it doesn't.
+
+  ELIMINATED (not the cause):
+    • agentId silent-skip gate           (RECON 2 already eliminated)
+    • FK reject on lead insert           (RECON 2 already eliminated)
+    • Missing/invalid Resend key         (RECON 2 already eliminated)
+    • send_from = NULL                   (Probe 1 above eliminates)
+    • Disabled tenant                    (RECON 2 already eliminated)
+
+  FIX SHAPE (flag only — NO code edits this turn):
+    Extend middleware.ts:109 to also inject x-tenant-id for server-
+    action POSTs to page routes. Two viable shapes:
+      (i)  Detect server-action requests by header (Next.js sets
+           `Next-Action` on these) and inject x-tenant-id on those
+           too. Tight scope, no over-injection.
+      (ii) Always inject x-tenant-id when the request resolves a
+           tenant from host. Broader scope; the header becomes
+           reliable everywhere. Slightly more attack surface to
+           audit for code that conditionally trusts the header.
+    Either preserves the existing /api/* path verbatim. Charlie /
+    walliam/contact / walliam/estimator/vip-questionnaire paths
+    keep working unchanged.
+
+═══════════════════════════════════════════════════════════════════════════
+ANSWERS to the operator's specific RECON 3 questions
+═══════════════════════════════════════════════════════════════════════════
+
+  Probe 1 — does sendTenantEmail require send_from non-null?
+    YES, it checks at sendTenantEmail.ts:107 and throws
+    TenantEmailNotConfigured if missing. BUT WALLiam's send_from is
+    NOT null (corrected reading: 'WALLiam <notifications@condoleads.ca>').
+    The throw does NOT fire for WALLiam. Emails would PROCEED if
+    submitLeadFromForm reached this code path. ❌ NOT the cause.
+
+  Probe 2 — are leads actually being created?
+    NO for the estimator path: last WALLiam lead with source='estimator'
+    was 2026-06-08; daily count is 0 for the last 8 days.
+    YES for the Charlie path: leads created daily including
+    2026-06-16 19:25:01. → ONE BREAK (lead-create AND email both
+    blocked by the same upstream null-tenant return).
+
+  Probe 3 — x-tenant-id scope for server actions?
+    middleware.ts:109 limits x-tenant-id injection to
+    `pathname.startsWith('/api')`. Server-action POSTs hit the PAGE
+    route, NOT /api/*. The header is NEVER set on those requests.
+    → submitLeadFromForm:51-58 returns `{success:false}` before
+    reaching getOrCreateLead. CONFIRMED ROOT CAUSE.
+
+═══════════════════════════════════════════════════════════════════════════
+DELIVERABLE
+═══════════════════════════════════════════════════════════════════════════
+
+  recon/estimator-sendfrom-leadsplit.txt                     ← this file
+  scripts/_estimator-leads-recent-probe.js                   ← Probe 2 DB read
+  scripts/_estimator-tenant-sendfrom-recheck.js              ← send_from recheck
+
+  NO code edits. NO commit. All probes read-only.
+  Awaiting operator approval to FIX phase: extend middleware
+  x-tenant-id injection to also cover server-action POSTs.
