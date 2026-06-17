@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
-import { updateLeadEnrichmentFromForm } from '@/app/actions/updateLeadEnrichmentFromForm'
 import { estimateHomeSale } from '@/app/estimator/actions/estimate-home-sale'
 import { estimateCondoSale } from '@/app/estimator/actions/estimate-condo-sale'
 import { useAuth } from '@/components/auth/AuthContext'
@@ -176,10 +175,10 @@ export default function OfferInquiryModal({
   })
   const [submitted, setSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): leadId captured by the
-  // fire-on-generate effect. Form-submit reads this to ENRICH the same
-  // row (no second lead, no email re-fire).
-  const [generatedLeadId, setGeneratedLeadId] = useState<string | null>(null)
+  // W-ESTIMATOR-OFFER-FIRE-ONCE (2026-06-17): in-mount fire-once ref.
+  // Kept as a fallback when sessionStorage is unavailable (SSR / privacy
+  // mode / iframe sandbox). The session-persistent guard below is the
+  // primary mechanism; this ref handles the within-mount race only.
   const generateFiredRef = useRef<string | null>(null)
 
   // Pre-fill form from auth context when available
@@ -198,32 +197,66 @@ export default function OfferInquiryModal({
   useEffect(() => {
     if (!isOpen) {
       setSubmitted(false)
-      setGeneratedLeadId(null)
       generateFiredRef.current = null
     }
   }, [isOpen])
 
-  // W-ESTIMATOR-FIRE-ON-GENERATE: silently run the estimator engine +
-  // competing-listings fetch when the modal opens. The result is NOT
-  // displayed (modal UI is unchanged); the engine runs purely to build
-  // the rich workingDoc payload + write the lead + fire the helper-
-  // driven 6-layer email fan-out.
+  // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17) / W-ESTIMATOR-OFFER-FIRE-
+  // ONCE (2026-06-17): the user CLICK on the Sale Offer / Lease Offer
+  // button is itself the conversion event. The click silently runs the
+  // estimator engine + competing-listings fetch, builds the rich
+  // workingDoc payload, writes the click-lead, and fires the helper-
+  // driven 6-layer email fan-out. The modal UI is unchanged — the
+  // estimator result is NOT displayed.
   //
   // Gates:
   //   - user.email required (anonymous users fall through to the legacy
-  //     form-submit path which still works — same as pre-fix behaviour)
+  //     form-submit path — same as pre-fix behaviour)
   //   - agentId required (public/un-routed context falls through)
   //   - listing.id required (cold render guard)
   //
-  // Fire-once via fingerprint ref so re-renders / re-mounts don't
-  // double-fire for the same (listing, agent) pair.
+  // Fire-once across mounts: session-persistent guard keyed on
+  // (listing, agent, action). sessionStorage SURVIVES the parent's
+  // mount-gate-driven unmount (showOfferModal=false → component
+  // unmounts → component remounts on reopen), so opening the same
+  // offer modal twice in one browser session does NOT produce a 2nd
+  // click-lead + 2nd email. Persists for the lifetime of the tab
+  // (session) — matches the spirit of "one click = one conversion".
+  //
+  // In-mount fallback: the useRef above still guards against React
+  // re-render double-fires within a single mount, AND covers the SSR /
+  // privacy-mode case where sessionStorage throws.
   useEffect(() => {
     if (!isOpen) return
     if (!user || !user.email) return
     if (!agentId) return
     if (!listing?.id) return
+
     const fingerprint = `${listing.id}|${agentId}|${isSale ? 's' : 'l'}`
+    // In-mount guard (cheap, no I/O).
     if (generateFiredRef.current === fingerprint) return
+
+    // Session-persistent guard. Best-effort: sessionStorage is gated on
+    // window presence + try/catch so any unavailability path (SSR,
+    // Safari private-mode quota, sandboxed iframe) downgrades to the
+    // in-mount ref guard rather than crashing.
+    const storageKey = `offer-fired:${fingerprint}`
+    let alreadyFiredThisSession = false
+    if (typeof window !== 'undefined') {
+      try {
+        if (window.sessionStorage.getItem(storageKey)) {
+          alreadyFiredThisSession = true
+        }
+      } catch {
+        // sessionStorage unavailable — fall through to ref-only guard.
+      }
+    }
+    if (alreadyFiredThisSession) {
+      // Mark the in-mount ref too so the ref-only fallback stays
+      // consistent if the user closes + reopens without unmount.
+      generateFiredRef.current = fingerprint
+      return
+    }
     generateFiredRef.current = fingerprint
 
     const userEmail = user.email
@@ -370,11 +403,10 @@ export default function OfferInquiryModal({
           },
           forceNew: true,
         })
-        if (leadResult?.success && 'lead' in leadResult && leadResult.lead?.id) {
-          setGeneratedLeadId(leadResult.lead.id)
-        } else {
+        const clickLeadOk = !!(leadResult?.success && 'lead' in leadResult && leadResult.lead?.id)
+        if (!clickLeadOk) {
           const errMsg = leadResult && 'error' in leadResult ? leadResult.error : 'unknown'
-          console.error('[OfferInquiryModal] fire-on-generate lead-write failed:', errMsg)
+          console.error('[OfferInquiryModal] click-fire lead-write failed:', errMsg)
         }
         await submitActivityFromForm({
           contactEmail: userEmail,
@@ -394,8 +426,24 @@ export default function OfferInquiryModal({
             matchTier: result?.matchTier,
           },
         })
+
+        // W-ESTIMATOR-OFFER-FIRE-ONCE (2026-06-17): persist the fire-once
+        // key ONLY after the lead-write was acknowledged. If the lead
+        // failed (transient network / DB error / agent-not-resolved),
+        // we DELIBERATELY leave the key absent so a future open in this
+        // session re-attempts. The in-mount ref still prevents within-
+        // mount double-fires during the retry. Idempotency target: one
+        // SUCCESSFUL fire per (listing, agent, action) per session.
+        if (clickLeadOk && typeof window !== 'undefined') {
+          try {
+            window.sessionStorage.setItem(storageKey, String(Date.now()))
+          } catch {
+            // best-effort — ref guard already prevents within-mount
+            // double-fire even if storage write fails.
+          }
+        }
       } catch (err) {
-        console.error('[OfferInquiryModal] fire-on-generate error:', err)
+        console.error('[OfferInquiryModal] click-fire error:', err)
       }
     })()
   // contactForm fields are intentionally OMITTED from deps — typing in
@@ -410,67 +458,57 @@ export default function OfferInquiryModal({
     setIsSubmitting(true)
 
     try {
-      // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): branch on whether the
-      // fire-on-generate effect already wrote the lead.
+      // W-ESTIMATOR-OFFER-FIRE-ONCE (2026-06-17): the click-on-button
+      // already fired its OWN lead+email (the conversion event). The
+      // form-submit here is a SEPARATE inquiry event — distinct lead,
+      // distinct email, distinct activity. forceNew=true on BOTH calls
+      // so the (email, tenant, listing) dedup key does NOT collapse the
+      // click-lead and the inquiry-lead into one row.
       //
-      // (A) Authed user, engine succeeded → enrich path:
-      //     - Update contact_name / contact_phone / message on the SAME
-      //       row via updateLeadEnrichmentFromForm. No second lead, no
-      //       second email, no second activity.
+      // This matches the operator-locked model:
+      //   - click  → click-lead   (silent, on modal open; rich workingDoc)
+      //   - submit → inquiry-lead (user-typed message; thin propertyDetails
+      //                            mirrors pre-c66366f behaviour)
       //
-      // (B) Anonymous user (no auth, engine never ran) → legacy fallback:
-      //     - Create the lead from the form-typed email with forceNew=
-      //       true. Mirrors the pre-fix behaviour exactly. Activity log
-      //       fires here too (it didn't in the authed path because the
-      //       fire-on-generate effect already logged it).
-      if (generatedLeadId) {
-        const enrich = await updateLeadEnrichmentFromForm({
-          leadId: generatedLeadId,
-          contactName: formData.name,
-          contactPhone: formData.phone,
-          message: formData.message,
-        })
-        if (!enrich.success) {
-          console.error('[OfferInquiryModal] updateLeadEnrichment failed:', enrich.error)
+      // Anonymous users (no auth) take the same path here — the click
+      // fire-on-generate effect skipped (gated on user.email), and this
+      // form-submit is their FIRST and ONLY lead/email/activity (byte-
+      // equivalent to pre-c66366f).
+      const lead = await submitLeadFromForm({
+        contactName: formData.name,
+        contactEmail: formData.email,
+        contactPhone: formData.phone,
+        source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+        agentId: agentId,
+        buildingId: buildingId || listing.building_id || undefined,
+        listingId: listing.id,
+        message: formData.message,
+        forceNew: true,
+        propertyDetails: {
+          buildingName: buildingName,
+          buildingAddress: buildingAddress || listing.unparsed_address || '',
+          unitNumber: listing.unit_number || '',
+          listPrice: listing.list_price
         }
-        setSubmitted(true)
-      } else {
-        const lead = await submitLeadFromForm({
-          contactName: formData.name,
+      })
+
+      if (lead) {
+        await submitActivityFromForm({
           contactEmail: formData.email,
-          contactPhone: formData.phone,
-          source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
           agentId: agentId,
-          buildingId: buildingId || listing.building_id || undefined,
-          listingId: listing.id,
-          message: formData.message,
-          forceNew: true,
-          propertyDetails: {
+          activityType: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
+          activityData: {
+            buildingId: buildingId || listing.building_id || '',
             buildingName: buildingName,
-            buildingAddress: buildingAddress || listing.unparsed_address || '',
+            listingId: listing.id,
+            listingAddress: listing.unparsed_address || '',
             unitNumber: listing.unit_number || '',
+            message: formData.message,
             listPrice: listing.list_price
           }
         })
-
-        if (lead) {
-          await submitActivityFromForm({
-            contactEmail: formData.email,
-            agentId: agentId,
-            activityType: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
-            activityData: {
-              buildingId: buildingId || listing.building_id || '',
-              buildingName: buildingName,
-              listingId: listing.id,
-              listingAddress: listing.unparsed_address || '',
-              unitNumber: listing.unit_number || '',
-              message: formData.message,
-              listPrice: listing.list_price
-            }
-          })
-        }
-        setSubmitted(true)
       }
+      setSubmitted(true)
     } catch (error) {
       console.error('Error submitting offer inquiry:', error)
     } finally {

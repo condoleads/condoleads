@@ -6097,5 +6097,160 @@ W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17) — FIX
 
 ### Commit
 
-  W-ESTIMATOR-FIRE-ON-GENERATE: (HOLD push — operator approval gate)
+  W-ESTIMATOR-FIRE-ON-GENERATE: c66366f
+
+──────────────────────────────────────────────────────────────────────
+W-ESTIMATOR-OFFER-FIRE-ONCE (2026-06-17) — FIX (post-verify-gate)
+──────────────────────────────────────────────────────────────────────
+
+### Verify gate (c66366f) findings re-summarised
+
+  recon/fire-on-generate-verify.txt:
+    V1 OfferInquiryModal fire-once   FAIL  (useRef resets on remount →
+                                            open→close→reopen on the
+                                            same listing duplicates the
+                                            click-lead + email; no
+                                            metering downstream)
+    V2 offer modal trigger point     FAIL/FLAG (lead+email fires on
+                                            MODAL OPEN — flagged for
+                                            operator confirmation)
+
+  Estimator paths (EstimatorResults, HomeEstimatorResults):
+    V1 PASS within-mount + metered by checkAndEstimate credit gate
+    V3 PASS one-lead within-mount + dedup
+    V4 PASS RegisterModal blocks anonymous
+    V5 PASS no-regression scope
+
+### Decision locked (operator, repeatedly)
+
+  V2 is INTENDED, not a bug. The click on Sale Offer / Lease Offer
+  IS the conversion event — it fires the click-lead + the full
+  helper-driven email fan-out with the rich workingDoc payload,
+  silently, on modal open.
+
+  V1 IS the bug. Fix scope: fire EXACTLY ONCE per (listing, agent,
+  action) per browser session — across mounts.
+
+  The form-submit is a SEPARATE inquiry event, NOT an enrichment
+  of the click-lead. It fires its OWN distinct lead + email +
+  activity (forceNew=true on both calls so the dedup key does not
+  collapse the two rows into one).
+
+  Get Estimate path is UNTOUCHED in this turn — it passed verify.
+
+### Files edited (this turn)
+
+  components/property/OfferInquiryModal.tsx:
+    - removed: `generatedLeadId` state, `setGeneratedLeadId` calls,
+      `updateLeadEnrichmentFromForm` import + usage
+    - replaced fire-once guard:
+        OLD: useRef-only fingerprint guard. Reset on every remount
+             because the parent mount gate unmounts the modal on
+             close.
+        NEW: session-persistent guard. sessionStorage key
+             `offer-fired:${listing.id}|${agentId}|${isSale?'s':'l'}`
+             checked at the TOP of the effect; if present, skip
+             the fire. After a successful lead-write, set the key
+             so the next mount in the same browser session skips.
+             The useRef stays as in-mount fallback (SSR / privacy-
+             mode / sandboxed iframe — sessionStorage may throw).
+    - rewrote handleSubmit: no more enrichment branch. The form-
+      submit always fires its OWN submitLeadFromForm
+      (forceNew=true) + submitActivityFromForm, mirroring the pre-
+      c66366f shape. Click-lead and inquiry-lead are two distinct
+      rows by design.
+
+  Untouched in this turn — explicit:
+    lib/actions/leads.ts                              (updateLeadEnrichment
+                                                       export retained;
+                                                       still used by
+                                                       EstimatorResults +
+                                                       HomeEstimatorResults
+                                                       via the wrapper)
+    app/actions/updateLeadEnrichmentFromForm.ts       (retained; still
+                                                       used by Estimator
+                                                       paths)
+    app/estimator/components/EstimatorResults.tsx     unchanged
+    app/estimator/components/HomeEstimatorResults.tsx unchanged
+    app/property/[id]/HomePropertyPageClient.tsx      unchanged
+    app/property/[id]/PropertyPageClient.tsx          unchanged
+    lib/email/working-doc-render.ts                   unchanged
+    lib/email/lead-email-recipients.ts                unchanged
+    lib/email/hierarchy.ts                            unchanged
+    middleware.ts                                     unchanged
+    System 1 (/admin, app/api/chat, agent_buildings)  unchanged
+    Charlie + seller estimator pipeline               unchanged
+    Estimator matchers + statistical calculator       unchanged
+    Pre-existing dirty files (charlie/municipalities,
+       r-w-territory-master scripts)                  NOT staged
+
+### Behaviour after this fix
+
+  Sale Offer / Lease Offer (authed):
+    1) User clicks the button → modal mounts → fire-on-open effect:
+       checks sessionStorage[offer-fired:<listing>|<agent>|<action>].
+       Key absent (first click this session) → runs estimator engine
+       silently → fetches competing listings → builds workingDoc →
+       submitLeadFromForm(forceNew=true) writes the CLICK-LEAD +
+       fires the helper-driven 6-layer email fan-out → submit-
+       ActivityFromForm logs activity_type=sale_offer_inquiry (or
+       lease_offer_inquiry) → sessionStorage key SET.
+    2) User closes the modal without submitting. Component unmounts.
+    3) User clicks Sale Offer again on the SAME listing in the same
+       browser session → modal remounts → effect runs → session-
+       Storage key PRESENT → skips the fire. No duplicate click-lead,
+       no duplicate email, no duplicate activity.
+    4) User clicks Sale Offer on a DIFFERENT listing → key for THAT
+       listing is absent → fires once for the new listing.
+    5) User fills the form + clicks Submit → handleSubmit always
+       fires its OWN submitLeadFromForm(forceNew=true) + submit-
+       ActivityFromForm → INQUIRY-LEAD created (distinct row from
+       the click-lead) + inquiry email sent to the agent.
+
+  Sale Offer / Lease Offer (anonymous):
+    - !user.email → fire-on-open effect's gate triggers → no click-
+      lead, no click-email.
+    - Form-submit handler runs the same path as before c66366f:
+      submitLeadFromForm(forceNew=true) + submitActivityFromForm,
+      with the user-typed email. Single lead + single email,
+      byte-equivalent to pre-fix behaviour.
+
+  Get Estimate (authed):
+    - UNCHANGED from c66366f-verified behaviour. Generate-fire still
+      writes a lead+email with the rich workingDoc on result-resolve
+      (metered by checkAndEstimate). Form-submit still routes
+      through the enrichment path (updateLeadEnrichmentFromForm on
+      the same row). One lead, one email per metered attempt.
+
+  Get Estimate (anonymous):
+    - UNCHANGED. RegisterModal blocks the flow before any lead-write
+      can run.
+
+### Verification (this turn)
+
+  TSC clean — full project pass.
+
+  No-regression byte-check:
+    `git status --short` shows ONLY:
+      M components/property/OfferInquiryModal.tsx
+    (Plus the pre-existing dirty files that have stayed OUT of
+    every commit: app/api/charlie/municipalities/route.ts +
+    scripts/r-w-territory-master-{p2,p4}-*.js — explicitly NOT
+    staged.)
+
+  Live-DOM verify pending — see recon/offer-fire-once-verify.txt for
+  the V1 re-test (reopen does NOT re-fire), V2 confirmation (click
+  fire-on-open is intentional, fires once), separate-inquiry two-
+  lead proof, and Get Estimate unchanged assertion.
+
+### Backups in place
+
+  components/property/OfferInquiryModal.tsx
+    .backup_W-ESTIMATOR-OFFER-FIRE-ONCE_20260617_095805
+  docs/W-ESTIMATOR-PATHS-TRACKER.md
+    .backup_W-ESTIMATOR-OFFER-FIRE-ONCE_20260617_095805
+
+### Commit
+
+  W-ESTIMATOR-OFFER-FIRE-ONCE: (HOLD push — operator approval gate)
 
