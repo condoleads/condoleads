@@ -10,6 +10,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import PlanTab, { BuyerListingTile } from '@/components/admin-homes/lead-workbench/PlanRenderer'
+// W-ESTIMATOR-TIER-RAIL (2026-06-17): shared 4-row "Confidence by Area"
+// rail extracted from CharlieLeadEstimate; reused here on the admin
+// Estimator tab to mirror the seller surface.
+import TierRail from '@/components/shared/TierRail'
+import type { TierBestSlot } from '@/lib/charlie/tier-chip'
 import UserCreditPanel, { UserCreditData } from '@/components/admin-homes/lead-workbench/UserCreditPanel'
 import ActivityTab, { ActivityFeedItem } from '@/components/admin-homes/lead-workbench/ActivityTab'
 import EmailsTab, { EmailLogRow } from '@/components/admin-homes/lead-workbench/EmailsTab'
@@ -453,6 +458,23 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
           {lead.created_at ? ' · ' + new Date(lead.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
         </div>
       </section>
+
+      {/* W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row "Confidence by Area"
+          rail above the comp/tax/competing sections, matching the seller
+          surface placement (CharlieLeadEstimate.tsx). Renders only when
+          workingDoc.tiers is present (pre-fix leads skip gracefully). */}
+      {workingDoc?.tiers && (
+        <TierRail
+          slots={{
+            platinum: workingDoc.tiers.platinum ?? null,
+            gold:     workingDoc.tiers.gold ?? null,
+            silver:   workingDoc.tiers.silver ?? null,
+            bronze:   workingDoc.tiers.bronze ?? null,
+          }}
+          bestGeoTier={(workingDoc.estimate?.bestGeoTier as TierBestSlot) || 'none'}
+          path={docType}
+        />
+      )}
 
       {/* Comparable Sold */}
       {Array.isArray(workingDoc?.comparableSold?.tiles) && workingDoc.comparableSold.tiles.length > 0 && (

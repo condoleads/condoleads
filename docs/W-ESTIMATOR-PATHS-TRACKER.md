@@ -6607,5 +6607,199 @@ W-ESTIMATOR-USERID-AND-STATS (2026-06-17) — FIX
 
 ### Commit
 
-  W-ESTIMATOR-USERID-AND-STATS: (HOLD push — operator approval gate)
+  W-ESTIMATOR-USERID-AND-STATS: 3d7e946
+
+──────────────────────────────────────────────────────────────────────
+W-ESTIMATOR-TIER-RAIL (2026-06-17) — FIX (D2 only)
+──────────────────────────────────────────────────────────────────────
+
+### Recon finding carried over
+
+  recon/estimator-tier-pills-competing.txt:
+    D2  tier rail data ABSENT from the persisted workingDoc.
+        Matcher PRODUCES tiers{platinum/gold/silver/bronze}
+        (lib/estimator/condo-comparable-matcher-sales.ts:594-606 +
+        home-comparable-matcher-sales.ts:1684); action PROPAGATES
+        it to EstimateResult.tiers (estimate-condo-sale.ts:97 /
+        estimate-home-sale.ts:184). The 3 inline workingDoc
+        builders DROP the tiers object — only bestGeoTier (the
+        winning tier name) survives.
+        Seller renderer (CharlieLeadEstimate.tsx:288-337) is
+        reusable once the workingDoc gains a `tiers` field.
+
+  D1 (pills) and D3 (competing) are deferred — they need
+  operator-side evidence (Vercel-SHA confirm + Network-tab
+  response inspection) before any code change.
+
+### Fix shipped this turn
+
+  EDIT 1 — additive `tiers` in 3 buildWorkingDoc helpers:
+
+    components/property/OfferInquiryModal.tsx:78-104
+    app/estimator/components/EstimatorResults.tsx:97-119
+    app/estimator/components/HomeEstimatorResults.tsx:161-183
+
+    Each helper now emits a top-level `tiers` field:
+      tiers: result.tiers
+        ? {
+            platinum: slot(result.tiers.platinum),
+            gold:     slot(result.tiers.gold),
+            silver:   slot(result.tiers.silver),
+            bronze:   slot(result.tiers.bronze),
+          }
+        : null
+    where `slot(x) = { count, median, range, estimatedPrice }`
+    or null when the matcher's cascade had no comparables at that
+    tier. Strictly additive — every existing field byte-unchanged.
+
+  EDIT 2 — shared TierRail React component:
+
+    components/shared/TierRail.tsx (NEW)
+      Lifted byte-equivalent from CharlieLeadEstimate.tsx:288-337
+      (the inline "Confidence by Area" 4-row rail). Props:
+        slots:       TierRailSlots
+        bestGeoTier: TierBestSlot
+        path:        'home' | 'condo'
+      Internals — TIER_META + TIER_ORDER + isBest highlight +
+      "no data" honest-empty per slot — IDENTICAL to the seller's
+      original JSX. fmtPrice copied verbatim (8 LoC).
+
+    components/dashboard/CharlieLeadEstimate.tsx
+      + import TierRail from '@/components/shared/TierRail'
+      - inline 49-line tier-rail JSX block (L288-337)
+      + <TierRail slots={view.tierRail.slots}
+                  bestGeoTier={view.tierRail.bestGeoTier}
+                  path={path} />
+      - dead local `bestTier` const (now computed inside TierRail)
+      → Charlie/seller surface rendered output BYTE-IDENTICAL.
+
+    Email surface (lib/email/working-doc-render.ts):
+      + WorkingDocTierSlot + WorkingDocTiers TS types
+      + WorkingDoc.tiers?: WorkingDocTiers | null (optional)
+      + renderTierRail(doc): string — Outlook-safe nested
+        <table>-per-row markup mirroring lib/email/charlie-plan-
+        email-html.ts:664-688 (the seller plan email's existing
+        rail). Same TIER_META + TIER_ORDER imports as the React
+        component; same per-row anchor highlight; same "no data"
+        per-slot fallback. Returns '' when doc.tiers is absent.
+      + renderEstimateHeader appends `${renderTierRail(doc)}` to
+        its returned HTML — so buildLeadEmail (agent) +
+        buildBuyerWorkingDocEmail (buyer) both render the rail
+        WITHOUT touching lib/actions/leads.ts. The rail rides
+        along with the existing renderEstimateHeader call sites.
+
+    Admin Lead Estimator tab (LeadWorkbenchClient.tsx):
+      + import TierRail + import TierBestSlot type
+      + <TierRail> inserted ABOVE the Comparable Sold section
+        (matches the seller surface placement). Adapter is
+        in-line:
+          slots: { platinum, gold, silver, bronze } from
+                  workingDoc.tiers
+          bestGeoTier: workingDoc.estimate.bestGeoTier ?? 'none'
+          path: docType (already in scope)
+      Pre-fix leads (no tiers field) → the rail render block
+      is gated on `workingDoc?.tiers` so the rail silently omits.
+
+### No-regression assertions (this turn)
+
+  TSC clean — full project pass.
+
+  git diff scope:
+    M  app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx  (D2)
+    M  app/estimator/components/EstimatorResults.tsx       (D2 tiers)
+    M  app/estimator/components/HomeEstimatorResults.tsx   (D2 tiers)
+    M  components/dashboard/CharlieLeadEstimate.tsx        (extract)
+    M  components/property/OfferInquiryModal.tsx           (D2 tiers)
+    M  lib/email/working-doc-render.ts                     (D2 email)
+    + components/shared/TierRail.tsx                       (NEW)
+    + docs/W-ESTIMATOR-PATHS-TRACKER.md
+    (6 source + 1 new + tracker. Matches declared scope.)
+
+  BYTE-UNCHANGED (verified `git diff --stat HEAD -- <path>` empty):
+    lib/actions/leads.ts                            untouched
+      (createLead/getOrCreateLead/dedup/buildLeadEmail/
+       buildBuyerWorkingDocEmail — body byte-unchanged; the rail
+       reaches both emails via renderEstimateHeader's appended
+       output, no plumbing change)
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+                                                    untouched
+    lib/estimator/condo-comparable-matcher-sales.ts untouched
+    lib/estimator/home-comparable-matcher-sales.ts  untouched
+    middleware.ts                                   untouched
+    app/api/chat                                    untouched
+    lib/email/charlie-plan-email-html.ts            untouched
+    lib/charlie/seller-estimate-view.ts             untouched
+    lib/charlie/tier-chip.ts                        untouched
+                                                    (TIER_META +
+                                                     TIER_ORDER
+                                                     re-imported by
+                                                     the new
+                                                     TierRail; the
+                                                     source file
+                                                     itself is
+                                                     unchanged)
+
+  Charlie / seller surface rendered output ──────────────────────  PASS
+    CharlieLeadEstimate.tsx diff: + import + the inline 49-line
+    tier-rail block replaced by <TierRail ...> + dead `bestTier`
+    const removed. The TierRail component's body is a byte-equivalent
+    extraction of the inline JSX (class strings, TIER_META reads,
+    isBest highlight, fmtPrice, "no data" fallback all match). Seller
+    DOM output remains identical.
+
+  49f6c68 photos + links ────────────────────────────────────────  PASS
+    Tile builders' propertyDetails.workingDoc construction unchanged
+    apart from the additive `tiers` field at the top level.
+    workingDoc tile shapes (mediaUrl + buildPropertySlug-driven
+    hrefs) untouched.
+
+  3d7e946 per-section stats + user.id thread ────────────────────  PASS
+    Both shipped behaviours fully preserved in the same files.
+
+  Get Estimate path ────────────────────────────────────────────  PASS (improved)
+    EstimatorResults + HomeEstimatorResults gain tier rail data
+    alongside the Sale Offer path. Get Estimate emails + tabs
+    now ALSO show the 4-row rail. Improved, not broken.
+
+  Pre-fix leads (no tiers field) ──────────────────────────────  PASS
+    EstimatorTab gates `{workingDoc?.tiers && (...)}` → rail skipped.
+    Email renderTierRail returns '' on `!doc.tiers` → empty insert,
+    no broken markup.
+
+  Pre-existing dirty files (NOT staged in any commit):
+    app/api/charlie/municipalities/route.ts             not staged
+    scripts/r-w-territory-master-p2-data-phantom-fix.js not staged
+    scripts/r-w-territory-master-p4-check-fix.js        not staged
+
+### Status of D1 + D3 (separate from this commit)
+
+  D1 (pill selector / user_id NULL on post-push leads):
+    Awaiting operator confirmation of Vercel Production SHA = 3d7e946
+    + browser hard-reload + DevTools check that supabase.auth.getUser()
+    returns user.id. The downstream pill-render code is correct;
+    the upstream user_id write isn't taking effect on the test browser.
+
+  D3 (1459 Stavebank competing = NULL despite 4 community + 13 muni
+    strict-match candidates):
+    Awaiting operator inspection of /api/charlie/competing-listings
+    POST response in DevTools Network tab — to distinguish
+    (1) silent fetch failure vs (2) endpoint success=false vs
+    (3) funnel arch_style/notAsIs over-pruning.
+
+  NEITHER is a tier-rail issue. NEITHER is in this commit.
+
+### Backups in place
+
+  Suffix: `W-ESTIMATOR-TIER-RAIL_20260617_142639`
+    components/property/OfferInquiryModal.tsx
+    app/estimator/components/EstimatorResults.tsx
+    app/estimator/components/HomeEstimatorResults.tsx
+    app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+    lib/email/working-doc-render.ts
+    components/dashboard/CharlieLeadEstimate.tsx
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Commit
+
+  W-ESTIMATOR-TIER-RAIL: (HOLD push — operator approval gate)
 

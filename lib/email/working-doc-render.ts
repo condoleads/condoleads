@@ -87,6 +87,27 @@ export interface WorkingDocEstimate {
   confidenceMessage?: string | null
 }
 
+// W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row "Confidence by Area" tier
+// rail data, sourced from EstimateResult.tiers (lib/estimator/types.ts
+// TierResult). The seller surface has used this shape since CV-0; the
+// estimator workingDoc now persists it too so email + admin Estimator
+// tab can render the SAME rail Charlie's plan email/dashboard render.
+// Slot is null when the matcher's cascade had no comparables at that
+// tier — renderer shows "no data" honestly per slot.
+export interface WorkingDocTierSlot {
+  count: number | null
+  median: number | null
+  range?: { low: number; high: number } | null
+  estimatedPrice?: number | null
+}
+
+export interface WorkingDocTiers {
+  platinum: WorkingDocTierSlot | null
+  gold:     WorkingDocTierSlot | null
+  silver:   WorkingDocTierSlot | null
+  bronze:   WorkingDocTierSlot | null
+}
+
 export interface WorkingDoc {
   version: 1
   type: 'home' | 'condo'
@@ -95,6 +116,9 @@ export interface WorkingDoc {
   comparableSold?: WorkingDocSection | null
   taxMatch?: WorkingDocSection | null
   competing?: WorkingDocSection | null
+  // W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row rail data. Absent on pre-
+  // fix leads → renderer + admin tab gracefully omit the rail.
+  tiers?: WorkingDocTiers | null
 }
 
 // ─── Listing id resolver (listing_key → mls_listings.id) ─────────────────────
@@ -332,6 +356,13 @@ export function renderEstimateHeader(
   const range = est.priceRange ? `${fmtPrice(est.priceRange.low)} — ${fmtPrice(est.priceRange.high)}` : null
   const subjectLine = [subj.buildingName, subj.buildingAddress, subj.unitNumber ? '#' + subj.unitNumber : ''].filter(Boolean).join(' · ')
   const heading = opts.audience === 'agent' ? 'Estimator working document' : 'Your estimate'
+  // W-ESTIMATOR-TIER-RAIL (2026-06-17): rail appended to the header
+  // output so both lib/actions/leads.ts:buildLeadEmail and
+  // :buildBuyerWorkingDocEmail pick it up via their existing
+  // renderEstimateHeader call sites — no leads.ts plumbing change
+  // needed. Returns empty string when doc.tiers is absent (pre-fix
+  // leads omit the rail gracefully).
+  const tierRail = renderTierRail(doc)
   return `
     <div style="margin-top:20px;padding:18px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
       <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(heading)}</div>
@@ -339,6 +370,74 @@ export function renderEstimateHeader(
       ${price ? `<div style="font-size:24px;color:#0f172a;font-weight:800;margin-top:8px;">${price}</div>` : ''}
       ${range ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">Range ${range}</div>` : ''}
       ${est.confidence ? `<div style="font-size:11px;color:#475569;margin-top:6px;">Confidence: ${escapeHtml(est.confidence)}${est.matchTier ? ' · ' + escapeHtml(est.matchTier) : ''}</div>` : ''}
+    </div>
+    ${tierRail}
+  `
+}
+
+// ─── Tier rail (email HTML) ──────────────────────────────────────────────────
+//
+// W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row "Confidence by Area" rail
+// mirroring Charlie's plan email (lib/email/charlie-plan-email-html.ts
+// :664-688). Outlook-safe nested <table>-per-row layout — CSS grid /
+// flexbox would not render reliably in Outlook Desktop. Same TIER_META
+// + TIER_ORDER as the seller surface (single source of truth). Slot
+// null → renders "no data" honestly per slot (mirrors the seller
+// renderer).
+//
+// `path` decides home vs condo sub-text per slot (street vs building
+// for Platinum, etc.). Mirrors the seller's TIER_META[slot].homeSub /
+// .condoSub split.
+//
+// Returns empty string when doc.tiers is absent (pre-fix leads have no
+// tiers field — graceful omission).
+
+import {
+  TIER_META as _TIER_META_EMAIL,
+  TIER_ORDER as _TIER_ORDER_EMAIL,
+  type TierBestSlot as _TierBestSlot_EMAIL,
+} from '@/lib/charlie/tier-chip'
+
+function tierRailRightCell(tr: WorkingDocTierSlot | null): string {
+  if (!tr) return `<span style="font-size:11px;color:#94a3b8;font-style:italic;">no data</span>`
+  const med = tr.median != null
+    ? '$' + Number(tr.median).toLocaleString('en-CA')
+    : '&mdash;'
+  const cnt = tr.count ?? 0
+  return `<span style="font-size:14px;font-weight:700;color:#0f172a;">${med}</span> <span style="font-size:11px;color:#64748b;margin-left:8px;">${cnt} comp${cnt === 1 ? '' : 's'}</span>`
+}
+
+export function renderTierRail(
+  doc: WorkingDoc | null | undefined,
+): string {
+  if (!doc || !doc.tiers) return ''
+  const sellerPath: 'home' | 'condo' = doc.type === 'home' ? 'home' : 'condo'
+  const bestGeoTier: _TierBestSlot_EMAIL =
+    (doc.estimate?.bestGeoTier as _TierBestSlot_EMAIL) || 'none'
+  const slots = doc.tiers
+
+  const rowsHtml = _TIER_ORDER_EMAIL.map(slot => {
+    const tr = slots[slot]
+    const meta = _TIER_META_EMAIL[slot]
+    const sub = sellerPath === 'home' ? meta.homeSub : meta.condoSub
+    const isBest = bestGeoTier === slot
+    const bg = isBest ? '#ecfdf5' : '#f8fafc'
+    const border = isBest ? '#34d399' : '#e2e8f0'
+    return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:6px;"><tr><td style="padding: 10px 12px; background: ${bg}; border: 1px solid ${border}; border-radius: 8px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td style="vertical-align: middle;">
+        <span style="display:inline-block;background:${meta.color};color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;">${meta.marker} ${meta.label}</span>
+        <span style="font-size:12px;color:#475569;margin-left:8px;">${sub}</span>
+        ${isBest ? '<span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#047857;background:#d1fae5;padding:2px 6px;border-radius:3px;margin-left:8px;">Anchor</span>' : ''}
+      </td>
+      <td style="text-align: right; vertical-align: middle; white-space: nowrap;">${tierRailRightCell(tr)}</td>
+    </tr></table></td></tr></table>`
+  }).join('')
+
+  return `
+    <div style="margin: 20px 0;">
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Confidence by Area</div>
+      ${rowsHtml}
+      <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">Narrow spread = high confidence. Wide spread = subject&apos;s block sold differently than the community.</div>
     </div>
   `
 }

@@ -83,6 +83,25 @@ function buildOfferWorkingDoc(args: {
       confidence: result.confidence ?? null,
       confidenceMessage: result.confidenceMessage ?? null,
     } : null,
+    // W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row "Confidence by Area"
+    // rail data, sourced from EstimateResult.tiers (lib/estimator/
+    // types.ts TierResult). Matcher populates every successful call;
+    // we capture {count, median, range, estimatedPrice} per slot and
+    // null when the matcher's cascade had no comparables at that tier.
+    // ADDITIVE — does not change any existing workingDoc field.
+    tiers: result && (result as any).tiers
+      ? (() => {
+          const t = (result as any).tiers as Record<string, any>
+          const slot = (x: any): any =>
+            x ? { count: x.count ?? null, median: x.median ?? null, range: x.range ?? null, estimatedPrice: x.estimatedPrice ?? null } : null
+          return {
+            platinum: slot(t.platinum),
+            gold:     slot(t.gold),
+            silver:   slot(t.silver),
+            bronze:   slot(t.bronze),
+          }
+        })()
+      : null,
     comparableSold: result && Array.isArray(result.comparables) && result.comparables.length > 0
       ? {
           bestGeoTier: (result as any).bestGeoTier ?? null,

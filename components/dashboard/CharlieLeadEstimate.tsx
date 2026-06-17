@@ -32,6 +32,13 @@ import {
   type TierName,
   type TierBestSlot,
 } from '@/lib/charlie/tier-chip'
+// W-ESTIMATOR-TIER-RAIL (2026-06-17): tier-rail block lifted to a shared
+// component (components/shared/TierRail.tsx) so the estimator surfaces
+// (email + admin Estimator tab) can render the SAME rail. Inline JSX
+// at L289-337 was a byte-equivalent copy of TierRail's body; swapping
+// to the imported component preserves the seller's rendered output
+// bit-for-bit (verify-asserted via build + spot-check).
+import TierRail from '@/components/shared/TierRail'
 import type {
   SellerEstimateView,
   CanonicalCompRow,
@@ -202,8 +209,10 @@ export default function CharlieLeadEstimate({ view, legacyNoticeWhenEmpty, leadM
   const p = view.present
   const path = view.path
   const anchorTier = view.tierRail.bestGeoTier
-  const bestTier: TierName | null =
-    view.tierRail.bestGeoTier !== 'none' ? (view.tierRail.bestGeoTier as TierName) : null
+  // W-ESTIMATOR-TIER-RAIL (2026-06-17): bestTier consumed by the inline
+  // tier-rail JSX before extraction; the shared TierRail component now
+  // computes it internally from `bestGeoTier`. Removed to keep TS-strict
+  // happy and avoid a dead intermediary.
 
   // Renders something only when at least one canonical section is present.
   const hasAnyCanonicalSection =
@@ -285,55 +294,15 @@ export default function CharlieLeadEstimate({ view, legacyNoticeWhenEmpty, leadM
         </div>
       )}
 
-      {/* Tier rail "Confidence by Area" — TIER_META migrated from CV-0. */}
+      {/* Tier rail "Confidence by Area" — TIER_META migrated from CV-0.
+          W-ESTIMATOR-TIER-RAIL (2026-06-17): body extracted to the shared
+          TierRail component; rendered output byte-equivalent. */}
       {p.tierRail && (
-        <div className="mb-6">
-          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">
-            Confidence by Area
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {TIER_ORDER.map(slot => {
-              const tr = view.tierRail.slots[slot]
-              const isBest = bestTier === slot
-              const rowCls = isBest
-                ? 'flex items-center justify-between flex-wrap gap-2 px-3 py-2 rounded-lg border border-emerald-300 bg-emerald-50'
-                : 'flex items-center justify-between flex-wrap gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50'
-              return (
-                <div key={slot} className={rowCls}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className="inline-block text-xs font-bold text-white rounded px-2 py-0.5"
-                      style={{ background: TIER_META[slot].color }}
-                    >
-                      {TIER_META[slot].marker} {TIER_META[slot].label}
-                    </span>
-                    <span className="text-xs text-slate-600">
-                      {path === 'home' ? TIER_META[slot].homeSub : TIER_META[slot].condoSub}
-                    </span>
-                    {isBest && (
-                      <span className="text-[9px] font-bold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                        Anchor
-                      </span>
-                    )}
-                  </div>
-                  {tr ? (
-                    <div className="flex items-baseline gap-3">
-                      <span className="text-sm font-bold text-slate-900">{fmtPrice(tr.median)}</span>
-                      <span className="text-[11px] text-slate-500">
-                        {tr.count ?? 0} comp{(tr.count ?? 0) === 1 ? '' : 's'}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-[11px] italic text-slate-400">no data</span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-2">
-            Narrow spread = high confidence. Wide spread = subject&apos;s block sold differently than the community.
-          </div>
-        </div>
+        <TierRail
+          slots={view.tierRail.slots}
+          bestGeoTier={view.tierRail.bestGeoTier}
+          path={path}
+        />
       )}
 
       {/* CV-1 NEW — Market Intelligence grid (analytics roll-up). */}
