@@ -217,6 +217,11 @@ export default function EstimatorResults({
           contactName: contactForm.name || user.user_metadata?.full_name || user.user_metadata?.name || '',
           contactEmail: userEmail,
           contactPhone: contactForm.phone || user.user_metadata?.phone || '',
+          // W-ESTIMATOR-USERID-AND-STATS G3 (2026-06-17): thread user.id so
+          // leads.user_id is populated → leadFamily aggregation can group
+          // this lead with other estimator events from the same auth
+          // user → pill selector appears in admin Estimator + Plan tabs.
+          userId: user.id,
           source: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
           buildingId,
           listingId: propertySpecs?.listingId,
@@ -349,6 +354,11 @@ export default function EstimatorResults({
           contactName: contactForm.name,
           contactEmail: contactForm.email,
           contactPhone: contactForm.phone,
+          // W-ESTIMATOR-USERID-AND-STATS G3 (2026-06-17): thread user.id
+          // through the dedup-fallback path too — keeps the lead linked
+          // to the auth user when generate-fire's leadId race forces
+          // this branch to write the row.
+          userId: user?.id,
           source: type === 'estimator' ? 'estimator' : (type === 'sale' ? 'sale_offer_inquiry' : 'lease_offer_inquiry'),
           buildingId,
           listingId: propertySpecs?.listingId,

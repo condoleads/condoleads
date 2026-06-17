@@ -325,6 +325,25 @@ function EstimatorTab({ anchorLead, leadFamily }: { anchorLead: any; leadFamily:
   )
 }
 
+// W-ESTIMATOR-USERID-AND-STATS G4 (2026-06-17): per-section subtitle +
+// subHeader stats — strings + format MATCH the email so the tab and the
+// email read identically. Source of truth = lib/email/working-doc-render
+// .ts L263-271 ('agent' audience subtitles + the anchor/est/median/count
+// subHeader join). Reused verbatim instead of inventing copy.
+const SECTION_SUBTITLE = {
+  comparableSold: 'Recent sold comparables in the area, scored against the subject.',
+  taxMatch:       'Comparables in the same property-tax band (±20%).',
+  competing:      'Currently active listings competing for the same buyer.',
+} as const
+
+function tierLabelTab(t?: string | null): string {
+  if (!t) return ''
+  const m: Record<string, string> = {
+    platinum: 'Platinum', gold: 'Gold', silver: 'Silver', bronze: 'Bronze',
+  }
+  return m[t] || t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc: any; docType: 'home' | 'condo' }) {
   const subj = workingDoc?.subject || {}
   const est = workingDoc?.estimate || {}
@@ -334,6 +353,27 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
   const priceFmt = (n: any) => (n != null && Number.isFinite(Number(n))
     ? '$' + Math.round(Number(n)).toLocaleString('en-CA')
     : '—')
+
+  // SubHeader stats line — same join + same fields as the email
+  // (working-doc-render.ts:263-266). Empty-piece filter drops absent
+  // fields so the line stays clean for sections that don't carry every
+  // stat (e.g. competing has no bestGeoTier / median / estimatedPrice).
+  const subHeader = (section: any): string => {
+    if (!section) return ''
+    const count = section.count != null
+      ? `${section.count} comp${section.count === 1 ? '' : 's'}`
+      : ''
+    const median = section.median != null
+      ? `Median ${priceFmt(section.median)}`
+      : ''
+    const sec_est = section.estimatedPrice != null
+      ? `Section estimate ${priceFmt(section.estimatedPrice)}`
+      : ''
+    const anchor = section.bestGeoTier
+      ? `${tierLabelTab(section.bestGeoTier)} anchor`
+      : ''
+    return [anchor, sec_est, median, count].filter(Boolean).join(' · ')
+  }
 
   // Sections — adapt the WorkingDocTile (camelCase) into the dual-shape
   // BuyerListingTile expects. The tile reads snake_case OR camelCase, so
@@ -417,9 +457,11 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
       {/* Comparable Sold */}
       {Array.isArray(workingDoc?.comparableSold?.tiles) && workingDoc.comparableSold.tiles.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Comparable Sold ({workingDoc.comparableSold.tiles.length})
-          </h3>
+          <h3 className="text-sm font-bold text-slate-900 mb-1">Comparable Sold</h3>
+          <div className="text-xs text-slate-500 mb-1">{SECTION_SUBTITLE.comparableSold}</div>
+          {subHeader(workingDoc.comparableSold) && (
+            <div className="text-xs text-slate-600 mb-3">{subHeader(workingDoc.comparableSold)}</div>
+          )}
           <div className="flex flex-col gap-2">
             {workingDoc.comparableSold.tiles.map((t: any, i: number) => (
               <BuyerListingTile key={t.listingKey || 'cs-' + i} listing={adaptSoldTile(t)} kind="sold" index={i} />
@@ -431,9 +473,11 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
       {/* Tax-Matched */}
       {Array.isArray(workingDoc?.taxMatch?.tiles) && workingDoc.taxMatch.tiles.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Tax-Matched ({workingDoc.taxMatch.tiles.length})
-          </h3>
+          <h3 className="text-sm font-bold text-slate-900 mb-1">Tax-Matched</h3>
+          <div className="text-xs text-slate-500 mb-1">{SECTION_SUBTITLE.taxMatch}</div>
+          {subHeader(workingDoc.taxMatch) && (
+            <div className="text-xs text-slate-600 mb-3">{subHeader(workingDoc.taxMatch)}</div>
+          )}
           <div className="flex flex-col gap-2">
             {workingDoc.taxMatch.tiles.map((t: any, i: number) => (
               <BuyerListingTile key={t.listingKey || 'tm-' + i} listing={adaptSoldTile(t)} kind="sold" index={i} />
@@ -445,9 +489,11 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
       {/* Competing For Sale */}
       {Array.isArray(workingDoc?.competing?.tiles) && workingDoc.competing.tiles.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Competing For Sale ({workingDoc.competing.tiles.length})
-          </h3>
+          <h3 className="text-sm font-bold text-slate-900 mb-1">Competing For Sale</h3>
+          <div className="text-xs text-slate-500 mb-1">{SECTION_SUBTITLE.competing}</div>
+          {subHeader(workingDoc.competing) && (
+            <div className="text-xs text-slate-600 mb-3">{subHeader(workingDoc.competing)}</div>
+          )}
           <div className="flex flex-col gap-2">
             {workingDoc.competing.tiles.map((t: any, i: number) => (
               <BuyerListingTile key={t.listingKey || t.id || 'cp-' + i} listing={adaptCompetingTile(t)} kind="matched" index={i} />

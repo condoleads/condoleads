@@ -6444,5 +6444,168 @@ W-ESTIMATOR-LEAD-RENDER-AND-EMAIL (2026-06-17) — FIX
 
 ### Commit
 
-  W-ESTIMATOR-LEAD-RENDER-AND-EMAIL: (HOLD push — operator approval gate)
+  W-ESTIMATOR-LEAD-RENDER-AND-EMAIL: 49f6c68
+
+──────────────────────────────────────────────────────────────────────
+W-ESTIMATOR-USERID-AND-STATS (2026-06-17) — FIX
+──────────────────────────────────────────────────────────────────────
+
+### Recon findings carried over
+
+  recon/estimator-competing-pills-stats.txt:
+    G1 competing absent       DATA OUTCOME (correct funnel; niche
+                              7-BR Detached has zero 7-BR active
+                              comps in muni). Engine + funnel
+                              unchanged.
+    G2 taxmatch "truncated"   DATA OUTCOME (matcher cap=10; matcher
+                              produced 3; renderer renders 3). No
+                              cap or clip change.
+    G3 pill selector hidden   leads.user_id = NULL on every
+                              estimator/offer lead because the 3
+                              client fire-paths NEVER thread user.id.
+                              leadFamily aggregation in
+                              page.tsx:91 requires non-null user_id
+                              → leadFamily=[anchor] → estimators
+                              array length always 1 → pill selector
+                              never renders.
+    G4 lead tab missing stats Email renders per-section subtitle +
+                              subHeader stats (anchor·estimate·
+                              median·count) at working-doc-render
+                              .ts:263-271; lead tab EstimatorRender
+                              only renders title + count.
+
+### Fixes shipped this turn
+
+  G3 (additive, 6 callsites in 3 files):
+    components/property/OfferInquiryModal.tsx:
+      - click-fire submitLeadFromForm:     userId: user.id
+      - handleSubmit submitLeadFromForm:   userId: user?.id
+    app/estimator/components/EstimatorResults.tsx:
+      - fire-on-generate submitLeadFromForm: userId: user.id
+      - handleContactSubmit (dedup fallback): userId: user?.id
+    app/estimator/components/HomeEstimatorResults.tsx:
+      - fire-on-generate submitLeadFromForm: userId: user.id
+      - handleContactSubmit (dedup fallback): userId: user?.id
+
+    submitLeadFromForm already supports userId (L42); getOrCreateLead
+    writes it as p_user_id (lib/actions/leads.ts:106). Threading is
+    additive — no other payload field changed. Authed paths (click-
+    fire, fire-on-generate) use `user.id` directly (user is
+    guaranteed non-null by the email gate above). handleSubmit /
+    dedup-fallback uses `user?.id` so anonymous form-submits still
+    write user_id NULL byte-equivalent to pre-fix behaviour.
+
+    Side effect: lead.user_id will now populate for authed estimator
+    leads. Downstream attribution (credits/usage) reads the column
+    but the COUNTING logic is a separate workstream — no change to
+    credit accounting in this commit.
+
+  G4 (lead tab only, email untouched):
+    app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx:
+      - New top-level constants:
+          SECTION_SUBTITLE  ← strings VERBATIM from the email's
+            'agent' audience subtitles (working-doc-render.ts:266-285)
+          tierLabelTab     ← capitalize helper for bestGeoTier;
+            mirrors working-doc-render.ts:145-151 tierLabel
+      - EstimatorRender gained subHeader(section) inline helper:
+          [anchor, sec_est, median, count].filter(Boolean).join(' · ')
+          — same fields, same order, same separator as the email
+          (working-doc-render.ts:263-266)
+      - Each of Comparable Sold / Tax-Matched / Competing For Sale
+        sections now renders:
+          <h3>Title</h3>
+          <div>subtitle</div>      ← verbatim string from
+                                     SECTION_SUBTITLE
+          <div>subHeader</div>     ← e.g. "Bronze anchor ·
+                                     Section estimate $1,850,000
+                                     · Median $1,795,000 · 4 comps"
+          ...tiles...
+      - Competing's subHeader collapses to just "N comps" because
+        the competing section doesn't carry bestGeoTier / median /
+        estimatedPrice — same shape the email produces today.
+      - Estimate header card at top of EstimatorRender (the
+        "Estimator working document" block) already mirrored the
+        email's renderEstimateHeader (subject + price + range +
+        confidence + matchTier) — unchanged.
+
+### No-regression assertions (this turn)
+
+  TSC clean — full project pass.
+
+  git diff scope:
+    M  app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx     (G4 + 0)
+    M  app/estimator/components/EstimatorResults.tsx          (G3 only)
+    M  app/estimator/components/HomeEstimatorResults.tsx      (G3 only)
+    M  components/property/OfferInquiryModal.tsx              (G3 only)
+    + docs/W-ESTIMATOR-PATHS-TRACKER.md
+    (4 source files + tracker. Matches declared scope.)
+
+  BYTE-UNCHANGED (verified `git diff --stat HEAD -- <path>` = empty):
+    lib/email/working-doc-render.ts                 untouched
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+                                                    untouched
+    lib/estimator/condo-comparable-matcher-sales.ts untouched
+    lib/estimator/home-comparable-matcher-sales.ts  untouched
+    lib/actions/leads.ts                            untouched
+    middleware.ts                                   untouched
+    app/api/chat/*                                  untouched
+
+  Photos + links (49f6c68 behaviour):
+    The 3 inline tile builders' mediaUrl forwarding is unchanged in
+    this commit (G3 added `userId` AT THE PARAMETER level only — the
+    propertyDetails.workingDoc construction is byte-unchanged).
+    buildPropertySlug-based hrefs in working-doc-render.ts are
+    untouched.
+
+  Matchers + funnels + tax-match caps:
+    UNCHANGED. G1 and G2 are DATA OUTCOMES; no engine code edit.
+    Seller estimator scoring (shares the matcher) byte-identical.
+
+  Get Estimate path:
+    userId now threaded through the same 4 callsites in
+    EstimatorResults + HomeEstimatorResults. Get Estimate leads
+    will also link to user.id → leadFamily picks them up too →
+    pills show. No other behaviour change.
+
+  Pre-existing dirty files (NOT staged in any commit):
+    app/api/charlie/municipalities/route.ts             not staged
+    scripts/r-w-territory-master-p2-data-phantom-fix.js not staged
+    scripts/r-w-territory-master-p4-check-fix.js        not staged
+
+### Behaviour after this fix
+
+  Click Sale Offer / Lease Offer / Get Estimate while signed in:
+    - leads.user_id populated with auth.users.id.
+    - page.tsx:88-101 leadFamily query returns all leads with the
+      same (user_id, tenant_id) — N rows for N events.
+    - EstimatorTab.estimators array now > 1 → PillSelector renders
+      with one pill per estimator-source lead.
+    - Each pill switches the visible workingDoc.
+
+  Open the admin lead in /admin-homes/leads/[id], Estimator tab:
+    - Estimate header card unchanged (subject + price + range +
+      confidence).
+    - Per-section rendering now includes:
+        Title  ← unchanged
+        Subtitle  ← NEW, verbatim from the email
+        SubHeader stats  ← NEW, format matches the email
+        Tiles  ← unchanged (BuyerListingTile)
+    - Email and tab now read consistently.
+
+  Anonymous form-submit on the offer modal:
+    - userId stays NULL (user?.id = undefined) → byte-equivalent
+      to pre-fix anonymous path.
+
+### Backups in place
+
+  Suffix: `W-ESTIMATOR-USERID-AND-STATS_20260617_121142`
+    components/property/OfferInquiryModal.tsx
+    app/estimator/components/EstimatorResults.tsx
+    app/estimator/components/HomeEstimatorResults.tsx
+    app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Commit
+
+  W-ESTIMATOR-USERID-AND-STATS: (HOLD push — operator approval gate)
 

@@ -395,6 +395,13 @@ export default function OfferInquiryModal({
           contactName: formData.name || user.user_metadata?.full_name || user.user_metadata?.name || '',
           contactEmail: userEmail,
           contactPhone: formData.phone || user.user_metadata?.phone || '',
+          // W-ESTIMATOR-USERID-AND-STATS G3 (2026-06-17): thread user.id so
+          // leads.user_id is populated → leadFamily aggregation in
+          // app/admin-homes/leads/[id]/page.tsx:91 sees siblings → pill
+          // selector appears in the admin Estimator + Plan tabs.
+          // Authed path: user.id is always present here (user.email
+          // gate above). No other behaviour change.
+          userId: user.id,
           source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
           buildingId: buildingId || listing.building_id || undefined,
           listingId: listing.id,
@@ -489,6 +496,11 @@ export default function OfferInquiryModal({
         contactName: formData.name,
         contactEmail: formData.email,
         contactPhone: formData.phone,
+        // W-ESTIMATOR-USERID-AND-STATS G3 (2026-06-17): thread user.id
+        // when the form-submitter is signed in. Anonymous form-submits
+        // (no auth) still write user_id NULL — byte-equivalent to
+        // pre-fix behaviour for that flow.
+        userId: user?.id,
         source: isSale ? 'sale_offer_inquiry' : 'lease_offer_inquiry',
         agentId: agentId,
         buildingId: buildingId || listing.building_id || undefined,
