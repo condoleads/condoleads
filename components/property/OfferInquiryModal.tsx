@@ -296,6 +296,21 @@ export default function OfferInquiryModal({
       try {
         let result: EstimateResult | null = null
         let competing: any[] = []
+        // W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG D3 (2026-06-18):
+        // forensic diag for the competing-listings fetch. Persisted onto
+        // workingDoc.competingDiag so the lead row carries WHY competing
+        // was empty/missing. Shape:
+        //   { gate: 'passed' | 'skipped:<reason>',
+        //     status?: number,
+        //     success?: boolean,
+        //     listingsLen?: number,
+        //     error?: string }
+        // Three causes the recon listed:
+        //   gate='skipped:*'             → gate didn't pass (data missing)
+        //   status != 200                → fetch path failure
+        //   success === false            → server-side route error
+        //   success === true + listingsLen === 0 → funnel produced empty
+        let competingDiag: any = { gate: 'unknown' }
 
         // 1) Engine
         if (isHomePath) {
@@ -332,7 +347,12 @@ export default function OfferInquiryModal({
             // 2) Competing listings (inline fetch so we can capture the
             // result synchronously into workingDoc — using the shared hook
             // would lag a render and miss the first email payload).
+            // W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG D3 (2026-06-18):
+            // instrumented — record status/success/listingsLen/error into
+            // competingDiag so the persisted lead carries the cause for
+            // any empty-or-failed competing fetch (no more silent swallow).
             if (homeSpecs.propertySubtype && homeSpecs.municipalityId) {
+              competingDiag = { gate: 'passed', path: 'home' }
               try {
                 const cres = await fetch('/api/charlie/competing-listings', {
                   method: 'POST',
@@ -349,9 +369,30 @@ export default function OfferInquiryModal({
                     approximateAge: homeSpecs.approximateAge,
                   }),
                 })
-                const cdata = await cres.json()
-                if (cdata?.success && Array.isArray(cdata.listings)) competing = cdata.listings
-              } catch { competing = [] }
+                competingDiag.status = cres.status
+                const cdata = await cres.json().catch(() => null)
+                competingDiag.success = cdata?.success ?? null
+                competingDiag.listingsLen = Array.isArray(cdata?.listings) ? cdata.listings.length : null
+                if (cdata && !cdata.success && cdata.error) competingDiag.error = String(cdata.error).slice(0, 200)
+                if (cdata?.success && Array.isArray(cdata.listings)) {
+                  competing = cdata.listings
+                } else {
+                  console.error('[OfferInquiryModal] competing-listings empty/failed:', competingDiag)
+                }
+              } catch (err: any) {
+                competing = []
+                competingDiag.error = String(err?.message || err).slice(0, 200)
+                console.error('[OfferInquiryModal] competing-listings fetch threw:', err)
+              }
+            } else {
+              competingDiag = {
+                gate: 'skipped',
+                path: 'home',
+                missing: [
+                  !homeSpecs.propertySubtype ? 'propertySubtype' : null,
+                  !homeSpecs.municipalityId ? 'municipalityId' : null,
+                ].filter(Boolean),
+              }
             }
           }
         } else {
@@ -374,7 +415,10 @@ export default function OfferInquiryModal({
           const resp = await estimateCondoSale(condoSpecs, false)
           if (resp?.success && resp.data) {
             result = resp.data
+            // W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG D3 (2026-06-18):
+            // instrumented condo competing fetch (mirror of home path).
             if (tenantId && (listing as any).community_id && listing.bedrooms_total != null) {
+              competingDiag = { gate: 'passed', path: 'condo' }
               try {
                 const cres = await fetch('/api/charlie/competing-listings', {
                   method: 'POST',
@@ -386,9 +430,31 @@ export default function OfferInquiryModal({
                     livingAreaRange: listing.living_area_range || null,
                   }),
                 })
-                const cdata = await cres.json()
-                if (cdata?.success && Array.isArray(cdata.listings)) competing = cdata.listings
-              } catch { competing = [] }
+                competingDiag.status = cres.status
+                const cdata = await cres.json().catch(() => null)
+                competingDiag.success = cdata?.success ?? null
+                competingDiag.listingsLen = Array.isArray(cdata?.listings) ? cdata.listings.length : null
+                if (cdata && !cdata.success && cdata.error) competingDiag.error = String(cdata.error).slice(0, 200)
+                if (cdata?.success && Array.isArray(cdata.listings)) {
+                  competing = cdata.listings
+                } else {
+                  console.error('[OfferInquiryModal] competing-listings empty/failed:', competingDiag)
+                }
+              } catch (err: any) {
+                competing = []
+                competingDiag.error = String(err?.message || err).slice(0, 200)
+                console.error('[OfferInquiryModal] competing-listings fetch threw:', err)
+              }
+            } else {
+              competingDiag = {
+                gate: 'skipped',
+                path: 'condo',
+                missing: [
+                  !tenantId ? 'tenantId' : null,
+                  !(listing as any).community_id ? 'community_id' : null,
+                  listing.bedrooms_total == null ? 'bedrooms_total' : null,
+                ].filter(Boolean),
+              }
             }
           }
         }
@@ -408,6 +474,13 @@ export default function OfferInquiryModal({
           result,
           competingListings: competing,
         })
+        // W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG D3 (2026-06-18):
+        // attach the forensic diag to the persisted workingDoc.
+        // Internal-only — NOT rendered in the email or the lead-tab UI
+        // (operator can read it directly from
+        // property_details->'workingDoc'->'competingDiag' on the next
+        // empty/failed competing fetch to pin the cause).
+        ;(workingDoc as any).competingDiag = competingDiag
 
         const leadResult = await submitLeadFromForm({
           agentId,

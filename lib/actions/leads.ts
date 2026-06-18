@@ -213,6 +213,18 @@ export async function createLead(params: CreateLeadParams) {
       manager_id: chainManagerId,
       area_manager_id: chainAreaManagerId,
       tenant_admin_id: chainTenantAdminId,
+      // W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG D1 (2026-06-18):
+      // the param has flowed in through CreateLeadParams.userId
+      // (L69) since at least 3d7e946, but the INSERT silently
+      // omitted the column. recon/estimator-d1-d3-confirm.txt
+      // traced it: layers 1–3 of the thread were correct; layer 4
+      // (this INSERT) was missing the key, so every lead defaulted
+      // user_id NULL on insert and leadFamily aggregation in
+      // app/admin-homes/leads/[id]/page.tsx:91 short-circuited.
+      // Adding the key is strictly additive: callers that pass
+      // userId now write it; callers that don't pass `undefined`
+      // → `|| null` → byte-equivalent to pre-fix NULL.
+      user_id: params.userId || null,
       building_id: params.buildingId || null,
       listing_id: params.listingId || null,
       source_url: params.sourceUrl || referer || null,

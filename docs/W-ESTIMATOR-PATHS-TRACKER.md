@@ -6801,5 +6801,186 @@ W-ESTIMATOR-TIER-RAIL (2026-06-17) — FIX (D2 only)
 
 ### Commit
 
-  W-ESTIMATOR-TIER-RAIL: (HOLD push — operator approval gate)
+  W-ESTIMATOR-TIER-RAIL: 415eca1
+
+──────────────────────────────────────────────────────────────────────
+W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG (2026-06-18) — FIX
+──────────────────────────────────────────────────────────────────────
+
+### Recon findings carried over
+
+  recon/estimator-d1-d3-confirm.txt:
+    D1  user_id STILL NULL on 2 post-415eca1 leads despite the user
+        being signed up + authed (auth.users row 5b6fa15d…, leads
+        carry workingDoc.tiers proving the deploy is live).
+        ROOT CAUSE: lib/actions/leads.ts:208-231 INSERT payload
+        does NOT include `user_id`. 3d7e946 threaded the param
+        through layers 1-3 (wrapper → getOrCreateLead → createLead
+        params), but the INSERT at layer 4 silently omitted the
+        column. resolve_agent_for_context RPC at L106 uses
+        params.userId for routing, but the column write was
+        missing.
+
+    D3 competing  workingDoc.competing = NULL on 3 consecutive
+        Detached luxury Mississauga subjects (1459 Stavebank,
+        1540 Mississauga, 1476 Carmen) despite every subject
+        having ≥1 community-strict + ≥8 muni-strict match
+        candidates. OfferInquiryModal's `catch { competing = [] }`
+        swallows fetch errors with no log, and no field in the
+        saved workingDoc captures the cause. Three possible
+        causes (route err, transport err, funnel over-prune) but
+        the saved row cannot disambiguate.
+
+    D3 taxMatch  Subject-specific data outcome (1476 Carmen
+        populates with 5 winners; 1540 Mississauga returns 0 from
+        a sparse luxury tax band). Gate is CORRECT — recon
+        confirmed every subject passes the (subjTax>500 + year +
+        muni) gate. No code change.
+
+### Fix shipped this turn
+
+  D1 — lib/actions/leads.ts INSERT payload (L208-231):
+    + user_id: params.userId || null,
+    Authentic 1-line addition. ADDITIVE for every existing caller:
+      - estimator/offer paths (3d7e946 threading) — now write user_id
+      - registration / contact_form / Charlie-adjacent — never passed
+        userId; `undefined || null` → NULL → byte-equivalent to pre-fix
+      - resolve_agent_for_context RPC unchanged (still receives
+        p_user_id from L106)
+    Hierarchy chain, dedup, agent resolver, email fan-out, dup-bump
+    branch — ALL byte-unchanged.
+
+  D3 competing — components/property/OfferInquiryModal.tsx:
+    + competingDiag accumulator initialized to `{ gate: 'unknown' }`
+    + Home path (L335-378): instrumented fetch with status / success
+      / listingsLen / error capture; console.error on
+      empty-or-failed; sets `gate: 'skipped' + missing: [...]`
+      when propertySubtype/municipalityId absent
+    + Condo path (L379-422): mirror instrumentation; sets
+      `gate: 'skipped' + missing: [...]` when tenantId/community_id/
+      bedrooms_total absent
+    + buildOfferWorkingDoc output mutated post-build:
+        ;(workingDoc as any).competingDiag = competingDiag
+      Persisted onto the lead's property_details->'workingDoc'->
+      'competingDiag'. Internal forensic only — NOT rendered in
+      the email or the admin Estimator tab (operator reads it
+      direct from the DB on the next click).
+
+    What competingDiag looks like for each cause:
+      gate:'skipped', missing:[…]    →   gate didn't pass (data missing)
+      status:200, success:false, error:'…'  →  server-side route err
+      status:!=200                            →  transport err
+      success:true, listingsLen:0             →  funnel produced empty
+      error:'<message>' (no status)           →  fetch threw
+
+    Spec's IF condition on Results files:
+      EstimatorResults.tsx and HomeEstimatorResults.tsx do NOT
+      have their own competing fetch — they receive
+      `competingListings` as a PROP from the parent buyer modal's
+      useCompetingListings hook. The swallow pattern lives in
+      lib/.../hooks/useCompetingListings.ts (which has a console
+      .error but no persisted diag). Per the spec's "if they have
+      the same swallow pattern" clause, the Results files do NOT
+      need instrumentation in this commit. FOLLOW-UP: if a
+      Get Estimate flow also writes workingDoc.competing = NULL on
+      a subject with available candidates, the hook needs the same
+      diag treatment in a separate turn. The recon evidence is
+      100% Sale Offer modal (3 consecutive cases), so the offer
+      path is where the diag matters now.
+
+  D3 taxMatch — NO CODE CHANGE.
+    Per recon: 1476 Carmen taxMatch populates (5 winners / 9 tiles)
+    while 1540 Mississauga returns 0 from a sparse luxury band on
+    the SAME gate. Subject-specific data outcome, not a code bug.
+
+### No-regression assertions (this turn)
+
+  TSC clean — full project pass.
+
+  git diff scope:
+    M  lib/actions/leads.ts                          (D1 one line)
+    M  components/property/OfferInquiryModal.tsx     (D3 diag)
+    + docs/W-ESTIMATOR-PATHS-TRACKER.md
+    (2 source + tracker. Matches declared scope.)
+
+  BYTE-UNCHANGED (verified `git diff --stat HEAD -- <path>` empty):
+    lib/email/working-doc-render.ts                  empty
+    components/admin-homes/lead-workbench/PlanRenderer.tsx
+                                                     empty
+    components/shared/TierRail.tsx                   empty
+    components/dashboard/CharlieLeadEstimate.tsx     empty
+    lib/estimator/condo-comparable-matcher-sales.ts  empty
+    lib/estimator/home-comparable-matcher-sales.ts   empty
+    middleware.ts                                    empty
+    app/api/chat                                     empty
+    app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+                                                     empty
+    app/estimator/components/EstimatorResults.tsx    empty
+    app/estimator/components/HomeEstimatorResults.tsx empty
+    app/actions/submitLeadFromForm.ts                empty
+
+  lib/actions/leads.ts other-caller behaviour ─────────────────  PASS
+    `user_id: params.userId || null` — the existing dup-bump branch
+    (L150-159 update-only path) is unchanged; only createLead's
+    INSERT gained the key. Callers that pass undefined userId
+    (registration, contact_form, Charlie path) → `|| null` → NULL,
+    same as today.
+
+  Hierarchy chain, dedup, email fan-out ──────────────────────  PASS
+    Walker, getLeadEmailRecipients, sendTenantEmail, lead-email-
+    recipients log — all untouched. The INSERT field set was
+    extended; field values for every other column are unchanged.
+
+  D3 competing behaviour ────────────────────────────────────  PASS
+    Fetch URL, method, headers, body — UNCHANGED. Gate predicates
+    (propertySubtype && municipalityId for home; tenantId &&
+    community_id && bedrooms_total for condo) — UNCHANGED. The
+    `competing` array is still set from `cdata.listings` on
+    success. The diag captures the OUTCOME; it does not alter
+    what listings are returned. workingDoc.competing field
+    population logic unchanged.
+
+  Tier rail (415eca1), photos/links (49f6c68), per-section stats
+  (3d7e946), Plan tab, matchers, S1: UNCHANGED.
+
+  Pre-existing dirty files (NOT staged in any commit):
+    app/api/charlie/municipalities/route.ts             not staged
+    scripts/r-w-territory-master-p2-data-phantom-fix.js not staged
+    scripts/r-w-territory-master-p4-check-fix.js        not staged
+
+### Behaviour after this fix
+
+  D1: Two estimator leads for the SAME signed-in user → both write
+      user_id populated → page.tsx:91 leadFamily query returns
+      both rows → estimators array length ≥ 2 → pill selector
+      renders. The 3d7e946 thread now fully connects.
+
+  D3 competing: Next Sale Offer click that ends in empty/failed
+      competing → workingDoc.competingDiag persisted on the lead
+      row. Operator reads
+        SELECT property_details->'workingDoc'->'competingDiag'
+          FROM leads ORDER BY created_at DESC LIMIT 1
+      to pin the cause:
+        gate='skipped' → spec-gated absence (correct)
+        status!=200 → transport / server crash
+        success=false + error='…' → route.ts caught a thrown error
+        success=true, listingsLen=0 → funnel produced empty (only
+        scenario that signals a code-side over-prune)
+      With the cause pinned, the targeted fix follows in a
+      separate turn.
+
+  D3 taxMatch: Behaviour unchanged. Data-driven per subject.
+
+### Backups in place
+
+  Suffix: `W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG_20260618_054940`
+    lib/actions/leads.ts
+    components/property/OfferInquiryModal.tsx
+    app/estimator/components/EstimatorResults.tsx
+    app/estimator/components/HomeEstimatorResults.tsx
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Commit
+
+  W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG: (HOLD push)
 
