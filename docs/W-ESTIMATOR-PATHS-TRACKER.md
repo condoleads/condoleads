@@ -7299,5 +7299,160 @@ W-ESTIMATOR-TAXRAIL-POSITION (2026-06-18) — FIX (position only)
 
 ### Commit
 
-  W-ESTIMATOR-TAXRAIL-POSITION: (HOLD push — operator approval gate)
+  W-ESTIMATOR-TAXRAIL-POSITION: 2a5c7cb
+
+──────────────────────────────────────────────────────────────────────
+W-COMPETING-DIAG-IN-LITERAL (2026-06-18) — FIX (instrumentation only)
+──────────────────────────────────────────────────────────────────────
+
+### Recon root cause (carried over from recon/competing-diag-read-final.txt)
+
+  bf6af2e + bb8fbe6 introduced the competingDiag forensic capture
+  via a POST-HOC mutation at OfferInquiryModal.tsx:538:
+    ;(workingDoc as any).competingDiag = competingDiag
+
+  Empirical evidence (5 of 5 recent WALLiam offer leads, including
+  3 confirmed bb8fbe6 builds with PART A 2-3/3 live):
+    competingDiag is ABSENT from every persisted workingDoc.
+    Every saved workingDoc has the SAME 8 keys — exactly what
+    buildOfferWorkingDoc's return literal declares. The 9th key
+    (competingDiag) never appears.
+
+  Conclusion: Next.js 14.2.5 server-action argument serialization
+  (Flight protocol) is dropping the dynamically-attached property.
+  Only fields declared on the initial return literal of an action's
+  input survive end-to-end.
+
+### Fix shipped this turn — diag moved into the literal
+
+  lib/email/working-doc-render.ts:
+    + interface WorkingDocCompetingDiag {
+        gate?: 'unknown' | 'passed' | 'skipped'
+        path?: 'home' | 'condo'
+        status?: number | null
+        success?: boolean | null
+        listingsLen?: number | null
+        error?: string | null
+        missing?: string[] | null
+      }
+    + WorkingDoc.competingDiag?: WorkingDocCompetingDiag | null
+      (declared on the type so the renderer + downstream readers
+       can refer to it; the type itself doesn't render the diag —
+       it's internal-only.)
+
+  components/property/OfferInquiryModal.tsx:
+    + buildOfferWorkingDoc args extended with
+        competingDiag?: any
+      Caller passes the local `competingDiag` variable that the
+      home/condo competing fetch block populates.
+    + The return literal gains a NEW field as a peer of
+      comparableSold / taxMatch / competing:
+        competingDiag: competingDiag ?? null,
+      So the diag is part of the OBJECT SHAPE at literal-emit time
+      — Flight preserves it end-to-end.
+    - REMOVED the post-hoc mutation at L538:
+        ;(workingDoc as any).competingDiag = competingDiag
+      replaced with the in-literal pass via the new builder arg.
+
+  EstimatorResults.tsx + HomeEstimatorResults.tsx: NOT TOUCHED.
+    grep confirmed neither file does its own competing fetch (they
+    read from useCompetingListings prop); neither references
+    competingDiag. Per spec's "if they have the same swallow
+    pattern" clause, skip is safe.
+
+### No-regression assertions (this turn)
+
+  TSC clean — full project pass.
+
+  git diff scope:
+    M  components/property/OfferInquiryModal.tsx    (literal field + mutation removed)
+    M  lib/email/working-doc-render.ts              (interface extension)
+    + docs/W-ESTIMATOR-PATHS-TRACKER.md
+    (2 source + tracker. Matches declared scope.)
+
+  BYTE-UNCHANGED (verified `git diff --stat HEAD -- <path>` empty):
+
+    PART A content (chips, adjustments, matchQuality, marketSpeed,
+                    confidenceMessage, tax-rail) — UNCHANGED:
+      The literal additions in bb8fbe6 (estimate.marketSpeed, tile
+      .adjustments, tile.matchQuality, taxMatch.tiers / priceRange
+      / matchTier) remain literal fields of buildOfferWorkingDoc's
+      return value. competingDiag is added as a PEER of these
+      fields, not a replacement.
+
+    Tax-rail position (2a5c7cb) — UNCHANGED:
+      Rail renders inside the Tax-Matched section above tiles on
+      both email + lead tab. No edit to renderSection's
+      topInsertHtml plumbing or the JSX placement.
+
+    Engine (locked):
+      lib/estimator/condo-comparable-matcher-sales.ts          empty
+      lib/estimator/home-comparable-matcher-sales.ts           empty
+      app/estimator/actions/estimate-condo-sale.ts             empty
+      app/estimator/actions/estimate-home-sale.ts              empty
+
+    Established surfaces:
+      components/dashboard/CharlieLeadEstimate.tsx             empty
+      lib/email/charlie-plan-email-html.ts                     empty
+      components/admin-homes/lead-workbench/PlanRenderer.tsx   empty
+      components/shared/TierRail.tsx                           empty
+      lib/charlie/tier-chip.ts                                 empty
+
+    Other untouched:
+      app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx       empty
+      app/estimator/components/EstimatorResults.tsx            empty
+      app/estimator/components/HomeEstimatorResults.tsx        empty
+      lib/actions/leads.ts                                     empty
+      app/actions/submitLeadFromForm.ts                        empty
+      middleware.ts                                            empty
+      app/api/chat                                             empty
+
+  Competing FETCH BEHAVIOUR — UNCHANGED:
+    URL, method, headers, body, gate predicates, fetch try/catch
+    structure, `competing = cdata.listings` assignment on
+    success — all byte-identical. Only WHERE the diag attaches
+    moves (mutation → builder arg → literal field). The diag is
+    additive metadata; it does NOT influence what listings are
+    returned or how `competing` is populated.
+
+  Internal-only — the diag is NOT rendered:
+    Email working-doc-render.ts never reads doc.competingDiag.
+    Admin tab LeadWorkbenchClient never reads workingDoc
+    .competingDiag. Surface UI byte-unchanged. The diag is a
+    DB-column probe target only.
+
+  Pre-existing dirty files (NOT staged in any commit):
+    app/api/charlie/municipalities/route.ts             not staged
+    scripts/r-w-territory-master-p2-data-phantom-fix.js not staged
+    scripts/r-w-territory-master-p4-check-fix.js        not staged
+
+### Behaviour after this fix
+
+  Operator hard-reloads walliam.ca on the test browser → clicks
+  Sale Offer on any subject (1476 Carmen is the recon's canonical
+  anomaly with 8 muni-strict candidates that should NOT be empty).
+  The resulting lead row now carries:
+    property_details->'workingDoc'->'competingDiag' = { ... }
+  with the actual cause field populated. Cause table from the
+  recon then maps in one line:
+    gate='skipped'              → MLS-data-missing
+    status≠200                  → transport
+    success=false (+error)      → server-throw
+    success=true, listingsLen=0 → FUNNEL-OVER-PRUNE (the suspected
+                                  CODE bug — targeted fix follows)
+    error (no status)           → fetch-threw
+
+  Once the cause is named, the targeted competing fix lands in
+  the NEXT commit. This commit ONLY makes the cause readable.
+
+### Backups in place
+
+  Suffix: `W-COMPETING-DIAG-IN-LITERAL_20260618_104313`
+    components/property/OfferInquiryModal.tsx
+    lib/email/working-doc-render.ts
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Commit
+
+  W-COMPETING-DIAG-IN-LITERAL: (HOLD push — operator approval gate)
 

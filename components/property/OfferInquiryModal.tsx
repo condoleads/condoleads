@@ -61,8 +61,15 @@ function buildOfferWorkingDoc(args: {
   buildingAddress?: string
   result: EstimateResult | null
   competingListings: any[]
+  // W-COMPETING-DIAG-IN-LITERAL (2026-06-18): forensic diag passed IN so
+  // it can be RETURNED as part of the initial object literal. The prior
+  // post-hoc mutation strategy (`(workingDoc as any).competingDiag =
+  // ...`) was stripped by Next.js 14.2.5 server-action Flight
+  // serialization (recon/competing-diag-read-final.txt). Literal-field
+  // strategy preserves it end-to-end.
+  competingDiag?: any
 }): any {
-  const { type, listing, buildingName, buildingAddress, result, competingListings } = args
+  const { type, listing, buildingName, buildingAddress, result, competingListings, competingDiag } = args
   return {
     version: 1,
     type,
@@ -229,6 +236,14 @@ function buildOfferWorkingDoc(args: {
           })),
         }
       : null,
+    // W-COMPETING-DIAG-IN-LITERAL (2026-06-18): forensic diag persisted
+    // as a first-class field on the workingDoc so Next.js Flight
+    // serialization preserves it (post-hoc mutation strategy was
+    // stripped — see recon/competing-diag-read-final.txt). Internal-
+    // only; not rendered. Caller passes the diag computed by the
+    // competing fetch wrapper above; when absent (pre-fix caller),
+    // we coalesce to null so the column reads cleanly.
+    competingDiag: competingDiag ?? null,
   }
 }
 
@@ -521,6 +536,15 @@ export default function OfferInquiryModal({
           ? `Offer inquiry: Unit ${listing.unit_number || ''} at ${buildingName}${listing.unparsed_address ? ` (${listing.unparsed_address})` : ''}. List price: $${(listing.list_price || 0).toLocaleString()}.`
           : `Lease inquiry: Unit ${listing.unit_number || ''} at ${buildingName}${listing.unparsed_address ? ` (${listing.unparsed_address})` : ''}. List price: $${(listing.list_price || 0).toLocaleString()}.`
 
+        // W-COMPETING-DIAG-IN-LITERAL (2026-06-18): pass competingDiag
+        // INTO buildOfferWorkingDoc so it becomes part of the return
+        // LITERAL — survives Next.js 14.2.5 server-action Flight
+        // serialization. The prior post-hoc mutation
+        // `(workingDoc as any).competingDiag = competingDiag` was
+        // empirically stripped by Flight on every test lead even
+        // when the bundle was confirmed bb8fbe6+ (PART A literal
+        // fields survived; the mutation did not). See
+        // recon/competing-diag-read-final.txt.
         const workingDoc = buildOfferWorkingDoc({
           type: isHomePath ? 'home' : 'condo',
           listing,
@@ -528,14 +552,8 @@ export default function OfferInquiryModal({
           buildingAddress,
           result,
           competingListings: competing,
+          competingDiag,
         })
-        // W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG D3 (2026-06-18):
-        // attach the forensic diag to the persisted workingDoc.
-        // Internal-only — NOT rendered in the email or the lead-tab UI
-        // (operator can read it directly from
-        // property_details->'workingDoc'->'competingDiag' on the next
-        // empty/failed competing fetch to pin the cause).
-        ;(workingDoc as any).competingDiag = competingDiag
 
         const leadResult = await submitLeadFromForm({
           agentId,

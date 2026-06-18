@@ -148,6 +148,24 @@ export interface WorkingDocTiers {
   bronze:   WorkingDocTierSlot | null
 }
 
+// W-COMPETING-DIAG-IN-LITERAL (2026-06-18): forensic diag for the
+// competing-listings fetch. Lives at workingDoc.competingDiag — same
+// shape as the post-hoc mutation introduced in bf6af2e + bb8fbe6, but
+// declared on the interface so it survives Next.js 14.2.5 server-action
+// Flight serialization (recon/competing-diag-read-final.txt proved the
+// mutation strategy never persisted: PART A literal fields survived,
+// the post-hoc `(workingDoc as any).competingDiag = ...` was stripped).
+// Internal-only — not rendered in email/tab.
+export interface WorkingDocCompetingDiag {
+  gate?: 'unknown' | 'passed' | 'skipped'
+  path?: 'home' | 'condo'
+  status?: number | null            // HTTP status from /api/charlie/competing-listings
+  success?: boolean | null          // response body's success flag
+  listingsLen?: number | null       // length of returned listings array
+  error?: string | null             // error message (route catch OR fetch throw), 200-char cap
+  missing?: string[] | null         // on gate='skipped', which subject fields were absent
+}
+
 export interface WorkingDoc {
   version: 1
   type: 'home' | 'condo'
@@ -159,6 +177,10 @@ export interface WorkingDoc {
   // W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row rail data. Absent on pre-
   // fix leads → renderer + admin tab gracefully omit the rail.
   tiers?: WorkingDocTiers | null
+  // W-COMPETING-DIAG-IN-LITERAL (2026-06-18): see WorkingDocCompetingDiag.
+  // MUST live on the return literal of buildOfferWorkingDoc — Next.js
+  // Flight stripped post-hoc mutations on the workingDoc object.
+  competingDiag?: WorkingDocCompetingDiag | null
 }
 
 // ─── Listing id resolver (listing_key → mls_listings.id) ─────────────────────
