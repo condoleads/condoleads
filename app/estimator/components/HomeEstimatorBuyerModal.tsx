@@ -8,6 +8,7 @@ import { EstimateResult } from '@/lib/estimator/types'
 import HomeEstimatorResults from './HomeEstimatorResults'
 import { MLSListing } from '@/lib/types/building'
 import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
+import type { CompetingListing } from '@/app/estimator/components/HomeEstimatorResults'
 import { useAuth } from '@/components/auth/AuthContext'
 import VipPrompt from '@/components/chat/VipPrompt'
 import VipRequestForm, { VipRequestData } from '@/components/chat/VipRequestForm'
@@ -57,6 +58,11 @@ export default function HomeEstimatorBuyerModal({
   // on the single-property page. Prior copy-paste drift left the CTA un-
   // wired; centralizing prevents that recurring.
   const { competingListings, fetchCompetingListings, resetCompetingListings } = useCompetingListings()
+  // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): resolved-array state
+  // for the workingDoc race fix. handleEstimate awaits the hook fetch then
+  // setResolvedCompeting + setResult land in the same microtask -> React
+  // batches into one render -> child sees populated prop on first paint.
+  const [resolvedCompeting, setResolvedCompeting] = useState<CompetingListing[] | undefined>(undefined)
 
   // VIP flow states
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -93,6 +99,7 @@ export default function HomeEstimatorBuyerModal({
       setShowWaiting(false)
       setShowBlocked(false)
       resetCompetingListings()
+      setResolvedCompeting(undefined)
     }
   }, [isOpen, resetCompetingListings])
 
@@ -291,14 +298,12 @@ export default function HomeEstimatorBuyerModal({
       if (isSale) {
         const response = await estimateHomeSale(homeSpecs, true)
         if (response.success && response.data) {
-          setResult(response.data)
-          setGeoLevel(response.geoLevel || null)
-
-          // h3 refinement — Competing-For-Sale fetch. Hook delegates to
-          // findActiveCompetition which mirrors the sold-comp matching for
-          // the subject's type (plex axis or SF funnel). Thread the full
-          // specs the matcher needs.
-          fetchCompetingListings({
+          // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): await the
+          // competing fetch BEFORE setResult so the resolved array reaches
+          // the child via state in the SAME batched render that exposes
+          // result. Race fix: child's fire-on-generate effect reads
+          // resolvedCompeting prop -> workingDoc.competing populated.
+          const resolved = await fetchCompetingListings({
             propertySubtype: listing.property_subtype,
             communityId: homeSpecs.communityId,
             municipalityId: homeSpecs.municipalityId,
@@ -308,6 +313,9 @@ export default function HomeEstimatorBuyerModal({
             architecturalStyle: homeSpecs.architecturalStyle,
             approximateAge: homeSpecs.approximateAge,
           })
+          setResolvedCompeting(resolved)
+          setResult(response.data)
+          setGeoLevel(response.geoLevel || null)
         } else {
           setError(response.error || 'Failed to calculate estimate')
         }
@@ -768,6 +776,7 @@ export default function HomeEstimatorBuyerModal({
               subjectNoi={(listing as any)?.net_operating_income}
               subjectListPrice={listing?.list_price}
               competingListings={competingListings}
+              resolvedCompeting={resolvedCompeting}
               propertySpecs={{
                 bedrooms: listing.bedrooms_total || 0,
                 bathrooms: listing.bathrooms_total_integer || 0,

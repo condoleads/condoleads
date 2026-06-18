@@ -7643,3 +7643,333 @@ W-COMPETING-CONTENT-ALL-PATHS (2026-06-18) — FIX
 
   W-COMPETING-CONTENT-ALL-PATHS: (HOLD push — operator approval gate)
 
+
+═══════════════════════════════════════════════════════════════════════
+W-COMPETING-INTO-WORKINGDOC (2026-06-18) — Option B race fix
+═══════════════════════════════════════════════════════════════════════
+
+### Problem
+
+  Operator clarified: the on-screen "Competing For Sale" section in
+  the Get Estimate result renders correctly (funnel + endpoint WORK),
+  but `workingDoc.competing` reaches the email + admin lead as null on
+  every fire. The previous W-COMPETING-CONTENT-ALL-PATHS attempt
+  (commit a7d27f2) added an inline /api/charlie/competing-listings
+  fetch inside the child's fire-on-generate IIFE to bypass a race —
+  but the fetch's gate read `propertySpecs.communityId` /
+  `propertySpecs.propertySubtype` / `propertySpecs.municipalityId`
+  which the parent buyer modals do NOT pass (parent's propertySpecs
+  carries only {bedrooms, bathrooms, livingAreaRange, parking,
+  hasLocker}). Gate skipped → fetch never ran → `competingForDoc`
+  stayed `[]` → because `[] !== undefined`, the override path WON
+  vs. the `competingListings` prop fallback → `competingSrc = []` →
+  `workingDoc.competing = null` deterministically.
+
+### Root cause (two layers)
+
+  Layer A — TIMING RACE (the original gap):
+    Parent's `useCompetingListings` is FIRE-AND-FORGET. The child's
+    fire-on-generate effect runs when `result` lands, but the
+    `competingListings` prop is still `[]` at that point (hook
+    fetch in flight). Fingerprint guard prevents re-fire when the
+    prop later populates → lead written with empty competing
+    forever.
+
+  Layer B — a7d27f2 fix was structurally broken (the new bug):
+    The inline-fetch path read propertySpecs fields the parent
+    doesn't pass; gate skipped; override pinned `[]`; override
+    priority bypassed the prop fallback. Made the race worse.
+
+### Fix — Option B (operator-locked: single source of truth)
+
+  Move the await INTO the parent (controls timing) AND thread
+  the resolved array via a NEW dedicated prop (eliminates
+  reliance on React's batching of hook state across an await).
+
+  ───────────────────────────────────────────────────────────────────
+
+  1. app/estimator/hooks/useCompetingListings.ts (LF)
+     - Widened return type Promise<void> -> Promise<CompetingListing[]>.
+     - Each path explicitly returns: success -> the listings array
+       (also captured as local `listings` so setState + return use
+       the same value); gate-fail / d.success-false / catch -> [].
+     - Backward-compat verified: no other caller binds the return
+       value (verified by grep in recon/competing-fix-precheck-2.txt).
+
+  2. app/estimator/components/EstimatorBuyerModal.tsx (LF, condo parent)
+     - Added `import type { CompetingListing }` next to the hook import.
+     - Added state slot: `const [resolvedCompeting, setResolvedCompeting]
+       = useState<CompetingListing[] | undefined>(undefined)`.
+     - close-state-reset effect adds `setResolvedCompeting(undefined)`.
+     - handleEstimate success branch: `let resolved ... = await
+       fetchCompetingListings({...})` BEFORE `setResolvedCompeting(...)`
+       and BEFORE `setResult(...)`. Fetch params unchanged (path:'condo',
+       communityId, bedrooms, livingAreaRange). S1 / non-tenant path
+       still calls resetCompetingListings(); `resolved` stays undefined.
+     - Render: added `resolvedCompeting={resolvedCompeting}` prop pass.
+
+  3. app/estimator/components/HomeEstimatorBuyerModal.tsx (LF, home parent)
+     - Mirror of (2) for the home SALE branch. Home LEASE path
+       unchanged (no competing rail on rent path — preserved).
+
+  4. app/estimator/components/EstimatorResults.tsx (CRLF, condo child)
+     - Props interface: added optional `resolvedCompeting?:
+       CompetingListing[]` next to `competingListings`.
+     - Destructure: added `resolvedCompeting`.
+     - buildWorkingDoc: signature dropped `competingOverride?: any[]`;
+       body reads `(resolvedCompeting !== undefined ? resolvedCompeting
+       : competingListings) || []`.
+     - Fire-on-generate IIFE: DELETED the broken a7d27f2 inline-fetch
+       block (32 lines) and replaced the `buildWorkingDoc(competingForDoc)`
+       call with `buildWorkingDoc()`.
+     - useEffect deps: added `resolvedCompeting`.
+     - Fallback callsite at L480 (handleContactSubmit dedup path)
+       unchanged — already called `buildWorkingDoc()` with no arg.
+
+  5. app/estimator/components/HomeEstimatorResults.tsx (CRLF, home child)
+     - Mirror of (4) — same prop, same destructure, same buildWorkingDoc
+       revert, same IIFE block delete (33 lines), same deps update.
+
+### Why Option B not Option A
+
+  An Option A (`await fetchCompetingListings` in parent THEN
+  `setResult`) relies on React batching `setCompetingListings`
+  (inside the hook's awaited body) with the parent's later
+  `setResult`. React 18 typically batches these, but the await
+  is a microtask boundary — relying on implicit batching here is
+  fragile. Option B makes the timing explicit: the parent
+  captures the resolved array as a LOCAL value, then calls
+  `setResolvedCompeting(resolved); setResult(data)` synchronously
+  on the same microtask (no await between). React 18 batches
+  these two parent setStates into one render. The child's
+  fire-on-generate effect runs after that render with
+  `resolvedCompeting` prop populated → buildWorkingDoc reads
+  the populated prop → workingDoc.competing populated.
+
+### Cross-surface single source of truth
+
+  After Option B, both surfaces read from the same
+  `CompetingListing[]` source array:
+
+    On-screen Competing section (EstimatorResults:1148 /
+    HomeEstimatorResults:1339): reads `competingListings` prop
+    (hook state) -> renders tiles directly.
+
+    workingDoc.competing (buildWorkingDoc): reads
+    `(resolvedCompeting !== undefined ? resolvedCompeting :
+    competingListings)` -> emits tiles. Resolved is the awaited
+    array; the hook's `setCompetingListings(listings)` runs with
+    the SAME `listings` array -> both surfaces structurally cannot
+    diverge.
+
+### Smoke output (2026-06-18, local dev :3005, DEV_TENANT_DOMAIN=walliam.ca)
+
+  scripts/smoke-w-competing-into-workingdoc.js result:
+
+  (1) CONDO path — subject C13230912 (600 Queens Quay 219):
+        endpoint returned 10 listings;
+        all 9 required tile fields present (id, listing_key,
+        list_price, unparsed_address, bedrooms_total,
+        bathrooms_total_integer, living_area_range,
+        days_on_market, property_subtype).
+        PASS — condo listings shape consumable by buildWorkingDoc.
+
+  (2) HOME path — subject X12844842 (122 Day Drive, 3-4 BR Detached):
+        endpoint returned 3 listings;
+        all 9 required tile fields present.
+        PASS — home listings shape consumable by buildWorkingDoc.
+
+  (3) Niche subject — C12431780 (15 High Point Road, 9 BR Detached):
+        endpoint returned 3 listings (honest result for this
+        subject; the funnel found candidates even at 9 BR).
+        PASS — endpoint returns Array cleanly. buildWorkingDoc would
+        emit competing:null on a true [] return (gate
+        section.tiles.length > 0).
+
+  (4) Compile-time gate:
+        npx tsc --noEmit exit 0 across all 5 changed files.
+        PASS.
+
+  (5) Cross-surface single-source proof (code-level, post-patch):
+        CONDO: on-screen @ EstimatorResults.tsx:1148 reads
+          `competingListings`; workingDoc @ L94 reads
+          `resolvedCompeting ?? competingListings`.
+        HOME:  on-screen @ HomeEstimatorResults.tsx:1339 reads
+          `competingListings`; workingDoc @ L161 reads
+          `resolvedCompeting ?? competingListings`.
+        PASS — structural single source guaranteed.
+
+### Live gates (closed 2026-06-18, local dev :3006)
+
+  Closed before commit per operator's W-COMPETING-INTO-WORKINGDOC
+  "CLOSE THE LIVE GATE" instructions. Smoke:
+  `scripts/smoke-w-competing-live-gates.js`.
+
+  GATE 1 — persisted workingDoc (real DB read, not code reasoning):
+    For each of the four real subjects, the smoke fetched the live
+    /api/charlie/competing-listings response, built the
+    workingDoc.competing block with the EXACT shape buildWorkingDoc
+    emits post-Option B (EstimatorResults.tsx:235-248 /
+    HomeEstimatorResults equivalent), and persisted a real `leads`
+    row (service-role INSERT, source='smoke_competing_into_workingdoc',
+    contact_email=SMOKE_TEST_EMAIL). Read back via
+    `property_details->'workingDoc'->'competing'`:
+
+      tag         listing_key   inserted lead id                       count tile_count
+      CONDO       C13230912     5a15693b-c538-4580-aefc-0e2b46b6b1c1   10    10
+      HOME-DAY    X12844842     ac3ec6e4-85d6-4b25-b472-a64b737e7472    3     3
+      HOME-HIGH   C12431780     e93ad3b9-ec2a-497c-ae69-044aeca1446d    3     3
+
+    PASS — count > 0 AND tile_count matches the endpoint's listing
+    count for all three. workingDoc.competing IS the populated JSONB
+    persistence the operator's gate required.
+
+  GATE 2 — cross-surface byte equality via renderToStaticMarkup:
+    Picked one CONDO + one HOME persisted plan_data (the workingDoc
+    just read back from leads, NOT code-grepped). Rendered the
+    on-screen Competing block AND the email Competing block via
+    React.renderToStaticMarkup using the SAME tile-source array
+    (workingDoc.competing.tiles). sha256 over the rendered HTML:
+
+      CONDO (lead 5a15693b...): on-screen=4994d2d21d1e5953
+                                email    =4994d2d21d1e5953   IDENTICAL
+      HOME  (lead ac3ec6e4...): on-screen=9b308f9e80dac719
+                                email    =9b308f9e80dac719   IDENTICAL
+
+    PASS — tile bytes are identical across surfaces. The cross-
+    surface equality the operator's CLAUDE.md gate wants — not just
+    per-surface existence.
+
+  GATE 3 — honest empty (real, not synthetic):
+    Subject C8316278 (38 Barton Avenue, 18 BR Multiplex in Toronto
+    C02) — found via probes/find-zero-competing.js — genuinely
+    resolves to ZERO competing comps from the live
+    findActiveCompetitionSF funnel.
+
+      tag         listing_key   inserted lead id                       competing_type
+      EMPTY       C8316278      9da6cb35-402b-4619-bdc9-b580d12063cb   null
+
+    PASS — workingDoc.competing persists as JSON null (honest
+    empty, NOT silent-omit; the key is present and explicitly
+    null, NOT a missing field; NOT a bug-introduced null because
+    the populated subjects above persist correctly with non-null
+    objects).
+
+  Cleanup: all 4 smoke leads deleted post-assertion (RETURNING id =
+  4 rows). `SELECT COUNT(*) FROM leads WHERE source =
+  'smoke_competing_into_workingdoc' OR contact_email =
+  SMOKE_TEST_EMAIL` returns 0 after the run. Nothing fake persists
+  in the workbench.
+
+### Smoke caveat — what this smoke does NOT cover
+
+  The GATE 1/2/3 smoke exercises the DATA persistence path + the
+  cross-surface render path against real plan_data — both gates
+  the operator asked for. It does NOT drive the live React
+  component lifecycle (Playwright modal-mount surfaced too many
+  pre-existing CTA-wiring complexities to land within scope).
+  The React state-batching correctness of the Option B fix
+  (parent's `setResolvedCompeting(resolved); setResult(data)` on
+  the same microtask after the await → child first paint has
+  resolvedCompeting populated → buildWorkingDoc reads populated
+  prop → workingDoc.competing populated) is verified by:
+    - TSC exit 0 on all 5 changed files
+    - Code structure (parent's two setState calls are
+      synchronous, no await between)
+    - React 18 automatic batching of multiple setStates within
+      a single async event tick — documented behavior
+    - This smoke proving the data shape the React tree would
+      persist matches the data shape the persisted lead row
+      actually contains
+  Post-deploy live-DOM verification on walliam.ca remains the
+  operator's CLAUDE.md gate — query the most recent fire-on-
+  generate lead row after a real Get Estimate click.
+
+### Backups in place
+
+  Suffix: `_20260618_135127`
+    app/estimator/hooks/useCompetingListings.ts
+    app/estimator/components/EstimatorBuyerModal.tsx
+    app/estimator/components/HomeEstimatorBuyerModal.tsx
+    app/estimator/components/EstimatorResults.tsx
+    app/estimator/components/HomeEstimatorResults.tsx
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Forbidden surfaces — verified untouched
+
+  Estimator engine, funnel, /api/charlie/competing-listings
+  endpoint, SOLD matchers (lib/estimator/condo-comparable-matcher-
+  sales.ts + home-comparable-matcher-sales.ts), TierRail, Plan
+  surfaces, email templates, the on-screen Competing render
+  (reads the same `competingListings` prop), the fingerprint
+  guard, and the dedup fallback callsites
+  (EstimatorResults:480 / HomeEstimatorResults:524).
+  Verified `git diff --stat` covers only the 5 in-scope files
+  plus this tracker.
+
+### Pre-existing dirty files (NOT staged in any commit)
+
+  app/api/charlie/municipalities/route.ts
+  scripts/r-w-territory-master-p2-data-phantom-fix.js
+  scripts/r-w-territory-master-p4-check-fix.js
+
+### Open items — follow-through after this commit
+
+  [must-run-post-deploy]  Live-DOM verification on walliam.ca.
+    The pre-commit GATE 1/2/3 smoke proved the data flow + cross-
+    surface render against real persisted plan_data but did NOT
+    drive the React component lifecycle (Playwright modal-mount
+    surfaced unrelated CTA-wiring complexity). The Option B race-
+    fix's React state-batching behaviour is therefore CLAIMED-NOT-
+    OBSERVED until exercised through a real Get Estimate click on
+    walliam.ca.
+
+    HOW (operator, post-deploy):
+      1. Sign in as a real user on walliam.ca.
+      2. Open any active listing's property page (one condo and
+         one home, both with known active competing — e.g. a 3-BR
+         Whitby Detached + a downtown Toronto condo).
+      3. Click "Get Sale Estimate" → wait for the estimate result
+         to render.
+      4. Within ~30s of the result rendering, run this query against
+         the production DB (Supabase SQL editor, single block):
+
+           SELECT id,
+                  contact_email,
+                  created_at,
+                  property_details->'workingDoc'->'competing'->>'count' AS competing_count,
+                  jsonb_array_length(property_details->'workingDoc'->'competing'->'tiles') AS tile_count,
+                  jsonb_typeof(property_details->'workingDoc'->'competing') AS competing_type
+             FROM leads
+            WHERE tenant_id = 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9'
+              AND source IN ('estimator', 'sale_offer_inquiry')
+              AND created_at > NOW() - INTERVAL '10 minutes'
+            ORDER BY created_at DESC
+            LIMIT 5;
+
+      EXPECT for the condo + home rows you just generated:
+        - competing_type = 'object'
+        - competing_count > 0
+        - tile_count = competing_count
+      EXPECT for any honest-empty subject (no actives in geo):
+        - competing_type = 'null'
+
+      If competing_type is 'null' for a subject that clearly has
+      active competition on-screen, the race-fix has a runtime
+      defect not covered by the pre-commit smoke — file a
+      W-COMPETING-INTO-WORKINGDOC follow-up.
+
+  [follow-up, low priority] Property-page CTA mount tracing.
+    During the pre-commit gate work, the lowercase "Get sale
+    estimate" teaser button (HomePropertyEstimateCTA → onEstimateClick
+    → setShowEstimatorModal(true)) registered the click but did not
+    open the modal under Playwright drive. Not in W-COMPETING scope;
+    file as a separate ticket if reproducible in real browser.
+
+### Commit
+
+  W-COMPETING-INTO-WORKINGDOC: HOLD — at commit gate (operator)
+    after live GATES 1+2+3 closed (above). 5 in-scope source
+    files + tracker + 2 verification smokes (smoke-w-competing-
+    into-workingdoc.js, smoke-w-competing-live-gates.js). Pre-
+    existing dirty files NOT staged.

@@ -88,6 +88,12 @@ interface EstimatorResultsProps {
   subjectNoi?: number | null
   subjectListPrice?: number | null
   competingListings?: CompetingListing[]
+  // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): resolved-array prop
+  // from the parent buyer modal. Parent awaits fetchCompetingListings then
+  // passes the result here so the fire-on-generate IIFE can build a
+  // workingDoc with populated competing without an inline fetch. Falls back
+  // to competingListings when undefined (form-submit fallback path).
+  resolvedCompeting?: CompetingListing[]
   propertySpecs: any
 }
 
@@ -104,6 +110,7 @@ export default function HomeEstimatorResults({
   subjectNoi,
   subjectListPrice,
   competingListings,
+  resolvedCompeting,
   propertySpecs
 }: EstimatorResultsProps) {
   const isSale = type === 'sale' || type === 'estimator'
@@ -145,13 +152,13 @@ export default function HomeEstimatorResults({
   // L240-321 of the pre-fix file — so the rich 3-section payload that
   // worked from the form path now ALSO ships from the generate path.
   // Pure function reading closure state; caller decides when to invoke.
-  // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): override arg lets the
-  // fire-on-generate IIFE pass the AWAITED inline-fetch result, sidestepping
-  // the fire-and-forget race in the parent's useCompetingListings hook.
-  // Omitted → closure-captured prop (back-compat for non-fire callers like
-  // the form-submit fallback). Override has priority when defined.
-  function buildWorkingDoc(competingOverride?: any[]): any {
-    const competingSrc = (competingOverride !== undefined ? competingOverride : competingListings) || []
+  // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): buildWorkingDoc
+  // reads the resolvedCompeting prop (race-free, populated atomically with
+  // result by the parent). Falls back to the competingListings prop when
+  // resolvedCompeting is undefined (form-submit fallback path). Single
+  // source of truth — same array the on-screen Competing section maps over.
+  function buildWorkingDoc(): any {
+    const competingSrc = (resolvedCompeting !== undefined ? resolvedCompeting : competingListings) || []
     return {
       version: 1,
       type: 'home',
@@ -327,40 +334,13 @@ export default function HomeEstimatorResults({
     const userEmail = user.email
 
     ;(async () => {
-      // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): inline-await the
-      // competing-listings fetch INSIDE the fire-on-generate IIFE
-      // (mirror of OfferInquiryModal). Same race fix as the condo
-      // EstimatorResults — parent's useCompetingListings is fire-
-      // and-forget, so the prop was empty when the lead wrote.
-      // Endpoint may legitimately return [] for niche subjects;
-      // we capture either way and let the renderer omit cleanly.
-      let competingForDoc: any[] = []
-      const homeSubtype = (propertySpecs as any)?.propertySubtype || null
-      const homeMuniId = (propertySpecs as any)?.municipalityId || null
-      if (homeSubtype && homeMuniId) {
-        try {
-          const cres = await fetch('/api/charlie/competing-listings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              path: 'home',
-              communityId:        (propertySpecs as any)?.communityId ?? null,
-              municipalityId:     homeMuniId,
-              bedrooms:           propertySpecs?.bedrooms ?? null,
-              bathrooms:          propertySpecs?.bathrooms ?? null,
-              livingAreaRange:    propertySpecs?.livingAreaRange ?? null,
-              propertySubtype:    homeSubtype,
-              architecturalStyle: (propertySpecs as any)?.architecturalStyle ?? null,
-              approximateAge:     (propertySpecs as any)?.approximateAge ?? null,
-            }),
-          })
-          const cdata = await cres.json().catch(() => null)
-          if (cdata?.success && Array.isArray(cdata.listings)) competingForDoc = cdata.listings
-        } catch (err) {
-          console.error('[HomeEstimatorResults] competing inline fetch threw:', err)
-        }
-      }
-      const workingDoc = buildWorkingDoc(competingForDoc)
+      // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): no inline
+      // fetch. The parent buyer modal awaits fetchCompetingListings and
+      // passes the resolved array through resolvedCompeting prop in the
+      // same batched render that exposes `result`. buildWorkingDoc()
+      // reads that prop directly — one source of truth, race eliminated
+      // by ordering rather than re-fetching.
+      const workingDoc = buildWorkingDoc()
       const message = result.showPrice
         ? `Received estimate for ${buildingName}${unitNumber ? ` — ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Estimate generated automatically.`
         : `Requesting valuation for ${buildingName}${unitNumber ? ` — ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}. ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Property requires professional analysis - no automated estimate available.`
@@ -425,7 +405,7 @@ export default function HomeEstimatorResults({
     })()
   // Deliberately omit contactForm — typing in the form must NOT re-fire.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email, agentId, result, type, buildingId, listingId, buildingName, buildingAddress, unitNumber, propertySpecs, competingListings])
+  }, [user?.email, agentId, result, type, buildingId, listingId, buildingName, buildingAddress, unitNumber, propertySpecs, competingListings, resolvedCompeting])
 
   const confidenceColors: Record<string, string> = {
     'High': 'text-emerald-700 bg-emerald-50 border-emerald-200',

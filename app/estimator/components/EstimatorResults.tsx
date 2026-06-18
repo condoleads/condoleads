@@ -30,6 +30,12 @@ interface EstimatorResultsProps {
   // Optional, gated on .length > 0 — S1 path (no useCompetingListings call)
   // leaves it empty/undefined, so the rail auto-hides.
   competingListings?: CompetingListing[]
+  // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): resolved-array prop
+  // from the parent buyer modal. Parent awaits fetchCompetingListings then
+  // passes the result here so the fire-on-generate IIFE can build a
+  // workingDoc with populated competing without an inline fetch. Falls back
+  // to competingListings when undefined (S1 path / form-submit fallback).
+  resolvedCompeting?: CompetingListing[]
 }
 
 export default function EstimatorResults({
@@ -42,6 +48,7 @@ export default function EstimatorResults({
   agentId,
   propertySpecs,
   competingListings,
+  resolvedCompeting,
 }: EstimatorResultsProps) {
   const isSale = type === 'sale' || type === 'estimator'
   const { user } = useAuth()
@@ -82,16 +89,15 @@ export default function EstimatorResults({
   // L171-251 of the pre-fix file — so the rich 3-section payload that
   // worked from the form path now ALSO ships from the generate path.
   // Pure function, no state reads. Caller supplies the values.
-  // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): buildWorkingDoc now takes
-  // an optional `competingOverride` arg so the fire-on-generate IIFE can
-  // pass the AWAITED inline-fetch result (sidesteps the fire-and-forget
-  // race in the parent buyer modal's useCompetingListings). When the arg
-  // is omitted, the closure-captured `competingListings` prop is used
-  // (back-compat for any caller — the in-modal RESULT display still
-  // reads the prop). Override has priority when defined (including [],
-  // which is the honest-empty case).
-  function buildWorkingDoc(competingOverride?: any[]): any {
-    const competingSrc = (competingOverride !== undefined ? competingOverride : competingListings) || []
+  // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): buildWorkingDoc
+  // reads the resolvedCompeting prop (race-free, populated atomically with
+  // result by the parent). Falls back to the competingListings prop when
+  // resolvedCompeting is undefined (S1 path or form-submit fallback at
+  // L480). Single source of truth — same array the on-screen Competing
+  // section maps over (when resolvedCompeting is populated, the hook state
+  // is also populated, so on-screen + workingDoc render the same data).
+  function buildWorkingDoc(): any {
+    const competingSrc = (resolvedCompeting !== undefined ? resolvedCompeting : competingListings) || []
     return {
       version: 1,
       type: 'condo',
@@ -275,39 +281,13 @@ export default function EstimatorResults({
     const userEmail = user.email
 
     ;(async () => {
-      // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): inline-await the
-      // competing-listings fetch INSIDE the fire-on-generate IIFE.
-      // Previously this component received `competingListings` from
-      // the parent buyer modal's useCompetingListings hook (fire-and-
-      // forget), and the fire-once guard wrote the lead BEFORE the
-      // hook resolved → workingDoc.competing = null forever
-      // (recon/competing-empty-direct.txt R3c). Mirror of the offer-
-      // modal pattern: own the fetch + await it before writing. Same
-      // endpoint / same payload as the parent hook; cost is one extra
-      // call per Get Estimate (parent hook still drives the in-modal
-      // RESULT display). Endpoint may legitimately return [] for niche
-      // subjects (honest-empty); we capture either way.
-      let competingForDoc: any[] = []
-      const condoCommunityId = (propertySpecs as any)?.communityId ?? null
-      if (condoCommunityId && propertySpecs?.bedrooms != null) {
-        try {
-          const cres = await fetch('/api/charlie/competing-listings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              path: 'condo',
-              communityId: condoCommunityId,
-              bedrooms: propertySpecs.bedrooms,
-              livingAreaRange: propertySpecs?.livingAreaRange || null,
-            }),
-          })
-          const cdata = await cres.json().catch(() => null)
-          if (cdata?.success && Array.isArray(cdata.listings)) competingForDoc = cdata.listings
-        } catch (err) {
-          console.error('[EstimatorResults] competing inline fetch threw:', err)
-        }
-      }
-      const workingDoc = buildWorkingDoc(competingForDoc)
+      // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): no inline
+      // fetch. The parent buyer modal awaits fetchCompetingListings and
+      // passes the resolved array through resolvedCompeting prop in the
+      // same batched render that exposes `result`. buildWorkingDoc()
+      // reads that prop directly — one source of truth, race eliminated
+      // by ordering rather than re-fetching.
+      const workingDoc = buildWorkingDoc()
       const message = result.showPrice
         ? `Received estimate for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Estimate generated automatically.`
         : `Requesting valuation for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}. ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Unit requires professional analysis - no automated estimate available.`
@@ -378,7 +358,7 @@ export default function EstimatorResults({
   // effect MUST NOT re-run when the user types in the form — that would
   // re-fire the lead-create. Deps deliberately omit contactForm.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email, agentId, result, type, buildingId, buildingName, buildingAddress, unitNumber, propertySpecs, competingListings])
+  }, [user?.email, agentId, result, type, buildingId, buildingName, buildingAddress, unitNumber, propertySpecs, competingListings, resolvedCompeting])
 
   const confidenceColors: Record<string, string> = {
     'High': 'text-emerald-700 bg-emerald-50 border-emerald-200',

@@ -16,6 +16,7 @@ import { MLSListing } from '@/lib/types/building'
 import { useAuth } from '@/components/auth/AuthContext'
 // W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — condo competing rail
 import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
+import type { CompetingListing } from '@/app/estimator/components/HomeEstimatorResults'
 import VipPrompt from '@/components/chat/VipPrompt'
 import VipRequestForm, { VipRequestData } from '@/components/chat/VipRequestForm'
 import RegisterModal from '@/components/auth/RegisterModal'
@@ -68,6 +69,11 @@ export default function EstimatorBuyerModal({
   const [showRegister, setShowRegister] = useState(false)
   // W-CONDO-MODAL-PARITY Phase 2: condo Competing-For-Sale rail
   const { competingListings, fetchCompetingListings, resetCompetingListings } = useCompetingListings()
+  // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): resolved-array state
+  // for the workingDoc race fix. handleEstimate awaits the hook fetch then
+  // setResolvedCompeting + setResult land in the same microtask -> React
+  // batches into one render -> child sees populated prop on first paint.
+  const [resolvedCompeting, setResolvedCompeting] = useState<CompetingListing[] | undefined>(undefined)
   
   // VIP flow states
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -103,6 +109,7 @@ export default function EstimatorBuyerModal({
       setShowWalliamForm(false)
       setShowWaiting(false)
       setShowBlocked(false)
+      setResolvedCompeting(undefined)
     }
   }, [isOpen])
 
@@ -309,19 +316,14 @@ export default function EstimatorBuyerModal({
     }
 
     if (response.success && response.data) {
-        setResult(response.data)
-        // W-CONDO-MODAL-PARITY Phase 2 (2026-06-11): on the S2 condo path,
-        // both actions return geoLevel at the TOP of the response (Phase 1).
-        // The shared S1 actions don't — stays null on legacy traffic so the
-        // modal's Geo Level Indicator block auto-hides.
-        const respGeo = (response as any).geoLevel as string | undefined
-        setGeoLevel(respGeo || null)
-        // Fire the Competing-For-Sale fetch ONLY on the condo S2 path.
-        // tenantId presence is the same gate that selected estimateCondoSale/
-        // estimateCondoRent above — S1 callers leave it null and skip the
-        // hook entirely (the rail stays auto-hidden on S1).
+        // W-COMPETING-INTO-WORKINGDOC (Option B, 2026-06-18): await the
+        // competing fetch BEFORE setResult so the resolved array reaches
+        // the child via state in the SAME batched render that exposes
+        // result. Race fix: child's fire-on-generate effect reads
+        // resolvedCompeting prop -> workingDoc.competing populated.
+        let resolved: CompetingListing[] | undefined = undefined
         if (tenantId && (listing as any).community_id && listing.bedrooms_total != null) {
-          fetchCompetingListings({
+          resolved = await fetchCompetingListings({
             path: 'condo',
             communityId: (listing as any).community_id,
             bedrooms: listing.bedrooms_total,
@@ -330,6 +332,14 @@ export default function EstimatorBuyerModal({
         } else {
           resetCompetingListings()
         }
+        setResolvedCompeting(resolved)
+        setResult(response.data)
+        // W-CONDO-MODAL-PARITY Phase 2 (2026-06-11): on the S2 condo path,
+        // both actions return geoLevel at the TOP of the response (Phase 1).
+        // The shared S1 actions don't — stays null on legacy traffic so the
+        // modal's Geo Level Indicator block auto-hides.
+        const respGeo = (response as any).geoLevel as string | undefined
+        setGeoLevel(respGeo || null)
       } else {
         setError(response.error || 'Failed to calculate estimate')
       }
@@ -798,6 +808,7 @@ export default function EstimatorBuyerModal({
               type={type}
               unitNumber={listing.unit_number || ''}
               competingListings={competingListings}
+              resolvedCompeting={resolvedCompeting}
             />
           )}
         </div>

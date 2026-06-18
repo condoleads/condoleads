@@ -40,7 +40,7 @@ interface FetchParams {
 export function useCompetingListings() {
   const [competingListings, setCompetingListings] = useState<CompetingListing[]>([])
 
-  const fetchCompetingListings = useCallback(async (params: FetchParams) => {
+  const fetchCompetingListings = useCallback(async (params: FetchParams): Promise<CompetingListing[]> => {
     const path = params.path || 'home'
     // Gate per path:
     //   HOME : needs propertySubtype + municipalityId (unchanged from pre-Phase-2)
@@ -49,12 +49,12 @@ export function useCompetingListings() {
       const subtype = params.propertySubtype?.trim() || null
       if (!subtype || !params.municipalityId) {
         setCompetingListings([])
-        return
+        return []
       }
     } else {
       if (!params.communityId || params.bedrooms == null) {
         setCompetingListings([])
-        return
+        return []
       }
     }
     try {
@@ -75,13 +75,17 @@ export function useCompetingListings() {
       })
       const d = await res.json()
       if (d?.success && Array.isArray(d.listings)) {
-        setCompetingListings(d.listings as CompetingListing[])
+        const listings = d.listings as CompetingListing[]
+        setCompetingListings(listings)
+        return listings
       } else {
         setCompetingListings([])
+        return []
       }
     } catch (err) {
       console.error('competing-listings fetch failed:', err)
       setCompetingListings([])
+      return []
     }
   }, [])
 
