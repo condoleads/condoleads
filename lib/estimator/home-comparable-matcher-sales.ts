@@ -1079,6 +1079,16 @@ async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise
     return sortByCloseness(bedBath)
   }
 
+  // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): bump LIMITs so the
+  // ORDER BY list_price ASC doesn't rank LUXURY candidates out of the
+  // pool. Recon (recon/competing-empty-direct.txt R3b) showed 1476
+  // Carmen + 1540 Mississauga + 1459 Stavebank had strict-match
+  // candidates in the DB but the endpoint returned []. Mississauga muni
+  // has 1029 active Detached → the cheapest 500 (the prior limit) all
+  // ranked BELOW the high-end 5000+ luxury candidates. Bumping to 2000
+  // covers the muni completely while leaving the JS funnel + closeness
+  // sort to do the actual selection. Community bumped 300 → 1500 for
+  // consistency.
   if (specs.communityId) {
     const { data: comm } = await supabase
       .from('mls_listings')
@@ -1090,9 +1100,20 @@ async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise
       .eq('available_in_vow', true)
       .gt('list_price', 100000)
       .order('list_price', { ascending: true })
-      .limit(300)
+      .limit(1500)
+    const commLen = comm?.length ?? 0
+    const commAfterNotAsIs = comm ? comm.filter(notAsIs).length : 0
+    console.log('[findActiveCompetitionSF] community pool', {
+      community_id: specs.communityId,
+      subtype: specs.propertySubtype,
+      bedrooms: specs.bedrooms,
+      lar: specs.livingAreaRange,
+      fetched: commLen,
+      after_notAsIs: commAfterNotAsIs,
+    })
     if (comm && comm.length > 0) {
       const pool = runFunnels(comm.filter(notAsIs))
+      console.log('[findActiveCompetitionSF] community funnel returned', pool.length)
       if (pool.length > 0) return pool
     }
   }
@@ -1107,12 +1128,24 @@ async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise
       .eq('available_in_vow', true)
       .gt('list_price', 100000)
       .order('list_price', { ascending: true })
-      .limit(500)
+      .limit(2000)
+    const muniLen = muni?.length ?? 0
+    const muniAfterNotAsIs = muni ? muni.filter(notAsIs).length : 0
+    console.log('[findActiveCompetitionSF] muni pool', {
+      municipality_id: specs.municipalityId,
+      subtype: specs.propertySubtype,
+      bedrooms: specs.bedrooms,
+      lar: specs.livingAreaRange,
+      fetched: muniLen,
+      after_notAsIs: muniAfterNotAsIs,
+    })
     if (muni && muni.length > 0) {
       const pool = runFunnels(muni.filter(notAsIs))
+      console.log('[findActiveCompetitionSF] muni funnel returned', pool.length)
       if (pool.length > 0) return pool
     }
   }
+  console.log('[findActiveCompetitionSF] returning [] (no candidates in any cascade)')
   return []
 }
 

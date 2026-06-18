@@ -32,6 +32,12 @@ export async function POST(req: NextRequest) {
       // so a broad bed-eq set is JS-bucketed; SQL LAR filter dropped because
       // bucketing covers the LAR-eq case more accurately (still surfaces
       // exact-LAR first, but falls back to bath-eq + bed-eq when sparse).
+      // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): bump LIMIT 100 → 500
+      // so the ORDER BY list_price ASC doesn't rank luxury candidates
+      // out of the pool. Even at .eq('bedrooms_total', bedrooms) the
+      // tight 100-row cap could miss high-end same-bed candidates in
+      // dense communities. JS closeRank still does the actual selection
+      // (slice(0,10)).
       const { data, error } = await supabase
         .from('mls_listings')
         .select('id, listing_key, list_price, unparsed_address, bedrooms_total, bathrooms_total_integer, living_area_range, days_on_market, approximate_age, association_fee, property_subtype, unit_number')
@@ -42,8 +48,20 @@ export async function POST(req: NextRequest) {
         .eq('bedrooms_total', bedrooms)
         .gt('list_price', 100000)
         .order('list_price', { ascending: true })
-        .limit(100)
+        .limit(500)
       if (error) throw error
+      // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): server-side stage
+      // log so the empty-funnel cause is visible in Vercel function
+      // logs (the client-side competingDiag persistence path was
+      // stripped by Flight; server logs are Flight-safe). Names the
+      // pool size for the operator to read in Vercel → Logs.
+      console.log('[competing-listings condo] pool', {
+        communityId,
+        bedrooms,
+        livingAreaRange,
+        bathrooms,
+        fetched: data?.length ?? 0,
+      })
       const closeRank = (s: any) => {
         let r = 0
         if (bathrooms != null && s.bathrooms_total_integer === bathrooms) r += 2
@@ -88,6 +106,16 @@ export async function POST(req: NextRequest) {
         approximateAge: approximateAge || null,
       }
       listings = await findActiveCompetition(specs)
+      // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): server-side log of
+      // home-path final count. Detailed stage counts live inside
+      // findActiveCompetitionSF (community + muni) so the cause of a
+      // 0 return is visible in Vercel function logs.
+      console.log('[competing-listings home] returned', {
+        subtype: specs.propertySubtype,
+        bedrooms: specs.bedrooms,
+        lar: specs.livingAreaRange,
+        listings: listings.length,
+      })
     }
 
     return NextResponse.json({ success: true, listings })

@@ -7454,5 +7454,192 @@ W-COMPETING-DIAG-IN-LITERAL (2026-06-18) — FIX (instrumentation only)
 
 ### Commit
 
-  W-COMPETING-DIAG-IN-LITERAL: (HOLD push — operator approval gate)
+  W-COMPETING-DIAG-IN-LITERAL: 79f5233
+
+──────────────────────────────────────────────────────────────────────
+W-COMPETING-CONTENT-ALL-PATHS (2026-06-18) — FIX
+──────────────────────────────────────────────────────────────────────
+
+### Recon root causes (from recon/competing-empty-direct.txt)
+
+  Two STACKED failures making competing section missing on every
+  estimator/offer lead since c66366f:
+
+  (1) GET ESTIMATE race — parent buyer modal's useCompetingListings
+      is FIRE-AND-FORGET (`fetchCompetingListings(...)` not awaited).
+      The child's fire-on-generate effect fires when `result`
+      resolves and writes the lead BEFORE the hook resolves. The
+      fire-once fingerprint guard then prevents the effect from re-
+      firing when the hook later sets `competingListings`. Lead is
+      written with `workingDoc.competing = null` permanently.
+
+  (2) OFFER MODAL endpoint over-prune — the offer modal's fire-on-
+      open IIFE awaits the competing fetch inline (no race), but
+      `/api/charlie/competing-listings` was returning [] for the
+      tested niche luxury subjects (1476 Carmen, 1540 Mississauga,
+      1459 Stavebank) despite mls_listings showing 1-13 strict-
+      match candidates each. Root cause: the SF home funnel's
+      `.order('list_price', { ascending: true }).limit(500)` muni
+      query on Mississauga's 1029-row Detached pool ranks the
+      LUXURY (high-priced 5000+ LAR) candidates BELOW the 500-row
+      cap, so they never reach the JS funnel.
+
+### Fix shipped this turn
+
+  FIX 1 — race fix on Get Estimate (EstimatorResults +
+  HomeEstimatorResults):
+
+    Both buildWorkingDoc helpers gained an optional
+    `competingOverride?: any[]` arg. When the fire-on-generate IIFE
+    passes the AWAITED inline-fetch result, that override takes
+    priority over the closure-captured prop (which is still empty
+    at fire-time due to the fire-and-forget parent hook). When
+    omitted (e.g., the form-submit fallback path), back-compat
+    behaviour reads the prop unchanged.
+
+    Each fire-on-generate IIFE now inline-fetches
+    /api/charlie/competing-listings (same endpoint as the parent
+    hook, same payload) INSIDE the IIFE + AWAITS the response
+    before building the workingDoc. Mirrors the OfferInquiryModal
+    pattern exactly. Cost: one extra call per Get Estimate (parent
+    hook still drives the in-modal display).
+
+    Fire-once preserved: fingerprint guard runs BEFORE the inline
+    fetch; the fetch happens inside the SAME IIFE that already had
+    the fingerprint check. One result = one lead.
+
+  FIX 2 — endpoint funnel + server-side logs:
+
+    lib/estimator/home-comparable-matcher-sales.ts
+    findActiveCompetitionSF:
+      - community LIMIT 300 → 1500
+      - muni      LIMIT 500 → 2000
+      The list_price ASC ordering bias against luxury candidates
+      is neutralized — at 2000 rows the muni query captures all
+      same-subtype Detached active in Mississauga (1029) including
+      the 5000+ LAR luxury rows.
+      JS funnel + sortByCloseness still do the actual selection
+      (cap at top-10).
+      + Server-side `console.log` at each stage: pool fetched,
+        after notAsIs filter, funnel return count, final return.
+        Visible in Vercel Function Logs (Flight-safe — server-
+        side console).
+
+    app/api/charlie/competing-listings/route.ts condo path:
+      - .limit(100) → .limit(500)
+      + Server-side console.log: communityId, bedrooms,
+        livingAreaRange, bathrooms, fetched pool size.
+
+  SOLD matcher (findHomeComparables, applyFunnel,
+  runHomeTaxMatchCascade, scoring, statistical-calculator): NOT
+  TOUCHED. Only `findActiveCompetitionSF` in the home matcher file
+  was edited; verified via diff inspection. Competing uses a
+  separate active-listings funnel; the sold matchers' byte set is
+  unchanged.
+
+### No-regression assertions (this turn)
+
+  TSC clean — full project pass.
+
+  git diff scope:
+    M  app/estimator/components/EstimatorResults.tsx      (race fix)
+    M  app/estimator/components/HomeEstimatorResults.tsx  (race fix)
+    M  lib/estimator/home-comparable-matcher-sales.ts     (competing funnel
+                                                            ONLY — SOLD
+                                                            matcher byte-
+                                                            unchanged)
+    M  app/api/charlie/competing-listings/route.ts        (condo path +
+                                                            home log)
+    + docs/W-ESTIMATOR-PATHS-TRACKER.md
+    (4 source + tracker. Matches declared scope.)
+
+  BYTE-UNCHANGED (verified `git diff --stat HEAD -- <path>` empty):
+
+    ENGINE (SOLD matchers locked):
+      lib/estimator/condo-comparable-matcher-sales.ts          empty
+      lib/estimator/tax-band-sold-query.ts                     empty
+      lib/estimator/statistical-calculator.ts                  empty
+      app/estimator/actions/estimate-condo-sale.ts             empty
+      app/estimator/actions/estimate-home-sale.ts              empty
+
+    home-comparable-matcher-sales.ts: SOLD matcher block
+      (findHomeComparables / applyFunnel / applyRelaxedFunnel
+      that the SOLD path uses, runHomeTaxMatchCascade, scoring
+      functions, createHomeComparable) byte-identical. ONLY
+      `findActiveCompetitionSF` was edited (competing path).
+
+    ESTABLISHED SURFACES (reuse, don't edit):
+      components/dashboard/CharlieLeadEstimate.tsx             empty
+      lib/email/charlie-plan-email-html.ts                     empty
+      components/admin-homes/lead-workbench/PlanRenderer.tsx   empty
+      components/shared/TierRail.tsx                           empty
+      lib/charlie/tier-chip.ts                                 empty
+
+    ALL OTHER CONTENT (PARITY content, photos, links, pills):
+      lib/email/working-doc-render.ts                          empty
+      components/property/OfferInquiryModal.tsx                empty
+      app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx       empty
+      lib/actions/leads.ts                                     empty
+      middleware.ts                                            empty
+      app/api/chat                                             empty
+
+  Prior fixes preserved (all PASS):
+    Photos + slug hrefs (49f6c68)                              PASS
+    Geo tier rail (415eca1)                                    PASS
+    Per-section stats + user.id thread (3d7e946)               PASS
+    user_id INSERT + competingDiag-literal (bf6af2e/79f5233)   PASS
+    7-item content parity (bb8fbe6)                            PASS
+    Tax-rail position above tiles (2a5c7cb)                    PASS
+
+  competing fetch BEHAVIOUR:
+    - URL, method, headers, body, gate predicates, JS funnel
+      logic (applyFunnel/applyRelaxedFunnel/runFunnels) — all
+      byte-identical.
+    - ONLY the SQL `.limit(N)` value changed (300→1500, 500→2000,
+      100→500). The funnel's per-row filtering is unchanged;
+      it now sees a larger sample to filter from.
+    - server-side console.log additions are diagnostic-only — no
+      behaviour change.
+
+  Pre-existing dirty files (NOT staged in any commit):
+    app/api/charlie/municipalities/route.ts             not staged
+    scripts/r-w-territory-master-p2-data-phantom-fix.js not staged
+    scripts/r-w-territory-master-p4-check-fix.js        not staged
+
+### Behaviour after this fix
+
+  Get Estimate path:
+    Next click on a tax-data-bearing listing → fire-on-generate
+    awaits the competing fetch INSIDE its IIFE → workingDoc.
+    competing carries the actual fetch result (data when
+    candidates exist; honest-empty when truly none). Fire-once
+    preserved.
+
+  Offer modal path:
+    Next click on a luxury 5000+ Detached (1476 Carmen etc.) →
+    findActiveCompetitionSF SQL fetches up to 1500/2000 rows
+    (all active Detached in community/muni). JS funnel + close-
+    ness sort selects the top-10 closest competing candidates.
+    workingDoc.competing populated.
+
+  Server-side logs:
+    Every competing fetch now writes stage counts to Vercel
+    function logs (Dashboard → Project → Logs, filter
+    "[competing-listings" or "[findActiveCompetitionSF"). The
+    operator can read these directly for any subject whose
+    funnel still returns 0 — no client-side instrumentation
+    needed.
+
+### Backups in place
+
+  Suffix: `W-COMPETING-CONTENT-ALL-PATHS_20260618_115049`
+    app/estimator/components/EstimatorResults.tsx
+    app/estimator/components/HomeEstimatorResults.tsx
+    app/api/charlie/competing-listings/route.ts
+    lib/estimator/home-comparable-matcher-sales.ts
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Commit
+
+  W-COMPETING-CONTENT-ALL-PATHS: (HOLD push — operator approval gate)
 

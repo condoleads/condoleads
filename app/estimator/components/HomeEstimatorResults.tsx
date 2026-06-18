@@ -145,7 +145,13 @@ export default function HomeEstimatorResults({
   // L240-321 of the pre-fix file — so the rich 3-section payload that
   // worked from the form path now ALSO ships from the generate path.
   // Pure function reading closure state; caller decides when to invoke.
-  function buildWorkingDoc(): any {
+  // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): override arg lets the
+  // fire-on-generate IIFE pass the AWAITED inline-fetch result, sidestepping
+  // the fire-and-forget race in the parent's useCompetingListings hook.
+  // Omitted → closure-captured prop (back-compat for non-fire callers like
+  // the form-submit fallback). Override has priority when defined.
+  function buildWorkingDoc(competingOverride?: any[]): any {
+    const competingSrc = (competingOverride !== undefined ? competingOverride : competingListings) || []
     return {
       version: 1,
       type: 'home',
@@ -277,10 +283,10 @@ export default function HomeEstimatorResults({
             })),
           }
         : null,
-      competing: Array.isArray(competingListings) && competingListings.length > 0
+      competing: Array.isArray(competingSrc) && competingSrc.length > 0
         ? {
-            count: competingListings.length,
-            tiles: competingListings.slice(0, 10).map((c: any) => ({
+            count: competingSrc.length,
+            tiles: competingSrc.slice(0, 10).map((c: any) => ({
               id: c.id ?? null,
               listingKey: c.listing_key ?? null,
               listPrice: c.list_price ?? null,
@@ -321,7 +327,40 @@ export default function HomeEstimatorResults({
     const userEmail = user.email
 
     ;(async () => {
-      const workingDoc = buildWorkingDoc()
+      // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): inline-await the
+      // competing-listings fetch INSIDE the fire-on-generate IIFE
+      // (mirror of OfferInquiryModal). Same race fix as the condo
+      // EstimatorResults — parent's useCompetingListings is fire-
+      // and-forget, so the prop was empty when the lead wrote.
+      // Endpoint may legitimately return [] for niche subjects;
+      // we capture either way and let the renderer omit cleanly.
+      let competingForDoc: any[] = []
+      const homeSubtype = (propertySpecs as any)?.propertySubtype || null
+      const homeMuniId = (propertySpecs as any)?.municipalityId || null
+      if (homeSubtype && homeMuniId) {
+        try {
+          const cres = await fetch('/api/charlie/competing-listings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: 'home',
+              communityId:        (propertySpecs as any)?.communityId ?? null,
+              municipalityId:     homeMuniId,
+              bedrooms:           propertySpecs?.bedrooms ?? null,
+              bathrooms:          propertySpecs?.bathrooms ?? null,
+              livingAreaRange:    propertySpecs?.livingAreaRange ?? null,
+              propertySubtype:    homeSubtype,
+              architecturalStyle: (propertySpecs as any)?.architecturalStyle ?? null,
+              approximateAge:     (propertySpecs as any)?.approximateAge ?? null,
+            }),
+          })
+          const cdata = await cres.json().catch(() => null)
+          if (cdata?.success && Array.isArray(cdata.listings)) competingForDoc = cdata.listings
+        } catch (err) {
+          console.error('[HomeEstimatorResults] competing inline fetch threw:', err)
+        }
+      }
+      const workingDoc = buildWorkingDoc(competingForDoc)
       const message = result.showPrice
         ? `Received estimate for ${buildingName}${unitNumber ? ` — ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Estimate generated automatically.`
         : `Requesting valuation for ${buildingName}${unitNumber ? ` — ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}. ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Property requires professional analysis - no automated estimate available.`

@@ -82,7 +82,16 @@ export default function EstimatorResults({
   // L171-251 of the pre-fix file — so the rich 3-section payload that
   // worked from the form path now ALSO ships from the generate path.
   // Pure function, no state reads. Caller supplies the values.
-  function buildWorkingDoc(): any {
+  // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): buildWorkingDoc now takes
+  // an optional `competingOverride` arg so the fire-on-generate IIFE can
+  // pass the AWAITED inline-fetch result (sidesteps the fire-and-forget
+  // race in the parent buyer modal's useCompetingListings). When the arg
+  // is omitted, the closure-captured `competingListings` prop is used
+  // (back-compat for any caller — the in-modal RESULT display still
+  // reads the prop). Override has priority when defined (including [],
+  // which is the honest-empty case).
+  function buildWorkingDoc(competingOverride?: any[]): any {
+    const competingSrc = (competingOverride !== undefined ? competingOverride : competingListings) || []
     return {
       version: 1,
       type: 'condo',
@@ -214,10 +223,10 @@ export default function EstimatorResults({
             })),
           }
         : null,
-      competing: Array.isArray(competingListings) && competingListings.length > 0
+      competing: Array.isArray(competingSrc) && competingSrc.length > 0
         ? {
-            count: competingListings.length,
-            tiles: competingListings.slice(0, 10).map((c: any) => ({
+            count: competingSrc.length,
+            tiles: competingSrc.slice(0, 10).map((c: any) => ({
               id: c.id ?? null,
               listingKey: c.listing_key ?? null,
               listPrice: c.list_price ?? null,
@@ -266,7 +275,39 @@ export default function EstimatorResults({
     const userEmail = user.email
 
     ;(async () => {
-      const workingDoc = buildWorkingDoc()
+      // W-COMPETING-CONTENT-ALL-PATHS (2026-06-18): inline-await the
+      // competing-listings fetch INSIDE the fire-on-generate IIFE.
+      // Previously this component received `competingListings` from
+      // the parent buyer modal's useCompetingListings hook (fire-and-
+      // forget), and the fire-once guard wrote the lead BEFORE the
+      // hook resolved → workingDoc.competing = null forever
+      // (recon/competing-empty-direct.txt R3c). Mirror of the offer-
+      // modal pattern: own the fetch + await it before writing. Same
+      // endpoint / same payload as the parent hook; cost is one extra
+      // call per Get Estimate (parent hook still drives the in-modal
+      // RESULT display). Endpoint may legitimately return [] for niche
+      // subjects (honest-empty); we capture either way.
+      let competingForDoc: any[] = []
+      const condoCommunityId = (propertySpecs as any)?.communityId ?? null
+      if (condoCommunityId && propertySpecs?.bedrooms != null) {
+        try {
+          const cres = await fetch('/api/charlie/competing-listings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: 'condo',
+              communityId: condoCommunityId,
+              bedrooms: propertySpecs.bedrooms,
+              livingAreaRange: propertySpecs?.livingAreaRange || null,
+            }),
+          })
+          const cdata = await cres.json().catch(() => null)
+          if (cdata?.success && Array.isArray(cdata.listings)) competingForDoc = cdata.listings
+        } catch (err) {
+          console.error('[EstimatorResults] competing inline fetch threw:', err)
+        }
+      }
+      const workingDoc = buildWorkingDoc(competingForDoc)
       const message = result.showPrice
         ? `Received estimate for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}: ${formatPrice(result.estimatedPrice)} (${formatPrice(result.priceRange.low)} - ${formatPrice(result.priceRange.high)}). ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Confidence: ${result.confidence}. Estimate generated automatically.`
         : `Requesting valuation for ${buildingName}${unitNumber ? ` Unit ${unitNumber}` : ''}${buildingAddress ? ` (${buildingAddress})` : ''}. ${propertySpecs?.bedrooms || 'N/A'}BR/${propertySpecs?.bathrooms || 'N/A'}BA, ${propertySpecs?.livingAreaRange || 'N/A'} sqft. Unit requires professional analysis - no automated estimate available.`
