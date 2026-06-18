@@ -29,8 +29,26 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // estimator email URLs byte-equivalent to Charlie's (which are curl-
 // verified to return 200 — see property-slug.ts header).
 import { buildPropertySlug } from '@/lib/utils/property-slug'
+// W-ESTIMATOR-CONTENT-PARITY (2026-06-18): per-tile colored chip via the
+// same helper Charlie's plan email + dashboard surface use. Source of
+// truth = lib/charlie/tier-chip.ts (CV-0). The chip resolution rule —
+// per-tile sourceTier wins, anchor (section.bestGeoTier) is the
+// fallback — is encapsulated in tierChipFor.
+import { tierChipFor, type TierBestSlot as _TierBestSlotChip } from '@/lib/charlie/tier-chip'
 
 // ─── Persisted JSON shape ────────────────────────────────────────────────────
+
+// W-ESTIMATOR-CONTENT-PARITY (2026-06-18): per-comp price adjustment shape,
+// mirrors lib/estimator/types.ts:33-38 PriceAdjustment. The 3 mappers now
+// forward this from ComparableSale so email + lead tab can render the
+// adjustment story (the seller surface shows it; estimator dropped it
+// pre-fix). Slots are nullable for renderer resilience on partial data.
+export interface WorkingDocTileAdjustment {
+  type?: string | null            // 'parking' | 'locker' | 'bathroom' (ComparableSale)
+  difference?: number | null      // +1 or -1 (how the comp differs from subject)
+  adjustmentAmount?: number | null
+  reason?: string | null          // human-readable
+}
 
 export interface WorkingDocTile {
   // Identifiers
@@ -58,6 +76,11 @@ export interface WorkingDocTile {
   // the type but doesn't render these — its appearance stays byte-identical.
   mediaUrl?: string | null                    // photo URL for the email tile
   matchQuality?: string | null                // matcher's quality string (e.g. "Same building")
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): per-comp adjustment story (the
+  // ±$amount diffs that turn closePrice into adjustedPrice). Engine produces
+  // every run; pre-fix mappers dropped. Renderer shows under the tile when
+  // populated.
+  adjustments?: WorkingDocTileAdjustment[] | null
 }
 
 export interface WorkingDocSection {
@@ -66,6 +89,14 @@ export interface WorkingDocSection {
   estimatedPrice?: number | null
   median?: number | null
   tiles: WorkingDocTile[]                     // capped at 10 per section
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): tax-match section fields.
+  // taxMatch carries its own priceRange + matchTier + tiers (the SECOND
+  // 4-tier breakdown — distinct from the geo cascade's tiers at the
+  // doc level). Optional so comparableSold + competing sections
+  // (which don't use them) type-check unchanged.
+  priceRange?: { low: number; high: number } | null
+  matchTier?: string | null
+  tiers?: WorkingDocTiers | null
 }
 
 export interface WorkingDocSubject {
@@ -85,6 +116,15 @@ export interface WorkingDocEstimate {
   bestGeoTier?: string | null
   confidence?: string | null
   confidenceMessage?: string | null
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): marketSpeed block — engine
+  // computes this every run; pre-fix mappers dropped. The seller
+  // surface's MarketIntel grid renders DOM + status; estimator gains
+  // the same block on email + lead.
+  marketSpeed?: {
+    avgDaysOnMarket?: number | null
+    status?: string | null   // 'Fast' | 'Moderate' | 'Slow'
+    message?: string | null
+  } | null
 }
 
 // W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row "Confidence by Area" tier
@@ -209,6 +249,15 @@ function renderTile(
   idMap: Record<string, string>,
   priceKind: 'close' | 'list',
   docType: 'home' | 'condo',
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): section anchor + showChip
+  // gate. anchorTier is used as the FALLBACK for tile.sourceTier in
+  // the tier-chip render (geo-cascade comparableSold tiles have
+  // sourceTier null but the section's bestGeoTier names a winning
+  // tier — established surface relies on this fallback so the tile
+  // still shows a chip). showChip=false for COMPETING tiles
+  // (deliberate omission matching CharlieLeadEstimate.tsx:108).
+  anchorTier: string | null,
+  showChip: boolean,
 ): string {
   const href = tileHref(baseUrl, tile, idMap, docType)
   const price = priceKind === 'list' ? tile.listPrice : tile.closePrice
@@ -219,8 +268,34 @@ function renderTile(
   const lar = tile.livingAreaRange ? `${escapeHtml(tile.livingAreaRange)} sqft` : ''
   const dom = tile.daysOnMarket != null ? `${tile.daysOnMarket}d on market` : ''
   const date = priceKind === 'close' ? fmtDate(tile.closeDate) : ''
-  const tier = tile.sourceTier ? tierLabel(tile.sourceTier) : ''
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): per-tile chip via the
+  // established helper. Mirrors charlie-plan-email-html.ts:358-368
+  // (Outlook-safe inline-style <div>). Empty string when neither
+  // sourceTier nor anchorTier is a valid TierName, OR when showChip
+  // is false (competing).
+  const chipHtml = showChip
+    ? (() => {
+        const chip = tierChipFor(tile.sourceTier ?? null, (anchorTier as _TierBestSlotChip | null) ?? null, docType)
+        if (!chip) return ''
+        return `<div style="display:inline-block;font-size:10px;font-weight:700;color:#fff;background:${chip.color};padding:2px 6px;border-radius:3px;margin-bottom:4px;">${chip.marker} ${chip.label} &middot; ${escapeHtml(chip.sub)}</div>`
+      })()
+    : ''
   const unit = tile.unitNumber ? `Unit ${escapeHtml(tile.unitNumber)}` : ''
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): adjustment story under the
+  // tile. ComparableSale.adjustments is captured by the 3 mappers now;
+  // each entry shows `reason · ±$amount`. Empty when no adjustments
+  // (perfect-match comps); rendered as a compact list.
+  const adjustmentsHtml = Array.isArray(tile.adjustments) && tile.adjustments.length > 0
+    ? `<div style="font-size:10px;color:#475569;margin-top:4px;line-height:1.5;">${
+        tile.adjustments.map(a => {
+          const reason = a?.reason ? escapeHtml(a.reason) : (a?.type ? escapeHtml(String(a.type)) : 'Adjustment')
+          const amt = a?.adjustmentAmount != null && Number.isFinite(a.adjustmentAmount)
+            ? (a.adjustmentAmount >= 0 ? '+' : '−') + '$' + Math.abs(Math.round(a.adjustmentAmount)).toLocaleString()
+            : ''
+          return `<div>• ${reason}${amt ? ` &middot; <span style="color:${a!.adjustmentAmount! >= 0 ? '#059669' : '#dc2626'};">${amt}</span>` : ''}</div>`
+        }).join('')
+      }</div>`
+    : ''
 
   // C-PLAN-DOC-DEDUP (2026-06-13): photo + temperature badge + matchQuality +
   // Sold/For Sale affordance. Each is conditional — present only when its
@@ -254,17 +329,24 @@ function renderTile(
         ${tempBadge}
       </td>` : ''
 
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): chip placed ABOVE address
+  // (same layout as charlie-plan-email-html.ts:411 — chip line, then
+  // address). Removed the old plain-grey-text tier label on the price
+  // column (it was misaligned with the established surface and
+  // duplicated the chip information). adjustment story rendered under
+  // the meta line. matchQ (matchQuality caption) already wired at L260.
   return `
     <tr>${photoCell}
       <td style="padding:10px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+        ${chipHtml}
         ${linkOpen}<div style="font-size:13px;color:#0f172a;font-weight:600;">${addr}</div>${linkClose}
         ${unit ? `<div style="font-size:11px;color:#64748b;margin-top:2px;">${unit}</div>` : ''}
         <div style="font-size:11px;color:#64748b;margin-top:2px;">${beds} · ${baths}${lar ? ' · ' + lar : ''}</div>
         ${matchQ}
+        ${adjustmentsHtml}
       </td>
       <td style="padding:10px 8px;border-bottom:1px solid #e2e8f0;text-align:right;vertical-align:top;white-space:nowrap;">
         ${priceCell}
-        ${tier ? `<div style="font-size:10px;color:#64748b;margin-top:3px;">${tier}</div>` : ''}
         ${date ? `<div style="font-size:10px;color:#64748b;margin-top:2px;">${date}</div>` : ''}
         ${dom ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${dom}</div>` : ''}
         <div style="font-size:10px;color:#94a3b8;margin-top:3px;">${affordance}</div>
@@ -281,13 +363,24 @@ function renderSection(
   idMap: Record<string, string>,
   priceKind: 'close' | 'list',
   docType: 'home' | 'condo',
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): showChip threaded so the
+  // Competing section can opt out (matches the deliberate
+  // CharlieLeadEstimate.tsx:108 omission for active competition).
+  showChip: boolean,
 ): string {
   if (!section || !section.tiles || section.tiles.length === 0) return ''
-  const tilesHtml = section.tiles.slice(0, 10).map(t => renderTile(t, baseUrl, idMap, priceKind, docType)).join('')
+  const tilesHtml = section.tiles.slice(0, 10).map(t => renderTile(t, baseUrl, idMap, priceKind, docType, section.bestGeoTier ?? null, showChip)).join('')
   const median = section.median != null ? `Median ${fmtPrice(section.median)}` : ''
   const est = section.estimatedPrice != null ? `Section estimate ${fmtPrice(section.estimatedPrice)}` : ''
   const anchor = section.bestGeoTier ? `${tierLabel(section.bestGeoTier)} anchor` : ''
-  const subHeader = [anchor, est, median, `${section.count} comp${section.count === 1 ? '' : 's'}`].filter(Boolean).join(' · ')
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): include section.priceRange
+  // in the subheader when present (tax-match section carries it on
+  // EstimateResult.taxMatch.priceRange; comparableSold + competing
+  // don't carry it). Format matches "Range $X – $Y".
+  const range = section.priceRange
+    ? `Range ${fmtPrice(section.priceRange.low)} – ${fmtPrice(section.priceRange.high)}`
+    : ''
+  const subHeader = [anchor, est, range, median, `${section.count} comp${section.count === 1 ? '' : 's'}`].filter(Boolean).join(' · ')
   return `
     <div style="margin-top:24px;">
       <div style="font-size:14px;font-weight:700;color:#0f172a;">${escapeHtml(title)}</div>
@@ -324,6 +417,7 @@ export function renderWorkingDocSections(
       : 'Recent sold homes in your area that match your property.',
     doc.comparableSold,
     baseUrl, idMap, 'close', docType,
+    /* showChip */ true,
   )
   const tax = renderSection(
     'Tax-Matched',
@@ -332,7 +426,22 @@ export function renderWorkingDocSections(
       : 'Recent sales of homes paying similar property tax to yours.',
     doc.taxMatch,
     baseUrl, idMap, 'close', docType,
+    /* showChip */ true,
   )
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): render the SECOND tier rail
+  // (tax-match cascade's own 4-tier breakdown) under Tax-Matched. The
+  // engine returns taxMatch.tiers per cascade; the mapper now persists
+  // it (PART A). Reuses renderTierRailFromSlots (extracted below)
+  // with the tax-match anchor + a caption to distinguish from the geo
+  // rail at the top of the email.
+  const taxTierRail = doc.taxMatch?.tiers
+    ? renderTierRailFromSlots(
+        doc.taxMatch.tiers,
+        (doc.taxMatch.bestGeoTier as any) || 'none',
+        docType,
+        'Tax-Match Confidence by Area',
+      )
+    : ''
   const competing = renderSection(
     'Competing For Sale',
     opts.audience === 'agent'
@@ -340,9 +449,15 @@ export function renderWorkingDocSections(
       : 'Other homes currently for sale that buyers may compare with yours.',
     doc.competing,
     baseUrl, idMap, 'list', docType,
+    /* showChip */ false,   // deliberate — established surface omits chip on competing
   )
   if (!sold && !tax && !competing) return ''
-  return sold + tax + competing
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): tax-match tier rail
+  // placed RIGHT AFTER the tax section (so the rail visually anchors
+  // the tax tiles above it), then competing follows. taxTierRail is
+  // empty string when doc.taxMatch.tiers is absent → no layout
+  // change for pre-fix payloads.
+  return sold + tax + taxTierRail + competing
 }
 
 export function renderEstimateHeader(
@@ -363,6 +478,27 @@ export function renderEstimateHeader(
   // needed. Returns empty string when doc.tiers is absent (pre-fix
   // leads omit the rail gracefully).
   const tierRail = renderTierRail(doc)
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): confidenceMessage rendered
+  // beneath the confidence/matchTier line. The mapper captures it (per
+  // the WorkingDocEstimate type at L86); pre-fix renderer never read it.
+  const confidenceMsg = est.confidenceMessage
+    ? `<div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.4;">${escapeHtml(est.confidenceMessage)}</div>`
+    : ''
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): marketSpeed block — Avg DOM
+  // + status (Fast/Moderate/Slow) + optional message. Mirrors the
+  // seller surface MarketIntel grid (CharlieLeadEstimate.tsx MarketIntel
+  // block; same engine field).
+  const ms = (est as any).marketSpeed as { avgDaysOnMarket?: number | null; status?: string | null; message?: string | null } | null | undefined
+  const marketSpeedHtml = ms && (ms.avgDaysOnMarket != null || ms.status || ms.message)
+    ? `<div style="margin-top:12px;padding:10px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;">
+         <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;">Market Speed</div>
+         <div style="font-size:12px;color:#0f172a;margin-top:4px;">${[
+            ms.avgDaysOnMarket != null ? `Avg DOM: <strong>${ms.avgDaysOnMarket}d</strong>` : '',
+            ms.status ? `Status: <strong>${escapeHtml(ms.status)}</strong>` : '',
+          ].filter(Boolean).join(' &middot; ')}</div>
+         ${ms.message ? `<div style="font-size:11px;color:#64748b;margin-top:3px;">${escapeHtml(ms.message)}</div>` : ''}
+       </div>`
+    : ''
   return `
     <div style="margin-top:20px;padding:18px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
       <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(heading)}</div>
@@ -370,6 +506,8 @@ export function renderEstimateHeader(
       ${price ? `<div style="font-size:24px;color:#0f172a;font-weight:800;margin-top:8px;">${price}</div>` : ''}
       ${range ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">Range ${range}</div>` : ''}
       ${est.confidence ? `<div style="font-size:11px;color:#475569;margin-top:6px;">Confidence: ${escapeHtml(est.confidence)}${est.matchTier ? ' · ' + escapeHtml(est.matchTier) : ''}</div>` : ''}
+      ${confidenceMsg}
+      ${marketSpeedHtml}
     </div>
     ${tierRail}
   `
@@ -407,19 +545,22 @@ function tierRailRightCell(tr: WorkingDocTierSlot | null): string {
   return `<span style="font-size:14px;font-weight:700;color:#0f172a;">${med}</span> <span style="font-size:11px;color:#64748b;margin-left:8px;">${cnt} comp${cnt === 1 ? '' : 's'}</span>`
 }
 
-export function renderTierRail(
-  doc: WorkingDoc | null | undefined,
+// W-ESTIMATOR-CONTENT-PARITY (2026-06-18): rail render extracted to a
+// slots-taking helper so the SAME renderer can drive both the geo rail
+// (doc.tiers) at the top of the email AND the tax-match rail
+// (doc.taxMatch.tiers) under the Tax-Matched section. Caption is the
+// only visual difference between the two rails.
+export function renderTierRailFromSlots(
+  slots: WorkingDocTiers | null | undefined,
+  bestGeoTier: _TierBestSlot_EMAIL,
+  docType: 'home' | 'condo',
+  caption: string = 'Confidence by Area',
 ): string {
-  if (!doc || !doc.tiers) return ''
-  const sellerPath: 'home' | 'condo' = doc.type === 'home' ? 'home' : 'condo'
-  const bestGeoTier: _TierBestSlot_EMAIL =
-    (doc.estimate?.bestGeoTier as _TierBestSlot_EMAIL) || 'none'
-  const slots = doc.tiers
-
+  if (!slots) return ''
   const rowsHtml = _TIER_ORDER_EMAIL.map(slot => {
     const tr = slots[slot]
     const meta = _TIER_META_EMAIL[slot]
-    const sub = sellerPath === 'home' ? meta.homeSub : meta.condoSub
+    const sub = docType === 'home' ? meta.homeSub : meta.condoSub
     const isBest = bestGeoTier === slot
     const bg = isBest ? '#ecfdf5' : '#f8fafc'
     const border = isBest ? '#34d399' : '#e2e8f0'
@@ -435,11 +576,21 @@ export function renderTierRail(
 
   return `
     <div style="margin: 20px 0;">
-      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">Confidence by Area</div>
+      <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px;">${escapeHtml(caption)}</div>
       ${rowsHtml}
       <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">Narrow spread = high confidence. Wide spread = subject&apos;s block sold differently than the community.</div>
     </div>
   `
+}
+
+export function renderTierRail(
+  doc: WorkingDoc | null | undefined,
+): string {
+  if (!doc || !doc.tiers) return ''
+  const sellerPath: 'home' | 'condo' = doc.type === 'home' ? 'home' : 'condo'
+  const bestGeoTier: _TierBestSlot_EMAIL =
+    (doc.estimate?.bestGeoTier as _TierBestSlot_EMAIL) || 'none'
+  return renderTierRailFromSlots(doc.tiers, bestGeoTier, sellerPath)
 }
 
 // ─── Working-doc subset builders (server-side from EstimateResult) ───────────

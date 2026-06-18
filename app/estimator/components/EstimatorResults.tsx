@@ -101,6 +101,14 @@ export default function EstimatorResults({
         bestGeoTier: (result as any).bestGeoTier ?? null,
         confidence: result.confidence ?? null,
         confidenceMessage: result.confidenceMessage ?? null,
+        // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): marketSpeed block.
+        marketSpeed: (result as any).marketSpeed
+          ? {
+              avgDaysOnMarket: (result as any).marketSpeed.avgDaysOnMarket ?? null,
+              status:          (result as any).marketSpeed.status ?? null,
+              message:         (result as any).marketSpeed.message ?? null,
+            }
+          : null,
       },
       // W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row "Confidence by Area"
       // rail data from EstimateResult.tiers. ADDITIVE; null slots when
@@ -142,6 +150,17 @@ export default function EstimatorResults({
               // forward mediaUrl from the matcher (populated by
               // attachMediaUrls in condo / home matcher).
               mediaUrl: c.mediaUrl ?? null,
+              // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): matchQuality +
+              // per-comp adjustments (the ±$amount diffs).
+              matchQuality: c.matchQuality ?? null,
+              adjustments: Array.isArray(c.adjustments) && c.adjustments.length > 0
+                ? c.adjustments.map((a: any) => ({
+                    type:             a?.type ?? null,
+                    difference:       a?.difference ?? null,
+                    adjustmentAmount: a?.adjustmentAmount ?? null,
+                    reason:           a?.reason ?? null,
+                  }))
+                : null,
             })),
           }
         : null,
@@ -150,6 +169,24 @@ export default function EstimatorResults({
             bestGeoTier: (result as any).taxMatch.bestGeoTier ?? null,
             count: (result as any).taxMatch.count ?? (result as any).taxMatch.comparables.length,
             estimatedPrice: (result as any).taxMatch.estimatedPrice ?? null,
+            // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): tax-match
+            // matchTier + priceRange + tiers (the SECOND 4-tier rail
+            // distinct from the geo cascade).
+            matchTier:  (result as any).taxMatch.matchTier ?? null,
+            priceRange: (result as any).taxMatch.priceRange ?? null,
+            tiers: (result as any).taxMatch.tiers
+              ? (() => {
+                  const t = (result as any).taxMatch.tiers as Record<string, any>
+                  const slot = (x: any): any =>
+                    x ? { count: x.count ?? null, median: x.median ?? null, range: x.range ?? null, estimatedPrice: x.estimatedPrice ?? null } : null
+                  return {
+                    platinum: slot(t.platinum),
+                    gold:     slot(t.gold),
+                    silver:   slot(t.silver),
+                    bronze:   slot(t.bronze),
+                  }
+                })()
+              : null,
             tiles: (result as any).taxMatch.comparables.slice(0, 10).map((c: any) => ({
               listingKey: c.listingKey ?? null,
               closePrice: c.closePrice ?? null,
@@ -165,6 +202,15 @@ export default function EstimatorResults({
               sourceTier: c.sourceTier ?? null,
               temperature: c.temperature ?? null,
               mediaUrl: c.mediaUrl ?? null,
+              matchQuality: c.matchQuality ?? null,
+              adjustments: Array.isArray(c.adjustments) && c.adjustments.length > 0
+                ? c.adjustments.map((a: any) => ({
+                    type:             a?.type ?? null,
+                    difference:       a?.difference ?? null,
+                    adjustmentAmount: a?.adjustmentAmount ?? null,
+                    reason:           a?.reason ?? null,
+                  }))
+                : null,
             })),
           }
         : null,

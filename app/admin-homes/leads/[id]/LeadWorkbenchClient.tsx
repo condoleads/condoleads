@@ -14,7 +14,7 @@ import PlanTab, { BuyerListingTile } from '@/components/admin-homes/lead-workben
 // rail extracted from CharlieLeadEstimate; reused here on the admin
 // Estimator tab to mirror the seller surface.
 import TierRail from '@/components/shared/TierRail'
-import type { TierBestSlot } from '@/lib/charlie/tier-chip'
+import { tierChipFor, type TierBestSlot } from '@/lib/charlie/tier-chip'
 import UserCreditPanel, { UserCreditData } from '@/components/admin-homes/lead-workbench/UserCreditPanel'
 import ActivityTab, { ActivityFeedItem } from '@/components/admin-homes/lead-workbench/ActivityTab'
 import EmailsTab, { EmailLogRow } from '@/components/admin-homes/lead-workbench/EmailsTab'
@@ -349,6 +349,86 @@ function tierLabelTab(t?: string | null): string {
   return m[t] || t.charAt(0).toUpperCase() + t.slice(1)
 }
 
+// W-ESTIMATOR-CONTENT-PARITY (2026-06-18): per-tile chip wrapper using the
+// SAME helper Charlie's plan email + dashboard surface use. Mirrors
+// CharlieLeadEstimate.tsx:82-97 TierChip — same `${marker} ${label} ·
+// ${sub}` format, same anchor-fallback via tierChipFor. Wraps each
+// BuyerListingTile WITHOUT editing BuyerListingTile (buyer-plan use
+// byte-unchanged). Competing tiles get NO chip (showChip=false).
+function EstimatorTileChip({ tile, anchorTier, docType }: {
+  tile: any
+  anchorTier: string | null | undefined
+  docType: 'home' | 'condo'
+}) {
+  const chip = tierChipFor(
+    (tile?.sourceTier as string | null | undefined) ?? null,
+    (anchorTier as TierBestSlot | null | undefined) ?? null,
+    docType,
+  )
+  if (!chip) return null
+  return (
+    <span
+      className="inline-block text-[10px] font-bold text-white rounded px-1.5 py-0.5 mb-1"
+      style={{ background: chip.color }}
+    >
+      {chip.marker} {chip.label} · {chip.sub}
+    </span>
+  )
+}
+
+// W-ESTIMATOR-CONTENT-PARITY (2026-06-18): matchQuality caption + adjustment
+// story under each tile. Mirrors charlie-plan-email-html.ts:414 + the
+// seller's CompRow adjustment notation. Both wrappers are read-only
+// renders of fields the new mappers now persist.
+function EstimatorTileExtras({ tile }: { tile: any }) {
+  const mq = tile?.matchQuality ? String(tile.matchQuality) : null
+  const adjustments: any[] = Array.isArray(tile?.adjustments) ? tile.adjustments : []
+  if (!mq && adjustments.length === 0) return null
+  return (
+    <div className="text-xs text-slate-500 mt-1 pl-1">
+      {mq && <div className="text-slate-400">{mq}</div>}
+      {adjustments.length > 0 && (
+        <ul className="mt-1 space-y-0.5">
+          {adjustments.map((a, i) => {
+            const reason = a?.reason || a?.type || 'Adjustment'
+            const amt = a?.adjustmentAmount
+            const amtFmt = (amt != null && Number.isFinite(Number(amt)))
+              ? (Number(amt) >= 0 ? '+' : '−') + '$' + Math.abs(Math.round(Number(amt))).toLocaleString()
+              : ''
+            const amtColor = (amt != null && Number.isFinite(Number(amt)) && Number(amt) >= 0)
+              ? 'text-emerald-700' : 'text-rose-700'
+            return (
+              <li key={i} className="flex items-baseline gap-2">
+                <span>•</span>
+                <span className="flex-1">{reason}</span>
+                {amtFmt && <span className={`font-semibold ${amtColor}`}>{amtFmt}</span>}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// Per-tile wrap: chip ABOVE + BuyerListingTile + extras BELOW. Keeps
+// BuyerListingTile byte-unchanged so the buyer-plan use is unaffected.
+function EstimatorTileWrap({ children, tile, anchorTier, docType, showChip }: {
+  children: React.ReactNode
+  tile: any
+  anchorTier: string | null | undefined
+  docType: 'home' | 'condo'
+  showChip: boolean
+}) {
+  return (
+    <div>
+      {showChip && <EstimatorTileChip tile={tile} anchorTier={anchorTier} docType={docType} />}
+      {children}
+      <EstimatorTileExtras tile={tile} />
+    </div>
+  )
+}
+
 function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc: any; docType: 'home' | 'condo' }) {
   const subj = workingDoc?.subject || {}
   const est = workingDoc?.estimate || {}
@@ -363,6 +443,8 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
   // (working-doc-render.ts:263-266). Empty-piece filter drops absent
   // fields so the line stays clean for sections that don't carry every
   // stat (e.g. competing has no bestGeoTier / median / estimatedPrice).
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): includes section.priceRange
+  // when present (tax-match section carries it now).
   const subHeader = (section: any): string => {
     if (!section) return ''
     const count = section.count != null
@@ -377,7 +459,10 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
     const anchor = section.bestGeoTier
       ? `${tierLabelTab(section.bestGeoTier)} anchor`
       : ''
-    return [anchor, sec_est, median, count].filter(Boolean).join(' · ')
+    const range = section.priceRange
+      ? `Range ${priceFmt(section.priceRange.low)} – ${priceFmt(section.priceRange.high)}`
+      : ''
+    return [anchor, sec_est, range, median, count].filter(Boolean).join(' · ')
   }
 
   // Sections — adapt the WorkingDocTile (camelCase) into the dual-shape
@@ -453,6 +538,29 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
             {est.matchTier && <span>{est.matchTier}</span>}
           </div>
         )}
+        {/* W-ESTIMATOR-CONTENT-PARITY (2026-06-18): confidenceMessage +
+            marketSpeed block. Both fields engine-produced; mappers now
+            persist; matches the email's renderEstimateHeader additions. */}
+        {est.confidenceMessage && (
+          <div className="text-xs text-slate-500 mt-1 leading-relaxed">{est.confidenceMessage}</div>
+        )}
+        {est.marketSpeed && (est.marketSpeed.avgDaysOnMarket != null || est.marketSpeed.status || est.marketSpeed.message) && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Market Speed</div>
+            <div className="text-xs text-slate-900 mt-1">
+              {est.marketSpeed.avgDaysOnMarket != null && (
+                <span>Avg DOM: <span className="font-semibold">{est.marketSpeed.avgDaysOnMarket}d</span></span>
+              )}
+              {est.marketSpeed.avgDaysOnMarket != null && est.marketSpeed.status && <span> · </span>}
+              {est.marketSpeed.status && (
+                <span>Status: <span className="font-semibold">{est.marketSpeed.status}</span></span>
+              )}
+            </div>
+            {est.marketSpeed.message && (
+              <div className="text-xs text-slate-500 mt-1">{est.marketSpeed.message}</div>
+            )}
+          </div>
+        )}
         <div className="text-xs text-slate-400 mt-3">
           Source: <span className="font-semibold">{lead.source}</span>
           {lead.created_at ? ' · ' + new Date(lead.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
@@ -476,7 +584,9 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
         />
       )}
 
-      {/* Comparable Sold */}
+      {/* Comparable Sold — W-ESTIMATOR-CONTENT-PARITY (2026-06-18):
+          per-tile chip + matchQuality + adjustments via EstimatorTileWrap.
+          BuyerListingTile byte-unchanged inside. */}
       {Array.isArray(workingDoc?.comparableSold?.tiles) && workingDoc.comparableSold.tiles.length > 0 && (
         <section>
           <h3 className="text-sm font-bold text-slate-900 mb-1">Comparable Sold</h3>
@@ -486,13 +596,21 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
           )}
           <div className="flex flex-col gap-2">
             {workingDoc.comparableSold.tiles.map((t: any, i: number) => (
-              <BuyerListingTile key={t.listingKey || 'cs-' + i} listing={adaptSoldTile(t)} kind="sold" index={i} />
+              <EstimatorTileWrap
+                key={t.listingKey || 'cs-' + i}
+                tile={t}
+                anchorTier={workingDoc.comparableSold.bestGeoTier}
+                docType={docType}
+                showChip={true}
+              >
+                <BuyerListingTile listing={adaptSoldTile(t)} kind="sold" index={i} />
+              </EstimatorTileWrap>
             ))}
           </div>
         </section>
       )}
 
-      {/* Tax-Matched */}
+      {/* Tax-Matched — chips + 2nd tier rail under the section */}
       {Array.isArray(workingDoc?.taxMatch?.tiles) && workingDoc.taxMatch.tiles.length > 0 && (
         <section>
           <h3 className="text-sm font-bold text-slate-900 mb-1">Tax-Matched</h3>
@@ -502,13 +620,43 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
           )}
           <div className="flex flex-col gap-2">
             {workingDoc.taxMatch.tiles.map((t: any, i: number) => (
-              <BuyerListingTile key={t.listingKey || 'tm-' + i} listing={adaptSoldTile(t)} kind="sold" index={i} />
+              <EstimatorTileWrap
+                key={t.listingKey || 'tm-' + i}
+                tile={t}
+                anchorTier={workingDoc.taxMatch.bestGeoTier}
+                docType={docType}
+                showChip={true}
+              >
+                <BuyerListingTile listing={adaptSoldTile(t)} kind="sold" index={i} />
+              </EstimatorTileWrap>
             ))}
           </div>
+          {/* W-ESTIMATOR-CONTENT-PARITY (2026-06-18): tax-match SECOND
+              4-tier rail. Engine produces taxMatch.tiers; mapper now
+              persists; renders via the same TierRail component as the
+              geo rail with a distinct caption. */}
+          {workingDoc.taxMatch.tiers && (
+            <div className="mt-4">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">
+                Tax-Match Confidence by Area
+              </div>
+              <TierRail
+                slots={{
+                  platinum: workingDoc.taxMatch.tiers.platinum ?? null,
+                  gold:     workingDoc.taxMatch.tiers.gold ?? null,
+                  silver:   workingDoc.taxMatch.tiers.silver ?? null,
+                  bronze:   workingDoc.taxMatch.tiers.bronze ?? null,
+                }}
+                bestGeoTier={(workingDoc.taxMatch.bestGeoTier as TierBestSlot) || 'none'}
+                path={docType}
+              />
+            </div>
+          )}
         </section>
       )}
 
-      {/* Competing For Sale */}
+      {/* Competing For Sale — NO CHIP (deliberate, matches established
+          CharlieLeadEstimate.tsx:108 omission). */}
       {Array.isArray(workingDoc?.competing?.tiles) && workingDoc.competing.tiles.length > 0 && (
         <section>
           <h3 className="text-sm font-bold text-slate-900 mb-1">Competing For Sale</h3>
@@ -518,7 +666,15 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
           )}
           <div className="flex flex-col gap-2">
             {workingDoc.competing.tiles.map((t: any, i: number) => (
-              <BuyerListingTile key={t.listingKey || t.id || 'cp-' + i} listing={adaptCompetingTile(t)} kind="matched" index={i} />
+              <EstimatorTileWrap
+                key={t.listingKey || t.id || 'cp-' + i}
+                tile={t}
+                anchorTier={null}
+                docType={docType}
+                showChip={false}
+              >
+                <BuyerListingTile listing={adaptCompetingTile(t)} kind="matched" index={i} />
+              </EstimatorTileWrap>
             ))}
           </div>
         </section>

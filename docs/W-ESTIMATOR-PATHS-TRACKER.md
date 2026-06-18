@@ -6982,5 +6982,206 @@ W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG (2026-06-18) — FIX
 
 ### Commit
 
-  W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG: (HOLD push)
+  W-ESTIMATOR-USERID-INSERT-AND-COMPETING-DIAG: bf6af2e
+
+──────────────────────────────────────────────────────────────────────
+W-ESTIMATOR-CONTENT-PARITY (2026-06-18) — FIX
+──────────────────────────────────────────────────────────────────────
+
+### Recon findings carried over
+
+  recon/estimator-section-tiers.txt:
+    Email per-tile shows plain grey text instead of the established
+    colored chip; admin lead tab shows NO chip at all (inherited
+    from BuyerListingTile's buyer-plan decision). Data IS in the
+    saved tiles (verified live: sourceTier=gold/silver on tax-match
+    tiles, null on geo-cascade comparableSold + bestGeoTier at
+    section level).
+
+  recon/estimator-workingdoc-content-gap.txt:
+    24 engine-produced fields dropped between the 3 buildWorkingDoc
+    mappers. Five visible-value drops the seller surface shows
+    that the estimator doesn't: matchQuality, adjustments[],
+    taxMatch.tiers (second tier rail), taxMatch.priceRange,
+    marketSpeed. confidenceMessage captured but never rendered.
+
+### Fix shipped this turn — 7 visible-content items to parity
+
+  PART A — types extended + 3 mappers capture (additive only):
+
+    lib/email/working-doc-render.ts:
+      + interface WorkingDocTileAdjustment { type, difference,
+        adjustmentAmount, reason }
+      + WorkingDocTile.adjustments?: WorkingDocTileAdjustment[] | null
+      + WorkingDocSection: { priceRange, matchTier, tiers }
+        (tax-match section fields)
+      + WorkingDocEstimate.marketSpeed?: { avgDaysOnMarket,
+        status, message } | null
+
+    Mappers (3 files — byte-identical shape):
+      components/property/OfferInquiryModal.tsx (buildOfferWorkingDoc)
+      app/estimator/components/EstimatorResults.tsx (buildWorkingDoc)
+      app/estimator/components/HomeEstimatorResults.tsx (buildWorkingDoc)
+        + Per-tile: matchQuality (already declared on type),
+          adjustments[] (from ComparableSale.adjustments)
+        + taxMatch section: matchTier, priceRange, tiers (the 2nd
+          4-tier breakdown distinct from geo cascade)
+        + estimate: marketSpeed { avgDaysOnMarket, status, message }
+          (already-captured confidenceMessage left as-is)
+
+  PART B — email renderer (lib/email/working-doc-render.ts):
+
+    + import { tierChipFor } from '@/lib/charlie/tier-chip'
+    + extracted renderTierRailFromSlots(slots, bestGeoTier, docType,
+      caption) so the SAME rail renderer drives BOTH the top geo
+      rail AND the new tax-match rail (caption is the only delta)
+    + renderTile signature gained (anchorTier, showChip):
+        chipHtml built by tierChipFor with anchor fallback —
+        mirrors charlie-plan-email-html.ts:358-368 (colored
+        inline-style div + `${marker} ${label} · ${sub}`)
+        showChip=false ⇒ empty string (Competing tiles get no chip,
+        matches CharlieLeadEstimate.tsx:108)
+        adjustmentsHtml: list of `${reason} · ±$amount` per
+        adjustment, color-coded (green for + / red for −)
+        matchQ caption ALREADY wired at L260; now fires because
+        the mapper populates the field
+        Old plain-grey-text tier label REMOVED — duplicated chip
+        info and misaligned with the established surface
+    + renderSection: showChip threaded; subHeader now includes
+      section.priceRange when present (tax-match section subhead
+      "Range $X – $Y" matches Charlie plan email)
+    + renderWorkingDocSections: showChip=true for sold + tax;
+      showChip=false for competing; renderTierRailFromSlots called
+      on doc.taxMatch.tiers with the caption "Tax-Match Confidence
+      by Area" → emitted between tax + competing
+    + renderEstimateHeader: appended confidenceMessage line +
+      Market Speed block (Avg DOM + status + message). Both gated
+      on field presence so pre-fix leads omit gracefully.
+
+  PART C — lead tab (LeadWorkbenchClient.tsx EstimatorRender):
+
+    + import tierChipFor (added to the existing TierBestSlot import)
+    + 3 new local components (file-scoped, no exports — keep
+      BuyerListingTile untouched per spec):
+        EstimatorTileChip — chip via tierChipFor + TIER_META,
+          format-identical to CharlieLeadEstimate.tsx:82-97 TierChip
+        EstimatorTileExtras — matchQuality caption + adjustment
+          list per tile
+        EstimatorTileWrap — chip ABOVE + children + extras BELOW
+          (children = unchanged BuyerListingTile call)
+    + Each section block now wraps its BuyerListingTile in
+      EstimatorTileWrap:
+        Comparable Sold ⇒ showChip=true, anchor=section.bestGeoTier
+        Tax-Matched     ⇒ showChip=true, anchor=section.bestGeoTier
+        Competing       ⇒ showChip=false (no anchor passed)
+      BuyerListingTile call itself unchanged — kind, listing,
+      index props identical; PlanRenderer not touched.
+    + Tax-Matched section gained a SECOND TierRail under its tiles:
+        slots: workingDoc.taxMatch.tiers
+        bestGeoTier: workingDoc.taxMatch.bestGeoTier
+        Caption: "Tax-Match Confidence by Area"
+        Reuses the SAME shared TierRail component (415eca1),
+        does not edit it.
+    + Estimate header card: appended confidenceMessage line +
+      Market Speed mini-block (Avg DOM + status + optional
+      message). Matches the email's renderEstimateHeader output.
+    + subHeader helper includes section.priceRange when present.
+
+### No-regression assertions (this turn)
+
+  TSC clean — full project pass.
+
+  git diff scope:
+    M  app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx     (PART C)
+    M  app/estimator/components/EstimatorResults.tsx          (PART A)
+    M  app/estimator/components/HomeEstimatorResults.tsx      (PART A)
+    M  components/property/OfferInquiryModal.tsx              (PART A)
+    M  lib/email/working-doc-render.ts                        (PARTS A + B)
+    + docs/W-ESTIMATOR-PATHS-TRACKER.md
+    (5 source + tracker. Matches declared scope.)
+
+  BYTE-UNCHANGED (verified `git diff --stat HEAD -- <path>` empty):
+
+    ENGINE (locked — operator confirmed CORRECT):
+      lib/estimator/condo-comparable-matcher-sales.ts          empty
+      lib/estimator/home-comparable-matcher-sales.ts           empty
+      lib/estimator/tax-band-sold-query.ts                     empty
+      lib/estimator/statistical-calculator.ts                  empty
+      app/estimator/actions/estimate-condo-sale.ts             empty
+      app/estimator/actions/estimate-home-sale.ts              empty
+
+    ESTABLISHED SURFACES (we reuse, don't edit):
+      components/dashboard/CharlieLeadEstimate.tsx             empty
+      lib/email/charlie-plan-email-html.ts                     empty
+      app/charlie/components/                                  empty
+      lib/charlie/tier-chip.ts                                 empty
+
+    SHARED COMPONENTS (reused, not edited):
+      components/admin-homes/lead-workbench/PlanRenderer.tsx   empty
+        (BuyerListingTile body byte-identical — chips wrap AROUND
+         the tile via EstimatorTileWrap; buyer-plan use is
+         unaffected.)
+      components/shared/TierRail.tsx                           empty
+        (reused for the new tax-match rail; existing geo-rail use
+         byte-identical.)
+
+    INFRA:
+      middleware.ts                                            empty
+      app/api/chat                                             empty
+
+  Prior fixes preserved (all PASS):
+    49f6c68 photos + buildPropertySlug hrefs                   PASS
+    415eca1 geo tier rail at top of email + lead               PASS
+    3d7e946 per-section stats subhead + user.id thread         PASS
+    bf6af2e D1 user_id INSERT + D3 competingDiag               PASS
+    All inherit naturally — the new fields are additive and the
+    pre-existing field set is byte-identical.
+
+  Pre-existing dirty files (NOT staged in any commit):
+    app/api/charlie/municipalities/route.ts             not staged
+    scripts/r-w-territory-master-p2-data-phantom-fix.js not staged
+    scripts/r-w-territory-master-p4-check-fix.js        not staged
+
+### Behaviour after this fix
+
+  Next Sale Offer / Get Estimate click writes a workingDoc carrying:
+    - per-tile matchQuality + adjustments[]
+    - taxMatch.tiers (4 slots), taxMatch.priceRange, taxMatch.matchTier
+    - estimate.marketSpeed { avgDaysOnMarket, status, message }
+    - (confidenceMessage was already captured; now actually rendered)
+
+  Email renders for the same lead:
+    Per-comp tiles in Comparable Sold + Tax-Matched: colored chip
+      via tierChipFor with anchor fallback ("● Gold · Community"
+      on geo-cascade tiles via anchor; "● Silver · Municipality"
+      on silver tax-cascade tiles via per-tile sourceTier).
+    Per-comp adjustment story under each tile when adjustments
+      are present.
+    matchQuality caption under each tile when present.
+    Tax-Matched section gets its OWN 4-row "Tax-Match Confidence
+      by Area" rail under the tile list, in addition to the geo
+      rail at top.
+    Tax-Matched subhead now shows `Range $X – $Y`.
+    Estimate header gains confidenceMessage + Market Speed mini-block.
+    Competing tiles: NO chip (deliberate, matches established).
+
+  Admin lead Estimator tab renders the same 7 items via the
+    EstimatorTileWrap + the shared TierRail. BuyerListingTile
+    byte-unchanged. Pre-fix leads (no new fields) render the
+    sections as before — the 7 wrappers are all gated on field
+    presence.
+
+### Backups in place
+
+  Suffix: `W-ESTIMATOR-CONTENT-PARITY_20260618_071209`
+    components/property/OfferInquiryModal.tsx
+    app/estimator/components/EstimatorResults.tsx
+    app/estimator/components/HomeEstimatorResults.tsx
+    lib/email/working-doc-render.ts
+    app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Commit
+
+  W-ESTIMATOR-CONTENT-PARITY: (HOLD push — operator approval gate)
 

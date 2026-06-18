@@ -82,6 +82,16 @@ function buildOfferWorkingDoc(args: {
       bestGeoTier: (result as any).bestGeoTier ?? null,
       confidence: result.confidence ?? null,
       confidenceMessage: result.confidenceMessage ?? null,
+      // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): marketSpeed (avgDOM +
+      // Fast/Moderate/Slow status). Engine computes every run; pre-fix
+      // mapper dropped. ADDITIVE — does not change other fields.
+      marketSpeed: (result as any).marketSpeed
+        ? {
+            avgDaysOnMarket: (result as any).marketSpeed.avgDaysOnMarket ?? null,
+            status:          (result as any).marketSpeed.status ?? null,
+            message:         (result as any).marketSpeed.message ?? null,
+          }
+        : null,
     } : null,
     // W-ESTIMATOR-TIER-RAIL (2026-06-17): 4-row "Confidence by Area"
     // rail data, sourced from EstimateResult.tiers (lib/estimator/
@@ -128,6 +138,20 @@ function buildOfferWorkingDoc(args: {
             // :220-234, home-comparable-matcher-sales.ts equivalent). Tile
             // builder just needs to forward it.
             mediaUrl: c.mediaUrl ?? null,
+            // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): matchQuality + per-
+            // comp adjustments. Engine produces every run; renderer code
+            // path for matchQuality already lived at working-doc-render.ts
+            // :238-240 but was dead because the mapper dropped the field.
+            // adjustments carries the ±$amount story (parking/locker/bath).
+            matchQuality: c.matchQuality ?? null,
+            adjustments: Array.isArray(c.adjustments) && c.adjustments.length > 0
+              ? c.adjustments.map((a: any) => ({
+                  type:             a?.type ?? null,
+                  difference:       a?.difference ?? null,
+                  adjustmentAmount: a?.adjustmentAmount ?? null,
+                  reason:           a?.reason ?? null,
+                }))
+              : null,
           })),
         }
       : null,
@@ -136,6 +160,26 @@ function buildOfferWorkingDoc(args: {
           bestGeoTier: (result as any).taxMatch.bestGeoTier ?? null,
           count: (result as any).taxMatch.count ?? (result as any).taxMatch.comparables.length,
           estimatedPrice: (result as any).taxMatch.estimatedPrice ?? null,
+          // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): taxMatch.matchTier +
+          // taxMatch.priceRange + taxMatch.tiers (the SECOND 4-tier
+          // breakdown distinct from the geo cascade). Engine produces
+          // every run; mapper dropped pre-fix → email + lead missing
+          // the tax-match priceRange subhead AND the second tier rail.
+          matchTier:  (result as any).taxMatch.matchTier ?? null,
+          priceRange: (result as any).taxMatch.priceRange ?? null,
+          tiers: (result as any).taxMatch.tiers
+            ? (() => {
+                const t = (result as any).taxMatch.tiers as Record<string, any>
+                const slot = (x: any): any =>
+                  x ? { count: x.count ?? null, median: x.median ?? null, range: x.range ?? null, estimatedPrice: x.estimatedPrice ?? null } : null
+                return {
+                  platinum: slot(t.platinum),
+                  gold:     slot(t.gold),
+                  silver:   slot(t.silver),
+                  bronze:   slot(t.bronze),
+                }
+              })()
+            : null,
           tiles: (result as any).taxMatch.comparables.slice(0, 10).map((c: any) => ({
             listingKey: c.listingKey ?? null,
             closePrice: c.closePrice ?? null,
@@ -151,6 +195,17 @@ function buildOfferWorkingDoc(args: {
             sourceTier: c.sourceTier ?? null,
             temperature: c.temperature ?? null,
             mediaUrl: c.mediaUrl ?? null,
+            // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): same per-tile
+            // additions as comparableSold above.
+            matchQuality: c.matchQuality ?? null,
+            adjustments: Array.isArray(c.adjustments) && c.adjustments.length > 0
+              ? c.adjustments.map((a: any) => ({
+                  type:             a?.type ?? null,
+                  difference:       a?.difference ?? null,
+                  adjustmentAmount: a?.adjustmentAmount ?? null,
+                  reason:           a?.reason ?? null,
+                }))
+              : null,
           })),
         }
       : null,
