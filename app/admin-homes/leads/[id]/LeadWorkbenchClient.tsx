@@ -610,7 +610,10 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
         </section>
       )}
 
-      {/* Tax-Matched — chips + 2nd tier rail under the section */}
+      {/* Tax-Matched — chips + 2nd tier rail ABOVE the tile list
+          (W-ESTIMATOR-TAXRAIL-POSITION 2026-06-18) so the rail sits
+          between the section subheader and the first tile, matching
+          how the top-of-tab geo rail sits above Comparable Sold. */}
       {Array.isArray(workingDoc?.taxMatch?.tiles) && workingDoc.taxMatch.tiles.length > 0 && (
         <section>
           <h3 className="text-sm font-bold text-slate-900 mb-1">Tax-Matched</h3>
@@ -618,25 +621,14 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
           {subHeader(workingDoc.taxMatch) && (
             <div className="text-xs text-slate-600 mb-3">{subHeader(workingDoc.taxMatch)}</div>
           )}
-          <div className="flex flex-col gap-2">
-            {workingDoc.taxMatch.tiles.map((t: any, i: number) => (
-              <EstimatorTileWrap
-                key={t.listingKey || 'tm-' + i}
-                tile={t}
-                anchorTier={workingDoc.taxMatch.bestGeoTier}
-                docType={docType}
-                showChip={true}
-              >
-                <BuyerListingTile listing={adaptSoldTile(t)} kind="sold" index={i} />
-              </EstimatorTileWrap>
-            ))}
-          </div>
-          {/* W-ESTIMATOR-CONTENT-PARITY (2026-06-18): tax-match SECOND
-              4-tier rail. Engine produces taxMatch.tiers; mapper now
-              persists; renders via the same TierRail component as the
-              geo rail with a distinct caption. */}
+          {/* W-ESTIMATOR-CONTENT-PARITY (2026-06-18) + W-ESTIMATOR-
+              TAXRAIL-POSITION (2026-06-18): tax-match SECOND 4-tier
+              rail. Rendered ABOVE the tile loop (moved from below
+              the loop in bb8fbe6) so it anchors the tiles
+              visually, mirroring the geo rail / Comparable Sold
+              layout. Rail markup unchanged — only position moves. */}
           {workingDoc.taxMatch.tiers && (
-            <div className="mt-4">
+            <div className="mb-4">
               <div className="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-2">
                 Tax-Match Confidence by Area
               </div>
@@ -652,6 +644,19 @@ function EstimatorRender({ lead, workingDoc, docType }: { lead: any; workingDoc:
               />
             </div>
           )}
+          <div className="flex flex-col gap-2">
+            {workingDoc.taxMatch.tiles.map((t: any, i: number) => (
+              <EstimatorTileWrap
+                key={t.listingKey || 'tm-' + i}
+                tile={t}
+                anchorTier={workingDoc.taxMatch.bestGeoTier}
+                docType={docType}
+                showChip={true}
+              >
+                <BuyerListingTile listing={adaptSoldTile(t)} kind="sold" index={i} />
+              </EstimatorTileWrap>
+            ))}
+          </div>
         </section>
       )}
 

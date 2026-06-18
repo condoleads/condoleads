@@ -7183,5 +7183,121 @@ W-ESTIMATOR-CONTENT-PARITY (2026-06-18) — FIX
 
 ### Commit
 
-  W-ESTIMATOR-CONTENT-PARITY: (HOLD push — operator approval gate)
+  W-ESTIMATOR-CONTENT-PARITY: bb8fbe6
+
+──────────────────────────────────────────────────────────────────────
+W-ESTIMATOR-TAXRAIL-POSITION (2026-06-18) — FIX (position only)
+──────────────────────────────────────────────────────────────────────
+
+### Context
+
+  bb8fbe6 added the SECOND tier rail ("Tax-Match Confidence by Area")
+  under Tax-Matched on both the email and the admin Estimator tab.
+  Placement was AFTER the tax tile list. Operator visual review:
+  the rail belongs ABOVE the tiles (between the section subheader
+  and the first tile), mirroring how the top-of-email geo rail sits
+  above Comparable Sold.
+
+  Pure render-ORDER change. Rail markup + data unchanged.
+
+### Fix shipped this turn
+
+  Email (lib/email/working-doc-render.ts):
+    + renderSection gained an OPTIONAL `topInsertHtml: string = ''`
+      arg. When passed, the HTML is injected between the section
+      subheader and the tiles <table>. Comparable Sold + Competing
+      callers pass nothing (default '') → byte-equivalent to bb8fbe6.
+    + The tax-match rail is now BUILT BEFORE renderSection runs:
+        const taxTierRail = renderTierRailFromSlots(...)
+      and PASSED INTO renderSection as `topInsertHtml`:
+        const tax = renderSection(..., showChip, taxTierRail)
+    + Removed the standalone `+ taxTierRail` from the final concat:
+        was:  return sold + tax + taxTierRail + competing
+        now:  return sold + tax + competing
+      (the rail is INSIDE `tax` now.)
+
+  Lead tab (app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx):
+    + The {workingDoc.taxMatch.tiers && (...TierRail...)} JSX block
+      moved from AFTER the tax-tile loop to BEFORE it.
+    + Outer <div> margin updated from `mt-4` (was: space ABOVE the
+      rail after the tile list) to `mb-4` (now: space BELOW the
+      rail before the tile list) — the visual gap shape mirrors
+      the geo rail's placement above Comparable Sold.
+
+### No-regression assertions (this turn)
+
+  TSC clean — full project pass.
+
+  git diff scope:
+    M  lib/email/working-doc-render.ts                  (position)
+    M  app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx (position)
+    + docs/W-ESTIMATOR-PATHS-TRACKER.md
+    (2 source + tracker. Matches declared scope.)
+
+  RAIL CONTENT BYTE-IDENTICAL: renderTierRailFromSlots is invoked
+  with the exact same args as bb8fbe6 (slots, bestGeoTier, docType,
+  caption='Tax-Match Confidence by Area'). The <TierRail> React
+  component is mounted with the exact same props as bb8fbe6.
+  Only the POSITION in the section moves.
+
+  BYTE-UNCHANGED (verified `git diff --stat HEAD -- <path>` empty):
+    ENGINE:
+      lib/estimator/condo-comparable-matcher-sales.ts          empty
+      lib/estimator/home-comparable-matcher-sales.ts           empty
+      app/estimator/actions/estimate-condo-sale.ts             empty
+      app/estimator/actions/estimate-home-sale.ts              empty
+
+    ESTABLISHED SURFACES (reused, not edited):
+      components/dashboard/CharlieLeadEstimate.tsx             empty
+      lib/email/charlie-plan-email-html.ts                     empty
+      components/admin-homes/lead-workbench/PlanRenderer.tsx   empty
+      components/shared/TierRail.tsx                           empty
+      lib/charlie/tier-chip.ts                                 empty
+
+    MAPPERS (PART A of bb8fbe6 untouched in this commit):
+      components/property/OfferInquiryModal.tsx                empty
+      app/estimator/components/EstimatorResults.tsx            empty
+      app/estimator/components/HomeEstimatorResults.tsx        empty
+
+    OTHER:
+      lib/actions/leads.ts                                     empty
+      middleware.ts                                            empty
+      app/api/chat                                             empty
+
+  Prior fixes preserved (all PASS):
+    49f6c68 photos + slug hrefs                              PASS
+    415eca1 geo tier rail at top of email + lead             PASS
+    3d7e946 per-section stats + user.id thread               PASS
+    bf6af2e D1 user_id INSERT + D3 competingDiag             PASS
+    bb8fbe6 7-item parity (chip, matchQuality, adjustments,
+            tax-match rail+range, marketSpeed, confidenceMessage) PASS
+    The Comparable Sold rail (top) is byte-unchanged in this commit;
+    every parity content piece from bb8fbe6 still renders.
+
+  Pre-existing dirty files (NOT staged in any commit):
+    app/api/charlie/municipalities/route.ts             not staged
+    scripts/r-w-territory-master-p2-data-phantom-fix.js not staged
+    scripts/r-w-territory-master-p4-check-fix.js        not staged
+
+### FIX 2 — competing — DEFERRED (per spec)
+
+  Operator note: "[Determined by the diag read — placeholder for the
+  targeted fix once cause is known: funnel-over-prune vs server-throw
+  vs transport vs fetch-threw.]"
+
+  Diag read still pending: every Sale Offer click landed on a
+  pre-bf6af2e CLIENT bundle, so competingDiag never wrote. A
+  one-time hard-reload click on 1476 Carmen with the bb8fbe6
+  bundle deployed will produce the diag. NOT in this commit.
+
+### Backups in place
+
+  Suffix: `W-ESTIMATOR-TAXRAIL-POSITION_20260618_085916`
+    lib/email/working-doc-render.ts
+    app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx
+    docs/W-ESTIMATOR-PATHS-TRACKER.md
+
+### Commit
+
+  W-ESTIMATOR-TAXRAIL-POSITION: (HOLD push — operator approval gate)
 

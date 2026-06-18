@@ -367,6 +367,13 @@ function renderSection(
   // Competing section can opt out (matches the deliberate
   // CharlieLeadEstimate.tsx:108 omission for active competition).
   showChip: boolean,
+  // W-ESTIMATOR-TAXRAIL-POSITION (2026-06-18): optional HTML block
+  // injected BETWEEN the subheader and the tiles table. Used by the
+  // tax section to put its 4-row "Tax-Match Confidence by Area" rail
+  // ABOVE the comp tiles, matching how the top-of-email geo rail sits
+  // above Comparable Sold. Empty string = no insert = pre-fix layout
+  // for every other caller (comparableSold + competing pass nothing).
+  topInsertHtml: string = '',
 ): string {
   if (!section || !section.tiles || section.tiles.length === 0) return ''
   const tilesHtml = section.tiles.slice(0, 10).map(t => renderTile(t, baseUrl, idMap, priceKind, docType, section.bestGeoTier ?? null, showChip)).join('')
@@ -386,6 +393,7 @@ function renderSection(
       <div style="font-size:14px;font-weight:700;color:#0f172a;">${escapeHtml(title)}</div>
       <div style="font-size:12px;color:#64748b;margin-top:2px;">${escapeHtml(subtitle)}</div>
       <div style="font-size:11px;color:#475569;margin-top:6px;">${subHeader}</div>
+      ${topInsertHtml}
       <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:8px;font-size:13px;">
         ${tilesHtml}
       </table>
@@ -419,21 +427,13 @@ export function renderWorkingDocSections(
     baseUrl, idMap, 'close', docType,
     /* showChip */ true,
   )
-  const tax = renderSection(
-    'Tax-Matched',
-    opts.audience === 'agent'
-      ? 'Comparables in the same property-tax band (±20%).'
-      : 'Recent sales of homes paying similar property tax to yours.',
-    doc.taxMatch,
-    baseUrl, idMap, 'close', docType,
-    /* showChip */ true,
-  )
-  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): render the SECOND tier rail
-  // (tax-match cascade's own 4-tier breakdown) under Tax-Matched. The
-  // engine returns taxMatch.tiers per cascade; the mapper now persists
-  // it (PART A). Reuses renderTierRailFromSlots (extracted below)
-  // with the tax-match anchor + a caption to distinguish from the geo
-  // rail at the top of the email.
+  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): build the SECOND tier rail
+  // (tax-match cascade's own 4-tier breakdown) for the Tax-Matched
+  // section. Reuses renderTierRailFromSlots with a distinct caption.
+  // W-ESTIMATOR-TAXRAIL-POSITION (2026-06-18): build the rail BEFORE
+  // renderSection runs and inject it as `topInsertHtml` so the rail
+  // sits ABOVE the tax tiles (mirrors how the geo rail sits above
+  // Comparable Sold). Was previously concatenated AFTER the section.
   const taxTierRail = doc.taxMatch?.tiers
     ? renderTierRailFromSlots(
         doc.taxMatch.tiers,
@@ -442,6 +442,16 @@ export function renderWorkingDocSections(
         'Tax-Match Confidence by Area',
       )
     : ''
+  const tax = renderSection(
+    'Tax-Matched',
+    opts.audience === 'agent'
+      ? 'Comparables in the same property-tax band (±20%).'
+      : 'Recent sales of homes paying similar property tax to yours.',
+    doc.taxMatch,
+    baseUrl, idMap, 'close', docType,
+    /* showChip */ true,
+    /* topInsertHtml */ taxTierRail,
+  )
   const competing = renderSection(
     'Competing For Sale',
     opts.audience === 'agent'
@@ -452,12 +462,12 @@ export function renderWorkingDocSections(
     /* showChip */ false,   // deliberate — established surface omits chip on competing
   )
   if (!sold && !tax && !competing) return ''
-  // W-ESTIMATOR-CONTENT-PARITY (2026-06-18): tax-match tier rail
-  // placed RIGHT AFTER the tax section (so the rail visually anchors
-  // the tax tiles above it), then competing follows. taxTierRail is
-  // empty string when doc.taxMatch.tiers is absent → no layout
-  // change for pre-fix payloads.
-  return sold + tax + taxTierRail + competing
+  // W-ESTIMATOR-TAXRAIL-POSITION (2026-06-18): the tax-match rail is
+  // now injected ABOVE the tax tiles inside `tax` (via
+  // renderSection's topInsertHtml arg), so the top-level concat is
+  // just the 3 sections. Pre-fix tax sections that lack the rail
+  // (no doc.taxMatch.tiers) get topInsertHtml='' → byte-equivalent.
+  return sold + tax + competing
 }
 
 export function renderEstimateHeader(
