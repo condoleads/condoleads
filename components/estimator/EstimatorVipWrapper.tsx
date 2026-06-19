@@ -33,7 +33,15 @@ interface SessionState {
 }
 
 interface EstimatorContextValue {
-  requestEstimate: () => Promise<boolean>
+  // W-CREDIT-BLEED-PHASE2-1b (2026-06-19): optional uidArg lets callers
+  // (EstimatorSeller post-register handoff) pass a freshly-confirmed
+  // user.id so the synchronous gate POST doesn't read a stale closure
+  // userId. AuthContext.user lags behind supabase.auth.signUp by an
+  // async onAuthStateChange tick; without uidArg the gate would post
+  // the prior render's userId prop and Phase 1's server identity check
+  // would 403. Backward-compatible: existing callers pass nothing →
+  // resolver falls back to the userId prop closure → unchanged behavior.
+  requestEstimate: (uidArg?: string) => Promise<boolean>
   session: SessionState
 }
 
@@ -174,7 +182,14 @@ export default function EstimatorVipWrapper({
   }
 
   // This is the gatekeeper function - called BEFORE estimate runs
-  const requestEstimate = useCallback(async (): Promise<boolean> => {
+  const requestEstimate = useCallback(async (uidArg?: string): Promise<boolean> => {
+    // W-CREDIT-BLEED-PHASE2-1b (2026-06-19): resolve effective uid. When
+    // EstimatorSeller calls requestEstimate(confirmedUserId) right after a
+    // RegisterModal success, uidArg carries the just-registered id so the
+    // gate POST avoids the AuthContext propagation race that would
+    // otherwise trip Phase 1's server 403. Fallback to the userId prop
+    // closure preserves the pre-fix behavior for every existing caller.
+    const effectiveUserId = uidArg ?? userId
     // Re-fetch current session state to get latest usage
     try {
       const sessionUrl = tenantId ? '/api/walliam/estimator/session' : '/api/estimator/session'
@@ -183,7 +198,7 @@ export default function EstimatorVipWrapper({
       const response = await fetch(sessionUrl, {
         method: 'POST',
         headers: sessionHeaders,
-        body: JSON.stringify({ agentId, userId, buildingId })
+        body: JSON.stringify({ agentId, userId: effectiveUserId, buildingId })
       })
 
       const data = await response.json()

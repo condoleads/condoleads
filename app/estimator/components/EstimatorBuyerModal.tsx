@@ -16,6 +16,10 @@ import { MLSListing } from '@/lib/types/building'
 import { useAuth } from '@/components/auth/AuthContext'
 // W-CONDO-MODAL-PARITY Phase 2 (2026-06-11) — condo competing rail
 import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
+// W-CREDIT-BLEED-PHASE2-1a (2026-06-19): creditsCtx.refresh on register
+// so the panel display syncs to the freshly-registered user without
+// waiting for AuthContext.onAuthStateChange propagation.
+import { useCreditSession } from '@/components/credits/CreditSessionContext'
 import type { CompetingListing } from '@/app/estimator/components/HomeEstimatorResults'
 import VipPrompt from '@/components/chat/VipPrompt'
 import VipRequestForm, { VipRequestData } from '@/components/chat/VipRequestForm'
@@ -62,6 +66,8 @@ export default function EstimatorBuyerModal({
   exactSqft
 }: EstimatorBuyerModalProps) {
   const { user } = useAuth()
+  // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): refresh credit panel post-register
+  const creditsCtx = useCreditSession()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [geoLevel, setGeoLevel] = useState<string | null>(null)
@@ -171,9 +177,15 @@ export default function EstimatorBuyerModal({
     }
   }, [isOpen])
 
-  const checkAndEstimate = async () => {
+  const checkAndEstimate = async (uidArg?: string) => {
+    // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): accept uidArg from the
+    // RegisterModal.onSuccess confirmedUserId. AuthContext.user lags
+    // behind supabase.auth.signUp by an async onAuthStateChange tick;
+    // reading user.id from the closure here would post a STALE id and
+    // Phase 1's server gate would 403. The override skips the race.
+    const uid = uidArg ?? user?.id
     // If not logged in, show register
-    if (!user) {
+    if (!uid) {
       setShowRegister(true)
       return
     }
@@ -185,7 +197,7 @@ export default function EstimatorBuyerModal({
       const sessionUrl = tenantId ? '/api/walliam/estimator/session' : '/api/estimator/session'
       const sessionHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
       if (tenantId) sessionHeaders['x-tenant-id'] = tenantId
-      const sessionBody = tenantId ? { userId: user.id } : { agentId, userId: user.id, buildingId }
+      const sessionBody = tenantId ? { userId: uid } : { agentId, userId: uid, buildingId }
       const response = await fetch(sessionUrl, {
         method: 'POST',
           headers: sessionHeaders,
@@ -818,9 +830,18 @@ export default function EstimatorBuyerModal({
       <RegisterModal
         isOpen={showRegister}
         onClose={() => { setShowRegister(false); onClose(); }}
-        onSuccess={() => {
+        onSuccess={(confirmedUserId) => {
+          // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): pass confirmedUserId
+          // through so the synchronous checkAndEstimate doesn't read a
+          // stale user.id closure. Phase 1's server identity gate would
+          // 403 a stale id; this avoids it. Also fire-and-forget refresh
+          // the credit panel display so the user sees their fresh
+          // (post-register) quotas without an F5.
           setShowRegister(false)
-          checkAndEstimate()
+          if (confirmedUserId) {
+            creditsCtx.refresh(undefined, confirmedUserId).catch(() => {})
+          }
+          checkAndEstimate(confirmedUserId)
         }}
         registrationSource="estimator"
         agentId={agentId}

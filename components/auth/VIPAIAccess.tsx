@@ -21,7 +21,11 @@ export default function VIPAIAccess({
   primaryColor = '#1d4ed8',
 }: Props) {
   const { user, signOut } = useAuth()
-  const { state } = useCreditSession()
+  // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): also pull refresh so post-register
+  // we can fetch the new user's quotas immediately. Without this, the panel
+  // would show '?' fallback during the brief window between Phase 1's
+  // identity-change clear and the main useEffect's loadSession refetch.
+  const { state, refresh } = useCreditSession()
   const [showRegister, setShowRegister] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [requesting, setRequesting] = useState(false)
@@ -121,7 +125,13 @@ export default function VIPAIAccess({
           <span style={{ fontSize: 10, fontWeight: 700, color: '#fde68a', background: 'rgba(253,230,138,0.15)', borderRadius: 100, padding: '2px 8px' }}>Register Free →</span>
         </button>
         <style>{`@keyframes vip-pulse{0%,100%{box-shadow:0 0 20px rgba(124,58,237,0.4)}50%{box-shadow:0 0 30px rgba(124,58,237,0.7)}}`}</style>
-        <RegisterModal isOpen={showRegister} onClose={() => setShowRegister(false)} registrationSource={registrationSource} onSuccess={() => setShowRegister(false)} />
+        <RegisterModal isOpen={showRegister} onClose={() => setShowRegister(false)} registrationSource={registrationSource} onSuccess={(confirmedUserId) => {
+          // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): post-register, fetch the
+          // new user's quotas immediately so the panel transitions from
+          // anonymous defaults to B's data without the brief '?' window.
+          setShowRegister(false)
+          if (confirmedUserId) refresh(undefined, confirmedUserId).catch(() => {})
+        }} />
       </>
     )
 
@@ -178,7 +188,11 @@ export default function VIPAIAccess({
             </button>
           </div>
         </div>
-        <RegisterModal isOpen={showRegister} onClose={() => setShowRegister(false)} registrationSource={registrationSource} onSuccess={() => setShowRegister(false)} />
+        <RegisterModal isOpen={showRegister} onClose={() => setShowRegister(false)} registrationSource={registrationSource} onSuccess={(confirmedUserId) => {
+          // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): post-register quota refresh.
+          setShowRegister(false)
+          if (confirmedUserId) refresh(undefined, confirmedUserId).catch(() => {})
+        }} />
       </>
     )
   }

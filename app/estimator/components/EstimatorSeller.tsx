@@ -153,16 +153,25 @@ function EstimatorSellerInner({ buildingId, buildingSlug, buildingName, building
       '5000 +',
     ]
 
-  const handleEstimate = async () => {
-    // Check if user is logged in
-    if (!userId) {
+  const handleEstimate = async (uidArg?: string) => {
+    // W-CREDIT-BLEED-PHASE2-1b (2026-06-19): accept uidArg from
+    // RegisterModal.onSuccess confirmedUserId. AuthContext.user (and
+    // therefore the userId prop, which is sourced from useAuth in the
+    // wrapping EstimatorSellerOuter) lags behind supabase.auth.signUp
+    // by an async onAuthStateChange tick; reading the prop here would
+    // be the prior render's userId and the gate POST would trip
+    // Phase 1's server 403. uidArg ?? userId picks the just-registered
+    // id when available, falling back to the prop closure when not
+    // (unchanged behavior for normal already-signed-in callers).
+    const effectiveUserId = uidArg ?? userId
+    if (!effectiveUserId) {
       setShowRegister(true)
       return
     }
 
     // Check usage BEFORE running estimate (gatekeeper)
     if (estimatorContext) {
-      const canProceed = await estimatorContext.requestEstimate()
+      const canProceed = await estimatorContext.requestEstimate(uidArg)
       if (!canProceed) {
         // VIP flow triggered - don't run estimate
         return
@@ -362,7 +371,7 @@ function EstimatorSellerInner({ buildingId, buildingSlug, buildingName, building
 
             {/* Submit Button */}
             <button
-              onClick={handleEstimate}
+              onClick={() => handleEstimate()}
               disabled={loading}
               className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white py-4 px-8 rounded-xl font-semibold text-lg transition-colors shadow-lg"
             >
@@ -406,9 +415,14 @@ function EstimatorSellerInner({ buildingId, buildingSlug, buildingName, building
       <RegisterModal
         isOpen={showRegister}
         onClose={() => setShowRegister(false)}
-        onSuccess={() => {
+        onSuccess={(confirmedUserId) => {
+          // W-CREDIT-BLEED-PHASE2-1b (2026-06-19): pass confirmedUserId
+          // through to handleEstimate so the synchronous gate POST uses
+          // the just-registered id (not the stale userId prop closure
+          // captured pre-register). Mirrors the D1/D2 pattern shipped in
+          // iteration 1a for the buyer modals.
           setShowRegister(false)
-          handleEstimate()
+          handleEstimate(confirmedUserId)
         }}
         registrationSource="estimator"
         agentId={agentId}
