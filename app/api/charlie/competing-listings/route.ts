@@ -78,6 +78,10 @@ export async function POST(req: NextRequest) {
         .map((x: any) => x.s)
       const rows = sortedAndCapped
       // Condo path: attach media inline (no shared helper yet).
+      // W-COMPETING-GEO-PILLS (2026-06-19): condo branch queries community
+      // only (single .eq above) — every returned row is by construction at
+      // the 'gold' tier. Stamp here so the surface renderers read tier off
+      // the same field as the home cascade does.
       if (rows.length > 0) {
         const ids = rows.map((l: any) => l.id)
         const { data: media } = await supabase
@@ -85,7 +89,7 @@ export async function POST(req: NextRequest) {
           .eq('variant_type', 'thumbnail').eq('order_number', 0)
         const mediaMap: Record<string, string> = {}
         media?.forEach((m: any) => { mediaMap[m.listing_id] = m.media_url })
-        listings = rows.map((l: any) => ({ ...l, mediaUrl: mediaMap[l.id] || null }))
+        listings = rows.map((l: any) => ({ ...l, mediaUrl: mediaMap[l.id] || null, sourceTier: 'gold' }))
       }
     }
 

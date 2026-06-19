@@ -8199,3 +8199,202 @@ W-CREDIT-BLEED ROLLBACK (2026-06-19) — production regression
   HOLD PUSH. Wait for operator approval after the local smoke
   proves the estimator works again (it does — see Verification
   above).
+
+---
+
+## W-COMPETING-GEO-PILLS — geo-tier badges on Competing-For-Sale tiles (2026-06-19)
+
+### Why
+
+  Sold + Tax-Matched tiles render a Platinum/Gold/Silver/Bronze chip
+  in every surface (in-chat + email + lead). Competing-For-Sale tiles
+  did NOT — the chip code existed in the email renderer but was
+  gated `showChip: false`, the in-chat tile had no tier badge at all,
+  and the persisted `workingDoc.competing.tiles[]` carried no tier
+  field. Operator's symptom: Competing tiles looked tierless next to
+  the other two rails — visual inconsistency, not a wrong value.
+
+### Recon
+
+  recon/competing-geo-pills.txt. Key finding: tier was already KNOWN
+  at the matcher's cascade return sites — `findActiveCompetitionSF`
+  has two distinct return sites (community / muni) and the plex
+  variant has three (community / muni / area). The route's condo
+  branch queries community only — every row is by construction gold.
+  The cascade never had to be re-run to derive the tier; it just
+  needed to be STAMPED. Uniform per response: the cascade returns
+  from EXACTLY ONE level, so every tile in one response carries the
+  same tier (cross-surface consistency falls out for free once the
+  stamp lands at the source).
+
+### Change
+
+  1. **Stamp tier at the matcher source** —
+     `lib/estimator/home-comparable-matcher-sales.ts`:
+       - findActiveCompetitionSF community return → `sourceTier: 'gold'`
+       - findActiveCompetitionSF muni return     → `sourceTier: 'silver'`
+       - findActiveCompetitionPlex community     → `sourceTier: 'gold'`
+       - findActiveCompetitionPlex muni          → `sourceTier: 'silver'`
+       - findActiveCompetitionPlex area          → `sourceTier: 'bronze'`
+     SF cascade has no street/area branch by design → 'platinum' and
+     'bronze' are unreachable for SF. Same tier strings the SOLD-comp
+     stamp helper uses so HOME_LABEL_MAP / CONDO_LABEL_MAP matches
+     without a parallel mapping.
+
+  2. **Condo route stamp** —
+     `app/api/charlie/competing-listings/route.ts`: condo branch's
+     mediaUrl map now stamps `sourceTier: 'gold'` (single-level
+     community query → always gold).
+
+  3. **Type + tile-builders** —
+     `app/estimator/components/HomeEstimatorResults.tsx`:
+       - CompetingListing type adds optional
+         `sourceTier?: 'platinum'|'gold'|'silver'|'bronze'|null`
+       - inline buildWorkingDoc IIFE (the fire-on-generate path)
+         threads `sourceTier` into workingDoc.competing.tiles[] AND
+         sets section-level `bestGeoTier` from the first tile's tier
+         (uniform per response).
+     `lib/email/working-doc-render.ts`:
+       - tileFromCompeting now sets `sourceTier: c?.sourceTier ?? null`
+       - buildWorkingDocFromResult sets the competing section's
+         `bestGeoTier` from input.competingListings[0].sourceTier.
+
+  4. **In-chat tier badge** —
+     `app/estimator/components/HomeEstimatorResults.tsx`: adds a
+     `cl.sourceTier && (() => ...)()`-gated badge above the price
+     row, mirroring the tax-match tile badge shape (same
+     HOME_LABEL_MAP, same emerald/amber/slate/orange color map).
+
+  5. **Email chip enabled** —
+     `lib/email/working-doc-render.ts` flips the competing section's
+     `showChip: false` → `true`. The chip-render code at L298-L304
+     was already wired — only the gate needed opening.
+
+  6. **Lead surface: no edit** —
+     `components/dashboard/WorkingDocView.tsx` TileRow at L166 already
+     reads `tile.sourceTier` and renders the label. Confirmed by
+     smoke PART 3 — no change needed.
+
+### Cross-surface guarantee
+
+  All 3 surfaces (in-chat, email, lead) read `tile.sourceTier` (or
+  `cl.sourceTier` in the in-chat case) — the SAME value, populated
+  ONCE at the matcher source. By construction the rendered tier
+  label is identical across all three. Same discipline as ea56db5:
+  stamp once, read everywhere — never compute per surface.
+
+### Forbidden scope respected
+
+  Untouched: SOLD-comp `stamp` helper (only REUSED its tier strings);
+  tax-match logic; cascade logic itself (we stamped what it returns,
+  never changed which tier it returns); System 1; Sale Offer.
+
+  **Condo in-chat closed in the same commit**: a follow-up pass added
+  the badge + IIFE threading to `EstimatorResults.tsx` (the condo
+  in-chat tile + the workingDoc.competing tile-builder), mirroring
+  the home file. Condo competing tiles now render the gold badge
+  on-screen, AND the persisted workingDoc.competing.tiles[] carries
+  sourceTier into email + lead. Cross-surface consistency holds for
+  BOTH home and condo paths.
+
+### Verification
+
+  - `npx tsc --noEmit` — clean (0 errors).
+  - `node scripts/smoke-w-competing-geo-pills.js` against dev `:3199`
+    — 20/20 PASS (includes 2 new condo-in-chat assertions: badge
+    block reads cl.sourceTier with CONDO_LABEL_MAP; condo IIFE
+    threads sourceTier + bestGeoTier into workingDoc.competing).
+    Real-data subjects from mls_listings; HTTP POST to
+    `/api/charlie/competing-listings` returned `sourceTier: "gold"`
+    on a SF home subject (X12686808 / 706249 County Road 21, Mulmur)
+    and on a condo subject (W13230838 / 11 Wincott Drive #914,
+    Toronto). All tiles uniform per response.
+  - `node scripts/smoke-w-competing-geo-pills-silver.js` — found a
+    SILVER-cascade subject (X13237384 / 2798 Dingman Drive, London
+    South — community has 1 active → community funnel returns 0
+    after subject filter → muni fallback wins); returned 2 listings,
+    all stamped `sourceTier: "silver"`, uniform. Confirms the
+    muni-fallback stamp at the L1152 return site fires.
+  - Cross-surface: source inspection proves in-chat + email + lead
+    all read tile.sourceTier from the same workingDoc.competing.
+  - Honest-empty: tile-builder + email renderSection both gate on
+    `length > 0` / null section → no orphan badge when competing
+    is empty.
+  - No-regression: ea56db5 (`resolvedCompeting` prop) intact;
+    tax-match tile badge color logic unchanged; SOLD-comp `stamp`
+    helper untouched.
+
+### Files
+
+  Edited (5):
+    lib/estimator/home-comparable-matcher-sales.ts    (+23 / -3)
+    app/api/charlie/competing-listings/route.ts       (+6 / -1)
+    app/estimator/components/HomeEstimatorResults.tsx (+40 / +0)
+    app/estimator/components/EstimatorResults.tsx     (+38 / +0)
+    lib/email/working-doc-render.ts                   (+21 / -1)
+
+  Backed up (timestamp 20260619_125926):
+    lib/estimator/home-comparable-matcher-sales.ts.backup_20260619_125926
+    app/api/charlie/competing-listings/route.ts.backup_20260619_125926
+    app/estimator/components/HomeEstimatorResults.tsx.backup_20260619_125926
+    app/estimator/components/EstimatorResults.tsx.backup_20260619_125926
+    lib/email/working-doc-render.ts.backup_20260619_125926
+
+  Added (2 — smoke harnesses):
+    scripts/smoke-w-competing-geo-pills.js
+    scripts/smoke-w-competing-geo-pills-silver.js
+
+  Recon:
+    recon/competing-geo-pills.txt
+
+### Commit gate
+
+  STOP at commit gate. Diff + smoke shown in chat. Not yet staged,
+  not yet committed. HOLD PUSH per spec. Awaiting operator approval.
+
+---
+
+## DECISION (logged 2026-06-19) — luxury-tail tax-match: out of scope, no band widening
+
+  Context: W-ESTIMATOR-TAX-VERIFY recon on 1343 Blythe Road,
+  Mississauga (W12498050, tax $176,780, 6BR Detached luxury estate).
+  Direct DB verification (recon/estimator-tax-verify-1343.txt)
+  confirmed tax-match is HONEST-EMPTY at every geo level for this
+  subject:
+
+    Level         | Empty-filter cause | Evidence
+    --------------+--------------------+-------------------------------
+    STREET        | BAND               | next-highest Blythe Rd tax
+                  |                    | after 1343 is $63,984 — well
+                  |                    | below band low $141,424
+    COMMUNITY     | BAND               | next-highest community tax
+                  |                    | (2275 Doulton Dr) is $137,599
+                  |                    | — $3,825 below band floor
+    MUNICIPALITY  | BAND               | NO other Detached Freehold in
+                  |                    | all of Mississauga has tax in
+                  |                    | [$141,424 .. $212,136]
+
+  Year [2025..2027] and VOW filters drop no distinct-property comps;
+  the band alone is the empty cause.
+
+### Decision
+
+  Tax band stays **±20% (TAX_BAND_PCT = 0.20)**, unchanged.
+
+### Why not widen the band
+
+  Widening to capture 2275 Doulton ($137,599) would sweep in ONE
+  property — still a single-comp Gold candidate that fails the
+  cascade's Gold>=3 threshold. The cost (looser-band false matches
+  on every other subject) far exceeds the benefit (one luxury edge
+  case where the matcher would still under-deliver). Band widening
+  is not the right lever for the extreme luxury tail.
+
+### Future / un-built (optional)
+
+  A dedicated "luxury tail" path could exist — top-N% of community
+  by tax, or absolute-tax-floor cohort, scoped specifically for
+  subjects whose tax exceeds the next-highest distinct community
+  property by >X%. Spec-only at this point; not on the build
+  roadmap. Honest-empty tax-match for luxury tails is the current
+  product behavior and is correct given the cascade's design.

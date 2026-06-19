@@ -73,6 +73,13 @@ export interface CompetingListing {
   // them, so home tiles ignore these fields entirely).
   unit_number?: string | null
   association_fee?: number | null
+  // W-COMPETING-GEO-PILLS (2026-06-19): geo-cascade tier stamped at the
+  // matcher source (findActiveCompetitionSF / findActiveCompetitionPlex /
+  // condo route). Uniform within a single response — the cascade returns
+  // from ONE level only. SF: 'gold' | 'silver'. Plex: 'gold' | 'silver' |
+  // 'bronze'. Condo: 'gold' (single-level query). Read by all 3 surfaces
+  // (in-chat tile, email chip, lead WorkingDocView TileRow).
+  sourceTier?: 'platinum' | 'gold' | 'silver' | 'bronze' | null
 }
 
 interface EstimatorResultsProps {
@@ -293,6 +300,11 @@ export default function HomeEstimatorResults({
       competing: Array.isArray(competingSrc) && competingSrc.length > 0
         ? {
             count: competingSrc.length,
+            // W-COMPETING-GEO-PILLS (2026-06-19): section-level bestGeoTier
+            // = the tile-level tier (uniform per response — cascade returns
+            // one level). Lets the renderers show a section anchor and the
+            // per-tile chip from the same value.
+            bestGeoTier: (competingSrc[0] as any)?.sourceTier ?? null,
             tiles: competingSrc.slice(0, 10).map((c: any) => ({
               id: c.id ?? null,
               listingKey: c.listing_key ?? null,
@@ -306,6 +318,10 @@ export default function HomeEstimatorResults({
               // W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-PHOTOS (2026-06-17):
               // competing endpoint already returns mediaUrl per listing.
               mediaUrl: c.mediaUrl ?? null,
+              // W-COMPETING-GEO-PILLS (2026-06-19): tier stamped at the
+              // matcher source; persisted on the tile so workingDoc.
+              // competing.tiles[] carries it into email + lead surface.
+              sourceTier: c.sourceTier ?? null,
             })),
           }
         : null,
@@ -1378,6 +1394,30 @@ export default function HomeEstimatorResults({
                       </div>
 
                       <div className="flex-1 px-3 py-2 min-w-0">
+                        {/* W-COMPETING-GEO-PILLS (2026-06-19): geo-tier
+                            badge — mirrors the tax-match tile shape at
+                            L1273-L1275, using HOME_LABEL_MAP (same map
+                            the sold/tax tiles use; no duplicate mapping).
+                            Tier stamped at the matcher source; uniform
+                            within one response (cascade returns one
+                            geo level). Silent-omit when sourceTier
+                            absent (legacy fixtures, honest-empty). */}
+                        {cl.sourceTier && (() => {
+                          const tierKey = cl.sourceTier as 'platinum' | 'gold' | 'silver' | 'bronze'
+                          const tierLabel = HOME_LABEL_MAP[tierKey]
+                          const tierBadgeColor =
+                            tierKey === 'platinum' ? 'bg-emerald-600 text-white'
+                            : tierKey === 'gold'   ? 'bg-amber-500 text-white'
+                            : tierKey === 'silver' ? 'bg-slate-500 text-white'
+                            :                        'bg-orange-700 text-white'
+                          return (
+                            <div className="mb-1">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${tierBadgeColor}`}>
+                                {tierLabel.emoji} {tierLabel.name} · {tierLabel.sub}
+                              </span>
+                            </div>
+                          )
+                        })()}
                         <div className="flex justify-between items-start mb-0.5">
                           <span className="text-base font-bold text-slate-900">
                             {formatPrice(lp)}

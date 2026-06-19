@@ -232,6 +232,12 @@ export default function EstimatorResults({
       competing: Array.isArray(competingSrc) && competingSrc.length > 0
         ? {
             count: competingSrc.length,
+            // W-COMPETING-GEO-PILLS (2026-06-19): section-level bestGeoTier
+            // = the tile-level tier (uniform per response — condo path
+            // queries community only → always 'gold'). Same shape as the
+            // home IIFE at HomeEstimatorResults.tsx; cross-surface email +
+            // lead render the same chip from the same field.
+            bestGeoTier: (competingSrc[0] as any)?.sourceTier ?? null,
             tiles: competingSrc.slice(0, 10).map((c: any) => ({
               id: c.id ?? null,
               listingKey: c.listing_key ?? null,
@@ -245,6 +251,11 @@ export default function EstimatorResults({
               // W-ESTIMATOR-LEAD-RENDER-AND-EMAIL P2-PHOTOS (2026-06-17):
               // competing endpoint already returns mediaUrl per listing.
               mediaUrl: c.mediaUrl ?? null,
+              // W-COMPETING-GEO-PILLS (2026-06-19): tier stamped at the
+              // condo route source (route.ts L92, always 'gold').
+              // Threaded here so workingDoc.competing.tiles[] carries it
+              // into email + lead — same field name the home IIFE uses.
+              sourceTier: c.sourceTier ?? null,
             })),
           }
         : null,
@@ -1197,6 +1208,35 @@ export default function EstimatorResults({
                         </span>
                       </div>
                       <div className="flex-1 px-3 py-2 min-w-0">
+                        {/* W-COMPETING-GEO-PILLS (2026-06-19): geo-tier
+                            badge — mirrors the tax-match condo tile
+                            shape at L1087-L1093 above, using
+                            CONDO_LABEL_MAP (Platinum=Same Building,
+                            Gold=Community, etc.). Condo competing
+                            cascade is single-level community only
+                            (app/api/charlie/competing-listings/route.ts
+                            L25-L92), so the condo route stamps
+                            sourceTier='gold' on every returned row →
+                            the badge here is uniform Gold for every
+                            tile in the response. Silent-omit when
+                            sourceTier absent (legacy fixtures, S1
+                            path, honest-empty). */}
+                        {cl.sourceTier && (() => {
+                          const tierKey = cl.sourceTier as 'platinum' | 'gold' | 'silver' | 'bronze'
+                          const tierLabel = CONDO_LABEL_MAP[tierKey]
+                          const tierBadgeColor =
+                            tierKey === 'platinum' ? 'bg-emerald-600 text-white'
+                            : tierKey === 'gold'   ? 'bg-amber-500 text-white'
+                            : tierKey === 'silver' ? 'bg-slate-500 text-white'
+                            :                        'bg-orange-700 text-white'
+                          return (
+                            <div className="mb-1">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${tierBadgeColor}`}>
+                                {tierLabel.emoji} {tierLabel.name} · {tierLabel.sub}
+                              </span>
+                            </div>
+                          )
+                        })()}
                         <div className="flex justify-between items-start mb-0.5">
                           <span className="text-base font-bold text-slate-900">
                             {formatPrice(lp)}

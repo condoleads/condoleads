@@ -1002,13 +1002,21 @@ async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promi
     return sortByCloseness(filtered)
   }
 
+  // W-COMPETING-GEO-PILLS (2026-06-19): stamp sourceTier at each cascade
+  // return site. The cascade already knows which level produced the pool —
+  // attaching the tier here is the single-source-of-truth point. Same tier
+  // strings the SOLD-comp stampTier helper uses (L1393-L1395) so the
+  // HOME_LABEL_MAP / CONDO_LABEL_MAP at GeoConfidenceSpread.tsx:46-58
+  // matches without a parallel mapping. Uniform per response: the cascade
+  // returns from EXACTLY ONE level, so every tile in the returned set
+  // carries the same tier (per recon recon/competing-geo-pills.txt R3).
   if (specs.communityId) {
     const c = await tierQuery('community_id', specs.communityId)
-    if (c.length > 0) return c
+    if (c.length > 0) return c.map(r => ({ ...r, sourceTier: 'gold' }))
   }
   if (specs.municipalityId) {
     const m = await tierQuery('municipality_id', specs.municipalityId)
-    if (m.length > 0) return m
+    if (m.length > 0) return m.map(r => ({ ...r, sourceTier: 'silver' }))
   }
   // Area tier fallback (same as runPlexPricingPath area cascade)
   if (specs.municipalityId) {
@@ -1028,7 +1036,7 @@ async function findActiveCompetitionPlex(specs: HomeSpecs, supabase: any): Promi
         .limit(100)
       const filtered = (data || []).filter((s: any) => plexComparablePredicate(s, subjectLAR))
       const a = sortByCloseness(filtered)
-      if (a.length > 0) return a
+      if (a.length > 0) return a.map(r => ({ ...r, sourceTier: 'bronze' }))
     }
   }
   return []
@@ -1114,7 +1122,9 @@ async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise
     if (comm && comm.length > 0) {
       const pool = runFunnels(comm.filter(notAsIs))
       console.log('[findActiveCompetitionSF] community funnel returned', pool.length)
-      if (pool.length > 0) return pool
+      // W-COMPETING-GEO-PILLS (2026-06-19): community funnel won → 'gold'.
+      // Stamped here at the source; surfaces read via tile.sourceTier.
+      if (pool.length > 0) return pool.map(r => ({ ...r, sourceTier: 'gold' }))
     }
   }
   if (specs.municipalityId) {
@@ -1142,7 +1152,10 @@ async function findActiveCompetitionSF(specs: HomeSpecs, supabase: any): Promise
     if (muni && muni.length > 0) {
       const pool = runFunnels(muni.filter(notAsIs))
       console.log('[findActiveCompetitionSF] muni funnel returned', pool.length)
-      if (pool.length > 0) return pool
+      // W-COMPETING-GEO-PILLS (2026-06-19): muni funnel won → 'silver'.
+      // SF cascade has no street/area branch, so 'platinum' and 'bronze'
+      // are unreachable here by design (recon R3).
+      if (pool.length > 0) return pool.map(r => ({ ...r, sourceTier: 'silver' }))
     }
   }
   console.log('[findActiveCompetitionSF] returning [] (no candidates in any cascade)')

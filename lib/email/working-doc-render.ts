@@ -481,7 +481,15 @@ export function renderWorkingDocSections(
       : 'Other homes currently for sale that buyers may compare with yours.',
     doc.competing,
     baseUrl, idMap, 'list', docType,
-    /* showChip */ false,   // deliberate — established surface omits chip on competing
+    // W-COMPETING-GEO-PILLS (2026-06-19): flipped false → true. Tier is
+    // now stamped at the matcher source and carried on each tile's
+    // sourceTier (working-doc-render.ts tileFromCompeting + the inline
+    // tile-builder in HomeEstimatorResults.tsx). renderTile's chip block
+    // at L298-L304 reads sourceTier (falling back to anchorTier =
+    // section.bestGeoTier) and emits the same Outlook-safe inline chip
+    // used by Comparable Sold + Tax-Matched. Cross-surface consistency:
+    // matches the in-chat tile badge + lead WorkingDocView TileRow.
+    /* showChip */ true,
   )
   if (!sold && !tax && !competing) return ''
   // W-ESTIMATOR-TAXRAIL-POSITION (2026-06-18): the tax-match rail is
@@ -670,6 +678,11 @@ export function buildWorkingDocFromResult(input: {
     unparsedAddress: c?.unparsed_address ?? null,
     // C-PLAN-DOC-DEDUP: same — covers what legacy competingHtml used to show.
     mediaUrl: c?.mediaUrl ?? c?.media?.[0]?.media_url ?? c?.media?.[0]?.url ?? null,
+    // W-COMPETING-GEO-PILLS (2026-06-19): tier stamped at the matcher
+    // source. Uniform per response. Email chip + lead TileRow read this
+    // field (TileRow already wired; email chip flipped on at the
+    // renderSection showChip arg).
+    sourceTier: c?.sourceTier ?? null,
   })
 
   const comparableSold: WorkingDocSection | null =
@@ -696,6 +709,12 @@ export function buildWorkingDocFromResult(input: {
   const competing: WorkingDocSection | null =
     Array.isArray(input.competingListings) && input.competingListings.length > 0
       ? {
+          // W-COMPETING-GEO-PILLS (2026-06-19): section-level bestGeoTier
+          // = tile-level tier (uniform — cascade returns one level). Lets
+          // the email subheader render the anchor label and the chip
+          // fallback work via anchorTier when individual tiles lack
+          // sourceTier (pre-stamp rows passing through legacy fixtures).
+          bestGeoTier: (input.competingListings[0] as any)?.sourceTier ?? null,
           count: input.competingListings.length,
           tiles: input.competingListings.slice(0, 10).map(tileFromCompeting),
         }
