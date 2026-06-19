@@ -225,6 +225,30 @@ export function CreditSessionProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // ─── Identity-change clear ───────────────────────────────────────────────
+  // W-CREDIT-BLEED-PHASE1 (2026-06-19): on every user.id transition (A→B,
+  // A→null, null→B) hard-clear state regardless of pathname. Runs BEFORE
+  // the main useEffect on the same render (declaration order) so the cleared
+  // lastFetchKey + DEFAULT_STATE land before the main effect's dedup check.
+  // NO inert-route guard — clear must run on /admin /dashboard /login too,
+  // otherwise the previous user's state renders against the new user's auth
+  // context (the cross-account bleed pathway documented in
+  // recon/credit-cross-account-bleed.txt + recon-2). Initial ref = current
+  // user.id so first render does NOT fire a spurious clear (state is already
+  // DEFAULT_STATE).
+  const prevUserIdRef = useRef<string | null>(user?.id ?? null)
+  useEffect(() => {
+    const currentUserId = user?.id ?? null
+    if (prevUserIdRef.current !== currentUserId) {
+      // Inline reset — structurally identical to clear() but does NOT depend
+      // on the clear() declaration (which lives later in this file), so no
+      // reordering needed. Effect L334 clear() is preserved unchanged.
+      lastFetchKey.current = null
+      setState(DEFAULT_STATE)
+      prevUserIdRef.current = currentUserId
+    }
+  }, [user?.id])
+
   // ─── Main effect: decide what to fetch ────────────────────────────────────
 
   useEffect(() => {

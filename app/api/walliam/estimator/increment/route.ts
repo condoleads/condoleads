@@ -4,6 +4,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+// W-CREDIT-BLEED-PHASE1 (2026-06-19): first in-app caller of this helper.
+// Reads the request's auth cookie via @supabase/ssr's createServerClient so
+// supabase.auth.getUser() validates the JWT and returns the REAL caller
+// identity — replacing the prior implicit trust of the body's sessionId.
+import { createRouteHandlerClient } from '@/lib/supabase/server'
 
 function createServiceClient() {
   return createClient(
@@ -19,6 +24,18 @@ export async function POST(request: NextRequest) {
 
     if (!sessionId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    // W-CREDIT-BLEED-PHASE1 (2026-06-19): caller identity verification.
+    // Decode the auth cookie's JWT via createRouteHandlerClient → getUser().
+    // FAIL CLOSED: any getUser() error OR missing authUser → 401, never
+    // fall through. The session.user_id === authUser.id check happens AFTER
+    // we fetch the session row below; the two together prevent user B from
+    // incrementing user A's chat_sessions row by passing A's sessionId.
+    const authedSupabase = createRouteHandlerClient(request)
+    const { data: { user: authUser }, error: authErr } = await authedSupabase.auth.getUser()
+    if (authErr || !authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const supabase = createServiceClient()
@@ -37,6 +54,14 @@ export async function POST(request: NextRequest) {
     }
     if (!session.user_id || !session.tenant_id) {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    }
+
+    // W-CREDIT-BLEED-PHASE1 (2026-06-19): the caller-identity match. Prevents
+    // user B from bumping user A's estimator_count by passing A's sessionId.
+    // Tenant scope check at L43-54 (below) is PRESERVED — multi-tenant
+    // isolation is now BOTH tenant-scope AND user-identity gated.
+    if (session.user_id !== authUser.id) {
+      return NextResponse.json({ error: 'Forbidden — session does not belong to caller' }, { status: 403 })
     }
 
     // C1/D1 -- resolve tenant source_key and require session.source match

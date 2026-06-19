@@ -8201,3 +8201,227 @@ W-CREDIT-STALE-INVALIDATION (2026-06-19) — focus/visibility refetch
     after 8/8 smoke gates closed (above). 1 source file +
     tracker + 1 verification smoke. Pre-existing dirty files
     NOT staged.
+
+═══════════════════════════════════════════════════════════════════════
+W-CREDIT-BLEED-PHASE1 (2026-06-19) — DATA-INTEGRITY hole + display bleed
+═══════════════════════════════════════════════════════════════════════
+
+### Problem
+
+  Operator-observed cross-account state: after registering testfinal1004@
+  the VIP panel kept showing the previous user (condoleads.ca@) and its
+  capped "0" credits until full logout + re-login. Across 4 recons, the
+  bleed traced to 3 stacked layers — and verified to reach SERVER WRITES
+  (not display-only). The estimator GATE + INCREMENT pair would let user
+  B's first estimate decrement user A's chat_sessions.estimator_count.
+
+### Root cause (three layers)
+
+  Layer 1 — Discarded confirmedUserId: 21 of 22 RegisterModal mounts
+    pass `() => setShowRegister(false)` (no refresh, no uid). Only
+    CharlieWidget.tsx:191 passes `refresh(pageContext, confirmedUserId)`.
+
+  Layer 2 — Main useEffect's inert-route early-return runs BEFORE the
+    dedup check. Registering on /admin /dashboard /login skips refresh
+    entirely; no fetch fires; state stays as the previous user.
+
+  Layer 3 — No identity-change state-clear. `clear()` is declared in
+    CreditSessionContext but has ZERO callers anywhere in the repo.
+    State persists from prior user until something explicitly overwrites.
+
+  Server side — both estimator endpoints (/api/walliam/estimator/session
+    + /api/walliam/estimator/increment) used service-role + body-trusted
+    userId/sessionId with NO caller-identity check. A stale closure
+    sending A's userId/sessionId would gate against A's quota AND bump
+    A's chat_sessions.estimator_count. DATA-INTEGRITY hit, not display-
+    only.
+
+### Phase 1 fix — THREE files
+
+  CLIENT — components/credits/CreditSessionContext.tsx (CRLF):
+
+    L228-251 inserted: identity-change useEffect on `user?.id`.
+      const prevUserIdRef = useRef<string | null>(user?.id ?? null)
+      useEffect(() => {
+        const currentUserId = user?.id ?? null
+        if (prevUserIdRef.current !== currentUserId) {
+          lastFetchKey.current = null
+          setState(DEFAULT_STATE)
+          prevUserIdRef.current = currentUserId
+        }
+      }, [user?.id])
+
+    Properties:
+      [a] No inert-route guard — clears on /admin /dashboard /login
+          too (the structural fix for Layer 2).
+      [b] Runs BEFORE the main useEffect on the same render
+          (declaration order) so the cleared lastFetchKey lands
+          before the dedup check.
+      [c] Initial ref = current user.id → first render is a no-op
+          (state already DEFAULT_STATE).
+      [d] Inline reset — does NOT depend on clear() declaration at
+          L334 (which lives below), so no reordering needed.
+
+    No other client changes. clear() / DEFAULT_STATE / loadSession /
+    loadAnonymousDefaults / the main effect / the focus/visibility
+    effect (c83f7b8) are ALL UNTOUCHED.
+
+  SERVER — app/api/walliam/estimator/{session,increment}/route.ts:
+
+    Both routes: imported `createRouteHandlerClient` from
+    `@/lib/supabase/server` (the helper existed but had ZERO in-app
+    callers — Phase 1 is the first). Helper reads the request's
+    auth cookie via @supabase/ssr's createServerClient with
+    cookie adapter; supabase.auth.getUser() validates the JWT.
+
+    session/route.ts L36-49 inserted between the tenant-required
+    guard and the service-client construct:
+      const authedSupabase = createRouteHandlerClient(request)
+      const { data: { user: authUser }, error: authErr } =
+                                     await authedSupabase.auth.getUser()
+      if (authErr || !authUser) return 401 Unauthorized
+      if (authUser.id !== userId) return 403 Forbidden
+
+    increment/route.ts L29-40 inserted after !sessionId guard;
+    L59-65 inserted after !session.user_id null-check:
+      L29-40: getUser() → fail-closed 401 on err/null
+      L59-65: if (session.user_id !== authUser.id) return 403
+
+    Multi-tenant isolation review:
+      session route — `tenantId` from header still required at
+        L27-29 (untouched). New auth gate added BELOW it.
+      increment route — session.source === tenant.source_key check
+        at L48-60 (untouched). New auth gate added BEFORE the
+        session SELECT to fail closed sooner; the user_id match
+        check is AFTER the session row is fetched and validated.
+      Both predicates now scope by tenant AND verified identity.
+      Fail-closed: a null authUser ALWAYS returns 401; no path
+      where getUser() error skips the check.
+
+### Smoke output (2026-06-19, local dev :3010)
+
+  scripts/smoke-w-credit-bleed-phase1.js — 7 gates, all PASS.
+  Uses REAL Playwright-driven /login captures for chunked
+  base64-encoded cookies that match production format
+  (sb-<projectRef>-auth-token.0 / .1, value `base64-<...>`).
+
+    (a) HAPPY  A-authed body=A → 200, sessionId=A's own row     PASS
+    (b) BLEED  B-authed body=A → 403 on session route          PASS
+        BLEED  B-authed sid=A's → 403 on increment route       PASS
+        A's estimator_count UNCHANGED 10 → 10                  PASS
+    (c) NO COOKIE → 401 on both routes                         PASS
+    (d) INVALID COOKIE → 401 (fail-closed verified)            PASS
+    (e) NO-REGRESSION  missing x-tenant-id → 400               PASS
+    (f) CLIENT identity flip A→B (cookie + localStorage swap
+        + reload): A's "10 of 15 / 5 remaining" NOT visible
+        post-flip — clear() landed                              PASS
+    (g) FINAL LEDGER: A's count unchanged across smoke         PASS
+
+  TSC: `npx tsc --noEmit` exit 0.
+
+### Ledger audit (read-only this turn)
+
+  3 test accounts on WALLiam tenant:
+    finaltest1003@gmail.com  count=10 limit=15 leads=10  CONSISTENT
+    testfinal1004@gmail.com  count=1  limit=- leads=1   CONSISTENT
+    condoleads.ca@gmail.com  count=2  limit=0  leads=1  SUSPICIOUS
+
+  condoleads.ca@'s [OVER LIMIT] is misleading:
+    session updated_at = 2026-04-16 11:57:49 UTC
+    override granted_at = 2026-04-16 11:57:50.100 UTC (1 sec LATER)
+    The 2 counts predate the cap — legitimate pre-cap behavior.
+
+  The 1-of-discrepancy (count=2, leads=1) has 3 explanations:
+    (A) lead-write failed on the 2nd estimate (5xx after increment
+        committed)
+    (B) one estimate hit the S1 path (/api/estimator/increment) which
+        doesn't write a WALLiam lead
+    (C) cross-account bleed — someone else's estimate bumped this
+        row via the now-closed bug path
+
+  UNRESOLVED. Low-impact (single count, capped account). NO manual
+  ledger correction recommended; Phase 1 prevents future occurrences.
+  Broader audit candidate (NOT shipped): scan all chat_sessions on
+  this tenant for `estimator_count > limit AND session.updated_at <
+  override.granted_at`-violation cases.
+
+### Backups in place
+
+  Suffix `_20260619_074857` (source files):
+    components/credits/CreditSessionContext.tsx
+    app/api/walliam/estimator/increment/route.ts
+    app/api/walliam/estimator/session/route.ts
+  Tracker:
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_w_credit_phase1_20260619_080000
+
+### Pre-existing dirty files (NOT staged in any commit)
+
+  app/api/charlie/municipalities/route.ts
+  scripts/r-w-territory-master-p2-data-phantom-fix.js
+  scripts/r-w-territory-master-p4-check-fix.js
+
+### Phase 2 — immediate next (same working block, no gap)
+
+  Phase 2 ships fix (i) from recon/credit-cross-account-bleed-recon2.txt:
+  thread confirmedUserId from RegisterModal.onSuccess through to
+  CreditSessionContext.refresh(pageContext, confirmedUserId) for ALL
+  21 vulnerable consumers (categories C, D, E, F from RECON-2 R3):
+    (D — DATA-INTEGRITY, prioritize): EstimatorBuyerModal:821,
+      HomeEstimatorBuyerModal:798, EstimatorSeller:409
+    (C — display): VIPAIAccess:124+181, WalliamOnboardingBanner:110,
+      EstimatorSeller:92, EstimatorBuyerModal:621,
+      HomeEstimatorBuyerModal:588, ListingSection:254,
+      NeighbourhoodListingSection:304, GeoListingSection:421
+    (E — transitive): ListingCard:436, HomeListingCard:351,
+      GeoListingCard:297
+    (F — no prop): ChatLocked:101, RequireAuth:77
+
+  Phase 2 is UX (eliminates the brief "?" loading window on register)
+  + defense-in-depth (the synchronous-checkAndEstimate paths can no
+  longer race AuthContext propagation). Phase 1's server identity
+  gate already PREVENTS the cross-account write; Phase 2 makes the
+  client behave correctly on the happy path.
+
+### Open items — follow-through after this commit
+
+  [must-run-post-deploy] Live-DOM verification on walliam.ca:
+    (a) Cross-account: sign in as A, navigate to /admin-homes (inert
+        route), trigger a logout+register-as-B via any RegisterModal
+        path, assert panel does NOT show A's quota during the
+        intermediate window. Without Phase 1, panel STAYS at A's
+        data; with Phase 1, panel goes to '?' fallback then loads B.
+
+    (b) Bleed-write prevention: as A, drive a real Get Estimate
+        through the buyer modal — verify increment fires under A's
+        cookie (200, A's chat_sessions row bumped). Then attempt
+        to fake the body to send another user's userId via DevTools
+        Network "edit and resend" — assert 403. Confirms the server
+        gate fires in production with real cookies.
+
+    (c) No-regression on tenant scoping: try /api/walliam/estimator/
+        session with a valid authed cookie but DIFFERENT tenant in
+        x-tenant-id header — expect the tenant guard to still
+        reject. The Phase 1 fix preserved that scope check.
+
+  [DEFERRED — separate ticket] W-CREDIT-CEILING-HYGIENE (still open).
+    Consolidate `?? 10` / `?? 50` server clamps via the unused
+    `lib/credits/resolveUserLimits.ts` helper. Currently dead under
+    WALLiam tenant (hard_cap=15 populated). MUST SHIP BEFORE any
+    tenant onboards with hard_cap=null.
+
+  [NEXT — ships this working block after Phase 1] W-CREDIT-BLEED-
+    PHASE2: thread confirmedUserId across 21 RegisterModal consumers.
+    NOT deferred — immediate next step in this same working block.
+    Defense in depth above the Phase 1 server gate (eliminates the
+    brief "?" loading window on register and closes the synchronous-
+    checkAndEstimate AuthContext race documented in
+    recon/credit-cross-account-bleed-recon2.txt R3 categories C+D+E+F).
+    Specific consumer list (22 callsites, 17 files) lives in the
+    Phase 2 section of this entry above (the "Phase 2 — immediate
+    next" block at the W-CREDIT-BLEED-PHASE1 BUILD entry).
+
+### Commit
+
+  W-CREDIT-BLEED-PHASE1: HOLD — at multi-tenant review gate AND
+    commit gate (operator). 3 source files + tracker + 1 smoke.
+    Pre-existing dirty files NOT staged.
