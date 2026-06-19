@@ -7973,3 +7973,231 @@ W-COMPETING-INTO-WORKINGDOC (2026-06-18) — Option B race fix
     files + tracker + 2 verification smokes (smoke-w-competing-
     into-workingdoc.js, smoke-w-competing-live-gates.js). Pre-
     existing dirty files NOT staged.
+
+═══════════════════════════════════════════════════════════════════════
+W-CREDIT-STALE-INVALIDATION (2026-06-19) — focus/visibility refetch
+═══════════════════════════════════════════════════════════════════════
+
+### Problem
+
+  Operator: VIP-panel "AI Estimates" denominator shown to
+  finaltest1003@ was stale relative to live DB. Override
+  granted at 2026-06-18 19:43:43 UTC; user's chat_session
+  last_activity_at was 2026-06-18 19:41:19 UTC — 2 minutes
+  BEFORE the grant. A browser tab open at 19:41 would carry
+  client state.estimatorFreeAttempts = 10 (tenant default, no
+  override) and never re-fetch until F5 / sign-out+in /
+  RegisterModal onSuccess. The next Sale Offer click sees the
+  stale denominator and routes to the zero-credit FORM path
+  even though the live server returns 15.
+
+### Root cause (confirmed across 4 recons)
+
+  R3 server replay: both /api/walliam/charlie/session and
+  /api/walliam/estimator/session compute estimatorFreeAttempts
+  FRESH on every POST. Direct capture this turn:
+    charlie/session  : estimatorFreeAttempts = 15
+    estimator/session: totalAllowed = 15, allowed = true
+  The clamp Math.min(15, agentConfig.estimator_hard_cap=15) is
+  15 — the `?? 10` fallback is dead code under the current
+  WALLiam DB.
+
+  R4 client cache: CreditSessionContext main useEffect
+  (L207-230) dedups on fetchKey = `${userId}:${tenantId}`.
+  No pathname, no time, no override-version. Once a tab loads,
+  no auto-refetch on DB writes elsewhere. refresh() is only
+  invoked by RegisterModal.onSuccess (never on credit-grant).
+
+### Why NOT realtime invalidation
+
+  Realtime channel would set up cleanly (default-enabled
+  supabase-js) but receive NO events:
+    SELECT puballtables FROM pg_publication
+      WHERE pubname='supabase_realtime';
+      → puballtables = false
+    SELECT tablename FROM pg_publication_tables
+      WHERE pubname='supabase_realtime';
+      → (zero rows)
+
+  user_credit_overrides is NOT in the publication. Adding it
+  requires a production-DB migration (CLAUDE.md operator gate),
+  and zero in-repo code uses the realtime DB-change pattern —
+  introducing one would be brand-new infrastructure. Deferred.
+
+### Fix (Option B — focus/visibility refetch)
+
+  ONE file: components/credits/CreditSessionContext.tsx (CRLF).
+
+  CHANGE 1 — new useEffect after refresh() declaration:
+    - Registers `visibilitychange` (document) + `focus` (window)
+      listeners.
+    - On either event, if user is signed in AND tab is
+      visible AND no refresh is in flight → call existing
+      refresh() (which clears lastFetchKey and re-runs
+      loadSession against the live server).
+    - In-flight ref coalesces double-fires when both events
+      land in the same tick.
+    - Skips on inert routes (defense in depth — refresh() also
+      early-returns).
+    - Clean teardown via removeEventListener — matches
+      AuditSidebar.tsx:107-124 pattern (proven in repo).
+
+  CHANGE 2 — normalize loadAnonymousDefaults setState:
+    - Was: SPREAD over prev (`setState(prev => ({...prev, ...}))`).
+      Anauth flicker (user.id → null briefly) overlaid anonymous
+      tenant-config values on top of a previously-loaded
+      registered state, preserving fields like estimatorCount,
+      status, vipRequestStatus from the registered render —
+      transient inconsistency.
+    - Now: FULL REPLACE writing every CreditSessionState field
+      explicitly (matching loadSession's pattern at L178-199).
+      Catch branch also full-replaced to `{ ...DEFAULT_STATE,
+      tenantId, loading: false }` — fails closed to clean
+      defaults rather than half-overlaid registered state.
+    - Values for anonymous-rendered fields BYTE-IDENTICAL to
+      pre-fix (cfg.estFree ?? 0, cfg.planFree ?? 1, cfg.chatFree
+      ?? 0, cfg.assistantName ?? ''). Only the structural
+      asymmetry changes.
+
+### Smoke output (2026-06-19, local dev :3009, real finaltest1003@)
+
+  scripts/smoke-w-credit-stale.js — 8 gates, all PASS:
+
+    (1) Initial load fires charlie/session → estimatorFreeAttempts=15  PASS
+    (2) visibilitychange visible → charlie/session refetches            PASS
+    (3) window focus → charlie/session refetches                        PASS
+    (4) Double-event same tick → in-flight guard coalesces to 1 fire   PASS
+    (5) visibilitychange with hidden=true → NO refetch                 PASS
+    (6) /admin-homes inert route → NO refetch                          PASS
+    (7) Navigate away + back → listener re-mounted clean                PASS
+    (8) All 5 recent refetches returned estimatorFreeAttempts=15        PASS
+
+  Auth-flicker CHANGE 2 verification: structural via code change
+  (full-replace writes every CreditSessionState field — TSC-checked).
+  Live auth-flicker drive deferred (hard to simulate cleanly without
+  forcing AuthContext to mutate; the structural change eliminates
+  the leak by construction).
+
+  TSC: `npx tsc --noEmit` exit 0.
+
+### Touched surfaces (one file)
+
+  app/estimator: unchanged
+  Estimator engine / funnel / endpoint: unchanged
+  /api/walliam/charlie/session: unchanged (the fix doesn't
+    rewrite the server — it stops the client from caching past
+    a write)
+  /api/walliam/estimator/session: unchanged
+  Email render: unchanged
+  TierRail / Plan / admin surfaces: unchanged
+  Sale Offer button: unchanged
+
+  Single-file change to components/credits/CreditSessionContext.tsx.
+  +44 / -7 lines (net +37). CRLF endings.
+
+  Surfaces that AUTOMATICALLY pick up the fix (they read
+  state.estimatorFreeAttempts through useCreditSession):
+    components/auth/VIPAIAccess.tsx        (panel display)
+    components/auth/AuthStatus.tsx         (nav pill)
+    app/charlie/hooks/useCharlie.ts        (Charlie hook mirror)
+    app/charlie/components/CharlieOverlay.tsx (Charlie pill)
+
+### Backups in place
+
+  Suffix: `_20260619_052843`
+    components/credits/CreditSessionContext.tsx
+
+  Tracker backup:
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_w_credit_stale_20260619_053100
+
+### Pre-existing dirty files (NOT staged in any commit)
+
+  app/api/charlie/municipalities/route.ts
+  scripts/r-w-territory-master-p2-data-phantom-fix.js
+  scripts/r-w-territory-master-p4-check-fix.js
+
+### Open items — follow-through after this commit
+
+  [must-run-post-deploy]  Live-DOM verification on walliam.ca.
+    Sign in as finaltest1003@. Open DevTools Network. Hard-
+    reload area page; capture /api/walliam/charlie/session
+    response (expect estimatorFreeAttempts=15). Blur the tab
+    for 5 sec, focus back; assert a NEW charlie/session request
+    fires AND its response still carries 15 (the override is
+    still in DB; the refetch wires up the listener). Without
+    this fix, no refetch would fire on focus.
+
+    Then simulate the stale-grant: as admin, write a new
+    user_credit_overrides row for a test user (e.g. change
+    estimator_limit from 10 → 14). With that test user's tab
+    open, blur+focus; assert the panel's "of N" updates from
+    10 to 14 within ~1s of the focus event. Captures the
+    actual stale-grant gap the recon identified.
+
+  [must-run-post-deploy]  Auth-flicker structural-claim
+    confirmation (CHANGE 2: loadAnonymousDefaults full-replace).
+    The smoke proved CHANGE 1 (focus-refetch) live, but CHANGE
+    2 is a structural invariant (every CreditSessionState field
+    written explicitly, no spread from prev) that the smoke
+    didn't drive end-to-end. Confirm once post-deploy:
+
+    Sign in as finaltest1003@ on walliam.ca. Load any non-
+    inert route; let the VIP panel render the registered state
+    (expect "10 of 15 used / 5 remaining"). Open DevTools
+    Application → Local Storage → delete the sb-<projectRef>-
+    auth-token key (this forces useAuth's user to flip to null
+    on the next auth re-check, triggering loadAnonymousDefaults
+    via the main useEffect's user?.id → null dep change).
+    Open Network filtered to "tenant-config".
+
+    EXPECT:
+      - tenant-config fires once (the anonymous overlay).
+      - The panel's "AI Estimates" row re-renders to anonymous
+        state — the denominator drops from 15 to the tenant
+        default (cfg.estFree=10), AND the numerator (used)
+        drops from 10 to 0 (CHANGE 2's FULL REPLACE clears
+        estimatorCount instead of preserving it from the
+        registered render).
+
+    If used STAYS at 10 while total drops to 10 ("10 of 10"
+    rather than "0 of 10"), the spread-leak is still present
+    — CHANGE 2 didn't land cleanly and the patch needs
+    revisiting. The CORRECT post-fix display is "0 of 10"
+    (clean anonymous state, no preserved registered fragment).
+
+    Catch-branch variant: same setup but with network DevTools
+    panel set to "Offline" before deleting the token (so the
+    tenant-config fetch fails). EXPECT: state reverts to
+    DEFAULT_STATE with tenantId preserved — panel shows the
+    DEFAULT_STATE numbers (estimatorFreeAttempts=0). If the
+    panel shows "10 of 0" or similar, the catch-branch
+    full-replace didn't land either.
+
+  [DEFERRED — separate ticket]  W-CREDIT-CEILING-HYGIENE.
+    Consolidate the `?? 10` / `?? 50` duplicated server-side
+    clamp expressions through the UNUSED helper
+    lib/credits/resolveUserLimits.ts. ~12 expressions in 5
+    files:
+      app/api/walliam/charlie/session/route.ts L121, L171, L237, L320, L355
+      app/api/walliam/estimator/session/route.ts L190, L197, L206
+      app/api/admin-homes/users/override/route.ts L36
+      lib/admin-homes/approve-vip-request.ts L293 (`?? 50` —
+        INCONSISTENT) + L412 (`?? 10`)
+      app/api/walliam/charlie/vip-request/route.ts L326
+    Plus: Charlie L321 vs Estimator L192-197 non-override
+    formulas differ. Charlie returns flat tenant.estimator_free
+    _attempts; Estimator adds VIP / manual_approve bumps clamped
+    to hard_cap. For VIP users without an explicit override,
+    panel < gate.
+
+    DEAD UNDER CURRENT DB (WALLiam tenant.estimator_hard_cap=15
+    populated, so the `?? 10` fallback never fires; no untested
+    VIP-without-override scenarios in active use). MUST SHIP
+    BEFORE any tenant onboards with hard_cap=null.
+
+### Commit
+
+  W-CREDIT-STALE-INVALIDATION: HOLD — at commit gate (operator)
+    after 8/8 smoke gates closed (above). 1 source file +
+    tracker + 1 verification smoke. Pre-existing dirty files
+    NOT staged.

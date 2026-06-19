@@ -133,21 +133,44 @@ export function CreditSessionProvider({ children }: { children: ReactNode }) {
       })
       if (!res.ok) return
       const cfg = await res.json()
-      setState(prev => ({
-        ...prev,
-        tenantId: tid,
-        userId: null,
+      // W-CREDIT-STALE-INVALIDATION (2026-06-19): FULL REPLACE — was a
+      // SPREAD over prev. Auth flicker (user.id momentarily null) was
+      // landing this overlay on top of a previously-loaded registered
+      // state, preserving fields like estimatorCount/status/vipRequest
+      // Status from the registered render. Anonymous state must be
+      // self-consistent. Values are byte-identical to the prior spread
+      // for the fields cfg carries; other fields take DEFAULT_STATE.
+      setState({
         sessionId: null,
+        userId: null,
+        tenantId: tid,
         isRegistered: false,
         assistantName: cfg.assistantName || '',
+        messageCount: 0,
         chatFreeMessages: cfg.chatFree ?? 0,
-        estimatorFreeAttempts: cfg.estFree ?? 0,
+        chatHardCap: DEFAULT_STATE.chatHardCap,
+        buyerPlansUsed: 0,
+        sellerPlansUsed: 0,
         totalAllowed: cfg.planFree ?? 1,
+        planMode: 'shared',
+        sellerPlanFreeAttempts: DEFAULT_STATE.sellerPlanFreeAttempts,
+        estimatorCount: 0,
+        estimatorFreeAttempts: cfg.estFree ?? 0,
+        estimatorHardCap: DEFAULT_STATE.estimatorHardCap,
+        status: 'active',
+        vipRequestStatus: 'none',
+        vipAutoApprove: false,
         loading: false,
-      }))
+      })
     } catch {
-      // Network error — leave loading state, components render with defaults
-      setState(prev => ({ ...prev, tenantId: tid, loading: false }))
+      // W-CREDIT-STALE-INVALIDATION (2026-06-19): FULL REPLACE on the
+      // catch branch too — preserves DEFAULT_STATE semantics on network
+      // failure, no stale registered fragments. Behaviour change: any
+      // prior registered render is REPLACED with DEFAULT_STATE on a
+      // tenant-config network failure during an anonymous overlay.
+      // Trade-off accepted: failing closed to clean defaults is safer
+      // than a half-overlaid registered state.
+      setState({ ...DEFAULT_STATE, tenantId: tid, loading: false })
     }
   }, [])
 
@@ -264,6 +287,49 @@ export function CreditSessionProvider({ children }: { children: ReactNode }) {
     }
     lastFetchKey.current = `${userId ?? 'anon'}:${tenantId}`
   }, [tenantId, pathname, user?.id, loadSession, loadAnonymousDefaults])
+
+  // ─── Focus / visibility refetch ──────────────────────────────────────────
+  // W-CREDIT-STALE-INVALIDATION (2026-06-19): close the stale-grant gap.
+  // Server returns the live denominator fresh per request (RECON-3 R1),
+  // but the dedup key in the main useEffect (userId:tenantId) means a tab
+  // open at the moment an admin writes user_credit_overrides never sees
+  // the new value until F5 / sign-out+in. Realtime invalidation is not
+  // viable today (RECON R2: supabase_realtime publication is empty,
+  // user_credit_overrides is not published — channels would silently
+  // no-op). Visibility-refetch pattern matches AuditSidebar.tsx:107-124
+  // and QueueIndicator.tsx:88. Refetches on tab-focus — the natural
+  // moment the user discovers the new grant when they return to use a
+  // credit. Reuses the existing refresh() which calls loadSession.
+  const refreshInFlight = useRef(false)
+  useEffect(() => {
+    // Guard: skip on inert routes (refresh() also guards but defense in depth)
+    if (isInertRoute(pathname)) return
+
+    const onWake = async () => {
+      // Skip if tab isn't actually visible (visibilitychange fires both
+      // ways; we only want the visible side).
+      if (typeof document !== 'undefined' && document.hidden) return
+      // Skip if no signed-in user — anonymous defaults don't depend on
+      // the user_credit_overrides table.
+      if (!user?.id) return
+      // Skip if a refresh is already in flight (coalesces double-fire
+      // when both focus + visibilitychange land in the same tick).
+      if (refreshInFlight.current) return
+      refreshInFlight.current = true
+      try {
+        await refresh()
+      } finally {
+        refreshInFlight.current = false
+      }
+    }
+
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+    }
+  }, [pathname, user?.id, refresh])
 
   const clear = useCallback(() => {
     lastFetchKey.current = null
