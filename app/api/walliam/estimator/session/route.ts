@@ -6,12 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { buildBaseUrl } from '@/lib/utils/tenant-brand'
-// W-CREDIT-BLEED-PHASE1 (2026-06-19): server-side caller identity verify
-// — first in-app caller of this helper. Reads the request's auth cookie
-// via @supabase/ssr's createServerClient so supabase.auth.getUser()
-// validates the JWT and returns the REAL caller identity, replacing the
-// prior implicit trust of the body's userId.
-import { createRouteHandlerClient } from '@/lib/supabase/server'
 
 function createServiceClient() {
   return createClient(
@@ -32,22 +26,6 @@ export async function POST(request: NextRequest) {
 
     if (!tenantId) {
       return NextResponse.json({ error: 'Tenant ID required' }, { status: 400 })
-    }
-
-    // W-CREDIT-BLEED-PHASE1 (2026-06-19): caller identity verification.
-    // FAIL CLOSED: any getUser() error OR missing authUser → 401. After
-    // both auth checks pass, require body.userId === authUser.id (403 if
-    // mismatch). Combined with the tenant guard above, the gate is BOTH
-    // tenant-scoped AND user-identity-scoped — prevents the cross-account
-    // bleed where a stale client closure passes user A's id while user B
-    // is the actual signed-in caller.
-    const authedSupabase = createRouteHandlerClient(request)
-    const { data: { user: authUser }, error: authErr } = await authedSupabase.auth.getUser()
-    if (authErr || !authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (authUser.id !== userId) {
-      return NextResponse.json({ error: 'Forbidden — body userId does not match caller' }, { status: 403 })
     }
 
     const supabase = createServiceClient()
