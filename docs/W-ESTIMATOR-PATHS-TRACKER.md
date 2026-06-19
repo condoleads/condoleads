@@ -7973,3 +7973,229 @@ W-COMPETING-INTO-WORKINGDOC (2026-06-18) — Option B race fix
     files + tracker + 2 verification smokes (smoke-w-competing-
     into-workingdoc.js, smoke-w-competing-live-gates.js). Pre-
     existing dirty files NOT staged.
+
+═══════════════════════════════════════════════════════════════════════
+W-CREDIT-BLEED ROLLBACK (2026-06-19) — production regression
+═══════════════════════════════════════════════════════════════════════
+
+### What happened
+
+  After deploying 27b3411 (Phase 2) on top of 94081ec (Phase 1) +
+  c83f7b8 (focus-refetch), production users reported "Unable to
+  Generate Estimate — Unauthorized" on legitimate estimates.
+
+  Root cause — DUAL-CLIENT split (recon/credit-bleed-phase3.txt R1
+  predicted this hours earlier and was not heeded):
+
+    RegisterModal (and AuthContext) use `lib/supabase/client.ts`
+      which uses @supabase/supabase-js with default options →
+      session lives in LOCALSTORAGE.
+    /login uses createBrowserClient from @supabase/ssr →
+      session lives in COOKIES.
+    Phase 1's `createRouteHandlerClient` server-side identity
+      check reads COOKIES.
+
+  Users who registered via the RegisterModal flow had their
+  session in localStorage ONLY. The browser's fetch() to
+  /api/walliam/estimator/session sent NO Supabase auth cookie
+  (because there wasn't one). The server's
+  `createRouteHandlerClient(request).auth.getUser()` returned
+  null → fail-closed 401 → "Unauthorized" for every legitimate
+  modal-registered user's estimate.
+
+  Broken estimator for new users is worse than the cross-account
+  display bleed Phase 1 was designed to close. Rollback the three
+  credit commits; keep ea56db5 (competing-into-workingDoc — unrelated
+  and working in prod).
+
+### Reverted commits (3)
+
+  60e3f65  Revert "fix(credits): refetch credit session on tab focus;
+                    normalize anonymous setState"           ← c83f7b8 reverted
+  0256e38  Revert "fix(credits): verify caller identity on estimator
+                    gate+increment; clear credit state on user change"
+                                                              ← 94081ec reverted
+  1e40f4f  Revert "fix(credits): thread fresh user id through
+                    register→estimate handoff (Phase 2)"     ← 27b3411 reverted
+
+  All 3 revert commits created via `git revert --no-edit 27b3411
+  94081ec c83f7b8` (newest first). Each cleanly removes its
+  corresponding feature commit's diff.
+
+### KEPT (unrelated, working in prod)
+
+  ea56db5  fix(estimator): carry competing-for-sale into email +
+                            lead workingDoc
+    Phase 2's resolvedCompeting prop + buildWorkingDoc rewiring.
+    Verified via grep — `resolvedCompeting` is STILL PRESENT in
+    EstimatorResults.tsx after revert. The rollback did NOT touch
+    this commit.
+
+### Verification (post-revert, pre-push)
+
+  TSC: `npx tsc --noEmit` exit 0 across the reverted tree.
+
+  Code-level greps (scripts/smoke-rollback-verify.js):
+    app/api/walliam/estimator/session/route.ts:
+      createRouteHandlerClient    — GONE  ✓
+      authUser.id !== userId      — GONE  ✓
+    app/api/walliam/estimator/increment/route.ts:
+      createRouteHandlerClient    — GONE  ✓
+      session.user_id !== authUser.id — GONE  ✓
+    components/credits/CreditSessionContext.tsx:
+      prevUserIdRef               — GONE  ✓
+      W-CREDIT-STALE-INVALIDATION — GONE  ✓
+    app/estimator/components/EstimatorBuyerModal.tsx:
+      W-CREDIT-BLEED-PHASE2 / uidArg — GONE  ✓
+    app/estimator/components/EstimatorResults.tsx:
+      resolvedCompeting — STILL PRESENT  ✓  (ea56db5 KEPT)
+
+  Local smoke (scripts/smoke-rollback-verify.js against local
+  :3015, the actual regression test):
+    POST /api/walliam/estimator/session, NO cookie,
+      body { userId: A's id, ... }, x-tenant-id set
+      → status: 200
+      → totalAllowed: 15, remaining: 5
+      → PASS — Phase 1's 401 is GONE; the localStorage-only
+        registered user path works again.
+    Ledger A's estimator_count unchanged across smoke.
+
+### What this fix WAS supposed to do — STILL OPEN
+
+  The cross-account display bleed (recon/credit-cross-account-
+  bleed.txt) IS STILL A LIVE DISPLAY BUG. Phase 1's identity-
+  change clear() in CreditSessionContext is gone again. After
+  this rollback, a logged-in user A whose tab transitions to
+  user B (register flow or sign-out + sign-in) STILL renders
+  A's credit panel until F5.
+
+  The ledger-integrity hole the server-side Phase 1 closed is
+  REOPENED. A stale-closure userId in the client's gate POST
+  CAN once again decrement another user's estimator_count.
+
+  This is the trade-off the rollback accepts: a working estimator
+  for everyone > closed cross-account bleed. The REDO ships next
+  with the prerequisite landed first.
+
+### REDO PLAN — gated on Phase 3a (auth-store unification)
+
+  PHASE 3a — UNIFY THE AUTH STORE TO COOKIES.
+
+    File: lib/supabase/client.ts
+    Change: switch from `createSupabaseClient` (@supabase/supabase-js,
+      localStorage default) to `createBrowserClient` (@supabase/ssr
+      with the same cookie adapter as /login).
+    Result: every importer of `{ supabase }` from this module
+      writes/reads cookies instead of localStorage. RegisterModal,
+      AuthContext, all 9 auth-sensitive importers automatically
+      adopt the new backend. The 18 non-auth importers
+      (anon-key queries) are storage-indifferent.
+
+    Full auth-smoke suite required BEFORE this ships:
+      [a] /login signin → session written to cookies; AuthContext
+          sees it; refresh page → still signed in.
+      [b] RegisterModal signup → cookies written; AuthContext sees;
+          refresh page → still signed in.
+      [c] Sign-out from AuthContext → cookies cleared; refresh →
+          anonymous.
+      [d] Sign-out as A + sign-in as B (cross-user transition)
+          → cookies replace atomically; no residual A.
+      [e] Token refresh round-trip — long-lived session
+          auto-refreshes via refresh_token; cookies update;
+          AuthContext sees updated session.
+      [f] All 9 importer paths still function:
+            AuthContext, RegisterModal, DashboardLogout,
+            AdminLayoutClient, ImageUpload, ChatWidgetWrapper,
+            CharlieWidget, SellerEstimateRunner, AppointmentForm.
+      [g] Server routes (createRouteHandlerClient,
+          createServerClient) see the same cookie chain post-
+          modal-register — proves the dual-client split is
+          actually closed.
+
+  PHASE 3b — REDO Phase 1 server identity check ON TOP of 3a.
+
+    Once 3a ships and cookies are consistently present on every
+    request, the Phase 1 patch from 94081ec can be re-applied to
+    estimator/session + estimator/increment as-is. The cookie
+    chain is now reliably available; getUser() returns the right
+    user; the 401-block is gone because cookies always exist
+    post-3a.
+
+  PHASE 3c — REDO Phase 2 client-side identity-change clear +
+              refresh threading ON TOP of 3b.
+
+    Re-apply c83f7b8 (focus-refetch + identity-change clear) and
+    27b3411 (thread confirmedUserId through register handoff).
+    With Phase 3a's unified cookie chain, the client and server
+    agree on identity at all times; the race is structural-only.
+
+  PHASE 3d — Optionally add Phase 1 check to
+              /api/walliam/charlie/session (the panel feeder,
+              still unprotected per recon/credit-bleed-phase3.txt
+              R3). Safe only AFTER 3a.
+
+### Rollback scope verification
+
+  Modified (3 revert commits + tracker):
+    components/credits/CreditSessionContext.tsx        (revert c83f7b8)
+    components/auth/VIPAIAccess.tsx                    (revert 27b3411)
+    app/estimator/components/EstimatorBuyerModal.tsx   (revert 27b3411)
+    app/estimator/components/HomeEstimatorBuyerModal.tsx (revert 27b3411)
+    app/estimator/components/EstimatorSeller.tsx       (revert 27b3411)
+    components/estimator/EstimatorVipWrapper.tsx       (revert 27b3411)
+    app/api/walliam/estimator/session/route.ts         (revert 94081ec)
+    app/api/walliam/estimator/increment/route.ts       (revert 94081ec)
+    [smoke files deleted by the reverts]:
+      scripts/smoke-w-credit-stale.js              (gone)
+      scripts/smoke-w-credit-bleed-phase1.js       (gone)
+      scripts/smoke-w-credit-bleed-phase2-1a.js    (gone)
+      scripts/smoke-w-credit-bleed-phase2-1b.js    (gone)
+
+  Pre-existing dirty files (NOT included in any commit):
+    app/api/charlie/municipalities/route.ts
+    scripts/r-w-territory-master-p2-data-phantom-fix.js
+    scripts/r-w-territory-master-p4-check-fix.js
+
+### Backups in place
+
+  Tracker: docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_w_credit_rollback_20260619_113700
+  (No source-file backups taken before the revert — `git revert`
+  is itself the reversible operation; the 3 revert commits can
+  be reverted again to restore Phase 1+2 once Phase 3a ships.)
+
+### Status
+
+  W-CREDIT-STALE-INVALIDATION (c83f7b8):  REVERTED — PENDING REDO on 3a
+  W-CREDIT-BLEED-PHASE1 (94081ec):        REVERTED — PENDING REDO on 3a
+  W-CREDIT-BLEED-PHASE2 (27b3411):        REVERTED — PENDING REDO on 3a
+  W-CREDIT-BLEED-PHASE3a (auth unify):    NEXT WORKING BLOCK
+  W-CREDIT-BLEED-PHASE3b (Phase 1 redo):  GATED on 3a
+  W-CREDIT-BLEED-PHASE3c (Phase 2 redo):  GATED on 3b
+  W-CREDIT-BLEED-PHASE3d (feeder check):  GATED on 3a
+
+### Lesson
+
+  recon/credit-bleed-phase3.txt R1 + R2 + R4 explicitly flagged the
+  dual-client split as a prerequisite for the cookie-based server
+  check. The recon's recommendation was "if the operator's symptom
+  persists after a clean-cache reload → Option C in strict order:
+  (1) Unify lib/supabase/client.ts to cookies. (2) Add charlie/
+  session Phase-1 identity check. DO NOT ship (2) without (1)."
+
+  The PROD regression is exactly what (2)-without-(1) was predicted
+  to cause: every localStorage-only user's request 401s because
+  the cookie chain isn't there. Phase 1 + 2 should never have
+  shipped to prod without 3a landing first. The lesson: when a
+  recon explicitly names a prerequisite for a fix, treat it as a
+  hard block, not a "preferred order".
+
+### Commit gate
+
+  3 revert commits already exist on `main` (1e40f4f + 0256e38 +
+  60e3f65). The tracker entry above documents them but is its own
+  new commit — append + stage docs/W-ESTIMATOR-PATHS-TRACKER.md
+  for a 4th commit on top.
+
+  HOLD PUSH. Wait for operator approval after the local smoke
+  proves the estimator works again (it does — see Verification
+  above).
