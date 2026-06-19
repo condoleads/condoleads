@@ -1,0 +1,298 @@
+W-COMPETING-GEO-PILLS — RECON ONLY (no fix, no commit)
+Goal: show each Competing-For-Sale listing's geo tier (Platinum/Gold/Silver/Bronze)
+on its tile, consistently across in-chat panel + email + lead content.
+
+════════════════════════════════════════════════════════════════════════
+R1 — Do competing listings carry a geo tier today?
+════════════════════════════════════════════════════════════════════════
+
+NO. The CompetingListing type has no tier field; the endpoint response
+returns raw mls_listings rows with mediaUrl attached but no tier
+provenance. The server DOES know which geo level produced the result
+(the cascade returns early from whichever level first yielded ≥1 row),
+but it does not stamp the rows.
+
+CompetingListing type (Project/app/estimator/components/HomeEstimatorResults.tsx#L56-L76):
+  export interface CompetingListing {
+    id: string
+    listing_key: string
+    list_price: number
+    unparsed_address: string | null
+    bedrooms_total: number | null
+    bathrooms_total_integer: number | null
+    living_area_range: string | null
+    days_on_market: number | null
+    approximate_age: number | null
+    property_subtype: string | null
+    net_operating_income?: number | null
+    gross_revenue?: number | null
+    mediaUrl?: string | null
+    unit_number?: string | null
+    association_fee?: number | null
+  }
+  → No tier / sourceTier / geoLevel / matchedAt field.
+
+Endpoint response (Project/app/api/charlie/competing-listings/route.ts#L121):
+  return NextResponse.json({ success: true, listings })
+  → `listings` is the raw array; no per-listing tier annotation, no
+    top-level geoLevel either.
+
+Where the geo level IS KNOWN inside the fetch (Project/lib/estimator/home-comparable-matcher-sales.ts#L1037-L1149):
+  - Community branch returns at L1117 when `pool.length > 0` → these
+    listings ARE community/Gold tier — but the function returns the
+    raw `pool`, no stamping.
+  - Muni branch returns at L1145 when `pool.length > 0` → these listings
+    ARE municipality/Silver tier — also returned raw, no stamping.
+  - Function exits at L1149 with [] when neither cascade produced.
+
+  → The function literally has TWO distinct return sites that name the
+    tier, but the rows go out unmarked. A stamp at each return site
+    (e.g. `pool.map(r => ({ ...r, sourceTier: 'gold' }))` at L1117 and
+    `'silver'` at L1145) gives source-of-truth tier provenance.
+
+Condo branch (Project/app/api/charlie/competing-listings/route.ts#L25-L89):
+  Single .eq('community_id', communityId) query — no cascade. Every
+  returned row is community-scoped → always Gold tier. No stamping today.
+
+Plex branch (Project/lib/estimator/home-comparable-matcher-sales.ts#L962-L1035):
+  Cascades community → muni → area (3 distinct return sites). Same
+  pattern as SF — knows the tier, doesn't stamp it.
+
+════════════════════════════════════════════════════════════════════════
+R2 — How is the tier computed for the ESTIMATOR comps today?
+════════════════════════════════════════════════════════════════════════
+
+The estimator's SOLD-comp pipeline (the same matcher file used by the
+competing endpoint's home branch) DOES stamp `sourceTier` on each
+ComparableSale before merging into the multi-tier display list.
+
+Tier-assignment site (Project/lib/estimator/home-comparable-matcher-sales.ts#L1393-L1395):
+  const stampTier = (
+    arr: ComparableSale[] | null | undefined,
+    tier: 'platinum' | 'gold' | 'silver',
+  ): ComparableSale[] => (arr || []).map(c => ({ ...c, sourceTier: tier }))
+
+Tier ranks are then merged into the multi-tier display list at L1388-L1410
+("KEEPING THE FIRST OCCURRENCE — tightest tier wins").
+
+Tier → display label mapping (Project/app/estimator/components/GeoConfidenceSpread.tsx#L46-L58):
+  HOME_LABEL_MAP:
+    platinum: { name: 'Platinum', sub: 'Same street',     emoji: '◆' }
+    gold:     { name: 'Gold',     sub: 'Community',       emoji: '●' }
+    silver:   { name: 'Silver',   sub: 'Municipality',    emoji: '●' }
+    bronze:   { name: 'Bronze',   sub: 'Area',            emoji: '●' }
+
+  CONDO_LABEL_MAP:
+    platinum: { name: 'Platinum', sub: 'Same Building',   emoji: '◆' }
+    gold:     { name: 'Gold',     sub: 'Community',       emoji: '●' }
+    silver:   { name: 'Silver',   sub: 'Municipality',    emoji: '●' }
+    bronze:   { name: 'Bronze',   sub: 'Area',            emoji: '●' }
+
+  Confirmed: platinum=building (condo) or street (home), gold=community,
+  silver=municipality, bronze=area.
+
+Per-tile tier read in the estimator (Project/app/estimator/components/HomeEstimatorResults.tsx#L1254):
+  const tierKey = (comp.sourceTier || result.taxMatch?.bestGeoTier || 'gold')
+                  as 'platinum' | 'gold' | 'silver' | 'bronze'
+  const tierLabel = HOME_LABEL_MAP[tierKey]
+  → Reads sourceTier per tile, falls back to section-level bestGeoTier.
+
+Email tier-chip (Project/lib/email/working-doc-render.ts#L298-L304):
+  const chipHtml = showChip
+    ? (() => {
+        const chip = tierChipFor(tile.sourceTier ?? null, anchorTier, docType)
+        ...
+      })()
+    : ''
+  → Same source-of-truth pattern: chip read from tile.sourceTier with
+    section-level anchorTier fallback. Helper: lib/charlie/tier-chip.ts.
+
+Can the same tier-assignment apply to competing listings?
+YES — directly. The competing fetch already uses the same matcher file
+(findActiveCompetitionSF + findActiveCompetitionPlex are RIGHT NEXT TO
+the sold-comp tier-stamp logic in the same file). Mirror the
+stampTier-at-cascade-return-site pattern at L1117 and L1145 (and at
+L897/L900/L907 inside findActiveCompetitionPlex for community/muni/area).
+The downstream renderers (in-chat tile, email chip, lead WorkingDocView)
+already read sourceTier and already use HOME_LABEL_MAP / CONDO_LABEL_MAP
+— no renderer change needed IF sourceTier is populated through the
+tile-builder chain.
+
+════════════════════════════════════════════════════════════════════════
+R3 — The competing fetch geo scope
+════════════════════════════════════════════════════════════════════════
+
+The competing fetch is a CASCADE, not a single-scope query — but it
+returns from EXACTLY ONE level. Within a single response, every
+listing is the SAME tier (uniform pill across the returned set).
+
+SF home (Project/lib/estimator/home-comparable-matcher-sales.ts#L1092-L1147):
+  if (specs.communityId) {
+    // L1092-L1119 — community pool, return pool at L1117 if non-empty
+  }
+  if (specs.municipalityId) {
+    // L1120-L1147 — muni pool, return pool at L1145 if non-empty
+  }
+  return []                                  // L1149
+
+  → Community FIRST, muni SECOND. NO street level, NO area level for SF.
+    Possible tiers in a returned set: Gold OR Silver. Never Platinum,
+    never Bronze. (Platinum = same-street is the SOLD-cascade's tier
+    pattern — competing has no same-street branch.)
+
+Plex (Project/lib/estimator/home-comparable-matcher-sales.ts#L962-L1035):
+  - community (L1006) → muni (L1010) → area (L1013-onward) → return []
+  → Possible tiers: Gold OR Silver OR Bronze. Never Platinum.
+
+Condo (Project/app/api/charlie/competing-listings/route.ts#L25-L89):
+  Single .eq('community_id', communityId) query. No cascade at all.
+  → Always Gold. Pill is a constant for the condo path.
+
+CONSEQUENCE FOR THE PILL:
+  - The pill is UNIFORM within one fetch (all tiles same tier), NOT
+    per-tile-varying. The matcher returns ONE pool from ONE level.
+  - Different sessions/subjects can render different tiers (e.g.
+    sparse community → Silver; dense community → Gold), but a given
+    estimator response shows ONE color on every competing tile.
+  - This is exactly the shape the SOLD-comp display lives with at the
+    SECTION level (bestGeoTier names the winning tier; per-tile
+    sourceTier is the same value for that section's tiles when the
+    cascade collapsed to a single level). Competing is a degenerate
+    case of the same model — easier, not harder.
+
+════════════════════════════════════════════════════════════════════════
+R4 — The three render surfaces
+════════════════════════════════════════════════════════════════════════
+
+(a) IN-CHAT / ON-SCREEN PANEL
+    File: Project/app/estimator/components/HomeEstimatorResults.tsx
+    Render block: L1339-L1430
+
+    Source: reads the `competingListings` prop directly (NOT workingDoc).
+    Today's tile shows:
+      L1374-L1377: FOR SALE · SUBTYPE pill (blue-600, photo overlay)
+      L1383: list price
+      L1386-L1389: days_on_market chip
+      L1391-L1393: address line
+      L1414-L1418: bed/bath/sqft meta
+    NO tier badge today. NO sourceTier reference in this render.
+
+    For the pill to appear here: the prop's items need a tier field,
+    OR a section-level tier hint passed from the parent — and a new
+    HOME_LABEL_MAP / CONDO_LABEL_MAP-driven badge inside the tile.
+
+(b) EMAIL
+    File: Project/lib/email/working-doc-render.ts
+    Render block: renderSection at L477-L485, renderTile at L260-L378.
+
+    Source: reads doc.competing.tiles from the persisted workingDoc.
+    Current behavior at L484:
+      const competing = renderSection(
+        'Competing For Sale', ..., doc.competing, ...,
+        /* showChip */ false,   // deliberate — established surface
+                                // omits chip on competing
+      )
+    The chip-rendering code (L298-L304) is GATED by `showChip`. So
+    competing today renders NO chip even though renderTile would
+    happily emit one — the gate is the only thing stopping it.
+
+    For the pill: (1) tile.sourceTier must be populated on
+    workingDoc.competing.tiles (today the tile-builder omits it — see
+    "tileFromCompeting" sites below), and (2) flip showChip to true
+    for the competing section (or read anchorTier from the section).
+
+(c) LEAD CONTENT (admin Estimator/Plan tab)
+    File: Project/components/dashboard/WorkingDocView.tsx
+    Render block: Section component at L195-L218, TileRow at L153-L193,
+                  competing section invocation at L274-L282.
+
+    Source: reads workingDoc.competing.tiles (same source as email).
+    TileRow already reads tile.sourceTier at L166:
+      const tier = tile.sourceTier ? tierLabel(tile.sourceTier) : null
+      ...
+      {tier && <div className={t.tileTier}>{tier}</div>}     // L187
+    → The renderer is ALREADY tier-aware. If sourceTier is populated on
+      the competing tiles in workingDoc, this surface shows the label
+      automatically — no code change here. Today it shows nothing
+      because sourceTier is never set on competing.
+
+WHERE THE TIER IS DROPPED ON THE WAY TO workingDoc.competing.tiles:
+
+Two tile-builders that produce the competing tiles, both of which
+deliberately omit sourceTier today:
+
+  - Project/app/estimator/components/HomeEstimatorResults.tsx#L296-L309
+    (the in-component buildWorkingDoc IIFE for fire-on-generate)
+    tile shape lists 9 fields: id, listingKey, listPrice, daysOnMarket,
+    bedrooms, bathrooms, livingAreaRange, unitNumber, unparsedAddress,
+    mediaUrl. NO sourceTier.
+
+  - Project/lib/email/working-doc-render.ts#L661-L673
+    (tileFromCompeting in buildWorkingDocFromResult — alternate path)
+    Same shape, no sourceTier.
+
+CROSS-SURFACE CONSISTENCY CHECK:
+  Both (b) and (c) read workingDoc.competing.tiles — so adding
+  sourceTier to the tile-builder once gives BOTH the email AND the
+  lead-tab tile a tier value to render (assuming the email showChip
+  gate is also flipped). Surface (a) is the ONLY one that reads its
+  own prop (competingListings) instead of workingDoc — so the in-chat
+  tile needs a separate read of either a stamped row field or a
+  parent-passed section-level tier.
+
+  The cleanest single source of truth: stamp tier at the matcher's
+  cascade return sites (R1) → the stamped tile flows through (1)
+  the competingListings prop into HomeEstimatorResults' inline tile
+  in (a), (2) the tile-builder IIFE into workingDoc.competing for
+  both (b) and (c). This mirrors the data-flow class that ea56db5
+  enforced for the workingDoc.competing payload itself — one
+  source object, three readers.
+
+════════════════════════════════════════════════════════════════════════
+ROOT — Is tier already available to thread, or must it be computed?
+════════════════════════════════════════════════════════════════════════
+
+The tier is ALREADY KNOWN at the source. It does not need to be
+computed — it needs to be STAMPED.
+
+Where it's known:
+  - SF: home-comparable-matcher-sales.ts L1117 (community return)
+        and L1145 (muni return) of findActiveCompetitionSF
+  - Plex: L897/L900/L907 of findActiveCompetitionPlex (community /
+        muni / area return sites)
+  - Condo: app/api/charlie/competing-listings/route.ts:L41-L52
+        (single community query — every row is Gold by construction)
+
+Where it must be threaded:
+  - Stamp at cascade return sites → field on returned row
+  - Propagate through the endpoint (already returns raw rows untouched)
+  - Add sourceTier to BOTH competing tile-builders (the inline IIFE
+    at HomeEstimatorResults.tsx:296 and tileFromCompeting at
+    working-doc-render.ts:661)
+  - In-chat tile (HomeEstimatorResults.tsx:1339-1430): read tier off
+    cl.sourceTier and render a HOME_LABEL_MAP / CONDO_LABEL_MAP badge
+    (same shape the tax-match tile already renders at L1273-L1275)
+  - Email (working-doc-render.ts:484): flip /* showChip */ false to
+    true for the competing section (or wrap it in a gate that reads
+    presence of sourceTier on the section). The chip-render code at
+    L298-L304 already works — only the gate is closed.
+  - Lead content (WorkingDocView.tsx:274-282): NO CHANGE — TileRow
+    at L166 already reads sourceTier and shows the label.
+
+Is the pill per-tile or uniform?
+  UNIFORM within a single estimator response. The cascade returns from
+  ONE level only — every tile in the returned set carries the same
+  tier. Different responses (different subjects / different geo
+  density) can yield different tiers, but within a given Competing-
+  For-Sale section, every tile is the same color. This makes the
+  rendering trivial: per-tile read of sourceTier works, AND a section-
+  level "Competing For Sale · Gold (Community)" header would be
+  equivalent. Either presentation is internally consistent because
+  the source is one level.
+
+Possible-tier set per path:
+  SF home    : Gold | Silver           (never Platinum, never Bronze)
+  Plex       : Gold | Silver | Bronze  (never Platinum)
+  Condo      : Gold only               (single-level query, no cascade)
+
+No fix applied. No commit. Recon only.
