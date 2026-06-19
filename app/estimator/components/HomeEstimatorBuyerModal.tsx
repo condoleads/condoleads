@@ -8,8 +8,6 @@ import { EstimateResult } from '@/lib/estimator/types'
 import HomeEstimatorResults from './HomeEstimatorResults'
 import { MLSListing } from '@/lib/types/building'
 import { useCompetingListings } from '@/app/estimator/hooks/useCompetingListings'
-// W-CREDIT-BLEED-PHASE2-1a (2026-06-19): creditsCtx.refresh on register.
-import { useCreditSession } from '@/components/credits/CreditSessionContext'
 import type { CompetingListing } from '@/app/estimator/components/HomeEstimatorResults'
 import { useAuth } from '@/components/auth/AuthContext'
 import VipPrompt from '@/components/chat/VipPrompt'
@@ -50,8 +48,6 @@ export default function HomeEstimatorBuyerModal({
   exactSqft,
 }: HomeEstimatorBuyerModalProps) {
   const { user } = useAuth()
-  // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): refresh credit panel post-register
-  const creditsCtx = useCreditSession()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<EstimateResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -160,13 +156,8 @@ export default function HomeEstimatorBuyerModal({
     return () => { document.body.style.overflow = 'unset' }
   }, [isOpen])
 
-  const checkAndEstimate = async (uidArg?: string) => {
-    // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): see EstimatorBuyerModal D1 —
-    // accept uidArg from RegisterModal.onSuccess confirmedUserId to avoid
-    // the AuthContext propagation race that would otherwise post a stale
-    // user.id and trip Phase 1's server identity 403.
-    const uid = uidArg ?? user?.id
-    if (!uid) {
+  const checkAndEstimate = async () => {
+    if (!user) {
       setShowRegister(true)
       return
     }
@@ -177,7 +168,7 @@ export default function HomeEstimatorBuyerModal({
       const sessionUrl = tenantId ? '/api/walliam/estimator/session' : '/api/estimator/session'
       const sessionHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
       if (tenantId) sessionHeaders['x-tenant-id'] = tenantId
-      const sessionBody = tenantId ? { userId: uid } : { agentId, userId: uid, buildingId: '' }
+      const sessionBody = tenantId ? { userId: user.id } : { agentId, userId: user.id, buildingId: '' }
       const response = await fetch(sessionUrl, {
         method: 'POST',
         headers: sessionHeaders,
@@ -804,14 +795,9 @@ export default function HomeEstimatorBuyerModal({
       <RegisterModal
         isOpen={showRegister}
         onClose={() => { setShowRegister(false); onClose() }}
-        onSuccess={(confirmedUserId) => {
-          // W-CREDIT-BLEED-PHASE2-1a (2026-06-19): pass confirmedUserId
-          // through; see EstimatorBuyerModal D1 comment for the race.
+        onSuccess={() => {
           setShowRegister(false)
-          if (confirmedUserId) {
-            creditsCtx.refresh(undefined, confirmedUserId).catch(() => {})
-          }
-          checkAndEstimate(confirmedUserId)
+          checkAndEstimate()
         }}
         registrationSource="estimator"
         agentId={agentId}
