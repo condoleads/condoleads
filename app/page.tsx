@@ -69,7 +69,9 @@ export default async function RootPage() {
         // defaultHomeMode='browse'. Same shape as the comprehensive-
         // site router; v2 path unchanged (prop omitted → client
         // useState init falls to 'ai').
-        if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' />
+        // W-AILY-V3-PLAN-CTAS (2026-06-21): also surface prominent
+        // "Get AI Buyer/Seller Plan" CTAs above the browse search bar.
+        if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' showBrowsePlanCTAs />
         return layout === 'v2'
           ? <HomePageComprehensiveV2 agent={agentProps} />
           : <HomePageComprehensive agent={agentProps} />

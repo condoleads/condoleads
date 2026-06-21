@@ -93,7 +93,9 @@ export default async function ComprehensiveHomePage() {
         // defaultHomeMode='browse' (lands on listings first paint;
         // existing AI/Browse toggle still works). v2 path unchanged
         // (defaultHomeMode prop omitted → client falls to 'ai').
-        if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' />
+        // W-AILY-V3-PLAN-CTAS (2026-06-21): also surface prominent
+        // "Get AI Buyer/Seller Plan" CTAs above the browse search bar.
+        if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' showBrowsePlanCTAs />
         return layout === 'v2'
           ? <HomePageComprehensiveV2 agent={agentProps} />
           : <HomePageComprehensive agent={agentProps} />

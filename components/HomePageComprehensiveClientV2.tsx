@@ -46,6 +46,10 @@ interface Props {
   // 'browse' is the v3 setting — routing dispatches v3 to this same
   // component with this prop = 'browse' (no separate v3 component).
   defaultHomeMode?: 'ai' | 'browse';
+  // W-AILY-V3-PLAN-CTAS (2026-06-21): when true (v3 routing), render
+  // prominent "Get AI Buyer/Seller Plan" CTAs above the BrowseListingsView
+  // search bar. Default false → v2 byte-identical (no CTAs in browse-toggle).
+  showBrowsePlanCTAs?: boolean;
 }
 
 // ── Open Charlie helper ───────────────────────────────────────
@@ -505,7 +509,7 @@ type HomeMode = 'ai' | 'browse';
 // W-AILY-V3-BROWSE-FIRST (2026-06-21): defaultHomeMode prop threaded so v3
 // routing (which dispatches v3 to this component with defaultHomeMode='browse')
 // lands first paint in browse mode. Default 'ai' preserves v2 byte-identical.
-function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, access, assistantName, defaultHomeMode }: { wordmarkStyle: string; brandName: string | null; topAreas: AreaCard[]; neighbourhoods: NeighbourhoodMenuItem[]; access: AccessInfo; assistantName: string; defaultHomeMode?: HomeMode }) {
+function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, access, assistantName, defaultHomeMode, showBrowsePlanCTAs }: { wordmarkStyle: string; brandName: string | null; topAreas: AreaCard[]; neighbourhoods: NeighbourhoodMenuItem[]; access: AccessInfo; assistantName: string; defaultHomeMode?: HomeMode; showBrowsePlanCTAs?: boolean }) {
   const [homeMode, setHomeMode] = useState<HomeMode>(defaultHomeMode ?? 'ai');
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
@@ -635,9 +639,64 @@ function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, acces
       </div>
       </>)}
 
-      {homeMode === 'browse' && (
+      {homeMode === 'browse' && (<>
+        {/* W-AILY-V3-PLAN-CTAS (2026-06-21): prominent Get AI Buyer/Seller
+            Plan CTAs above the search bar in browse mode. Gated on
+            showBrowsePlanCTAs so only v3 tenants render them; v2 browse-
+            toggle path stays unchanged. Mirrors the AI-mode CTA styling
+            (gradient + shadow + hover lift) but wraps "AI" in a light-blue
+            accent span (#93c5fd) on both buttons for consistent emphasis. */}
+        {showBrowsePlanCTAs && (
+          <div style={{
+            display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'center',
+            marginBottom: 32,
+          }}>
+            <button
+              onClick={() => openCharlie('buyer')}
+              style={{
+                padding: '16px 36px', borderRadius: 100, border: 'none',
+                background: 'linear-gradient(135deg, #1d4ed8, #4f46e5)',
+                color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'inherit', letterSpacing: '0.01em',
+                boxShadow: '0 8px 40px rgba(59,130,246,0.35)',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-3px)';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 12px 48px rgba(59,130,246,0.5)';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 40px rgba(59,130,246,0.35)';
+              }}
+            >
+              🏠 Get <span style={{ color: '#93c5fd' }}>AI</span> Buyer Plan
+            </button>
+            <button
+              onClick={() => openCharlie('seller')}
+              style={{
+                padding: '16px 36px', borderRadius: 100, border: 'none',
+                background: 'linear-gradient(135deg, #059669, #10b981)',
+                color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+                fontFamily: 'inherit', letterSpacing: '0.01em',
+                boxShadow: '0 8px 40px rgba(16,185,129,0.35)',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-3px)';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 12px 48px rgba(16,185,129,0.5)';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 40px rgba(16,185,129,0.35)';
+              }}
+            >
+              💰 Get <span style={{ color: '#93c5fd' }}>AI</span> Seller Plan
+            </button>
+          </div>
+        )}
         <BrowseListingsView neighbourhoods={neighbourhoods} />
-      )}
+      </>)}
 
       {/* VIP AI Access Block */}
       <div style={{ width: '100%', maxWidth: 600, margin: '0 auto 32px' }}>
@@ -677,10 +736,10 @@ function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, acces
 }
 
 // ── Main Export ───────────────────────────────────────────────
-export default function HomePageComprehensiveClientV2({ tenantId, brandName, wordmarkStyle, agent, stats, topAreas, neighbourhoods, access, assistantName, defaultHomeMode }: Props) {
+export default function HomePageComprehensiveClientV2({ tenantId, brandName, wordmarkStyle, agent, stats, topAreas, neighbourhoods, access, assistantName, defaultHomeMode, showBrowsePlanCTAs }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: '#060b18' }}>
-      <WalliamHero wordmarkStyle={wordmarkStyle} brandName={brandName} topAreas={topAreas} neighbourhoods={neighbourhoods} access={access} assistantName={assistantName} defaultHomeMode={defaultHomeMode} />
+      <WalliamHero wordmarkStyle={wordmarkStyle} brandName={brandName} topAreas={topAreas} neighbourhoods={neighbourhoods} access={access} assistantName={assistantName} defaultHomeMode={defaultHomeMode} showBrowsePlanCTAs={showBrowsePlanCTAs} />
       <HowItWorks assistantName={assistantName} />
     </div>
   );

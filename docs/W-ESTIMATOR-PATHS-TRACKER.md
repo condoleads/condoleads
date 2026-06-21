@@ -9097,3 +9097,86 @@ W-CREDIT-BLEED ROLLBACK (2026-06-19) — production regression
 
   STOP at commit gate. 7 code/doc files. No DB write. Smoke green.
   Diff shown. Awaiting operator approval before stage/commit/push.
+
+---
+
+## W-AILY-V3-PLAN-CTAS — prominent Get AI Plan CTAs on v3 browse landing (2026-06-21)
+
+### Why
+  v3 browse-first lands users on listings (search + chips + neighbourhoods)
+  but hides the prominent "Get Plan" CTAs that v2 AI-mode surfaces
+  (HomePageComprehensiveClientV2.tsx:573-625, gated on homeMode === 'ai').
+  The CTAs are the core conversion action — they must be above-the-fold
+  in browse mode for v3, not just in the bottom HowItWorks block.
+
+### Decision (per recon recon/aily-v3-plan-ctas.txt)
+  Option A — prominent buttons (NOT extending the pill toggle to tabs);
+  Pattern A — v3-only via new opt-in prop showBrowsePlanCTAs (default
+  false). v2 (WALLiam) browse-toggle stays byte-identical.
+
+### Changes (4 files)
+  components/HomePageComprehensiveV2.tsx
+    - Props gain showBrowsePlanCTAs?: boolean
+    - Forwarded to HomePageComprehensiveClientV2
+  components/HomePageComprehensiveClientV2.tsx
+    - Props + WalliamHero signature + default export destructure
+      receive showBrowsePlanCTAs
+    - Browse-mode block now renders the CTA row above
+      <BrowseListingsView /> when showBrowsePlanCTAs is true
+    - Buttons mirror v2 AI-mode CTA styling exactly (gradient blue
+      #1d4ed8→#4f46e5 buyer / green #059669→#10b981 seller, same
+      box-shadow + hover lift); labels read "🏠 Get AI Buyer Plan" /
+      "💰 Get AI Seller Plan" with "AI" wrapped in <span color="#93c5fd">
+      (light-blue accent for the AI capability claim — consistent on
+      both blue + green gradients)
+    - openCharlie('buyer'|'seller') reused — mode-independent helper
+      (HomePageComprehensiveClientV2.tsx:51-54)
+  app/page.tsx, app/comprehensive-site/page.tsx
+    - v3 branch now passes showBrowsePlanCTAs alongside
+      defaultHomeMode='browse' (still no separate V3 component)
+
+### What was NOT touched
+  - v2 AI-mode CTAs (labels "Get My Buyer Plan" / "Get My Seller Plan"):
+    UNCHANGED. The "AI" capitalization claim ships only on v3 browse
+    CTAs for this build; platform-wide rename is a separate operator
+    decision.
+  - BrowseListingsView: not modified. CTAs live in V2 client,
+    adjacent to the BrowseListingsView mount, so the shared component
+    stays opinion-free.
+  - V1 component, isHeroTenant(), C12, aiglow, top-nav buttons: all
+    untouched.
+
+### No DB write
+  Aily.homepage_layout stays 'v3' (set in W-AILY-V3-BROWSE-FIRST run).
+  No tenant config change.
+
+### Verification gates
+  - npx tsc --noEmit → 0 errors
+  - Local smoke (npm run dev, Host: aily.ca / walliam.ca):
+      v3 aily.ca/      → CTAs visible above search bar; buyer click →
+                         Charlie buyer mode; seller click → seller mode
+      v2 walliam.ca/   → AI default, no CTAs in browse-toggle
+      v2 toggled-to-browse on walliam.ca → no CTAs (byte-identical)
+  - C12 multi-tenant regression: 19/19 PASS expected (no tenant
+    function changed)
+
+### Files
+
+  Edited (4):
+    components/HomePageComprehensiveV2.tsx
+    components/HomePageComprehensiveClientV2.tsx
+    app/page.tsx
+    app/comprehensive-site/page.tsx
+
+  Backed up (timestamp 20260621_094921):
+    each of the 4 edited files
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260621_094921
+
+  Recon:
+    recon/aily-v3-plan-ctas.txt
+
+### Commit gate
+
+  STOP at commit gate. 4 code files + tracker. No DB write. Smoke
+  green. Diff shown. Awaiting operator approval before stage/
+  commit/push.

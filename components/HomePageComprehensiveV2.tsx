@@ -30,9 +30,14 @@ interface HomePageComprehensiveV2Props {
   // tenants on homepage_layout='v3' land first paint in browse mode.
   // Default undefined → client falls to 'ai' → v2 byte-identical.
   defaultHomeMode?: 'ai' | 'browse';
+  // W-AILY-V3-PLAN-CTAS (2026-06-21): when true, render prominent
+  // "Get AI Buyer/Seller Plan" CTAs above the browse view's search
+  // bar. v3 routing sets this true; v2 (WALLiam) omits → default
+  // false → no CTAs in v2 browse-toggle, byte-identical to before.
+  showBrowsePlanCTAs?: boolean;
 }
 
-export async function HomePageComprehensiveV2({ agent, defaultHomeMode }: HomePageComprehensiveV2Props) {
+export async function HomePageComprehensiveV2({ agent, defaultHomeMode, showBrowsePlanCTAs }: HomePageComprehensiveV2Props) {
   // C8a/D13 -- fetch tenant context for prop-drilling assistant name to client
   const host = headers().get('host');
   const supabaseForTenant = createClient();
@@ -86,6 +91,7 @@ export async function HomePageComprehensiveV2({ agent, defaultHomeMode }: HomePa
           homes_access: access.homes_access,
         }}
         defaultHomeMode={defaultHomeMode}
+        showBrowsePlanCTAs={showBrowsePlanCTAs}
       />
       {/* W-FUNNEL §9.2 Step 3: System 2 uses CharlieWidget (global, ConditionalLayout); System 1 keeps ChatWidgetWrapper. */}
       {!isHero && !tenantId && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
