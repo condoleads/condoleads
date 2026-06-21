@@ -40,6 +40,12 @@ interface Props {
   topAreas: AreaCard[];
   neighbourhoods: NeighbourhoodMenuItem[];
   access: AccessInfo;
+  // W-AILY-V3-BROWSE-FIRST (2026-06-21): which mode the homepage
+  // lands in on first paint. Defaults to 'ai' so v2 (WALLiam + any
+  // other 'v2' tenant) behaves byte-identical to before this change.
+  // 'browse' is the v3 setting — routing dispatches v3 to this same
+  // component with this prop = 'browse' (no separate v3 component).
+  defaultHomeMode?: 'ai' | 'browse';
 }
 
 // ── Open Charlie helper ───────────────────────────────────────
@@ -496,8 +502,11 @@ function HowItWorks({ assistantName }: { assistantName: string }) {
 type HomeMode = 'ai' | 'browse';
 
 // MTB-DEF-1 -- wordmarkStyle + brandName threaded through WalliamHero to reach HeroWordmark.
-function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, access, assistantName }: { wordmarkStyle: string; brandName: string | null; topAreas: AreaCard[]; neighbourhoods: NeighbourhoodMenuItem[]; access: AccessInfo; assistantName: string }) {
-  const [homeMode, setHomeMode] = useState<HomeMode>('ai');
+// W-AILY-V3-BROWSE-FIRST (2026-06-21): defaultHomeMode prop threaded so v3
+// routing (which dispatches v3 to this component with defaultHomeMode='browse')
+// lands first paint in browse mode. Default 'ai' preserves v2 byte-identical.
+function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, access, assistantName, defaultHomeMode }: { wordmarkStyle: string; brandName: string | null; topAreas: AreaCard[]; neighbourhoods: NeighbourhoodMenuItem[]; access: AccessInfo; assistantName: string; defaultHomeMode?: HomeMode }) {
+  const [homeMode, setHomeMode] = useState<HomeMode>(defaultHomeMode ?? 'ai');
   const [taglineVisible, setTaglineVisible] = useState(false);
   const [ctaVisible, setCtaVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
@@ -668,10 +677,10 @@ function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, acces
 }
 
 // ── Main Export ───────────────────────────────────────────────
-export default function HomePageComprehensiveClientV2({ tenantId, brandName, wordmarkStyle, agent, stats, topAreas, neighbourhoods, access, assistantName }: Props) {
+export default function HomePageComprehensiveClientV2({ tenantId, brandName, wordmarkStyle, agent, stats, topAreas, neighbourhoods, access, assistantName, defaultHomeMode }: Props) {
   return (
     <div style={{ minHeight: '100vh', background: '#060b18' }}>
-      <WalliamHero wordmarkStyle={wordmarkStyle} brandName={brandName} topAreas={topAreas} neighbourhoods={neighbourhoods} access={access} assistantName={assistantName} />
+      <WalliamHero wordmarkStyle={wordmarkStyle} brandName={brandName} topAreas={topAreas} neighbourhoods={neighbourhoods} access={access} assistantName={assistantName} defaultHomeMode={defaultHomeMode} />
       <HowItWorks assistantName={assistantName} />
     </div>
   );

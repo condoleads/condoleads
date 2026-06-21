@@ -26,9 +26,13 @@ interface Agent {
 
 interface HomePageComprehensiveV2Props {
   agent: Agent;
+  // W-AILY-V3-BROWSE-FIRST (2026-06-21): forwarded to the client so
+  // tenants on homepage_layout='v3' land first paint in browse mode.
+  // Default undefined → client falls to 'ai' → v2 byte-identical.
+  defaultHomeMode?: 'ai' | 'browse';
 }
 
-export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2Props) {
+export async function HomePageComprehensiveV2({ agent, defaultHomeMode }: HomePageComprehensiveV2Props) {
   // C8a/D13 -- fetch tenant context for prop-drilling assistant name to client
   const host = headers().get('host');
   const supabaseForTenant = createClient();
@@ -81,6 +85,7 @@ export async function HomePageComprehensiveV2({ agent }: HomePageComprehensiveV2
           condo_access: access.condo_access,
           homes_access: access.homes_access,
         }}
+        defaultHomeMode={defaultHomeMode}
       />
       {/* W-FUNNEL §9.2 Step 3: System 2 uses CharlieWidget (global, ConditionalLayout); System 1 keeps ChatWidgetWrapper. */}
       {!isHero && !tenantId && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}

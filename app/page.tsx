@@ -65,6 +65,11 @@ export default async function RootPage() {
       if (defaultAgent) {
         const agentProps = { ...defaultAgent, is_active: true }
         const layout = tenantConfig.homepage_layout ?? 'v1'
+        // W-AILY-V3-BROWSE-FIRST (2026-06-21): 'v3' renders V2 with
+        // defaultHomeMode='browse'. Same shape as the comprehensive-
+        // site router; v2 path unchanged (prop omitted → client
+        // useState init falls to 'ai').
+        if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' />
         return layout === 'v2'
           ? <HomePageComprehensiveV2 agent={agentProps} />
           : <HomePageComprehensive agent={agentProps} />

@@ -89,6 +89,11 @@ export default async function ComprehensiveHomePage() {
       if (agent) {
         const agentProps = {...agent, is_active: true}
         const layout = tenantDetail?.homepage_layout ?? 'v1'
+        // W-AILY-V3-BROWSE-FIRST (2026-06-21): 'v3' renders V2 with
+        // defaultHomeMode='browse' (lands on listings first paint;
+        // existing AI/Browse toggle still works). v2 path unchanged
+        // (defaultHomeMode prop omitted → client falls to 'ai').
+        if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' />
         return layout === 'v2'
           ? <HomePageComprehensiveV2 agent={agentProps} />
           : <HomePageComprehensive agent={agentProps} />

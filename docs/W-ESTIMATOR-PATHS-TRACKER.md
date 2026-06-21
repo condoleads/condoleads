@@ -8953,3 +8953,147 @@ W-CREDIT-BLEED ROLLBACK (2026-06-19) — production regression
 
   STOP at commit gate. Single-file code change + tracker. Diff
   shown. Awaiting operator approval before stage/commit/push.
+
+---
+
+## W-AILY-V3-BROWSE-FIRST — homepage_layout='v3' wired (2026-06-21)
+
+### What v3 is
+
+  v3 = V2 with the first-paint mode flipped from 'ai' to 'browse'.
+  Everything else (mode toggle pill, AI hero content, BrowseListingsView,
+  HowItWorks, top nav) is byte-identical to V2. Tenant on v3 lands on
+  the listings/search view; user click on "Ask aily (AI)" toggle pill
+  switches to the AI hero. v2 path is byte-unchanged (the new prop
+  defaults to 'ai').
+
+  The 'v3' slot was already RESERVED in all 3 dropdowns ("Reserved (not
+  yet built)") with the union type accepting 'v1' | 'v2' | 'v3'. This
+  build wires the reservation to an actual render path and refreshes
+  the dropdown labels.
+
+### Shape — Option A (defaultHomeMode prop, zero new components)
+
+  Per recon recon/aily-v3-browse-first.txt R5. Single-prop change on
+  V2; route v3 to V2 with the prop set. No HomePageComprehensiveV3
+  component to maintain.
+
+### Changes (7 files, ~15 lines net)
+
+  1. components/HomePageComprehensiveClientV2.tsx
+     - Added `defaultHomeMode?: 'ai' | 'browse'` to Props interface.
+     - Threaded through default export → WalliamHero.
+     - useState init: `useState<HomeMode>(defaultHomeMode ?? 'ai')`
+       — preserves v2 behavior when prop omitted (WALLiam, current Aily).
+
+  2. components/HomePageComprehensiveV2.tsx (server wrapper)
+     - Added `defaultHomeMode?: 'ai' | 'browse'` to Props.
+     - Forwards to HomePageComprehensiveClientV2.
+
+  3. app/comprehensive-site/page.tsx (middleware-rewrite path)
+     - New branch BEFORE the v2 ternary:
+         if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' />
+     - v1/v2 branches unchanged.
+
+  4. app/page.tsx (MTB-DEF-2 root path)
+     - Same v3 branch shape.
+     - v1/v2 branches unchanged.
+
+  5. components/admin-homes/EditTenantModal.tsx
+     - Relabeled: 'v3 - Reserved (not yet built)' →
+       'v3 - Browse-first (lands on listings)'.
+
+  6. components/admin-homes/AddTenantModal.tsx
+     - Same relabel (em-dash style preserved).
+
+  7. app/admin-homes/settings/SettingsClient.tsx
+     - Relabeled options to include descriptive labels:
+         { value: 'v1', label: 'V1 - AI-first' },
+         { value: 'v2', label: 'V2 - With Browse toggle' },
+         { value: 'v3', label: 'V3 - Browse-first (lands on listings)' },
+
+### What was NOT touched
+
+  - V1 (HomePageComprehensive / Client): zero edits.
+  - The V2 toggle pill UI, BrowseListingsView, AI hero content,
+    WalliamSearch, HowItWorks: all reused as-is.
+  - SiteHeaderClient (top-nav Buyer Plan / Seller Plan): unchanged;
+    they're global chrome and already satisfy the "always visible in
+    both modes" requirement.
+  - isHeroTenant() / wordmark_style gates / C12 brand-leak invariant:
+    untouched. v3 is wordmark-agnostic; Aily's aiglow chrome renders
+    identically in v3 (4 aiglow-prefix spans on the rendered HTML).
+  - aiglow / W-AILY-* prior work: byte-equivalent.
+
+### DB
+
+  No DB write in this build. Aily.homepage_layout stays 'v2' until
+  operator flips it to 'v3' via the Edit Tenant modal (single-cell,
+  Aily-only) after this commit deploys + the operator visually
+  verifies aily.ca behaves as expected.
+
+  Smoke test temporarily flipped Aily to 'v3' for render proof and
+  restored it to 'v2' afterward (single Node script with two
+  scoped UPDATEs — both Aily-only, no WALLiam touch).
+
+### Verification
+
+  - `npx tsc --noEmit` — clean (0 errors).
+  - Render-proof against dev :3199 (Host: aily.ca, Aily temp-flipped
+    to 'v3', then restored):
+      title           = "aily - AI Real Estate Assistant"
+      data-tenant-id  = e2619717 (AILY)
+      pill highlight  = transition:left 0.25s ease;left:calc(50% + 0px)
+                        → browse side ACTIVE (was left:5px = AI in v2)
+      aiglow-prefix   = 4 spans (header + hero, identical to v2)
+      Browse markers  = Downtown Toronto / Mississauga / Whitby quick
+                        chips ALL PRESENT on first paint
+      AI hero markers = only HowItWorks bottom CTAs (in-hero AI block
+                        hidden — homeMode === 'browse' gates it out)
+  - WALLiam no-regression (Host: walliam.ca):
+      title           = "WALLiam - AI Real Estate Assistant for the GTA"
+      data-tenant-id  = WALLIAM
+      pill highlight  = transition:left 0.25s ease;left:5px
+                        → AI side ACTIVE (V2 default unchanged)
+      WALL< wordmark  = 3 instances (WALLiamWordmark intact)
+      aiglow-prefix   = 0 (correctly Aily-only)
+      Browse markers  = 0 (AI mode hidden = no browse content)
+  - Top-nav Buyer Plan / Seller Plan: 2 each on Aily v3 (top-nav
+    button + HowItWorks button = "always visible in both modes"
+    satisfied by chrome).
+  - Restored: Aily.homepage_layout = 'v2' post-smoke.
+
+### Files
+
+  Edited (7):
+    components/HomePageComprehensiveClientV2.tsx     (+18 / -2)
+    components/HomePageComprehensiveV2.tsx           (+7 / -2)
+    app/comprehensive-site/page.tsx                  (+5 / -1)
+    app/page.tsx                                     (+5 / -1)
+    components/admin-homes/EditTenantModal.tsx       (+1 / -1)
+    components/admin-homes/AddTenantModal.tsx        (+1 / -1)
+    app/admin-homes/settings/SettingsClient.tsx      (+3 / -3)
+
+  Backed up (timestamp 20260621_aily_v3):
+    each of the 7 edited files
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260621_aily_v3
+
+  Smoke helpers (untracked):
+    scripts/probe-v3-render-curl.js  (flip→curl→restore)
+
+  Recon:
+    recon/aily-v3-browse-first.txt
+
+### Operator next step (after deploy)
+
+  Edit Tenant → Aily → Homepage Layout → 'v3 - Browse-first (lands on
+  listings)' → Save. Hit aily.ca/ in a fresh browser. Confirm browse
+  view is the first paint; "Ask aily (AI)" pill toggles to the AI
+  hero; top nav Buyer Plan / Seller Plan still present. If unhappy,
+  flip back to 'v2' via the same dropdown — instant rollback, no
+  redeploy.
+
+### Commit gate
+
+  STOP at commit gate. 7 code/doc files. No DB write. Smoke green.
+  Diff shown. Awaiting operator approval before stage/commit/push.

@@ -271,7 +271,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
                 <select value={formData.homepage_layout} onChange={e => setFormData({ ...formData, homepage_layout: e.target.value as 'v1' | 'v2' | 'v3' })} className="w-full px-3 py-2 border rounded-lg text-sm bg-white">
                   <option value="v1">v1 — AI-first (current)</option>
                   <option value="v2">v2 — With Browse toggle</option>
-                  <option value="v3">v3 — Reserved (not yet built)</option>
+                  <option value="v3">v3 — Browse-first (lands on listings)</option>
                 </select>
                 <p className="text-xs text-gray-500 mt-1">Controls which homepage layout renders for this tenant. Change takes effect on next page load.</p>
               </div>

@@ -253,9 +253,9 @@ export default function SettingsClient({
             label="Homepage Layout"
             value={tenant.homepage_layout}
             options={[
-              { value: 'v1', label: 'V1' },
-              { value: 'v2', label: 'V2' },
-              { value: 'v3', label: 'V3' },
+              { value: 'v1', label: 'V1 - AI-first' },
+              { value: 'v2', label: 'V2 - With Browse toggle' },
+              { value: 'v3', label: 'V3 - Browse-first (lands on listings)' },
             ]}
             onChange={v => update('homepage_layout', v)}
           />
