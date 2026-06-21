@@ -25,36 +25,55 @@ interface AiGlowWordmarkProps {
   brand: string
   size?: 'sm' | 'md' | 'hero'
   prefixLength?: number   // default 2 — for Aily="aily" → "ai" + "ly"
-  accentColor?: string    // default tenants.primary_color / #1d4ed8
+  accentColor?: string    // default tenants.primary_color / #1d4ed8 — prefix text+glow color
+  // W-AILY-AIGLOW-FIX (2026-06-21): heartColor is separate from
+  // accentColor so the heart can be a contrasting hue while the prefix
+  // text + glow stay on-brand. Default = #ec4899 (rich pink) — the
+  // "AI=blue mind, heart=pink alive" split. Tenant-overridable via prop.
+  heartColor?: string
 }
 
 // Stable, scoped CSS — defined once per page (component dedup by browser
 // when multiple instances mount; keyframe names use `aiglow-` prefix to
 // avoid colliding with `walliam-heartbeat` or any other component).
+// W-AILY-AIGLOW-FIX (2026-06-21): stronger trough→peak delta so the
+// breath is visibly perceptible on the near-black hero (#060b18).
+// Prior values were deliberately subtle ("premium") but read as
+// static against the dark background — operator confirmed
+// matchMedia(prefers-reduced-motion: reduce) === false, ruling out
+// the reduced-motion fallback as the cause. Tightened cycle 2.4s →
+// 1.9s so the swell is catchable; added a 1.5% scale breath synced
+// to the glow so "ai" also gently widens at the peak. Still smooth
+// ease-in-out — not a strobe.
 const AIGLOW_KEYFRAMES = `
   @keyframes aiglow-pulse {
     0%, 100% {
       text-shadow:
-        0 0 6px rgba(29, 78, 216, 0.45),
-        0 0 18px rgba(29, 78, 216, 0.25);
+        0 0 4px rgba(29, 78, 216, 0.30),
+        0 0 12px rgba(29, 78, 216, 0.18);
+      transform: scale(1);
     }
     50% {
       text-shadow:
-        0 0 14px rgba(29, 78, 216, 0.85),
-        0 0 36px rgba(29, 78, 216, 0.45),
-        0 0 60px rgba(29, 78, 216, 0.2);
+        0 0 18px rgba(29, 78, 216, 1.0),
+        0 0 42px rgba(29, 78, 216, 0.6),
+        0 0 80px rgba(29, 78, 216, 0.32);
+      transform: scale(1.015);
     }
   }
   @keyframes aiglow-heartbeat {
     0%, 60%, 100% { transform: translateX(-50%) scale(1); }
-    15%           { transform: translateX(-50%) scale(1.45); }
-    30%           { transform: translateX(-50%) scale(1.1); }
-    45%           { transform: translateX(-50%) scale(1.3); }
+    15%           { transform: translateX(-50%) scale(1.5); }
+    30%           { transform: translateX(-50%) scale(1.05); }
+    45%           { transform: translateX(-50%) scale(1.35); }
   }
   @media (prefers-reduced-motion: reduce) {
     .aiglow-prefix {
       animation: none !important;
-      text-shadow: 0 0 8px rgba(29, 78, 216, 0.6) !important;
+      text-shadow:
+        0 0 12px rgba(29, 78, 216, 0.85),
+        0 0 28px rgba(29, 78, 216, 0.45) !important;
+      transform: scale(1) !important;
     }
     .aiglow-heart {
       animation: none !important;
@@ -68,6 +87,7 @@ export default function AiGlowWordmark({
   size = 'md',
   prefixLength = 2,
   accentColor = '#1d4ed8',
+  heartColor = '#ec4899',
 }: AiGlowWordmarkProps) {
   // Defensive: if brand is shorter than the requested prefix, just use the
   // whole brand as prefix (no "rest" span).
@@ -117,7 +137,10 @@ export default function AiGlowWordmark({
                   left: '50%',
                   transform: 'translateX(-50%) scale(1)',
                   fontSize: heartFontSize,
-                  color: accentColor,
+                  // W-AILY-AIGLOW-FIX (2026-06-21): heart fill = heartColor
+                  // (separate from accentColor) — Aily renders pink heart on
+                  // blue "ai". Was: color: accentColor (blue-on-blue, indistinct).
+                  color: heartColor,
                   animation: 'aiglow-heartbeat 1.05s ease-in-out infinite',
                   display: 'block',
                   lineHeight: 1,
@@ -150,7 +173,13 @@ export default function AiGlowWordmark({
           fontWeight: baseFontWeight,
           color: accentColor,
           letterSpacing: baseLetterSpacing,
-          animation: 'aiglow-pulse 2.4s ease-in-out infinite',
+          // W-AILY-AIGLOW-FIX (2026-06-21): 2.4s → 1.9s. The slower 2.4s
+          // breath read as static on the dark hero; tightening the
+          // cycle makes the swell catchable. display:inline-block lets
+          // the scale(1.015) breath at keyframe 50% apply without
+          // disturbing baseline flow on flex children.
+          display: 'inline-block',
+          animation: 'aiglow-pulse 1.9s ease-in-out infinite',
         }}
       >
         {prefixContent}

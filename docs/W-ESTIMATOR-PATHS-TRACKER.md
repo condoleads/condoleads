@@ -8824,3 +8824,132 @@ W-CREDIT-BLEED ROLLBACK (2026-06-19) — production regression
   STOP at commit gate. The DB flip (Aily.wordmark_style='aiglow')
   is ALREADY LIVE. Code edits (5 files) await commit + deploy.
   Diff shown. Awaiting operator approval.
+
+---
+
+## W-AILY-AIGLOW-FIX — pink heart + perceptible glow (2026-06-21)
+
+### Why
+
+  Live aily.ca: operator reported "ai" rendering static blue, no
+  pulse, no glow. Heart was blue. Diagnosed via recon/aily-aiglow-fix.txt:
+
+  - PRIMARY hypothesis (reduce-motion) was RULED OUT by operator
+    matchMedia check: `window.matchMedia('(prefers-reduced-motion:
+    reduce)').matches === false`.
+  - SECONDARY (R3) confirmed the cause: glow values were deliberately
+    subtle ("premium") but read as static against the near-black
+    hero (#060b18). Idle 6+18px at 0.45/0.25 + peak 14+36+60px at
+    0.85/0.45/0.20 had insufficient trough→peak delta to be
+    perceived as a breath; 2.4s cycle was also long enough to feel
+    static between swells.
+
+  Plus: heart sharing accentColor with prefix text meant blue-on-blue
+  — the heart was a faint indistinct dot rather than the "alive"
+  signal it was meant to be.
+
+### Changes
+
+  Single file: components/navigation/AiGlowWordmark.tsx
+
+  (1) Pink heart — NEW heartColor prop, default '#ec4899':
+      ```ts
+      heartColor?: string  // separate from accentColor
+      ...
+      heartColor = '#ec4899',
+      ...
+      // line that was: color: accentColor,
+      color: heartColor,
+      ```
+      Backward-compat: callers don't have to pass it (default
+      pink). Tenant-overridable via prop if a future tenant wants a
+      different heart color.
+
+  (2) Stronger glow @keyframes — bigger trough→peak delta:
+      ```
+      0%, 100% {
+        text-shadow:
+          0 0 4px rgba(29, 78, 216, 0.30),    ← was 6px@0.45
+          0 0 12px rgba(29, 78, 216, 0.18);   ← was 18px@0.25
+        transform: scale(1);
+      }
+      50% {
+        text-shadow:
+          0 0 18px rgba(29, 78, 216, 1.0),    ← was 14px@0.85
+          0 0 42px rgba(29, 78, 216, 0.6),    ← was 36px@0.45
+          0 0 80px rgba(29, 78, 216, 0.32);   ← was 60px@0.2
+        transform: scale(1.015);              ← NEW 1.5% scale breath
+      }
+      ```
+      Combined: dimmer trough + brighter peak + a tiny scale breath
+      so the swell is unmistakable but still smooth ease-in-out
+      (not a strobe).
+
+  (3) Tightened cycle: 2.4s → 1.9s on the prefix inline animation.
+      Faster cadence so each swell is catchable. Heart kept at 1.05s
+      (counterpoint preserved).
+
+  (4) Heart scale amplitude lifted slightly for visibility:
+      15% scale 1.45 → 1.5; 30% 1.1 → 1.05; 45% 1.3 → 1.35.
+
+  (5) Reduced-motion fallback strengthened so reduce-motion visitors
+      get a visibly-glowing static wordmark (not the faint prior):
+      ```
+      text-shadow:
+        0 0 12px rgba(29, 78, 216, 0.85),
+        0 0 28px rgba(29, 78, 216, 0.45) !important;
+      ```
+      (Was a single 8px@0.6 — now a dual-shadow combo at higher
+      opacity. Heart stays pink in the inline style; reduce-motion
+      rule only kills animation + scale, not the color.)
+
+  (6) display:inline-block on the prefix span so scale(1.015) at
+      keyframe 50% applies cleanly without baseline shift on the
+      inline-flex parent.
+
+### Preserved (no-regression)
+
+  - reduced-motion fallback still emitted + still kills animations.
+  - C12 / MTB-DEF-1 invariant: still wordmark-only. isHeroTenant()
+    untouched. 'aiglow' != 'hero'. WALLiam UI suite still
+    WALLiam-only.
+  - WALLiam wordmark: byte-unchanged (walliam.ca render: 3× WALL<
+    text, 6× walliam-heartbeat refs, 0× aiglow-* anywhere, title
+    "WALLiam - AI Real Estate Assistant for the GTA").
+  - Aily root-brand fix (3879cc0) intact.
+  - Aily go-live email pipe (W-AILY-GOLIVE-FINAL) intact.
+  - prior aiglow build (71a1211) intact.
+
+### Verification
+
+  - `npx tsc --noEmit` — clean (0 errors).
+  - Render-proof against dev :3199 (Host: aily.ca):
+      heart 1 (header): color:#ec4899     ✓ pink
+      heart 2 (hero):   color:#ec4899     ✓ pink
+      prefix 1: animation:aiglow-pulse 1.9s ease-in-out infinite ✓
+      prefix 2: animation:aiglow-pulse 1.9s ease-in-out infinite ✓
+      @keyframes aiglow-pulse — new stronger values present
+      @keyframes aiglow-heartbeat — new amplitude present
+      prefers-reduced-motion rule — stronger static glow emitted
+  - C12 check (aily.ca):
+      0× WalliamCTA / WalliamAgentCard / WalliamContactForm
+  - WALLiam no-regression:
+      title "WALLiam - AI Real Estate Assistant for the GTA"
+      3× WALL< text, 6× walliam-heartbeat, 0× aiglow-*
+
+### Files
+
+  Edited (1):
+    components/navigation/AiGlowWordmark.tsx
+
+  Backed up (timestamp 20260621_aily_aiglow_fix):
+    components/navigation/AiGlowWordmark.tsx.backup_20260621_aily_aiglow_fix
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260621_aily_aiglow_fix
+
+  No DB changes this run — Aily.wordmark_style still 'aiglow'
+  (live since the prior W-AILY-AIGLOW-WORDMARK run, commit 71a1211).
+
+### Commit gate
+
+  STOP at commit gate. Single-file code change + tracker. Diff
+  shown. Awaiting operator approval before stage/commit/push.
