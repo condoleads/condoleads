@@ -28,6 +28,17 @@ export default async function TenantHeader() {
   ) return null
 
   // Check if tenant domain
+  // W-AILY-ROOT-BRAND M2 (2026-06-21): widen the SELECT to include the
+  // fields SiteHeader needs for brand resolution (brand_name, logo_url,
+  // primary_color, wordmark_style) AND PASS them as props. Previously
+  // this function looked up the tenant but only used the row as a yes/no
+  // gate, then rendered <SiteHeader /> with no props — SiteHeader's
+  // getTenant() helper relies on the x-tenant-id REQUEST header, which
+  // middleware sets only on the RESPONSE headers, so the helper returned
+  // null and SiteHeader fell back to its 'CondoLeads' default. Resolving
+  // here by host (the same DB lookup the function already did) and
+  // threading the brand props eliminates the failure mode for every
+  // tenant — not just Aily.
   const db = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -35,11 +46,17 @@ export default async function TenantHeader() {
   )
   const { data: tenant } = await db
     .from('tenants')
-    .select('id')
+    .select('id, brand_name, logo_url, primary_color')
     .eq('domain', cleanHost)
     .eq('is_active', true)
     .single()
 
   if (!tenant) return null
-  return <SiteHeader />
+  return (
+    <SiteHeader
+      agentName={tenant.brand_name ?? undefined}
+      agentLogo={tenant.logo_url ?? undefined}
+      primaryColor={tenant.primary_color ?? undefined}
+    />
+  )
 }

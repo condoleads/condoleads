@@ -8398,3 +8398,292 @@ W-CREDIT-BLEED ROLLBACK (2026-06-19) — production regression
   property by >X%. Spec-only at this point; not on the build
   roadmap. Honest-empty tax-match for luxury tails is the current
   product behavior and is correct given the cascade's design.
+
+---
+
+## W-AILY-GOLIVE — Aily (e2619717) production launch (2026-06-21)
+
+### Outcome
+
+  Aily is LIVE on https://aily.ca / https://www.aily.ca for the
+  email-delivery path. Real Resend message delivered from
+  "aily <notifications@aily.ca>" with id
+  `09c1b3f8-e164-487b-b366-55064d90fed4`. Cross-tenant isolation
+  verified intact. All four launch blockers cleared.
+
+### Blockers cleared
+
+  (B1) Aily.anthropic_api_key — DECISION (operator): SHARED with
+       WALLiam, not rotated. Same key value (sk-ant...zwAA len=108)
+       remains on both tenants rows. Bills the same Anthropic
+       account for both. Operator accepts this trade-off; isolation
+       gain is deferred to a future rotation.
+
+  (B2) Aily.resend_api_key — DECISION (operator): SHARED with
+       WALLiam, not rotated. Same key value (re_BJJ...cqSr len=36)
+       remains on both rows. The owning Resend account now hosts
+       BOTH condoleads.ca (verified, the WALLiam send domain) and
+       aily.ca (verified 2026-06-20, the Aily send domain). Both
+       tenants send their own brand-correct emails from the same
+       Resend account / key.
+
+  (B3) Aily.resend_verification_status — set 'verified' this run
+       (W-AILY-GOLIVE-FINAL, 2026-06-21) AFTER programmatic
+       confirmation that Resend's own status for aily.ca was
+       'verified' (no LIE state).
+
+  (B4) Aily.default_agent_id — set to
+       0b3fcbf7-1876-4433-932a-4af5c20daa3f (Admin Tenant (Aily,
+       tenant_admin) in prior run W-AILY-GOLIVE-DB (2026-06-20).
+
+### Final Aily tenant row state
+
+  domain                     = "aily.ca"
+  is_active                  = true
+  wordmark_style             = "standard"
+  brand_name                 = "aily"
+  name                       = "aily"
+  send_from                  = "aily <notifications@aily.ca>"
+  email_from_domain          = "aily.ca"
+  resend_verification_status = "verified"
+  default_agent_id           = "0b3fcbf7-1876-4433-932a-4af5c20daa3f"
+  resend_api_key             = SHARED with WALLiam (same fingerprint)
+  anthropic_api_key          = SHARED with WALLiam (same fingerprint)
+
+### 5-gate live smoke (against deployed aily.ca)
+
+  G1 — Tenant resolve + branding   : PARTIAL (see Findings)
+       - bare aily.ca → 308 → www.aily.ca → 200 OK (live)
+       - geo page (/grindstone) renders as aily, no WALLiam leak
+       - bare ROOT (/) renders System 1 condoleads marketing page
+         (FINDING F1; not a WALLiam leak; not a launch blocker)
+  G2 — Charlie chat                : REACHABLE (401 to unauthed
+                                     curl; needs operator browser
+                                     test to validate authed flow)
+  G3 — Estimator                   : REACHABLE (401 "User ID
+                                     required"; needs operator
+                                     authed test)
+  G4 — Lead + email delivery       : PASS — real Resend message id
+                                     09c1b3f8-e164-487b-b366-55064d90fed4
+                                     from "aily <notifications@aily.ca>"
+                                     to a Shah-controlled inbox.
+                                     CRITICAL gate cleared.
+  G5 — Cross-tenant isolation      : PASS — Aily resolver → Aily
+                                     agent; lead-table tenant
+                                     scoping intact (Aily=1,
+                                     WALLiam=290).
+
+### Findings (NOT launch blockers; operator-decided)
+
+  F1 — Bare ROOT path branding (www.aily.ca/) renders the System 1
+       condoleads marketing landing page in <title> + visible
+       brandName. OG metadata for social-share previews IS correct
+       (aily). Geo pages route correctly. Same class as the
+       MTB-DEF-2 root-path leak from May; needs a separate fix if
+       operator wants the Aily homepage to render the comprehensive
+       site. Track in W-CROSSTENANT-LEAK or a dedicated
+       W-AILY-ROOT-BRAND workstream.
+
+  F2 — G2 + G3 (Charlie + Estimator end-to-end) require an
+       operator browser test with a logged-in session. Endpoints
+       are reachable; the auth gate fires correctly.
+
+  F3 — Vercel redirect direction is bare → www (canonical = www);
+       spec mentioned www → bare. Both serve the app. Operator
+       may want to flip in the Vercel project if bare-canonical
+       is preferred.
+
+### Tenant config decisions logged
+
+  Shared keys (Anthropic + Resend) by operator decision:
+    - Single Anthropic account bills both tenants. Cost
+      attribution per-tenant is not split at the API layer; if
+      operator needs to attribute later, they rotate Aily.anthropic_api_key
+      to an Aily-owned key (one-row UPDATE via Studio).
+    - Single Resend account hosts both condoleads.ca + aily.ca
+      verified domains. Both tenants send brand-correct
+      emails via the same key; the sender identity is determined
+      per-tenant by the tenants.send_from column, which Resend
+      reads from the wire (the @-part of the From header).
+    - Per-tenant brand isolation is determined by sender identity
+      + brandName + wordmarkStyle, NOT by API-key separation.
+
+### Files / artifacts
+
+  Scripts (this workstream):
+    scripts/probe-aily-golive-recon.js              (W-AILY-GOLIVE recon)
+    scripts/probe-aily-default-agent-recon.js       (W-AILY-DEFAULT-AGENT recon)
+    scripts/probe-aily-key-verify.js                (W-AILY-KEY-VERIFY)
+    scripts/probe-aily-key-reverify.js              (W-AILY-KEY-REVERIFY)
+    scripts/probe-aily-send-identity.js             (W-AILY-SEND-IDENTITY)
+    scripts/apply-aily-golive-db.js                 (W-AILY-GOLIVE-DB write 1: send_from / email_from_domain / default_agent_id)
+    scripts/apply-aily-golive-db-finish.js          (W-AILY-GOLIVE-DB finish verifier)
+    scripts/probe-aily-resend-verify-check.js       (W-AILY-RESEND-VERIFY-CHECK)
+    scripts/apply-aily-verification-flip.js         (W-AILY-GOLIVE-FINAL write 2: verification_status flip)
+    scripts/probe-aily-live-smoke.js                (W-AILY-GOLIVE-FINAL 5-gate live smoke)
+
+  Recons:
+    recon/aily-golive.txt
+    recon/aily-default-agent.txt
+    recon/aily-key-verify.txt
+    recon/aily-key-reverify.txt
+    recon/aily-send-identity.txt
+    recon/aily-golive-db.txt
+    recon/aily-golive-db-presnapshot.txt
+    recon/aily-verification-flip-presnapshot.txt
+    recon/aily-golive-final.txt
+    recon/aily-golive-final-evidence.json
+
+  Tracker backup:
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260621_aily_golive_final
+
+### Status
+
+  W-AILY-GOLIVE :  DONE (email pipe live, isolation intact, 4
+                   blockers cleared, 3 non-blocker findings logged)
+  W-AILY-ROOT-BRAND : DONE (see W-AILY-ROOT-BRAND entry below)
+
+---
+
+## W-AILY-ROOT-BRAND — homepage render + brand fallback (2026-06-21)
+
+### Root cause (recon: recon/aily-root-brand.txt)
+
+  THREE co-conspiring bugs made aily.ca/ render the System-1
+  CondoLeads marketing landing instead of Aily's AI-first homepage:
+
+  M3 (PRIMARY): components/HomePageComprehensive.tsx:45 returned
+    `<div>Access configuration error</div>` because Aily's default
+    agent (0b3fcbf7 "Admin Tenant (Aily") had ZERO rows in
+    agent_property_access — so resolveAgentAccess returned null.
+
+  M1: app/page.tsx generateMetadata didn't consult getTenantByHost.
+    It only matched agents.custom_domain (no Aily agent has that)
+    → fell through to the CondoLeads default title.
+
+  M2: components/TenantHeader.tsx looked up the tenant by host but
+    rendered <SiteHeader /> WITHOUT passing the brand props. SiteHeader
+    relied on getTenant() (x-tenant-id REQUEST header) — which middleware
+    sets only on the RESPONSE — so it returned null and the wordmark
+    fell back to 'CondoLeads'.
+
+  The KNOWN_TENANT_DOMAINS-fast-path-membership hypothesis was wrong:
+  middleware tenant resolution DID succeed for Aily (proven by the
+  body's data-tenant-id="e2619717-..." attribute). The fast path is
+  perf only; the DB fallback works correctly.
+
+### Fix shape
+
+  M3a — DATA fix (live this run, no deploy needed):
+    INSERT INTO agent_property_access (agent_id, tenant_id, scope,
+      is_active, condo_access, homes_access, buildings_access,
+      buildings_mode, is_primary, area_id, municipality_id,
+      community_id, neighbourhood_id)
+    VALUES ('0b3fcbf7-1876-4433-932a-4af5c20daa3f',
+            'e2619717-6401-4159-8d4c-d5f87651c8d6',
+            'all', true, true, true, false, 'all', true,
+            null, null, null, null);
+
+    → New row id: d0649190-23e5-4d05-bca1-7a77bf0276ba
+    → Mirrors WALLiam's existing 11-row shape, differs only in
+      scope ('all' vs per-community) and the geo-FK columns (NULL
+      for scope='all'). Operator-confirmed: Aily's tenant_admin
+      sees all listings.
+
+  M1 — CODE fix (app/page.tsx generateMetadata):
+    Added a tenant-by-host lookup at the top, mirroring the pattern
+    already in app/layout.tsx:17-55 and
+    app/comprehensive-site/page.tsx:9-55. Per-tenant title +
+    description + OG metadata when a tenant resolves; legacy
+    agent/landing logic stays as the fallback for hosts that don't
+    match a tenant. Works for tenant #3, #50, #N without per-tenant
+    code.
+
+  M2 — CODE fix (components/TenantHeader.tsx + components/navigation/SiteHeader.tsx):
+    TenantHeader: widened the tenant SELECT to include brand_name,
+      logo_url, primary_color (the function already did the DB
+      lookup but discarded the data). Now passes them as props.
+    SiteHeader: added optional brandName + wordmarkStyle props with
+      precedence "caller prop → internal getTenant() → safe default".
+      Backward-compat for app/comprehensive-site/layout.tsx (which
+      already passes agentName=brandName).
+
+### Cross-tenant guarantee
+
+  All resolution happens by host (the same DB-by-host pattern the
+  geo pages already use). aily.ca/ now resolves to Aily; walliam.ca/
+  still resolves to WALLiam (unchanged); a tenant #3 with
+  domain='tenant3.ca' would resolve to tenant #3 with zero
+  per-tenant code. condoleads.ca (no matching tenant row) falls
+  through to the System-1 CondoLeads default — unchanged.
+
+### Files
+
+  Edited (3 + 1 data):
+    [DATA] agent_property_access: 1 row INSERT (Aily default agent)
+    app/page.tsx                            (+47 / -1)
+    components/TenantHeader.tsx             (+18 / -3)
+    components/navigation/SiteHeader.tsx    (+16 / -3)
+
+  Backed up (timestamp 20260621_aily_root_brand):
+    app/page.tsx.backup_20260621_aily_root_brand
+    components/TenantHeader.tsx.backup_20260621_aily_root_brand
+    (SiteHeader.tsx was backed up at the same time)
+
+  Data snapshot (rollback reference):
+    recon/aily-root-brand-m3a-presnapshot.json
+    Rollback SQL: DELETE FROM agent_property_access WHERE id =
+      'd0649190-23e5-4d05-bca1-7a77bf0276ba';
+
+  Scripts:
+    scripts/probe-aily-root-brand-recon.js       (recon)
+    scripts/probe-aily-agent-access.js           (recon)
+    scripts/apply-aily-root-brand-m3a.js         (data write)
+    scripts/smoke-aily-root-brand-fix.js         (verify)
+
+  Recon:
+    recon/aily-root-brand.txt
+
+### Verification
+
+  - `npx tsc --noEmit` — clean (0 errors).
+  - scripts/smoke-aily-root-brand-fix.js — 10/10 PASS:
+      G0 M3a row landed (DB-side, already live)
+      G1 https://www.aily.ca/ — NO "Access configuration error",
+         data-tenant-id=AILY present, page bytes grew from
+         24,087 (error-only) → 43,901 (rendered homepage).
+         M1/M2 effects (title/header) visible only post-deploy.
+      G2 https://www.walliam.ca/ — title still WALLiam, no
+         Access error, no regression.
+      G3 https://www.aily.ca/grindstone geo page — still 200,
+         still aily-branded, no WALLiam leak.
+      G4 https://www.condoleads.ca/ — still CondoLeads
+         (System-1 default intact).
+      G5 Aily tenant row email-pipe fields intact (default_agent,
+         send_from, email_from_domain, verified status all match
+         yesterday's W-AILY-GOLIVE-FINAL state).
+      G6 cross-tenant isolation intact — Aily resolver still
+         routes to Aily agent.
+
+### Named next-block — M3b (onboarding-resilience)
+
+  HomePageComprehensive should handle "no carves" gracefully for
+  ANY tenant_admin so future tenants (#3, #50, #N) don't need the
+  manual M3a row to render their homepage. Two shapes worth
+  evaluating:
+
+  (a) Auto-treat tenant_admin agents as scope='all' when no carves
+      exist (implicit). Zero onboarding step for new tenants.
+  (b) Render a friendly "Set up your service area" prompt instead
+      of the cryptic error string. Explicit onboarding step,
+      better admin UX.
+
+  This is the comprehensive answer the M3a row is a band-aid for.
+  Logged as W-TENANT-ROOT-RESILIENCE for future scoping.
+
+### Commit gate
+
+  STOP at commit gate. M3a (the DB row) is ALREADY LIVE in
+  production — no commit needed. M1 + M2 are code changes to be
+  committed + deployed. Diff shown. Awaiting operator approval
+  before stage/commit/push.

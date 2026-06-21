@@ -181,15 +181,33 @@ interface SiteHeaderProps {
   agentName?: string
   agentLogo?: string | null
   primaryColor?: string
+  // W-AILY-ROOT-BRAND M2 (2026-06-21): optional caller-provided
+  // brandName + wordmarkStyle. When the caller has already resolved
+  // these from the tenant (e.g. TenantHeader / comprehensive-site
+  // layout), threading them here avoids the dependency on getTenant()
+  // / x-tenant-id, which is unreliable on bare-root requests where
+  // the middleware didn't rewrite. Caller-provided values WIN over
+  // the internal getTenant() lookup. Backward-compat: omitting keeps
+  // the legacy in-component lookup as the fallback.
+  brandName?: string
+  wordmarkStyle?: string
 }
 
 export default async function SiteHeader({
   agentName = 'CondoLeads',
   agentLogo,
   primaryColor = '#0A2540',
+  brandName: brandNameProp,
+  wordmarkStyle: wordmarkStyleProp,
 }: SiteHeaderProps) {
   const neighbourhoods = await getMenuData()
   const tenant = await getTenant()
+
+  // Resolution priority: caller-provided prop → internal tenant lookup
+  // → safe defaults. For brand, agentName is the final fallback (its
+  // own default is 'CondoLeads').
+  const brandName     = brandNameProp     ?? tenant?.brand_name     ?? agentName
+  const wordmarkStyle = wordmarkStyleProp ?? tenant?.wordmark_style ?? 'standard'
 
   return (
     <SiteHeaderClient
@@ -198,8 +216,8 @@ export default async function SiteHeader({
       agentLogo={agentLogo}
       primaryColor={primaryColor}
       tenantId={tenant?.id}
-      brandName={tenant?.brand_name ?? agentName}
-      wordmarkStyle={tenant?.wordmark_style ?? 'standard'}
+      brandName={brandName}
+      wordmarkStyle={wordmarkStyle}
     />
   )
 }

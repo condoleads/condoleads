@@ -337,11 +337,53 @@ function extractSubdomain(host: string) {
 export async function generateMetadata() {
   const headersList = headers();
   const host = headersList.get('host') || '';
-  
-  // Check custom domain first
+
+  // W-AILY-ROOT-BRAND M1 (2026-06-21): resolve tenant by host BEFORE the
+  // agent-by-custom-domain check. The agent lookup only matches when an
+  // agent row has custom_domain=<host>; a tenant whose .domain matches
+  // the host but whose agents have null custom_domain (e.g. aily.ca with
+  // Aily's seed agents) used to fall through to the CondoLeads default
+  // title below. Mirror the per-tenant pattern app/layout.tsx already
+  // uses (lines 17-55) and app/comprehensive-site/page.tsx uses (lines
+  // 9-55) — single DB-by-host lookup, works for tenant #3, #50, #N
+  // without per-tenant code.
+  try {
+    const { getTenantByHost } = await import('@/lib/utils/tenant-brand')
+    const sbForTenant = createClient()
+    const tenant = await getTenantByHost(sbForTenant, host)
+    if (tenant) {
+      const url = `https://${tenant.domain}`
+      const ogImageUrl = `${url}/og`
+      const title = `${tenant.name} - AI Real Estate Assistant`
+      const description = `Browse properties, get a personalized AI buyer or seller plan, and connect with a local expert. Powered by ${tenant.name} AI.`
+      return {
+        title,
+        description,
+        openGraph: {
+          title,
+          description,
+          url,
+          siteName: tenant.name,
+          type: 'website',
+          images: [{ url: ogImageUrl, width: 1200, height: 630 }],
+        },
+        twitter: {
+          card: 'summary_large_image',
+          title,
+          description,
+          images: [ogImageUrl],
+        },
+      }
+    }
+  } catch {
+    // Fall through to the legacy agent / landing logic below if the
+    // tenant lookup throws (build-time SSG, dev with no DB, etc).
+  }
+
+  // Legacy path: custom-domain agent → subdomain agent → landing.
   let agent = null;
   const supabase = createClient();
-  
+
   if (isCustomDomain(host)) {
     const cleanDomain = host.replace(/^www\./, '');
     const { data } = await supabase
@@ -352,9 +394,9 @@ export async function generateMetadata() {
       .single();
     agent = data;
   }
-  
+
   const subdomain = extractSubdomain(host);
-  
+
   if (!subdomain && !agent) {
     return {
       title: 'CondoLeads - Get Your AI-Powered Condo Leads Funnel Today',
