@@ -8,6 +8,7 @@ import SearchBar from './SearchBar'
 import dynamic from 'next/dynamic'
 const VIPAIAccess = dynamic(() => import('@/components/auth/VIPAIAccess'), { ssr: false })
 import BrandWordmark from './BrandWordmark'
+import AiGlowWordmark from './AiGlowWordmark'
 import BrowseMegaMenuContent from './BrowseMegaMenuContent'
 
 interface SiteHeaderClientProps {
@@ -100,6 +101,13 @@ export default function SiteHeaderClient({
                 <Image src={agentLogo} alt={agentName} width={120} height={36} className="h-8 w-auto object-contain" />
               ) : wordmarkStyle === 'hero' ? (
                 <WalliamWordmark size="md" />
+              ) : wordmarkStyle === 'aiglow' ? (
+                /* W-AILY-AIGLOW-WORDMARK (2026-06-21): prefix-glow + heart-on-i
+                   wordmark for tenants whose wordmark_style is 'aiglow'.
+                   primaryColor threads the brand accent (defaults to #1d4ed8
+                   inside the component if undefined). Does NOT flip any
+                   isHeroTenant() gate — WALLiam UI suite stays WALLiam-only. */
+                <AiGlowWordmark brand={brandName ?? agentName} size="md" accentColor={primaryColor} />
               ) : (
                 <BrandWordmark brand={brandName ?? agentName} size="md" />
               )}

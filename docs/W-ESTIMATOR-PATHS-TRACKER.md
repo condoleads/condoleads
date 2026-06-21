@@ -8687,3 +8687,140 @@ W-CREDIT-BLEED ROLLBACK (2026-06-19) — production regression
   production — no commit needed. M1 + M2 are code changes to be
   committed + deployed. Diff shown. Awaiting operator approval
   before stage/commit/push.
+
+---
+
+## W-AILY-AIGLOW-WORDMARK — animated AI-forward wordmark for Aily (2026-06-21)
+
+### Outcome
+
+  Aily's brand now renders as "ai" (blue #1d4ed8, glow-pulsing,
+  heart-as-dot on the "i") + "ly" (plain white, steady) — both in the
+  fixed header and the homepage hero. Heart beats in counterpoint
+  (~1.05s lub-dub) to the glow's slower breath (~2.4s). WALLiam's
+  classic "WALL ı(♥) am" wordmark UNCHANGED — and zero WalliamCTA /
+  WalliamAgentCard / WalliamContactForm leaked onto Aily.
+
+### Concept (operator-confirmed design choices)
+
+  - Accent color: tenants.primary_color (Aily = #1d4ed8 — already in
+    DB; works for any future tenant by reading their primary_color).
+  - Rhythm: counterpoint (heart 1.05s, glow 2.4s) — visually alive,
+    differentiated from WALLiam's single-rhythm 3s heart.
+  - Amplitude: subtle (this is an AdWords landing page; premium,
+    NOT flashing).
+  - Heart-as-dot: replaces "i" with dotless "ı" + heart above,
+    same trick WALLiam uses. The component only applies the trick
+    when the prefix contains exactly one "i" — defensive for
+    arbitrary brand strings.
+  - prefers-reduced-motion: animations halt, glow becomes a static
+    text-shadow at the same blue, heart freezes at scale(1).
+
+### C12 / MTB-DEF-1 invariant — preserved BY CONSTRUCTION
+
+  The build introduces a NEW wordmark_style value 'aiglow' and a NEW
+  component AiGlowWordmark. NONE of the following are touched:
+
+  - lib/utils/tenant-resolver.ts:isHeroTenant() — still `wordmark_style
+    === 'hero'`. Returns false for Aily ('aiglow' != 'hero').
+  - The 14+ call sites that gate WalliamCTA / WalliamAgentCard /
+    WalliamContactForm / WALLiam-specific UI on isHeroTenant() — all
+    continue firing ONLY for WALLiam.
+  - The 'hero' branch in any wordmark site — WALLiam's classic
+    WalliamWordmark / HeroWordmark render path is byte-identical.
+  - BrandWordmark (the 'standard' fallback) — unchanged.
+
+  Render-proof on dev :3199:
+    - host=aily.ca:    0× WALL< text, 0× WalliamCTA/AgentCard/Form
+                       2× aiglow-prefix spans (#1d4ed8, header+hero)
+                       2× dotless "ı" + 2× aiglow-heart spans
+                       title = "aily - AI Real Estate Assistant"
+    - host=walliam.ca: 3× WALL< text, 6× walliam-heartbeat refs
+                       0× aiglow-* anywhere
+                       title = "WALLiam - AI Real Estate Assistant for the GTA"
+
+  Brand isolation intact at both DB and render layers.
+
+### Files
+
+  Added (1):
+    components/navigation/AiGlowWordmark.tsx          (new — ~125 lines)
+
+  Edited (4):
+    components/navigation/SiteHeaderClient.tsx         (+10 / -1)
+    components/HomePageComprehensiveClient.tsx         (+11 / -3)
+    components/HomePageComprehensiveClientV2.tsx       (+10 / -3)
+    components/TenantHeader.tsx                        (+12 / -3)
+        (TenantHeader: widened SELECT to include wordmark_style,
+        threaded brandName + wordmarkStyle props through to SiteHeader
+        — previously SiteHeader relied on its internal getTenant()
+        helper which depends on x-tenant-id REQUEST headers that
+        middleware sets only on the RESPONSE. Resolving here by host
+        eliminates that fragile dependency for any future tenant.)
+
+  Data (live this run, no deploy needed):
+    UPDATE tenants SET wordmark_style = 'aiglow'
+     WHERE id = 'e2619717-6401-4159-8d4c-d5f87651c8d6';
+
+  Backed up (timestamp 20260621_aily_aiglow):
+    components/navigation/SiteHeaderClient.tsx.backup_…
+    components/HomePageComprehensiveClient.tsx.backup_…
+    components/HomePageComprehensiveClientV2.tsx.backup_…
+    (TenantHeader.tsx backed up in the prior W-AILY-ROOT-BRAND run
+     20260621_aily_root_brand)
+
+  Data snapshot (rollback reference):
+    recon/aily-aiglow-presnapshot.json
+    Rollback SQL: UPDATE tenants SET wordmark_style = 'standard'
+     WHERE id = 'e2619717-6401-4159-8d4c-d5f87651c8d6';
+
+  Scripts:
+    scripts/apply-aily-wordmark-aiglow.js   (DB flip)
+
+  Recon:
+    recon/aily-hero-wordmark.txt
+
+### Verification
+
+  - `npx tsc --noEmit` — clean (0 errors).
+  - Render-proof against dev :3199 (Host: aily.ca):
+      header span: <span class="aiglow-prefix"
+        style="font-size:20px;font-weight:700;color:#1d4ed8;
+               letter-spacing:-0.01em;
+               animation:aiglow-pulse 2.4s ease-in-out infinite"> ...
+      hero span:   <span class="aiglow-prefix"
+        style="font-size:clamp(52px, 10vw, 96px);font-weight:900;
+               color:#1d4ed8;letter-spacing:-0.03em;
+               animation:aiglow-pulse 2.4s ease-in-out infinite"> ...
+      2× dotless "ı", 2× <span class="aiglow-heart"> with
+      animation:aiglow-heartbeat 1.05s.
+  - Render-proof against dev :3199 (Host: walliam.ca):
+      title = "WALLiam - AI Real Estate Assistant for the GTA"
+      3× "WALL<" text instances, 6× walliam-heartbeat refs
+      0× aiglow-* (WALLiam path unchanged)
+  - C12: 0× WalliamCTA / WalliamAgentCard / WalliamContactForm
+    identifiers on aily.ca (isHeroTenant() still false for Aily).
+    WALLiam's render byte-equivalent to pre-build.
+  - prefers-reduced-motion: media query rule emitted with the
+    component's scoped style block — .aiglow-prefix and
+    .aiglow-heart get animation:none + steady text-shadow when
+    reduced motion is preferred.
+  - No-regression on W-AILY-ROOT-BRAND (3879cc0): TenantHeader
+    still resolves tenant brand by host; title M1 fix still in
+    effect; Aily root still renders (no Access configuration error).
+
+### Generalization note (future tenants)
+
+  Tenant #3 with brand_name='ainsley' and wordmark_style='aiglow'
+  would render "ai" emphasized + "nsley" plain, with the heart
+  on the "i" in "ai". For tenants where prefix=2 isn't right,
+  AiGlowWordmark accepts a `prefixLength` prop; if operator wants
+  per-tenant override, add `tenants.wordmark_prefix_length INTEGER
+  DEFAULT 2` later. Today the prop defaults to 2 — fine for any
+  brand whose first 2 chars are the right emphasis.
+
+### Commit gate
+
+  STOP at commit gate. The DB flip (Aily.wordmark_style='aiglow')
+  is ALREADY LIVE. Code edits (5 files) await commit + deploy.
+  Diff shown. Awaiting operator approval.

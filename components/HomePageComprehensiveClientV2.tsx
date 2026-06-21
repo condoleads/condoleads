@@ -28,6 +28,7 @@ interface AccessInfo {
 }
 
 import BrandWordmark from './navigation/BrandWordmark';
+import AiGlowWordmark from './navigation/AiGlowWordmark';
 
 interface Props {
   tenantId: string | null;
@@ -64,6 +65,9 @@ function HeroWordmark({ wordmarkStyle, brandName }: { wordmarkStyle: string; bra
 
   // MTB-DEF-1 -- non-'hero' tenants get plain-text BrandWordmark at hero size.
   // Gate runs AFTER all hooks per React Rules of Hooks.
+  // W-AILY-AIGLOW-WORDMARK (2026-06-21) -- 'aiglow' renders AiGlowWordmark
+  // (prefix-glow + heart-on-i). Same fade-up reveal. 'aiglow' does NOT
+  // flip isHeroTenant() -- WALLiam UI suite stays WALLiam-only.
   if (wordmarkStyle !== 'hero') {
     return (
       <div style={{
@@ -73,7 +77,9 @@ function HeroWordmark({ wordmarkStyle, brandName }: { wordmarkStyle: string; bra
         transition: 'opacity 0.7s ease, transform 0.7s ease',
         marginBottom: 20,
       }}>
-        <BrandWordmark brand={brandName ?? 'Brand'} size="hero" />
+        {wordmarkStyle === 'aiglow'
+          ? <AiGlowWordmark brand={brandName ?? 'Brand'} size="hero" />
+          : <BrandWordmark brand={brandName ?? 'Brand'} size="hero" />}
       </div>
     );
   }

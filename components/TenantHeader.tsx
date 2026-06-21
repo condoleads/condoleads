@@ -46,17 +46,26 @@ export default async function TenantHeader() {
   )
   const { data: tenant } = await db
     .from('tenants')
-    .select('id, brand_name, logo_url, primary_color')
+    .select('id, brand_name, logo_url, primary_color, wordmark_style')
     .eq('domain', cleanHost)
     .eq('is_active', true)
     .single()
 
   if (!tenant) return null
+  // W-AILY-AIGLOW-WORDMARK (2026-06-21): thread wordmark_style + brand_name
+  // through SiteHeader so the header wordmark branch fires correctly for
+  // any tenant whose wordmark_style is set (e.g. 'aiglow' for Aily).
+  // Previously SiteHeader relied on getTenant() for these fields, but
+  // getTenant() reads x-tenant-id from request headers (unreliable on the
+  // middleware-rewrite path). Resolving them HERE by host (same DB lookup
+  // this function already does) makes the wordmark render deterministic.
   return (
     <SiteHeader
       agentName={tenant.brand_name ?? undefined}
       agentLogo={tenant.logo_url ?? undefined}
       primaryColor={tenant.primary_color ?? undefined}
+      brandName={tenant.brand_name ?? undefined}
+      wordmarkStyle={tenant.wordmark_style ?? undefined}
     />
   )
 }
