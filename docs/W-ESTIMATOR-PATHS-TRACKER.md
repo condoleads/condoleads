@@ -9321,3 +9321,96 @@ DEFERRED - NOT in this commit:
 
   Single bundled commit with the W-AILY-PARITY-GAP fix above.
   No separate ship for Phase A.
+
+
+## W-AILY-ESTIMATOR-GAP — resolution  (2026-06-22)
+
+Root cause (same CLASS as W-AILY-PARITY-GAP, different file/variable):
+five GEO/listing-shell pages gated the dynamic agent+tenant resolution
+on `isHero`. For non-hero multi-tenants (Aily, future tenants) the
+ternary fell back to `getAgentFromHost(host)` which returns null for
+any non-condoleads.ca custom domain — leaving the EstimatorVipWrapper
+with empty `agentId` + empty `tenantId`, which it routes to System 1
+legacy `/api/estimator/session` -> 400 'Agent ID required'.
+
+Data side healthy: Aily.default_agent_id = 0b3fcbf7 (verified); agent
+row exists, is_active=true, is_selling=true. The tenant-neutral
+resolvers (getCurrentTenantId, resolveAgentForContext) ALREADY work
+for Aily — they were simply never invoked because the call sites
+gated them on isHero.
+
+Recon trail:
+  recon/aily-estimator-gap.txt  (end-to-end trace + 5-site blast radius)
+
+Fix scope (this commit):
+  5 page-level ternaries replaced with tenant-neutral dynamic
+  resolution. Variable rename walliamAgentId -> resolvedAgentId at
+  every site (kills the WALLiam-specific name that re-taught the
+  wrong model).
+
+    app/[slug]/MunicipalityPage.tsx           (operator's path)
+    app/[slug]/CommunityPage.tsx
+    app/[slug]/AreaPage.tsx
+    app/[slug]/BuildingPage.tsx               (+ 3 downstream renames)
+    app/comprehensive-site/toronto/[neighbourhood]/page.tsx
+
+Resolution semantics:
+  - tenantId resolved via getCurrentTenantId() (tenant-neutral; works
+    for any host matching tenants.domain or DEV_TENANT_DOMAIN).
+  - On non-null tenantId: agentId via resolveAgentForContext({
+    tenant_id, ...geo}). Tenant-neutral; falls back to
+    tenants.default_agent_id on no specific assignment.
+  - On null tenantId (true System 1 condoleads.ca subdomain agent
+    site): preserves prior behavior — falls back to
+    getAgentFromHost-derived `agent?.id` / `agent?.tenant_id`.
+  - WALLiam still hits the dynamic path (strict expansion, never a
+    narrowing). `isHero` UI gates (WalliamAgentCard, WalliamCTA,
+    hero-only chrome) preserved verbatim — separate concern.
+
+Same-class-as-plan note:
+  W-AILY-PARITY-GAP (plan/lead 401) — hero-only x-tenant-id-injection
+  assumption.
+  W-AILY-ESTIMATOR-GAP (estimator 400) — hero-only agent-resolution
+  assumption.
+  Both share the PATTERN: dynamic tenant-id-driven path was built for
+  the hero, then gated on isHero, leaving a System-1 fallback that
+  doesn't apply to any new multi-tenant. This commit unwires the gate
+  at all 5 estimator-side call sites; reinforces the
+  W-MIDDLEWARE-DYNAMIC-TENANT theme (dynamic resolver is the durable
+  path; hero-specific shortcuts are debt).
+
+### Smoke gates
+
+  - Aily (aily.ca/mississauga): Sale Price Estimate on a listing ->
+    page resolves agentId=0b3fcbf7 + tenantId=Aily ->
+    EstimatorVipWrapper routes to /api/walliam/estimator/session ->
+    estimate GENERATES. Prove the result panel renders.
+  - Aily community/building page: estimate works (proves all-sites
+    fix, not just municipality).
+  - WALLiam (DEV_TENANT_DOMAIN=walliam.ca): estimator byte-identical
+    outcome, no regression.
+  - System 1 (if testable): genuine condoleads.ca subdomain agent
+    site -> estimator still routes to /api/estimator/session as before
+    (isolation preserved).
+  - C12 multi-tenant regression: 17/20 baseline; 0 NEW failures.
+
+### Files
+
+  Edited (5):
+    app/[slug]/MunicipalityPage.tsx
+    app/[slug]/CommunityPage.tsx
+    app/[slug]/AreaPage.tsx
+    app/[slug]/BuildingPage.tsx
+    app/comprehensive-site/toronto/[neighbourhood]/page.tsx
+
+  Backed up (timestamp 20260622_125258):
+    each of the 5 edited files
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260622_125258
+
+  Recon: recon/aily-estimator-gap.txt
+
+### Commit gate
+
+  STOP at commit gate. 5 code files + tracker. No DB write.
+  Smoke green. Diff shown. Awaiting operator approval before
+  stage/commit/push.

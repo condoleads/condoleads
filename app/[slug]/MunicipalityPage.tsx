@@ -200,9 +200,13 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   }
   const data = dataMaybe
   const isHero = await isHeroTenant()
-  let walliamAgentId: string | null = null
-  if (isHero && tenantId) {
-    walliamAgentId = await resolveAgentForContext({ municipality_id: municipality.id, tenant_id: tenantId })
+  // W-AILY-ESTIMATOR-GAP (2026-06-22): resolve agent for ANY tenantId, not
+  // gated on hero. Aily (isHero=false) previously fell back to
+  // getAgentFromHost(host) -> null -> 'Agent ID required' on the estimator.
+  // System 1 path (tenantId === null) preserved by the else branch below.
+  let resolvedAgentId: string | null = null
+  if (tenantId) {
+    resolvedAgentId = await resolveAgentForContext({ municipality_id: municipality.id, tenant_id: tenantId })
   }
   const { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities } = data
   const areaHref = area ? '/' + area.slug : '#'
@@ -239,8 +243,8 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
           <GeoPageTabs
             geoType="municipality"
             geoId={municipality.id}
-            agentId={isHero ? (walliamAgentId || '') : (agent?.id || '')}
-            tenantId={isHero ? (tenantId || '') : (agent?.tenant_id || '')}
+            agentId={tenantId ? (resolvedAgentId || '') : (agent?.id || '')}
+            tenantId={tenantId ? (tenantId || '') : (agent?.tenant_id || '')}
             buildingCount={buildingCount}
             initialListings={initialListings}
             initialTotal={counts.forSale}

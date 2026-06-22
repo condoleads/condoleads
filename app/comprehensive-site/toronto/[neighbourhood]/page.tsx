@@ -263,9 +263,11 @@ export default async function NeighbourhoodPage({ params }: Props) {
   const agent = await getAgentFromHost(host)
   const tenantId = await getCurrentTenantId()
   const isHero = await isHeroTenant()
-  let walliamAgentId: string | null = null
-  if (isHero && tenantId) {
-    walliamAgentId = await resolveAgentForContext({ neighbourhood_id: data.neighbourhood.id, tenant_id: tenantId })
+  // W-AILY-ESTIMATOR-GAP (2026-06-22): resolve agent for ANY tenantId
+  // (see MunicipalityPage for full rationale).
+  let resolvedAgentId: string | null = null
+  if (tenantId) {
+    resolvedAgentId = await resolveAgentForContext({ neighbourhood_id: data.neighbourhood.id, tenant_id: tenantId })
   }
 
   const { neighbourhood, municipalities, municipalityIds, communities, stats, initialListings, initialTotal, initialCounts } = data
@@ -317,8 +319,8 @@ export default async function NeighbourhoodPage({ params }: Props) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <NeighbourhoodPageTabs
           municipalityIds={municipalityIds}
-          agentId={isHero ? (walliamAgentId || '') : (agent?.id || '')}
-          tenantId={isHero ? (tenantId || '') : (agent?.tenant_id || '')}
+          agentId={tenantId ? (resolvedAgentId || '') : (agent?.id || '')}
+          tenantId={tenantId ? (tenantId || '') : (agent?.tenant_id || '')}
           buildingCount={stats?.buildings ?? 0}
           municipalities={municipalities}
           initialListings={initialListings}

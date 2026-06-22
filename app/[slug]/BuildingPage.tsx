@@ -280,9 +280,11 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   // WALLiam tenant detection
   const tenantId = await getCurrentTenantId()
   const isHero = await isHeroTenant()
-  let walliamAgentId: string | null = null
-  if (isHero && tenantId) {
-    walliamAgentId = await resolveAgentForContext({
+  // W-AILY-ESTIMATOR-GAP (2026-06-22): resolve agent for ANY tenantId
+  // (see MunicipalityPage for full rationale).
+  let resolvedAgentId: string | null = null
+  if (tenantId) {
+    resolvedAgentId = await resolveAgentForContext({
       building_id: building.id,
       community_id: building.community_id || null,
       municipality_id: building.municipality_id || null,
@@ -491,9 +493,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
                   buildingSlug={building.slug}
-                  agentId={isHero ? (walliamAgentId || '') : (agent?.id || '')}
-                  tenantId={isHero ? (tenantId ?? undefined) : (agent?.tenant_id ?? undefined)}
-                  isHero={isHero && !!walliamAgentId}
+                  agentId={tenantId ? (resolvedAgentId || '') : (agent?.id || '')}
+                  tenantId={tenantId ? (tenantId ?? undefined) : (agent?.tenant_id ?? undefined)}
+                  isHero={isHero && !!resolvedAgentId}
                 />
             </div>
             
@@ -561,13 +563,13 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                   buildingAddress={building.canonical_address}
                   agentId={agent.id}
                 />
-              ) : isHero && walliamAgentId && tenantId ? (
+              ) : isHero && resolvedAgentId && tenantId ? (
                 <EstimatorSeller
                   buildingId={building.id}
                   buildingSlug={building.slug}
                   buildingName={building.building_name}
                   buildingAddress={building.canonical_address}
-                  agentId={walliamAgentId}
+                  agentId={resolvedAgentId}
                   tenantId={tenantId}
                 />
               ) : null}

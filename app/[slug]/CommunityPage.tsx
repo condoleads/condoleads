@@ -141,9 +141,11 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
   }
   const data = dataMaybe
   const isHero = await isHeroTenant()
-  let walliamAgentId: string | null = null
-  if (isHero && tenantId) {
-    walliamAgentId = await resolveAgentForContext({ community_id: community.id, tenant_id: tenantId })
+  // W-AILY-ESTIMATOR-GAP (2026-06-22): resolve agent for ANY tenantId
+  // (see MunicipalityPage for full rationale).
+  let resolvedAgentId: string | null = null
+  if (tenantId) {
+    resolvedAgentId = await resolveAgentForContext({ community_id: community.id, tenant_id: tenantId })
   }
   const { municipality, buildingCount, initialListings, counts, siblingCommunities } = data
 
@@ -194,8 +196,8 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           <GeoPageTabs
             geoType="community"
             geoId={community.id}
-            agentId={isHero ? (walliamAgentId || '') : (agent?.id || '')}
-            tenantId={isHero ? (tenantId || '') : (agent?.tenant_id || '')}
+            agentId={tenantId ? (resolvedAgentId || '') : (agent?.id || '')}
+            tenantId={tenantId ? (tenantId || '') : (agent?.tenant_id || '')}
             buildingCount={buildingCount}
             initialListings={initialListings}
             initialTotal={counts.forSale}

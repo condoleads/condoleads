@@ -265,9 +265,11 @@ export default async function AreaPage({ area }: AreaPageProps) {
   }
   const data = dataMaybe
   const isHero = await isHeroTenant()
-  let walliamAgentId: string | null = null
-  if (isHero && tenantId) {
-    walliamAgentId = await resolveAgentForContext({ area_id: area.id, tenant_id: tenantId })
+  // W-AILY-ESTIMATOR-GAP (2026-06-22): resolve agent for ANY tenantId
+  // (see MunicipalityPage for full rationale).
+  let resolvedAgentId: string | null = null
+  if (tenantId) {
+    resolvedAgentId = await resolveAgentForContext({ area_id: area.id, tenant_id: tenantId })
   }
   const { initialListings, counts, homeCounts, condoCounts, buildingCount, allAreas, municipalityLinks, municipalities } = data
 
@@ -301,8 +303,8 @@ export default async function AreaPage({ area }: AreaPageProps) {
           <GeoPageTabs
             geoType="area"
             geoId={area.id}
-            agentId={isHero ? (walliamAgentId || '') : (agent?.id || '')}
-            tenantId={isHero ? (tenantId || '') : (agent?.tenant_id || '')}
+            agentId={tenantId ? (resolvedAgentId || '') : (agent?.id || '')}
+            tenantId={tenantId ? (tenantId || '') : (agent?.tenant_id || '')}
             buildingCount={buildingCount}
             initialListings={initialListings}
             initialTotal={counts.forSale}
