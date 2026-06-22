@@ -29,10 +29,16 @@ interface SubmitActivityFromFormParams {
 
 export async function submitActivityFromForm(params: SubmitActivityFromFormParams) {
   const headersList = headers()
-  const tenantId = headersList.get('x-tenant-id')
+  let tenantId = headersList.get('x-tenant-id')
 
   if (!tenantId) {
-    console.error('[submitActivityFromForm] x-tenant-id header missing')
+    // W-AILY-ESTIMATOR-LEAD-GAP (2026-06-22): host-based fallback.
+    const { getCurrentTenantId } = await import('@/lib/utils/tenant-resolver')
+    tenantId = await getCurrentTenantId()
+  }
+
+  if (!tenantId) {
+    console.error('[submitActivityFromForm] tenant unresolved from header AND host')
     return {
       success: false,
       error: 'Tenant context unavailable.'

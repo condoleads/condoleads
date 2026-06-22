@@ -9414,3 +9414,153 @@ Same-class-as-plan note:
   STOP at commit gate. 5 code files + tracker. No DB write.
   Smoke green. Diff shown. Awaiting operator approval before
   stage/commit/push.
+
+
+## W-AILY-ESTIMATOR-LEAD-GAP — resolution  (2026-06-22)
+
+Instance #3 of the hero-bias CLASS shipped in 2026-06:
+  #1 W-AILY-PARITY-GAP    (plan-email/lead 401)
+  #2 W-AILY-ESTIMATOR-GAP (estimator agent-id 400)
+  #3 W-AILY-ESTIMATOR-LEAD-GAP (estimator lead+email silent drop)
+
+Same root: a tenant-dependent server-side operation gated on a SINGLE
+mechanism that's only reliable for the hero tenant (WALLiam) via the
+KNOWN_TENANT_DOMAINS fast-path; non-hero tenants (Aily, future) fall
+into a fragile fallback that can silently drop the tenant context.
+
+Symptom: Aily estimate RENDERS post-W-AILY-ESTIMATOR-GAP, but the
+fire-once submitLeadFromForm useEffect on the result panel produces
+no DB row and no email — silently. DB evidence:
+  WALLiam server-action-sourced leads / 30d: 51
+    (sale_offer_inquiry=26, site_header=22, estimator=1, ...)
+  Aily server-action-sourced leads, ever:    0
+  Aily API-route-sourced leads (explicit x-tenant-id): 4
+
+Root cause: 4 server actions read `headers().get('x-tenant-id')` and
+return silently if null. Middleware response.headers.set propagates
+to /api/* request headers reliably; for server-action POSTs (Next-
+Action header on page URLs), Aily's DB-fallback resolver can slip
+(transient blip), header isn't injected, server action returns
+'Tenant context unavailable.' with success:false. Browser sees a
+console.error from the calling component's catch; no UI surface.
+
+Recon trail:
+  recon/aily-estimator-lead-gap.txt
+
+Fix scope (this commit) — host-based fallback in 4 server actions:
+  - app/actions/submitLeadFromForm.ts
+  - app/actions/submitActivityFromForm.ts
+  - app/actions/updateLeadEnrichmentFromForm.ts
+  - app/actions/joinTenant.ts    (B4 catch — initial recon said 3,
+                                   sibling sweep found this 4th;
+                                   authz-verified value-use only)
+
+Pattern (all 4 actions):
+  let tenantId = headers().get('x-tenant-id')
+  if (!tenantId) {
+    const { getCurrentTenantId } = await import('@/lib/utils/tenant-resolver')
+    tenantId = await getCurrentTenantId()
+  }
+  if (!tenantId) {
+    console.error('[<name>] tenant unresolved from header AND host')
+    return { success: false, error: '<original error string preserved>' }
+  }
+
+Semantics:
+  - WALLiam: middleware injects via KNOWN_TENANT_DOMAINS fast-path
+    -> tenantId truthy on first read -> byte-identical behavior.
+  - Aily/future tenants: if middleware injected, same as WALLiam;
+    if not, fall through to getCurrentTenantId() (host-based
+    tenants-table lookup). Tenant-neutral, no per-tenant branch.
+  - Error string preserved per file; callers (8 components per
+    LEADS-EMAIL T0-C-3 matrix) see no contract change.
+  - Belt + suspenders: middleware still tries (W-MIDDLEWARE-DYNAMIC-
+    TENANT Phase A retry+log), server action falls back if header
+    is absent. Two independent paths to the same result.
+
+joinTenant authz verdict (B4 sensitivity check):
+  joinTenant.ts uses tenantId PURELY AS A VALUE downstream —
+  WHERE/INSERT/UPDATE clauses against tenant_users, and forwarded
+  as 'x-tenant-id' header to internal fetches (assign-user-agent,
+  welcome email). No caller-must-be-on-tenant-domain guard, no
+  cross-check of header against cookie/JWT/user-context. Both the
+  middleware-injection path and the host-fallback path derive the
+  value from the same trust boundary (request host header). The
+  fallback is strictly equivalent, NOT a security widening.
+
+Class theme: every tenant-dependent server-side operation needs a
+host-based fallback that does NOT depend on middleware. This pattern
+applied class-wide would have caught all 3 instances (parity, agent-
+id, lead) pre-ship.
+
+### Smoke gates
+
+  - Aily condo estimator (aily.ca, real listing): submit form -> result
+    panel mounts -> submitLeadFromForm -> LEAD ROW WRITTEN with
+    tenant_id=e2619717 + email send attempt. Prove the row in DB.
+  - Aily home estimator: same outcome, proves both estimator types.
+  - Aily ListYourUnit form (if reachable on building page): lead written.
+  - WALLiam (DEV_TENANT_DOMAIN=walliam.ca): lead written, no
+    regression — header-present branch (byte-identical).
+  - Header-missing simulation (if feasible): fallback resolves
+    tenantId and writes lead anyway.
+  - C12 regression: 17/20 baseline; 0 NEW failures.
+
+### Files
+
+  Edited (4):
+    app/actions/submitLeadFromForm.ts
+    app/actions/submitActivityFromForm.ts
+    app/actions/updateLeadEnrichmentFromForm.ts
+    app/actions/joinTenant.ts
+
+  Backed up (timestamp 20260622_152809):
+    each of the 4 edited files
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260622_152809
+
+  Recon: recon/aily-estimator-lead-gap.txt
+
+### Commit gate
+
+  STOP at commit gate. 4 code files + tracker. No DB write.
+  Smoke green. Diff shown. Awaiting operator approval before
+  stage/commit/push.
+
+## W-TENANT-HERO-BIAS-SWEEP — next workstream (scope, NOT in this commit)
+
+The 3 hero-bias instances shipped in June 2026 are symptoms of a
+broader pattern: legacy code paths built around the hero tenant
+with fallbacks that don't extend cleanly to multi-tenant. The
+sweep is a proactive audit:
+
+  Phase 1 - INVENTORY: grep every server-side tenant-resolution
+            site (middleware injection callers, headers().get(
+            'x-tenant-id') callers, isHeroTenant() callers,
+            getAgentFromHost() callers). Classify each as:
+              [healthy]   tenant-neutral by construction
+              [fast-path] hero fast-path with NO fallback (bug)
+              [fragile]   hero fast-path with FRAGILE fallback
+              [exposed]   relies on middleware injection alone
+
+  Phase 2 - CLASS-CURE: apply the host-based fallback pattern
+            (this commit's shape) to every [exposed] site.
+
+  Phase 3 - HERO-GATE-AUDIT: every `isHero ? ... : ...` ternary
+            outside intentional WALLiam-branded UI gates (Walliam
+            AgentCard, WalliamCTA, hero wordmark). Replace with
+            tenant-neutral conditions or document the intent.
+
+  Phase 4 - getCurrentTenantId hardening: apply W-MIDDLEWARE-
+            DYNAMIC-TENANT FIX-2-style retry+log to
+            getCurrentTenantId itself (Phase A2). Both the
+            middleware-injection AND host-fallback paths become
+            resilient.
+
+  Phase 5 - INVARIANT: add to C12 (or sibling regression harness)
+            a layer-2 check that grep'd for new instances of the
+            failing shape on every CI run. Closes the class to
+            future regressions.
+
+  Status: scope locked; phases NOT in this commit; deferred for
+  operator scheduling. The 3 fixes shipped in June 2026 close the
+  KNOWN instances. The sweep closes the CLASS.

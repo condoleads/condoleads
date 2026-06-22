@@ -73,10 +73,21 @@ interface JoinTenantResult {
 
 export async function joinTenant(params: JoinTenantParams): Promise<JoinTenantResult> {
   const headersList = headers()
-  const tenantId = headersList.get('x-tenant-id')
+  let tenantId = headersList.get('x-tenant-id')
 
   if (!tenantId) {
-    console.error('[joinTenant] x-tenant-id header missing')
+    // W-AILY-ESTIMATOR-LEAD-GAP (2026-06-22): host-based fallback.
+    // Authz-verified value-use only: tenantId is used downstream as a
+    // WHERE/INSERT value and forwarded as 'x-tenant-id' to internal
+    // fetches. No caller-must-be-on-tenant-domain guard. Both paths
+    // (middleware injection + host-fallback) derive from the same
+    // trust boundary (request host); fallback is strictly equivalent.
+    const { getCurrentTenantId } = await import('@/lib/utils/tenant-resolver')
+    tenantId = await getCurrentTenantId()
+  }
+
+  if (!tenantId) {
+    console.error('[joinTenant] tenant unresolved from header AND host')
     return { success: false, error: 'Tenant context unavailable.' }
   }
 

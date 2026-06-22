@@ -48,10 +48,19 @@ interface SubmitLeadFromFormParams {
 
 export async function submitLeadFromForm(params: SubmitLeadFromFormParams) {
   const headersList = headers()
-  const tenantId = headersList.get('x-tenant-id')
+  let tenantId = headersList.get('x-tenant-id')
 
   if (!tenantId) {
-    console.error('[submitLeadFromForm] x-tenant-id header missing — middleware should set this on every request')
+    // W-AILY-ESTIMATOR-LEAD-GAP (2026-06-22): host-based fallback when
+    // middleware injection slips on non-hero tenants (Aily DB-fallback
+    // can transient-fail). Tenant-neutral; WALLiam takes the
+    // header-present branch via KNOWN_TENANT_DOMAINS fast-path.
+    const { getCurrentTenantId } = await import('@/lib/utils/tenant-resolver')
+    tenantId = await getCurrentTenantId()
+  }
+
+  if (!tenantId) {
+    console.error('[submitLeadFromForm] tenant unresolved from header AND host')
     return {
       success: false,
       error: 'Tenant context unavailable. Please refresh and try again.'
