@@ -544,7 +544,7 @@ export function useCharlie() {
         // didn't, set planEmailWarning so the UI can show an honest banner.
         fetch('/api/charlie/plan-email', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantIdRef.current || '' },
           body: JSON.stringify({
             sessionId: creditsRef.current.state.sessionId,
             userId: creditsRef.current.state.userId,

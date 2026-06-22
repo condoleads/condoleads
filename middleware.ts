@@ -277,16 +277,44 @@ async function resolveTenantIdFromHost(supabase: any, host: string): Promise<str
     }
 
     // Unknown domain â€” check DB
-    const { data } = await supabase
-      .from('tenants')
-      .select('id')
-      .eq('domain', cleanDomain)
-      .eq('is_active', true)
-      .single()
-    const id = data?.id || null
-    setCached(tenantCache, host, id)
-    return id
-  } catch {
+    // W-MIDDLEWARE-DYNAMIC-TENANT phase A (2026-06-22):
+    // bounded retry (1 retry, 50ms backoff) + structured log on failure.
+    // .single() returns PGRST116 on zero rows (verified empirically) -
+    // treat that as 'domain not configured', cache null, no retry, no
+    // error log. Non-PGRST116 errors are genuine DB/connection failures:
+    // retry once with 50ms backoff, then log + return null WITHOUT
+    // caching (so a fresh request can retry rather than sticky-null for
+    // 5 min). KNOWN_TENANT_DOMAINS fast-path above (L273-277) is
+    // untouched; WALLiam stays insulated. Deferred (NOT this commit):
+    // Phase B (route WALLiam through dynamic, fast-path as fallback)
+    // and Phase C (delete the KNOWN_TENANT_DOMAINS constant).
+    let lastErr: unknown = null
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const { data, error } = await supabase
+          .from('tenants')
+          .select('id')
+          .eq('domain', cleanDomain)
+          .eq('is_active', true)
+          .single()
+        if (error && (error as any).code !== 'PGRST116') {
+          lastErr = error
+          if (attempt < 2) { await new Promise(r => setTimeout(r, 50)); continue }
+          console.error('[middleware][tenant-resolver] DB-fallback error host=' + host + ' attempts=' + attempt + ':', error)
+          return null
+        }
+        const id = data?.id || null
+        setCached(tenantCache, host, id)
+        return id
+      } catch (e) {
+        lastErr = e
+        if (attempt < 2) { await new Promise(r => setTimeout(r, 50)); continue }
+      }
+    }
+    console.error('[middleware][tenant-resolver] DB-fallback threw host=' + host + ' after 2 attempts:', lastErr)
+    return null
+  } catch (e) {
+    console.error('[middleware][tenant-resolver] outer catch host=' + host + ':', e)
     return null
   }
 }

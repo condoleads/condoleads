@@ -9180,3 +9180,144 @@ W-CREDIT-BLEED ROLLBACK (2026-06-19) — production regression
   STOP at commit gate. 4 code files + tracker. No DB write. Smoke
   green. Diff shown. Awaiting operator approval before stage/
   commit/push.
+
+
+## W-AILY-PARITY-GAP — resolution  (2026-06-22)
+
+Root cause confirmed by CONVERGENT STRUCTURAL EVIDENCE:
+  (1) Route-split observation — /api/charlie (which sends
+      x-tenant-id explicitly from the client) renders the full plan
+      on Aily and writes the in-flight chat_sessions counter bump.
+      plan-email and lead (which OMIT the client header) 401 on the
+      same session — pass-here-fail-there on identical data.
+  (2) On-disk code asymmetry — 2 of 5 validateSession
+      callsites (useCharlie.ts:545 plan-email, PlanDocument.tsx:144
+      lead) omit x-tenant-id from the client; the other 3
+      (chat-stream, appointment, session-create) send it explicitly.
+      Aily's tenant resolution flows through middleware's DB-fallback
+      path (middleware.ts:280-291), which silent-catches any DB
+      transient. WALLiam bypasses that path entirely via
+      KNOWN_TENANT_DOMAINS (middleware.ts:25-28, 273-277).
+  (3) Empirical .single() probe — verified locally that
+      `.single()` on zero rows returns {data:null, error:{code:
+      'PGRST116'}} (does NOT throw). The DB-fallback hardening can
+      therefore distinguish 'domain not configured' (PGRST116) from
+      'DB/connection transient' (other codes / thrown).
+
+H3 instrumentation was deployed (d84b7ae) but the resulting Vercel
+log line for [plan-email][H3] was NOT captured. Operator proceeded
+on the convergent structural evidence above, which independently
+establishes the cause.
+
+Recon trail:
+  recon/aily-parity-gap.txt
+  recon/aily-plan-chain-diag.txt
+  recon/aily-plan-chain-d4.txt    (server-side B cleared)
+  recon/aily-plan-chain-d5.txt    (claim-race hypothesized)
+  recon/aily-plan-chain-d6.txt    (claim-race FALSIFIED - row matches)
+  recon/aily-plan-chain-d7.txt    (single POST, code can't fire early)
+  recon/aily-plan-chain-d8.txt    (B2' replica-lag - superseded)
+  recon/aily-plan-chain-d9.txt    (H2 leading: missing x-tenant-id)
+
+Fix scope (this commit):
+  FIX 1a: useCharlie.ts:547 (plan-email POST) - add explicit
+          x-tenant-id from tenantIdRef.current (mirrors L417).
+  FIX 1b: PlanDocument.tsx:146 (lead POST) - add useTenantId hook
+          + explicit x-tenant-id (mirrors AppointmentForm).
+  FIX 2 : middleware.ts:280-291 - bounded retry + structured log on
+          DB-fallback failure; PGRST116 (zero rows) treated as
+          'domain not configured' (cache null, no retry, no log).
+          KNOWN_TENANT_DOMAINS fast-path untouched.
+  FIX 3 : validate-session.ts string split - L49-51 + L59-61 ->
+          'Tenant header missing'; L72-74 (session miss) keeps
+          'Invalid session'. Status stays 401 in all three.
+  FIX 4 : plan-email/route.ts - remove H3 instrumentation
+          (d84b7ae). Header read works on its own now.
+
+### Smoke gates
+
+  - Aily (DEV_TENANT_DOMAIN=aily.ca, cold flow): plan-email POST
+    carries x-tenant-id -> validateSession PASSES -> email send
+    attempt + lead row written.
+  - WALLiam (DEV_TENANT_DOMAIN=walliam.ca): plan-email
+    byte-identical pass via KNOWN_TENANT_DOMAINS fast-path;
+    in-chat plan still renders. No regression.
+  - Middleware: synthetic DB-fallback failure (if feasible) ->
+    confirm retry+log fires, header still injected on recovery;
+    2nd request cache-hits.
+  - C12 multi-tenant regression: report PASS count; pre-existing
+    17/20 baseline; fix must add 0 NEW failures.
+
+### Files
+
+  Edited (5):
+    app/charlie/hooks/useCharlie.ts
+    app/charlie/components/PlanDocument.tsx
+    middleware.ts
+    lib/utils/validate-session.ts
+    app/api/charlie/plan-email/route.ts
+
+  Backed up (timestamp 20260622_095546):
+    each of the 5 edited files
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260622_095546
+
+  Recon: recon/aily-plan-chain-d9.txt (and earlier d1-d8)
+
+### Commit gate
+
+  STOP at commit gate. 5 code files + tracker. No DB write.
+  Smoke green. Diff shown. Awaiting operator approval before
+  stage/commit/push.
+
+## W-MIDDLEWARE-DYNAMIC-TENANT - Phase A (this commit only)
+
+Phase A scope: HARDEN the dynamic DB-fallback path in
+middleware.ts:280-291 while WALLiam stays on KNOWN_TENANT_DOMAINS
+fast-path. This commit does NOT migrate WALLiam off the hardcoded
+constant; it only makes the dynamic path resilient enough that new
+tenants (Aily today, future tenants tomorrow) get the same
+header-injection reliability.
+
+  Belt + suspenders:
+    Belt    = client always sends x-tenant-id (FIX 1 above).
+    Suspend = middleware DB-fallback hardened (FIX 2 above).
+
+  Resilience semantics:
+    - PGRST116 (zero rows, domain truly not configured): cache
+      null, no retry, no error log. Cheap, deterministic.
+    - Other PostgREST error or thrown exception: retry once with
+      50ms backoff. On second failure, log structured error +
+      return null WITHOUT caching (so the NEXT request can retry
+      rather than sticky-null for 5 minutes).
+    - Successful resolution: cache the id with the existing
+      5-minute TTL; subsequent requests hit cache.
+    - Observability: every failure path now writes a
+      [middleware][tenant-resolver] console.error with the host
+      and the underlying error. No more silent drops.
+
+  Phase A files:
+    middleware.ts          (the dynamic path itself)
+    lib/utils/validate-session.ts  (string-split for triage;
+                                    distinguishes tenant-side from
+                                    session-side 401s without
+                                    needing temp instrumentation)
+
+DEFERRED - NOT in this commit:
+
+  Phase B - route WALLiam through the dynamic path with
+            KNOWN_TENANT_DOMAINS as a soft fallback (perf safety
+            net), to prove the dynamic path can carry production
+            load.
+  Phase C - delete KNOWN_TENANT_DOMAINS entirely. After Phase B
+            burns in, the constant becomes a remnant; this phase
+            removes it so onboarding a new tenant requires zero
+            middleware edits.
+
+  Future readers: the hardcoded-to-dynamic migration has NOT
+  happened. WALLiam still resolves via KNOWN_TENANT_DOMAINS today.
+  Only the dynamic path's reliability was hardened.
+
+### Commit gate
+
+  Single bundled commit with the W-AILY-PARITY-GAP fix above.
+  No separate ship for Phase A.

@@ -47,7 +47,7 @@ export async function validateSession(params: ValidateSessionParams): Promise<Va
   const selectColumns = params.selectColumns ?? 'id'
 
   if (!sessionId || !userId || !tenantId) {
-    return { ok: false, status: 401, error: 'Invalid session' }
+    return { ok: false, status: 401, error: 'Tenant header missing' }
   }
 
   const { data: tenant, error: tenantError } = await supabase
@@ -57,7 +57,7 @@ export async function validateSession(params: ValidateSessionParams): Promise<Va
     .maybeSingle()
 
   if (tenantError || !tenant?.source_key) {
-    return { ok: false, status: 401, error: 'Invalid session' }
+    return { ok: false, status: 401, error: 'Tenant header missing' }
   }
 
   const { data: session, error: sessionError } = await supabase

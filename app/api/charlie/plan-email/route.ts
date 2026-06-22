@@ -221,21 +221,15 @@ export async function POST(req: NextRequest) {
     }
 
     // T6a — F-W-RECOVERY-A15: tenant-aware auth gate via validateSession helper
-    // W-AILY-PLAN-CHAIN-H3 (2026-06-22): instrument the 401 path so the next
-    // failing test names whether x-tenant-id reached the route. Pure logging;
-    // no behavior change. Remove once H2 (middleware injection missing)
-    // confirmed/disproven and the structural fix lands.
     const _gateSupabase = createServiceClient()
-    const _xTenant = req.headers.get('x-tenant-id') || ''
     const _sessionCheck = await validateSession({
       supabase: _gateSupabase,
       sessionId,
       userId,
-      tenantId: _xTenant,
+      tenantId: req.headers.get('x-tenant-id') || '',
       selectColumns: 'id, tenant_id',
     })
     if (!_sessionCheck.ok) {
-      console.error('[plan-email][H3] 401 diag', JSON.stringify({ xTenant: _xTenant, xTenantEmpty: _xTenant === '', sessionId, userId, reason: _sessionCheck.error }))
       return NextResponse.json({ error: _sessionCheck.error }, { status: _sessionCheck.status })
     }
     const validSession = _sessionCheck.session

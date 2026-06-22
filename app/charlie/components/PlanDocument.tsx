@@ -1,6 +1,7 @@
 ﻿// app/charlie/components/PlanDocument.tsx
 'use client'
 import { useState } from 'react'
+import { useTenantId } from '@/hooks/useTenantId'
 import AppointmentForm from './AppointmentForm'
 
 interface AgentInfo {
@@ -77,6 +78,7 @@ function StatRow({ label, value, color = '#fff' }: { label: string; value: strin
 }
 
 export default function PlanDocument(props: PlanDocumentProps) {
+  const tenantId = useTenantId()
   const { analytics, agent, onSendPlan, leadCaptured, sessionId, userId, onLeadCaptured, geoContext: planGeoContext } = props
 
   const [name, setName] = useState('')
@@ -143,7 +145,7 @@ export default function PlanDocument(props: PlanDocumentProps) {
 
       const res = await fetch('/api/charlie/lead', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-tenant-id': tenantId || '' },
         body: JSON.stringify(body),
       })
 
