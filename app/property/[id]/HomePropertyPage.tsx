@@ -91,14 +91,28 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
   const host = headersList.get('host') || ''
   const { displayAgent } = await getDisplayAgentForHome(host)
   // WALLiam fallback — resolve agent from tenant if no display agent
+  // W-TENANT-HERO-BIAS-SWEEP T1.1 (2026-06-23): dynamic tenant-neutral
+  // agent resolution (see app/property/[id]/page.tsx for full rationale).
+  // System 1 path preserved by displayAgent-non-null / tenantId-null guards.
+  // Agent hydration uses .maybeSingle() so a stale id falls to notFound().
   let agent: any = displayAgent
   if (!agent) {
-    const walliamTenantId = await getCurrentTenantId()
-    if (walliamTenantId) {
-      const { createClient: _sc } = await import('@supabase/supabase-js')
-      const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
-      const { data: walliamAgent } = await _db.from('agents').select('*').eq('tenant_id', walliamTenantId).eq('can_create_children', true).single()
-      if (walliamAgent) agent = walliamAgent
+    const tenantId = await getCurrentTenantId()
+    if (tenantId) {
+      const { resolveAgentForContext } = await import('@/lib/utils/tenant-resolver')
+      const resolvedAgentId = await resolveAgentForContext({
+        listing_id: listing.id,
+        community_id: listing.community_id || null,
+        municipality_id: listing.municipality_id || null,
+        area_id: listing.area_id || null,
+        tenant_id: tenantId,
+      })
+      if (resolvedAgentId) {
+        const { createClient: _sc } = await import('@supabase/supabase-js')
+        const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+        const { data: resolvedAgent } = await _db.from('agents').select('*').eq('id', resolvedAgentId).maybeSingle()
+        if (resolvedAgent) agent = resolvedAgent
+      }
     }
   }
   console.log('[HomePropertyPage] agent check:', { agent: !!agent, host })

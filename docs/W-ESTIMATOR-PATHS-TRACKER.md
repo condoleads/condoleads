@@ -9564,3 +9564,123 @@ sweep is a proactive audit:
   Status: scope locked; phases NOT in this commit; deferred for
   operator scheduling. The 3 fixes shipped in June 2026 close the
   KNOWN instances. The sweep closes the CLASS.
+
+
+## W-TENANT-HERO-BIAS-SWEEP T1.1 — resolution  (2026-06-23)
+
+3rd application of the dynamic-tenant-neutral pattern (1st = 5 geo
+pages in W-AILY-ESTIMATOR-GAP; 2nd = 4 server actions in
+W-AILY-ESTIMATOR-LEAD-GAP; 3rd = this commit, 2 property pages).
+
+Symptom: Aily property-detail pages (condo app/property/[id]/page.tsx
+and home app/property/[id]/HomePropertyPage.tsx) 404'd on every
+access. Root cause: the 'WALLiam fallback' used .single() over agents
+with can_create_children=true filter. Aily has TWO matches (admin +
+manager), .single() errors, fallback fails, page notFound()s.
+WALLiam has exactly ONE match (King Shah), works by accident.
+
+Fix: replace the can_create_children heuristic with the same
+resolveAgentForContext RPC the 5 geo pages now use. Pass the full
+listing -> building -> community -> municipality -> area context;
+the RPC handles geo-aware resolution and falls back to
+tenants.default_agent_id. Tenant-neutral; WALLiam still resolves
+to King Shah (default_agent_id); Aily resolves to 0b3fcbf7.
+Agent hydration uses .maybeSingle() (not .single()) so a stale
+resolved id falls cleanly to notFound() instead of throwing 500
+(landmine avoided per operator correction).
+
+Bigger-than-expected blast radius (B4): the page 404 short-circuited
+the entire downstream surface including SimilarListings +
+EstimatorBuyerModal / HomeEstimatorBuyerModal. POST-fix, the
+property-page estimator surface is UNBLOCKED for Aily, on top of the
+no-more-404 win.
+
+System 1 isolation: preserved. For condoleads.ca subdomain sites,
+getDisplayAgentForBuilding/Home returns the siteOwner via subdomain
+extraction, the fallback if-block is never entered. Helper bodies
+untouched.
+
+Recon trail:
+  recon/sweep-t1.2-verify.txt    (T1.2 - 4 of 4 client fetches clear)
+  recon/tenant-hero-bias-sweep-inventory.txt  (Phase 1 inventory)
+
+Fix scope (this commit) - 2 callsite ternaries:
+  app/property/[id]/page.tsx:142-152
+  app/property/[id]/HomePropertyPage.tsx:93-103
+
+Variable rename: walliamTenantId -> tenantId, walliamAgent ->
+resolvedAgent (kills the WALLiam-specific names).
+
+### T1.2 status (carried forward from sweep-t1.2-verify.txt)
+
+  All 4 verified client fetches: CLEAR (none in the silent-drop
+  shape). Each uses an alternative tenant-resolution mechanism
+  (body, body, session, conditional-header). DB cross-check
+  (WALLiam 22 contact leads / 30d vs Aily 0 ever) is a DESIGN
+  GAP not a bug: WalliamContactForm + WalliamAgentCard are
+  intentionally isHero-gated.
+
+### Documented findings (out of this commit, tracked separately)
+
+  W-TENANT-CONTACT-SURFACE (launch-decision):
+    Aily has no contact-form UI surface today. Two options:
+      (a) De-brand WalliamContactForm + WalliamAgentCard into
+          tenant-neutral TenantContactForm / TenantAgentCard;
+          mount for any tenant.
+      (b) Add an Aily-specific contact-form component.
+    UI/branding decision; not a tenant-resolution bug.
+
+  W-RESOLVE-AGENT-BRITTLE-CONDITIONAL (Tier-3 hardening):
+    WalliamAgentCard.tsx:117 uses conditional spread
+      ...(tenant_id ? { 'x-tenant-id': tenant_id } : {})
+    If a future caller forgets to pass tenant_id, header is
+    silently omitted -> route gets null tenantId -> RPC returns
+    null agent -> WalliamAgentCard renders 'no agent' branch
+    silently. Belt+suspenders fix: add header-or-host fallback
+    inside /api/walliam/resolve-agent/route.ts (same pattern
+    as the 4 server actions). Low priority; no active bug.
+
+### Smoke gates
+
+  - Aily condo property-detail (real listing): page renders 200,
+    agent resolves to 0b3fcbf7 (or geo-assigned). CTAs present.
+    SimilarListings + EstimatorBuyerModal mount with valid
+    agentId + tenantId.
+  - Aily home property-detail: same outcome.
+  - WALLiam: page renders, agent = King Shah (same as pre-fix
+    since default_agent_id fallback kicks in). No regression.
+  - System 1 (condoleads.ca subdomain agent): page renders with
+    subdomain agent unchanged. Fallback if-block never entered.
+  - C12: 17/20 baseline; 0 NEW failures.
+
+### Files
+
+  Edited (2):
+    app/property/[id]/page.tsx
+    app/property/[id]/HomePropertyPage.tsx
+
+  Backed up (timestamp 20260623_052406):
+    each of the 2 edited files
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260623_052406
+
+  Recon: recon/sweep-t1.2-verify.txt + tenant-hero-bias-sweep-inventory.txt
+
+### Commit gate
+
+  STOP at commit gate. 2 code files + tracker. No DB write.
+  Smoke green. Diff shown. Awaiting operator approval before
+  stage/commit/push.
+
+### Sweep status
+
+  T1.1 (property-detail pages): COMPLETE this commit.
+  T1.2 (client fetches): COMPLETE, verified clear.
+  T2.1 (header-or-host belt+suspenders on /api/charlie/* +
+       /api/walliam/*): optional defense-in-depth, deferred.
+  T3.x (territory-constants, legal pages, etc.): deferred.
+
+  Three KNOWN hero-bias instances closed in this session. The
+  inventory's documented findings are deferred to dedicated
+  workstreams (W-TENANT-CONTACT-SURFACE, W-RESOLVE-AGENT-BRITTLE-
+  CONDITIONAL). The structural CLASS is closed for the surfaces
+  scoped in the inventory.

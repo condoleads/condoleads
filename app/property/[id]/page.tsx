@@ -140,14 +140,35 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   const host = headersList.get('host') || ''
   const { displayAgent } = await getDisplayAgentForBuilding(host, listing.building_id)
   // WALLiam fallback ΓÇö resolve agent from tenant if no display agent
+  // W-TENANT-HERO-BIAS-SWEEP T1.1 (2026-06-23): dynamic tenant-neutral
+  // agent resolution for ANY tenant (not just hero). Was: can_create_children
+  // heuristic via .single() that ambiguates when a tenant has multiple
+  // managers (Aily admin + manager both have can_create_children=true ->
+  // .single() errors -> page 404s). Now: resolveAgentForContext with the
+  // full listing -> building -> community -> municipality -> area context,
+  // mirroring the 5 geo pages from W-AILY-ESTIMATOR-GAP. System 1 path
+  // (displayAgent non-null OR tenantId null) preserved by the
+  // outer/inner guards. Agent hydration uses .maybeSingle() so a stale
+  // resolved id falls to notFound() instead of throwing 500.
   let agent: any = displayAgent
   if (!agent) {
-    const walliamTenantId = await getCurrentTenantId()
-    if (walliamTenantId) {
-      const { createClient: _sc } = await import('@supabase/supabase-js')
-      const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
-      const { data: walliamAgent } = await _db.from('agents').select('*').eq('tenant_id', walliamTenantId).eq('can_create_children', true).single()
-      if (walliamAgent) agent = walliamAgent
+    const tenantId = await getCurrentTenantId()
+    if (tenantId) {
+      const { resolveAgentForContext } = await import('@/lib/utils/tenant-resolver')
+      const resolvedAgentId = await resolveAgentForContext({
+        listing_id: listing.id,
+        building_id: listing.building_id,
+        community_id: listing.community_id || null,
+        municipality_id: listing.municipality_id || null,
+        area_id: listing.area_id || null,
+        tenant_id: tenantId,
+      })
+      if (resolvedAgentId) {
+        const { createClient: _sc } = await import('@supabase/supabase-js')
+        const _db = _sc(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } })
+        const { data: resolvedAgent } = await _db.from('agents').select('*').eq('id', resolvedAgentId).maybeSingle()
+        if (resolvedAgent) agent = resolvedAgent
+      }
     }
   }
   if (!agent) notFound()
