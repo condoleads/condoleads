@@ -216,6 +216,12 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   const _c8a_supabase = createTenantClient()
   const _c8a_tenant = await getTenantByHost(_c8a_supabase, _c8a_host)
   const assistantName = _c8a_tenant?.name || 'Charlie'
+  // W-AILY-CTA-BRAND-LEAK (2026-06-23): brandName + wordmarkStyle for per-tenant
+  // WalliamCTA wordmark. Geo callsite is still {isHero && (...)}-gated today
+  // (so wordmarkStyle === 'hero' for the only tenant that hits this), but
+  // threading the values now keeps the contract honest for future unguard.
+  const brandName     = _c8a_tenant?.brandName     || 'Brand'
+  const wordmarkStyle = _c8a_tenant?.wordmarkStyle || 'standard'
 
   return (
     <div className="min-h-screen bg-white">
@@ -260,7 +266,7 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
               area_id={municipality.area_id}
               tenant_id={tenantId!}
             />
-            <WalliamCTA context={municipality.name} assistantName={assistantName} />
+            <WalliamCTA context={municipality.name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
             <CharliePageContext municipality_id={municipality.id} municipality_slug={municipality.slug} area_id={municipality.area_id} />
           </div>
         )}

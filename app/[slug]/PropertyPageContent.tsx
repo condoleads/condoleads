@@ -150,14 +150,20 @@ export async function PropertyPageContent({ slug }: { slug: string }) {
   const isClosed = listing.standard_status === 'Closed'
 
   // C8a/D13 -- tenant for assistantName threading
+  // W-AILY-CTA-BRAND-LEAK (2026-06-23): brandName + wordmarkStyle for per-tenant
+  // WalliamCTA wordmark. Threaded to PropertyPageClient.
   const _c8a_host = headers().get('host')
   const _c8a_tenant = await getTenantByHost(supabaseServer, _c8a_host)
   const assistantName = _c8a_tenant?.name || 'Charlie'
+  const brandName     = _c8a_tenant?.brandName     || 'Brand'
+  const wordmarkStyle = _c8a_tenant?.wordmarkStyle || 'standard'
 
   return (
     <main className="min-h-screen bg-slate-50">
       <PropertyPageClient
     assistantName={assistantName}
+        brandName={brandName}
+        wordmarkStyle={wordmarkStyle}
         listing={listingWithBuilding}
         largePhotos={largePhotos}
         rooms={rooms || []}

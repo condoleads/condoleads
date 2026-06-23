@@ -9764,3 +9764,98 @@ Fix scope (this commit):
   STOP at commit gate. 2 code files + tracker. No DB write.
   Smoke green. Diff shown. Awaiting operator approval before
   stage/commit/push.
+
+
+## W-AILY-CTA-BRAND-LEAK — resolution  (2026-06-23)
+
+Aily property pages were rendering the hardcoded WALLiam wordmark
+inside WalliamCTA.tsx. The component took `assistantName` (dynamic)
+for body copy but the wordmark JSX (WALL + ı(heart) + am) was literal.
+Mounted unconditionally in BOTH hero and non-hero branches on the
+property pages -> Aily non-hero branch fires + renders WALLiam visual.
+
+Fix: WalliamCTA now takes brandName + wordmarkStyle as REQUIRED props.
+Wordmark rendering switches on wordmarkStyle:
+  'hero'   -> existing hardcoded WALL+ı(heart)+am visual (WALLiam preserved)
+  'aiglow' -> AiGlowWordmark (Aily-style prefix-glow + heart)
+  else     -> BrandWordmark (generic plain-text fallback)
+
+SAFETY PROPERTY: the hardcoded WALLiam visual is reachable ONLY via
+the explicit wordmarkStyle === 'hero' branch. The default-fallback
+path renders BrandWordmark, NEVER the WALLiam visual. A future tenant
+with an unexpected wordmark_style (typo, new value, missing) cannot
+accidentally recreate this leak.
+
+All 9 WalliamCTA mount sites updated:
+  Property pages (4):
+    app/property/[id]/PropertyPageClient.tsx:191 (hero branch)
+    app/property/[id]/PropertyPageClient.tsx:249 (non-hero branch - the leak)
+    app/property/[id]/HomePropertyPageClient.tsx:185 (hero)
+    app/property/[id]/HomePropertyPageClient.tsx:228 (non-hero - the leak)
+  Geo pages (5; all {isHero && (...)}-gated today):
+    app/[slug]/MunicipalityPage.tsx:263
+    app/[slug]/CommunityPage.tsx:216
+    app/[slug]/AreaPage.tsx:324
+    app/[slug]/BuildingPage.tsx:598
+    app/comprehensive-site/toronto/[neighbourhood]/page.tsx:349
+
+Threading: 7 server pages (2 property + 5 geo) extract brandName +
+wordmarkStyle from the already-fetched getTenantByHost result. 2 client
+wrappers (PropertyPageClient + HomePropertyPageClient) gained matching
+props and thread them to WalliamCTA. No new DB calls.
+
+ISSUE 2 (Send Message form): NO CHANGE. The green AgentCard's Send
+Message button -> ContactModal -> submitLeadFromForm is already wired
+through the host-fallback-aware server action shipped in
+W-AILY-ESTIMATOR-LEAD-GAP (commit 8081039). Operator close-out on
+production confirms.
+
+CLASS: UI-rendering brand leak (hardcoded JSX), different from the 4
+tenant-resolution fixes shipped earlier this session. Local to one
+component (WalliamCTA) with prop-threading from 7 server pages.
+Sweep found no other production component with hardcoded WALLiam
+wordmark JSX (W-AILY-PROPERTY-BRAND-FORM recon).
+
+Recon trail:
+  recon/aily-property-brand-form.txt
+
+Fix scope (this commit):
+  components/WalliamCTA.tsx                                              (props + switch)
+  app/property/[id]/page.tsx + HomePropertyPage.tsx                      (extract + pass)
+  app/property/[id]/PropertyPageClient.tsx + HomePropertyPageClient.tsx  (accept + thread)
+  app/[slug]/MunicipalityPage.tsx + CommunityPage.tsx + AreaPage.tsx + BuildingPage.tsx
+  app/comprehensive-site/toronto/[neighbourhood]/page.tsx                (extract + pass)
+  (10 code files total)
+
+### Smoke gates
+
+  - Aily condo property page: 'WALL' span absent from CTA card; aiglow
+    wordmark with 'aily' brand present.
+  - Aily home property page: same.
+  - WALLiam property page (DEV_TENANT_DOMAIN=walliam.ca + appropriate
+    DEV_SUBDOMAIN): WALLiam wordmark + heartbeat animation still
+    rendered (wordmarkStyle === 'hero' branch). No regression.
+  - C12: 17/20 baseline; 0 NEW failures.
+
+### Files
+
+  Edited (10 code + 1 tracker):
+    components/WalliamCTA.tsx
+    app/property/[id]/page.tsx
+    app/property/[id]/HomePropertyPage.tsx
+    app/property/[id]/PropertyPageClient.tsx
+    app/property/[id]/HomePropertyPageClient.tsx
+    app/[slug]/MunicipalityPage.tsx
+    app/[slug]/CommunityPage.tsx
+    app/[slug]/AreaPage.tsx
+    app/[slug]/BuildingPage.tsx
+    app/comprehensive-site/toronto/[neighbourhood]/page.tsx
+
+  Backed up (timestamp 20260623_143600).
+  Recon: recon/aily-property-brand-form.txt
+
+### Commit gate
+
+  STOP at commit gate. 10 code files + tracker. No DB write.
+  Smoke green. Diff shown. Awaiting operator approval before
+  stage/commit/push.

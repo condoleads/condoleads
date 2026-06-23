@@ -1,18 +1,28 @@
 'use client'
 
 import { useState } from 'react'
+import BrandWordmark from './navigation/BrandWordmark'
+import AiGlowWordmark from './navigation/AiGlowWordmark'
 
 // WalliamCTA -- drop into any page to show Buyer/Seller Plan CTAs + AI search
 // Fully decoupled: dispatches charlie:open event only, no direct imports
 // C8a/D13 -- assistantName required prop (AI-action copy uses tenant assistant_name)
 // Fully decoupled: dispatches charlie:open event only, no direct imports
 
+// W-AILY-CTA-BRAND-LEAK (2026-06-23) -- wordmark is per-tenant. The hardcoded
+// WALL+i(heart)+am visual is reachable ONLY when wordmarkStyle === 'hero'.
+// 'aiglow' tenants get AiGlowWordmark; any other (including unknown future
+// values) gets BrandWordmark plain text. The default-fallback path NEVER
+// renders the WALLiam visual: a future tenant with an unexpected
+// wordmark_style cannot accidentally recreate this leak.
 interface Props {
   context?: string // optional geo/building name for display
   assistantName: string
+  brandName: string
+  wordmarkStyle: string
 }
 
-export default function WalliamCTA({ context, assistantName }: Props) {
+export default function WalliamCTA({ context, assistantName, brandName, wordmarkStyle }: Props) {
   const [query, setQuery] = useState('')
 
   const openCharlie = (form?: 'buyer' | 'seller', message?: string) => {
@@ -37,21 +47,28 @@ export default function WalliamCTA({ context, assistantName }: Props) {
       alignItems: 'center',
       gap: 16,
     }}>
-      {/* WALLiam wordmark */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 0 }}>
-        <span style={{ fontSize: 20, fontWeight: 900, color: '#fff', letterSpacing: '-0.02em', fontFamily: 'system-ui,sans-serif' }}>WALL</span>
-        <span style={{ position: 'relative', display: 'inline-block' }}>
-          <span style={{
-            position: 'absolute', top: '-35%', left: '50%',
-            transform: 'translateX(-50%)',
-            fontSize: 7, color: '#f59e0b',
-            animation: 'walliam-cta-heartbeat 3s ease-in-out infinite',
-            display: 'block', lineHeight: 1,
-          }}>♥</span>
-          <span style={{ fontSize: 15, fontWeight: 300, color: 'rgba(255,255,255,0.8)', fontFamily: 'system-ui,sans-serif' }}>ı</span>
-        </span>
-        <span style={{ fontSize: 15, fontWeight: 300, color: 'rgba(255,255,255,0.8)', fontFamily: 'system-ui,sans-serif' }}>am</span>
-      </div>
+      {/* Wordmark - per-tenant. 'hero' = WALLiam visual; 'aiglow' = AiGlowWordmark;
+          else = BrandWordmark plain text. Never falls back to WALLiam visual. */}
+      {wordmarkStyle === 'hero' ? (
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 0 }}>
+          <span style={{ fontSize: 20, fontWeight: 900, color: '#fff', letterSpacing: '-0.02em', fontFamily: 'system-ui,sans-serif' }}>WALL</span>
+          <span style={{ position: 'relative', display: 'inline-block' }}>
+            <span style={{
+              position: 'absolute', top: '-35%', left: '50%',
+              transform: 'translateX(-50%)',
+              fontSize: 7, color: '#f59e0b',
+              animation: 'walliam-cta-heartbeat 3s ease-in-out infinite',
+              display: 'block', lineHeight: 1,
+            }}>♥</span>
+            <span style={{ fontSize: 15, fontWeight: 300, color: 'rgba(255,255,255,0.8)', fontFamily: 'system-ui,sans-serif' }}>ı</span>
+          </span>
+          <span style={{ fontSize: 15, fontWeight: 300, color: 'rgba(255,255,255,0.8)', fontFamily: 'system-ui,sans-serif' }}>am</span>
+        </div>
+      ) : wordmarkStyle === 'aiglow' ? (
+        <AiGlowWordmark brand={brandName} size="sm" />
+      ) : (
+        <BrandWordmark brand={brandName} size="sm" />
+      )}
 
       {/* Tagline */}
       <div style={{ textAlign: 'center' }}>

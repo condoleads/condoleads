@@ -277,6 +277,10 @@ export default async function NeighbourhoodPage({ params }: Props) {
   const _c8a_supabase = createTenantClient()
   const _c8a_tenant = await getTenantByHost(_c8a_supabase, _c8a_host)
   const assistantName = _c8a_tenant?.name || 'Charlie'
+  // W-AILY-CTA-BRAND-LEAK (2026-06-23): brandName + wordmarkStyle for per-tenant
+  // WalliamCTA wordmark. Mount below is {isHero && (...)}-gated today.
+  const brandName     = _c8a_tenant?.brandName     || 'Brand'
+  const wordmarkStyle = _c8a_tenant?.wordmarkStyle || 'standard'
 
   return (
     <div className="min-h-screen bg-white">
@@ -346,7 +350,7 @@ export default async function NeighbourhoodPage({ params }: Props) {
 
       {isHero && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          <WalliamCTA context={neighbourhood.name} assistantName={assistantName} />
+          <WalliamCTA context={neighbourhood.name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
           <WalliamAgentCard neighbourhood_id={neighbourhood.id} tenant_id={tenantId!} />
           <CharliePageContext
             municipality_id={municipalityIds[0] || null}

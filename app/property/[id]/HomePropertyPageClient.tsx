@@ -48,6 +48,8 @@ interface HomePropertyPageClientProps {
   // for the lead-form's agentId on the hero (walliam) branch. Sidesteps the
   // hierarchy-load-bearing isHero?null:agent nulling above without removing it.
   walliamAgentId?: string | null
+  brandName: string
+  wordmarkStyle: string
 }
 
 export default function HomePropertyPageClient({
@@ -68,6 +70,8 @@ export default function HomePropertyPageClient({
   walliamTenantId = null,
   walliamAgentId = null,
   assistantName,
+  brandName,
+  wordmarkStyle,
 }: HomePropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
@@ -182,7 +186,7 @@ export default function HomePropertyPageClient({
                     area_id={area?.id || null}
                     tenant_id={walliamTenantId}
                   />
-                  <WalliamCTA context={listing.unparsed_address} assistantName={assistantName} />
+                  <WalliamCTA context={listing.unparsed_address} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
                   <CharliePageContext listing_id={listing.id} community_id={community?.id || null} municipality_id={municipality?.id || null} area_id={area?.id || null} />
                   <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
                     <button onClick={() => setShowBooking(b => !b)} style={{ width: '100%', padding: '16px 20px', background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
@@ -225,7 +229,7 @@ export default function HomePropertyPageClient({
                     buildingAddress={listing.unparsed_address || ''}
                     unitNumber=""
                   />
-                  <WalliamCTA context={listing.unparsed_address} assistantName={assistantName} />
+                  <WalliamCTA context={listing.unparsed_address} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId="" buildingName={shortAddress} buildingAddress={listing.unparsed_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber="">
                     <HomePropertyEstimateCTA
                       listing={listing}

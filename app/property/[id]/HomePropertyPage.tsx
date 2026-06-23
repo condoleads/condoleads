@@ -277,6 +277,10 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
   const _c8a_supabase = createTenantClient()
   const _c8a_tenant = await getTenantByHost(_c8a_supabase, _c8a_host)
   const assistantName = _c8a_tenant?.name || 'Charlie'
+  // W-AILY-CTA-BRAND-LEAK (2026-06-23): brandName + wordmarkStyle for the
+  // per-tenant WalliamCTA wordmark. Threaded to HomePropertyPageClient.
+  const brandName     = _c8a_tenant?.brandName     || 'Brand'
+  const wordmarkStyle = _c8a_tenant?.wordmarkStyle || 'standard'
 
   // W-FUNNEL §9.2 Step 5: chatHasApiKey block from Step 2 removed -- Step 3's
   // gate (!isHero && !tenantId) means ChatWidgetWrapper renders only on
@@ -310,6 +314,8 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
       <main className="min-h-screen bg-gray-50">
         <HomePropertyPageClient
     assistantName={assistantName}
+          brandName={brandName}
+          wordmarkStyle={wordmarkStyle}
           listing={listing}
           largePhotos={largePhotos || []}
           rooms={rooms || []}

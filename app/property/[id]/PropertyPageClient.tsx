@@ -53,6 +53,8 @@ interface PropertyPageClientProps {
   // for the lead-form's agentId on the hero (walliam) branch. Sidesteps the
   // hierarchy-load-bearing isHero?null:agent nulling above without removing it.
   walliamAgentId?: string | null
+  brandName: string
+  wordmarkStyle: string
 }
 
 export default function PropertyPageClient({
@@ -75,6 +77,8 @@ export default function PropertyPageClient({
   walliamTenantId = null,
   walliamAgentId = null,
   assistantName,
+  brandName,
+  wordmarkStyle,
 }: PropertyPageClientProps) {
   const { user } = useAuth()
   const shouldGate = isClosed && !user
@@ -188,7 +192,7 @@ export default function PropertyPageClient({
                     tenant_id={walliamTenantId}
                     hideCTA={true}
                   />
-                  <WalliamCTA context={building?.building_name} assistantName={assistantName} />
+                  <WalliamCTA context={building?.building_name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
                   <CharliePageContext listing_id={listing.id} building_id={listing.building_id} community_id={listing.community_id || null} municipality_id={listing.municipality_id || null} />
                   <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
                     <button
@@ -246,7 +250,7 @@ export default function PropertyPageClient({
                     buildingAddress={building?.canonical_address || ''}
                     unitNumber={listing.unit_number || ''}
                   />
-                  <WalliamCTA context={building?.building_name} assistantName={assistantName} />
+                  <WalliamCTA context={building?.building_name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
                   <GatedContent shouldGate={shouldGateMLSData} sectionName="Price Estimate" buildingId={listing.building_id} buildingName={building?.building_name || ''} buildingAddress={building?.canonical_address || ''} listingId={listing.id} listingAddress={listing.unparsed_address || ''} unitNumber={listing.unit_number || ''}>
                     <PropertyEstimateCTA
                       listing={{ ...listing, buildings: building }}
