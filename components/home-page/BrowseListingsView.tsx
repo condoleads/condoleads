@@ -1,8 +1,6 @@
 'use client';
 import { useState } from 'react';
 import SearchBar from '@/components/navigation/SearchBar';
-import BrowseMegaMenuContent from '@/components/navigation/BrowseMegaMenuContent';
-import type { NeighbourhoodMenuItem } from '@/components/navigation/SiteHeader';
 
 const BROWSE_EXAMPLES = [
   'One Bloor East',
@@ -16,9 +14,6 @@ const BROWSE_EXAMPLES = [
   'Whitby',
 ];
 
-interface BrowseListingsViewProps {
-  neighbourhoods: NeighbourhoodMenuItem[];
-}
 
 // Popular GTA quick-chip targets. Some entries are Toronto sub-district
 // neighbourhoods (North York, Etobicoke) -- stored in the neighbourhoods
@@ -26,7 +21,7 @@ interface BrowseListingsViewProps {
 // also redirects bare neighbourhood slugs to /toronto/<slug>, but linking the
 // chips directly to the canonical path avoids the redirect hop.
 const QUICK_CHIPS = [
-  { name: 'Downtown Toronto', href: '/toronto' },
+  { name: 'Downtown Toronto', href: '/toronto/downtown' },
   { name: 'North York', href: '/toronto/north-york' },
   { name: 'Mississauga', href: '/mississauga' },
   { name: 'Whitby', href: '/whitby' },
@@ -35,7 +30,12 @@ const QUICK_CHIPS = [
   { name: 'Markham', href: '/markham' },
 ];
 
-export default function BrowseListingsView({ neighbourhoods }: BrowseListingsViewProps) {
+// W-AILY-HOMEPAGE-UI (2026-06-23): mega-menu lifted to the parent
+// (HomePageComprehensiveClientV2) so VIPAIAccess can render BETWEEN the
+// chips and the mega-menu. This component now renders only the search
+// bar + caption + chips. The neighbourhood mega-menu is mounted by the
+// parent in the same browse-mode conditional.
+export default function BrowseListingsView() {
   const [searchFocused, setSearchFocused] = useState(false);
   return (
     <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px' }}>
@@ -114,13 +114,6 @@ export default function BrowseListingsView({ neighbourhoods }: BrowseListingsVie
           </a>
         ))}
       </div>
-
-      {/* Full Browse mega-menu inline */}
-      {neighbourhoods.length > 0 && (
-        <div style={{ marginBottom: 40 }}>
-          <BrowseMegaMenuContent neighbourhoods={neighbourhoods} openInNewTab />
-        </div>
-      )}
     </div>
   );
 }

@@ -9684,3 +9684,83 @@ resolvedAgent (kills the WALLiam-specific names).
   workstreams (W-TENANT-CONTACT-SURFACE, W-RESOLVE-AGENT-BRITTLE-
   CONDITIONAL). The structural CLASS is closed for the surfaces
   scoped in the inventory.
+
+
+## W-AILY-HOMEPAGE-UI — resolution  (2026-06-23)
+
+Two v3 homepage UI items, one commit (both touch shared homepage
+components):
+
+CHANGE 1 — Downtown chip href fix:
+  BrowseListingsView.tsx:29
+  { name: 'Downtown Toronto', href: '/toronto' }
+  -> { name: 'Downtown Toronto', href: '/toronto/downtown' }
+
+  /toronto (bare) had no matching page in /comprehensive-site/* and
+  no top-level route -> 404 for both tenants. /toronto/downtown
+  hits app/comprehensive-site/toronto/[neighbourhood]/page.tsx
+  (neighbourhoods.slug='downtown', is_active=true), which was fixed
+  by W-AILY-ESTIMATOR-GAP. Works for Aily + WALLiam.
+
+CHANGE 2 — VIP above the neighbourhood mega-menu:
+  Mega-menu lifted out of BrowseListingsView into
+  HomePageComprehensiveClientV2, rendered below VIPAIAccess in a
+  new browse-mode-gated block. Final order in browse mode:
+    plan CTAs (v3 only) -> search + chips -> VIP -> mega-menu
+
+  BrowseListingsView signature simplified (no longer takes
+  neighbourhoods prop; the mega-menu lived inside it before).
+  Mega-menu rendering still gated on browse-mode + neighbourhoods
+  available - identical render conditions to pre-fix. AI-mode
+  homepage byte-identical (mega-menu never rendered there).
+
+CLASS-INSTANCE-#5 FALSE-ALARM CORRECTION:
+  Prior recon (W-AILY-HOMEPAGE-UI) suggested Aily might not reach
+  /comprehensive-site/* routes via the SYSTEM FORK because the
+  page-level getAgentFromHost (lib/utils/agent-detection.ts) returns
+  null for aily.ca. That recon was WRONG: middleware uses a DIFFERENT
+  function (middleware.ts:resolveAgentFromHost) that ALSO checks the
+  tenants table at L203-213 and returns a fake comprehensive agent
+  for any custom-domain host matching tenants.domain. SYSTEM FORK
+  ALREADY fires for Aily in production. No middleware change needed.
+  Documented in recon/aily-routing-fork.txt.
+
+Recon trail:
+  recon/aily-homepage-ui.txt (initial diagnosis)
+  recon/aily-routing-fork.txt (class-#5 false-alarm correction)
+
+Fix scope (this commit):
+  components/home-page/BrowseListingsView.tsx        (chip + lift)
+  components/HomePageComprehensiveClientV2.tsx       (import + drop prop + lifted mega-menu)
+
+### Smoke gates
+
+  - Aily v3 homepage browse mode: order is search -> chips -> VIP ->
+    mega-menu. Downtown chip resolves to /toronto/downtown ->
+    /comprehensive-site/toronto/downtown (renders Aily-branded
+    neighbourhood page, NOT 404).
+  - Other chips (North York, Mississauga, Whitby, Etobicoke, Oakville,
+    Markham): still resolve.
+  - WALLiam AI-default home: unchanged (mega-menu still browse-mode
+    only).
+  - WALLiam browse-toggle: gets the new order (consistent with Aily).
+  - Mega-menu link clicks still navigate to /toronto/<neighbourhood>.
+  - C12: 17/20 baseline; 0 NEW failures.
+
+### Files
+
+  Edited (2):
+    components/home-page/BrowseListingsView.tsx
+    components/HomePageComprehensiveClientV2.tsx
+
+  Backed up (timestamp 20260623_131745):
+    each of the 2 edited files
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260623_131745
+
+  Recon: recon/aily-homepage-ui.txt, recon/aily-routing-fork.txt
+
+### Commit gate
+
+  STOP at commit gate. 2 code files + tracker. No DB write.
+  Smoke green. Diff shown. Awaiting operator approval before
+  stage/commit/push.

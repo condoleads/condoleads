@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { MarketStats, AreaCard } from '@/lib/comprehensive/types';
 import type { NeighbourhoodMenuItem } from '@/components/navigation/SiteHeader';
 import BrowseListingsView from './home-page/BrowseListingsView';
+import BrowseMegaMenuContent from './navigation/BrowseMegaMenuContent';
 
 interface Agent {
   id: string;
@@ -695,13 +696,25 @@ function WalliamHero({ wordmarkStyle, brandName, topAreas, neighbourhoods, acces
             </button>
           </div>
         )}
-        <BrowseListingsView neighbourhoods={neighbourhoods} />
+        <BrowseListingsView />
       </>)}
 
       {/* VIP AI Access Block */}
       <div style={{ width: '100%', maxWidth: 600, margin: '0 auto 32px' }}>
         <VIPAIAccess variant="full" registrationSource="homepage_hero" />
       </div>
+
+      {/* W-AILY-HOMEPAGE-UI (2026-06-23): mega-menu lifted from
+          BrowseListingsView so VIP renders BETWEEN chips and the
+          neighbourhood grid. Browse-mode only (mega-menu was already
+          browse-mode-only when nested inside BrowseListingsView).
+          Applies to both v2 (when browse toggle active) and v3 (default
+          browse landing) - consistent ordering across tenants. */}
+      {homeMode === 'browse' && neighbourhoods.length > 0 && (
+        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto 40px', padding: '0 24px' }}>
+          <BrowseMegaMenuContent neighbourhoods={neighbourhoods} openInNewTab />
+        </div>
+      )}
 
       {/* Scroll hint */}
       <div style={{
