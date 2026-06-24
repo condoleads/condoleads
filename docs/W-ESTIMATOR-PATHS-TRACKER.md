@@ -10319,3 +10319,153 @@ Charlie's client tree was previously brand-blind. Threading
 ### Commit gate
 
   Code + tracker shipped together (live-tracker rule). HOLD push.
+
+---
+
+## W-AILY-PROPERTY-TITLE — resolution  (2026-06-24)
+
+MLS schema-drift fix (2 drifted columns, 2 broken queries).
+
+Root cause: a partial MLS column-rename migration the codebase only half-absorbed.
+mls_listings.bathrooms_total -> bathrooms_total_integer; mls_number -> listing_key.
+Two queries used explicit column lists naming the dead columns -> PostgREST 42703
+-> null:
+
+  (1) app/property/[id]/page.tsx generateMetadata (delegated from
+      app/comprehensive-site/[slug]/page.tsx:34) -> "Property Not Found" browser-tab
+      title on EVERY property URL, BOTH tenants (page BODY used select('*') so it
+      rendered fine — title path diverged). USER-VISIBLE.
+  (2) lib/ai/context-builder.ts getListingMarketContext -> silently returned null
+      at the if (!listing) early-return, degrading System 1 chat AI listing market
+      context. SILENT.
+
+Fix: rename dead columns to verified real names (verified by live data + exhaustive
+column inspection + codebase usage — NOT Postgres's roll_number fuzzy hint).
+Contract KEYS kept stable:
+  - ChatWidgetWrapper prop key 'bathrooms_total' (type at
+    components/chat/ChatWidgetWrapper.tsx:30, consumer at L117)
+  - MarketContext key 'mlsNumber' at lib/ai/context-builder.ts:53 (type),
+    L514 (return), L595 (AI prompt consumer)
+Only VALUE sources renamed. HomePropertyPage.tsx:348 already correct (prior partial
+fix sourced from bathrooms_total_integer), untouched.
+
+### Phase trail
+
+  Phase 1 (recon): grep bathrooms_total\b -> 8 hits across 5 files. Per-hit
+                   dead/live classification: 2 TOXIC SELECTs (page.tsx:53,
+                   context-builder.ts:482), 2 LIVE downstream readers
+                   (page.tsx:70 description, context-builder.ts:519 AI ctx),
+                   1 LIVE prop value (page.tsx:450), 1 already-correct
+                   (HomePropertyPage:348), 2 contract names (ChatWidgetWrapper:30,
+                   :117). Live re-probe confirmed bathrooms_total_integer is the
+                   replacement.
+
+  Phase 2 (apply): 5 line-level edits across 2 files. tsc 0. Live re-probe of
+                   page.tsx:53 SELECT returned a row. context-builder.ts:482
+                   SELECT replay surfaced a SECOND drift (mls_number 42703) —
+                   reported, not auto-renamed (Postgres hint suggested roll_number,
+                   semantically wrong: roll_number is the tax-roll identifier).
+
+  Phase 2b-1 (deeper recon): per-column probe of the full 9-column SELECT.
+                   ONLY mls_number was dead; the other 8 columns OK. Verified
+                   replacement = listing_key by: (a) data — live row has
+                   listing_key='C12935452' matching the URL slug's MLS number;
+                   (b) substring-grep over all 494 mls_listings columns yielded
+                   no other MLS-identifier candidate; (c) every other mls-by-number
+                   lookup in the codebase already uses .eq('listing_key', ...).
+
+  Phase 2b-2 (apply): 2 more line-level edits in context-builder.ts (SELECT
+                   rename + return-object VALUE source; KEY mlsNumber kept).
+                   tsc 0. Full 9-column SELECT live re-probe returned a row.
+                   getListingMarketContext return shape replayed -> non-null
+                   context with mlsNumber='C12935452' populated.
+
+### Files (2 code + 1 tracker)
+
+  app/property/[id]/page.tsx                            (3 hunks — bathrooms_total rename)
+    L53  SELECT list: bathrooms_total -> bathrooms_total_integer
+    L70  baths compute: listing.bathrooms_total -> listing.bathrooms_total_integer
+    L450 ChatWidgetWrapper prop VALUE source (prop key kept):
+         listing.bathrooms_total -> listing.bathrooms_total_integer
+
+  lib/ai/context-builder.ts                             (4 hunks total)
+    L476 SELECT list: mls_number -> listing_key                       (Phase 2b-2)
+    L482 SELECT list: bathrooms_total -> bathrooms_total_integer      (Phase 2)
+    L514 return KEY 'mlsNumber' kept: source listing.mls_number -> listing.listing_key  (Phase 2b-2)
+    L519 expose KEY 'bathrooms': source listing.bathrooms_total -> listing.bathrooms_total_integer  (Phase 2)
+
+  docs/W-ESTIMATOR-PATHS-TRACKER.md                     (this entry)
+
+### Not touched
+
+  app/property/[id]/HomePropertyPage.tsx:348            already correct
+                                                         (sources from bathrooms_total_integer)
+  components/chat/ChatWidgetWrapper.tsx:30,117          contract type + consumer
+                                                         (prop key contract, no rename)
+  app/api/chat/route.ts                                  System 1 caller of
+                                                         getListingMarketContext;
+                                                         column-name fix is shared-lib only
+
+### Live verification
+
+  page.tsx:53 SELECT post-rename (service-role, eq id):
+    error: none
+    row: { id=69306b68-...,  bathrooms_total_integer=null (Commercial listing,
+                              no bath count — expected; the LOOKUP succeeds, which
+                              is the point) }
+
+  context-builder.ts full 9-column SELECT post-rename (service-role, eq id):
+    error: none
+    row: { listing_key='C12935452', list_price=12800000, close_price=null,
+           calculated_sqft=null, living_area_range=null, bedrooms_total=null,
+           bathrooms_total_integer=null, association_fee=null, tax_annual_amount=57200 }
+
+  getListingMarketContext return-shape replay:
+    non-null context returned. mlsNumber='C12935452' populated. price=12800000
+    (close_price || list_price). propertyTax=57200 (parsed from tax_annual_amount).
+
+### Gates
+
+  tsc --noEmit: exit 0.
+  grep \bmls_number\b in production code (app|components|lib|hooks): ZERO hits.
+  grep \bbathrooms_total\b in production code: 4 hits, ALL intentional contract-key
+    retentions (no toxic SELECT, no value-read):
+      ChatWidgetWrapper.tsx:30   (type def — contract NAME)
+      ChatWidgetWrapper.tsx:117  (prop consumer — contract NAME)
+      page.tsx:450               (prop KEY; VALUE = listing.bathrooms_total_integer)
+      HomePropertyPage.tsx:348   (prop KEY; VALUE = listing.bathrooms_total_integer)
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — exactly the 17/20 baseline
+    (c8b-2, c11, L2.1 — all pre-existing, C8c-tracked). 0 NEW.
+
+### System 1 isolation
+
+  Edit set: app/property/[id]/page.tsx (System 2 page route) +
+  lib/ai/context-builder.ts (shared lib helper). NO file under app/api/chat/*
+  touched. context-builder.ts change is column-name-only, no route logic
+  modified. System 1 isolation preserved.
+
+### KNOWN-LIKELY CLASS (follow-up sweep, not this commit)
+
+  The MLS table had >=1 column-rename migration only partially absorbed by the
+  codebase. The two drifts hit this round (bathrooms_total, mls_number) are
+  unlikely to be the only ones — other mls_listings SELECTs with explicit column
+  lists may carry the same class of drift, unhit because those code paths haven't
+  been triggered or because select('*') is masking the breakage downstream
+  (the same pattern that masked page.tsx's body render here).
+
+  Scoped workstream (W-MLS-SCHEMA-DRIFT-AUDIT, deferred):
+   - grep every .from('mls_listings').select(... explicit column list ...)
+   - per-column probe each list against the live schema
+   - fix all 42703s in one bundled commit
+   - audit consumers for contract-key stability
+
+### Backups (timestamps)
+
+  app/property/[id]/page.tsx.backup_20260624_075233      (Phase 2 + 2b-2 source)
+  lib/ai/context-builder.ts.backup_20260624_075233       (Phase 2 + 2b-2 source)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_080259  (pre-this-entry)
+
+### Commit gate
+
+  Code + tracker shipped together (live-tracker rule). HOLD push.
+

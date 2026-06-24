@@ -473,13 +473,13 @@ export async function getListingMarketContext(listingId: string, buildingContext
   const { data: listing } = await supabase
     .from('mls_listings')
     .select(`
-      mls_number,
+      listing_key,
       list_price,
       close_price,
       calculated_sqft,
       living_area_range,
       bedrooms_total,
-      bathrooms_total,
+      bathrooms_total_integer,
       association_fee,
       tax_annual_amount
     `)
@@ -511,12 +511,12 @@ export async function getListingMarketContext(listingId: string, buildingContext
   }
 
   return {
-    mlsNumber: listing.mls_number,
+    mlsNumber: listing.listing_key,
     price,
     sqft,
     psf,
     bedrooms: listing.bedrooms_total || 0,
-    bathrooms: listing.bathrooms_total || 0,
+    bathrooms: listing.bathrooms_total_integer || 0,
     maintenance,
     propertyTax,
     estimatedRent,

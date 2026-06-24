@@ -50,7 +50,7 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
   // Fetch listing data
   const { data: listing } = await serverSupabase
     .from('mls_listings')
-    .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total, transaction_type, building_id, unit_number')
+    .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total_integer, transaction_type, building_id, unit_number')
     .eq('id', params.id)
     .single()
   
@@ -67,7 +67,7 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
   
   const price = listing.list_price ? `$${listing.list_price.toLocaleString()}` : ''
   const beds = listing.bedrooms_total ? `${listing.bedrooms_total} Bed` : ''
-  const baths = listing.bathrooms_total ? `${listing.bathrooms_total} Bath` : ''
+  const baths = listing.bathrooms_total_integer ? `${listing.bathrooms_total_integer} Bath` : ''
   const type = listing.transaction_type === 'For Sale' ? 'For Sale' : 'For Rent'
   const unit = listing.unit_number ? `Unit ${listing.unit_number}` : ''
   
@@ -447,7 +447,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         canonical_address: building.canonical_address,
         community_id: building.community_id
       } : null}
-      listing={{ id: listing.id, unit_number: listing.unit_number, list_price: listing.list_price, bedrooms_total: listing.bedrooms_total, bathrooms_total: listing.bathrooms_total }}
+      listing={{ id: listing.id, unit_number: listing.unit_number, list_price: listing.list_price, bedrooms_total: listing.bedrooms_total, bathrooms_total: listing.bathrooms_total_integer }}
     />
     )}
     </>
