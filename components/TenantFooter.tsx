@@ -5,6 +5,8 @@
 
 import { getTenant } from '@/lib/tenant/getTenant'
 import CharlieFooterLink from './CharlieFooterLink'
+import AiGlowWordmark from './navigation/AiGlowWordmark'
+import BrandWordmark from './navigation/BrandWordmark'
 
 const currentYear = new Date().getFullYear()
 
@@ -46,9 +48,17 @@ export default async function TenantFooter() {
         }}>
           {/* Brand + contact column */}
           <div>
+            {/* W-AILY-FOOTER-LOGO (2026-06-24): per-tenant wordmark — aiglow tenants get the
+                cyan "ai" + heart from AiGlowWordmark; hero tenants keep the byte-identical
+                22px plain-white text; else falls back to BrandWordmark plain text. logo_url
+                branch (when set) takes precedence and is preserved byte-identical. */}
             {tenant.logo_url ? (
               <img src={tenant.logo_url} alt={brand} style={{ height: 32, marginBottom: 12 }} />
-            ) : (
+            ) : tenant.wordmark_style === 'aiglow' ? (
+              <div style={{ marginBottom: 12 }}>
+                <AiGlowWordmark brand={brand} size="md" />
+              </div>
+            ) : tenant.wordmark_style === 'hero' ? (
               <div style={{
                 fontSize: 22,
                 fontWeight: 900,
@@ -57,6 +67,10 @@ export default async function TenantFooter() {
                 letterSpacing: '-0.02em',
               }}>
                 {brand}
+              </div>
+            ) : (
+              <div style={{ marginBottom: 12 }}>
+                <BrandWordmark brand={brand} size="md" />
               </div>
             )}
             {tenant.footer_tagline && (

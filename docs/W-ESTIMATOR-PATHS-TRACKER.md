@@ -10958,3 +10958,120 @@ Signature:
 
   Code + tracker shipped together (live-tracker rule). HOLD push.
 
+---
+
+## W-AILY-FOOTER-LOGO — resolution  (2026-06-24)
+
+Footer brand now uses the wordmark component.
+
+TenantFooter (server component) rendered the brand as plain 22px white text —
+so the cyan aiglow "ai" + heart shown in nav/CTA was absent from the footer.
+Replaced the brand block with the same 3-way wordmark switch used by
+WalliamCTA / SiteHeaderClient:
+
+  - logo_url img             : preserved, takes precedence (byte-identical)
+  - wordmark_style='aiglow'  : <AiGlowWordmark brand={brand} size="md" />
+                                cyan #06b6d4 + heart inherit from defaults
+                                (post-W-AILY-LOGO-CYAN)
+  - wordmark_style='hero'    : byte-identical 22px white text
+                                (WALLiam UNCHANGED — same JSX block, same
+                                 fontSize/fontWeight/color/marginBottom/
+                                 letterSpacing values, same character order)
+  - else                     : <BrandWordmark brand={brand} size="md" />
+                                (plain text fallback for any future tenant
+                                 with an unrecognized wordmark_style)
+
+Server-renders-client island: TenantFooter is `export default async function`,
+AiGlowWordmark + BrandWordmark are `'use client'`. Next.js App Router
+supports server components rendering client components as hydration islands;
+the same pattern already used elsewhere (server pages mounting WalliamCTA).
+
+### Verified rendered
+
+  - Aily property page (Host: aily.ca, /335-college-street-unit-c12935452):
+      4 rendered <span class="aiglow-prefix-06b6d4"> DOM elements
+        = 2 nav-bar + 1 CTA-box + 1 NEW footer
+      'Get My Buyer Plan' (CharlieFooterLink) present -> footer is rendering
+      'BROKERAGE' header present -> footer section visible
+  - Aily homepage (Host: aily.ca, /):
+      4 rendered aiglow spans (hero + 2 nav + footer) — was 3 pre-edit
+  - WALLiam property page (Host: walliam.ca):
+      footer brand renders
+        font-size:22px;font-weight:900;color:#fff;
+        margin-bottom:12px;letter-spacing:-0.02em
+      — 1 occurrence, byte-identical to pre-edit hero treatment.
+      Zero #06b6d4 (cyan) anywhere on page. Zero aiglow-prefix instances.
+
+### WALLiam zero-diff statement
+
+  The 'hero' branch in the new code renders character-for-character the
+  identical JSX block that was the old else-branch (same 5 style keys in
+  same order with same values; same {brand} child). WALLiam
+  (wordmark_style='hero') hits this branch and produces the exact pre-edit
+  footer brand output. Live smoke confirms.
+
+### Footer DB-driven fields — editable today
+
+  /admin-homes/settings -> Branding tab (SettingsClient.tsx:266-276):
+  primary_color, secondary_color, logo_url, footer_tagline, brokerage_name,
+  brokerage_address, brokerage_phone, broker_of_record, license_number all
+  editable. General tab (L246-262) edits admin_email. All TenantFooter-
+  consumed fields covered. No settings gap. Operator reaches it via the
+  host-driven scope (https://www.aily.ca/admin-homes/settings) or via the
+  /platform tenant override.
+
+### Files (1 code + 1 tracker)
+
+  components/TenantFooter.tsx                     (brand block: 3-way switch + 2 imports)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md               (this entry)
+
+### Gates
+
+  tsc --noEmit: exit 0.
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — baseline (c8b-2, c11,
+    L2.1, all pre-existing C8c-tracked). 0 NEW.
+
+### Out of scope (per spec, NOT changed this round)
+
+  - Column alignment asymmetry (brand column starts with the 20-22px
+    wordmark while columns 2-4 start with 11px small-caps headers ->
+    ~10-15px baseline mismatch). Operator said "everything else is
+    working" — logo swap only this round. Defer alignment to a later
+    polish round.
+  - Footer wordmark size (currently `md`=20px; the pre-edit plain text
+    was 22px). Operator can request a size bump separately.
+
+### Queued (focused future session) — W-AILY-RETIRE-SEED-ADMIN
+
+  Retire Aily's seed tenant_admin (0b3fcbf7 "Admin Tenant (Aily)") now
+  that Ovais (319ad339) exists. The dashboard correctly BLOCKS the delete
+  today — Postgres FK enforcement (parent_id RESTRICT on the 2 child
+  agents, leads_agent_id_fkey on 8 leads, tenants_default_agent_id_fkey
+  on Aily's default_agent_id). NOT a bug, a guardrail.
+
+  Required migration (own session):
+    1. UPDATE tenants.default_agent_id = 319ad339 (Ovais) WHERE id=Aily.
+    2. UPDATE agents.parent_id for the 2 children (Manager + Ovais) to
+       re-parent them to Ovais (or whichever the new root is).
+    3. Reassign or close the 8 leads currently pointing at 0b3fcbf7
+       (UPDATE leads SET agent_id=<...> or status='closed').
+    4. Audit any secondary lead FKs (manager_id, tenant_admin_id,
+       override_agent_id, claimed_by_agent_id, area_manager_id) that
+       reference 0b3fcbf7 — same reassignment.
+    5. ALSO revisit the tenant geo/building/listing assignment process
+       (agent_property_access, agent_geo_buildings, agent_building_
+       assignments — all are CASCADE so they auto-clean on delete, but
+       any inflight assignment intent must be re-pinned to Ovais first).
+    6. THEN: soft-delete (is_active=false) OR hard delete (now FK-safe).
+
+  Bigger work. Not blocking. Separate workstream.
+
+### Backups (timestamps)
+
+  components/TenantFooter.tsx.backup_20260624_115717   (7279 bytes, pre-edit)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_120904   (pre-this-entry)
+
+### Commit gate
+
+  Code + tracker shipped together (live-tracker rule). HOLD push.
+
