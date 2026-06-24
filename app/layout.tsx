@@ -6,7 +6,7 @@ import ConditionalLayout from "@/components/ConditionalLayout"
 import TenantHeader from "@/components/TenantHeader";
 import { AuthProvider } from "@/components/auth/AuthContext";
 import { CreditSessionProvider } from "@/components/credits/CreditSessionContext";
-import { getCurrentTenantId } from "@/lib/utils/tenant-resolver";
+import { getCurrentTenantId, getCurrentTenantWordmarkStyle } from "@/lib/utils/tenant-resolver";
 import { getTenantByHost } from "@/lib/utils/tenant-brand";
 import { createClient } from "@/lib/supabase/server";
 
@@ -60,13 +60,14 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const tenantId = await getCurrentTenantId();
+  const wordmarkStyle = await getCurrentTenantWordmarkStyle();
 
   return (
     <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
       </head>
-      <body className={inter.className} data-tenant-id={tenantId || ""}>
+      <body className={inter.className} data-tenant-id={tenantId || ""} data-tenant-wordmark-style={wordmarkStyle || ""}>
         <AuthProvider>
           <CreditSessionProvider>
             <TenantHeader />

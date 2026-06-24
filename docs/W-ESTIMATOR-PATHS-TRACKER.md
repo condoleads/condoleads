@@ -10169,3 +10169,153 @@ Backups (timestamps):
 ### Commit gate
 
   Code + tracker shipped together (live-tracker rule). HOLD push.
+
+---
+
+## W-AILY-COSMETIC-A1 (P1 / R1) — resolution  (2026-06-24)
+
+Operator-flagged cosmetic: Aily's Charlie plan-document panel rendered the
+same hardcoded near-black slate gradient as WALLiam (`linear-gradient(135deg,
+#0f172a 0%, #1e293b 100%)` at app/charlie/components/PlanDocument.tsx:186
+pre-fix). No tenant differentiation; operator wanted the panel to read
+warm/branded for Aily, not slate.
+
+Phase-1 read-only probes against production tenants surfaced a real-data
+finding that changed the spec: BOTH tenants store the SAME primary_color
+value (`#1d4ed8`, blue) — so tinting by primary_color would have given
+WALLiam the same bg change as Aily and defeated the differentiation. The
+spec was retargeted to gate on `tenants.wordmark_style` instead (Aily =
+'aiglow', WALLiam = 'hero', drop-in switch already used by AiGlowWordmark
+selection). The accent value lives as a precomputed static literal in
+PlanDocument (15%/20% sRGB blend of #ec4899 — the heart color
+AiGlowWordmark.tsx:90 already uses by default — into the slate stops).
+
+Pre-commit risk check on color-mix(): no prior use anywhere in the
+codebase, no project browserslist target (Next.js 14.2.5 default
+includes browsers older than color-mix support — Chrome <111, Safari
+<16.2, Firefox <113). An unsupported browser would invalidate the
+entire `background` declaration and fall the panel back to transparent
+(white text on whatever sits behind it). color-mix() deliberately
+avoided; precomputed static hexes ship instead.
+
+### Threading
+
+Charlie's client tree was previously brand-blind. Threading
+`wordmark_style` end-to-end:
+
+  1. lib/utils/tenant-resolver.ts: NEW getCurrentTenantWordmarkStyle()
+     sibling to getCurrentTenantId. SAME two-branch host resolution
+     (DEV_TENANT_DOMAIN on localhost|vercel.app; cleanHost = host.
+     replace(/^www\./,'') otherwise; service-role client;
+     .eq('domain', X).eq('is_active', true).single()). Explicit
+     allow-list `select('id, wordmark_style')` — no SELECT * on the
+     tenants table (credential leak guard; tenants holds
+     anthropic_api_key + resend_api_key).
+     getCurrentTenantId BYTE-IDENTICAL pre/post.
+
+  2. app/layout.tsx: RootLayout calls getCurrentTenantWordmarkStyle()
+     alongside the existing getCurrentTenantId(); exposes
+     data-tenant-wordmark-style on body. Existing data-tenant-id
+     attribute and its expression UNTOUCHED — new attribute appended.
+
+  3. hooks/useTenantWordmarkStyle.ts (NEW): mirrors useTenantId.ts
+     exactly. Reads document.body.dataset.tenantWordmarkStyle;
+     returns the string or undefined. SSR/first-render undefined,
+     hook hydrates on useEffect mount. Reusable by any future
+     brand-aware client component.
+
+### Plan-panel branching
+
+  PlanDocument.tsx imports useTenantWordmarkStyle. At the panel bg
+  (was hardcoded at L185-186):
+
+    const panelBackground = wordmarkStyle === 'aiglow'
+      ? 'linear-gradient(135deg, #301e3b 0%, #472f4e 100%)'
+      : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
+
+  Precomputed hexes derived from a 15%/20% sRGB blend of #ec4899
+  into the slate stops:
+    #301e3b = round(15*0.85 + 236*0.15, 23*0.85 + 72*0.15, 42*0.85 + 153*0.15)
+    #472f4e = round(30*0.80 + 236*0.20, 41*0.80 + 72*0.20, 59*0.80 + 153*0.20)
+  Luminance: both stay in slate-900 range (#301e3b brightness ~0.13,
+  #472f4e ~0.20). The existing white text (#fff) and rgba(255,255,
+  255,0.06) input bg remain readable.
+
+  Else-branch literal byte-identical to pre-A1 panel bg — WALLiam
+  ('hero') / any future 'standard' tenant unchanged.
+
+  L196 icon bubble (buyer/seller, plan-type-gated, not tenant) and
+  L174/L177 input/text colors NOT touched.
+
+### Files (4 code + 1 tracker)
+
+  lib/utils/tenant-resolver.ts                          (additive sibling helper)
+  app/layout.tsx                                        (1 import + 1 call + 1 attr)
+  hooks/useTenantWordmarkStyle.ts                       (NEW, ~25 lines)
+  app/charlie/components/PlanDocument.tsx               (1 import + 1 hook call + branched bg)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md                     (this entry)
+
+### Zero-diff statements
+
+  (a) getCurrentTenantId byte-identical pre/post — the new
+      getCurrentTenantWordmarkStyle was INSERTED before isHeroTenant;
+      no lines of getCurrentTenantId modified.
+  (b) WALLiam plan-panel bg string byte-identical — the else-branch
+      `: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'` is
+      character-for-character the original literal.
+  (c) existing data-tenant-id expression untouched — only a new
+      data-tenant-wordmark-style attribute was appended to the same
+      body element.
+
+### Credential guard
+
+  New tenants SELECT explicitly column-allow-listed: 'id, wordmark_style'.
+  No SELECT *. Never reads anthropic_api_key, resend_api_key, or any
+  other column.
+
+### Smoke
+
+  Local dev (Host header override to exercise prod KNOWN_TENANT_DOMAINS
+  branch past the localhost dev branch):
+
+  - Aily (Host: aily.ca):
+      <body class="..." data-tenant-id="e2619717-..."
+            data-tenant-wordmark-style="aiglow">
+      -> useTenantWordmarkStyle returns 'aiglow' after hydration
+      -> panelBackground = 'linear-gradient(135deg, #301e3b 0%, #472f4e 100%)'
+
+  - WALLiam (Host: walliam.ca):
+      <body class="..." data-tenant-id="b16e1039-..."
+            data-tenant-wordmark-style="hero">
+      -> useTenantWordmarkStyle returns 'hero' after hydration
+      -> panelBackground = exact slate literal (unchanged)
+
+  tsc --noEmit: exit 0.
+  Grep `color-mix\(` runtime in PlanDocument: 0 hits (only in the
+  rationale comment line, not in any CSS-producing expression).
+  Grep `AIGLOW_ACCENT`: 0 hits (constant removed).
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — exactly the
+  17/20 baseline (c8b-2, c11, L2.1 — all pre-existing,
+  C8c-tracked). 0 NEW.
+
+### Limitation on visual smoke
+
+  PlanDocument only renders AFTER Charlie chat -> buyer/seller plan
+  generation. Headless curl on `/` cannot trigger that flow. Smoke
+  above proves the THREADING (body data attribute correct per tenant)
+  and the BRANCHING (tsc-checked source path inspected). Final visual
+  confirmation — Aily panel reads dark-pink-tinted, WALLiam exact
+  slate, white text readable on both — requires a browser session on
+  the deployed build and is part of live close-out.
+
+### Backups (timestamps)
+
+  lib/utils/tenant-resolver.ts.backup_20260624_063129
+  app/layout.tsx.backup_20260624_063129
+  app/charlie/components/PlanDocument.tsx.backup_20260624_063129  (pre-A1 first apply)
+  app/charlie/components/PlanDocument.tsx.backup_20260624_071915  (pre-color-mix-swap)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_072033        (pre-this-entry)
+
+### Commit gate
+
+  Code + tracker shipped together (live-tracker rule). HOLD push.

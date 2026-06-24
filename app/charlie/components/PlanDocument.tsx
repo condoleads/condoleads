@@ -2,6 +2,7 @@
 'use client'
 import { useState } from 'react'
 import { useTenantId } from '@/hooks/useTenantId'
+import { useTenantWordmarkStyle } from '@/hooks/useTenantWordmarkStyle'
 import AppointmentForm from './AppointmentForm'
 
 interface AgentInfo {
@@ -79,6 +80,7 @@ function StatRow({ label, value, color = '#fff' }: { label: string; value: strin
 
 export default function PlanDocument(props: PlanDocumentProps) {
   const tenantId = useTenantId()
+  const wordmarkStyle = useTenantWordmarkStyle()
   const { analytics, agent, onSendPlan, leadCaptured, sessionId, userId, onLeadCaptured, geoContext: planGeoContext } = props
 
   const [name, setName] = useState('')
@@ -181,9 +183,21 @@ export default function PlanDocument(props: PlanDocumentProps) {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   }
 
+  // W-AILY-COSMETIC-A1 (2026-06-24): precomputed dark-slate tint toward the
+  // aiglow accent #ec4899 (15%/20% sRGB blend into #0f172a/#1e293b). Static
+  // hexes — color-mix() avoided because the project has no browserslist
+  // target, so an unsupported browser would invalidate the whole background
+  // declaration and fall back to transparent (white text becomes unreadable
+  // on whatever sits behind the panel). Luminance stays in slate-900 range
+  // so the existing #fff text and rgba(255,255,255,0.06) inputs remain
+  // readable. Non-aiglow tenants get the byte-identical slate literal.
+  const panelBackground = wordmarkStyle === 'aiglow'
+    ? 'linear-gradient(135deg, #301e3b 0%, #472f4e 100%)'
+    : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
+
   return (
     <div style={{
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+      background: panelBackground,
       border: '1px solid rgba(255,255,255,0.1)',
       borderRadius: 16,
       padding: 24,

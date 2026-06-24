@@ -73,6 +73,59 @@ export async function getCurrentTenantId(): Promise<string | null> {
 }
 
 /**
+ * Resolve the current request's tenant wordmark_style by matching the request
+ * host against the tenants table (or via DEV_TENANT_DOMAIN in dev/preview
+ * environments). Mirrors getCurrentTenantId's resolution EXACTLY (same two
+ * branches, same .eq predicates, same service-role client) — diverging the
+ * resolution would risk one helper returning a value while the other returns
+ * null for the same request.
+ *
+ * Explicit column allow-list (id, wordmark_style). NEVER SELECT * — tenants
+ * holds anthropic_api_key + resend_api_key.
+ *
+ * Returns the wordmark_style string (e.g. 'hero', 'aiglow', 'standard') or
+ * null if no tenant matches. Used by RootLayout to expose
+ * data-tenant-wordmark-style on body so client components can read it via
+ * useTenantWordmarkStyle without a new fetch.
+ */
+export async function getCurrentTenantWordmarkStyle(): Promise<string | null> {
+  try {
+    const headersList = headers()
+    const host = headersList.get('host') || ''
+
+    // Dev / preview fallback — use DEV_TENANT_DOMAIN
+    if (host.includes('localhost') || host.includes('vercel.app')) {
+      const devTenantDomain = process.env.DEV_TENANT_DOMAIN || null
+      if (!devTenantDomain) return null
+
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('tenants')
+        .select('id, wordmark_style')
+        .eq('domain', devTenantDomain)
+        .eq('is_active', true)
+        .single()
+
+      return data?.wordmark_style || null
+    }
+
+    // Production — match host against tenants table
+    const cleanHost = host.replace(/^www\./, '')
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('tenants')
+      .select('id, wordmark_style')
+      .eq('domain', cleanHost)
+      .eq('is_active', true)
+      .single()
+
+    return data?.wordmark_style || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Returns true if the current request's tenant has wordmark_style = 'hero'.
  *
  * This is the correct gate for rendering WALLiam-branded UI components
