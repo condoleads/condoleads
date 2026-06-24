@@ -25,6 +25,8 @@ function setCached<T>(map: Map<string, { value: T; expires: number }>, key: stri
 const KNOWN_TENANT_DOMAINS: Record<string, string> = {
   'walliam.ca': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9',
   'www.walliam.ca': 'b16e1039-38ed-43d7-bbc5-dd02bb651bc9',
+  'aily.ca': 'e2619717-6401-4159-8d4c-d5f87651c8d6',
+  'www.aily.ca': 'e2619717-6401-4159-8d4c-d5f87651c8d6',
 }
 
 export async function middleware(request: NextRequest) {
