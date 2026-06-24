@@ -10714,3 +10714,109 @@ WALLiam property page (Host: walliam.ca, /335-college-street-unit-c12935452):
   Code + tracker shipped together (live-tracker rule). DB write already live and
   asserted (W-AILY-LOGO-CYAN D1, this session). HOLD push.
 
+---
+
+## W-OVAIS-AILY-ONBOARD — operations log  (2026-06-24)
+
+Partner agent onboarded to Aily + System 1 split-state repair.
+
+Goal: Ovais Qassim exists in BOTH systems — S1 (condoleads) under
+ovais.qassim@gmail.com, Aily (S2) under yourcondorealtor@gmail.com (the brand
+email). Agent identity is email-keyed + globally unique (agents_email_key)
+AND auth.users email is globally unique — so one person across two systems
+requires two distinct emails / two auth users. Multi-tenant single-identity
+is NOT supported (no schema change made).
+
+### What happened
+
+Operator edited S1 agents.email (yourcondorealtor -> ovais.qassim) via the
+dashboard, which changed agents.email but NOT auth.users.email -> SPLIT STATE
+(S1 login still yourcondorealtor, agents row ovais.qassim).
+
+A prior failed Aily registration had also left:
+  - ORPHAN auth user ce97a0bb (ovais.qassim, created 2026-06-05)
+  - phantom WALLiam lead 4e32a237 (King Shah, created Jun 5, contact_email
+    ovais.qassim, status=new) — orphan was a lead before becoming a failed
+    agent-creation
+  - orphan user_profiles row id=ce97a0bb
+
+The create-agent route's rollback (app/api/admin-homes/agents/route.ts:160-167)
+only cleaned user_profiles, leaving auth user + lead + sessions behind. See
+BUG-2 below.
+
+### Cleanup (gated script, operator-authorized incl. System 1 auth-email change)
+
+One-shot script (deleted after run) with pre-read + post-verify on every step:
+
+  1. deleted phantom lead 4e32a237 (orphan's only lead — confirmed Jun-5
+     artifact, status=new, tenant=WALLiam b16e1039, agent=fafcd5b1 King Shah,
+     contact_email=ovais.qassim, no real attribution to preserve).
+
+  2. deleted orphan user_profiles ce97a0bb (FK to auth.users(id), no cascade —
+     would block the deleteUser).
+
+  3. auth.admin.deleteUser(ce97a0bb) — cascade auto-cleared auth.identities,
+     auth.sessions, public.chat_sessions, public.tenant_users.
+     POST-ASSERT: orphan getUserById returns not-found; ovais.qassim@gmail.com
+     no longer resolves to any auth.users row.
+
+  4. auth.admin.updateUserById(3df2317a, { email: ovais.qassim@gmail.com,
+     email_confirm: true }) — fixed split state. Supabase Auth auto-syncs
+     auth.identities.identity_data.email on this call.
+     POST-ASSERT: 3df2317a.email == ovais.qassim; yourcondorealtor@gmail.com
+     no longer resolves to any auth.users row.
+
+Each step pre-read-asserted + post-verified with exit-non-zero on any
+mismatch. All 5 phases passed (exit 0). Script deleted immediately.
+
+### End state (verified post-run)
+
+  auth.users[3df2317a-...] = ovais.qassim@gmail.com   (S1 login, CONSISTENT)
+  agents[3b106c2d-...]     = ovais.qassim@gmail.com   (S1 row, unchanged by cleanup)
+                             tenant_id=null, site_type=condos, subdomain=ovaisqassim
+  auth.users[ce97a0bb-...] = (deleted)
+  yourcondorealtor@gmail.com = FREE for Aily registration
+
+Aily onboarding step (operator-driven via /admin-homes UI, post-cleanup):
+NEW auth user + NEW agent row inserted with tenant_id=AILY (e2619717-...),
+site_type='comprehensive', email=yourcondorealtor@gmail.com, role=tenant_admin
+under Admin Tenant (Aily). Verified live in dashboard: Aily agent count
+went from 3 -> 4, Ovais row Active.
+
+### SYSTEM 1 NOTE — operator-authorized override
+
+This cleanup changed a System 1 auth.users email (3df2317a). CLAUDE.md
+isolation rule says System 1 is never modified. Operator explicitly
+authorized this override for THIS session: the S1 agents row was already
+operator-edited (before the recon began) — the auth-email change RECONCILED
+the split state, it did not add S1 features. S1 login for Ovais is now
+ovais.qassim@gmail.com. No S1 route code was modified.
+
+### Two bugs identified (fix queued — W-AGENT-LIFECYCLE-INTEGRITY)
+
+  BUG-1: agent-edit dashboard updates agents.email but NOT auth.users.email
+         -> split state. (This bit us — operator's dashboard edit produced
+         the inconsistency we then had to repair.)
+         Fix shape: the agents-edit route should also call
+         supabase.auth.admin.updateUserById(agent.user_id, {email, email_confirm:true})
+         when agents.email changes. Atomic from the operator's POV.
+
+  BUG-2: create-agent rollback (app/api/admin-homes/agents/route.ts:160-167)
+         only cleans user_profiles + auth.admin.deleteUser. Misses:
+           - public.leads rows with user_id=authUserId (phantom lead in our case)
+           - any other public.* FK to auth.users(id) without ON DELETE CASCADE
+         Result: failed agent creation leaks orphan auth users + linked rows.
+         Fix shape: enumerate all NO-CASCADE FKs to auth.users (recon list
+         documented in this session's W-OVAIS-FIX) and clean each in the
+         rollback path. OR move agent-creation into a single transaction.
+
+### Backups (timestamps)
+
+  docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_111104   (pre-this-entry)
+
+### Commit gate
+
+  Tracker-only commit (no code change in this entry — the cleanup was
+  one-shot DB writes via a deleted script; the operator's Aily onboarding
+  was via the UI; queued bugs land in separate workstream).
+
