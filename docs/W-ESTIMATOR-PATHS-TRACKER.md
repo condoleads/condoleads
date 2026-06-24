@@ -10469,3 +10469,101 @@ fix sourced from bathrooms_total_integer), untouched.
 
   Code + tracker shipped together (live-tracker rule). HOLD push.
 
+---
+
+## W-AILY-CTA-PANEL — resolution  (2026-06-24)
+
+Tenant-themed WalliamCTA sidebar card (aiglow tenants).
+
+The "Get Your AI Real Estate Plan" sidebar CTA card (components/WalliamCTA.tsx)
+rendered a hardcoded dark-navy gradient (#060b18 -> #0d1629) for ALL tenants —
+the W-AILY-CTA-BRAND-LEAK fix (commit 110e51e) themed the wordmark but left the
+bg hardcoded. Branched the bg on the EXISTING wordmarkStyle prop (already
+threaded from 9 server mount sites — no hook, no fetch, no new threading,
+unlike A1's PlanDocument which needed the useTenantWordmarkStyle hook because
+the Charlie client tree was brand-blind):
+
+  - aiglow -> precomputed dark+pink tint #29142b -> #3a203f
+              (15%/20% sRGB blend of #ec4899 into the navy stops;
+               INDEPENDENTLY recomputed during Step 1 — the recon's
+               illustrative #1d0d24/#2e1530 were unverified guesses,
+               too faint, discarded). color-mix avoided (no browserslist
+               target — same rationale as A1).
+  - hero/other -> exact navy literal, byte-identical (WALLiam unchanged).
+
+Text/input/buttons untouched — luminance kept in slate-900 range, all readable.
+
+### Verified RENDERED (not inferred)
+
+  Smoke pulled real inline CSS from rendered HTML on both tenants
+  (Host-header override against local dev, exercising the production
+  KNOWN_TENANT_DOMAINS branch past the localhost dev branch):
+
+  - Aily (Host: aily.ca):
+      <div style="background:linear-gradient(135deg, #29142b 0%, #3a203f 100%);
+                  border:1px solid rgba(255,255,255,0.08);...">
+        ... "Get Your AI Real Estate Plan" header + Ask aily input + buttons ...
+      </div>
+
+  - WALLiam (Host: walliam.ca):
+      <div style="background:linear-gradient(135deg, #060b18 0%, #0d1629 100%);
+                  border:1px solid rgba(255,255,255,0.08);...">
+      Byte-identical to pre-edit. (The 2 #060b18 hits on the Aily page were
+      the site-header navbar's Tailwind bg-[#060b18]/95 class, NOT the
+      sidebar card — confirmed by grep-context.)
+
+### Computed hexes (Step 1 verification)
+
+  Accent #ec4899 = (236, 72, 153). Formula: out = round(base*(1-α) + accent*α).
+    15% into #060b18 (6, 11, 24):  (round(40.5), round(20.15), round(43.35))
+                                 = (41, 20, 43)  = #29142b
+    20% into #0d1629 (13, 22, 41): (round(57.6), round(32.0), round(63.4))
+                                 = (58, 32, 63)  = #3a203f
+
+### Files (1 code + 1 tracker)
+
+  components/WalliamCTA.tsx                             (1 hunk — bg branch on wordmarkStyle)
+    inserted const cardBackground before the JSX return
+    style.background literal replaced with the const
+
+  docs/W-ESTIMATOR-PATHS-TRACKER.md                     (this entry)
+
+### Not touched (per spec)
+
+  L41 border, L75 header text, L78 tagline, L88/L89 input wrapper, L101 input
+  text/placeholder, L109/L123/L134 Ask AI/Buyer/Seller buttons, L50-71 wordmark
+  3-way switch — none modified. All readability assumptions hold against both
+  navy and pink-tinted dark backgrounds (slate-900 luminance preserved).
+
+### Gates
+
+  tsc --noEmit: exit 0.
+  grep color-mix( in WalliamCTA.tsx: 0 runtime hits (1 match in inline
+    rationale comment at L40, not executing CSS).
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — exactly the 17/20 baseline
+    (c8b-2, c11, L2.1 — all pre-existing, C8c-tracked). 0 NEW.
+
+### Dark-box trio now complete
+
+  - A1 PlanDocument (the generated buyer/seller plan panel):
+       wordmarkStyle === 'aiglow' -> #301e3b -> #472f4e
+       (15%/20% sRGB blend of #ec4899 into #0f172a/#1e293b slate stops)
+  - W-AILY-CTA-PANEL (this commit — the always-on sidebar CTA card):
+       wordmarkStyle === 'aiglow' -> #29142b -> #3a203f
+       (15%/20% sRGB blend of #ec4899 into #060b18/#0d1629 navy stops)
+
+  Both gate on tenants.wordmark_style='aiglow'; both use precomputed static
+  hex tints of the same accent #ec4899 (matches AiGlowWordmark.tsx:90 heart
+  color); both leave hero/other tenants byte-identical. Tenant #3 with
+  wordmark_style='aiglow' inherits both surfaces for free — no code change
+  needed at onboarding.
+
+### Backups (timestamps)
+
+  components/WalliamCTA.tsx.backup_20260624_081409          (6169 bytes — pre-edit)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_082301  (pre-this-entry)
+
+### Commit gate
+
+  Code + tracker shipped together (live-tracker rule). HOLD push.
+

@@ -35,9 +35,20 @@ export default function WalliamCTA({ context, assistantName, brandName, wordmark
     setQuery('')
   }
 
+  // W-AILY-CTA-PANEL (2026-06-24): precomputed dark-navy tint toward the
+  // aiglow accent #ec4899 (15%/20% sRGB blend into #060b18/#0d1629). Static
+  // hexes — color-mix() avoided because the project has no browserslist
+  // target (unsupported browsers would invalidate the background and fall
+  // back to transparent, killing white-on-dark readability). Luminance
+  // stays in slate-900 range so all existing text/input/button colors
+  // remain readable. Non-aiglow tenants keep the byte-identical navy.
+  const cardBackground = wordmarkStyle === 'aiglow'
+    ? 'linear-gradient(135deg, #29142b 0%, #3a203f 100%)'
+    : 'linear-gradient(135deg, #060b18 0%, #0d1629 100%)'
+
   return (
     <div style={{
-      background: 'linear-gradient(135deg, #060b18 0%, #0d1629 100%)',
+      background: cardBackground,
       border: '1px solid rgba(255,255,255,0.08)',
       borderRadius: 20,
       padding: '24px 20px',
