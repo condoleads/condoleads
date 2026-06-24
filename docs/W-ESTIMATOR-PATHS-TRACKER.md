@@ -9859,3 +9859,238 @@ Fix scope (this commit):
   STOP at commit gate. 10 code files + tracker. No DB write.
   Smoke green. Diff shown. Awaiting operator approval before
   stage/commit/push.
+
+---
+
+## W-AILY-FORK-FIX-A1 — resolution  (2026-06-24)
+
+ROOT CAUSE CONFIRMED (live, not deduced): the middleware's anon
+supabase client (createServerClient from @supabase/ssr, anon key,
+cookies-passthrough — middleware.ts:40-55) is RLS-blocked on the
+`tenants` table in production. resolveTenantIdFromHost AND
+resolveAgentFromHost run byte-identical queries through that same
+client and both return null for aily.ca. Service-role bypasses
+RLS — that's why the parallel function getCurrentTenantId in
+lib/utils/tenant-resolver.ts:38 (which uses createClient from
+lib/supabase/server.ts:6-16, "Service role client (bypasses RLS,
+no sessions)") works for Aily where the middleware does not.
+
+THIS WAS THE UPSTREAM ROOT OF THE SESSION'S HERO-BIAS CLASS.
+Every prior fix (W-AILY-PARITY-GAP, W-AILY-ESTIMATOR-GAP,
+W-AILY-ESTIMATOR-LEAD-GAP, T1.1 property pages) closed a downstream
+symptom via service-role fallbacks (e.g. submitLeadFromForm.ts:53-60
+re-resolves the tenant via getCurrentTenantId when the header is
+absent — explicitly because "Aily DB-fallback can transient-fail").
+Those fixes were correct but masked the actual middleware-resolver
+failure. W-AILY-UI-BATCH-2 R2 + W-AILY-DOWNTOWN-ROUTING surfaced it
+by showing /toronto/<n> 404s on aily.ca (fork doesn't fire);
+W-AILY-FORK-FIX confirmed via the tenant-config 400 probe that
+BOTH middleware resolvers fail for Aily, not just the fork.
+
+LIVE PROOFS gathered this run (production aily.ca):
+  aily.ca/toronto/downtown            -> 404 X-Matched-Path /_not-found
+  aily.ca/toronto/north-york          -> 404 X-Matched-Path /_not-found
+  aily.ca/api/walliam/tenant-config   -> HTTP 400 "Tenant ID required"
+                                         (middleware did NOT inject
+                                          x-tenant-id for /api/* on Aily)
+  walliam.ca/toronto/downtown         -> 200 (fork fires via fast-path)
+  walliam.ca/api/walliam/tenant-config -> 200 with WALLiam config
+
+FIX — A1: add aily.ca + www.aily.ca to KNOWN_TENANT_DOMAINS at
+middleware.ts:25-30 (UUIDs verified against CLAUDE.md:157-158;
+e2619717-6401-4159-8d4c-d5f87651c8d6). The fast-path returns
+{site_type:'comprehensive', tenant_id: AILY_UUID} with zero DB
+calls, bypassing the RLS-blocked tenants query entirely. Identical
+mechanism WALLiam uses today. Closes:
+  - SYSTEM FORK firing for aily.ca (Toronto neighbourhood nav:
+    homepage chips, desktop mega-menu, mobile nav drawer,
+    bare-neighbourhood permanentRedirect at /[slug]:194)
+  - /api/* x-tenant-id injection for aily.ca (tenant-config no
+    longer falls back to UI defaults 1/1/1)
+  - server-action x-tenant-id injection for aily.ca (the in-action
+    fallback at submitLeadFromForm.ts:53-60 is now redundant for
+    Aily but safe to leave for any future yet-to-be-added tenant)
+
+Commit: 1a55047  ("W-AILY-FORK-FIX-A1: add aily.ca to
+KNOWN_TENANT_DOMAINS"). Two-line diff. middleware.ts +2 lines.
+No other file touched. Remote SHA: 1a5504772ac23089be290906e8fa32be16386692.
+
+SMOKE (local dev, Host-header override to exercise the prod
+KNOWN_TENANT_DOMAINS branch past the localhost dev-branch):
+  1. Host: aily.ca   GET /toronto/downtown
+       HTTP 200 + x-tenant-id e2619717-... +
+       x-middleware-rewrite /comprehensive-site/toronto/downtown
+       (was 404 in prod before fix — fork now fires)
+  2. Host: aily.ca   GET /toronto/north-york
+       HTTP 200 + x-tenant-id e2619717-... +
+       x-middleware-rewrite /comprehensive-site/toronto/north-york
+  3. Host: aily.ca   GET /api/walliam/tenant-config
+       HTTP 200 {"assistantName":"aily","chatFree":1,"estFree":10,
+       "planFree":10}
+       (Aily's real per-tenant config; estFree=10 and planFree=10
+       are not the route's `?? 1` defaults — was 400 in prod)
+  4. Host: walliam.ca GET /toronto/downtown (regression)
+       HTTP 200 + x-tenant-id b16e1039-... + x-middleware-rewrite
+       /comprehensive-site/toronto/downtown — UNCHANGED
+
+  tsc --noEmit: exit 0.
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — exactly the
+  17/20 baseline (c8b-2, c11, L2.1 — all pre-existing,
+  C8c-tracked). 0 NEW.
+
+KNOWN TRADE-OFF: A1 is NOT data-only onboarding. Tenant #3 will
+need a middleware edit until A3-CORRECTED lands. A3-CORRECTED
+(W-MIDDLEWARE-DYNAMIC-TENANT Phase B/C) is either:
+  (a) middleware uses a service-role supabase client for tenant
+      lookups (Edge runtime supports SERVICE_ROLE_KEY env var;
+      same exposure boundary the rest of the app already accepts);
+  OR
+  (b) narrow anon RLS read policy on tenants (allow SELECT of
+      id/domain/is_active/wordmark_style to anon — no secrets).
+Either path lets KNOWN_TENANT_DOMAINS shrink back to empty and
+tenants onboard via tenants-row INSERT only. NOT an Aily-launch
+blocker; MUST land before tenant #3 onboarding.
+
+FOLLOW-UP SWEEP (F6 from recon/aily-fork-fix.txt): audit every
+/api/* route for x-tenant-id-without-fallback patterns. A1 now
+delivers the header to Aily for /api/* + server actions, so every
+silently-degraded surface is restored at the middleware level. But
+the catalog of routes that WERE silently degraded for Aily is worth
+producing in case any cached-bad-tenant-config data persists on
+the client side. Not a blocker; tracked as a separate follow-up
+W-AILY-API-X-TENANT-AUDIT recon.
+
+STATUS: APPLIED + PUSHED (commit 1a55047). Live close-out PENDING
+(claimed, unverified until deployed-surface checks pass):
+  - The Vercel build for 1a55047 must complete and the new
+    dpl_<id> must be Ready + aliased to aily.ca.
+  - Then re-run the 4 smoke probes against production aily.ca and
+    confirm matching the local-smoke results.
+  - And spot-check the mega-menu + mobile nav neighbourhood links
+    + at least one bare neighbourhood URL (e.g. /downtown ->
+    /toronto/downtown redirect chain).
+
+### Recon trail
+
+  recon/aily-downtown-routing.txt  (contradiction resolution +
+                                    scope of Aily-broken surfaces)
+  recon/aily-fork-fix.txt          (root cause confirmation, A3
+                                    viability analysis, A1 plan)
+
+### Files
+
+  Edited (1 code + 1 tracker):
+    middleware.ts                              (+2 lines, L28-L29)
+    docs/W-ESTIMATOR-PATHS-TRACKER.md          (this entry)
+
+  Backed up (timestamps):
+    middleware.ts.backup_20260624_050330
+    docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_052439
+
+### Commit gate
+
+  COMMITTED (1a55047) + PUSHED (origin/main:
+  1a5504772ac23089be290906e8fa32be16386692). HOLD: awaiting
+  Vercel build + alias confirmation for production close-out.
+
+### Live close-out  (2026-06-24, Vercel build Ready + aliased)
+
+  All 6 verification surfaces probed against deployed production
+  build (www.aily.ca and www.walliam.ca). Headers captured live
+  this turn.
+
+  1. AILY HOMEPAGE -> DOWNTOWN CHIP — PASS
+       GET https://www.aily.ca/toronto/downtown
+       HTTP/1.1 200 OK
+       X-Matched-Path: /comprehensive-site/toronto/[neighbourhood]
+       X-Tenant-Id:    e2619717-6401-4159-8d4c-d5f87651c8d6
+       (Pre-A1 prod baseline: 404 /_not-found. Fork now fires;
+        SYSTEM FORK rewrites to comprehensive-site neighbourhood
+        page; Aily tenant id propagated to header.)
+
+  2. MEGA-MENU NEIGHBOURHOODS (3 distinct) — PASS
+       2A. GET https://www.aily.ca/toronto/north-york
+             HTTP/1.1 200 OK
+             X-Matched-Path: /comprehensive-site/toronto/[neighbourhood]
+             X-Tenant-Id:    e2619717-6401-4159-8d4c-d5f87651c8d6
+       2B. GET https://www.aily.ca/toronto/etobicoke
+             HTTP/1.1 200 OK
+             X-Matched-Path: /comprehensive-site/toronto/[neighbourhood]
+             X-Tenant-Id:    e2619717-6401-4159-8d4c-d5f87651c8d6
+       2C. GET https://www.aily.ca/toronto/scarborough
+             HTTP/1.1 200 OK
+             X-Matched-Path: /comprehensive-site/toronto/[neighbourhood]
+             X-Tenant-Id:    e2619717-6401-4159-8d4c-d5f87651c8d6
+       (Every /toronto/<slug> emitted by BrowseMegaMenuContent.tsx
+        now resolves through the fork to the [neighbourhood] page.
+        Pre-A1 prod baseline: 404 for all.)
+
+  3. BARE NEIGHBOURHOOD URL (/[slug]:194 redirect chain) — PASS
+       GET https://www.aily.ca/downtown
+       Hop 1: HTTP/1.1 308 Permanent Redirect
+              Location: /toronto/downtown
+              X-Matched-Path: /comprehensive-site/[slug]
+              X-Tenant-Id:    e2619717-...
+              (the [slug] dispatcher matched 'downtown' against
+               neighbourhoods table and emitted permanentRedirect;
+               the fork ALSO fired on this leg, routing /[slug]
+               through /comprehensive-site/[slug])
+       Hop 2: HTTP/1.1 200 OK
+              X-Matched-Path: /comprehensive-site/toronto/[neighbourhood]
+              X-Tenant-Id:    e2619717-...
+              (redirected URL hits fork -> comprehensive-site/toronto/
+               [neighbourhood] -> renders)
+       (Pre-A1 prod baseline: 308 -> 404. Closed.)
+
+  4. MOBILE NAV NEIGHBOURHOOD LINKS — STRUCTURAL PASS (not
+     headless-tested)
+       SiteHeaderClient.tsx:224 emits href={`/toronto/${n.slug}`}
+       — byte-identical link shape to the desktop mega-menu
+       (BrowseMegaMenuContent.tsx:23,48). Checks 1+2A-C above
+       verify those exact URL forms render 200 with the
+       comprehensive-site rewrite. Headless curl cannot exercise
+       the mobile-drawer JS toggle UI, but the link target's
+       behavior is the same URL the desktop checks confirm.
+       Claimed (structural inference); not directly tested. A
+       browser/Playwright headless run would close this leg if
+       wanted.
+
+  5. /api/walliam/tenant-config (silent leak fix) — PASS
+       GET https://www.aily.ca/api/walliam/tenant-config
+       HTTP 200
+       {"assistantName":"aily","chatFree":1,"estFree":10,"planFree":10}
+       (Pre-A1 prod baseline: HTTP 400 "Tenant ID required".
+        estFree=10 + planFree=10 are Aily's real configured
+        values — NOT the route's `?? 1` defaults — proving the
+        x-tenant-id header now arrives and the route reads the
+        real DB row. chatFree=1 happens to equal the default but
+        the other two fields confirm real data.)
+
+  6. WALLIAM REGRESSION — PASS (byte-identical, no regression)
+       GET https://www.walliam.ca/toronto/downtown
+       HTTP/1.1 200 OK
+       X-Matched-Path: /comprehensive-site/toronto/[neighbourhood]
+       X-Tenant-Id:    b16e1039-38ed-43d7-bbc5-dd02bb651bc9
+       (Same matched path + same tenant id WALLiam had before A1.
+        A1 was strictly additive to KNOWN_TENANT_DOMAINS keys;
+        WALLiam's entry was untouched.)
+
+### Close-out result
+
+  TORONTO NEIGHBOURHOOD NAVIGATION LAYER restored for Aily:
+  homepage chips + desktop mega-menu + bare-neighbourhood
+  permanentRedirect chain + (structurally) mobile-nav. SILENT
+  /api/walliam/tenant-config TENANT-CONFIG LEAK closed.
+
+  WALLiam byte-identical: same path + same matched-route + same
+  tenant id.
+
+  Aily-launch BLOCKER: CLEARED.
+
+  Status of follow-up workstreams:
+    - A3-CORRECTED (W-MIDDLEWARE-DYNAMIC-TENANT Phase B/C):
+      not blocked by A1; needed BEFORE tenant #3 onboarding.
+    - W-AILY-API-X-TENANT-AUDIT (F6 sweep): not a blocker.
+      Catalog of routes silently degraded for Aily pre-A1 worth
+      producing, but A1 now delivers x-tenant-id to all of them
+      at the middleware level so they are restored.
