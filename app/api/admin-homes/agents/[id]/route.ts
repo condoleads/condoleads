@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { createServiceClient } from '@/lib/admin-homes/service-client'
 import { can, type DbRole } from '@/lib/admin-homes/permissions'
+import { teardownAuthUser } from '@/lib/admin-homes/teardown-auth-user'
 
 // GET /api/admin-homes/agents/[id]
 export async function GET(
@@ -51,9 +52,11 @@ export async function PUT(
   const user = await resolveAdminHomesUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const supabase = createServiceClient()
+  // W-AGENT-LIFECYCLE-INTEGRITY (2026-06-24): user_id + email added so the email-sync
+  // branch below has the FK target and the prior value (for revert on auth failure).
   const { data: target } = await supabase
     .from('agents')
-    .select('id, tenant_id, parent_id, site_type, role')
+    .select('id, tenant_id, parent_id, site_type, role, user_id, email')
     .eq('id', params.id)
     .maybeSingle()
   if (!target || target.site_type !== 'comprehensive') {
@@ -119,12 +122,88 @@ export async function PUT(
   if (ai_manual_approve_limit !== undefined) update.ai_manual_approve_limit = ai_manual_approve_limit
   if (ai_hard_cap !== undefined) update.ai_hard_cap = ai_hard_cap
 
+  // W-AGENT-LIFECYCLE-INTEGRITY (2026-06-24) BUG-1 FIX: if email is changing,
+  // pre-flight BOTH agents.email and auth.users.email uniqueness BEFORE any
+  // write. If pre-flight passes, write agents first, then sync auth via
+  // auth.admin.updateUserById. If the auth sync fails, revert agents.email
+  // to the prior value so we never leave a silent split state (which was
+  // tonight's W-OVAIS bug — operator-dashboard edit changed agents.email
+  // but not auth.users.email, producing inconsistent S1 identity).
+  const emailIsChanging = email !== undefined && email !== target.email
+  const priorEmail: string | null = target.email
+
+  if (emailIsChanging) {
+    // PRE-FLIGHT 1: agents.email — global UNIQUE (agents_email_key). Skip self.
+    const { data: agentCollide, error: agentCollideErr } = await supabase
+      .from('agents')
+      .select('id')
+      .eq('email', email)
+      .neq('id', params.id)
+      .maybeSingle()
+    if (agentCollideErr) {
+      return NextResponse.json({ error: 'pre-flight agents.email check failed: ' + agentCollideErr.message }, { status: 500 })
+    }
+    if (agentCollide) {
+      return NextResponse.json({ error: 'Email already assigned to another agent' }, { status: 400 })
+    }
+
+    // PRE-FLIGHT 2: auth.users.email — no native email-filter on listUsers.
+    // Paged scan; skip the row whose id matches target.user_id (same user keeping
+    // their email isn't a collision — handles the post-W-OVAIS reconciliation
+    // case where auth and agents had been in split state).
+    let page = 1
+    let authCollide = false
+    while (true) {
+      const { data: list, error: lErr } = await supabase.auth.admin.listUsers({ page, perPage: 1000 })
+      if (lErr) {
+        return NextResponse.json({ error: 'pre-flight auth.users check failed: ' + lErr.message }, { status: 500 })
+      }
+      for (const u of list.users) {
+        if ((u.email || '').toLowerCase() === (email as string).toLowerCase() && u.id !== target.user_id) {
+          authCollide = true
+          break
+        }
+      }
+      if (authCollide || list.users.length < 1000) break
+      page++
+      if (page > 20) break
+    }
+    if (authCollide) {
+      return NextResponse.json({ error: 'Email already in use by another account' }, { status: 400 })
+    }
+  }
+
   const { error } = await supabase
     .from('agents')
     .update(update)
     .eq('id', params.id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // SYNC auth.users.email (only if changing AND we have a user_id to target).
+  if (emailIsChanging && target.user_id) {
+    const { error: authErr } = await supabase.auth.admin.updateUserById(target.user_id, {
+      email,
+      email_confirm: true,
+    })
+    if (authErr) {
+      // agents already committed; auth out of sync. Revert agents.email to
+      // the prior value so the row is consistent with auth again. If revert
+      // also fails, surface BOTH errors — operator needs to know.
+      const { error: revertErr } = await supabase
+        .from('agents')
+        .update({ email: priorEmail })
+        .eq('id', params.id)
+      const revertNote = revertErr
+        ? ` AND revert FAILED: ${revertErr.message} — agents.email is ${email}, auth.users.email is ${priorEmail}, manual reconciliation needed`
+        : ` — agents.email reverted to ${priorEmail}`
+      return NextResponse.json(
+        { error: `auth email sync failed: ${authErr.message}${revertNote}` },
+        { status: 500 }
+      )
+    }
+  }
+
   return NextResponse.json({ success: true })
 }
 
@@ -150,25 +229,40 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   })
   if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
-  // Delete auth user if exists
+  // Fetch user_id for the teardown helper.
   const { data: agent } = await supabase
     .from('agents')
     .select('user_id')
     .eq('id', params.id)
     .single()
 
-  if (agent?.user_id) {
-    // Clean up user_profiles first to avoid FK constraint
-    await supabase.from('user_profiles').delete().eq('id', agent.user_id)
-    await supabase.auth.admin.deleteUser(agent.user_id)
-  }
-
-  // Delete agent record
-  const { error } = await supabase
+  // W-AGENT-LIFECYCLE-INTEGRITY (2026-06-24) BUG-3 FIX: same incomplete-cleanup
+  // class as the create-rollback (BUG-2). Prior shape was user_profiles +
+  // bare-await deleteUser with no error capture; deleteUser would silently
+  // fail when public.leads (or other non-cascade FKs) pinned the auth user,
+  // leaving an orphan. New shape: delete the agents row FIRST (clears the
+  // agents.user_id FK so deleteUser can succeed), then call the shared
+  // teardownAuthUser helper which handles leads + user_profiles + defensive
+  // probes + error-captured deleteUser.
+  //
+  // ORDER NOTE: agents row MUST be deleted before teardownAuthUser, because
+  // the helper's step-3 defensive probe checks agents.user_id and would
+  // (correctly) refuse to proceed if a row still pointed at this auth user.
+  const { error: agentDelErr } = await supabase
     .from('agents')
     .delete()
     .eq('id', params.id)
+  if (agentDelErr) return NextResponse.json({ error: agentDelErr.message }, { status: 500 })
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (agent?.user_id) {
+    const td = await teardownAuthUser(supabase, agent.user_id)
+    if (!td.ok) {
+      return NextResponse.json(
+        { error: `agent deletion auth teardown failed: ${td.error}` },
+        { status: 500 }
+      )
+    }
+  }
+
   return NextResponse.json({ success: true })
 }

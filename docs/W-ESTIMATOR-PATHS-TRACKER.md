@@ -10820,3 +10820,141 @@ ovais.qassim@gmail.com. No S1 route code was modified.
   one-shot DB writes via a deleted script; the operator's Aily onboarding
   was via the UI; queued bugs land in separate workstream).
 
+---
+
+## W-AGENT-LIFECYCLE-INTEGRITY — resolution  (2026-06-24)
+
+Fixed the 2 bugs that caused the W-OVAIS split-state + orphan, plus a 3rd
+sibling (DELETE handler) to close the class. System 2 ONLY
+(app/api/admin-homes/*).
+
+### BUG-1 (split state) — agent-edit PUT
+
+agents/[id]/route.ts wrote agents.email but never synced auth.users.email
+-> editing an email in the dashboard split the agent's identity
+(login != contact).
+
+FIX:
+  - pre-update SELECT now includes user_id + email
+  - when email changes, PRE-FLIGHT the new email is free in BOTH:
+      * agents (.neq self, against agents_email_key UNIQUE)
+      * auth.users (full paged listUsers scan, skips self, 20k safety cap)
+    -> fail-fast 400 with nothing written if taken
+  - else: update agents row FIRST, then auth.admin.updateUserById
+    (email_confirm: true) to sync the login email
+  - on auth-sync failure: REVERT agents.email to priorEmail and return a
+    NAMED 500 with both errors + current-vs-prior values if revert also fails
+  - no-email-change path: byte-identical to prior behavior
+
+### BUG-2 (orphan on failed registration) — create-agent POST
+
+agents/route.ts:160-167 rollback only cleaned user_profiles + a bare
+error-swallowing deleteUser -> left orphan auth users (e.g. W-OVAIS
+ce97a0bb) when a non-cascade FK blocked deleteUser.
+
+NOTE: the phantom WALLiam lead (4e32a237) on that orphan was NOT a
+rollback miss — it accrued ~11min later when the still-alive orphan
+engaged a public lead-capture flow on walliam.ca. Killing the orphan
+synchronously at failure time prevents that downstream accrual.
+
+FIX: rollback now calls shared teardownAuthUser():
+  - DELETE from leads (non-cascade) — in order
+  - DELETE from user_profiles (non-cascade) — in order
+  - defensive probes on {platform_admins, home_adjustments,
+    saved_searches, tenant_floor_pool, user_favorites, agents}
+    SURFACE unexpected rows rather than silently deleting business
+    tables — the rollback model expands if/when those grow
+  - error-captured auth.admin.deleteUser (cascade clears
+    identities/sessions/chat_sessions/tenant_users/etc)
+Every step named on failure -> no silent orphan.
+
+### BUG-3 (same class) — DELETE handler
+
+agents/[id]/route.ts had identical incomplete cleanup (user_profiles +
+bare deleteUser). Plus a subtle bug: bare-awaited deleteUser would
+silently fail because agents.user_id is RESTRICT (no cascade) — agents
+row had to be deleted FIRST.
+
+FIX: same teardownAuthUser() helper. Order: agents row deleted FIRST
+(clears the agents.user_id FK), then teardown. The helper's defensive
+probe of agents.user_id enforces correct order — caller out-of-order
+would get a "step 3 (probe agents.user_id) found unexpected rows"
+named error rather than silent failure.
+
+### NEW shared helper
+
+lib/admin-homes/teardown-auth-user.ts — single source of truth for the
+teardown. Used by BOTH POST-rollback and DELETE. Future lifecycle paths
+inherit correct cleanup automatically.
+
+Signature:
+  teardownAuthUser(supabase, authUserId): Promise<{
+    ok: boolean,
+    error?: string,    // named, includes step + table + actionable message
+    step?: number,
+    table?: string,
+    surprises?: string[]
+  }>
+
+### Files (3 code + 1 tracker)
+
+  app/api/admin-homes/agents/route.ts             (POST rollback now uses helper)
+  app/api/admin-homes/agents/[id]/route.ts        (PUT email-sync, DELETE handler)
+  lib/admin-homes/teardown-auth-user.ts           (NEW shared teardown)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md               (this entry)
+
+### Not touched (System 1 isolation)
+
+  app/api/admin/* — NEVER modified. CLAUDE.md System 1 isolation preserved.
+
+### Gates
+
+  tsc --noEmit: exit 0.
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — baseline (c8b-2, c11,
+    L2.1, all pre-existing C8c-tracked). 0 NEW.
+  Pre-commit code review of failure paths:
+    (a) auth.users.email pre-flight pagination: full paged scan, exits
+        on collision OR partial-page OR 20k safety cap. No page-1-only gap.
+    (b) priorEmail captured at L133 from the SELECTed row BEFORE the
+        agents.update() overwrites it.
+    (c) On auth-sync revert failure: NAMED 500 with both errors AND
+        current-vs-prior values AND "manual reconciliation needed".
+        No silent split possible.
+    (d) Skip-self: pre-flight 1 .neq('id', params.id); pre-flight 2
+        u.id !== target.user_id. Handles no-op edits AND split-state
+        reconciliation without false-positives.
+    {count:'exact', head:true}: proven Supabase JS pattern (20+ existing
+        call sites in this codebase).
+
+### Smoke status
+
+  NOT live-smoked (failure-path + edit-path; can't be triggered without
+  mutating real data — would need a SAVEPOINT-isolated session which
+  Supabase JS doesn't natively expose). Code-path inspection IS the proof;
+  mirrors the W-OVAIS cleanup sequence that ran clean against real data
+  earlier tonight (same teardown order, same error capture).
+
+### Still queued (not in this commit; not blocking)
+
+  - PERIODIC ORPHAN-SWEEP: a cron/Vercel-job that scans for auth.users
+    rows with no agents row + no recent sessions and tears them down
+    via this same helper. Catches any orphan that accrues downstream
+    rows BEFORE the in-route rollback can act (the W-OVAIS-style
+    11-minute window). Strictly defense-in-depth; this commit's
+    in-route fix is the primary line.
+  - W-AGENT-MULTI-TENANT-IDENTITY: one person serving two systems
+    without two distinct emails. Requires schema change (drop
+    agents_email_key, add UNIQUE(email, tenant_id)) plus auth-link
+    refactor in create-agent. Not blocking; deferred until product
+    demand.
+
+### Backups (timestamps)
+
+  app/api/admin-homes/agents/route.ts.backup_20260624_112155
+  app/api/admin-homes/agents/[id]/route.ts.backup_20260624_112155
+  docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_112851  (pre-this-entry)
+
+### Commit gate
+
+  Code + tracker shipped together (live-tracker rule). HOLD push.
+

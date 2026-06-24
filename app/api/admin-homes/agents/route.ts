@@ -7,6 +7,7 @@ import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { createServiceClient } from '@/lib/admin-homes/service-client'
 import { can } from '@/lib/admin-homes/permissions'
 import { deriveUniqueAgentSubdomain } from '@/lib/admin-homes/agent-subdomain'
+import { teardownAuthUser } from '@/lib/admin-homes/teardown-auth-user'
 
 // GET /api/admin-homes/agents — list comprehensive agents, tenant-scoped
 // Phase 3.4: Tenant Admin sees only their tenant's agents.
@@ -158,12 +159,27 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (insertError) {
-    // F-AGENT-CREATION-ROLLBACK-INCOMPLETE (P3.F5): on_auth_user_created
-    // trigger inserts a user_profiles row when createUser fires. Rollback
-    // must delete user_profiles first (FK user_profiles_id_fkey), then
-    // auth.users, otherwise deleteUser silently fails and orphans linger.
-    await supabase.from('user_profiles').delete().eq('id', authUserId)
-    await supabase.auth.admin.deleteUser(authUserId)
+    // F-AGENT-CREATION-ROLLBACK-INCOMPLETE (P3.F5) -> COMPLETED in
+    // W-AGENT-LIFECYCLE-INTEGRITY (2026-06-24).
+    //
+    // Prior shape (incomplete): only user_profiles + bare-await deleteUser
+    // with no error capture. When deleteUser silently failed against a
+    // non-cascade FK (e.g. an interim public.leads row), the auth user
+    // persisted as an orphan. The W-OVAIS cleanup surfaced exactly this
+    // (orphan ce97a0bb + downstream lead 4e32a237 — both lingered for
+    // weeks).
+    //
+    // New shape: shared teardown helper enumerates all NO-CASCADE FKs
+    // (leads + user_profiles), defensively probes other public.* tables
+    // for unexpected rows, then calls deleteUser. Every step's error is
+    // captured and surfaced with a named message — silence is the bug.
+    const td = await teardownAuthUser(supabase, authUserId)
+    if (!td.ok) {
+      return NextResponse.json(
+        { error: `agent insert failed (${insertError.message}); ${td.error}` },
+        { status: 500 }
+      )
+    }
     return NextResponse.json({ error: insertError.message }, { status: 500 })
   }
 
