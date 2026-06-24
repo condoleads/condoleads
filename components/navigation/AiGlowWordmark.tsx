@@ -33,31 +33,42 @@ interface AiGlowWordmarkProps {
   heartColor?: string
 }
 
-// Stable, scoped CSS — defined once per page (component dedup by browser
-// when multiple instances mount; keyframe names use `aiglow-` prefix to
-// avoid colliding with `walliam-heartbeat` or any other component).
-// W-AILY-AIGLOW-FIX (2026-06-21): stronger trough→peak delta so the
-// breath is visibly perceptible on the near-black hero (#060b18).
-// Prior values were deliberately subtle ("premium") but read as
-// static against the dark background — operator confirmed
-// matchMedia(prefers-reduced-motion: reduce) === false, ruling out
-// the reduced-motion fallback as the cause. Tightened cycle 2.4s →
-// 1.9s so the swell is catchable; added a 1.5% scale breath synced
-// to the glow so "ai" also gently widens at the peak. Still smooth
-// ease-in-out — not a strobe.
-const AIGLOW_KEYFRAMES = `
-  @keyframes aiglow-pulse {
+// Scoped CSS — built per-instance so the glow color derives from
+// accentColor rather than the previously-hardcoded blue rgb(29,78,216).
+// W-AILY-LOGO-CYAN (2026-06-24): keyframes-as-function. The text-shadow
+// rgba values are derived from the instance's accentColor RGB; the
+// @keyframes name AND the .aiglow-prefix class are suffixed by the
+// color hex so multiple instances with different accents on the same
+// page do not collide (last-wins). The heart's keyframes are static
+// (transform-only, no color) and keep the shared 'aiglow-heartbeat'
+// name + '.aiglow-heart' class.
+//
+// W-AILY-AIGLOW-FIX (2026-06-21) preserved: stronger trough→peak delta,
+// 1.9s cycle, 1.5% scale breath at the 50% keyframe.
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = hex.replace(/^#/, '').match(/^[0-9a-fA-F]{6}$/) ? hex.replace(/^#/, '').match(/.{2}/g) : null
+  if (!m || m.length < 3) return { r: 29, g: 78, b: 216 } // fallback to historical blue if malformed
+  return { r: parseInt(m[0], 16), g: parseInt(m[1], 16), b: parseInt(m[2], 16) }
+}
+
+function buildAiglowKeyframes(accentColor: string): { css: string; pulseName: string; prefixClass: string } {
+  const { r, g, b } = hexToRgb(accentColor)
+  const key = accentColor.replace(/^#/, '').toLowerCase().replace(/[^0-9a-f]/g, '') || 'fallback'
+  const pulseName = `aiglow-pulse-${key}`
+  const prefixClass = `aiglow-prefix-${key}`
+  const css = `
+  @keyframes ${pulseName} {
     0%, 100% {
       text-shadow:
-        0 0 4px rgba(29, 78, 216, 0.30),
-        0 0 12px rgba(29, 78, 216, 0.18);
+        0 0 4px rgba(${r}, ${g}, ${b}, 0.30),
+        0 0 12px rgba(${r}, ${g}, ${b}, 0.18);
       transform: scale(1);
     }
     50% {
       text-shadow:
-        0 0 18px rgba(29, 78, 216, 1.0),
-        0 0 42px rgba(29, 78, 216, 0.6),
-        0 0 80px rgba(29, 78, 216, 0.32);
+        0 0 18px rgba(${r}, ${g}, ${b}, 1.0),
+        0 0 42px rgba(${r}, ${g}, ${b}, 0.6),
+        0 0 80px rgba(${r}, ${g}, ${b}, 0.32);
       transform: scale(1.015);
     }
   }
@@ -68,11 +79,11 @@ const AIGLOW_KEYFRAMES = `
     45%           { transform: translateX(-50%) scale(1.35); }
   }
   @media (prefers-reduced-motion: reduce) {
-    .aiglow-prefix {
+    .${prefixClass} {
       animation: none !important;
       text-shadow:
-        0 0 12px rgba(29, 78, 216, 0.85),
-        0 0 28px rgba(29, 78, 216, 0.45) !important;
+        0 0 12px rgba(${r}, ${g}, ${b}, 0.85),
+        0 0 28px rgba(${r}, ${g}, ${b}, 0.45) !important;
       transform: scale(1) !important;
     }
     .aiglow-heart {
@@ -81,14 +92,22 @@ const AIGLOW_KEYFRAMES = `
     }
   }
 `
+  return { css, pulseName, prefixClass }
+}
 
 export default function AiGlowWordmark({
   brand,
   size = 'md',
   prefixLength = 2,
-  accentColor = '#1d4ed8',
+  accentColor = '#06b6d4',
   heartColor = '#ec4899',
 }: AiGlowWordmarkProps) {
+  // W-AILY-LOGO-CYAN (2026-06-24): per-instance keyframes + class name so
+  // the glow color matches accentColor. The name is suffixed by the color
+  // hex (no '#'), making multiple instances with different accents on the
+  // same page collision-safe.
+  const { css: aiglowCss, pulseName: aiglowPulseName, prefixClass: aiglowPrefixClass } = buildAiglowKeyframes(accentColor)
+
   // Defensive: if brand is shorter than the requested prefix, just use the
   // whole brand as prefix (no "rest" span).
   const effPrefixLen = Math.min(Math.max(prefixLength, 0), brand.length)
@@ -165,9 +184,9 @@ export default function AiGlowWordmark({
         whiteSpace: 'nowrap',
       }}
     >
-      <style>{AIGLOW_KEYFRAMES}</style>
+      <style>{aiglowCss}</style>
       <span
-        className="aiglow-prefix"
+        className={aiglowPrefixClass}
         style={{
           fontSize: baseFontSize,
           fontWeight: baseFontWeight,
@@ -179,7 +198,7 @@ export default function AiGlowWordmark({
           // the scale(1.015) breath at keyframe 50% apply without
           // disturbing baseline flow on flex children.
           display: 'inline-block',
-          animation: 'aiglow-pulse 1.9s ease-in-out infinite',
+          animation: `${aiglowPulseName} 1.9s ease-in-out infinite`,
         }}
       >
         {prefixContent}

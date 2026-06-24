@@ -76,7 +76,7 @@ export default function WalliamCTA({ context, assistantName, brandName, wordmark
           <span style={{ fontSize: 15, fontWeight: 300, color: 'rgba(255,255,255,0.8)', fontFamily: 'system-ui,sans-serif' }}>am</span>
         </div>
       ) : wordmarkStyle === 'aiglow' ? (
-        <AiGlowWordmark brand={brandName} size="sm" />
+        <AiGlowWordmark brand={brandName} size="md" />
       ) : (
         <BrandWordmark brand={brandName} size="sm" />
       )}

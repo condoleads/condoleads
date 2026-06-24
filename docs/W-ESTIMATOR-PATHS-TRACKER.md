@@ -10567,3 +10567,150 @@ Text/input/buttons untouched — luminance kept in slate-900 range, all readable
 
   Code + tracker shipped together (live-tracker rule). HOLD push.
 
+---
+
+## W-AILY-LOGO-CYAN — resolution  (2026-06-24)
+
+aiglow "ai" prefix cyan (#06b6d4), universal.
+
+The aiglow prefix rendered blue (#1d4ed8) and disappeared into the dark theme.
+Made it cyan on every aiglow surface.
+
+### CODE (committed in this diff)
+
+components/navigation/AiGlowWordmark.tsx:
+
+  (1) Converted the static AIGLOW_KEYFRAMES const — whose text-shadow glow
+      was HARDCODED rgba(29,78,216,...) (blue, ignoring the accentColor prop) —
+      into a function buildAiglowKeyframes(accentColor) that:
+        - Parses the accent hex to r,g,b (hexToRgb helper; fallback to historical
+          blue rgb(29,78,216) for malformed input).
+        - Builds the glow text-shadow rgba(...) values from that r,g,b.
+        - Names the @keyframes `aiglow-pulse-<hex>` (e.g. aiglow-pulse-06b6d4)
+          and the reduced-motion class `.aiglow-prefix-<hex>` so multiple
+          instances with different accents on the same page DO NOT COLLIDE
+          (verified pre-DB-change in smoke: nav-bar rendered aiglow-pulse-1d4ed8
+          while CTA-box rendered aiglow-pulse-06b6d4 — both animated their own
+          keyframes, no last-wins).
+
+  (2) Default accentColor flipped #1d4ed8 -> #06b6d4. Covers the 3 mount sites
+      that pass no accentColor prop (WalliamCTA.tsx:79, HomePageComprehensive
+      Client.tsx:79, HomePageComprehensiveClientV2.tsx:92).
+
+  heartColor default unchanged #ec4899; "ly" rest-of-brand stays #fff white.
+  Heart keyframes (aiglow-heartbeat, transform-only) and .aiglow-heart class
+  stay static — no color in them, so re-declaration across instances is
+  idempotent.
+
+components/WalliamCTA.tsx:79: AiGlowWordmark size prop sm (15px) -> md (20px).
+  Natural step inside the ~320px sidebar card. Nav-bar stays lg (28px).
+
+### DB (out-of-band, NOT in this diff — recorded here for history)
+
+tenants.primary_color for Aily (e2619717-6401-4159-8d4c-d5f87651c8d6) changed
+#1d4ed8 -> #06b6d4. This cascades to:
+  - Nav-bar wordmark: SiteHeaderClient.tsx:110 passes accentColor={primaryColor}
+    where primaryColor ← SiteHeader prop ← TenantHeader ← tenant.primary_color.
+    Nav-bar prefix now renders cyan + cyan glow (aiglow-pulse-06b6d4).
+  - Footer accent bar: TenantFooter.tsx:18,33 reads primary_color directly into
+    `linear-gradient(90deg, ${primary}, ${secondary})`. Now starts cyan -> indigo.
+
+*** RULE OVERRIDE, operator-authorized this session ***
+
+  This tenants table write was done via a scoped node script
+  (scripts/apply-aily-cyan.js, since deleted), NOT the Supabase Studio GUI
+  that CLAUDE.md mandates for tenants writes. Operator explicitly authorized
+  the override for this single-cell write.
+
+  Guardrails honored:
+    - 1-row WHERE: .eq('id', AILY_UUID literal). No host lookup, no fuzzy match.
+    - 1-column SET: { primary_color: '#06b6d4' } only.
+    - Explicit 'id, primary_color' allow-list on EVERY read (pre-read, post-read,
+      WALLiam-before, WALLiam-after, UPDATE .select returning). NEVER SELECT *.
+      Credential columns (anthropic_api_key, resend_api_key) never selected,
+      never returned, never logged.
+    - Service-role client.
+    - PRE-READ assertion: Aily.primary_color MUST equal #1d4ed8 before write —
+      abort with non-zero exit if anything else (refuse to overwrite an
+      unexpected value).
+    - GUARD: WALLiam pre-read captured for unchanged-check.
+    - POST-READ assertion: Aily.primary_color MUST equal #06b6d4 after write.
+    - WALLIAM UNCHANGED CHECK: WALLiam.primary_color before === after (would
+      have aborted LOUDLY if the UPDATE escaped its WHERE scope).
+    - UPDATE returned affected rows; assertion: exactly 1 row affected.
+    - On any assertion fail: print LOUD, exit non-zero, no further state changes.
+
+  All 5 assertions passed, exit 0. Script deleted immediately after success.
+
+### Verified rendered (smoke, real inline CSS)
+
+Aily property page (Host: aily.ca, /335-college-street-unit-c12935452):
+
+  Nav-bar #1: class="aiglow-prefix-06b6d4" style="font-size:28px;color:#06b6d4;
+              ...animation:aiglow-pulse-06b6d4 1.9s ease-in-out infinite"
+  Nav-bar #2: same — class="aiglow-prefix-06b6d4" color:#06b6d4
+              animation:aiglow-pulse-06b6d4
+  CTA-box   : class="aiglow-prefix-06b6d4" style="font-size:20px;color:#06b6d4;
+              ...animation:aiglow-pulse-06b6d4 ..."
+              (size confirmed md=20px, was sm=15px pre-edit)
+  Footer    : <div style="...background: linear-gradient(90deg, #06b6d4, #4f46e5);
+              ..." />   (TenantFooter accent bar)
+
+  #06b6d4 count on Aily page: 4 (3 wordmark instances + footer accent bar).
+
+Aily homepage (Host: aily.ca, /):
+  Hero      : class="aiglow-prefix-06b6d4" style="font-size:clamp(52px,10vw,96px);
+              ...color:#06b6d4;...animation:aiglow-pulse-06b6d4 ..."
+
+WALLiam property page (Host: walliam.ca, /335-college-street-unit-c12935452):
+  Nav-bar   : font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.02em
+              (WalliamWordmark — unchanged, separate component not in edit set)
+  Footer    : linear-gradient(90deg, #1d4ed8, #4f46e5)   (unchanged, WALLiam
+              primary_color = #1d4ed8 confirmed by DB-write unchanged-check)
+  #06b6d4 count on WALLiam page: 0 (zero cyan leak)
+  aiglow-prefix count on WALLiam: 0 (uses wordmarkStyle='hero' -> WalliamWordmark)
+
+### Gates
+
+  tsc --noEmit: exit 0.
+  grep `rgba(29, 78, 216` in AiGlowWordmark.tsx: 0 runtime hits (the only
+    remaining occurrence is the fallback constant inside hexToRgb's malformed-
+    input branch — historical-blue safety net, not the active glow color).
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — exactly the 17/20 baseline
+    (c8b-2, c11, L2.1 — all pre-existing, C8c-tracked). 0 NEW.
+
+### Out of scope (flagged, NOT changed)
+
+  Surfaces that still hardcode the old blue and are NOT the aiglow prefix
+  (per spec scope: cyan applies ONLY to the prefix):
+
+  - components/WalliamCTA.tsx:109 — "Ask AI" button gradient:
+        background: 'linear-gradient(135deg,#1d4ed8,#4f46e5)'
+  - components/WalliamCTA.tsx:123 — "Buyer Plan" button gradient + box-shadow:
+        background: 'linear-gradient(135deg,#1d4ed8,#4f46e5)'
+        boxShadow: '0 4px 16px rgba(59,130,246,0.3)'
+  - app/charlie/components/ResultsPanel.tsx:500,609 — "VIP Access Credit Used"
+    banner background:
+        background: 'linear-gradient(135deg, rgba(29,78,216,0.15), rgba(79,70,229,0.15))'
+
+  These are buttons/banners, not the wordmark prefix. Out of W-AILY-LOGO-CYAN
+  scope. If a full blue-purge of Aily's theme is wanted, scope a follow-up
+  W-AILY-THEME-BLUE-PURGE workstream.
+
+### Files (2 code + 1 tracker)
+
+  components/navigation/AiGlowWordmark.tsx   (keyframes-as-function + default flip)
+  components/WalliamCTA.tsx                  (CTA-box size sm -> md)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md          (this entry)
+
+### Backups (timestamps)
+
+  components/navigation/AiGlowWordmark.tsx.backup_20260624_091735   (7593 bytes)
+  components/WalliamCTA.tsx.backup_20260624_091735                  (6830 bytes)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_100846          (pre-this-entry)
+
+### Commit gate
+
+  Code + tracker shipped together (live-tracker rule). DB write already live and
+  asserted (W-AILY-LOGO-CYAN D1, this session). HOLD push.
+
