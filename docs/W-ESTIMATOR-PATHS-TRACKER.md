@@ -10094,3 +10094,78 @@ STATUS: APPLIED + PUSHED (commit 1a55047). Live close-out PENDING
       Catalog of routes silently degraded for Aily pre-A1 worth
       producing, but A1 now delivers x-tenant-id to all of them
       at the middleware level so they are restored.
+
+---
+
+## W-AILY-COSMETIC-B2 — resolution  (2026-06-24)
+
+Operator-flagged cosmetic: Aily nav-bar wordmark rendered at fontSize=20
+(the shared 'md' size value across BrandWordmark / AiGlowWordmark /
+WalliamWordmark). Operator wanted "a bit bigger" without disturbing
+WALLiam's nav-bar wordmark.
+
+Fix: add a new 'lg' = 28px size value to the wordmark size table, flip
+ONLY the aiglow branch at SiteHeaderClient.tsx:110 from size="md" to
+size="lg". WALLiam stays at 'md'; its mount line (L103) routes to
+WalliamWordmark (a separate component, not in this edit set), so the
+WALLiam visual is unchanged by construction.
+
+Files (3 code + 1 tracker):
+  components/navigation/AiGlowWordmark.tsx
+    - size union: 'sm' | 'md' | 'hero' -> 'sm' | 'md' | 'lg' | 'hero'
+    - size table baseFontSize: lg -> 28 (md remains 20, hero remains
+      clamp(52px, 10vw, 96px))
+    - size table heartFontSize: lg -> 11 (proportional to md=8 at 20px:
+      28/20*8 = 11.2)
+    - baseFontWeight/baseLetterSpacing/heartTopOffset: lg shares the
+      non-hero branch with md (700 / -0.01em / -15%)
+  components/navigation/BrandWordmark.tsx
+    - size union widened identically + fontSize table updated to lg=28
+    - drop-in contract preserved (AiGlowWordmark.tsx:98-100 comment:
+      "Size table - matches WalliamWordmark / BrandWordmark scales so
+      the 'aiglow' value is a drop-in replacement")
+  components/navigation/SiteHeaderClient.tsx:110
+    - aiglow branch <AiGlowWordmark size="md" /> -> size="lg"
+    - L103 (<WalliamWordmark size="md" />) NOT touched
+    - L112 (<BrandWordmark ... size="md" />) NOT touched (else-fallback,
+      no active tenant routes here today)
+  docs/W-ESTIMATOR-PATHS-TRACKER.md (this entry)
+
+WALLIAM ZERO-DIFF (proof):
+  SiteHeaderClient.tsx:103 byte-identical pre/post (only L110 changed).
+  WalliamWordmark.tsx not in the edit set; no backup taken; no change.
+  Smoke confirmed: WALLiam nav wordmark renders
+    style="font-size:20px;font-weight:800;color:#fff;letter-spacing:-0.02em"
+  exactly as before. font-weight=800 is WalliamWordmark's own value
+  (different from AiGlowWordmark/BrandWordmark's 700 at md) — proves
+  L103's mount is untouched and continues to route to the WalliamWordmark
+  component path.
+
+AILY HOMEPAGE HERO WORDMARK UNCHANGED:
+  Homepage hero uses size="hero" (clamp(52px, 10vw, 96px)) at a different
+  mount line. The lg addition does not touch the hero branch. Smoke
+  confirmed: homepage aiglow-prefix span renders
+    style="font-size:clamp(52px, 10vw, 96px);font-weight:900;..."
+  unchanged.
+
+SMOKE (local dev, Host header override):
+  - Aily nav-bar: aiglow-prefix span renders
+      style="font-size:28px;font-weight:700;color:#1d4ed8;
+             letter-spacing:-0.01em;..."
+    (28px = new 'lg' value, font-weight=700 / letter-spacing=-0.01em
+     match the non-hero md/lg branch).
+  - WALLiam nav-bar: unchanged at 20px (font-weight=800 confirms
+    WalliamWordmark route, not BrandWordmark/AiGlowWordmark).
+  tsc --noEmit: exit 0.
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — exactly the 17/20
+  baseline (c8b-2, c11, L2.1 — all pre-existing, C8c-tracked). 0 NEW.
+
+Backups (timestamps):
+  AiGlowWordmark.tsx.backup_20260624_060631
+  BrandWordmark.tsx.backup_20260624_060631
+  SiteHeaderClient.tsx.backup_20260624_060631
+  docs/W-ESTIMATOR-PATHS-TRACKER.md.backup_20260624_062255
+
+### Commit gate
+
+  Code + tracker shipped together (live-tracker rule). HOLD push.

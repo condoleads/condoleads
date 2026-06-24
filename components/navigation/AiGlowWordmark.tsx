@@ -23,7 +23,7 @@
 
 interface AiGlowWordmarkProps {
   brand: string
-  size?: 'sm' | 'md' | 'hero'
+  size?: 'sm' | 'md' | 'lg' | 'hero'
   prefixLength?: number   // default 2 — for Aily="aily" → "ai" + "ly"
   accentColor?: string    // default tenants.primary_color / #1d4ed8 — prefix text+glow color
   // W-AILY-AIGLOW-FIX (2026-06-21): heartColor is separate from
@@ -101,12 +101,12 @@ export default function AiGlowWordmark({
   const isHero = size === 'hero'
   const baseFontSize = isHero
     ? 'clamp(52px, 10vw, 96px)'
-    : (size === 'sm' ? 15 : 20)
+    : (size === 'sm' ? 15 : size === 'lg' ? 28 : 20)
   const baseFontWeight = isHero ? 900 : 700
   const baseLetterSpacing = isHero ? '-0.03em' : '-0.01em'
   const heartFontSize = isHero
     ? 'clamp(10px, 1.6vw, 18px)'
-    : (size === 'sm' ? 6 : 8)
+    : (size === 'sm' ? 6 : size === 'lg' ? 11 : 8)
   const heartTopOffset = isHero ? '6%' : '-15%'
 
   // Heart-as-dot: if the prefix contains exactly one "i" (case-insensitive),

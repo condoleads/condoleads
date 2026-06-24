@@ -5,12 +5,12 @@
 // C8b-2 -- 'hero' size added for homepage HeroWordmark fallback.
 interface BrandWordmarkProps {
   brand: string
-  size?: 'sm' | 'md' | 'hero'
+  size?: 'sm' | 'md' | 'lg' | 'hero'
 }
 
 export default function BrandWordmark({ brand, size = 'md' }: BrandWordmarkProps) {
   const isHero = size === 'hero'
-  const fontSize = isHero ? 'clamp(52px, 10vw, 96px)' : (size === 'sm' ? 15 : 20)
+  const fontSize = isHero ? 'clamp(52px, 10vw, 96px)' : (size === 'sm' ? 15 : size === 'lg' ? 28 : 20)
   return (
     <span
       style={{

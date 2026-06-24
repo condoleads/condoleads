@@ -107,7 +107,7 @@ export default function SiteHeaderClient({
                    primaryColor threads the brand accent (defaults to #1d4ed8
                    inside the component if undefined). Does NOT flip any
                    isHeroTenant() gate — WALLiam UI suite stays WALLiam-only. */
-                <AiGlowWordmark brand={brandName ?? agentName} size="md" accentColor={primaryColor} />
+                <AiGlowWordmark brand={brandName ?? agentName} size="lg" accentColor={primaryColor} />
               ) : (
                 <BrandWordmark brand={brandName ?? agentName} size="md" />
               )}
