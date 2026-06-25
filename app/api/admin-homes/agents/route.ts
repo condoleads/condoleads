@@ -22,7 +22,7 @@ export async function GET() {
   const supabase = createServiceClient()
   let query = supabase
     .from('agents')
-    .select('id, full_name, email, cell_phone, subdomain, can_create_children, is_active, profile_photo_url, tenant_id, parent_id, notification_email, brokerage_name, title, total_leads')
+    .select('id, full_name, email, cell_phone, subdomain, can_create_children, is_active, profile_photo_url, tenant_id, parent_id, notification_email, brokerage_name, title, total_leads, role')
     .eq('site_type', 'comprehensive')
     .order('full_name')
 

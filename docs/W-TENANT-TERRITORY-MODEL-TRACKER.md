@@ -12,7 +12,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 |---|---|---|---|---|
 | Target model design | territory→leads→hierarchy | LOCKED | a1925f4 | — |
 | Governance design + phased plan | territory→hierarchy | LOCKED | bdc0122 | — |
-| Phase 1 house-account invariant (trigger + PATCH + picker + guards) | territory→leads (ownership fallback) | SHIPPED LOCAL, DDL live | ebc0487 | push held; live picker click-test on aily.ca |
+| Phase 1 house-account invariant (trigger + PATCH + picker + guards) | territory→leads (ownership fallback) | SHIPPED, DDL live, pushed d39941f | d39941f | — |
+| W-HOUSE-ACCOUNT UNIT 1 (picker feed fix + resolver P-HOUSE fallback + Aily→Ovais) | territory→leads (end-to-end flow) | SHIPPED, DDL live | (pending this commit) | live operator click-test of picker on aily.ca |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -251,3 +252,159 @@ File: `app/api/admin-homes/agents/[id]/route.ts`.
 
   Migration applied + Parts 2-4 code + tracker shipped together (live-tracker rule).
   HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 1 RUN-LOG (2026-06-25) — house-account flow END TO END
+
+Goal: make the house-account flow ACTUALLY WORK end-to-end. Phase 1 shipped
+the invariant (trigger + picker + guards), but the picker showed "No eligible
+agents" on Aily, and even with a default_agent_id set, raw-RPC callers
+(including the lead-create path) bypassed the wrapper's fallback. Both fixed.
+
+### R1 — Aily picker bug (root cause)
+
+GET `/api/admin-homes/agents` (app/api/admin-homes/agents/route.ts:25) did NOT
+include `role` in its SELECT col list. The SettingsClient client-side filter
+(app/admin-homes/settings/SettingsClient.tsx:126) requires `a.role` for the
+ELIGIBLE_ROLES.has(a.role) check. Every agent failed the filter (undefined !=
+any eligible role) → picker showed "No eligible agents" even with 4 eligible
+Aily agents present in DB.
+
+  Fix: one-line additive patch. Added 'role' to GET SELECT.
+  File: app/api/admin-homes/agents/route.ts (line 25).
+  Backup: app/api/admin-homes/agents/route.ts.backup_20260625_073820.
+
+### R2 — Resolver fallback gap (root cause)
+
+RPC `resolve_agent_for_context` ends with `RETURN NULL` (20260527 P-FLOOR
+migration line 369). The TS wrapper `resolveAgentForContext`
+(lib/utils/tenant-resolver.ts:222-228) wraps the RPC with a default_agent_id
+fallback, but 6 callers invoke the raw RPC and bypass the wrapper:
+  app/api/charlie/lead/route.ts:115            (LEAD CREATE — most critical)
+  app/api/charlie/appointment/route.ts:98
+  app/api/walliam/estimator/session/route.ts:98
+  app/api/walliam/contact/route.ts:98
+  app/api/walliam/charlie/session/route.ts:78
+  app/api/walliam/assign-user-agent/route.ts:137
+  lib/actions/leads.ts:99
+
+  Comprehensive fix (per CLAUDE.md): move the fallback INTO the RPC so every
+  caller — wrapper or raw — gets it for free. Solves the F-NON-SELLING-PRIMARY-
+  SILENT-FAILOVER class of bug at the root.
+
+### F1 — Aily house account set to Ovais (one-row prod UPDATE)
+
+```
+UPDATE tenants SET default_agent_id = '319ad339-...' WHERE id = 'e2619717-...';
+```
+
+Validated automatically by the live `validate_house_account` trigger (Phase 1
+d39941f). Snapshot captured before write.
+
+  Before: Aily.default_agent_id = 0b3fcbf7 (Admin Tenant Aily — the seed admin)
+  After:  Aily.default_agent_id = 319ad339 (OVAIS QASSIM, role=tenant_admin)
+  Rollback snapshot: supabase/migrations/rollback-snapshots/
+                     _aily-house-ovais_tenants_default_agent_id_
+                     2026-06-25T12-22-55-366Z.sql
+  WALLiam.default_agent_id: fafcd5b1 (King Shah) — unchanged, no cross-tenant
+                            leak.
+
+### F2 — Resolver P-HOUSE fallback migration
+
+  File: supabase/migrations/20260625_w_gov_phase1_house_account_fallback.sql
+  DDL: CREATE OR REPLACE FUNCTION resolve_agent_for_context — adds final
+  P-HOUSE branch after P-FLOOR. Contract: is_active + tenant_id match,
+  is_selling INTENTIONALLY OMITTED to mirror validate_house_account trigger
+  (a non-selling tenant_admin is a valid house account by design).
+  Rollback snapshot: supabase/migrations/rollback-snapshots/
+                     _w-gov-phase1-fallback_resolve_agent_for_context_
+                     2026-06-25T12-24-19-177Z.sql
+  Function comment now: 'W-TENANT-GOV-PHASE1 (v14): canonical resolver ...
+                         P-HOUSE=tenants.default_agent_id (is_active + tenant
+                         match, NO is_selling filter — matches
+                         validate_house_account trigger contract).'
+
+  Apply note: the migration file contained its own BEGIN/COMMIT, which ended
+  the apply-runner's outer transaction prematurely. Function CHANGE committed
+  successfully (verified via live probe — comment + body markers + behavior
+  all confirm P-HOUSE branch active). Runner errored on SAVEPOINT smokes
+  4-7 because no tx was active. SMOKES 4-7 were re-run in a standalone
+  outer-transaction script and ALL PASSED. Both apply-runners deleted post-
+  success per the one-shot pattern (snapshots retained).
+
+### Smoke results
+
+  apply-runner SMOKES 1-3 (committed before SAVEPOINT issue):
+    SMOKE 1 PASS — WALLiam empty-context → live default (fafcd5b1)
+    SMOKE 2 PASS — Aily empty-context → live default (319ad339 Ovais)
+    SMOKE 3 PASS — NULL tenant_id → NULL (no cross-tenant leak)
+  Standalone smoke script SMOKES 4-7:
+    SMOKE 4 PASS — tenant with NULL default → resolver returns NULL; cleanup OK
+    SMOKE 5 PASS — inactive house account → returns NULL (defense-in-depth);
+                   cleanup OK (Ovais.is_active restored)
+    SMOKE 6 PASS — cross-tenant default (probe bypassed trigger) → filtered
+                   out by resolver tenant_id check; cleanup OK
+    SMOKE 7 PASS — Aily lead-create scenario → routes to live house account
+                   (Ovais)
+
+### T1-T3 end-to-end verification (zero prod mutation)
+
+  T1 PASS: Aily empty-context lead-create resolves to Ovais (319ad339).
+           agent.full_name=OVAIS QASSIM, agent.tenant_id=Aily, is_active=true,
+           agent effective email=yourcondorealtor@gmail.com.
+  T2 PASS: Simulated leads INSERT row has agent_id=Ovais,
+           assignment_source='geo' (per route.ts:216,246 with non-null
+           agentId). Simulated email chain Layer-1 TO=Ovais email; Layers 2-4
+           via walkHierarchy; Layer 5-6 platform BCC unconditional.
+  T3 PASS: WALLiam empty-context lead-create resolves to fafcd5b1 (King Shah),
+           NOT to Aily's Ovais. agent.tenant_id=WALLiam (correct tenant).
+           No cross-tenant leak.
+
+### Gates
+
+  TSC --noEmit: exit 0
+  C12 multi-tenant regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11,
+    L2.1). 0 NEW fails.
+  Aily/WALLiam state post-run (fresh connection):
+    Aily.default_agent_id    = 319ad339 (Ovais)       ← changed by F1
+    WALLiam.default_agent_id = fafcd5b1 (King Shah)   ← unchanged
+    Ovais.is_active = true (restored after SMOKE 5)
+
+### Files (this commit)
+
+  app/api/admin-homes/agents/route.ts                       (R1 picker fix: +role)
+  supabase/migrations/20260625_w_gov_phase1_house_account_fallback.sql (F2 DDL)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                  (this run-log)
+  supabase/migrations/rollback-snapshots/
+    _aily-house-ovais_tenants_default_agent_id_2026-06-25T12-22-55-366Z.sql
+    _w-gov-phase1-fallback_resolve_agent_for_context_2026-06-25T12-24-19-177Z.sql
+
+### Backups (timestamps)
+
+  app/api/admin-homes/agents/route.ts.backup_20260625_073820
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_083133 (pre-this-entry)
+
+### Open follow-ups
+
+- LIVE OPERATOR CLICK-TEST of the Settings picker on aily.ca production AFTER
+  push: open Settings → General, confirm picker now renders all 4 eligible
+  Aily agents (was empty), confirm current selection shows OVAIS QASSIM
+  (the F1 result), confirm save persists. (Claimed, unverified — auth-gated
+  UI cannot be tested headlessly. The R1 fix is the cause of the prior empty
+  state; the resolver-side flow is verified.)
+- Backfill the F2 migration file: remove its internal BEGIN; / COMMIT; so
+  future apply-runner re-applies don't trip the SAVEPOINT issue. Low priority
+  since the migration is already applied and the one-shot runner deleted; if
+  any down-and-up rerun is needed, capture lesson at that time.
+- W-LEADS-WORKBENCH-TRACKER + W-HIERARCHY-TRACKER intersection: the lead
+  email Layer-2/3/4 chain now genuinely walks from Ovais (not 0b3fcbf7).
+  Verify Ovais's hierarchy chain (parent_id walk) reaches a populated
+  tenant_admin and any expected platform CC/BCC. T2 documented the chain
+  abstractly; concrete walkHierarchy probe owned by W-LEADS-WORKBENCH
+  follow-up.
+
+### Commit gate
+
+  R1 app fix + F2 migration + F1 data write (via runner) + tracker shipped
+  together (live-tracker rule). HOLD push pending operator instruction.
