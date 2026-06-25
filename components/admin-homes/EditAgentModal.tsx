@@ -45,6 +45,11 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     // OPTED OUT of oversight copies + assignable territory. Default false
     // (receiving copies, assignable) — matches Unit 9 jsonb default {}.
     oversight_opt_out: false,
+    // W-AGENT-EDIT UNIT 14: role editable post-create. Loaded from the
+    // agent row; UI gated to canSetOversightOptOut viewers. Server PUT
+    // has the same gate + 2 invariants (house-account-eligible role +
+    // no-orphan-on-demote).
+    role: 'agent' as 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'admin' | 'assistant',
   })
 
   useEffect(() => {
@@ -94,6 +99,9 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
         primary_color: branding.primary_color || '#16a34a',
         secondary_color: branding.secondary_color || '#15803d',
         oversight_opt_out: oversightOptOut,
+        // W-AGENT-EDIT UNIT 14: load current role; fall back to 'agent' if
+        // null (shouldn't happen post-Unit 11 but defensive).
+        role: (a.role || 'agent') as 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'admin' | 'assistant',
       })
       if (a.profile_photo_url) setPhotoPreview(a.profile_photo_url)
     } catch { setError('Failed to load agent') }
@@ -151,6 +159,10 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
       }
       if (canSetOversightOptOut) {
         body.notification_preferences = { oversight_opt_out: formData.oversight_opt_out }
+        // W-AGENT-EDIT UNIT 14: role write is admin-gated. Send only when
+        // viewer has the permission; server PUT re-validates the gate +
+        // 2 invariants (house-account-eligible + no-orphan-on-demote).
+        body.role = formData.role
       }
       const res = await fetch(`/api/admin-homes/agents/${agentId}`, {
         method: 'PUT',
@@ -234,6 +246,32 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2"><Users className="w-4 h-4" /> Team Hierarchy</h3>
               <div className="grid grid-cols-2 gap-4">
+                {/* W-AGENT-EDIT UNIT 14: role select. Visible ONLY for tenant
+                    admin / assistant / admin / platform admin viewers (same
+                    canSetOversightOptOut predicate from Units 10/12/13). The
+                    server PUT route re-validates with 2 invariants: house-
+                    account-eligible role (can't change role of current
+                    house-account agent to assistant); no-orphan-on-demote
+                    (can't change to a leaf role when reports exist). */}
+                {canSetOversightOptOut && (
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                    <select
+                      value={formData.role}
+                      onChange={e => setFormData({ ...formData, role: e.target.value as typeof formData.role })}
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                    >
+                      <option value="agent">Agent</option>
+                      <option value="manager">Manager</option>
+                      <option value="area_manager">Area Manager</option>
+                      <option value="tenant_admin">Tenant Admin</option>
+                      <option value="assistant">Tenant Assistant</option>
+                    </select>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Changing role re-validates server-side: can't demote the current house account, can't demote someone with active reports to a leaf role (agent / assistant).
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Reports To</label>
                   <select value={formData.parent_id} onChange={e => setFormData({ ...formData, parent_id: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm">

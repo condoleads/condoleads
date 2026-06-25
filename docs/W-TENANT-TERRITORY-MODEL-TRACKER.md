@@ -24,7 +24,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 10 (opt-out UI toggle in EditAgentModal; tenant_admin/assistant-only render gate; threads canSetOversightOptOut through page → AgentsManagementClient → modal) | territory→leads→email (operator UX) | SHIPPED, pushed 18c71f2 | 18c71f2 | — |
 | W-TENANT-ASSISTANT UNIT 11 (agents.role CHECK extended to allow 'assistant'; AddAgentModal option; assistants card-eligible like any role — NO license gate; Unit 9 lead-email leg auto-activates) | territory→leads→email (role) | SHIPPED, pushed 9a6a52f (UNIT 11 3663749 + FIX 9a6a52f), DDL live | 9a6a52f | — |
 | W-COCKPIT-PARITY UNIT 12 (thread tenantDefaultAgentId + canSetOversightOptOut from cockpit server page → CockpitShell → PeopleTab → AgentsManagementClient/EditAgentModal — closes the 3 carried cockpit follow-ups from UNITs 3 and 10) | territory (operator UX cockpit) | SHIPPED, pushed bed7bed | bed7bed | — |
-| W-HOUSE-ACCOUNT UNIT 13 (inline "Set as house account" row action in agents list — works in standalone + cockpit via shared AgentsManagementClient; reuses Phase 1 Part 2 PATCH; gated to tenant_admin/assistant/admin/platform; hidden for assistant rows per trigger contract) | territory→leads→email (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents + cockpit People tab |
+| W-HOUSE-ACCOUNT UNIT 13 (inline "Set as house account" row action in agents list — works in standalone + cockpit via shared AgentsManagementClient; reuses Phase 1 Part 2 PATCH; gated to tenant_admin/assistant/admin/platform; hidden for assistant rows per trigger contract) | territory→leads→email (operator UX) | SHIPPED, pushed fee54461 | fee54461 | — |
+| W-AGENT-EDIT UNIT 14 (role edit in EditAgentModal — gated to admin viewers; server PUT enforces 2 invariants: house-account-eligible role + no-orphan-on-demote) | hierarchy + territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents Edit + cockpit People Edit |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | SUPERSEDED — Phase 3's "admin_assistant" role intent is now W-TENANT-ASSISTANT UNIT 11's 'assistant' value (added to agents.role CHECK 2026-06-25). SMOKE 7 role-ineligible test is implicit in Unit 11's apply-runner SMOKE 4 (validate_house_account still rejects assistant as house). Closed as covered. | 18c71f2..(this) | — |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | SUPERSEDED — UNIT 9 implemented opt-out via the existing agents.notification_preferences jsonb (no new column needed). Closed as covered. | 59da867 | — |
@@ -2159,4 +2160,159 @@ that reuses the same validated PATCH path (Phase 1 Part 2).
 ### Commit gate
 
   1 app file + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-AGENT-EDIT UNIT 14 RUN-LOG (2026-06-25) — role edit post-create
+
+Goal: close the carried follow-up from UNIT 11 — let admin viewers change
+an agent's role from EditAgentModal, with server-side guards so a careless
+role change can't break the house account or orphan a manager's reports.
+No schema change — agents.role CHECK already covers all roles (UNIT 11).
+
+### R1-R3 recon findings
+
+  R1 — EditAgentModal had no role field; PUT route did not accept role in
+       its body destructure. Need to add both.
+  R2 — Two invariants the role change can violate:
+       (a) HOUSE-ACCOUNT-ELIGIBLE-ROLE: validate_house_account trigger
+           (Phase 1, d39941f) requires role IN ('agent','manager',
+           'area_manager','tenant_admin','admin'). 'assistant' is barred.
+           The trigger fires only on tenants.default_agent_id writes, but
+           a role change on the current house-account agent would put the
+           tenant in a state where the trigger would block the NEXT
+           house-account write — better to mirror the Phase 1 deactivate
+           guard at the PUT route and BLOCK the role change up front.
+       (b) ORPHAN-ON-DEMOTE: agents.role has no DB constraint linking it
+           to parent_id, but operationally a leaf role (agent/assistant)
+           with active reports is confusing. Lock: roles that can hold
+           children = {tenant_admin, area_manager, manager}; roles that
+           can't = {agent, assistant}. If the new role is in the can't
+           set AND the agent has >=1 active child, BLOCK.
+  R3 — Same admin set as opt-out: tenant_admin / assistant / admin /
+       platform_admin. REUSE canSetOversightOptOut as the gate (UNITs 10/
+       12/13). The boolean is now the canonical "tenant-agent admin
+       authority" flag — gates opt-out toggle, set-house row action, AND
+       role-edit select. Documented in the comment so future readers
+       don't think it's only about opt-out.
+
+### B1 — role select in EditAgentModal
+
+  components/admin-homes/EditAgentModal.tsx
+    + formData.role added (default 'agent'; type literal covers all 6
+      VALID_ROLES including 'assistant').
+    + loadAgent() reads a.role (fallback 'agent' defensively).
+    + handleSubmit() sends body.role ONLY when canSetOversightOptOut
+      (same gate as notification_preferences). Server PUT route is the
+      backstop — non-admin saves don't even attempt the gated update.
+    + New role <select> in Team Hierarchy section, rendered ONLY when
+      canSetOversightOptOut === true. Options: Agent, Manager, Area
+      Manager, Tenant Admin, Tenant Assistant. Helper text explains
+      the server-side guards.
+
+### B2 + B3 — server guards (app/api/admin-homes/agents/[id]/route.ts)
+
+  PUT route extended with a role-change block after the destructure and
+  the parent_id guard, before the email-changing pre-flight. Only fires
+  when role !== undefined AND role !== target.role (avoids unnecessary
+  work for no-ops).
+
+  (a) Write gate: 403 if not (isPlatformAdmin || role==='admin' ||
+      position==='tenant_admin' || position==='assistant'). Friendly
+      message directs to a tenant admin.
+  (b) Valid role: 400 if new role not in VALID_ROLES (server-side
+      mirror of POST handler list — keeps client + server in lockstep).
+  (c) HOUSE-ACCOUNT-ELIGIBLE guard: 400 if new role NOT in
+      HOUSE_ELIGIBLE_ROLES (excludes 'assistant') AND this agent IS
+      the tenant's current default_agent_id. Message: "Cannot change
+      role: this agent is the house account, and the new role can't
+      hold that responsibility. Assign a different house account
+      first, then change the role." Mirrors Phase 1 Part 4 deactivate
+      guard pattern.
+  (d) ORPHAN-ON-DEMOTE guard: 400 if new role NOT in
+      ROLES_THAT_CAN_HOLD_CHILDREN (agent + assistant are leaf-only)
+      AND >=1 active agent has parent_id = this. Message includes the
+      count: "Cannot change role: N active agent(s) report to this
+      person. Reassign their reports first (Edit each report and
+      change Reports To), then change the role."
+
+  Server BLOCKS rather than auto-reparenting reports — auto-reparenting
+  would need a target-parent decision the system can't make safely. The
+  operator's reassign-each-then-retry flow is the predictable path.
+
+### B4 — server is the only gate
+
+  Client gate (UI render) is a UX nicety. Server PUT enforces all 4
+  checks regardless of what the client sends. A non-admin attempting
+  to PUT role via curl/fetch would still get 403.
+
+### B5 — multi-tenant
+
+  All guards keyed on agent's own tenant + viewer's role/position. No
+  hardcoded tenants. WALLiam's King Shah block-on-→assistant works the
+  same way as Aily's Ovais block, verified by guard.
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (SAVEPOINT-isolated; NO permanent mutation): 16 PASS
+     Scenario 1 (viewer gate): admin accepted, non-admin 403.
+     Scenario 2 (happy path Aily Agent role changes): agent->manager,
+        ->area_manager, ->assistant all accepted (no reports, not house).
+     Scenario 3 (house guard): Ovais -> assistant BLOCKED with friendly
+        message; Ovais -> tenant_admin no-op; Ovais -> manager allowed
+        (manager IS house-eligible — orphan guard fires separately if
+        reports exist).
+     Scenario 4 (orphan guard): Manager (Aily, 1 report) -> agent
+        BLOCKED with count message; -> area_manager allowed (can hold
+        children); -> assistant BLOCKED (leaf + reports).
+     Scenario 5 (invalid role value): 'frobnicator' -> 400.
+     Scenario 6 (WALLiam parity): King Shah -> assistant BLOCKED;
+        King Shah -> manager allowed (eligible + manager can hold his
+        2 reports Neo + WALLiam).
+     Post-check (fresh connection): Ovais.role still tenant_admin.
+     No persistent mutation.
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline. 0 NEW fails.
+
+### Files (this commit)
+
+  components/admin-homes/EditAgentModal.tsx           (role select + PUT wire)
+  app/api/admin-homes/agents/[id]/route.ts             (4-check guard block)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md             (this run-log)
+
+### Backups (timestamps)
+
+  components/admin-homes/EditAgentModal.tsx.backup_20260625_155430
+  app/api/admin-homes/agents/[id]/route.ts.backup_20260625_155430
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_155848 (pre-this-entry)
+
+### canSetOversightOptOut now gates 3 things (documented)
+
+  1. Opt-out toggle in EditAgentModal (UNIT 10)
+  2. Set-as-house-account row action in agents list (UNIT 13)
+  3. Role-select in EditAgentModal (THIS UNIT)
+  Naming stays as-is to avoid renaming-churn across UNITs 10/12/13/14;
+  the comment in the PUT route's role block notes the canonical use.
+
+### Carried follow-up CLOSED
+
+  - UNIT 11 follow-up: "EditAgentModal doesn't allow role edit" -> CLOSED
+
+### Open follow-ups
+
+- Toast vs alert() polish for PATCH/PUT failure messages (carried).
+- Live operator click-test on aily.ca after push:
+  - As Ovais (tenant_admin), open EditAgentModal on Agent (Aily) ->
+    Role select visible -> change to manager -> save -> reload -> Agent
+    now shows as manager in list/tree.
+  - Open EditAgentModal on Manager (Aily) -> try change to agent ->
+    save -> friendly inline error mentioning 1 report.
+  - Open EditAgentModal on Ovais (himself) -> try change to assistant
+    -> friendly inline error mentioning house account.
+  - As non-admin viewer (if one exists), Role select does NOT render.
+
+### Commit gate
+
+  2 app files + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.

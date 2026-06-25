@@ -85,6 +85,11 @@ export async function PUT(
     // W-HOUSE-ACCOUNT UNIT 9: oversight opt-out flag (jsonb sub-key).
     // Gated below — only tenant_admin / admin / platform_admin can set it.
     notification_preferences,
+    // W-AGENT-EDIT UNIT 14: role change post-create. Gated to the same
+    // admin set as opt-out (tenant_admin/assistant/admin/platform_admin)
+    // and validated against 2 invariants below: house-account-eligible
+    // role + no-orphan-on-demote.
+    role,
   } = body
 
   // Cross-tenant parent_id guard: parent must belong to the same tenant as the target.
@@ -183,6 +188,81 @@ export async function PUT(
         { status: 400 }
       )
     }
+  }
+
+  // W-AGENT-EDIT UNIT 14 (2026-06-25): role change post-create.
+  // Permission gate + 2 invariants. Same admin set as opt-out
+  // (notification_preferences) write — if you can change one, you can
+  // change the other; both are tenant-agent admin authority.
+  if (role !== undefined && role !== target.role) {
+    // (a) Write gate
+    const canChangeRole = user.isPlatformAdmin
+      || user.role === 'admin'
+      || user.position === 'tenant_admin'
+      || user.position === 'assistant'
+    if (!canChangeRole) {
+      return NextResponse.json(
+        { error: 'Only tenant admins can change agent roles. Ask your tenant admin.' },
+        { status: 403 }
+      )
+    }
+
+    // (b) Valid role value (server-side mirror of VALID_ROLES used by POST)
+    const VALID_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'admin', 'assistant'] as const
+    if (!(VALID_ROLES as readonly string[]).includes(role)) {
+      return NextResponse.json(
+        { error: 'Invalid role; must be one of: ' + VALID_ROLES.join(', ') },
+        { status: 400 }
+      )
+    }
+
+    // (c) House-account role-change guard — mirror of Phase 1 deactivate
+    // guard. If this agent IS the tenant's current default_agent_id AND
+    // the new role is NOT house-account-eligible (per validate_house_
+    // account trigger contract), BLOCK. Reassign the house account first.
+    const HOUSE_ELIGIBLE_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'admin']
+    if (!HOUSE_ELIGIBLE_ROLES.includes(role)) {
+      const { data: houseTenant, error: houseErr } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('default_agent_id', params.id)
+        .maybeSingle()
+      if (houseErr) {
+        return NextResponse.json({ error: 'house-account pre-check failed: ' + houseErr.message }, { status: 500 })
+      }
+      if (houseTenant) {
+        return NextResponse.json(
+          { error: 'Cannot change role: this agent is the house account, and the new role can\'t hold that responsibility. Assign a different house account first, then change the role.' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // (d) Orphan-on-demote guard. Roles that can reasonably hold reports:
+    // tenant_admin / area_manager / manager. Roles that can't: agent /
+    // assistant. If the new role is in the can't-hold-children set AND
+    // this agent has ≥1 child (anyone with parent_id = me), BLOCK with
+    // a clear count. Operator detaches reports via existing Edit → parent_id
+    // flow then comes back to change role.
+    const ROLES_THAT_CAN_HOLD_CHILDREN = ['tenant_admin', 'area_manager', 'manager']
+    if (!ROLES_THAT_CAN_HOLD_CHILDREN.includes(role)) {
+      const { count, error: kidsErr } = await supabase
+        .from('agents')
+        .select('*', { count: 'exact', head: true })
+        .eq('parent_id', params.id)
+        .eq('is_active', true)
+      if (kidsErr) {
+        return NextResponse.json({ error: 'reports pre-check failed: ' + kidsErr.message }, { status: 500 })
+      }
+      if ((count || 0) > 0) {
+        return NextResponse.json(
+          { error: 'Cannot change role: ' + count + ' active agent(s) report to this person. Reassign their reports first (Edit each report and change Reports To), then change the role.' },
+          { status: 400 }
+        )
+      }
+    }
+
+    update.role = role
   }
 
   // W-AGENT-LIFECYCLE-INTEGRITY (2026-06-24) BUG-1 FIX: if email is changing,
