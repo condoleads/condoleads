@@ -125,14 +125,15 @@ function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelected
   useEffect(() => {
     if (!api) return
     const search_lc = search.trim().toLowerCase()
-    // W-HOUSE-ACCOUNT UNIT 5: tenant_admin (the owner) is rendered in the
-    // owner header above the canvas, NOT as a tree node. Excluding it from
-    // the visible set auto-drops its outgoing edges (edge filter checks both
-    // source + target in `visible`); its children become orphan roots in
-    // dagre layout, which is the desired operating-hierarchy view.
+    // W-HOUSE-ACCOUNT UNIT 5+7: UNIT 5 wrongly excluded tenant_admin from
+    // the visible set, which decapitated anyone whose parent_id pointed at
+    // the owner (their incoming edge was dropped → dagre placed them at the
+    // top as an orphan). UNIT 7 puts the owner back into the visible set so
+    // reports nest under the owner naturally. The owner overlay (top-right
+    // of the canvas, see render below) stays as a useful label — the owner
+    // is now shown BOTH in the header AND as a real tree node.
     const visible = new Set(
       api.nodes
-        .filter(n => n.role !== 'tenant_admin')
         .filter(n => roleFilter.has(n.role))
         .filter(n => !sellingOnly || n.is_selling)
         .map(n => n.id)

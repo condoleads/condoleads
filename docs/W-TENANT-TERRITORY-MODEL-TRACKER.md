@@ -17,7 +17,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 2 (house account assignable from Agents org chart — marker + drawer action) | territory (operator UX) | SHIPPED, pushed 248b6bd | 248b6bd | — |
 | W-HOUSE-ACCOUNT UNIT 3 (seed root retired; Ovais real root; house-account marker on agents list; inactive agents filtered from list+chart) | territory (operator UX + data) | SHIPPED, pushed d50720c | d50720c | — |
 | W-HOUSE-ACCOUNT UNIT 5 (operating-hierarchy display; owner-out-of-tree; House Account picker removed from Settings) | territory (operator UX) | SHIPPED, pushed 142168e | 142168e | — |
-| W-HOUSE-ACCOUNT UNIT 6 (parent_id forest walk; orphan-at-its-level renders as own root row) | territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents |
+| W-HOUSE-ACCOUNT UNIT 6 (parent_id forest walk; orphan-at-its-level renders as own root row) | territory (operator UX) | SHIPPED, pushed 9953018 | 9953018 | — |
+| W-HOUSE-ACCOUNT UNIT 7 (revert UNIT 5 over-exclusion — tenant_admin owner is BOTH header AND tree node; reports nest under owner) | territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents + /agents/tree |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -980,4 +981,126 @@ already does this via its visible/edges filter (no change needed).
 ### Commit gate
 
   1 app file + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 7 RUN-LOG (2026-06-25) — revert UNIT 5 over-exclusion
+
+UNIT 5 (142168e) excluded tenant_admin from the tree's visible set so the
+owner would render ONLY in the separate owner header. That over-corrected:
+anyone whose parent_id = the owner got decapitated. Aily Manager (parent =
+Ovais) showed as a root row, not nested under Ovais. WALLiam Neo Smith and
+WALLiam agent (both parent = King Shah) showed as parallel roots, with the
+owner floating disconnected in the header overlay.
+
+UNIT 7 puts the owner back into the tree as a real node — it ALSO stays in
+the owner header. Direct reports nest under the owner. Brokerage decides
+how deep / how flat. The UNIT 6 orphan-as-root rule still applies to anyone
+else whose parent is missing/inactive.
+
+### R1 — UNIT 5's three exclusion sites (now reverted)
+
+  AgentsManagementClient.tsx (pre-UNIT 7):
+    (a) visibleIds = agents.filter(role !== OWNER_ROLE) -> owner excluded
+    (b) isOperatingRoot: if (role === OWNER_ROLE) return false
+    (c) getManagerName: !visibleIds.has(parent) returns null (silently
+        suppressed "Under: <owner>" since (a) excluded the owner)
+
+  AgentOrgChart.tsx (pre-UNIT 7):
+    (d) visible: .filter(n => n.role !== 'tenant_admin')
+
+  Owner-header rendering at both surfaces is INDEPENDENT of these (uses a
+  separate `owners` array) — kept intact.
+
+### R2 — real-data impact
+
+  Aily (active): Ovais (owner, parent NULL) | Manager (parent = Ovais) |
+                 Agent (parent = Manager).
+                 Pre-UNIT 7: Manager rendered as a ROOT (decapitated).
+                 Post-UNIT 7: Manager nests under Ovais.
+  WALLiam (active): King Shah (owner, parent NULL) | Neo Smith (parent =
+                 King Shah) | WALLiam agent (parent = King Shah).
+                 Pre-UNIT 7: both Neo + WALLiam rendered as parallel ROOTS.
+                 Post-UNIT 7: both nest under King Shah.
+
+### B1 — undo exclusions
+
+  AgentsManagementClient.tsx:
+    (a) visibleIds now = new Set(agents.map(a => a.id)) -- owner included.
+    (b) isOperatingRoot drops the role === OWNER_ROLE early-return; rule is
+        purely the UNIT 6 forest walk: parent_id IS NULL or parent NOT IN
+        visibleIds -> root, else nests.
+    (c) getManagerName comment refreshed to reflect: an agent under the
+        owner now correctly shows "Under: <owner name>".
+  AgentOrgChart.tsx:
+    (d) `visible` no longer filters tenant_admin. Edges from owner -> reports
+        survive the source/target visibility check; dagre nests reports
+        under the owner naturally.
+
+### B2 — preserved (no regressions to other features)
+
+  - Operating-role secondary ordering (area_manager > manager > agent ...) at
+    each level: unchanged. Owner is its OWN node, so it sorts among its
+    parent_id=null siblings (typically alone).
+  - House Account marker (UNIT 2 Crown on the tree node + UNIT 3 House
+    Account pill on the list row): unchanged. Owner who is ALSO the house
+    account (Ovais's case) renders both indicators automatically — the
+    marker logic keys on agent.id === tenant.default_agent_id.
+  - Settings -> General House Account picker removal (UNIT 5): unchanged.
+    Assignment surface is still the org chart drawer only.
+  - UNIT 6 orphan-as-root: still works — synthesized orphan (parent_id =
+    random uuid) still resolves to root. Guard-query confirms.
+  - UNIT 3 inactive-agent filter (page query .eq('is_active', true) +
+    tree-data route filter): unchanged. Retired seed still hidden.
+
+### B5 — multi-tenant
+
+  isOperatingRoot is keyed purely on parent_id + visibleIds membership; no
+  tenant ids, brand names, or per-tenant if/else. Tenant #3 with whatever
+  owner-with-reports shape they have will render correctly with zero
+  code change.
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (read-only, NO mutations):
+     Aily: 9 assertions OK (owner present, owner=owner-header, owner=tree-root,
+           Manager nests under Ovais, Agent nests under Manager)
+     WALLiam: 9 assertions OK (King Shah=owner-header AND tree-root,
+           Neo Smith nests under King Shah, WALLiam nests under King Shah)
+     Aily SYNTH orphan: 2 OK (parent missing -> still ROOT)
+     Cross-tenant leak guard: 2 OK
+     TOTAL: 22 assertions PASS.
+  T3 local dev UI: AUTH-GATED -- operator click-test on aily.ca after push.
+     Expected: /admin-homes/agents shows Owner header (Ovais, House Account
+     pill) AND the table also shows Ovais as the top tree node with Manager
+     nested under him and Agent nested under Manager. /agents/tree shows the
+     owner overlay top-right AND Ovais as the top chart node with the chain
+     hanging beneath. Settings General still has no House Account picker.
+  T4 C12 regression: 17 PASS / 3 FAIL -- same baseline (c8b-2, c11, L2.1).
+     0 NEW fails.
+
+### Files (this commit)
+
+  components/admin-homes/AgentsManagementClient.tsx          (visibleIds + isOperatingRoot + getManagerName)
+  components/admin-homes/AgentOrgChart.tsx                   (visible set)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                   (this run-log)
+
+### Backups (timestamps)
+
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260625_101838
+  components/admin-homes/AgentOrgChart.tsx.backup_20260625_101838
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_102119 (pre-this-entry)
+
+### Open follow-ups
+
+- Cockpit People-tab table view picks up the new logic automatically (same
+  component). Cockpit owner-header House Account pill still pending
+  tenantDefaultAgentId thread-through (carried from UNIT 3).
+- Live operator click-test on aily.ca after push.
+
+### Commit gate
+
+  2 app files + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.
