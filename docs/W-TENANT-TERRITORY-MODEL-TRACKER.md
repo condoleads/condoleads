@@ -23,7 +23,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED, pushed 59da867 | 59da867 | — |
 | W-HOUSE-ACCOUNT UNIT 10 (opt-out UI toggle in EditAgentModal; tenant_admin/assistant-only render gate; threads canSetOversightOptOut through page → AgentsManagementClient → modal) | territory→leads→email (operator UX) | SHIPPED, pushed 18c71f2 | 18c71f2 | — |
 | W-TENANT-ASSISTANT UNIT 11 (agents.role CHECK extended to allow 'assistant'; AddAgentModal option; assistants card-eligible like any role — NO license gate; Unit 9 lead-email leg auto-activates) | territory→leads→email (role) | SHIPPED, pushed 9a6a52f (UNIT 11 3663749 + FIX 9a6a52f), DDL live | 9a6a52f | — |
-| W-COCKPIT-PARITY UNIT 12 (thread tenantDefaultAgentId + canSetOversightOptOut from cockpit server page → CockpitShell → PeopleTab → AgentsManagementClient/EditAgentModal — closes the 3 carried cockpit follow-ups from UNITs 3 and 10) | territory (operator UX cockpit) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/tenants/[id]/ cockpit People tab |
+| W-COCKPIT-PARITY UNIT 12 (thread tenantDefaultAgentId + canSetOversightOptOut from cockpit server page → CockpitShell → PeopleTab → AgentsManagementClient/EditAgentModal — closes the 3 carried cockpit follow-ups from UNITs 3 and 10) | territory (operator UX cockpit) | SHIPPED, pushed bed7bed | bed7bed | — |
+| W-HOUSE-ACCOUNT UNIT 13 (inline "Set as house account" row action in agents list — works in standalone + cockpit via shared AgentsManagementClient; reuses Phase 1 Part 2 PATCH; gated to tenant_admin/assistant/admin/platform; hidden for assistant rows per trigger contract) | territory→leads→email (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents + cockpit People tab |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | SUPERSEDED — Phase 3's "admin_assistant" role intent is now W-TENANT-ASSISTANT UNIT 11's 'assistant' value (added to agents.role CHECK 2026-06-25). SMOKE 7 role-ineligible test is implicit in Unit 11's apply-runner SMOKE 4 (validate_house_account still rejects assistant as house). Closed as covered. | 18c71f2..(this) | — |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | SUPERSEDED — UNIT 9 implemented opt-out via the existing agents.notification_preferences jsonb (no new column needed). Closed as covered. | 59da867 | — |
@@ -2022,4 +2023,140 @@ wiring the same props through cockpit's mount chain.
 ### Commit gate
 
   3 app files + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 13 RUN-LOG (2026-06-25) — inline list-row "Set as house account"
+
+Goal: assign the house account directly from the agents list row (and the
+cockpit People table view, via the shared component). Until UNIT 13, the
+ONLY assignment surface was the org-chart drawer (UNIT 2, standalone
+/agents/tree route). UNIT 3 + UNIT 12 surfaced the House Account pill on
+the list, but you couldn't SET it there. Closed by adding a per-row action
+that reuses the same validated PATCH path (Phase 1 Part 2).
+
+### R1-R3 recon findings
+
+  R1 — AgentsManagementClient.tsx row Actions cell (L284-307) has
+       Edit / Assign / (cond) Add Agent / (cond nested) Remove / Delete.
+       Each row has agent.id + agent.role + agent.full_name. The
+       component already receives:
+         tenantId (page-level)
+         tenantDefaultAgentId (UNIT 3 standalone, UNIT 12 cockpit)
+         canSetOversightOptOut (UNIT 10 standalone, UNIT 12 cockpit)
+       → all data needed for the action is already in scope.
+  R2 — PATCH /api/admin-homes/tenants/[tenantId] with body
+         { default_agent_id: agentId }
+       From Phase 1 Part 2 + UNIT 1. App-layer validates 4 conditions
+       then validate_house_account trigger backstops. Reused as-is; no
+       new endpoint.
+  R3 — Same viewer set as opt-out (operator confirmed). Reuse the
+       canSetOversightOptOut boolean (predicate identical:
+       tenant_admin / assistant / admin / platform_admin). Server PATCH
+       is the security backstop; this gates UI render only.
+
+### B1 — row action (components/admin-homes/AgentsManagementClient.tsx)
+
+  + New top-level handler setAsHouseAccount(targetAgentId, name):
+      - confirm() prompt
+      - PATCH /api/admin-homes/tenants/[tenantId] { default_agent_id }
+      - On success: window.location.reload() to move the pill
+      - On 400: surface the friendly message inline via alert()
+        (matches the existing remove/delete handler pattern)
+
+  + New row-action element (per-row, in the Actions cell, between
+    Assign and Add Agent):
+      Conditional render: canSetOversightOptOut AND tenantId AND
+        agent.role !== 'assistant'
+        ↓
+      If tenantDefaultAgentId === agent.id:
+        amber "Current house account" disabled span (matches drawer UX)
+      Else:
+        amber outlined "Set as house" button → setAsHouseAccount()
+      Else (any condition false): nothing rendered.
+
+### B2 — "Current" label on holder's row (mirrors UNIT 2 drawer)
+
+  Same UX pattern as the org-chart drawer: the current holder shows a
+  disabled "Current house account" pill where other rows show the
+  button. No double-click-to-no-op possible.
+
+### B3 — assistant UX decision: HIDE the action
+
+  Per the recon report decision: assistants are barred from being house
+  account by the validate_house_account trigger contract (Phase 1).
+  Showing them a button that always returns 400 is confusing. HIDE the
+  action entirely for assistant rows. If the operator wants the click-
+  for-friendly-error UX instead, that's a single conditional flip in
+  future polish.
+
+### B4 — viewer permission gate
+
+  Reuses canSetOversightOptOut (UNIT 10/12). Same admins; one less
+  prop to thread. When the viewer can't set opt-out they also can't
+  assign house account — matches the operator's "same admins" spec.
+
+### B5 — multi-tenant + cockpit parity
+
+  All values from row.id + page-threaded tenantId + tenantDefault. No
+  hardcoded tenant. Works in standalone /admin-homes/agents AND
+  cockpit /admin-homes/tenants/[id]/ People → Table view (cockpit
+  already threads the same props via UNIT 12; no cockpit-specific
+  code in this unit).
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (read-only sim of conditional + Phase 1 PATCH
+     validation): 10 assertions PASS
+       Aily row visibility matrix:
+         - Ovais (current house) → "Current" disabled
+         - Manager (Aily) eligible non-house → enabled "Set as house"
+         - Agent (Aily) eligible non-house → enabled "Set as house"
+       Non-admin viewer → row action HIDDEN across all rows
+       Synthesized assistant row → HIDDEN (B3 decision)
+       Phase 1 PATCH validation surface (mirrored locally):
+         - eligible Aily agent: PATCH would succeed
+         - cross-tenant WALLiam agent: PATCH rejects "different tenant"
+         - nonexistent uuid: PATCH rejects "Selected agent not found"
+       WALLiam parity: King Shah "Current"; Neo/WALLiam enabled button
+       Cross-tenant: each tenant manages its own house — clean
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline. 0 NEW fails.
+
+### Files (this commit)
+
+  components/admin-homes/AgentsManagementClient.tsx        (row action + handler)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                 (this run-log)
+
+### Backups (timestamps)
+
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260625_154345
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_154705 (pre-this-entry)
+
+### Surfaces that can now assign the house account
+
+  1. Standalone org-chart drawer (UNIT 2, /admin-homes/agents/tree)
+  2. Settings → General picker — REMOVED in UNIT 5 (no longer a surface)
+  3. Standalone agents list row action (THIS UNIT)
+  4. Cockpit People → Table view row action (THIS UNIT via shared
+     AgentsManagementClient component + UNIT 12 prop threading)
+
+### Open follow-ups
+
+- EditAgentModal still doesn't allow role edit post-create (carried
+  from UNIT 11; out of scope).
+- Future polish: a single Toast component instead of alert() for the
+  PATCH-failure surface (current pattern matches the existing
+  remove/delete handlers in the same file; consistent for now).
+- Live operator click-test on aily.ca after push (both surfaces):
+  - /admin-homes/agents: click "Set as house" on Manager (Aily) →
+    confirm → pill moves to Manager + page reloads + Manager row
+    shows "Current" / Ovais row shows the button.
+  - /admin-homes/tenants/<aily-id>/ People → Table: same flow works.
+  - As non-admin viewer, row action does NOT appear.
+
+### Commit gate
+
+  1 app file + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.

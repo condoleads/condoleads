@@ -130,6 +130,30 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
     else alert('Error: ' + data.error)
   }
 
+  // W-HOUSE-ACCOUNT UNIT 13: inline "Set as house account" action on each
+  // row. Reuses the SAME validated PATCH path as UNIT 2's drawer (PATCH
+  // /api/admin-homes/tenants/[tenantId] { default_agent_id }); the Phase 1
+  // Part 2 app-layer validation + validate_house_account trigger are the
+  // authoritative gates. Friendly 400s from those gates surface inline as
+  // a window.alert() — same pattern as the existing remove/delete handlers.
+  async function setAsHouseAccount(targetAgentId: string, targetAgentName: string) {
+    if (!tenantId) { alert('Tenant context unavailable; cannot assign house account.'); return }
+    if (!confirm(`Make ${targetAgentName} the house account? Leads with no territory match will fall back to them.`)) return
+    const res = await fetch(`/api/admin-homes/tenants/${tenantId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ default_agent_id: targetAgentId }),
+    })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      // Phase 1 Part 2 pre-validation surfaces 400s with messages mirroring
+      // the validate_house_account trigger's 4 conditions. Surface inline.
+      alert('Cannot set house account: ' + (j.error || `HTTP ${res.status}`))
+      return
+    }
+    window.location.reload()
+  }
+
   // W-HOUSE-ACCOUNT UNIT 5: deterministic role-based ordering for the
   // visible top-level rows (operating roots + tenant-level assistants /
   // support / managed). Owners are excluded from the tree — they render in
@@ -290,6 +314,34 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
               <Link href={`/admin-homes/agents/${agent.id}`} className="flex items-center gap-1 px-3 py-1 text-xs text-green-700 hover:bg-green-50 rounded">
                 <MapPin className="w-3 h-3" /> Assign
               </Link>
+              {/* W-HOUSE-ACCOUNT UNIT 13: inline "Set as house account" row
+                  action. Gated to tenant_admin / assistant / admin / platform
+                  admin viewers (same canSetOversightOptOut predicate from
+                  UNITs 10/12 — admin-level writes to tenant agent records).
+                  Hidden for role='assistant' rows: assistants are barred from
+                  being house account by the validate_house_account trigger
+                  contract (Phase 1) — no point offering a button that always
+                  fails. The current holder's row shows a disabled "Current"
+                  label instead of the action, mirroring UNIT 2 drawer UX. */}
+              {canSetOversightOptOut && tenantId && (agent as any).role !== 'assistant' && (
+                tenantDefaultAgentId === agent.id ? (
+                  <span
+                    title="This agent is the current house account."
+                    className="flex items-center gap-1 px-3 py-1 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded cursor-default"
+                  >
+                    <Crown className="w-3 h-3" /> Current house account
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAsHouseAccount(agent.id, agent.full_name)}
+                    className="flex items-center gap-1 px-3 py-1 text-xs text-amber-700 border border-amber-300 hover:bg-amber-50 rounded"
+                    title="Make this agent the catch-all for unrouted leads."
+                  >
+                    <Crown className="w-3 h-3" /> Set as house
+                  </button>
+                )
+              )}
               {agent.can_create_children && (
                 <button onClick={() => { setPreselectedParentId(agent.id); setShowAddModal(true) }} className="flex items-center gap-1 px-3 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded">
                   <Plus className="w-3 h-3" /> Add Agent
