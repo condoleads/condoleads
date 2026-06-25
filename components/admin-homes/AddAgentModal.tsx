@@ -40,7 +40,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
     brokerage_name: '', brokerage_address: '', license_number: '',
     custom_domain: '', bio: '', profile_photo_url: '',
     parent_id: '', can_create_children: false, tenant_id: '',
-    role: 'agent' as 'agent' | 'manager' | 'area_manager' | 'tenant_admin',
+    role: 'agent' as 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'assistant',
     primary_color: '#16a34a', secondary_color: '#15803d',
   })
 
@@ -132,8 +132,18 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                   <option value="manager">Manager</option>
                   <option value="area_manager">Area Manager</option>
                   <option value="tenant_admin">Tenant Admin</option>
+                  {/* W-TENANT-ASSISTANT UNIT 11: Tenant Assistant role. Multiple
+                      assistants per tenant supported. Licensed assistant (license_number
+                      populated) = card-eligible; unlicensed = lead/email copies only. */}
+                  <option value="assistant">Tenant Assistant</option>
                 </select>
-                <p className="text-xs text-gray-400 mt-1">D19/D20 (P3.F5): determines this user's hierarchy tier</p>
+                {formData.role === 'assistant' ? (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Assistant always receives lead/email copies. Card-eligible only when license number is filled below.
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1">Determines this user's hierarchy tier.</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reports To</label>

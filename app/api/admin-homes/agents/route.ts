@@ -69,7 +69,9 @@ export async function POST(request: NextRequest) {
 
   // D19 (P3.F5): role accepted from body, validated against agents_role_check
   // subset (admin tier omitted from user-facing picker for safety).
-  const VALID_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin'] as const
+  // W-TENANT-ASSISTANT UNIT 11: 'assistant' added to the allow-list; the DB
+  // CHECK was extended in 20260625_w_assistant_role.sql.
+  const VALID_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'assistant'] as const
   type AgentRoleDb = (typeof VALID_ROLES)[number]
   const requestedRole = (typeof body?.role === 'string' ? body.role : 'agent') as AgentRoleDb
   if (!VALID_ROLES.includes(requestedRole)) {

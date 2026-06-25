@@ -21,10 +21,11 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 7 (revert UNIT 5 over-exclusion — tenant_admin owner is BOTH header AND tree node; reports nest under owner) | territory (operator UX) | SHIPPED, pushed 59a213f | 59a213f | — |
 | W-HOUSE-ACCOUNT UNIT 8B (house-account oversight: CC on every lead email + tenant-wide dashboard visibility; Part 0 = COMPUTE-met ownership confirmed) | territory→leads→email | SHIPPED, pushed 077c852 | 077c852 | — |
 | W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED, pushed 59da867 | 59da867 | — |
-| W-HOUSE-ACCOUNT UNIT 10 (opt-out UI toggle in EditAgentModal; tenant_admin/assistant-only render gate; threads canSetOversightOptOut through page → AgentsManagementClient → modal) | territory→leads→email (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on aily.ca |
+| W-HOUSE-ACCOUNT UNIT 10 (opt-out UI toggle in EditAgentModal; tenant_admin/assistant-only render gate; threads canSetOversightOptOut through page → AgentsManagementClient → modal) | territory→leads→email (operator UX) | SHIPPED, pushed 18c71f2 | 18c71f2 | — |
+| W-TENANT-ASSISTANT UNIT 11 (agents.role CHECK extended to allow 'assistant'; AddAgentModal option; agents-summary filters out unlicensed assistants from card-eligible dropdown; Unit 9 lead-email leg auto-activates) | territory→leads→email (role) | SHIPPED LOCAL, DDL live | (pending this commit) | live operator click-test (create licensed + unlicensed assistant on aily.ca) |
+| Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | SUPERSEDED — Phase 3's "admin_assistant" role intent is now W-TENANT-ASSISTANT UNIT 11's 'assistant' value (added to agents.role CHECK 2026-06-25). SMOKE 7 role-ineligible test is implicit in Unit 11's apply-runner SMOKE 4 (validate_house_account still rejects assistant as house). Closed as covered. | 18c71f2..(this) | — |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
-| Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
-| Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
+| Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | SUPERSEDED — UNIT 9 implemented opt-out via the existing agents.notification_preferences jsonb (no new column needed). Closed as covered. | 59da867 | — |
 
 CROSS-TRACKER POINTERS — flow stages NOT closed by this tracker:
 - Lead/email routing detail: see docs/W-LEADS-WORKBENCH-TRACKER.md.
@@ -1600,3 +1601,210 @@ the visible control — no schema change, no new write path.
 
   3 app files + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-TENANT-ASSISTANT UNIT 11 RUN-LOG (2026-06-25) — assistant role live
+
+Goal: stand up the Tenant Assistant role end-to-end. agents.role CHECK
+gains 'assistant'; AddAgentModal offers it; agents-summary filters out
+unlicensed assistants from the card-eligible dropdown. UNIT 9's existing
+lead-email leg (which queries role='assistant') activates automatically
+the moment any assistant exists.
+
+### R1-R4 recon findings
+
+  R1 — agents.role CHECK before UNIT 11:
+       CHECK ((role = ANY (ARRAY['agent','manager','area_manager',
+       'tenant_admin','admin'])))
+       'assistant' was NOT in the constraint; UNIT 9's
+       .in('role', ['tenant_admin','assistant']) returned 0 rows because
+       no agent CAN have role='assistant'.
+  R2 — agents already has license_number (varchar). NO is_licensed boolean
+       column. license_number is the operationally-correct credential
+       field that brokerage compliance cares about. Recommendation:
+       derive licensed-ness from license_number (no new column, single
+       source of truth). Operator-approved on apply.
+  R3 — lead-email-recipients.ts:240 queries
+       .in('role', ['tenant_admin', 'assistant']) verbatim. Migration
+       MUST add exactly 'assistant' (matches).
+  R4 — AddAgentModal.tsx:43 type literal needs 'assistant'; agents POST
+       route VALID_ROLES needs 'assistant'.
+
+### HARD GATE — migration applied LIVE
+
+  supabase/migrations/20260625_w_assistant_role.sql:
+    ALTER TABLE agents DROP CONSTRAINT agents_role_check;
+    ALTER TABLE agents ADD CONSTRAINT agents_role_check CHECK (
+      role IN ('agent','manager','area_manager','tenant_admin','admin','assistant')
+    );
+
+  Applied via scripts/apply-assistant-role.js (deleted post-success per
+  the one-shot pattern). Rollback snapshot:
+    supabase/migrations/rollback-snapshots/
+      _assistant-role_agents_role_check_2026-06-25T18-50-01-720Z.sql
+  (apply-runner captured pg_get_constraintdef of the prior CHECK and
+  wrote a restore script.)
+
+  Apply-runner smoke probes (SAVEPOINT-isolated):
+    SMOKE 1 PASS: role=assistant accepted by new CHECK.
+    SMOKE 2 PASS: bogus role 'frobnicator' still rejected (CHECK is not
+                  a wildcard).
+    SMOKE 3 PASS: existing role=manager still accepted (existing valid
+                  roles preserved as superset).
+    SMOKE 4 PASS: validate_house_account trigger STILL rejects assistant
+                  as house account (intentional — assistants aren't the
+                  legal floor; house account must be agent / manager /
+                  area_manager / tenant_admin / admin).
+
+  Post-sanity: Aily 3 active + WALLiam 3 active role distribution
+  byte-identical to pre-state. No row mutated.
+
+### NO is_licensed boolean column — licensed-ness derived from license_number
+
+  Decision: skip the optional is_licensed boolean column.
+    - license_number already exists on agents (varchar, nullable).
+    - It IS the credential brokerage compliance cares about.
+    - Single source of truth — no drift risk between two columns.
+    - "Licensed" = role !== 'assistant' OR
+      (license_number IS NOT NULL AND length(trim(license_number)) > 0).
+    - All normal agents (role != 'assistant') stay card-eligible
+      regardless of license_number — operator's locked rule: "All normal
+      agents are licensed by definition; no license field/check for them."
+
+### B1 — Assistant role surfaces in create modal + server allow-list
+
+  components/admin-homes/AddAgentModal.tsx
+    + role type literal extended to include 'assistant'.
+    + Role <select> gains <option value="assistant">Tenant Assistant.
+    + Conditional helper text when role=assistant: "Assistant always
+      receives lead/email copies. Card-eligible only when license
+      number is filled below."
+
+  app/api/admin-homes/agents/route.ts (POST handler)
+    + VALID_ROLES tuple extended to include 'assistant'.
+
+  EditAgentModal.tsx — UNCHANGED: role isn't editable post-create today.
+    Future polish: allow role change with appropriate guards
+    (W-TENANT-ASSISTANT follow-up).
+
+### B2 — Card eligibility: unlicensed assistant excluded from dropdown
+
+  app/api/admin-homes/territory/agents-summary/route.ts
+    + Existing UNIT 9 opt-out filter extended:
+      - prefs query now also reads role + license_number
+      - new unlicensedAssistantIds Set: agents where role='assistant'
+        AND length(trim(license_number || '')) === 0
+      - .filter(a => !unlicensedAssistantIds.has(a.agent_id))
+    + CardsView's "All agents" filter dropdown, CardsView's Reassign
+      destination picker, and GeographyView's CarveUpModal "assign to
+      agent" picker all hide unlicensed assistants. Licensed assistants
+      and all non-assistant agents continue to show normally.
+
+### B3 — Lead/email leg auto-activates (no code change)
+
+  UNIT 9's lib/admin-homes/lead-email-recipients.ts already queries
+  role='assistant' as a top-layer copy recipient (lines 239-256). The
+  moment any agent is created/updated with role='assistant', that leg
+  starts returning rows. License is NOT a factor for the copy leg —
+  unlicensed assistants STILL receive lead/email copies (operator's
+  locked rule: "Leads/emails flow to the Tenant Assistant REGARDLESS
+  of license — core of the role").
+
+### B4 — Multi-tenant guarantee
+
+  All filters keyed on tenant_id scope inherited from the agents-summary
+  RPC tenant resolution. No tenant ids in render code. Tenant #3 zero-
+  change — onboarding a tenant and creating an assistant in their
+  workspace works without code touching this unit.
+
+### Companion TS fix
+
+  lib/admin-homes/permissions.ts: DbRole type literal extended to
+  include 'assistant'. Comment notes: assistants are NOT in Tier 4
+  admin tier — can() decisions treat assistant as a non-admin tier.
+  Admin-style powers (opt-out toggle, house-account picker) are gated
+  on AdminHomesUser.position === 'assistant' separately (UNITs 9/10
+  already enforced this; position was already in AdminHomesPosition).
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (SAVEPOINT-isolated; NO permanent mutation): 17 PASS
+     Scenario 1 (pre-state): Aily had no assistants pre-test.
+     Scenario 2 (licensed assistant on Aily):
+       - INSERT role='assistant' + license_number='LIC-12345' accepted
+       - assistant APPEARS in agents-summary assignable dropdown
+       - assistant in top-layer lead/email copy chain
+     Scenario 3 (unlicensed assistant on Aily):
+       - INSERT role='assistant' + license_number=NULL accepted
+       - assistant ABSENT from agents-summary dropdown
+       - assistant STILL in copy chain (license irrelevant for copy)
+       - BOTH assistants (lic + unlic) coexist in copy chain
+     Scenario 4 (empty-string license): whitespace-only license_number
+       treated as unlicensed (.trim() check fires).
+     Scenario 5: validate_house_account trigger STILL rejects assistant
+       as house account (even when licensed). Phase-1 contract intact.
+     Scenario 6 (opt-out interaction): opted-out licensed assistant
+       drops from BOTH dropdown AND copy chain. UNITs 9/10 + UNIT 11
+       compose correctly.
+     Scenario 7 (WALLiam parity + cross-tenant leak):
+       - WALLiam assistant in WALLiam dropdown + chain
+       - WALLiam assistant NOT in Aily dropdown / chain
+       - Aily assistant NOT in WALLiam dropdown / chain
+     Post-check (fresh connection): 0 assistants persisted. ROLLBACK
+     clean.
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11,
+     L2.1). 0 NEW fails.
+
+### Files (this commit)
+
+  supabase/migrations/20260625_w_assistant_role.sql                   (DDL, applied)
+  components/admin-homes/AddAgentModal.tsx                            (B1 UI)
+  app/api/admin-homes/agents/route.ts                                 (B1 server allow-list)
+  app/api/admin-homes/territory/agents-summary/route.ts               (B2 license filter)
+  lib/admin-homes/permissions.ts                                      (TS DbRole)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                            (this run-log)
+  supabase/migrations/rollback-snapshots/
+    _assistant-role_agents_role_check_2026-06-25T18-50-01-720Z.sql
+
+### Backups (timestamps)
+
+  components/admin-homes/AddAgentModal.tsx.backup_20260625_145039
+  components/admin-homes/EditAgentModal.tsx.backup_20260625_145039     (read for ref; no edit this unit)
+  app/api/admin-homes/agents/route.ts.backup_20260625_145039
+  app/api/admin-homes/territory/agents-summary/route.ts.backup_20260625_145039
+  lib/admin-homes/permissions.ts.backup_20260625_145311
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_145536 (pre-this-entry)
+
+### Open follow-ups
+
+- EditAgentModal does NOT currently let viewers change role (e.g.
+  promote agent → assistant). Out of scope here; future polish unit
+  could allow role edit with appropriate guards (cross-role permission
+  implications need design).
+- Cockpit PeopleTab table view: AddAgentModal mount through cockpit
+  would expose the assistant option there too (already works, since
+  cockpit re-uses AgentsManagementClient + AddAgentModal). No cockpit-
+  specific change needed.
+- Permissions ladder for assistant role in can() decisions: today
+  assistants fall through as a non-admin tier in can() because they're
+  not in Tier 4 ('tenant_admin' OR 'admin'). The specific admin-style
+  powers assistants have (opt-out toggle, house-account picker) are
+  gated on position='assistant' separately. If future work needs
+  assistants to write specific resources via can(), extend the
+  permission ladder explicitly — out of scope here.
+- Live operator click-test on aily.ca after push:
+  - As tenant_admin (Ovais), open Add Agent → "Tenant Assistant" option
+    visible; create one WITH license number → confirm appears in
+    CardsView's "All agents" + reassign picker AND in lead copy chain
+    next time a lead routes to a non-house Aily agent.
+  - Create another WITHOUT license number → confirm absent from
+    CardsView dropdowns but still in lead copy chain.
+  - Multiple assistants coexist; both copied; deduped; no self-CC if
+    assistant IS the assigned agent.
+
+### Commit gate
+
+  5 app/server files + tracker shipped together (live-tracker rule).
+  DDL applied live. HOLD push pending operator instruction.

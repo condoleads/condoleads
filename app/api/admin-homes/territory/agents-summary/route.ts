@@ -92,27 +92,42 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // W-HOUSE-ACCOUNT UNIT 9: filter out agents flagged as oversight_opt_out
-  // in their notification_preferences. Opted-out agents are NOT shown in
-  // assignable-agents UI (CardsView filter dropdown + reassign destination,
-  // GeographyView CarveUpModal "assign to agent" picker). Keyed on the
-  // existing jsonb column — no schema change. Read-only filter; agents
-  // remain in the DB and can be un-opted-out by tenant_admin.
+  // W-HOUSE-ACCOUNT UNIT 9 + W-TENANT-ASSISTANT UNIT 11: filter assignable
+  // agents. Two exclusions, both keyed on existing columns (no schema
+  // changes):
+  //   - oversight_opt_out=true (UNIT 9): excluded from all assignable UI.
+  //   - role='assistant' AND license_number empty/null (UNIT 11): unlicensed
+  //     assistant is NOT card-eligible. Licensed assistants (license_number
+  //     populated) stay in the dropdown. Normal agents are always licensed
+  //     by definition and stay in the dropdown regardless of license_number.
+  // Agents remain in the DB and can be un-opted-out / licensed by
+  // tenant_admin.
   let optOutIds = new Set<string>()
+  let unlicensedAssistantIds = new Set<string>()
   if (agentIds.length > 0) {
     const { data: prefs } = await s
       .from('agents')
-      .select('id, notification_preferences')
+      .select('id, notification_preferences, role, license_number')
       .in('id', agentIds)
-    for (const row of (prefs || []) as Array<{ id: string; notification_preferences: Record<string, any> | null }>) {
+    for (const row of (prefs || []) as Array<{ id: string; notification_preferences: Record<string, any> | null; role: string | null; license_number: string | null }>) {
       if (row.notification_preferences && (row.notification_preferences as any).oversight_opt_out === true) {
         optOutIds.add(row.id)
+      }
+      // UNIT 11: derive "unlicensed" from license_number — null OR empty/
+      // whitespace-only string. Only matters for role='assistant'; other
+      // roles are unaffected even if their license_number is empty (real
+      // agents may not have populated this field; that's a separate data
+      // hygiene issue, not a card-eligibility gate).
+      if (row.role === 'assistant') {
+        const lic = (row.license_number || '').trim()
+        if (lic.length === 0) unlicensedAssistantIds.add(row.id)
       }
     }
   }
 
   const enriched = agents
     .filter(a => !optOutIds.has(a.agent_id))
+    .filter(a => !unlicensedAssistantIds.has(a.agent_id))
     .map(a => ({ ...a, mls_listings_footprint: footprints.get(a.agent_id) || 0 }))
   return NextResponse.json({ agents: enriched }, { status: 200 })
 }
