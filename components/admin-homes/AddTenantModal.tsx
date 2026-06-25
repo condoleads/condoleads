@@ -24,6 +24,11 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
     // Brand
     name: '', domain: '', brand_name: '', admin_email: '',
     logo_url: '', primary_color: '#1d4ed8', secondary_color: '#4f46e5',
+    // W-TENANT-CREATE UNIT 15: owner details — the REAL person who'll be the
+    // first agent + house account. owner_email reuses admin_email (already
+    // collected above). owner_full_name + owner_password are required by the
+    // POST route; no placeholder defaults.
+    owner_full_name: '', owner_password: '', owner_password_confirm: '',
     // API Key
     anthropic_api_key: '',
     // AI Configuration (Charlie chat)
@@ -75,6 +80,11 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // W-TENANT-CREATE UNIT 15: client-side owner validation. Server is
+    // authoritative; this just gives faster feedback.
+    if (!formData.owner_full_name.trim()) { setError('Owner full name is required.'); return }
+    if (formData.owner_password.length < 8) { setError('Owner password must be at least 8 characters.'); return }
+    if (formData.owner_password !== formData.owner_password_confirm) { setError('Owner passwords do not match.'); return }
     setSaving(true); setError('')
     try {
       const res = await fetch('/api/admin-homes/tenants', {
@@ -86,6 +96,9 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
           source_key: formData.source_key,
           brand_name: formData.brand_name || formData.name,
           admin_email: formData.admin_email,
+          // W-TENANT-CREATE UNIT 15: owner seed fields.
+          owner_full_name: formData.owner_full_name,
+          owner_password: formData.owner_password,
           logo_url: formData.logo_url || null,
           primary_color: formData.primary_color,
           secondary_color: formData.secondary_color,
@@ -213,7 +226,7 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
                 <strong>Anthropic API key.</strong> Charlie AI requires a per-tenant key (or platform fallback). Configure in tenant Settings.
               </li>
               <li>
-                <strong>Create at least one agent + set as default.</strong> Go to Agents &rarr; Add Agent for <strong>{createdTenant.name}</strong>, then set that agent as <code className="text-xs bg-amber-100 px-1 rounded">default_agent_id</code> in tenant settings. Without a default agent, leads have no fallback owner when the territory resolver returns null.
+                <strong>Owner agent + house account.</strong> Already seeded automatically (W-TENANT-CREATE UNIT 15) — the owner you entered above is now this tenant's tenant_admin root agent and house account. Visit Agents to add more agents under them.
               </li>
               <li>
                 <strong>Territory assignments.</strong> Assign at least one geo level (area / municipality / community / neighbourhood) to agents via the Agents page so the resolver has a real cascade.
@@ -265,6 +278,26 @@ export default function AddTenantModal({ isOpen, onClose, onSuccess }: Props) {
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Logo URL</label>
                 <input type="url" value={formData.logo_url} onChange={e => setFormData({ ...formData, logo_url: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="https://..." />
+              </div>
+              {/* W-TENANT-CREATE UNIT 15: tenant owner inputs — first agent
+                  + house account in one flow. owner_email re-uses
+                  admin_email (already collected above). owner_full_name +
+                  owner_password are required by POST. */}
+              <div className="col-span-2 border-t border-gray-200 pt-3 mt-1">
+                <p className="text-xs font-semibold text-amber-700 mb-2 uppercase tracking-wide">Tenant Owner (first agent + house account)</p>
+                <p className="text-xs text-gray-500 mb-2">Real person who will own the tenant. Created as the first agent (tenant_admin, root) AND set as the house account. Email above is used as login. No placeholder allowed.</p>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Owner Full Name *</label>
+                <input required type="text" value={formData.owner_full_name} onChange={e => setFormData({ ...formData, owner_full_name: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="e.g. Jane Smith" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Owner Password *</label>
+                <input required type="password" value={formData.owner_password} onChange={e => setFormData({ ...formData, owner_password: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="At least 8 characters" minLength={8} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password *</label>
+                <input required type="password" value={formData.owner_password_confirm} onChange={e => setFormData({ ...formData, owner_password_confirm: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Re-enter password" minLength={8} />
               </div>
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Homepage Layout</label>

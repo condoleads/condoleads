@@ -25,9 +25,10 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-TENANT-ASSISTANT UNIT 11 (agents.role CHECK extended to allow 'assistant'; AddAgentModal option; assistants card-eligible like any role — NO license gate; Unit 9 lead-email leg auto-activates) | territory→leads→email (role) | SHIPPED, pushed 9a6a52f (UNIT 11 3663749 + FIX 9a6a52f), DDL live | 9a6a52f | — |
 | W-COCKPIT-PARITY UNIT 12 (thread tenantDefaultAgentId + canSetOversightOptOut from cockpit server page → CockpitShell → PeopleTab → AgentsManagementClient/EditAgentModal — closes the 3 carried cockpit follow-ups from UNITs 3 and 10) | territory (operator UX cockpit) | SHIPPED, pushed bed7bed | bed7bed | — |
 | W-HOUSE-ACCOUNT UNIT 13 (inline "Set as house account" row action in agents list — works in standalone + cockpit via shared AgentsManagementClient; reuses Phase 1 Part 2 PATCH; gated to tenant_admin/assistant/admin/platform; hidden for assistant rows per trigger contract) | territory→leads→email (operator UX) | SHIPPED, pushed fee54461 | fee54461 | — |
-| W-AGENT-EDIT UNIT 14 (role edit in EditAgentModal — gated to admin viewers; server PUT enforces 2 invariants: house-account-eligible role + no-orphan-on-demote) | hierarchy + territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents Edit + cockpit People Edit |
+| W-AGENT-EDIT UNIT 14 (role edit in EditAgentModal — gated to admin viewers; server PUT enforces 2 invariants: house-account-eligible role + no-orphan-on-demote) | hierarchy + territory (operator UX) | SHIPPED, pushed 011d627 | 011d627 | — |
+| W-TENANT-CREATE UNIT 15 (auto-seed tenant owner as first agent + house account on tenant create — closes the "manual step 3" gap; prerequisite for Phase 1b NOT NULL) | tenant lifecycle + territory | SHIPPED LOCAL | (pending this commit) | live operator click-test (create test tenant + verify owner agent + house account seeded automatically) |
+| Phase 1b NOT NULL on tenants.default_agent_id | territory | UNBLOCKED by UNIT 15 (create-tenant now auto-seeds; safe to enforce NOT NULL in a future unit) | — | next migration: ALTER TABLE tenants ALTER COLUMN default_agent_id SET NOT NULL after backfilling any historical tenants with NULL default |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | SUPERSEDED — Phase 3's "admin_assistant" role intent is now W-TENANT-ASSISTANT UNIT 11's 'assistant' value (added to agents.role CHECK 2026-06-25). SMOKE 7 role-ineligible test is implicit in Unit 11's apply-runner SMOKE 4 (validate_house_account still rejects assistant as house). Closed as covered. | 18c71f2..(this) | — |
-| Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | SUPERSEDED — UNIT 9 implemented opt-out via the existing agents.notification_preferences jsonb (no new column needed). Closed as covered. | 59da867 | — |
 
 CROSS-TRACKER POINTERS — flow stages NOT closed by this tracker:
@@ -2316,3 +2317,162 @@ No schema change — agents.role CHECK already covers all roles (UNIT 11).
 
   2 app files + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-TENANT-CREATE UNIT 15 RUN-LOG (2026-06-25) — auto-seed owner on tenant create
+
+Goal: close the long-standing manual gap — when a platform admin creates
+a new tenant, the OWNER (a real person) is collected as part of the form
+and seeded as the first agent + house account in the same flow. No more
+manual "Step 3" follow-up; no placeholder seeds (the retired Aily seed is
+exactly what this prevents). Prerequisite for Phase 1b NOT NULL.
+
+### R1-R3 recon findings
+
+  R1 — AddTenantModal collected: name/domain/brand_name/admin_email +
+       branding + AI/Plan/Estimator + Resend + analytics. Did NOT
+       collect owner full_name or password. Post-create amber callout
+       explicitly told operator to manually visit Agents and create a
+       default — the exact step this unit automates.
+  R2 — tenants POST never created an agent and never set
+       default_agent_id. New tenants landed with default_agent_id = NULL
+       until manually fixed.
+  R3 — Agent creation mechanics in /api/admin-homes/agents POST:
+         1. auth.admin.createUser({ email, password }) -> authUserId
+         2. agents INSERT with id=authUserId
+         3. teardownAuthUser on insert failure (W-AGENT-LIFECYCLE-INTEGRITY)
+       Plus deriveUniqueAgentSubdomain helper. UNIT 15 inlines the same
+       sequence in tenants POST (extracting a shared helper is out of
+       scope; the inline pattern is small and readable).
+
+### Decisions
+
+  - Owner email REUSES admin_email (already on the form). Operator's
+    mental model: "I'm creating a tenant; this person at this email is
+    the owner." Adding a third email field would have introduced
+    redundancy.
+  - 2 NEW form fields: owner_full_name + owner_password (+ visual
+    confirm). Both required by server; no placeholder defaults.
+  - 4-step server flow with manual rollback (PG transactions can't span
+    auth.admin):
+      STEP 1: INSERT tenant
+      STEP 2: auth.admin.createUser(email, password)
+              On fail: DELETE tenant, return error
+      STEP 3: INSERT agents row (role=tenant_admin, parent_id=NULL,
+              tenant_id=new, is_active=true, can_create_children=true,
+              title='Owner')
+              On fail: teardownAuthUser + DELETE tenant
+      STEP 4: UPDATE tenants SET default_agent_id = owner.id
+              validate_house_account trigger validates (owner satisfies
+              all 4 conditions: exists, tenant matches, active, role
+              tenant_admin in eligible set).
+              On fail (defensive): DELETE agent + teardownAuthUser +
+              DELETE tenant
+  - Smoke uses SAVEPOINT-isolated simulation: skips auth.admin.createUser
+    (would persist outside the PG tx), uses generated UUID as agent id +
+    NULL user_id (honors FK without writing to auth.users). NO HARD GATE
+    needed — no persistent prod write.
+
+### B1 — form (components/admin-homes/AddTenantModal.tsx)
+
+  + formData: owner_full_name, owner_password, owner_password_confirm.
+  + Client-side validation: password >= 8 chars, password === confirm,
+    non-empty name. Friendly inline errors.
+  + New "Tenant Owner (first agent + house account)" section in the
+    Brand block, with helper text explaining the seed semantics.
+  + POST body now sends owner_full_name + owner_password (admin_email
+    re-used as owner email).
+  + Post-create amber callout STEP 3 reworded: "Already seeded
+    automatically — the owner you entered is now this tenant's
+    tenant_admin root agent and house account."
+
+### B2 — server (app/api/admin-homes/tenants/route.ts POST)
+
+  + Imports: deriveUniqueAgentSubdomain + teardownAuthUser.
+  + Validates owner_full_name + owner_password (length >= 8) up front.
+  + Strips owner_* from the tenants insert payload (consumed by agent
+    seed, not stored on tenants).
+  + 4-step seeded create with manual rollback on each failure step.
+  + Response includes both tenant and owner_agent for the client to
+    confirm seeding.
+
+### B3 — atomicity
+
+  Best-effort across DB + auth boundary. Each failure mode has a
+  documented rollback path that cleans up what was created at earlier
+  steps. The worst observable outcome is an in-flight auth user that
+  the teardown helper failed to remove — surfaced in the error message
+  for operator action.
+
+### B4 — multi-tenant
+
+  Owner details flow from the form (per-create). No tenant ids or names
+  in render or server code. Every future tenant seeds ITS OWN owner —
+  guard-query Scenario 4 verified.
+
+### B5 — Aily/WALLiam untouched
+
+  This is create-path only; no retroactive backfill. Aily (Ovais) and
+  WALLiam (King Shah) already have real owners set via UNITs 1 + 3 +
+  manual existing state. Guard-query Scenario 3 verified.
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (SAVEPOINT-isolated; NO persistent mutation): 13 PASS
+     Scenario 1 (happy path 4-step flow):
+       STEP 1 OK: tenant with NULL default_agent_id
+       STEP 3 OK x4: owner agent inserted with role=tenant_admin,
+         parent_id NULL, is_active=true, tenant_id matches
+       STEP 4 OK: validate_house_account trigger accepted
+       NO placeholder: 1 agent total, real owner name
+     Scenario 2 (trigger rejects ineligible role):
+       Seeding role='assistant' as owner -> 23514
+       house_account_role_ineligible (Phase 1 trigger intact).
+       UNIT 15 hardcodes 'tenant_admin' so unreachable in real flow.
+     Scenario 3: Aily + WALLiam default_agent_id byte-identical.
+     Scenario 4 (multi-tenant): two seeded tenants in same tx, distinct
+       owner ids, no cross-tenant share.
+     Post-check (fresh connection): 0 SMOKE-prefixed tenants persisted,
+       0 smoke test agents persisted. ROLLBACK clean.
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline. 0 NEW fails.
+
+### Files (this commit)
+
+  components/admin-homes/AddTenantModal.tsx                  (B1 form)
+  app/api/admin-homes/tenants/route.ts                       (B2 server)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                   (this run-log)
+
+### Backups (timestamps)
+
+  components/admin-homes/AddTenantModal.tsx.backup_20260625_160929
+  app/api/admin-homes/tenants/route.ts.backup_20260625_160929
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_162222 (pre-this-entry)
+
+### Status grid changes
+
+  - Phase 1b NOT NULL on default_agent_id row: removed from DEFERRED;
+    moved to "UNBLOCKED by UNIT 15" — next migration ALTER TABLE
+    tenants ALTER COLUMN default_agent_id SET NOT NULL is now safe
+    pending a backfill check (none of the live tenants should have
+    NULL, but worth verifying before the migration).
+
+### Open follow-ups
+
+- Phase 1b NOT NULL migration (now unblocked) — separate unit when
+  operator chooses to run it.
+- Live operator click-test on aily.ca after push:
+  - Click Add Tenant -> fill all fields incl. owner name + password.
+  - Submit -> success callout shows "Owner agent seeded automatically"
+    in step 3 of the amber list.
+  - Navigate to the new tenant's cockpit -> People tab shows the owner
+    as a tenant_admin root with the House Account pill.
+  - The new tenant.default_agent_id is the new owner agent id.
+- Toast vs alert() polish (carried).
+
+### Commit gate
+
+  2 app files + tracker shipped together (live-tracker rule). NO prod DB
+  writes from this build (the smoke is SAVEPOINT-isolated). HOLD push
+  pending operator instruction.
