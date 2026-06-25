@@ -15,6 +15,7 @@ interface AgentRow {
   full_name: string | null
   role: string | null
   is_selling: boolean | null
+  is_active: boolean | null
   parent_id: string | null
   tenant_id: string | null
   profile_photo_url: string | null
@@ -26,9 +27,14 @@ interface TreeNode {
   role: string
   is_admin: boolean
   is_selling: boolean
+  is_active: boolean
   parent_id: string | null
   profile_photo_url: string | null
   lead_count_30d: number
+  // W-HOUSE-ACCOUNT UNIT 2: true on the agent currently set as the tenant's
+  // default_agent_id. Driven by the per-tenant tenants.default_agent_id read
+  // below, NOT by any field on agents itself.
+  is_house_account: boolean
 }
 
 interface TreeEdge {
@@ -75,13 +81,29 @@ export async function GET(request: NextRequest) {
 
   const { data: agents, error: agentsErr } = await supabase
     .from('agents')
-    .select('id, full_name, role, is_selling, parent_id, tenant_id, profile_photo_url')
+    .select('id, full_name, role, is_selling, is_active, parent_id, tenant_id, profile_photo_url')
     .eq('tenant_id', tenantId)
     .order('full_name', { ascending: true })
 
   if (agentsErr) {
     return NextResponse.json({ error: agentsErr.message }, { status: 500 })
   }
+
+  // W-HOUSE-ACCOUNT UNIT 2: read this tenant's default_agent_id. Single explicit
+  // column (per CLAUDE.md: NEVER SELECT * on tenants — holds api keys). Used to
+  // stamp is_house_account on each matching node + returned at top level so the
+  // chart can render the marker even when the holding agent is filtered out.
+  // tenant_id PK lookup is implicitly tenant-scoped (it IS the tenant).
+  const { data: tenantRow, error: tenantErr } = await supabase
+    .from('tenants')
+    .select('id, default_agent_id')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  if (tenantErr) {
+    return NextResponse.json({ error: tenantErr.message }, { status: 500 })
+  }
+  const tenantDefaultAgentId: string | null = tenantRow?.default_agent_id ?? null
 
   const rows = (agents || []) as AgentRow[]
   const agentIds = rows.map(a => a.id)
@@ -110,9 +132,11 @@ export async function GET(request: NextRequest) {
     role: a.role || 'agent',
     is_admin: deriveIsAdmin(a.role),
     is_selling: a.is_selling === true,
+    is_active: a.is_active === true,
     parent_id: a.parent_id,
     profile_photo_url: a.profile_photo_url,
     lead_count_30d: leadCounts.get(a.id) || 0,
+    is_house_account: tenantDefaultAgentId !== null && a.id === tenantDefaultAgentId,
   }))
 
   const edges: TreeEdge[] = []
@@ -127,5 +151,12 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ nodes, edges })
+  // W-HOUSE-ACCOUNT UNIT 2: tenant block at top level so the chart knows the
+  // current house-account holder (and the tenant id to PATCH against) even if
+  // that agent is filtered out of the visible node set.
+  return NextResponse.json({
+    nodes,
+    edges,
+    tenant: { id: tenantId, default_agent_id: tenantDefaultAgentId },
+  })
 }

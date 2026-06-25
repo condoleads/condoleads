@@ -5,18 +5,26 @@
 'use client'
 
 import { Handle, Position } from 'reactflow'
+import { Crown } from 'lucide-react'
 
 export interface AgentNodeData {
   name: string
   role: string
   is_admin: boolean
   is_selling: boolean
+  is_active: boolean
   profile_photo_url: string | null
   lead_count_30d: number
   dimmed?: boolean
   // W-COCKPIT P-B-1: chart-side click feedback. In cockpit context driven
   // by spine agentId; in standalone context driven by local selected node.
   selected?: boolean
+  // W-HOUSE-ACCOUNT UNIT 2: true when this agent is the tenant's current
+  // default_agent_id (per /api/admin-homes/agents/tree-data response). Renders
+  // an amber crown marker absolutely-positioned in the top-right with a tooltip
+  // explaining the role. Distinct from the role-badge color taxonomy on
+  // purpose — house account is a per-tenant property, not a role.
+  is_house_account?: boolean
 }
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
@@ -41,7 +49,7 @@ export default function AgentNodeCard({ data }: { data: AgentNodeData }) {
 
   return (
     <div
-      className={`bg-white rounded-lg shadow-md px-3 py-2 min-w-[200px] transition ${
+      className={`relative bg-white rounded-lg shadow-md px-3 py-2 min-w-[200px] transition ${
         data.dimmed ? 'opacity-30' : 'opacity-100'
       } ${
         // W-COCKPIT P-B-1: ring on click for visual feedback.
@@ -50,6 +58,18 @@ export default function AgentNodeCard({ data }: { data: AgentNodeData }) {
           : 'border border-gray-200'
       }`}
     >
+      {/* W-HOUSE-ACCOUNT UNIT 2: house-account marker. Amber so it doesn't
+          clash with any ROLE_LABELS color (purple/indigo/blue/green/slate).
+          title= renders as a native browser tooltip. */}
+      {data.is_house_account && (
+        <span
+          title="House account — catch-all for unrouted leads"
+          className="absolute -top-2 -right-2 inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-white shadow ring-2 ring-white"
+          aria-label="House account"
+        >
+          <Crown className="w-3.5 h-3.5" />
+        </span>
+      )}
       <Handle type="target" position={Position.Top} className="!bg-gray-400" />
       <div className="flex items-center gap-2">
         {data.profile_photo_url ? (

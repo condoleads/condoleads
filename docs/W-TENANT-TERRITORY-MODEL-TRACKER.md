@@ -13,7 +13,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | Target model design | territory→leads→hierarchy | LOCKED | a1925f4 | — |
 | Governance design + phased plan | territory→hierarchy | LOCKED | bdc0122 | — |
 | Phase 1 house-account invariant (trigger + PATCH + picker + guards) | territory→leads (ownership fallback) | SHIPPED, DDL live, pushed d39941f | d39941f | — |
-| W-HOUSE-ACCOUNT UNIT 1 (picker feed fix + resolver P-HOUSE fallback + Aily→Ovais) | territory→leads (end-to-end flow) | SHIPPED, DDL live | (pending this commit) | live operator click-test of picker on aily.ca |
+| W-HOUSE-ACCOUNT UNIT 1 (picker feed fix + resolver P-HOUSE fallback + Aily→Ovais) | territory→leads (end-to-end flow) | SHIPPED, DDL live, pushed 18ee965 | 18ee965 | live operator click-test of picker on aily.ca |
+| W-HOUSE-ACCOUNT UNIT 2 (house account assignable from Agents org chart — marker + drawer action) | territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents/tree |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -408,3 +409,153 @@ d39941f). Snapshot captured before write.
 
   R1 app fix + F2 migration + F1 data write (via runner) + tracker shipped
   together (live-tracker rule). HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 2 RUN-LOG (2026-06-25) — assignable from Agents org chart
+
+Goal: from /admin-homes/agents/tree (the org chart), see the house-account
+holder visually AND assign/change it inline via the agent's detail drawer.
+Uses the SAME validated write path as the Settings picker (PATCH
+/api/admin-homes/tenants/[id] → validate_house_account trigger). No new prod
+DB writes; no migration. Pure app-layer change on top of Phase 1 + UNIT 1.
+
+### R1 — tree-data route (recon)
+
+  File: app/api/admin-homes/agents/tree-data/route.ts.
+  Tenant-scoped (L51-58); knows tenantId via session OR platform-admin
+  ?tenant_id= override. SELECT cols did NOT include is_active and did NOT
+  query tenants.default_agent_id. Response shape was just { nodes, edges }.
+
+### R2 — chart + node card (recon)
+
+  AgentOrgChart.tsx: 2 mounts (standalone /agents/tree, cockpit PeopleTab).
+  ApiNode had no is_house_account. ApiResponse had no tenant block.
+  AgentNodeCard.tsx AgentNodeData had no is_house_account.
+  Cockpit caveat: in PeopleTab, node click pipes to spine (not drawer); the
+  drawer only opens in standalone context. So this unit's drawer-based action
+  is reachable from the standalone /agents/tree route (the primary org-chart
+  surface — Agents page has an "Org Chart" CTA at AgentsManagementClient.tsx:
+  240-246 that links here). Cockpit users continue to use Settings.
+
+### R3 — AgentDetailDrawer (recon)
+
+  Props were { agentId, data, onClose } — no tenant context. Body had avatar/
+  name/role/3 Stat cards + 1 "Open full agent page" CTA. No existing action
+  area; new button fits cleanly above the existing CTA.
+
+### B1 — tree-data route updates (app/api/admin-homes/agents/tree-data/route.ts)
+
+  - SELECT now includes is_active.
+  - NEW: explicit-col SELECT on tenants (id, default_agent_id only — CLAUDE.md
+    NEVER SELECT * on tenants) for tenantId.
+  - TreeNode interface gains is_active + is_house_account (boolean).
+  - Per-node stamp: is_house_account = tenantDefaultAgentId !== null && a.id
+    === tenantDefaultAgentId.
+  - Response now includes tenant: { id, default_agent_id } at top level so the
+    chart knows the holder (and PATCH target) even when that agent is filtered
+    out by search/role-filter/selling-only.
+
+### B2 — AgentOrgChart + AgentNodeCard (components/admin-homes/Agent*.tsx)
+
+  AgentOrgChart.tsx:
+    - ApiNode + ApiResponse + ApiTenant interfaces updated to mirror the new
+      API shape (is_active, is_house_account, tenant block).
+    - Per-render AgentNodeData gains is_active + is_house_account threaded
+      from ApiNode.
+    - NEW reloadTree() useCallback hoisted from confirmReassign so the
+      drawer's house-account-change handler can reuse it.
+    - AgentDetailDrawer mount now receives tenantIdForActions=api.tenant.id,
+      currentHouseAccountId=api.tenant.default_agent_id, onHouseAccountChanged
+      =reloadTree. Per-tenant, NEVER hardcoded.
+
+  AgentNodeCard.tsx:
+    - AgentNodeData gains is_active + is_house_account?.
+    - Marker render: amber Crown lucide icon, absolutely positioned top-right
+      (-top-2 -right-2), 6px ring of white shadow. title= renders native
+      browser tooltip "House account — catch-all for unrouted leads".
+    - Amber chosen deliberately to not clash with any existing ROLE_LABELS
+      color (purple/indigo/blue/green/slate).
+
+### B3 — AgentDetailDrawer (components/admin-homes/AgentDetailDrawer.tsx)
+
+  - Props extended: tenantIdForActions?, currentHouseAccountId?,
+    onHouseAccountChanged? (all optional — drawer still renders if a future
+    caller mounts without them).
+  - Header area: when data.is_house_account, the role line gets an amber
+    "House account" badge underneath the role label.
+  - Status Stat added (Active / Inactive) — uses the new AgentNodeData.is_active.
+  - NEW action block (visible only when tenantIdForActions is set):
+      - When isCurrentHouse: amber outlined "Current house account" disabled
+        label.
+      - When eligible: solid amber "Set as house account" button → PATCH
+        /api/admin-homes/tenants/[tenantIdForActions] { default_agent_id:
+        agentId }. Phase 1 PATCH pre-validation + validate_house_account
+        trigger are the authoritative gates; this is just the entry point.
+      - Loading state ("Setting..."), inline error message on PATCH 400
+        (friendly trigger-mirror messages from Phase 1 Part 2), inline success
+        message, helper paragraph explaining the eligibility rules.
+      - On success: await onHouseAccountChanged() → reloadTree → marker moves
+        in the chart without a page refresh.
+
+### B4 — multi-tenant gate (NO per-tenant constants anywhere)
+
+  tenantId for the PATCH target is sourced from the API response's tenant.id
+  field, NOT from a hardcoded constant or per-tenant if/else. Adding tenant
+  #3 onboarding requires zero code change — the chart will read whatever
+  default_agent_id that tenant's row has and stamp the marker accordingly.
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query against live DB (read-only sim of the stamping logic):
+    - aily   tenant: 4 nodes; exactly 1 flagged = OVAIS QASSIM (319ad339,
+      tenant_admin, active=true)
+    - walliam tenant: 3 nodes; exactly 1 flagged = King Shah (fafcd5b1,
+      tenant_admin, active=true)
+    - cross-tenant leak check: neither tenant's default_agent_id appears in
+      the other tenant's agents list. PASS.
+  T3 local dev / UI render: AUTH-GATED. The chart route is behind
+    resolveAdminHomesUser; the PATCH route is also auth-gated. Cannot exercise
+    the full click path headlessly. Claimed-unverified per the spec's
+    allowance. Operator confirms on production after push:
+      - load /admin-homes/agents/tree on aily.ca,
+      - assert amber crown renders on OVAIS QASSIM,
+      - click another eligible Aily agent → drawer shows enabled "Set as
+        house account" button,
+      - click an ineligible agent (e.g. if one is inactive) → friendly 400
+        surfaces inline,
+      - click "Set as house account" on an eligible agent → marker moves +
+        tree updates.
+  T4 C12 multi-tenant regression: 17 PASS / 3 FAIL — same baseline (c8b-2,
+    c11, L2.1). 0 NEW fails.
+
+### Files (this commit)
+
+  app/api/admin-homes/agents/tree-data/route.ts                 (B1)
+  components/admin-homes/AgentOrgChart.tsx                       (B2)
+  components/admin-homes/AgentNodeCard.tsx                       (B2)
+  components/admin-homes/AgentDetailDrawer.tsx                   (B3)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                       (this run-log)
+
+### Backups (timestamps)
+
+  app/api/admin-homes/agents/tree-data/route.ts.backup_20260625_083748
+  components/admin-homes/AgentOrgChart.tsx.backup_20260625_083748
+  components/admin-homes/AgentNodeCard.tsx.backup_20260625_083748
+  components/admin-homes/AgentDetailDrawer.tsx.backup_20260625_083748
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_084838 (pre-this-entry)
+
+### Open follow-ups
+
+- Cockpit People-tab parity: the cockpit AgentOrgChart mount sends node clicks
+  to the spine (not the drawer), so this drawer-based action isn't reachable
+  in cockpit. Add a cockpit-side surface (e.g. an action in PeopleTab's
+  selected-agent row, or open the drawer alongside spine sync) in a follow-up
+  unit. Cockpit users currently use Settings → General picker as before.
+- Live operator click-test on aily.ca production after push (see T3 above).
+
+### Commit gate
+
+  4 app files + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.

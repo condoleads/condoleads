@@ -28,12 +28,23 @@ interface ApiNode {
   role: string
   is_admin: boolean
   is_selling: boolean
+  is_active: boolean
   parent_id: string | null
   profile_photo_url: string | null
   lead_count_30d: number
+  // W-HOUSE-ACCOUNT UNIT 2: true when a.id === tenant.default_agent_id.
+  is_house_account: boolean
 }
 interface ApiEdge { id: string; source: string; target: string; type: string }
-interface ApiResponse { nodes: ApiNode[]; edges: ApiEdge[] }
+interface ApiTenant { id: string; default_agent_id: string | null }
+interface ApiResponse {
+  nodes: ApiNode[]
+  edges: ApiEdge[]
+  // W-HOUSE-ACCOUNT UNIT 2: per-tenant context. tenant.id is the PATCH target
+  // for inline house-account assignment; tenant.default_agent_id drives the
+  // "Current house account" disabled state on the drawer action.
+  tenant: ApiTenant
+}
 
 const NODE_WIDTH = 220
 const NODE_HEIGHT = 70
@@ -130,6 +141,7 @@ function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelected
           role: n.role,
           is_admin: n.is_admin,
           is_selling: n.is_selling,
+          is_active: n.is_active,
           profile_photo_url: n.profile_photo_url,
           lead_count_30d: n.lead_count_30d,
           dimmed,
@@ -137,6 +149,8 @@ function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelected
           // In cockpit context, parent passes selectedAgentId via prop; in
           // standalone context, local selectedAgentId (drawer state) is used.
           selected: n.id === effectiveSelectedAgentId,
+          // W-HOUSE-ACCOUNT UNIT 2: per-tenant house-account marker.
+          is_house_account: n.is_house_account,
         }
         return {
           id: n.id,
@@ -208,6 +222,16 @@ function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelected
     }
   }, [onAgentSelect])
 
+  // W-HOUSE-ACCOUNT UNIT 2: shared tree-reload helper (used by confirmReassign
+  // and by the drawer's house-account assignment success path).
+  const reloadTree = useCallback(async () => {
+    const treeReloadUrl = '/api/admin-homes/agents/tree-data'
+      + (tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '')
+    const r2 = await fetch(treeReloadUrl, { cache: 'no-store' })
+    const fresh: ApiResponse = await r2.json()
+    setApi(fresh)
+  }, [tenantId])
+
   async function confirmReassign() {
     if (!reassign) return
     setReassigning(true)
@@ -221,13 +245,7 @@ function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelected
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error || `Reassign failed (${res.status})`)
       }
-      // Reload tree
-      // W-COCKPIT P-B-1: same tenant_id pass-through as initial fetch.
-      const treeReloadUrl = '/api/admin-homes/agents/tree-data'
-        + (tenantId ? `?tenant_id=${encodeURIComponent(tenantId)}` : '')
-      const r2 = await fetch(treeReloadUrl, { cache: 'no-store' })
-      const fresh: ApiResponse = await r2.json()
-      setApi(fresh)
+      await reloadTree()
       setReassign(null)
     } catch (e: any) {
       setError(e.message || 'Reassign failed')
@@ -301,6 +319,15 @@ function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelected
         agentId={selectedAgentId}
         data={selectedData ?? null}
         onClose={() => setSelectedAgentId(null)}
+        // W-HOUSE-ACCOUNT UNIT 2: tenant context for inline house-account
+        // assignment. tenantIdForActions is the PATCH target — comes from the
+        // API response, not props, so the standalone /agents/tree route (which
+        // mounts AgentOrgChart with no tenantId prop) works the same as the
+        // cockpit (which does). currentHouseAccountId disables the button on
+        // the agent who already holds it.
+        tenantIdForActions={api?.tenant.id ?? null}
+        currentHouseAccountId={api?.tenant.default_agent_id ?? null}
+        onHouseAccountChanged={reloadTree}
       />
 
       {reassign && (
