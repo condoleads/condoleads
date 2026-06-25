@@ -59,13 +59,14 @@
 // Type surface (exported)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// W-TENANT-ASSISTANT UNIT 11 (2026-06-25): 'assistant' added to mirror the
-// agents.role CHECK extension. Assistant is a SUPPORT role — receives lead/
-// email copies (Unit 9 chain.ancestors + top-layer), card-eligible only when
-// licensed (Unit 11 agents-summary filter). NOT in Tier 4 admin tier —
-// can()-driven write decisions treat assistant as a non-admin tier; the
-// admin-style powers assistants have (opt-out toggle, house-account picker)
-// are gated on AdminHomesUser.position === 'assistant' separately (Unit 9/10
+// W-TENANT-ASSISTANT UNIT 11 (2026-06-25, FIX'd same day): 'assistant'
+// added to mirror the agents.role CHECK extension. Assistant is a SUPPORT
+// role — receives lead/email copies (Unit 9 chain.ancestors + top-layer)
+// and is card-eligible like any other role (no license gate; the operator
+// rejected license-vs-not modeling). NOT in Tier 4 admin tier — can()-
+// driven write decisions treat assistant as a non-admin tier; the admin-
+// style powers assistants have (opt-out toggle, house-account picker) are
+// gated on AdminHomesUser.position === 'assistant' separately (Unit 9/10
 // PUT route + Unit 10 page boolean).
 export type DbRole = 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'admin' | 'assistant'
 

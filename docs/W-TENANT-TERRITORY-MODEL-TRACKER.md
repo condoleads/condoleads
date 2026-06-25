@@ -22,7 +22,7 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 8B (house-account oversight: CC on every lead email + tenant-wide dashboard visibility; Part 0 = COMPUTE-met ownership confirmed) | territory→leads→email | SHIPPED, pushed 077c852 | 077c852 | — |
 | W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED, pushed 59da867 | 59da867 | — |
 | W-HOUSE-ACCOUNT UNIT 10 (opt-out UI toggle in EditAgentModal; tenant_admin/assistant-only render gate; threads canSetOversightOptOut through page → AgentsManagementClient → modal) | territory→leads→email (operator UX) | SHIPPED, pushed 18c71f2 | 18c71f2 | — |
-| W-TENANT-ASSISTANT UNIT 11 (agents.role CHECK extended to allow 'assistant'; AddAgentModal option; agents-summary filters out unlicensed assistants from card-eligible dropdown; Unit 9 lead-email leg auto-activates) | territory→leads→email (role) | SHIPPED LOCAL, DDL live | (pending this commit) | live operator click-test (create licensed + unlicensed assistant on aily.ca) |
+| W-TENANT-ASSISTANT UNIT 11 (agents.role CHECK extended to allow 'assistant'; AddAgentModal option; assistants card-eligible like any role — NO license gate; Unit 9 lead-email leg auto-activates) | territory→leads→email (role) | SHIPPED LOCAL (3663749 + FIX pending this commit), DDL live | (pending this commit) | live operator click-test (create assistant w/ and w/o license_number on aily.ca — both should appear in dropdowns) |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | SUPERSEDED — Phase 3's "admin_assistant" role intent is now W-TENANT-ASSISTANT UNIT 11's 'assistant' value (added to agents.role CHECK 2026-06-25). SMOKE 7 role-ineligible test is implicit in Unit 11's apply-runner SMOKE 4 (validate_house_account still rejects assistant as house). Closed as covered. | 18c71f2..(this) | — |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | SUPERSEDED — UNIT 9 implemented opt-out via the existing agents.notification_preferences jsonb (no new column needed). Closed as covered. | 59da867 | — |
@@ -1808,3 +1808,90 @@ the moment any assistant exists.
 
   5 app/server files + tracker shipped together (live-tracker rule).
   DDL applied live. HOLD push pending operator instruction.
+
+---
+
+### UNIT 11 SAME-DAY FIX (2026-06-25) — remove license-based card-eligibility gating
+
+CORRECTION: the initial UNIT 11 commit (3663749, not yet pushed) added a
+license_number filter to app/api/admin-homes/territory/agents-summary/
+route.ts that hid assistants WITHOUT a license_number from card/territory
+dropdowns. Operator clarified that license-vs-not is NOT modeled by the
+system — every role is a licensed trade by design. The filter was
+incorrect and is removed.
+
+What this FIX changes (3 files, all in 3663749's diff, app-layer only):
+
+  app/api/admin-homes/territory/agents-summary/route.ts
+    - REMOVED: unlicensedAssistantIds Set + the role + license_number
+      SELECT + the .filter(a => !unlicensedAssistantIds.has(a.agent_id))
+      line + the surrounding "card-eligible only when licensed" comment.
+    - KEPT: UNIT 9 oversight_opt_out filter (unchanged).
+    Result: assistants appear in territory dropdowns like any other role.
+
+  components/admin-homes/AddAgentModal.tsx
+    - REMOVED: the "Licensed assistant ... card-eligible only when license
+      number is filled below" helper text + the comment block claiming
+      "Licensed = card-eligible; unlicensed = lead/email copies only".
+    - KEPT: the <option value="assistant">Tenant Assistant option (with
+      a refreshed neutral comment) + the role type literal addition.
+
+  lib/admin-homes/permissions.ts
+    - REWORDED the DbRole comment to drop "card-eligible only when
+      licensed (Unit 11 agents-summary filter)" and replace with
+      "card-eligible like any other role (no license gate; the operator
+      rejected license-vs-not modeling)".
+
+What stays from UNIT 11 unchanged (preserved by the FIX):
+  - DDL: agents.role CHECK gains 'assistant' (correct, kept live).
+  - AddAgentModal: 'assistant' selectable in role dropdown.
+  - POST route: VALID_ROLES includes 'assistant'.
+  - DbRole TS literal includes 'assistant'.
+  - UNIT 9 lead/email copy leg auto-activates when assistants exist
+    (unchanged — assistant always copied regardless of any field).
+  - validate_house_account trigger STILL rejects assistant as house
+    account (Phase 1 contract intact).
+  - UNIT 10 opt-out toggle works on assistants too (composes correctly).
+  - Multiple assistants per tenant supported.
+  - Multi-tenant: no cross-tenant leak.
+
+### FIX Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (SAVEPOINT-isolated, NO permanent mutation): 10 PASS
+     Scenario 1: assistant WITH license_number → in dropdown
+     Scenario 2 (THE FIX): assistant WITHOUT license_number → NOW in
+       dropdown (pre-FIX broken behavior would have hidden it; assertion
+       proves both the FIX surfaces them AND that the pre-FIX logic
+       would have filtered)
+     Scenario 3: assistant with whitespace-only license_number → ALSO
+       in dropdown (no license check anywhere now)
+     Scenario 4: all 3 assistants in Unit 9 copy chain (license
+       irrelevant for copy — unchanged)
+     Scenario 5: validate_house_account STILL rejects assistant as
+       house account (licensed or not — Phase 1 contract intact)
+     Scenario 6: opt-out interaction unchanged (Unit 10 still drops
+       opted-out assistant from BOTH dropdown AND copy chain)
+     Scenario 7: WALLiam unlicensed assistant in WALLiam dropdown,
+       NOT in Aily dropdown (cross-tenant clean)
+     Post-check (fresh connection): 0 assistants persisted.
+  T3 C12: 17/20 baseline, 0 new fails.
+
+### Files (this FIX commit, on top of 3663749)
+
+  app/api/admin-homes/territory/agents-summary/route.ts   (filter removed)
+  components/admin-homes/AddAgentModal.tsx                (helper text removed)
+  lib/admin-homes/permissions.ts                          (comment reworded)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                (this correction)
+
+### Backups (timestamps, FIX)
+
+  app/api/admin-homes/territory/agents-summary/route.ts.backup_20260625_151302
+  components/admin-homes/AddAgentModal.tsx.backup_20260625_151302
+  lib/admin-homes/permissions.ts.backup_20260625_151302
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_151537 (pre-FIX-correction)
+
+### Commit gate
+
+  FIX ships as a follow-up commit on top of 3663749 (both held; neither
+  pushed yet). After approval, both commits push together. HOLD push.

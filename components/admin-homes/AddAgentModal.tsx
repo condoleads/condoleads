@@ -133,17 +133,11 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                   <option value="area_manager">Area Manager</option>
                   <option value="tenant_admin">Tenant Admin</option>
                   {/* W-TENANT-ASSISTANT UNIT 11: Tenant Assistant role. Multiple
-                      assistants per tenant supported. Licensed assistant (license_number
-                      populated) = card-eligible; unlicensed = lead/email copies only. */}
+                      assistants per tenant supported. Card-eligible like any
+                      other role; receives lead/email copies via Unit 9 top-layer. */}
                   <option value="assistant">Tenant Assistant</option>
                 </select>
-                {formData.role === 'assistant' ? (
-                  <p className="text-xs text-amber-700 mt-1">
-                    Assistant always receives lead/email copies. Card-eligible only when license number is filled below.
-                  </p>
-                ) : (
-                  <p className="text-xs text-gray-400 mt-1">Determines this user's hierarchy tier.</p>
-                )}
+                <p className="text-xs text-gray-400 mt-1">Determines this user's hierarchy tier.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reports To</label>
