@@ -14,7 +14,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | Governance design + phased plan | territory→hierarchy | LOCKED | bdc0122 | — |
 | Phase 1 house-account invariant (trigger + PATCH + picker + guards) | territory→leads (ownership fallback) | SHIPPED, DDL live, pushed d39941f | d39941f | — |
 | W-HOUSE-ACCOUNT UNIT 1 (picker feed fix + resolver P-HOUSE fallback + Aily→Ovais) | territory→leads (end-to-end flow) | SHIPPED, DDL live, pushed 18ee965 | 18ee965 | live operator click-test of picker on aily.ca |
-| W-HOUSE-ACCOUNT UNIT 2 (house account assignable from Agents org chart — marker + drawer action) | territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents/tree |
+| W-HOUSE-ACCOUNT UNIT 2 (house account assignable from Agents org chart — marker + drawer action) | territory (operator UX) | SHIPPED, pushed 248b6bd | 248b6bd | — |
+| W-HOUSE-ACCOUNT UNIT 3 (seed root retired; Ovais real root; house-account marker on agents list; inactive agents filtered from list+chart) | territory (operator UX + data) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -559,3 +560,161 @@ DB writes; no migration. Pure app-layer change on top of Phase 1 + UNIT 1.
 
   4 app files + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 3 RUN-LOG (2026-06-25) — retire seed, re-root, list marker
+
+Goal: retire the placeholder "Admin Tenant (Aily)" seed root, re-root the
+hierarchy to Ovais (the real tenant owner, also the Unit 1 F1 house account),
+and surface the house-account marker on the LIST view (/admin-homes/agents)
+too — Unit 2 only touched the org chart.
+
+### R1 — Aily tree (pre-state)
+
+  4 agents: Seed (0b3fcbf7, root, active), Manager (3c17dc80, under seed),
+  Agent (28fee333, under Manager), Ovais (319ad339, under seed).
+  WALLiam baseline (must be untouched): King Shah (root) + Neo Smith + WALLiam
+  (both under King Shah). 3 active agents.
+
+### R2 — Seed FK references (blockers to DELETE)
+
+  tenants.default_agent_id = seed?         NO  (Unit 1 F1 moved it to Ovais)
+  agents.parent_id = seed?                 2 rows (Manager + Ovais) — re-point in D1
+  leads.agent_id = seed?                   8 rows                    *** BLOCKER ***
+  agent_property_access.agent_id = seed?   1 row                     *** BLOCKER ***
+  auth.users[seed]?                        EXISTS (would need teardownAuthUser)
+  agent_listing_assignments / agent_geo_buildings / agent_delegations /
+    territory_assignment_changes / leads.manager_id / leads.area_manager_id /
+    leads.tenant_admin_id                  all 0 (clean)
+
+  Conclusion: safe DELETE not possible without teardownAuthUser cascade + 8
+  leads + 1 APA cleanup. Operator-authorized fallback path: is_active=false
+  + filter from displays. Historical 8 leads + 1 APA preserved (audit trail).
+
+### R3 — Agents list page (recon)
+
+  File: app/admin-homes/agents/page.tsx loads agents server-side, augments
+  with leads/geo/building counts, hands to AgentsManagementClient.
+  AgentsManagementClient.tsx already renders the "Under: <manager>" line
+  conditionally on `managerName` being truthy (L172) — so once Ovais's
+  parent_id becomes NULL via D1, no further render-template change is needed
+  to suppress the "Under:" line for the root. E1's app-side work is just
+  filtering inactive agents from the LIST + TREE queries so the deactivated
+  seed disappears from view.
+
+### D1+D2+D3 — apply-runner results (snapshot retained)
+
+  Runner: scripts/apply-unit3-aily-retire-seed.js (deleted post-success per
+          one-shot pattern; snapshot retained in rollback-snapshots/).
+  Snapshot: _unit3-aily-retire-seed_agents_2026-06-25T13-23-59-688Z.sql.
+
+  3 UPDATEs in transaction:
+    A. Manager (3c17dc80) parent_id: seed -> Ovais       rowCount=1
+    B. Ovais (319ad339) parent_id: seed -> NULL          rowCount=1
+    C. Seed (0b3fcbf7) is_active: true -> false          rowCount=1
+
+  Post-write state:
+    Aily:
+      Ovais   parent_id=NULL  is_active=true   ← root
+        Manager parent_id=Ovais  is_active=true
+          Agent   parent_id=Manager (28fee333) is_active=true   ← unchanged
+      Seed    parent_id=NULL  is_active=false  ← retired, no children
+    WALLiam (post-write baseline):
+      King Shah parent_id=NULL  is_active=true   ← byte-identical to pre-state
+      Neo Smith parent_id=King Shah  is_active=true
+      WALLiam   parent_id=King Shah  is_active=true
+
+  D3 multi-tenant guard: 5 tenant-specific IDs live in a parameter block at
+  the top of the runner. Logic is generic (re-parent everyone in the
+  REPARENT_FROM_SEED_TO_NEW_ROOT list from SEED_ID to NEW_ROOT; set
+  NEW_ROOT.parent_id=NULL; deactivate SEED_ID). Future tenants with the same
+  fixup pattern (placeholder root → real owner) swap IDs only, no logic
+  change.
+
+### E1 + E2 — display changes (no DB writes)
+
+  app/admin-homes/agents/page.tsx
+    - agents query gains .eq('is_active', true) — filters retired seed from
+      list (and any future deactivated agents).
+    - tenants SELECT gains default_agent_id (explicit-col per CLAUDE.md).
+    - tenantDefaultAgentId derived per scoped tenant + passed to client.
+    - Empty-state mount also passes tenantDefaultAgentId=null.
+
+  components/admin-homes/AgentsManagementClient.tsx
+    - New Crown lucide import.
+    - New prop tenantDefaultAgentId?: string | null (optional w/ null default
+      so PeopleTab cockpit mount doesn't break — cockpit will get the Crown
+      on the table view via a follow-up that threads default_agent_id through
+      the cockpit shell).
+    - AgentRow's role cell now renders an amber "House Account" pill next to
+      the RoleBadge when agent.id === tenantDefaultAgentId.
+
+  app/api/admin-homes/agents/tree-data/route.ts
+    - Same is_active=true filter on the agents query (chart view consistency).
+
+  Net effect on /admin-homes/agents (Aily):
+    - 3 active rows (seed hidden); Ovais shows as top with no "Under:" line
+      and a House Account pill; Manager shows "Under: OVAIS QASSIM"; Agent
+      shows "Under: Manager (Aily)".
+
+### Gates
+
+  T1 TSC --noEmit: exit 0 (after adding tenantDefaultAgentId default=null so
+    PeopleTab's cockpit mount compiles).
+  T2 guard-query (read-only): 9/9 assertions PASS.
+    - seed is_active=false
+    - Ovais parent_id=NULL
+    - no agent parented to seed
+    - active Aily agent count = 3 (seed excluded)
+    - exactly 1 active Aily agent flagged house account = Ovais
+    - WALLiam: 3 rows, King Shah root + active, Neo Smith + WALLiam under
+      King Shah, all active — byte-identical to pre-run.
+  T3 local dev render: AUTH-GATED — operator click-test on production after
+    push. (Claimed, unverified — auth-gated UI route cannot be exercised
+    headlessly.)
+  T4 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11, L2.1).
+    INITIAL C12 had c10 newly failing because the test asserted an exact
+    string snapshot `.select('id, name, domain, brand_name')` that broke
+    when default_agent_id was added. Test updated to assertMatches() with
+    a regex pattern allowing additional columns past brand_name (intent:
+    brand_name must be in the SELECT; column order + extras are not what
+    this test guards). 0 NEW C12 failures.
+
+### Files (this commit)
+
+  app/admin-homes/agents/page.tsx                            (E1a)
+  components/admin-homes/AgentsManagementClient.tsx          (E2)
+  app/api/admin-homes/agents/tree-data/route.ts              (E1b — chart filter)
+  scripts/test-c10-multitenant-regression.js                 (test fix)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                   (this run-log)
+  supabase/migrations/rollback-snapshots/
+    _unit3-aily-retire-seed_agents_2026-06-25T13-23-59-688Z.sql
+
+### Backups (timestamps)
+
+  app/admin-homes/agents/page.tsx.backup_20260625_092418
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260625_092418
+  app/api/admin-homes/agents/tree-data/route.ts.backup_20260625_092418
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_093148 (pre-this-entry)
+
+### Open follow-ups
+
+- Cockpit table view (PeopleTab.tsx mounts AgentsManagementClient): doesn't
+  thread tenantDefaultAgentId through the cockpit shell, so the Crown badge
+  doesn't appear on the cockpit's table tab. Follow-up: extend cockpit shell
+  to load default_agent_id and pass it down. Standalone /admin-homes/agents
+  works fully.
+- Seed cleanup polish: 8 leads + 1 APA card still reference the retired seed
+  (intentional — audit trail). A future archive sweep could reassign those to
+  Ovais (lead-level) or revoke the APA card (territory-level) — out of scope
+  here, captured for W-LEADS-WORKBENCH / W-TERRITORY-MASTER followup.
+- Live operator click-test on /admin-homes/agents (aily.ca): assert Ovais at
+  top with House Account pill, no "Under:" line; Manager / Agent below with
+  correct "Under: <real manager>"; no "Admin Tenant (Aily" row visible.
+
+### Commit gate
+
+  D-phase data write (via runner) + 3 app files + 1 test fix + tracker
+  shipped together (live-tracker rule). HOLD push pending operator
+  instruction.

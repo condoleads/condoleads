@@ -79,10 +79,15 @@ export async function GET(request: NextRequest) {
 
   const supabase = createClient()
 
+  // W-HOUSE-ACCOUNT UNIT 3: filter inactive agents from the org chart. Matches
+  // the list view's is_active=true filter — keeps retired roots (e.g. the
+  // deactivated Aily seed) out of the visible tree without DELETEing them
+  // (historical leads / APA references preserved).
   const { data: agents, error: agentsErr } = await supabase
     .from('agents')
     .select('id, full_name, role, is_selling, is_active, parent_id, tenant_id, profile_photo_url')
     .eq('tenant_id', tenantId)
+    .eq('is_active', true)
     .order('full_name', { ascending: true })
 
   if (agentsErr) {

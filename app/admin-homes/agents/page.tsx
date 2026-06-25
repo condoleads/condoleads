@@ -28,24 +28,34 @@ export default async function AdminHomesAgentsPage() {
   const seeAll = isCrossTenantView(user, hostTenantId)
   const scopedTenantId = getScopedTenantId(user, hostTenantId)
 
+  // W-HOUSE-ACCOUNT UNIT 3: filter inactive agents from the management list.
+  // Inactive agents (e.g. retired seed roots after UNIT 3 D-phase) clutter the
+  // hierarchy display and create phantom "Under: <seed>" lines. The list view
+  // is the active-roster surface; deactivated agents are recoverable via the
+  // PUT /api/admin-homes/agents/[id] handler (is_active: true) for now and a
+  // dedicated archive view in a future unit.
   let agentsQuery = supabase
     .from('agents')
     .select('*')
     .eq('site_type', 'comprehensive')
+    .eq('is_active', true)
     .order('created_at', { ascending: false })
 
   if (!seeAll) {
     if (!scopedTenantId) {
       // Authenticated but no tenant context — return empty
-      return <AgentsManagementClient agents={[]} tenants={[]} tenantName={null} tenantBrandName={null} tenantDomain={null} tenantId={null} />
+      return <AgentsManagementClient agents={[]} tenants={[]} tenantName={null} tenantBrandName={null} tenantDomain={null} tenantId={null} tenantDefaultAgentId={null} />
     }
     agentsQuery = agentsQuery.eq('tenant_id', scopedTenantId)
   }
 
   // C10 -- include brand_name for admin modal display strings.
+  // W-HOUSE-ACCOUNT UNIT 3: include default_agent_id so the client can render
+  // the house-account marker (Crown badge) on the holding agent's row. Explicit
+  // cols only (CLAUDE.md: NEVER SELECT * on tenants — holds api keys).
   let tenantsQuery = supabase
     .from('tenants')
-    .select('id, name, domain, brand_name')
+    .select('id, name, domain, brand_name, default_agent_id')
     .order('name')
 
   if (!seeAll && scopedTenantId) {
@@ -90,5 +100,12 @@ export default async function AdminHomesAgentsPage() {
     })
   )
 
-  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} />
+  // W-HOUSE-ACCOUNT UNIT 3: pick the scoped tenant's default_agent_id (the
+  // house account). NULL when no tenant in scope or no default set. Multi-tenant
+  // safe — derived from the same scopedTenantId, never hardcoded per tenant.
+  const tenantDefaultAgentId = scopedTenantId
+    ? (tenants || []).find(t => t.id === scopedTenantId)?.default_agent_id ?? null
+    : null
+
+  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} tenantDefaultAgentId={tenantDefaultAgentId} />
 }

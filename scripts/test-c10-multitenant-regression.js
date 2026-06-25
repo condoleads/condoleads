@@ -20,6 +20,16 @@ function assertContains(rel, needle, label) {
   }
 }
 
+function assertMatches(rel, pattern, label) {
+  if (pattern.test(readFile(rel))) {
+    console.log('PASS [' + label + '] ' + rel)
+    passes++
+  } else {
+    console.error('FAIL [' + label + '] ' + rel + ' -- pattern not found: ' + pattern)
+    failures++
+  }
+}
+
 function assertNoMatch(rel, pattern, label) {
   const m = readFile(rel).match(pattern)
   if (m) {
@@ -107,9 +117,13 @@ assertNoMatch(
 
 // ---------- app/admin-homes/agents/page.tsx (server) ----------
 
-assertContains(
+// W-HOUSE-ACCOUNT UNIT 3: additive columns past brand_name (e.g.
+// default_agent_id for the house-account marker) are permitted by this
+// assertion. Intent: brand_name MUST be in the SELECT; column order + extra
+// columns are not what this test guards.
+assertMatches(
   'app/admin-homes/agents/page.tsx',
-  ".select('id, name, domain, brand_name')",
+  /\.select\('id, name, domain, brand_name[^']*'\)/,
   'agents-page-tenants-select-includes-brand_name'
 )
 assertContains(

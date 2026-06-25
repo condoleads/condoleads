@@ -2,7 +2,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Users, TrendingUp, Building2, Plus, Pencil, MapPin, UserCheck, ChevronDown, ChevronRight, X } from 'lucide-react'
+import { Users, TrendingUp, Building2, Plus, Pencil, MapPin, UserCheck, ChevronDown, ChevronRight, X, Crown } from 'lucide-react'
 import AddAgentModal from './AddAgentModal'
 import EditAgentModal from './EditAgentModal'
 import Link from 'next/link'
@@ -35,7 +35,10 @@ interface Agent {
 // D26 (P3.F5) -- tenantId threaded from server page to AddAgentModal so the
 // modal posts to the correct admin-scope tenant instead of the
 // hostname-derived useTenantId() value (which leaks cross-tenant on localhost).
-export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain, tenantId }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null, tenantId: string | null }) {
+// W-HOUSE-ACCOUNT UNIT 3 -- tenantDefaultAgentId threaded so the list can
+// render a Crown badge on the holding agent's row. Multi-tenant safe — driven
+// by the scoped tenant's own default_agent_id, never hardcoded.
+export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain, tenantId, tenantDefaultAgentId = null }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null, tenantId: string | null, tenantDefaultAgentId?: string | null }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -165,7 +168,20 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
           {/* Role + Reports To */}
           <td className="px-5 py-4">
             <div className="flex flex-col gap-1">
-              <RoleBadge agent={agent} />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <RoleBadge agent={agent} />
+                {/* W-HOUSE-ACCOUNT UNIT 3: Crown badge when this agent is the
+                    tenant's current default_agent_id. Amber harmonizes with
+                    the org chart marker (Unit 2). */}
+                {tenantDefaultAgentId && agent.id === tenantDefaultAgentId && (
+                  <span
+                    title="House account — catch-all for unrouted leads"
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-xs font-medium"
+                  >
+                    <Crown className="w-3 h-3" /> House Account
+                  </span>
+                )}
+              </div>
               {managerName && <p className="text-xs text-gray-400">Under: {managerName}</p>}
               {teamMembers.length > 0 && (
                 <p className="text-xs text-orange-600">{teamMembers.length} agent{teamMembers.length > 1 ? 's' : ''}</p>
