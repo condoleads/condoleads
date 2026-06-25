@@ -50,6 +50,11 @@ export interface LeadEmailRecipients {
     manager_delegates: string[]
     area_manager_delegates: string[]
     tenant_admin_delegates: string[]
+    /** W-HOUSE-ACCOUNT UNIT 8B — house account (tenants.default_agent_id
+     *  holder) gets a CC of every lead routed to a non-house-account agent.
+     *  null when no house account configured, or when the assigned agent IS
+     *  the house account (no self-CC). */
+    house_account: string | null
   }
 }
 
@@ -93,6 +98,7 @@ export async function getLeadEmailRecipients(
     manager_delegates: [],
     area_manager_delegates: [],
     tenant_admin_delegates: [],
+    house_account: null,
   }
 
   let agentEmail: string | null = null
@@ -237,6 +243,41 @@ export async function getLeadEmailRecipients(
     }
   }
 
+  // ─── W-HOUSE-ACCOUNT UNIT 8B: house-account CC ──────────────────────────
+  // The holder of tenants.default_agent_id receives a CC on every lead routed
+  // to a non-house-account agent (oversight role, not re-routing). The
+  // assigned agent stays primary in TO; this is an additional copy.
+  //
+  // Skip cases:
+  //   - tenant has no default_agent_id set (no house account configured)
+  //   - the assigned agent IS the house account (no self-CC — single email)
+  //   - the house account has no usable email
+  //
+  // Multi-tenant: scoped per tenantId; never crosses tenants.
+  // Dedup vs other layers (e.g. when the house account is also the
+  // tenant_admin walker hit) is handled at assembly time below.
+  let houseAccountEmail: string | null = null
+  {
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('default_agent_id')
+      .eq('id', tenantId)
+      .maybeSingle()
+    const houseAccountAgentId = (tenantRow as { default_agent_id: string | null } | null)?.default_agent_id ?? null
+    if (houseAccountAgentId && houseAccountAgentId !== agentId) {
+      const { data: ha } = await supabase
+        .from('agents')
+        .select('id, email, notification_email')
+        .eq('id', houseAccountAgentId)
+        .maybeSingle()
+      const haRow = ha as AgentEmailRow | null
+      if (haRow) {
+        houseAccountEmail = haRow.notification_email || haRow.email || null
+        resolved.house_account = houseAccountEmail
+      }
+    }
+  }
+
   // ─── Layer 6: Admin Platform — UNCONDITIONAL ─────────────────────────────
   const { data: adminPlatformRows, error: adminError } = await supabase
     .from('platform_admins')
@@ -276,6 +317,11 @@ export async function getLeadEmailRecipients(
   // Layer 2 → CC
   if (managerEmail) cc.push(managerEmail)
 
+  // W-HOUSE-ACCOUNT UNIT 8B: house-account CC. Sits with Layer 2 (CC tier)
+  // for visibility — the assigned agent sees the house account is copied.
+  // Skipped automatically above when the assigned agent IS the house account.
+  if (houseAccountEmail) cc.push(houseAccountEmail)
+
   // Layer 3 → BCC
   if (areaManagerEmail) bcc.push(areaManagerEmail)
   // Layer 4 → BCC
@@ -289,11 +335,21 @@ export async function getLeadEmailRecipients(
   // Layer 6 → BCC (unconditional)
   for (const e of adminPlatformEmails) bcc.push(e)
 
+  // W-HOUSE-ACCOUNT UNIT 8B: cross-list dedupe. If the house account is also
+  // the tenant_admin (Layer 4 BCC, common when the tenant owner is also the
+  // house account — Aily/WALLiam today), they would land in both CC and BCC
+  // after the layer pushes above. Promote CC over BCC so the recipient
+  // appears exactly once and the visibility tier is correct (CC = oversight
+  // visible to all; BCC = silent).
+  const ccSet = new Set(cc)
+  const toSet = new Set(to)
+  const bccDeduped = bcc.filter(e => !ccSet.has(e) && !toSet.has(e))
+
   // De-dupe each list (an email shouldn't appear twice in the same field)
   return {
     to: dedupe(to),
     cc: dedupe(cc),
-    bcc: dedupe(bcc),
+    bcc: dedupe(bccDeduped),
     resolved,
   }
 }

@@ -18,7 +18,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 3 (seed root retired; Ovais real root; house-account marker on agents list; inactive agents filtered from list+chart) | territory (operator UX + data) | SHIPPED, pushed d50720c | d50720c | — |
 | W-HOUSE-ACCOUNT UNIT 5 (operating-hierarchy display; owner-out-of-tree; House Account picker removed from Settings) | territory (operator UX) | SHIPPED, pushed 142168e | 142168e | — |
 | W-HOUSE-ACCOUNT UNIT 6 (parent_id forest walk; orphan-at-its-level renders as own root row) | territory (operator UX) | SHIPPED, pushed 9953018 | 9953018 | — |
-| W-HOUSE-ACCOUNT UNIT 7 (revert UNIT 5 over-exclusion — tenant_admin owner is BOTH header AND tree node; reports nest under owner) | territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents + /agents/tree |
+| W-HOUSE-ACCOUNT UNIT 7 (revert UNIT 5 over-exclusion — tenant_admin owner is BOTH header AND tree node; reports nest under owner) | territory (operator UX) | SHIPPED, pushed 59a213f | 59a213f | — |
+| W-HOUSE-ACCOUNT UNIT 8B (house-account oversight: CC on every lead email + tenant-wide dashboard visibility; Part 0 = COMPUTE-met ownership confirmed) | territory→leads→email | SHIPPED LOCAL | (pending this commit) | live operator click-test (lead emails + leads dashboard) |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -1104,3 +1105,181 @@ else whose parent is missing/inactive.
 
   2 app files + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 8B RUN-LOG (2026-06-25) — house-account oversight (CC + dashboard)
+
+PART 0 — ownership question CLOSED via COMPUTE: recon proved the locked
+model (every scope owned; unassigned routes to house account; assignment
+overrides per scope) is ALREADY met at the architecture layer post-UNIT 1.
+Resolver P-HOUSE branch (18ee965) routes unassigned-scope leads to
+tenants.default_agent_id; geo-rollup route (territory/geo-rollup/route.ts:
+274-275) falls back to tenant_default for GeographyView. No DB writes
+needed for ownership. PATH SEED REJECTED — would bloat (~2,500+ geo apa
+rows per tenant + ~9,800 building rows + ~1.3M listing rows) and risk
+cascade short-circuits in pick_routing_agent.
+
+PART B — house-account oversight (CC + visibility), the build.
+
+### R1 — Lead-create path (recon)
+
+  7 routes create leads; ALL flow through resolve_agent_for_context and
+  the same email helper:
+    app/api/charlie/lead/route.ts                  (plan-email enrichment)
+    app/api/walliam/contact/route.ts               (contact forms)
+    app/api/walliam/estimator/session/route.ts
+    app/api/walliam/charlie/session/route.ts
+    app/api/walliam/assign-user-agent/route.ts
+    app/api/charlie/appointment/route.ts
+    lib/actions/leads.ts
+
+  Every route stamps lead.agent_id = resolver-resolved agent, then calls
+  getLeadEmailRecipients(tenant_id, agent_id, supabase). ONE helper, one
+  integration point for the CC.
+
+### R2 — Email path (single integration point)
+
+  lib/admin-homes/lead-email-recipients.ts assembles { to, cc, bcc } via
+  6 layers (assigned agent TO + manager CC + area_manager / tenant_admin
+  / delegates / platform managers / platform admins as BCC). The CC for
+  the house account hooks in as a new section between the layer fetches
+  and the assembly — same module, all consumers benefit automatically.
+
+### R3 — Dashboard visibility (already satisfied for current data)
+
+  app/admin-homes/leads/page.tsx uses scopeLeadsQuery (lib/admin-homes/
+  scope.ts:101-120). Role-gate fires only for role=manager (limited to
+  own + managedAgentIds) and role=agent (own only). Everything else
+  (tenant_admin, area_manager, admin) falls through with no role gate
+  → sees ALL tenant leads.
+
+  Today both house accounts are role=tenant_admin (Ovais on Aily,
+  King Shah on WALLiam), so they ALREADY see every tenant lead. The
+  rule is keyed on role, not default_agent_id.
+
+  UNIT 8B generalizes: rule should key on default_agent_id, not role.
+  If a future tenant sets the house account to role=manager or
+  role=agent, the role gate would prevent tenant-wide visibility. The
+  fix is an OPTIONAL houseAccountAgentId parameter on scopeLeadsQuery
+  that, when matched, bypasses the role gate.
+
+### Path chosen — VISIBILITY-RULE + email CC
+
+  No DB writes. No schema change. No migration. Two surface changes:
+    1. lib/admin-homes/lead-email-recipients.ts: house-account CC hook
+    2. lib/admin-homes/scope.ts + app/admin-homes/leads/page.tsx:
+       optional houseAccountAgentId param that bypasses the role gate
+
+### B1 — Email CC (lib/admin-homes/lead-email-recipients.ts)
+
+  + LeadEmailRecipients.resolved.house_account: string | null (diagnostic
+    surface)
+  + New "house-account CC" section before Layer 6 BCC. Reads
+    tenants.default_agent_id; if non-null AND not === agentId, fetches
+    that agent's notification_email/email and adds to CC. Skips
+    automatically when:
+      - tenant has no house account
+      - assigned agent IS the house account (no self-CC)
+      - house-account agent has no usable email
+  + Cross-list dedupe (CC and TO win over BCC): if the house account is
+    also the tenant_admin walker hit (Aily/WALLiam case today), they
+    appear in BOTH cc-push and bcc-push above. Promote CC over BCC so
+    the recipient appears exactly once and tier is correct (CC =
+    visible oversight; BCC = silent).
+  + Multi-tenant: tenant_id parameter already scopes the
+    default_agent_id read; never crosses tenants.
+
+### B2 — Dashboard visibility override (lib/admin-homes/scope.ts)
+
+  + scopeLeadsQuery signature extended with optional houseAccountAgentId
+    parameter (default null = current behavior, backward-compatible).
+  + If user.agentId === houseAccountAgentId, the role gate (agent /
+    manager .in / .eq filters) is skipped — the tenant_id scope
+    remains in force.
+  + Pure-function contract preserved: no I/O. Caller pre-computes
+    houseAccountAgentId by reading the tenant row server-side.
+
+### B3 — Wire-through (app/admin-homes/leads/page.tsx)
+
+  + tenant SELECT cols extended: brand_name, name, domain,
+    default_agent_id (explicit cols per CLAUDE.md — NEVER SELECT * on
+    tenants).
+  + tenantHouseAccountAgentId derived per scoped tenant.
+  + Passed as 4th arg to scopeLeadsQuery(query, adminUser, tenantId,
+    tenantHouseAccountAgentId).
+
+### B4 — No regression for the assigned-agent flow
+
+  Assigned agent still in TO; their email + lead row unchanged. House
+  account is ADDED (CC + dashboard visibility), never substituted.
+
+### B5 — Multi-tenant guarantee
+
+  Aily's house account CC keys on Aily's tenants.default_agent_id
+  (Ovais email); WALLiam's keys on King Shah's. Cross-tenant leak
+  impossible — the SELECT default_agent_id WHERE id = tenantId is the
+  tenant boundary.
+
+### Companion TS fix
+
+  app/api/admin-homes/leads/[id]/reassign-agent/route.ts builds a
+  LeadEmailRecipients literal for its single-recipient reassign envelope.
+  Added house_account: null for type completeness (this envelope does
+  NOT recompute the CC — it's a direct hand-off to the newly-assigned
+  agent, not a fresh lead-create flow).
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (read-only, NO mutations):
+    aily   — 7 OK (house account is Ovais; lead to non-house agent
+            → Ovais CC computed; lead to Ovais himself → no self-CC;
+            dashboard override fires for Ovais, NOT for other agents,
+            NOT cross-tenant)
+    walliam — 7 OK (same shape; King Shah CC; no self-CC; override
+            scoped to WALLiam)
+    TOTAL: 14 assertions PASS, 0 cross-tenant leak.
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11,
+    L2.1). The leads-page tenant SELECT assertion in C10 broke on the
+    default_agent_id addition (same brittle exact-string pattern as
+    UNIT 3 hit on the agents page). Test updated to assertMatches() +
+    regex pattern, intent preserved. 0 NEW C12 failures.
+
+### Files (this commit)
+
+  lib/admin-homes/lead-email-recipients.ts            (B1)
+  lib/admin-homes/scope.ts                             (B2)
+  app/admin-homes/leads/page.tsx                       (B3)
+  app/api/admin-homes/leads/[id]/reassign-agent/route.ts  (TS fix)
+  scripts/test-c10-multitenant-regression.js           (test fix)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md             (this run-log)
+
+### Backups (timestamps)
+
+  lib/admin-homes/lead-email-recipients.ts.backup_20260625_104857
+  lib/admin-homes/scope.ts.backup_20260625_104857
+  app/admin-homes/leads/page.tsx.backup_20260625_104857
+  app/api/admin-homes/leads/[id]/reassign-agent/route.ts.backup_20260625_105126
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_105342 (pre-this-entry)
+
+### Open follow-ups
+
+- Reassign-agent route (app/api/admin-homes/leads/[id]/reassign-agent/
+  route.ts) builds a single-recipient envelope manually and stamps
+  house_account: null. A future polish unit could call
+  getLeadEmailRecipients to recompute the full chain (including the
+  house-account CC) on reassign — matches the lead-create paths. Out
+  of scope for UNIT 8B.
+- Live operator click-test on aily.ca after push:
+  - Submit a lead to a non-house-account agent (territory-routed): assert
+    Ovais appears in CC on the chain email AND sees the lead in
+    /admin-homes/leads.
+  - Submit a lead to an UNASSIGNED scope (resolves to Ovais): assert ONE
+    email, ONE lead, no self-CC.
+
+### Commit gate
+
+  PART 0 ownership: COMPUTE-met (no code change).
+  PART B build: 4 app files + 1 test fix + tracker shipped together
+  (live-tracker rule). NO prod DB writes in this unit. HOLD push.

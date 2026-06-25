@@ -55,9 +55,12 @@ assertContains(
   'let tenantDomain: string | null = null',
   'leads-page-tenantDomain-declared'
 )
-assertContains(
+// W-HOUSE-ACCOUNT UNIT 8B: additive columns past brand_name/name/domain (e.g.
+// default_agent_id for the leads-page house-account oversight visibility) are
+// permitted by this assertion. Intent: brand_name MUST be in the SELECT.
+assertMatches(
   'app/admin-homes/leads/page.tsx',
-  ".select('brand_name, name, domain')",
+  /\.select\('brand_name, name, domain[^']*'\)/,
   'leads-page-tenant-fetch-includes-brand_name'
 )
 assertContains(

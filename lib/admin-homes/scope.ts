@@ -96,18 +96,43 @@ interface ScopableQuery<T> {
  *                           agent   -> .eq('agent_id', own)
  *                           admin   -> no further filter (all leads in tenant)
  *
- * Mirrors the existing pattern in app/admin-homes/leads/page.tsx verbatim.
+ * W-HOUSE-ACCOUNT UNIT 8B: an optional houseAccountAgentId param bypasses
+ * the role gate when the current user IS the holder of the tenant's
+ * default_agent_id. Rationale: the house account is an OVERSIGHT role that
+ * sees every lead routed to its tenant (including those routed to managers
+ * or agents below them). Today's house accounts are tenant_admins, who
+ * already bypass the role gate via role-fallthrough; this generalizes the
+ * rule so a future tenant that sets the house account to a manager or
+ * agent still gets tenant-wide visibility. Keyed on default_agent_id, not
+ * on role — caller pre-computes by reading tenant.default_agent_id and
+ * comparing to user.agentId.
+ *
+ * Backward-compatible: houseAccountAgentId defaults to null (current
+ * behavior preserved for all existing callers).
  */
 export function scopeLeadsQuery<T extends ScopableQuery<T>>(
   query: T,
   user: AdminHomesUser,
-  hostTenantId: string | null
+  hostTenantId: string | null,
+  houseAccountAgentId: string | null = null,
 ): T {
   const seeAll = isCrossTenantView(user, hostTenantId)
   const scopedTenantId = getScopedTenantId(user, hostTenantId)
 
   if (!seeAll && scopedTenantId) {
     query = query.eq('tenant_id', scopedTenantId)
+  }
+
+  // W-HOUSE-ACCOUNT UNIT 8B: house-account oversight override. If the
+  // logged-in user IS the holder of this tenant's default_agent_id, skip
+  // the agent/manager role gate so they see every tenant lead. The tenant
+  // scope filter above stays in force — multi-tenant boundary intact.
+  const isHouseAccount =
+    houseAccountAgentId !== null &&
+    user.agentId !== null &&
+    user.agentId === houseAccountAgentId
+  if (isHouseAccount) {
+    return query
   }
 
   if (user.role === 'manager' && user.agentId) {

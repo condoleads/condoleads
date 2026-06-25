@@ -256,6 +256,11 @@ export async function POST(
             tenant_admin_delegates: [],
             manager_platforms: [],
             admin_platforms: [],
+            // W-HOUSE-ACCOUNT UNIT 8B: this single-recipient reassign envelope
+            // doesn't recompute the house-account CC (it's a direct hand-off
+            // to a newly-assigned agent, not a fresh lead-create flow). Field
+            // present for type completeness; null = no house-account copy.
+            house_account: null,
           },
         }
         await Promise.all([

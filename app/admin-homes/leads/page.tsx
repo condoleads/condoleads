@@ -33,17 +33,24 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
   // C10 -- fetch tenant brand identity for client display strings (page title,
   // subtitle, CSV filename). Falls back to null when no tenant scope (seeAll
   // path or unresolved). Client uses null-safe fallbacks.
+  //
+  // W-HOUSE-ACCOUNT UNIT 8B: also pull default_agent_id so the leads query
+  // can grant tenant-wide visibility to whoever holds it (house-account
+  // oversight role). Explicit cols only per CLAUDE.md — NEVER SELECT * on
+  // tenants (holds api keys).
   let tenantBrandName: string | null = null
   let tenantDomain: string | null = null
+  let tenantHouseAccountAgentId: string | null = null
   if (scopedTenantId) {
     const { data: tenantRow } = await supabase
       .from('tenants')
-      .select('brand_name, name, domain')
+      .select('brand_name, name, domain, default_agent_id')
       .eq('id', scopedTenantId)
       .single()
     if (tenantRow) {
       tenantBrandName = tenantRow.brand_name || tenantRow.name || null
       tenantDomain = tenantRow.domain || null
+      tenantHouseAccountAgentId = tenantRow.default_agent_id || null
     }
   }
 
@@ -88,7 +95,9 @@ export default async function AdminHomesLeadsPage({ searchParams }: { searchPara
   // (inline pattern matched helper semantics exactly). Preserves the existing
   // null-adminUser tenant-only fallback (no role gate when not authenticated).
   if (adminUser) {
-    query = scopeLeadsQuery(query, adminUser, tenantId)
+    // W-HOUSE-ACCOUNT UNIT 8B: pass the tenant's house-account agent id so
+    // scopeLeadsQuery bypasses the role gate for that user (oversight).
+    query = scopeLeadsQuery(query, adminUser, tenantId, tenantHouseAccountAgentId)
   } else if (!seeAll && scopedTenantId) {
     query = query.eq('tenant_id', scopedTenantId)
   }
