@@ -20,7 +20,7 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 6 (parent_id forest walk; orphan-at-its-level renders as own root row) | territory (operator UX) | SHIPPED, pushed 9953018 | 9953018 | — |
 | W-HOUSE-ACCOUNT UNIT 7 (revert UNIT 5 over-exclusion — tenant_admin owner is BOTH header AND tree node; reports nest under owner) | territory (operator UX) | SHIPPED, pushed 59a213f | 59a213f | — |
 | W-HOUSE-ACCOUNT UNIT 8B (house-account oversight: CC on every lead email + tenant-wide dashboard visibility; Part 0 = COMPUTE-met ownership confirmed) | territory→leads→email | SHIPPED, pushed 077c852 | 077c852 | — |
-| W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED LOCAL | (pending this commit) | live operator click-test |
+| W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED, pushed 59da867 | 59da867 | live operator click-test |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
