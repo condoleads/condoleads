@@ -15,7 +15,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | Phase 1 house-account invariant (trigger + PATCH + picker + guards) | territory→leads (ownership fallback) | SHIPPED, DDL live, pushed d39941f | d39941f | — |
 | W-HOUSE-ACCOUNT UNIT 1 (picker feed fix + resolver P-HOUSE fallback + Aily→Ovais) | territory→leads (end-to-end flow) | SHIPPED, DDL live, pushed 18ee965 | 18ee965 | live operator click-test of picker on aily.ca |
 | W-HOUSE-ACCOUNT UNIT 2 (house account assignable from Agents org chart — marker + drawer action) | territory (operator UX) | SHIPPED, pushed 248b6bd | 248b6bd | — |
-| W-HOUSE-ACCOUNT UNIT 3 (seed root retired; Ovais real root; house-account marker on agents list; inactive agents filtered from list+chart) | territory (operator UX + data) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents |
+| W-HOUSE-ACCOUNT UNIT 3 (seed root retired; Ovais real root; house-account marker on agents list; inactive agents filtered from list+chart) | territory (operator UX + data) | SHIPPED, pushed d50720c | d50720c | — |
+| W-HOUSE-ACCOUNT UNIT 5 (operating-hierarchy display; owner-out-of-tree; House Account picker removed from Settings) | territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents + Settings |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -718,3 +719,138 @@ too — Unit 2 only touched the org chart.
   D-phase data write (via runner) + 3 app files + 1 test fix + tracker
   shipped together (live-tracker rule). HOLD push pending operator
   instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 5 RUN-LOG (2026-06-25) — operating-hierarchy display + Settings cleanup
+
+Goal: surface the OPERATING hierarchy in the agents list + org chart
+(area_manager → manager → agent, with assistant as its own row), with the
+tenant owner shown SEPARATELY (header / overlay) and NOT as the tree root
+everyone hangs under. And: remove the House Account picker from Settings →
+General entirely — assignment lives only on the Agents surface (org chart
+drawer, Unit 2). Display-only change + Settings UI cleanup. NO prod DB writes.
+
+### Locked rules
+
+- House account stays SINGULAR per tenant. No multi-house schema/UI change.
+- Tenant owner (role=tenant_admin) is NOT a tree node. Shown as separate
+  owner header / overlay. parent_id data is INTACT — display-only filtering.
+- Operating hierarchy ordering: area_manager > manager > agent.
+- Tenant assistant (role=assistant) renders as its own row (peer to
+  operating roots, not nested under owner).
+- House account assignment surface = Agents (org chart drawer, Unit 2). NOT
+  Settings.
+
+### R1-R3 (recon)
+
+  R1 — list and chart both today render parent_id=NULL agents as roots, with
+       children nesting via parent_id matching. Owner=tenant_admin currently
+       acts as the visible root. Fix: define "operating root" = role !=
+       tenant_admin AND (parent_id IS NULL OR parent.role == tenant_admin).
+       Children of owners surface as operating roots; data unchanged.
+  R2 — Roles in scope: tenant_admin (owner), area_manager, manager, agent,
+       assistant (own row), plus forward-compat support / managed / admin
+       (gracefully ordered last via ROLE_ORDER lookup with ?? 99 fallback).
+  R3 — Settings General has 3 areas to remove:
+       (a) useState/useEffect eligibleAgents fetch block (L112-132)
+       (b) saveSection list contains 'default_agent_id' (L256)
+       (c) 3-state House Account picker block (L262-291)
+       Tenant interface keeps default_agent_id field (DB still has it; just
+       not surfaced here).
+
+### B1 + B2 — operating-hierarchy display
+
+  components/admin-homes/AgentsManagementClient.tsx
+    + OWNER_ROLE = 'tenant_admin', agentById map, ownerIds set, owners list
+    + isOperatingRoot(a) helper — keyed on role + parent.role, multi-tenant safe
+    + getManagerName() now returns null when parent is an owner (skips "Under:
+      <owner>" line — owner is shown separately, not as an operational manager)
+    + filteredAgents uses isOperatingRoot + new ROLE_ORDER (area_manager 1,
+      manager 2, agent 3, managed 4, assistant 5, support 6; unknown = 99)
+    + New Tenant Owner header block (above stats grid): purple-bordered card
+      listing owner(s) with avatar, name, email, and House Account pill when
+      the owner is also the tenant's default_agent_id
+
+  components/admin-homes/AgentOrgChart.tsx
+    + `visible` set now excludes role=tenant_admin (auto-drops outgoing
+      edges via the existing source/target visibility filter; children
+      become orphan roots in dagre layout)
+    + New owner overlay (top-right of the canvas): small purple-bordered card
+      listing owner(s) with avatar/name + House Account label when applicable
+
+### B3 — Settings cleanup
+
+  app/admin-homes/settings/SettingsClient.tsx
+    - REMOVED: EligibleAgent type + eligibleAgents state + useEffect fetch
+    - REMOVED: 3-state House Account picker block from General tab
+    - REMOVED: 'default_agent_id' from General saveSection field list
+    - REMOVED: useEffect import (no remaining consumer)
+    + Comment added explaining the move to Agents surface (cites UNIT 2
+      drawer 248b6bd) and that DB column + trigger + PATCH validation remain
+      unchanged
+
+### B4 — house account stays singular
+
+  No schema change. tenants.default_agent_id remains a single uuid column.
+  validate_house_account trigger unchanged. No multi-house UI/schema work.
+
+### B5 — multi-tenant guarantee
+
+  Operating-root logic keys on role + parent's role only — no tenant ids,
+  brand names, or per-tenant if/else anywhere in the new render code.
+  Tenant #3 onboards with zero code change provided their roles map to the
+  known set (or fall through to the role-99 ordering fallback).
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (read-only sim of new render logic):
+    aily: owner=Ovais (319ad339), operating root=Manager (3c17dc80),
+          no role=tenant_admin in operating roots, chart visible excludes
+          tenant_admin. ALL 7 assertions OK.
+    walliam: owner=King Shah (fafcd5b1), operating roots=[Neo Smith,
+          WALLiam], no tenant_admin in roots, chart visible excludes
+          tenant_admin. ALL 8 assertions OK.
+    15 assertions PASS across both tenants — no cross-tenant logic leak.
+  T3 local dev UI: AUTH-GATED — operator click-test on aily.ca after push.
+    Expected: /admin-homes/agents shows Ovais in the Owner header card
+    (purple border, House Account amber pill) NOT as a tree row; below it
+    Manager → Agent renders as the operating tree. /admin-homes/agents/tree
+    shows the same Owner overlay top-right of the canvas; chart nodes are
+    just Manager + Agent (no Ovais node). Settings → General no longer has
+    the House Account picker; remaining fields save normally.
+  T4 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11, L2.1).
+    0 NEW fails.
+
+### Files (this commit)
+
+  components/admin-homes/AgentsManagementClient.tsx  (B1+B2 list)
+  components/admin-homes/AgentOrgChart.tsx           (B1+B2 chart)
+  app/admin-homes/settings/SettingsClient.tsx        (B3 Settings cleanup)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md           (this run-log)
+
+### Backups (timestamps)
+
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260625_094917
+  components/admin-homes/AgentOrgChart.tsx.backup_20260625_094917
+  app/admin-homes/settings/SettingsClient.tsx.backup_20260625_094917
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_095409 (pre-this-entry)
+
+### Open follow-ups
+
+- Cockpit People-tab table view: AgentsManagementClient is mounted in
+  PeopleTab.tsx too (cockpit shell), but cockpit doesn't currently pass
+  tenantDefaultAgentId. Cockpit's Owner header will render but without the
+  House Account pill until the cockpit shell threads default_agent_id
+  through. Carried over from UNIT 3.
+- A list-row "Set as house account" action could be added (currently only
+  the org-chart drawer offers this surface). Out of scope for this unit per
+  operator spec ("already built in Unit 2"). If the operator wants it on
+  the list later, extend EditAgentModal or add a row action.
+- Live operator click-test on aily.ca after push (see T3 above).
+
+### Commit gate
+
+  3 app files + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.

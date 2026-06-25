@@ -48,12 +48,37 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
 
   const tenantMap = Object.fromEntries(tenants.map(t => [t.id, t]))
 
+  // W-HOUSE-ACCOUNT UNIT 5: operating-hierarchy display.
+  // The tenant owner (role=tenant_admin) is shown SEPARATELY as an owner
+  // header, NOT as a tree root that everyone hangs under. To keep the data
+  // intact while changing only display: identify "owners" by role, and treat
+  // anyone whose parent IS an owner as if they were a root of the visible
+  // tree (operating root). parent_id data is untouched.
+  const OWNER_ROLE = 'tenant_admin'
+  const agentById = new Map<string, Agent>(agents.map(a => [a.id, a]))
+  const ownerIds = new Set(agents.filter(a => (a as any).role === OWNER_ROLE).map(a => a.id))
+  const owners = agents.filter(a => (a as any).role === OWNER_ROLE)
+
   function getTeamMembers(managerId: string) {
     return agents.filter(a => a.parent_id === managerId)
   }
 
+  // True when this agent should appear as a top-level row in the operating
+  // hierarchy view: not an owner themselves, AND has no operating parent
+  // (parent_id is null OR points to an owner). Multi-tenant safe — keyed on
+  // role + parent's role only, not on names or tenant ids.
+  function isOperatingRoot(a: Agent): boolean {
+    if ((a as any).role === OWNER_ROLE) return false
+    if (!a.parent_id) return true
+    return ownerIds.has(a.parent_id)
+  }
+
   function getManagerName(parentId: string | null) {
     if (!parentId) return null
+    // W-HOUSE-ACCOUNT UNIT 5: don't display "Under: <owner>" — the owner is
+    // shown as a separate header, not as an operational manager. An operating
+    // root whose data-parent is the owner reads as a peer (no "Under:" line).
+    if (ownerIds.has(parentId)) return null
     return agents.find(a => a.id === parentId)?.full_name || null
   }
 
@@ -83,11 +108,32 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
     else alert('Error: ' + data.error)
   }
 
-  const filteredAgents = agents.filter(a => {
-    const matchSearch = a.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchSearch && !a.parent_id
-  })
+  // W-HOUSE-ACCOUNT UNIT 5: deterministic role-based ordering for the
+  // visible top-level rows (operating roots + tenant-level assistants /
+  // support / managed). Owners are excluded from the tree — they render in
+  // the separate owner header above the table. Unknown / forward-compat roles
+  // (e.g. future 'admin_assistant' from Phase 3) fall to the end of the
+  // ordering, ensuring graceful render rather than a crash.
+  const ROLE_ORDER: Record<string, number> = {
+    area_manager: 1,
+    manager:      2,
+    agent:        3,
+    managed:      4,
+    assistant:    5,
+    support:      6,
+  }
+  const filteredAgents = agents
+    .filter(a => {
+      const matchSearch = a.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        a.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      return matchSearch && isOperatingRoot(a)
+    })
+    .sort((x, y) => {
+      const rx = ROLE_ORDER[(x as any).role] ?? 99
+      const ry = ROLE_ORDER[(y as any).role] ?? 99
+      if (rx !== ry) return rx - ry
+      return (x.full_name || '').localeCompare(y.full_name || '')
+    })
 
   const stats = {
     total: agents.length,
@@ -261,6 +307,44 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
             <span>Org Chart</span>
           </Link>
         </div>
+
+      {/* W-HOUSE-ACCOUNT UNIT 5: Tenant owner header. tenant_admin agents are
+          surfaced here as the owner(s), NOT as the root of the operating tree.
+          Multi-tenant safe — keyed on role only, so every tenant's owner
+          renders the same way. */}
+      {owners.length > 0 && (
+        <div className="mb-6 bg-white rounded-lg shadow p-5 border-l-4 border-purple-600">
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Tenant Owner</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            {owners.map(o => {
+              const isHouse = tenantDefaultAgentId && o.id === tenantDefaultAgentId
+              return (
+                <div key={o.id} className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-purple-700 flex items-center justify-center text-white font-bold overflow-hidden flex-shrink-0 text-sm">
+                    {o.profile_photo_url
+                      ? <img src={o.profile_photo_url} alt={o.full_name} className="w-full h-full object-cover" />
+                      : (o.full_name?.charAt(0) || '?')}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-900">{o.full_name}</p>
+                    <p className="text-xs text-gray-500">{o.email}</p>
+                  </div>
+                  {isHouse && (
+                    <span
+                      title="House account — catch-all for unrouted leads"
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-xs font-medium"
+                    >
+                      <Crown className="w-3 h-3" /> House Account
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-6 mb-8">

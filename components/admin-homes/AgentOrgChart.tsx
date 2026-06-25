@@ -125,8 +125,14 @@ function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelected
   useEffect(() => {
     if (!api) return
     const search_lc = search.trim().toLowerCase()
+    // W-HOUSE-ACCOUNT UNIT 5: tenant_admin (the owner) is rendered in the
+    // owner header above the canvas, NOT as a tree node. Excluding it from
+    // the visible set auto-drops its outgoing edges (edge filter checks both
+    // source + target in `visible`); its children become orphan roots in
+    // dagre layout, which is the desired operating-hierarchy view.
     const visible = new Set(
       api.nodes
+        .filter(n => n.role !== 'tenant_admin')
         .filter(n => roleFilter.has(n.role))
         .filter(n => !sellingOnly || n.is_selling)
         .map(n => n.id)
@@ -264,12 +270,49 @@ function ChartInner({ tenantId, onAgentSelect, selectedAgentId: externalSelected
 
   const selectedData = selectedAgentId ? nodes.find(n => n.id === selectedAgentId)?.data as AgentNodeData | undefined : undefined
 
+  // W-HOUSE-ACCOUNT UNIT 5: owner(s) for the header overlay. tenant_admin
+  // agents are surfaced here, not as tree nodes. Multi-tenant safe — driven
+  // by role only.
+  const owners = (api?.nodes || []).filter(n => n.role === 'tenant_admin')
+  const tenantDefaultAgentId = api?.tenant.default_agent_id ?? null
+
   if (loading) return <div className="p-8 text-gray-500">Loading org chart...</div>
   if (error) return <div className="p-8 text-red-700">Error: {error}</div>
   if (!api || api.nodes.length === 0) return <div className="p-8 text-gray-500">No agents to display.</div>
 
   return (
     <div className="relative w-full h-[calc(100vh-160px)] bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
+      {/* W-HOUSE-ACCOUNT UNIT 5: owner overlay (top-right). Sits above the
+          ReactFlow canvas; tenant owner(s) shown separately from the tree. */}
+      {owners.length > 0 && (
+        <div className="absolute top-3 right-3 z-10 bg-white border border-purple-200 rounded-md shadow-sm p-3 flex flex-col gap-2 max-w-[260px]">
+          <p className="text-[10px] uppercase tracking-wide text-purple-700 font-semibold">Tenant Owner</p>
+          {owners.map(o => {
+            const isHouse = tenantDefaultAgentId !== null && o.id === tenantDefaultAgentId
+            return (
+              <div key={o.id} className="flex items-center gap-2">
+                {o.profile_photo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={o.profile_photo_url} alt={o.name} className="w-8 h-8 rounded-full object-cover bg-gray-100" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-purple-700 text-white flex items-center justify-center text-xs font-semibold">
+                    {(o.name || '?').charAt(0)}
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold text-gray-900 truncate">{o.name}</div>
+                  {isHouse && (
+                    <div className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700">
+                      House Account
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       <div className="absolute top-3 left-3 z-10 bg-white border border-gray-200 rounded-md shadow-sm p-2 flex items-center gap-2 flex-wrap max-w-[680px]">
         <input
           value={search}
