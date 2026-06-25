@@ -20,7 +20,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 6 (parent_id forest walk; orphan-at-its-level renders as own root row) | territory (operator UX) | SHIPPED, pushed 9953018 | 9953018 | — |
 | W-HOUSE-ACCOUNT UNIT 7 (revert UNIT 5 over-exclusion — tenant_admin owner is BOTH header AND tree node; reports nest under owner) | territory (operator UX) | SHIPPED, pushed 59a213f | 59a213f | — |
 | W-HOUSE-ACCOUNT UNIT 8B (house-account oversight: CC on every lead email + tenant-wide dashboard visibility; Part 0 = COMPUTE-met ownership confirmed) | territory→leads→email | SHIPPED, pushed 077c852 | 077c852 | — |
-| W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED, pushed 59da867 | 59da867 | live operator click-test |
+| W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED, pushed 59da867 | 59da867 | — |
+| W-HOUSE-ACCOUNT UNIT 10 (opt-out UI toggle in EditAgentModal; tenant_admin/assistant-only render gate; threads canSetOversightOptOut through page → AgentsManagementClient → modal) | territory→leads→email (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on aily.ca |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -1470,4 +1471,132 @@ jsonb column.
 ### Commit gate
 
   4 app files + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 10 RUN-LOG (2026-06-25) — opt-out UI toggle
+
+Goal: surface UNIT 9's `notification_preferences.oversight_opt_out` flag in
+EditAgentModal as a tenant_admin/assistant-only toggle. Storage + permission
+gate already exist (UNIT 9: jsonb column + PUT route gate). This unit adds
+the visible control — no schema change, no new write path.
+
+### R1-R3 recon findings
+
+  R1 — EditAgentModal.tsx is the admin edit surface, opened from
+       AgentsManagementClient's row "Edit" button. Did NOT read or write
+       notification_preferences. Has an existing styled toggle pattern
+       (Agent Status, L162-172) to match for UX consistency.
+  R2 — app/api/admin-homes/agents/[id]/route.ts PUT (Unit 9) already
+       accepts notification_preferences, validates type, gates with
+       `user.isPlatformAdmin || user.role === 'admin' || user.position
+       === 'tenant_admin' || user.position === 'assistant'`, and
+       shallow-merges with prior prefs. Request shape: { notification_
+       preferences: { oversight_opt_out: true|false } }.
+  R3 — Viewer role NOT currently available in AgentsManagementClient /
+       EditAgentModal. Cleanest path: server computes a single boolean
+       (canSetOversightOptOut) on the agents page and threads it through
+       to the modal. Multi-tenant by construction (derived from viewer's
+       own session).
+
+### B-thread (3 files)
+
+  app/admin-homes/agents/page.tsx
+    + canSetOversightOptOut: boolean — mirror of Unit 9 PUT route gate.
+    + Passed to AgentsManagementClient as a new prop.
+
+  components/admin-homes/AgentsManagementClient.tsx
+    + Accepts canSetOversightOptOut?: boolean (default false — safe for
+      callers like cockpit PeopleTab that haven't threaded it yet).
+    + Forwarded to EditAgentModal at mount.
+
+  components/admin-homes/EditAgentModal.tsx
+    + Props extended with canSetOversightOptOut?: boolean (default false).
+    + formData.oversight_opt_out: boolean added.
+    + loadAgent() derives oversight_opt_out from
+      a.notification_preferences?.oversight_opt_out === true (default
+      false when prefs blob missing or key absent).
+    + handleSubmit() includes notification_preferences in the PUT body
+      ONLY when canSetOversightOptOut is true. Non-admin saves don't even
+      attempt the gated update (server is the backstop).
+    + New toggle UI: amber-bordered card matching the existing Agent
+      Status toggle style. Label "Oversight copies", helper text "When
+      ON, this agent receives copies of leads/emails for their branch
+      and appears in assignable territory dropdowns." Annotated "Only
+      tenant admins and assistants can change this." Switch is inverted
+      (checked = receiving = opt_out false) for natural read.
+    + Rendered ONLY when canSetOversightOptOut === true. Non-admin
+      viewers don't see a control they couldn't use.
+
+### Multi-tenant guarantee
+
+  canSetOversightOptOut is derived per-request from the VIEWER'S session
+  (user.isPlatformAdmin / user.role / user.position). The PUT route
+  separately scopes to the agent's own tenant via the existing permissions
+  layer. No tenant ids or names in the new render code. Tenant #3 zero-
+  change.
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (SAVEPOINT-isolated; no persistent mutation):
+    Scenario 1 (viewer-role gate matrix, 6 OK):
+       platform admin → can set
+       tenant_admin → can set
+       assistant → can set (forward-compat)
+       manager → cannot set
+       agent → cannot set
+       unauthenticated → cannot set
+    Scenario 2 (PUT shallow-merge round-trip, 1 OK):
+       Setting { oversight_opt_out: true } via shallow merge persists
+       correctly.
+    Scenario 3 (re-toggle, 1 OK):
+       Setting it back to false persists correctly.
+    Scenario 4 (loadAgent boolean derivation, 2 OK):
+       reads oversight_opt_out=true when set; defaults to false when
+       jsonb key absent.
+    Post-check (fresh connection): notification_preferences = {} on the
+    probe-target agent (Aily Manager). No persistent mutation.
+    TOTAL: 10 assertions PASS.
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11, L2.1).
+    0 NEW fails.
+
+### Files (this commit)
+
+  app/admin-homes/agents/page.tsx                       (boolean compute + pass)
+  components/admin-homes/AgentsManagementClient.tsx     (prop forward)
+  components/admin-homes/EditAgentModal.tsx             (toggle render + PUT wire)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md              (this run-log)
+
+### Backups (timestamps)
+
+  app/admin-homes/agents/page.tsx.backup_20260625_142017
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260625_142017
+  components/admin-homes/EditAgentModal.tsx.backup_20260625_142017
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_142508 (pre-this-entry)
+
+### Open follow-ups
+
+- Cockpit PeopleTab table view: AgentsManagementClient is also mounted
+  inside cockpit/tabs/PeopleTab.tsx. Cockpit's mount doesn't yet pass
+  canSetOversightOptOut, so the toggle won't render in cockpit until the
+  cockpit shell threads viewer role through. Standalone /admin-homes/
+  agents works fully. Tracked alongside the existing UNIT 3
+  tenantDefaultAgentId carry-over.
+- Live operator click-test on aily.ca after push:
+  - As tenant_admin (Ovais), open Agent (Aily) edit → toggle visible,
+    reflects current state (Receiving). Uncheck → save → re-open and
+    confirm shows Opted out.
+  - As same viewer, open agents-summary dropdown elsewhere → Agent
+    (Aily) NOT listed.
+  - Submit a lead routed to a non-opted agent → Agent (Aily) should NOT
+    receive copy.
+  - Re-check the toggle → save → restored everywhere.
+  - As a non-admin viewer (in a future tenant where one exists), the
+    toggle should NOT render in EditAgentModal.
+
+### Commit gate
+
+  3 app files + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.

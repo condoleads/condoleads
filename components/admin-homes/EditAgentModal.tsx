@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { X, Upload, Users, Loader2 } from 'lucide-react'
+import { X, Upload, Users, Loader2, EyeOff } from 'lucide-react'
 
 interface Agent {
   id: string
@@ -17,9 +17,15 @@ interface Props {
   onSuccess: () => void
   agentId: string | null
   existingAgents?: Agent[]
+  // W-HOUSE-ACCOUNT UNIT 10: server-computed boolean. Defaults to false so
+  // cockpit mount + any other caller that doesn't thread this prop hides the
+  // toggle (safe default — server PUT gate is the backstop). True only for
+  // tenant_admin / assistant / admin / platform_admin viewers (mirror of the
+  // Unit 9 PUT route gate in app/api/admin-homes/agents/[id]/route.ts).
+  canSetOversightOptOut?: boolean
 }
 
-export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, existingAgents = [] }: Props) {
+export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, existingAgents = [], canSetOversightOptOut = false }: Props) {
   const [agents, setAgents] = useState<Agent[]>(existingAgents)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -34,6 +40,11 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     notification_email: '', is_active: true,
     parent_id: '', can_create_children: false,
     primary_color: '#16a34a', secondary_color: '#15803d', tenant_id: '',
+    // W-HOUSE-ACCOUNT UNIT 10: notification_preferences.oversight_opt_out
+    // surfaced as a top-level boolean for the form. true = this agent is
+    // OPTED OUT of oversight copies + assignable territory. Default false
+    // (receiving copies, assignable) — matches Unit 9 jsonb default {}.
+    oversight_opt_out: false,
   })
 
   useEffect(() => {
@@ -55,6 +66,10 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
       const branding = a.branding || {}
       const standardTitles = ['Realtor', 'Broker', 'Broker of Record', 'Sales Representative']
       const isCustomTitle = a.title && !standardTitles.includes(a.title)
+      // W-HOUSE-ACCOUNT UNIT 10: pull oversight_opt_out from the jsonb blob.
+      // Default false (receiving copies) when prefs missing or sub-key absent.
+      const prefs = (a.notification_preferences || {}) as Record<string, any>
+      const oversightOptOut = prefs.oversight_opt_out === true
       setFormData({
         full_name: a.full_name || '',
         email: a.email || '',
@@ -78,6 +93,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
         can_create_children: a.can_create_children || false,
         primary_color: branding.primary_color || '#16a34a',
         secondary_color: branding.secondary_color || '#15803d',
+        oversight_opt_out: oversightOptOut,
       })
       if (a.profile_photo_url) setPhotoPreview(a.profile_photo_url)
     } catch { setError('Failed to load agent') }
@@ -106,30 +122,40 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     setSaving(true); setError('')
     const finalTitle = formData.useCustomTitle && formData.customTitle.trim() ? formData.customTitle.trim() : formData.title
     try {
+      // W-HOUSE-ACCOUNT UNIT 10: include notification_preferences ONLY when
+      // the viewer is allowed to write it. The server PUT route (Unit 9) is
+      // the authoritative gate (403 for non-admins), but skipping the field
+      // here means non-admin saves don't even attempt the gated update.
+      // Shallow-merge happens server-side, so sending only the changed
+      // sub-key is safe.
+      const body: Record<string, any> = {
+        full_name: formData.full_name,
+        email: formData.email,
+        cell_phone: formData.cell_phone,
+        office_phone: formData.office_phone,
+        whatsapp_number: formData.whatsapp_number,
+        title: finalTitle,
+        brokerage_name: formData.brokerage_name,
+        brokerage_address: formData.brokerage_address,
+        license_number: formData.license_number,
+        subdomain: formData.subdomain,
+        custom_domain: formData.custom_domain || null,
+        bio: formData.bio || null,
+        profile_photo_url: photoPreview || formData.profile_photo_url || null,
+        notification_email: formData.notification_email || formData.email,
+        is_active: formData.is_active,
+        parent_id: formData.parent_id || null,
+        tenant_id: formData.tenant_id || null,
+        can_create_children: formData.can_create_children,
+        branding: { primary_color: formData.primary_color, secondary_color: formData.secondary_color },
+      }
+      if (canSetOversightOptOut) {
+        body.notification_preferences = { oversight_opt_out: formData.oversight_opt_out }
+      }
       const res = await fetch(`/api/admin-homes/agents/${agentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: formData.full_name,
-          email: formData.email,
-          cell_phone: formData.cell_phone,
-          office_phone: formData.office_phone,
-          whatsapp_number: formData.whatsapp_number,
-          title: finalTitle,
-          brokerage_name: formData.brokerage_name,
-          brokerage_address: formData.brokerage_address,
-          license_number: formData.license_number,
-          subdomain: formData.subdomain,
-          custom_domain: formData.custom_domain || null,
-          bio: formData.bio || null,
-          profile_photo_url: photoPreview || formData.profile_photo_url || null,
-          notification_email: formData.notification_email || formData.email,
-          is_active: formData.is_active,
-          parent_id: formData.parent_id || null,
-            tenant_id: formData.tenant_id || null,
-          can_create_children: formData.can_create_children,
-          branding: { primary_color: formData.primary_color, secondary_color: formData.secondary_color },
-        })
+        body: JSON.stringify(body)
       })
       const data = await res.json()
       if (data.success) { onSuccess(); onClose() }
@@ -170,6 +196,39 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
                 <span className="ml-3 text-sm font-medium">{formData.is_active ? 'Active' : 'Inactive'}</span>
               </label>
             </div>
+
+            {/* W-HOUSE-ACCOUNT UNIT 10: oversight opt-out toggle. Visible
+                ONLY for tenant_admin / assistant / admin / platform_admin
+                viewers (gated client-side; server PUT route is the backstop).
+                Drives notification_preferences.oversight_opt_out (jsonb).
+                When opted out: agent is dropped from lead/email copy chain
+                AND from assignable-agents dropdowns (Unit 9). */}
+            {canSetOversightOptOut && (
+              <div className="flex items-center justify-between p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <EyeOff className="w-4 h-4 text-amber-700 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-medium text-gray-900">Oversight copies</p>
+                    <p className="text-xs text-gray-600">
+                      When ON, this agent receives copies of leads/emails for their branch and appears in assignable territory dropdowns.
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      Only tenant admins and assistants can change this.
+                    </p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={!formData.oversight_opt_out}
+                    onChange={e => setFormData({ ...formData, oversight_opt_out: !e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                  <span className="ml-3 text-sm font-medium">{formData.oversight_opt_out ? 'Opted out' : 'Receiving'}</span>
+                </label>
+              </div>
+            )}
 
                         {/* Team Hierarchy */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

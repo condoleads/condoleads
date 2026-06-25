@@ -107,5 +107,18 @@ export default async function AdminHomesAgentsPage() {
     ? (tenants || []).find(t => t.id === scopedTenantId)?.default_agent_id ?? null
     : null
 
-  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} tenantDefaultAgentId={tenantDefaultAgentId} />
+  // W-HOUSE-ACCOUNT UNIT 10: server-computed boolean — can the current viewer
+  // set notification_preferences.oversight_opt_out on agents? Mirror of the
+  // server-side gate in app/api/admin-homes/agents/[id]/route.ts (Unit 9): only
+  // platform admins, tenant_admin, admin (DB-role), and assistant (position)
+  // can write oversight_opt_out. The PUT route is the security backstop; this
+  // boolean drives whether the UI even renders the control — agents must not
+  // be presented a toggle that would 403.
+  const canSetOversightOptOut: boolean =
+    user?.isPlatformAdmin === true
+    || user?.role === 'admin'
+    || user?.position === 'tenant_admin'
+    || user?.position === 'assistant'
+
+  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} tenantDefaultAgentId={tenantDefaultAgentId} canSetOversightOptOut={canSetOversightOptOut} />
 }
