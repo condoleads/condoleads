@@ -16,7 +16,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 1 (picker feed fix + resolver P-HOUSE fallback + Aily→Ovais) | territory→leads (end-to-end flow) | SHIPPED, DDL live, pushed 18ee965 | 18ee965 | live operator click-test of picker on aily.ca |
 | W-HOUSE-ACCOUNT UNIT 2 (house account assignable from Agents org chart — marker + drawer action) | territory (operator UX) | SHIPPED, pushed 248b6bd | 248b6bd | — |
 | W-HOUSE-ACCOUNT UNIT 3 (seed root retired; Ovais real root; house-account marker on agents list; inactive agents filtered from list+chart) | territory (operator UX + data) | SHIPPED, pushed d50720c | d50720c | — |
-| W-HOUSE-ACCOUNT UNIT 5 (operating-hierarchy display; owner-out-of-tree; House Account picker removed from Settings) | territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents + Settings |
+| W-HOUSE-ACCOUNT UNIT 5 (operating-hierarchy display; owner-out-of-tree; House Account picker removed from Settings) | territory (operator UX) | SHIPPED, pushed 142168e | 142168e | — |
+| W-HOUSE-ACCOUNT UNIT 6 (parent_id forest walk; orphan-at-its-level renders as own root row) | territory (operator UX) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/agents |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -853,4 +854,130 @@ drawer, Unit 2). Display-only change + Settings UI cleanup. NO prod DB writes.
 ### Commit gate
 
   3 app files + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 6 RUN-LOG (2026-06-25) — parent_id forest walk, orphans as roots
+
+Goal: the list's tree structure must derive from real parent_id chains, NOT
+from a role-sorted top-level grouping. Specifically: a node whose parent is
+NOT in the visible operating set (parent_id NULL, parent is owner-excluded,
+parent is inactive/missing) must render as its OWN root row — never silently
+hidden by failing to nest. Pure display change in the LIST. The CHART
+already does this via its visible/edges filter (no change needed).
+
+### R1 — current state (UNIT 5 baseline)
+
+  LIST: isOperatingRoot was {role!=owner && (parent_id IS NULL || parent IS
+        owner)}. Two-case rule. The "parent NOT in visible set for any other
+        reason" case (inactive, deleted, cross-tenant orphan) was NOT
+        covered — those nodes silently disappeared because they weren't
+        roots AND their parent didn't exist in any row's getTeamMembers.
+  CHART: already uses `visible = nodes minus tenant_admin` with edge filter
+        `visible.has(source) && visible.has(target)`. Children of any
+        invisible parent become orphan roots in dagre. Correct as-is — no
+        chart code change in UNIT 6.
+
+### R2 — Aily + WALLiam real data
+
+  Aily (active only): Ovais (owner) | Manager (parent=Ovais owner) | Agent
+       (parent=Manager). Manager already rendered as root (parent=owner);
+       Agent already nested. No real example of "parent inactive/missing".
+  WALLiam (active only): King Shah (owner) | Neo Smith (parent=owner) |
+       WALLiam agent (parent=owner). Both Neo and WALLiam rendered as roots
+       (parent=owner). Same shape.
+  Conclusion: neither tenant has a real-data inactive-parent example today.
+  Guard-query synthesizes the case to verify the logic without DB mutation.
+
+### B1 — isOperatingRoot refactor (components/admin-homes/AgentsManagementClient.tsx)
+
+  Added: visibleIds = Set of agent ids where role != tenant_admin.
+
+  New isOperatingRoot rule (priority order):
+    1. role == tenant_admin                  -> not a tree row (owner header)
+    2. parent_id IS NULL                     -> ROOT
+    3. parent_id NOT IN visibleIds           -> ROOT
+       (covers: owner-excluded, inactive parent filtered at page query,
+        deleted parent, cross-tenant orphan)
+    4. otherwise nests under real parent_id via getTeamMembers()
+
+  Bug fixed: in UNIT 5, a node whose parent was filtered out for ANY reason
+  OTHER than being the owner would fail isOperatingRoot AND wouldn't appear
+  in any visible row's getTeamMembers — silently invisible. After UNIT 6,
+  it appears as its own root row.
+
+### B2 — secondary ordering (unchanged)
+
+  The existing ROLE_ORDER + name sort still applies as a STABLE secondary
+  ordering of peers at the same level. Primary structure now uses parent_id
+  forest walk via the rule above; role-sort just disambiguates peers.
+
+### B3 — chart parity (no code change)
+
+  Verified the chart already does parent_id forest walk:
+    visible = nodes.filter(n => n.role !== 'tenant_admin') ...
+    edges:    visible.has(e.source) && visible.has(e.target)
+  Children of any invisible parent get no incoming edge -> dagre lays them
+  at the top as orphan roots. Already aligned with the operator's rule.
+
+### B4 — multi-tenant
+
+  Rule keys on role + visibleIds membership only. No tenant ids, no brand
+  names, no per-tenant if/else. Tenant #3 onboards with zero code change.
+
+### getManagerName parallel fix
+
+  The "Under: <X>" caption was suppressed only when parent was an owner.
+  Updated to suppress when parent is NOT in visibleIds (matches the new
+  isOperatingRoot rule). Result: an orphan-as-root row never shows a
+  "Under: <ghost>" line.
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (read-only, NO mutations):
+     - Aily real data: 4 row-kind assertions + Ovais=owner-header,
+       Manager=root, Agent=nested-under-Manager.
+     - WALLiam real data: 3 row-kind assertions + King Shah=owner-header,
+       Neo Smith=root, WALLiam agent=root.
+     - Aily SYNTHESIZED orphan (parent_id pointing at random ghost uuid):
+       computed rowKind=ROOT. The exact case the UNIT 5 logic would have
+       silently hidden.
+     - Aily SYNTHESIZED child of inactive parent (parent_id=retired seed):
+       computed rowKind=ROOT.
+     - Cross-tenant leak guard: Ovais not in WALLiam set, King Shah not in
+       Aily set.
+     TOTAL: 18 assertions PASS.
+  T3 local dev UI: AUTH-GATED — operator click-test on aily.ca after push.
+     Aily: Manager appears as root row (no "Under: <X>" line). Agent nests
+     under Manager. Org chart unchanged behavior (already correct).
+     Real-data inactive-parent case has no live example today; guard-query
+     synthesis covers the logic.
+  T4 C12 regression: 17 PASS / 3 FAIL — same baseline. 0 NEW fails.
+
+### Files (this commit)
+
+  components/admin-homes/AgentsManagementClient.tsx          (B1 + getManagerName)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                   (this run-log)
+
+### Backups (timestamps)
+
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260625_100113
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_100328 (pre-this-entry)
+
+### Open follow-ups
+
+- No live real-data example of "child of inactive parent" or "orphan with
+  random parent_id" exists in Aily or WALLiam today. The logic is verified
+  via guard-query synthesis. If a future tenant has such a case in
+  production, the row will render correctly as a root without code change.
+- Cockpit People-tab AgentsManagementClient mount picks up the same logic
+  automatically (same component). Cockpit's owner-header House Account pill
+  still pending tenantDefaultAgentId thread-through (UNIT 3 follow-up).
+- Live operator click-test on aily.ca after push.
+
+### Commit gate
+
+  1 app file + tracker shipped together (live-tracker rule). NO prod DB
   writes in this unit. HOLD push pending operator instruction.

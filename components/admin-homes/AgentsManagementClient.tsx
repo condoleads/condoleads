@@ -48,37 +48,55 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
 
   const tenantMap = Object.fromEntries(tenants.map(t => [t.id, t]))
 
-  // W-HOUSE-ACCOUNT UNIT 5: operating-hierarchy display.
-  // The tenant owner (role=tenant_admin) is shown SEPARATELY as an owner
-  // header, NOT as a tree root that everyone hangs under. To keep the data
-  // intact while changing only display: identify "owners" by role, and treat
-  // anyone whose parent IS an owner as if they were a root of the visible
-  // tree (operating root). parent_id data is untouched.
+  // W-HOUSE-ACCOUNT UNIT 5+6: operating-hierarchy display via parent_id
+  // forest walk. The tenant owner (role=tenant_admin) is shown separately as
+  // an owner header; everyone else renders by their REAL parent_id chain.
+  //
+  // UNIT 6 refinement: a node is a root row whenever its parent_id is NULL
+  // OR points to anyone NOT in the visible set — which covers the owner
+  // (excluded), an inactive parent (filtered at the page query), a deleted
+  // parent, or any other missing referent. Before UNIT 6, the check was
+  // "parent IS NULL OR parent's role IS owner" — which silently hid nodes
+  // whose parent was filtered out for ANY reason other than being the owner.
+  // Now: parent_id forest walk, primary structure; role-then-name only as
+  // secondary ordering of peers at the same level. Multi-tenant safe — no
+  // tenant ids or brand names in the rule.
   const OWNER_ROLE = 'tenant_admin'
-  const agentById = new Map<string, Agent>(agents.map(a => [a.id, a]))
   const ownerIds = new Set(agents.filter(a => (a as any).role === OWNER_ROLE).map(a => a.id))
   const owners = agents.filter(a => (a as any).role === OWNER_ROLE)
+  // visibleIds = the agents that participate in the operating tree (everyone
+  // EXCEPT owners). Used as the "is parent in scope?" oracle.
+  const visibleIds = new Set(agents.filter(a => (a as any).role !== OWNER_ROLE).map(a => a.id))
 
   function getTeamMembers(managerId: string) {
     return agents.filter(a => a.parent_id === managerId)
   }
 
   // True when this agent should appear as a top-level row in the operating
-  // hierarchy view: not an owner themselves, AND has no operating parent
-  // (parent_id is null OR points to an owner). Multi-tenant safe — keyed on
-  // role + parent's role only, not on names or tenant ids.
+  // hierarchy view. Rules (in priority order):
+  //   1. Owners themselves never render as tree rows (they live in the owner
+  //      header).
+  //   2. parent_id IS NULL -> root.
+  //   3. parent_id points to a node NOT in visibleIds -> root.
+  //      Covers: parent is owner (excluded), parent is inactive (filtered
+  //      out at the page query), parent was deleted, or cross-tenant
+  //      orphan. In every "parent missing from the visible tree" case the
+  //      node becomes its own root rather than being silently hidden.
+  //   4. Otherwise nests under its real parent_id via getTeamMembers().
   function isOperatingRoot(a: Agent): boolean {
     if ((a as any).role === OWNER_ROLE) return false
     if (!a.parent_id) return true
-    return ownerIds.has(a.parent_id)
+    return !visibleIds.has(a.parent_id)
   }
 
   function getManagerName(parentId: string | null) {
     if (!parentId) return null
-    // W-HOUSE-ACCOUNT UNIT 5: don't display "Under: <owner>" — the owner is
-    // shown as a separate header, not as an operational manager. An operating
-    // root whose data-parent is the owner reads as a peer (no "Under:" line).
-    if (ownerIds.has(parentId)) return null
+    // W-HOUSE-ACCOUNT UNIT 5+6: skip the "Under: <X>" line when the parent
+    // isn't a visible operating-tree node — covers owner (excluded), inactive
+    // parent (filtered out at page query), or any other missing referent.
+    // The node is rendering AS a root anyway (per isOperatingRoot above);
+    // showing "Under: <ghost>" would mislead.
+    if (!visibleIds.has(parentId)) return null
     return agents.find(a => a.id === parentId)?.full_name || null
   }
 
