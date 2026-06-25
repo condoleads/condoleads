@@ -261,6 +261,11 @@ export async function POST(
             // to a newly-assigned agent, not a fresh lead-create flow). Field
             // present for type completeness; null = no house-account copy.
             house_account: null,
+            // W-HOUSE-ACCOUNT UNIT 9: same — direct hand-off doesn't recompute
+            // the full branch/top-layer chain. Empty for type completeness.
+            branch_ancestors: [],
+            tenant_owner: null,
+            assistants: [],
           },
         }
         await Promise.all([

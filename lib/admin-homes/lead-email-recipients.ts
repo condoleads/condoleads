@@ -55,6 +55,20 @@ export interface LeadEmailRecipients {
      *  null when no house account configured, or when the assigned agent IS
      *  the house account (no self-CC). */
     house_account: string | null
+    /** W-HOUSE-ACCOUNT UNIT 9 — every additional ancestor in the chain
+     *  beyond the named manager/area_manager/tenant_admin slots (e.g. when
+     *  the chain has multiple managers stacked). All branch ancestors are
+     *  also copied; opt-outs filtered. */
+    branch_ancestors: string[]
+    /** W-HOUSE-ACCOUNT UNIT 9 — tenant owner (role=tenant_admin AND
+     *  parent_id IS NULL). May coincide with house_account today; the
+     *  field is forward-compat for tenants where the owner differs from
+     *  the house-account holder. Opt-outs filtered. */
+    tenant_owner: string | null
+    /** W-HOUSE-ACCOUNT UNIT 9 — assistant role copies. Forward-compat;
+     *  agents.role CHECK constraint doesn't include 'assistant' today, so
+     *  this is empty until that role lands. Opt-outs filtered. */
+    assistants: string[]
   }
 }
 
@@ -69,6 +83,19 @@ interface AgentEmailRow {
   id: string
   email: string | null
   notification_email: string | null
+  // W-HOUSE-ACCOUNT UNIT 9: jsonb opt-out store. `oversight_opt_out: true`
+  // removes the agent from every copy chain AND from assignable-agents UI.
+  // Set ONLY by tenant_admin/admin via PUT /agents/[id] permission gate.
+  notification_preferences?: Record<string, any> | null
+}
+
+// W-HOUSE-ACCOUNT UNIT 9: opt-out predicate. The agent itself (TO) is NOT
+// filtered by opt-out — they're the OWNER of the lead, not a copy target.
+// Opt-out applies only to CC/BCC copy candidates.
+function isOptedOut(row: AgentEmailRow | null | undefined): boolean {
+  const prefs = row?.notification_preferences
+  if (!prefs || typeof prefs !== 'object') return false
+  return (prefs as any).oversight_opt_out === true
 }
 
 /**
@@ -99,18 +126,28 @@ export async function getLeadEmailRecipients(
     area_manager_delegates: [],
     tenant_admin_delegates: [],
     house_account: null,
+    branch_ancestors: [],
+    tenant_owner: null,
+    assistants: [],
   }
 
   let agentEmail: string | null = null
   let managerEmail: string | null = null
   let areaManagerEmail: string | null = null
   let tenantAdminEmail: string | null = null
+  // W-HOUSE-ACCOUNT UNIT 9: extra-ancestor emails (ancestors beyond the
+  // named manager/area_manager/tenant_admin slots — e.g. additional
+  // managers stacked in a deeper chain). All branch ancestors copied;
+  // opt-outs filtered.
+  const branchAncestorEmails: string[] = []
 
   // ─── Layer 1: assigned agent ─────────────────────────────────────────────
+  // NOTE: agent (TO) is the OWNER of the lead, NOT a copy target. Opt-out
+  // does NOT apply here.
   if (agentId) {
     const { data } = await supabase
       .from('agents')
-      .select('id, email, notification_email')
+      .select('id, email, notification_email, notification_preferences')
       .eq('id', agentId)
       .maybeSingle()
     const row = data as AgentEmailRow | null
@@ -120,37 +157,102 @@ export async function getLeadEmailRecipients(
     }
   }
 
-  // ─── Layers 2–4: walker (manager / area_manager / tenant_admin) ──────────
+  // ─── Layers 2-4 + UNIT 9 branch walk: every ancestor copied ──────────────
   // R7: walker hoisted to outer scope so the delegation overlay block below
   // can reuse the chain without a second walkHierarchy round-trip.
+  // UNIT 9: in addition to the named manager/area_manager/tenant_admin
+  // slots (preserved for the tier-assignment below: first manager → CC,
+  // others → BCC), iterate chain.ancestors so EVERY ancestor in the branch
+  // is a copy target — closes the multi-manager-stack gap.
   const chain = agentId ? await walkHierarchy(agentId, supabase) : null
   if (chain) {
-    // Resolve emails for any walker-classified ancestor in one query
-    const idsToResolve = [
-      chain.manager_id,
-      chain.area_manager_id,
-      chain.tenant_admin_id,
-    ].filter((x): x is string => !!x)
-
-    if (idsToResolve.length > 0) {
+    // UNIT 9: batch-fetch emails + opt-out flags for ALL ancestors (not
+    // just the 3 named slots). Walker excludes the agent itself.
+    const ancestorIds = chain.ancestors.map(a => a.id)
+    if (ancestorIds.length > 0) {
       const { data } = await supabase
         .from('agents')
-        .select('id, email, notification_email')
-        .in('id', idsToResolve)
+        .select('id, email, notification_email, notification_preferences')
+        .in('id', ancestorIds)
       const rows = (data || []) as AgentEmailRow[]
-      const byId = new Map(rows.map(r => [r.id, r.notification_email || r.email || null]))
+      const rowById = new Map(rows.map(r => [r.id, r]))
 
+      // Named-slot resolution preserved (existing CC tier semantics).
       if (chain.manager_id) {
-        managerEmail = byId.get(chain.manager_id) || null
-        resolved.manager = managerEmail
+        const r = rowById.get(chain.manager_id)
+        if (r && !isOptedOut(r)) {
+          managerEmail = r.notification_email || r.email || null
+          resolved.manager = managerEmail
+        }
       }
       if (chain.area_manager_id) {
-        areaManagerEmail = byId.get(chain.area_manager_id) || null
-        resolved.area_manager = areaManagerEmail
+        const r = rowById.get(chain.area_manager_id)
+        if (r && !isOptedOut(r)) {
+          areaManagerEmail = r.notification_email || r.email || null
+          resolved.area_manager = areaManagerEmail
+        }
       }
       if (chain.tenant_admin_id) {
-        tenantAdminEmail = byId.get(chain.tenant_admin_id) || null
-        resolved.tenant_admin = tenantAdminEmail
+        const r = rowById.get(chain.tenant_admin_id)
+        if (r && !isOptedOut(r)) {
+          tenantAdminEmail = r.notification_email || r.email || null
+          resolved.tenant_admin = tenantAdminEmail
+        }
+      }
+
+      // UNIT 9: collect EVERY ancestor's email as a branch copy. Skip the
+      // three named-slot ancestors (already in Layers 2-4 above) AND the
+      // assigned agent (in TO). Skip opt-outs. Skip missing emails.
+      const namedSlotIds = new Set<string>(
+        [chain.manager_id, chain.area_manager_id, chain.tenant_admin_id].filter((x): x is string => !!x)
+      )
+      for (const anc of chain.ancestors) {
+        if (namedSlotIds.has(anc.id)) continue
+        if (anc.id === agentId) continue
+        const r = rowById.get(anc.id)
+        if (!r || isOptedOut(r)) continue
+        const e = r.notification_email || r.email || null
+        if (e) {
+          branchAncestorEmails.push(e)
+          resolved.branch_ancestors.push(e)
+        }
+      }
+    }
+  }
+
+  // ─── UNIT 9: tenant owner + assistants (top-layer copies) ────────────────
+  // Tenant owner = role='tenant_admin' AND parent_id IS NULL AND tenant-
+  // scoped. Today coincides with the house account (Aily Ovais / WALLiam
+  // King Shah) — dedupe handles the overlap. Forward-compat for tenants
+  // where owner != house_account.
+  //
+  // Assistants = role='assistant' AND tenant-scoped. agents.role CHECK
+  // doesn't include 'assistant' today; query returns 0 rows until the
+  // role lands (Phase 3 admin_assistant migration or similar).
+  let tenantOwnerEmail: string | null = null
+  const assistantEmails: string[] = []
+  {
+    const { data: topLayerRows } = await supabase
+      .from('agents')
+      .select('id, role, email, notification_email, notification_preferences, parent_id')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .in('role', ['tenant_admin', 'assistant'])
+
+    for (const raw of (topLayerRows || []) as (AgentEmailRow & { role: string | null; parent_id: string | null })[]) {
+      if (isOptedOut(raw)) continue
+      if (raw.id === agentId) continue  // owner is the assigned agent already in TO; no self-copy
+      const email = raw.notification_email || raw.email || null
+      if (!email) continue
+      if (raw.role === 'tenant_admin' && raw.parent_id === null) {
+        // Tenant owner. First one wins (typical case = exactly one owner).
+        if (!tenantOwnerEmail) {
+          tenantOwnerEmail = email
+          resolved.tenant_owner = email
+        }
+      } else if (raw.role === 'assistant') {
+        assistantEmails.push(email)
+        resolved.assistants.push(email)
       }
     }
   }
@@ -267,11 +369,13 @@ export async function getLeadEmailRecipients(
     if (houseAccountAgentId && houseAccountAgentId !== agentId) {
       const { data: ha } = await supabase
         .from('agents')
-        .select('id, email, notification_email')
+        .select('id, email, notification_email, notification_preferences')
         .eq('id', houseAccountAgentId)
         .maybeSingle()
       const haRow = ha as AgentEmailRow | null
-      if (haRow) {
+      // W-HOUSE-ACCOUNT UNIT 9: even the house account can be opted out
+      // (set by tenant_admin only). Skipped from CC when flagged.
+      if (haRow && !isOptedOut(haRow)) {
         houseAccountEmail = haRow.notification_email || haRow.email || null
         resolved.house_account = houseAccountEmail
       }
@@ -326,6 +430,13 @@ export async function getLeadEmailRecipients(
   if (areaManagerEmail) bcc.push(areaManagerEmail)
   // Layer 4 → BCC
   if (tenantAdminEmail) bcc.push(tenantAdminEmail)
+  // W-HOUSE-ACCOUNT UNIT 9: extra branch ancestors → BCC.
+  for (const e of branchAncestorEmails) bcc.push(e)
+  // W-HOUSE-ACCOUNT UNIT 9: tenant owner → BCC (deduped vs house_account
+  // and tenant_admin walker hit via the cross-list dedupe below).
+  if (tenantOwnerEmail) bcc.push(tenantOwnerEmail)
+  // W-HOUSE-ACCOUNT UNIT 9: assistants → BCC.
+  for (const e of assistantEmails) bcc.push(e)
   // Layers 1–4 delegate overlay → BCC (W-ROLES-DELEGATION R7)
   for (const emails of delegateEmailsByDelegator.values()) {
     for (const e of emails) bcc.push(e)

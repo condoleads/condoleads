@@ -82,6 +82,9 @@ export async function PUT(
     branding,
     ai_free_messages, vip_auto_approve,
     ai_auto_approve_limit, ai_manual_approve_limit, ai_hard_cap,
+    // W-HOUSE-ACCOUNT UNIT 9: oversight opt-out flag (jsonb sub-key).
+    // Gated below — only tenant_admin / admin / platform_admin can set it.
+    notification_preferences,
   } = body
 
   // Cross-tenant parent_id guard: parent must belong to the same tenant as the target.
@@ -121,6 +124,43 @@ export async function PUT(
   if (ai_auto_approve_limit !== undefined) update.ai_auto_approve_limit = ai_auto_approve_limit
   if (ai_manual_approve_limit !== undefined) update.ai_manual_approve_limit = ai_manual_approve_limit
   if (ai_hard_cap !== undefined) update.ai_hard_cap = ai_hard_cap
+
+  // W-HOUSE-ACCOUNT UNIT 9 (2026-06-25): oversight opt-out write gate.
+  // Only tenant_admin, admin, or platform_admin can set
+  // notification_preferences.oversight_opt_out. Agents CANNOT change their
+  // own opt-out (prevents accidental self-removal from copy chain).
+  //
+  // Other notification_preferences sub-keys (future) flow through with the
+  // same gate for safety — narrow this if a per-key permission split is
+  // ever needed.
+  //
+  // Merge strategy: read prior value and shallow-merge so callers can set a
+  // single sub-key without wiping the rest of the prefs blob.
+  if (notification_preferences !== undefined) {
+    if (notification_preferences === null || typeof notification_preferences !== 'object' || Array.isArray(notification_preferences)) {
+      return NextResponse.json({ error: 'notification_preferences must be an object' }, { status: 400 })
+    }
+    // AdminHomesRole is 'admin' | 'manager' | 'agent' (auth.ts normalises DB
+     // 'tenant_admin' + 'admin' both to role='admin'). position carries the
+     // finer 7-role surface — use it for the assistant forward-compat check.
+    const canSetOptOut = user.isPlatformAdmin
+      || user.role === 'admin'
+      || user.position === 'tenant_admin'
+      || user.position === 'assistant'
+    if (!canSetOptOut) {
+      return NextResponse.json(
+        { error: 'Only tenant admins can change oversight preferences (notification_preferences). Ask your tenant admin to set this for you.' },
+        { status: 403 }
+      )
+    }
+    const { data: priorRow } = await supabase
+      .from('agents')
+      .select('notification_preferences')
+      .eq('id', params.id)
+      .maybeSingle()
+    const prior = (priorRow?.notification_preferences || {}) as Record<string, any>
+    update.notification_preferences = { ...prior, ...(notification_preferences as Record<string, any>) }
+  }
 
   // W-TENANT-GOV-PHASE1 (2026-06-25): can't-orphan-house-account guard.
   // If this PUT would deactivate the agent (is_active=false) AND this agent

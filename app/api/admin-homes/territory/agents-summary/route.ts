@@ -92,6 +92,27 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const enriched = agents.map(a => ({ ...a, mls_listings_footprint: footprints.get(a.agent_id) || 0 }))
+  // W-HOUSE-ACCOUNT UNIT 9: filter out agents flagged as oversight_opt_out
+  // in their notification_preferences. Opted-out agents are NOT shown in
+  // assignable-agents UI (CardsView filter dropdown + reassign destination,
+  // GeographyView CarveUpModal "assign to agent" picker). Keyed on the
+  // existing jsonb column — no schema change. Read-only filter; agents
+  // remain in the DB and can be un-opted-out by tenant_admin.
+  let optOutIds = new Set<string>()
+  if (agentIds.length > 0) {
+    const { data: prefs } = await s
+      .from('agents')
+      .select('id, notification_preferences')
+      .in('id', agentIds)
+    for (const row of (prefs || []) as Array<{ id: string; notification_preferences: Record<string, any> | null }>) {
+      if (row.notification_preferences && (row.notification_preferences as any).oversight_opt_out === true) {
+        optOutIds.add(row.id)
+      }
+    }
+  }
+
+  const enriched = agents
+    .filter(a => !optOutIds.has(a.agent_id))
+    .map(a => ({ ...a, mls_listings_footprint: footprints.get(a.agent_id) || 0 }))
   return NextResponse.json({ agents: enriched }, { status: 200 })
 }

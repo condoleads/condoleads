@@ -19,7 +19,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 5 (operating-hierarchy display; owner-out-of-tree; House Account picker removed from Settings) | territory (operator UX) | SHIPPED, pushed 142168e | 142168e | — |
 | W-HOUSE-ACCOUNT UNIT 6 (parent_id forest walk; orphan-at-its-level renders as own root row) | territory (operator UX) | SHIPPED, pushed 9953018 | 9953018 | — |
 | W-HOUSE-ACCOUNT UNIT 7 (revert UNIT 5 over-exclusion — tenant_admin owner is BOTH header AND tree node; reports nest under owner) | territory (operator UX) | SHIPPED, pushed 59a213f | 59a213f | — |
-| W-HOUSE-ACCOUNT UNIT 8B (house-account oversight: CC on every lead email + tenant-wide dashboard visibility; Part 0 = COMPUTE-met ownership confirmed) | territory→leads→email | SHIPPED LOCAL | (pending this commit) | live operator click-test (lead emails + leads dashboard) |
+| W-HOUSE-ACCOUNT UNIT 8B (house-account oversight: CC on every lead email + tenant-wide dashboard visibility; Part 0 = COMPUTE-met ownership confirmed) | territory→leads→email | SHIPPED, pushed 077c852 | 077c852 | — |
+| W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED LOCAL | (pending this commit) | live operator click-test |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | DEFERRED | — | adds the col the empty-house-account CHECK needs |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | DEFERRED | — | owns the role-ineligible reject test |
@@ -1283,3 +1284,190 @@ PART B — house-account oversight (CC + visibility), the build.
   PART 0 ownership: COMPUTE-met (no code change).
   PART B build: 4 app files + 1 test fix + tracker shipped together
   (live-tracker rule). NO prod DB writes in this unit. HOLD push.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 9 RUN-LOG (2026-06-25) — full branch-copy + top-layer + opt-out
+
+Goal: extend UNIT 8B's house-account oversight into a complete copy model:
+EVERY ancestor in the assigned agent's parent_id branch gets the lead/email
+(closes multi-manager-stack gap); the top layer (tenant owner + assistants
++ house account) is always copied; opt-out (jsonb flag, tenant-admin-only
+write) drops an agent from both the copy chain AND assignable-agents UI.
+No schema migration — uses the existing agents.notification_preferences
+jsonb column.
+
+### R1-R3 recon findings
+
+  R1 — walkHierarchy (lib/admin-homes/hierarchy.ts:36-89) ALREADY returns
+       chain.ancestors: { id, role }[] — the full ancestor chain self->up
+       to row-root (parent NULL or tenant_admin reached). 6-hop cap, cycle-
+       safe. Current lead-email-recipients uses only the 3 named slots
+       (manager_id/area_manager_id/tenant_admin_id) → multi-manager stacks
+       drop the 2nd+ manager. Real data has zero multi-manager chains
+       today, so this is forward-compat.
+  R2 — agents.role CHECK constraint: agent | manager | area_manager |
+       tenant_admin | admin. NO 'assistant' role exists today. Assistant
+       leg is forward-compat (query returns 0 rows). Probe confirms
+       tenant_admin owner == default_agent_id (house account) for BOTH
+       Aily and WALLiam.
+  R3 — agents.notification_preferences jsonb default '{}' ALREADY EXISTS
+       (single column, per-agent, tenant-scoped via the agent row). NO
+       schema migration needed. Sub-key oversight_opt_out: boolean is
+       the home for both cards + leads/email opt-out.
+
+### Path chosen — branch walk + top-layer queries + jsonb opt-out + perm gate
+
+  NO HARD GATE. NO schema change. NO migration. Three surface changes:
+    1. lib/admin-homes/lead-email-recipients.ts: iterate chain.ancestors;
+       add tenant_owner + assistants queries; filter opt-outs everywhere
+       except the TO (owner) leg.
+    2. app/api/admin-homes/agents/[id]/route.ts: accept
+       notification_preferences in PUT body; gate writes (tenant_admin /
+       admin / platform_admin / assistant only); shallow-merge with prior
+       prefs so callers can set a single sub-key without wiping the blob.
+    3. app/api/admin-homes/territory/agents-summary/route.ts: post-filter
+       the assignable-agents response to exclude oversight_opt_out=true
+       agents from the dropdowns.
+
+### B1 — branch walk + top-layer (lib/admin-homes/lead-email-recipients.ts)
+
+  + AgentEmailRow type extended with notification_preferences.
+  + New isOptedOut(row) predicate — true when row.notification_preferences
+    .oversight_opt_out === true.
+  + LeadEmailRecipients.resolved gains three diagnostic fields:
+    branch_ancestors (extra ancestors beyond the named slots),
+    tenant_owner, assistants.
+  + Ancestor batch fetch now selects notification_preferences and reads
+    EVERY chain.ancestors[*] id (not just manager_id/area_manager_id/
+    tenant_admin_id). Named slots preserve the existing CC/BCC tier
+    semantics. Additional ancestors -> branch_ancestors -> BCC. All
+    opt-outs filtered.
+  + New tenant-scoped query for top layer:
+      SELECT ... FROM agents WHERE tenant_id=$1 AND is_active=true
+        AND role IN ('tenant_admin', 'assistant')
+    Tenant owner = role='tenant_admin' AND parent_id IS NULL.
+    Assistants = role='assistant' (forward-compat; 0 rows today).
+    Opt-outs filtered; self-copy skipped when raw.id === assignedAgentId.
+  + Existing house-account section (UNIT 8B) also gains opt-out filter.
+  + Assembly order: TO=agent | CC=manager (named slot) + house_account
+    | BCC=area_manager + tenant_admin + branch_ancestors + tenant_owner
+    + assistants + delegates + platform managers + platform admins.
+  + Cross-list dedupe from UNIT 8B preserved: CC and TO win over BCC.
+    Owner Ovais (who is simultaneously tenant_admin named-slot BCC,
+    tenant_owner BCC, AND house_account CC for Aily) appears in CC
+    exactly once.
+
+### B3 — write-permission gate (app/api/admin-homes/agents/[id]/route.ts)
+
+  + Destructure adds notification_preferences from body.
+  + Type guard: must be a plain object (not null/array).
+  + Permission gate: user.isPlatformAdmin OR user.role === 'admin' OR
+    user.position === 'tenant_admin' OR user.position === 'assistant'.
+    Agents (position='agent'/'managed'/'manager'/'area_manager'/'support')
+    get 403 with friendly message directing them to a tenant admin.
+  + Shallow-merge with prior notification_preferences via separate read +
+    spread; preserves any unrelated sub-keys callers haven't touched.
+
+### B3 (b) — assignable-agents UI filter (app/api/admin-homes/territory/
+                                          agents-summary/route.ts)
+
+  + Post-filter the territory_agents_summary RPC output: query
+    notification_preferences for the returned agent ids; build optOutIds
+    Set; drop those from the response.
+  + Opt-out agents disappear from CardsView's "All agents" filter dropdown,
+    CardsView's "Reassign to" picker, and GeographyView's CarveUpModal
+    agent picker. They remain in the DB; tenant_admin can un-opt-out.
+
+### B4 — no regression for the assigned agent
+
+  Assigned agent (TO) is the lead OWNER, not a copy target. Opt-out does
+  NOT apply to TO. The assigned agent gets their lead + email exactly as
+  today. Copies are ADDED on top.
+
+### B5 — multi-tenant
+
+  All queries scoped to tenantId param: tenant-owner query .eq('tenant_id'),
+  top-layer query .eq('tenant_id'), house-account read .eq('id', tenantId).
+  Aily's chain never includes WALLiam agents; cross-tenant leak impossible.
+
+### Companion TS fix
+
+  app/api/admin-homes/leads/[id]/reassign-agent/route.ts builds a
+  LeadEmailRecipients literal. Added branch_ancestors:[], tenant_owner:
+  null, assistants:[] for type completeness (the single-recipient reassign
+  envelope does not recompute the full chain — same pattern as UNIT 8B).
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (SAVEPOINT-isolated; NO permanent mutation): 26 PASS
+     Scenario 1 (Aily Agent under Manager under Ovais):
+       - walker returns 2 ancestors (Manager + Ovais)
+       - branch emails contains Manager AND Ovais
+       - tenant_owner = Ovais; house_account = Ovais (will dedupe to CC)
+     Scenario 2 (Aily Manager, no manager above):
+       - walker returns 1 ancestor (Ovais)
+       - top-layer still copied
+     Scenario 3 (Aily lead to Ovais himself — unassigned scope):
+       - walker returns 0 ancestors (parent_id NULL)
+       - tenant_owner + house_account both null (self-copy skipped)
+     Scenario 4 (opt out Manager mid-chain):
+       - Manager email NOT in branch; walker still TRAVERSES through
+         (skips them from copy, doesn't sever the chain above)
+       - Ovais still copied (opt-out below does NOT cut off ancestors)
+     Scenario 5 (opt out the house account itself):
+       - house_account CC null; tenant_owner BCC null
+       - branch Manager still copied
+     Scenario 6 (WALLiam parity):
+       - King Shah resolved as both tenant owner + house account
+       - Ovais NOT in WALLiam chain (cross-tenant leak guard)
+     Scenario 7 (agents-summary filter):
+       - opted-out Manager in optIds; non-opted-out agents NOT in optIds
+     Post-check on fresh connection: oversight_opt_out=false for all
+     probe-targeted agents. No persistent mutation.
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11, L2.1).
+     0 NEW fails.
+
+### Files (this commit)
+
+  lib/admin-homes/lead-email-recipients.ts                          (B1)
+  app/api/admin-homes/agents/[id]/route.ts                          (B3 perm)
+  app/api/admin-homes/territory/agents-summary/route.ts             (B3 UI filter)
+  app/api/admin-homes/leads/[id]/reassign-agent/route.ts            (TS completeness)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                          (this run-log)
+
+### Backups (timestamps)
+
+  lib/admin-homes/lead-email-recipients.ts.backup_20260625_111800
+  app/api/admin-homes/agents/[id]/route.ts.backup_20260625_111800
+  app/api/admin-homes/territory/agents-summary/route.ts.backup_20260625_111800
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_114452 (pre-this-entry)
+
+### Open follow-ups
+
+- Settings/UI surface to TOGGLE oversight_opt_out per agent. The
+  permission gate + storage are wired; an admin UI affordance (a checkbox
+  on the agent edit modal, restricted by the existing user.position check
+  client-side) is the next visible-feature unit. Today, opt-out can be
+  set programmatically via PUT /api/admin-homes/agents/[id] with body
+  { notification_preferences: { oversight_opt_out: true } } from a
+  tenant_admin session.
+- assistant role: when Phase 3 admin_assistant migration lands, the
+  agents.role CHECK gains 'assistant' and the top-layer query starts
+  returning rows automatically — no code change required here.
+- Reassign-agent route still doesn't recompute the full UNIT 9 chain on
+  hand-off (carried from UNIT 8B follow-up); a future polish unit wires
+  it through getLeadEmailRecipients so the new agent's chain (including
+  branch ancestors + top layer + house-account) gets a copy on reassign.
+- Live operator click-test on aily.ca after push:
+  - Submit a lead to Agent (Aily) → assert Manager + Ovais BOTH in the
+    chain email; Ovais also visible in /admin-homes/leads.
+  - Set oversight_opt_out=true on Manager via PUT (tenant_admin
+    session) → repeat the lead submit → Manager dropped from CC/BCC.
+  - Attempt the same PUT from a non-admin session → 403.
+
+### Commit gate
+
+  4 app files + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.
