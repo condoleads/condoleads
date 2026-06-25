@@ -122,6 +122,29 @@ export async function PUT(
   if (ai_manual_approve_limit !== undefined) update.ai_manual_approve_limit = ai_manual_approve_limit
   if (ai_hard_cap !== undefined) update.ai_hard_cap = ai_hard_cap
 
+  // W-TENANT-GOV-PHASE1 (2026-06-25): can't-orphan-house-account guard.
+  // If this PUT would deactivate the agent (is_active=false) AND this agent
+  // is the tenant's default_agent_id, REJECT before any write. Friendly
+  // error directs the operator to Settings → General to pick a different
+  // house account first. Without this, the resolver fallback would silently
+  // point at an inactive agent.
+  if (is_active === false) {
+    const { data: houseTenant, error: houseErr } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('default_agent_id', params.id)
+      .maybeSingle()
+    if (houseErr) {
+      return NextResponse.json({ error: 'house-account pre-check failed: ' + houseErr.message }, { status: 500 })
+    }
+    if (houseTenant) {
+      return NextResponse.json(
+        { error: 'Cannot deactivate: this agent is the house account for its tenant. Set a different default agent in Settings → General first.' },
+        { status: 400 }
+      )
+    }
+  }
+
   // W-AGENT-LIFECYCLE-INTEGRITY (2026-06-24) BUG-1 FIX: if email is changing,
   // pre-flight BOTH agents.email and auth.users.email uniqueness BEFORE any
   // write. If pre-flight passes, write agents first, then sync auth via
@@ -228,6 +251,27 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     roleDb: (target.role || 'agent') as DbRole,
   })
   if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+
+  // W-TENANT-GOV-PHASE1 (2026-06-25): can't-orphan-house-account guard.
+  // If this agent is the tenant's default_agent_id, REJECT before any
+  // teardown work. (The tenants_default_agent_id_fkey RESTRICT would also
+  // block the agents DELETE downstream, but the operator gets a cryptic
+  // PG error instead of a friendly one — and our teardown would have
+  // already done destructive work in the wrong order.)
+  const { data: houseTenant, error: houseErr } = await supabase
+    .from('tenants')
+    .select('id')
+    .eq('default_agent_id', params.id)
+    .maybeSingle()
+  if (houseErr) {
+    return NextResponse.json({ error: 'house-account pre-check failed: ' + houseErr.message }, { status: 500 })
+  }
+  if (houseTenant) {
+    return NextResponse.json(
+      { error: 'Cannot delete: this agent is the house account for its tenant. Set a different default agent in Settings → General first.' },
+      { status: 400 }
+    )
+  }
 
   // Fetch user_id for the teardown helper.
   const { data: agent } = await supabase

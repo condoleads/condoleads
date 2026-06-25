@@ -12,11 +12,15 @@ import { can } from '@/lib/admin-homes/permissions'
 
 // Whitelist of columns SettingsClient is allowed to update via PATCH.
 // Keeps the route surface tight — anything not in this list is silently dropped.
-// Platform-admin-only fields (default_claim_quota, default_agent_id) are NOT in this list;
-// those will live on /platform/tenants in 3.7.
+//
+// W-TENANT-GOV-PHASE1 (2026-06-25, D3): default_agent_id now lives in the
+// per-tenant Settings → General tab (was earmarked for /platform 3.7). Set
+// via the House Account picker; validated by the validate_house_account
+// DB trigger (20260625) AND the app-layer pre-check below for friendly errors.
+// default_claim_quota remains platform-admin-only and is NOT in this list.
 const ALLOWED_FIELDS = new Set<string>([
   // General
-  'name', 'brand_name', 'domain', 'admin_email', 'homepage_layout', 'assistant_name',
+  'name', 'brand_name', 'domain', 'admin_email', 'homepage_layout', 'assistant_name', 'default_agent_id',
   // Branding
   'primary_color', 'secondary_color', 'logo_url', 'footer_tagline',
   'brokerage_name', 'brokerage_address', 'brokerage_phone', 'broker_of_record', 'license_number',
@@ -92,6 +96,44 @@ export async function PATCH(
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'No allowed fields in request body' }, { status: 400 })
+  }
+
+  // W-TENANT-GOV-PHASE1 (2026-06-25): if default_agent_id is being changed,
+  // app-layer pre-validate so the operator gets a friendly 400 instead of the
+  // raw PG 23514. The validate_house_account trigger (20260625) is the DB
+  // backstop; these checks mirror its 4 reject conditions.
+  if (Object.prototype.hasOwnProperty.call(update, 'default_agent_id')) {
+    const raw = update.default_agent_id
+    if (raw !== null) {
+      const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (typeof raw !== 'string' || !UUID_RX.test(raw)) {
+        return NextResponse.json(
+          { error: 'default_agent_id must be a valid UUID (or null to clear)' },
+          { status: 400 }
+        )
+      }
+      const { data: agent, error: agentErr } = await supabase
+        .from('agents')
+        .select('id, tenant_id, is_active, role')
+        .eq('id', raw)
+        .maybeSingle()
+      if (agentErr) {
+        return NextResponse.json({ error: 'Failed to validate agent: ' + agentErr.message }, { status: 500 })
+      }
+      if (!agent) {
+        return NextResponse.json({ error: 'Selected agent not found' }, { status: 400 })
+      }
+      if (agent.tenant_id !== params.id) {
+        return NextResponse.json({ error: 'That agent belongs to a different tenant' }, { status: 400 })
+      }
+      if (!agent.is_active) {
+        return NextResponse.json({ error: 'That agent is inactive' }, { status: 400 })
+      }
+      const ELIGIBLE_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'admin']
+      if (!ELIGIBLE_ROLES.includes(agent.role)) {
+        return NextResponse.json({ error: "That agent's role can't be a house account" }, { status: 400 })
+      }
+    }
   }
 
   update.updated_at = new Date().toISOString()

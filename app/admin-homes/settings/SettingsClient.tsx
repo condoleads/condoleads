@@ -3,7 +3,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, Save, AlertTriangle, Power, RotateCcw, XCircle, Eye, EyeOff, RefreshCw, CheckCircle2 } from 'lucide-react'
 
@@ -16,6 +16,7 @@ interface Tenant {
   assistant_name: string | null
   domain: string
   admin_email: string
+  default_agent_id: string | null
   primary_color: string | null
   secondary_color: string | null
   logo_url: string | null
@@ -107,6 +108,28 @@ export default function SettingsClient({
     message: tenant.resend_api_key ? 'Not yet checked — click Send test' : 'No key configured',
     checkedAt: null,
   })
+
+  // W-TENANT-GOV-PHASE1 (2026-06-25): eligible agents for the House Account picker.
+  // Fetched from the existing tenant-scoped agents endpoint; client-filtered to
+  // is_active && role in the trigger's eligible set. validate_house_account
+  // trigger + PATCH pre-validation are the authoritative gates; this filter is
+  // for UX (don't show ineligible options).
+  type EligibleAgent = { id: string; full_name: string; role: string }
+  const [eligibleAgents, setEligibleAgents] = useState<EligibleAgent[] | null>(null)
+  useEffect(() => {
+    const ELIGIBLE_ROLES = new Set(['agent', 'manager', 'area_manager', 'tenant_admin', 'admin'])
+    fetch('/api/admin-homes/agents')
+      .then(r => r.json())
+      .then(j => {
+        const list = Array.isArray(j.agents) ? j.agents : []
+        const filtered = list
+          .filter((a: any) => a && a.is_active === true && ELIGIBLE_ROLES.has(a.role))
+          .map((a: any): EligibleAgent => ({ id: a.id, full_name: a.full_name || '(unnamed)', role: a.role || 'agent' }))
+          .sort((x: EligibleAgent, y: EligibleAgent) => x.full_name.localeCompare(y.full_name))
+        setEligibleAgents(filtered)
+      })
+      .catch(() => setEligibleAgents([]))
+  }, [])
 
   async function checkAnthropic() {
     setAnthropicHealth({ state: 'checking', message: 'Checking...', checkedAt: null })
@@ -243,12 +266,42 @@ export default function SettingsClient({
       )}
 
       {tab === 'general' && (
-        <Section title="General" onSave={() => saveSection(['name', 'brand_name', 'assistant_name', 'domain', 'admin_email', 'homepage_layout'])} saving={saving}>
+        <Section title="General" onSave={() => saveSection(['name', 'brand_name', 'assistant_name', 'domain', 'admin_email', 'homepage_layout', 'default_agent_id'])} saving={saving}>
           <Field label="Tenant Name" value={tenant.name} onChange={v => update('name', v)} />
           <Field label="Brand Name" value={tenant.brand_name || ''} onChange={v => update('brand_name', v)} />
           <Field label="Assistant Name (AI persona)" value={tenant.assistant_name || ''} onChange={v => update('assistant_name', v)} placeholder="e.g. Charlie, Johnny, Sage" />
           <Field label="Domain" value={tenant.domain} onChange={v => update('domain', v)} />
           <Field label="Admin Email" type="email" value={tenant.admin_email} onChange={v => update('admin_email', v)} />
+          {/* W-TENANT-GOV-PHASE1 (2026-06-25): House Account (default agent) picker. */}
+          {eligibleAgents === null ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">House Account (Default Agent)</label>
+              <div className="block w-full px-3 py-2 border border-gray-200 rounded-md text-sm text-gray-400 bg-gray-50">Loading agents...</div>
+            </div>
+          ) : eligibleAgents.length === 0 ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">House Account (Default Agent)</label>
+              <select disabled className="block w-full px-3 py-2 border border-gray-200 rounded-md text-sm text-gray-400 bg-gray-50">
+                <option>No eligible agents — add an agent first</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">Leads with no territory match fall back to this agent. Must be an active agent in this tenant.</p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">House Account (Default Agent)</label>
+              <select
+                value={tenant.default_agent_id || ''}
+                onChange={e => update('default_agent_id', (e.target.value || null) as Tenant['default_agent_id'])}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+              >
+                <option value="">— Not set —</option>
+                {eligibleAgents.map(a => (
+                  <option key={a.id} value={a.id}>{a.full_name} ({a.role})</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">Leads with no territory match fall back to this agent. Must be an active agent in this tenant.</p>
+            </div>
+          )}
           <SelectField
             label="Homepage Layout"
             value={tenant.homepage_layout}
