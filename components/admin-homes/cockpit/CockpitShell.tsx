@@ -24,6 +24,14 @@ export interface CockpitShellProps {
   tenantDomain: string | null
   currentRole: 'admin' | 'manager' | 'agent' | 'area_manager' | 'tenant_admin'
   currentAgentId: string | null
+  // W-COCKPIT-PARITY UNIT 12: tenant's house-account holder id + viewer's
+  // ability to write notification_preferences.oversight_opt_out. Both default
+  // to safe falsy values for backward-compat with any caller that doesn't
+  // thread them; the cockpit server page (app/admin-homes/tenants/[id]/
+  // page.tsx) provides real values today, closing the UNIT 3 + UNIT 10
+  // cockpit gaps.
+  tenantDefaultAgentId?: string | null
+  canSetOversightOptOut?: boolean
   people: PeopleTabProps
   live: Omit<LiveTabProps, 'tenantBrandName' | 'tenantDomain' | 'currentRole' | 'currentAgentId'>
   settings: SettingsTabProps
@@ -36,6 +44,8 @@ function CockpitInner({
   tenantDomain,
   currentRole,
   currentAgentId,
+  tenantDefaultAgentId = null,
+  canSetOversightOptOut = false,
   people,
   live,
   settings,
@@ -49,7 +59,7 @@ function CockpitInner({
     <>
       <CockpitSubHeader agents={agentsForDropdown} />
       <div className="p-6">
-        {activeTab === 'people'    && <PeopleTab    {...people} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={tenantId} />}
+        {activeTab === 'people'    && <PeopleTab    {...people} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={tenantId} tenantDefaultAgentId={tenantDefaultAgentId} canSetOversightOptOut={canSetOversightOptOut} />}
         {activeTab === 'territory' && <TerritoryTab tenantId={tenantId} tenantName={tenantName} actingAgentId={currentAgentId} />}
         {activeTab === 'inventory' && <InventoryTab tenantId={tenantId} />}
         {activeTab === 'live'      && <LiveTab      {...live} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} currentRole={normalizeRole(currentRole)} currentAgentId={currentAgentId} />}

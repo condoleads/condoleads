@@ -22,7 +22,8 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-HOUSE-ACCOUNT UNIT 8B (house-account oversight: CC on every lead email + tenant-wide dashboard visibility; Part 0 = COMPUTE-met ownership confirmed) | territory→leads→email | SHIPPED, pushed 077c852 | 077c852 | — |
 | W-HOUSE-ACCOUNT UNIT 9 (full branch-copy via chain.ancestors + tenant owner + assistants top-layer + tenant-admin-only opt-out via jsonb notification_preferences.oversight_opt_out) | territory→leads→email | SHIPPED, pushed 59da867 | 59da867 | — |
 | W-HOUSE-ACCOUNT UNIT 10 (opt-out UI toggle in EditAgentModal; tenant_admin/assistant-only render gate; threads canSetOversightOptOut through page → AgentsManagementClient → modal) | territory→leads→email (operator UX) | SHIPPED, pushed 18c71f2 | 18c71f2 | — |
-| W-TENANT-ASSISTANT UNIT 11 (agents.role CHECK extended to allow 'assistant'; AddAgentModal option; assistants card-eligible like any role — NO license gate; Unit 9 lead-email leg auto-activates) | territory→leads→email (role) | SHIPPED LOCAL (3663749 + FIX pending this commit), DDL live | (pending this commit) | live operator click-test (create assistant w/ and w/o license_number on aily.ca — both should appear in dropdowns) |
+| W-TENANT-ASSISTANT UNIT 11 (agents.role CHECK extended to allow 'assistant'; AddAgentModal option; assistants card-eligible like any role — NO license gate; Unit 9 lead-email leg auto-activates) | territory→leads→email (role) | SHIPPED, pushed 9a6a52f (UNIT 11 3663749 + FIX 9a6a52f), DDL live | 9a6a52f | — |
+| W-COCKPIT-PARITY UNIT 12 (thread tenantDefaultAgentId + canSetOversightOptOut from cockpit server page → CockpitShell → PeopleTab → AgentsManagementClient/EditAgentModal — closes the 3 carried cockpit follow-ups from UNITs 3 and 10) | territory (operator UX cockpit) | SHIPPED LOCAL | (pending this commit) | live operator click-test on /admin-homes/tenants/[id]/ cockpit People tab |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | SUPERSEDED — Phase 3's "admin_assistant" role intent is now W-TENANT-ASSISTANT UNIT 11's 'assistant' value (added to agents.role CHECK 2026-06-25). SMOKE 7 role-ineligible test is implicit in Unit 11's apply-runner SMOKE 4 (validate_house_account still rejects assistant as house). Closed as covered. | 18c71f2..(this) | — |
 | Phase 1b NOT NULL on tenants.default_agent_id | territory | DEFERRED | — | needs create-tenant auto-seed first |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | SUPERSEDED — UNIT 9 implemented opt-out via the existing agents.notification_preferences jsonb (no new column needed). Closed as covered. | 59da867 | — |
@@ -1895,3 +1896,130 @@ What stays from UNIT 11 unchanged (preserved by the FIX):
 
   FIX ships as a follow-up commit on top of 3663749 (both held; neither
   pushed yet). After approval, both commits push together. HOLD push.
+
+---
+
+## W-COCKPIT-PARITY UNIT 12 RUN-LOG (2026-06-25) — close 3 carried cockpit gaps
+
+Goal: bring the cockpit People tab to feature parity with the standalone
+/admin-homes/agents route. Three carried follow-ups (UNIT 3 owner header
++ Crown pill, UNIT 10 opt-out toggle, UNIT 3 tenantDefaultAgentId
+thread-through) share one root cause: cockpit's PeopleTab/CockpitShell
+didn't thread the props the standalone route already passes. Closed by
+wiring the same props through cockpit's mount chain.
+
+### R1-R3 recon findings
+
+  R1 — standalone-only props the cockpit lacked:
+       - tenantDefaultAgentId (UNIT 3, drives owner header + Crown pill)
+       - canSetOversightOptOut (UNIT 10, gates opt-out toggle render)
+  R2 — cockpit server page (app/admin-homes/tenants/[id]/page.tsx)
+       already has the data:
+       - tenant row loaded via SELECT * → default_agent_id available
+       - resolveAdminHomesUser() → user.role + user.position +
+         user.isPlatformAdmin all available, same as standalone uses
+  R3 — components already accept the props (UNITs 3, 7, 10 work):
+       - AgentsManagementClient: tenantDefaultAgentId? +
+         canSetOversightOptOut? (both optional, safe falsy defaults)
+       - EditAgentModal: canSetOversightOptOut?
+       - AgentOrgChart: gets default_agent_id via its own
+         /api/admin-homes/agents/tree-data fetch (UNIT 2 baked-in)
+       → wiring, not rebuilding
+
+### B-thread (3 files)
+
+  app/admin-homes/tenants/[id]/page.tsx
+    + tenantDefaultAgentId={tenant.default_agent_id || null} added to
+      CockpitShell props (no new query — value already in fetched row).
+    + canSetOversightOptOut: derived inline as
+      user.isPlatformAdmin === true
+      || user.role === 'admin'
+      || user.position === 'tenant_admin'
+      || user.position === 'assistant'
+      (mirror of standalone /admin-homes/agents page.tsx UNIT 10 logic).
+
+  components/admin-homes/cockpit/CockpitShell.tsx
+    + CockpitShellProps gains tenantDefaultAgentId?: string | null
+      and canSetOversightOptOut?: boolean (both optional with safe
+      falsy defaults for backward-compat with any other caller).
+    + CockpitInner destructures + forwards them to PeopleTab in the
+      'people' tab render branch only.
+
+  components/admin-homes/cockpit/tabs/PeopleTab.tsx
+    + MountProps gains tenantDefaultAgentId? + canSetOversightOptOut?.
+    + Forwarded to <AgentsManagementClient> in the 'table' view branch.
+    + AgentOrgChart needs no change — its tree-data fetch already
+      returns default_agent_id (UNIT 2).
+
+### B4 — multi-tenant
+
+  Both new props are derived from cockpit page's tenant fetch +
+  resolveAdminHomesUser session. No hardcoded tenant ids or per-tenant
+  branches. Tenant #3 zero-change — onboarding a tenant gives the
+  cockpit page the correct default_agent_id automatically.
+
+### What now renders in cockpit People tab (parity with standalone)
+
+  - Owner header (purple-bordered card above stats grid) showing the
+    tenant_admin owner with the House Account pill when they hold the
+    default_agent_id (UNIT 3 logic, now lit up via the thread-through).
+  - Crown pill on the holder's row in the agents table (UNIT 3).
+  - Opt-out toggle in EditAgentModal for tenant_admin / assistant /
+    admin / platform_admin viewers ONLY (UNIT 10 + permission gate).
+  - All UNIT 11 (assistant role) + UNIT 9 (copy chain) behavior already
+    flowed through cockpit; this just lights up the surfaces that were
+    missing their context props.
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 guard-query (read-only, NO mutations): 11 assertions PASS
+     Cockpit page can derive tenantDefaultAgentId for Aily (Ovais) +
+       WALLiam (King Shah) from the existing tenant SELECT.
+     Viewer-role gate matrix (mirror of UNIT 10 logic, now applied at
+       cockpit): platform admin / tenant_admin / assistant → toggle
+       visible; manager / agent / unauthenticated → hidden.
+     Multi-tenant safety: Aily.default_agent_id != WALLiam's, each
+       cockpit page passes its OWN value.
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11,
+     L2.1). 0 NEW fails.
+
+### Files (this commit)
+
+  app/admin-homes/tenants/[id]/page.tsx                      (derive + pass)
+  components/admin-homes/cockpit/CockpitShell.tsx            (accept + forward)
+  components/admin-homes/cockpit/tabs/PeopleTab.tsx          (accept + forward)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                   (this run-log)
+
+### Backups (timestamps)
+
+  app/admin-homes/tenants/[id]/page.tsx.backup_20260625_153227
+  components/admin-homes/cockpit/CockpitShell.tsx.backup_20260625_153227
+  components/admin-homes/cockpit/tabs/PeopleTab.tsx.backup_20260625_153227
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260625_153703 (pre-this-entry)
+
+### Carried follow-ups CLOSED by this unit
+
+  - UNIT 3 follow-up: "Cockpit table view Crown parity" → CLOSED
+  - UNIT 10 follow-up: "Cockpit PeopleTab toggle render" → CLOSED
+  - UNIT 11 follow-up: "Cockpit PeopleTab assistant role" — already
+    auto-worked since UNIT 11 changes are component-internal; UNIT 12
+    just makes the new context (owner pill, opt-out toggle) appear in
+    cockpit too, which the operator's intent for UNIT 11 implied.
+
+### Open follow-ups
+
+- EditAgentModal still doesn't allow role edit post-create (carried
+  from UNIT 11; out of scope).
+- Live operator click-test on aily.ca cockpit after push:
+  - /admin-homes/tenants/<aily-id>/ → People tab → Table view
+  - Owner header visible (Ovais, purple card, Crown badge).
+  - Crown pill on Ovais's row in the table.
+  - Click Edit on any Aily agent → opt-out toggle visible (operator
+    is tenant_admin / platform_admin).
+  - WALLiam cockpit: same structure, King Shah surfaces correctly.
+
+### Commit gate
+
+  3 app files + tracker shipped together (live-tracker rule). NO prod DB
+  writes in this unit. HOLD push pending operator instruction.

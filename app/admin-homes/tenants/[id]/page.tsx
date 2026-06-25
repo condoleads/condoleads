@@ -218,6 +218,24 @@ export default async function TenantCockpitPage({
         tenantDomain={tenantDomain}
         currentRole={user.role || 'admin'}
         currentAgentId={user.agentId || null}
+        // W-COCKPIT-PARITY UNIT 12: closes the carried follow-ups from UNITs
+        // 3 and 10. tenantDefaultAgentId drives the owner header card + Crown
+        // pill in the cockpit People table view (UNIT 3 parity). The cockpit's
+        // tenant fetch already loads the row via SELECT *, so default_agent_id
+        // is available with no new query.
+        tenantDefaultAgentId={tenant.default_agent_id || null}
+        // canSetOversightOptOut mirrors the standalone /admin-homes/agents
+        // page's logic (UNIT 10): tenant_admin / admin / assistant / platform
+        // admin can write notification_preferences.oversight_opt_out. Drives
+        // whether the opt-out toggle renders in cockpit EditAgentModal. The
+        // server PUT route is the security backstop; this drives UI render
+        // only.
+        canSetOversightOptOut={
+          user.isPlatformAdmin === true
+          || user.role === 'admin'
+          || user.position === 'tenant_admin'
+          || user.position === 'assistant'
+        }
         people={{
           agents: agentsWithStats,
           tenants: tenantsForClient,

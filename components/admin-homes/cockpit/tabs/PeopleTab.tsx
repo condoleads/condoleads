@@ -62,11 +62,18 @@ interface MountProps extends PeopleTabProps {
   tenantName: string
   tenantBrandName: string | null
   tenantDomain: string | null
+  // W-COCKPIT-PARITY UNIT 12: closes UNIT 3 + UNIT 10 cockpit gaps. Both
+  // optional with safe falsy defaults — when threaded through (cockpit
+  // server page provides them today), AgentsManagementClient renders the
+  // owner-header + Crown pill and EditAgentModal renders the opt-out
+  // toggle, matching standalone /admin-homes/agents parity.
+  tenantDefaultAgentId?: string | null
+  canSetOversightOptOut?: boolean
 }
 
 type View = 'chart' | 'table'
 
-export default function PeopleTab({ agents, tenants, tenantId, tenantName, tenantBrandName, tenantDomain }: MountProps) {
+export default function PeopleTab({ agents, tenants, tenantId, tenantName, tenantBrandName, tenantDomain, tenantDefaultAgentId = null, canSetOversightOptOut = false }: MountProps) {
   const [view, setView] = useState<View>('chart')
   const { agentId, setAgentId } = useCockpit()
 
@@ -123,6 +130,8 @@ export default function PeopleTab({ agents, tenants, tenantId, tenantName, tenan
           tenantBrandName={tenantBrandName}
           tenantDomain={tenantDomain}
           tenantId={tenantId}
+          tenantDefaultAgentId={tenantDefaultAgentId}
+          canSetOversightOptOut={canSetOversightOptOut}
         />
       )}
     </div>
