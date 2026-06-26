@@ -3349,3 +3349,143 @@ owns the remainder by computation. DISPLAY gap, not function gap.
 
   1 app file + tracker shipped together (live-tracker rule). HOLD push
   pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 23 RUN-LOG (2026-06-26) — single house-account picker
+
+Operator decision: the Unit 21 per-row "..." menu (one kebab per
+eligible non-holder row) clutters the dashboard. Replace with ONE
+independent picker in the Tenant Owner header: agent select dropdown
++ Set button. Reuses the validated PATCH path; no DB write of any
+new kind.
+
+### Recon (preserved)
+
+  R1. The Unit 21 per-row kebab lives in AgentRow's Actions cell as
+      an IIFE gated on canSetHouseAccount && tenantId &&
+      targetIsEligible; the only menu item calls
+      setAsHouseAccount(agent.id, agent.full_name). PATCH path:
+        PATCH /api/admin-homes/tenants/[tenantId]
+        body: { default_agent_id: <id> }
+      Reusable verbatim by the new single picker.
+  R2. The Tenant Owner header card (UNIT 5, line 504-536) is the
+      clean placement: it already shows the owner + Crown House
+      Account pill in one block — the picker sits just below.
+  R3. Eligible list = page-level agents array (already active +
+      site_type='comprehensive' + tenant-scoped) MINUS role='assistant'
+      (validate_house_account trigger contract; the only excluded
+      role). Current holder included, marked "(current)".
+
+### Files
+
+  components/admin-homes/AgentsManagementClient.tsx
+    REMOVED:
+      - useEffect import (the click-outside handler for the kebab is gone).
+      - MoreHorizontal lucide-react import.
+      - openMenuAgentId state + the click-outside useEffect that watched it.
+      - The per-row IIFE in AgentRow's Actions cell that rendered the
+        kebab button + its menu item.
+    ADDED:
+      - houseAccountDraftId + houseAccountSaving local state seeded
+        from tenantDefaultAgentId.
+      - Single-picker block inside the Tenant Owner header card
+        (below the owner rows), gated to canSetHouseAccount && tenantId:
+          * Eligible-agent <select> sorted by full_name, options labeled
+            "Full Name -- role (current)" where applicable.
+          * "Set as house account" button calling the existing
+            setAsHouseAccount handler (same validated PATCH).
+          * Disabled when draft === current holder, or saving, or no
+            agent selected. Graceful zero-eligible state shows an
+            italic explanation instead of a broken control.
+          * One-line subtext clarifying who the catch-all is for and
+            why assistants are excluded.
+      - Non-authorized viewers (no canSetHouseAccount) see the pill
+        but no picker -- read-only display preserved.
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+  No props changed; no server-page change. canSetHouseAccount + the
+  agents prop + tenantDefaultAgentId were already threaded through
+  AgentsManagementClient since UNIT 21.
+
+### Smoke (picker proof, live DB)
+
+  19 assertions PASS across 5 sections:
+    1) Aily picker composition:
+       eligible list = [Agent (Aily), Manager (Aily), OVAIS QASSIM];
+       Olga (assistant) EXCLUDED; tenant_admin selectable; manager
+       selectable; agent selectable.
+    2) Set-button disable logic:
+       disabled when draft == current (no-op); enabled when draft is
+       a different eligible agent; disabled while saving; disabled
+       with empty draft; disabled when no eligible agents exist
+       (graceful degrade).
+    3) WALLiam parity:
+       eligible list = [King Shah, Neo Smith, WALLiam]; cross-tenant
+       isolation intact (Ovais NOT in WALLiam list; King Shah NOT in
+       Aily list).
+    4) Picker visibility:
+       SHOWN when canSetHouseAccount=true AND tenantId set; HIDDEN
+       in non-admin / cross-tenant-universal-view paths.
+    5) Per-row clutter check:
+       openMenuAgentId / MoreHorizontal absent from source (grepped).
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T3 picker proof: 19 assertions PASS
+  T4 C12 regression: 17 PASS / 3 FAIL -- same baseline (c8b-2, c11,
+       L2.1), 0 new fails.
+  Aily / WALLiam state: unchanged (no DB writes; validated PATCH
+       reused exactly).
+
+### What changed for live operators
+
+  Before (post-UNIT 21):
+    - Eligible non-holder rows showed a small "..." kebab on the
+      right of the Actions cell; clicking opened a one-item menu
+      with "Set as house account". One kebab per eligible row =
+      N controls.
+  After (UNIT 23):
+    - No per-row kebab anywhere. AgentRow Actions cell renders
+      Edit / Assign / Add Agent / Remove / Delete only.
+    - Tenant Owner header at the top of the page now hosts a single
+      "House account" select + Set button. Pick an eligible agent,
+      click Set, done.
+    - Non-admin viewers see only the House Account Crown pill on
+      the owner row (read-only), no picker.
+
+### Multi-tenant proof
+
+  Eligible list filter operates on the `agents` prop, which page.tsx
+  scopes to the active tenant. Cross-tenant proof inline: WALLiam's
+  agent set is disjoint from Aily's (verified by smoke).
+  canSetHouseAccount + tenantId guards prevent cross-tenant-universal-
+  view writes by hiding the picker entirely. Tenant #3 onboarding
+  requires zero change -- same prop flow.
+
+### Backups (timestamps)
+
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260626_112020
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_112313
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca:
+    - Verify rows show NO kebab / no per-row set-house action; only
+      the original Edit/Assign/Add Agent/Remove/Delete buttons.
+    - Verify the Tenant Owner card shows a "House account" dropdown +
+      Set button; dropdown lists Agent (Aily), Manager (Aily), OVAIS
+      (current); does NOT list Olga.
+    - Select Manager (Aily), click Set: page reloads, Crown pill +
+      catch-all annotations move to Manager (Aily)'s row; dropdown
+      default updates accordingly.
+    - Set back to OVAIS, verify pill returns.
+    - Open as a plain agent / manager viewer: picker not present;
+      Crown pill still visible.
+
+### Commit gate
+
+  1 app file + tracker shipped together (live-tracker rule). HOLD
+  push pending operator instruction.

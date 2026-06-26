@@ -1,8 +1,8 @@
 // components/admin-homes/AgentsManagementClient.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Users, TrendingUp, Building2, Plus, Pencil, MapPin, UserCheck, ChevronDown, ChevronRight, X, Crown, MoreHorizontal } from 'lucide-react'
+import { useState } from 'react'
+import { Users, TrendingUp, Building2, Plus, Pencil, MapPin, UserCheck, ChevronDown, ChevronRight, X, Crown } from 'lucide-react'
 import AddAgentModal from './AddAgentModal'
 import EditAgentModal from './EditAgentModal'
 import Link from 'next/link'
@@ -72,16 +72,13 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
     () => new Set(agents.filter(a => agents.some(x => x.parent_id === a.id)).map(a => a.id))
   )
   const [preselectedParentId, setPreselectedParentId] = useState<string | null>(null)
-  // W-HOUSE-ACCOUNT UNIT 21: row-overflow menu state. Stores the agent id
-  // whose menu is currently open (null = nothing open). Click anywhere
-  // outside or on the same kebab again closes it.
-  const [openMenuAgentId, setOpenMenuAgentId] = useState<string | null>(null)
-  useEffect(() => {
-    if (!openMenuAgentId) return
-    function onDocClick() { setOpenMenuAgentId(null) }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [openMenuAgentId])
+  // W-HOUSE-ACCOUNT UNIT 23: single-picker form state for the house-
+  // account control in the Tenant Owner header. Defaults to the current
+  // holder; the "Set" button is disabled until the operator picks a
+  // different eligible agent. The Unit 21 per-row kebab was replaced by
+  // this single control.
+  const [houseAccountDraftId, setHouseAccountDraftId] = useState<string>(tenantDefaultAgentId ?? '')
+  const [houseAccountSaving, setHouseAccountSaving] = useState(false)
 
   const tenantMap = Object.fromEntries(tenants.map(t => [t.id, t]))
 
@@ -414,62 +411,12 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
               <button onClick={() => deleteAgent(agent.id, agent.full_name)} className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded">
                 🗑 Delete
               </button>
-              {/* W-HOUSE-ACCOUNT UNIT 21: row-overflow menu for rare actions.
-                  Currently hosts the "Set as house account" action only
-                  (operator-locked: rare + sensitive; out of always-visible
-                  button row). The menu button is always rendered as the
-                  attachment point, but the menu's CONTENTS are gated:
-                    - The "Set as house" item appears only when the viewer
-                      has canSetHouseAccount (top tier + platform_admin),
-                      the tenant context is present, the target agent is
-                      active + eligible-role (not 'assistant' — trigger
-                      contract), and is NOT the current holder.
-                  Holder marker stays in the Role/Hierarchy column (Unit 3
-                  Crown pill) — not duplicated here. */}
-              {(() => {
-                const isHolder = tenantDefaultAgentId === agent.id
-                const targetIsEligible =
-                  agent.is_active === true
-                  && (agent as any).role !== 'assistant'
-                  && !isHolder
-                const showSetHouseItem = canSetHouseAccount && !!tenantId && targetIsEligible
-                // Hide the kebab entirely when there's nothing to put in
-                // it — keeps the row uncluttered for non-admin viewers
-                // and on holder rows (which have no overflow actions
-                // today). Add future rare actions here to surface the menu.
-                if (!showSetHouseItem) return null
-                const isOpen = openMenuAgentId === agent.id
-                return (
-                  <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={() => setOpenMenuAgentId(isOpen ? null : agent.id)}
-                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded"
-                      title="More actions"
-                      aria-haspopup="menu"
-                      aria-expanded={isOpen}
-                    >
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                    {isOpen && (
-                      <div
-                        role="menu"
-                        className="absolute right-0 top-full mt-1 z-20 w-56 bg-white border border-gray-200 rounded shadow-lg py-1"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => { setOpenMenuAgentId(null); setAsHouseAccount(agent.id, agent.full_name) }}
-                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs text-amber-800 hover:bg-amber-50"
-                        >
-                          <Crown className="w-3 h-3" />
-                          <span>Set as house account</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
+              {/* W-HOUSE-ACCOUNT UNIT 23: the Unit 21 per-row kebab "Set as
+                  house account" item was REMOVED here. The single picker
+                  in the Tenant Owner header is now the only entry point —
+                  one control for the whole tenant, no per-row clutter.
+                  The same validated PATCH path is reused (setAsHouseAccount
+                  handler above). */}
             </div>
           </td>
         </tr>
@@ -500,7 +447,10 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
       {/* W-HOUSE-ACCOUNT UNIT 5: Tenant owner header. tenant_admin agents are
           surfaced here as the owner(s), NOT as the root of the operating tree.
           Multi-tenant safe — keyed on role only, so every tenant's owner
-          renders the same way. */}
+          renders the same way.
+          W-HOUSE-ACCOUNT UNIT 23: house-account single picker added below the
+          owner rows. Replaces the Unit 21 per-row kebab — one control for
+          the whole tenant, less dashboard clutter. */}
       {owners.length > 0 && (
         <div className="mb-6 bg-white rounded-lg shadow p-5 border-l-4 border-purple-600">
           <div className="flex items-center gap-2 mb-3">
@@ -532,6 +482,83 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
               )
             })}
           </div>
+
+          {/* W-HOUSE-ACCOUNT UNIT 23: single house-account picker.
+              Visible ONLY to canSetHouseAccount viewers (tenant_admin /
+              assistant / platform_admin — Unit 21's narrow predicate).
+              Non-authorized viewers still see WHO the house account is
+              (the pill above) but cannot change it.
+              Eligible list = active comprehensive agents in this tenant
+              MINUS role='assistant' (validate_house_account trigger
+              contract — Phase 1). Current holder included, marked
+              "(current)" so the operator sees the baseline; clicking
+              Set when the draft equals the current holder is a no-op
+              (button disabled).
+              Reuses the validated PATCH path via setAsHouseAccount()
+              (same as the Unit 13/21 row controls before it). */}
+          {canSetHouseAccount && tenantId && (() => {
+            const eligibleAgents = agents
+              .filter(a => (a as any).role !== 'assistant')
+              .slice()
+              .sort((x, y) => (x.full_name || '').localeCompare(y.full_name || ''))
+            const noEligible = eligibleAgents.length === 0
+            const draftIsCurrent = houseAccountDraftId === (tenantDefaultAgentId ?? '')
+            const disableSet = noEligible || houseAccountSaving || draftIsCurrent || !houseAccountDraftId
+            return (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <label className="block text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
+                  House account
+                </label>
+                {noEligible ? (
+                  <p className="text-xs text-gray-500 italic">
+                    No eligible agents in this tenant — add an active non-assistant agent to enable the picker.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={houseAccountDraftId}
+                      onChange={e => setHouseAccountDraftId(e.target.value)}
+                      disabled={houseAccountSaving}
+                      className="px-3 py-2 border border-gray-300 rounded text-sm min-w-[18rem]"
+                    >
+                      {!tenantDefaultAgentId && <option value="">Select an agent…</option>}
+                      {eligibleAgents.map(a => {
+                        const role = (a as any).role as string | null
+                        const isCurrent = tenantDefaultAgentId === a.id
+                        return (
+                          <option key={a.id} value={a.id}>
+                            {a.full_name}{role ? ` — ${role}` : ''}{isCurrent ? ' (current)' : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={disableSet}
+                      onClick={async () => {
+                        const target = eligibleAgents.find(a => a.id === houseAccountDraftId)
+                        if (!target) return
+                        setHouseAccountSaving(true)
+                        try {
+                          await setAsHouseAccount(target.id, target.full_name)
+                        } finally {
+                          setHouseAccountSaving(false)
+                        }
+                      }}
+                      className="flex items-center gap-1 px-3 py-2 text-sm font-medium bg-amber-700 text-white rounded hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={draftIsCurrent ? 'Already the current house account' : 'Set this agent as the tenant house account'}
+                    >
+                      <Crown className="w-3 h-3" />
+                      <span>{houseAccountSaving ? 'Setting…' : 'Set as house account'}</span>
+                    </button>
+                  </div>
+                )}
+                <p className="mt-2 text-[11px] text-gray-500 max-w-2xl">
+                  The house account receives any lead whose geo doesn't match an explicit assignment in this tenant. Assistants are not selectable (system constraint). Top-tier viewers only.
+                </p>
+              </div>
+            )
+          })()}
         </div>
       )}
 
