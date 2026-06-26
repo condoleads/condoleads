@@ -8,6 +8,7 @@ import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { createServiceClient } from '@/lib/admin-homes/service-client'
 import { can, type DbRole } from '@/lib/admin-homes/permissions'
 import { teardownAuthUser } from '@/lib/admin-homes/teardown-auth-user'
+import { viewerIsTopTierAssistant } from '@/lib/admin-homes/assistant-anchor'
 
 // GET /api/admin-homes/agents/[id]
 export async function GET(
@@ -70,6 +71,16 @@ export async function PUT(
     roleDb: (target.role || 'agent') as DbRole,
   })
   if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
+
+  // W-TENANT-ASSISTANT UNIT 25: compute once — used by the
+  // notification_preferences (opt-out) gate AND the role-change gate
+  // below. Tightens both: a position='assistant' viewer now needs their
+  // own reports-to anchor to resolve to top tier (tenant owner / house
+  // account) to keep these admin rights. Branch-scoped assistants lose
+  // admin rights here, matching the UI predicate in
+  // app/admin-homes/agents/page.tsx and the lead-flow scoping from
+  // Unit 19. Short-circuits to false for non-assistant viewers (cheap).
+  const viewerAssistantIsTopTier = await viewerIsTopTierAssistant(user, supabase)
 
   const body = await request.json()
 
@@ -147,11 +158,15 @@ export async function PUT(
     }
     // AdminHomesRole is 'admin' | 'manager' | 'agent' (auth.ts normalises DB
      // 'tenant_admin' + 'admin' both to role='admin'). position carries the
-     // finer 7-role surface — use it for the assistant forward-compat check.
+     // finer 7-role surface — use it for the assistant check.
+    // W-TENANT-ASSISTANT UNIT 25: assistants require their own reports-to
+    // anchor to resolve to top tier (one source of truth via Unit 19's
+    // resolveAssistantAnchor). Branch-scoped assistants — previously
+    // admitted by the flat position check — are now denied.
     const canSetOptOut = user.isPlatformAdmin
       || user.role === 'admin'
       || user.position === 'tenant_admin'
-      || user.position === 'assistant'
+      || (user.position === 'assistant' && viewerAssistantIsTopTier)
     if (!canSetOptOut) {
       return NextResponse.json(
         { error: 'Only tenant admins can change oversight preferences (notification_preferences). Ask your tenant admin to set this for you.' },
@@ -196,10 +211,13 @@ export async function PUT(
   // change the other; both are tenant-agent admin authority.
   if (role !== undefined && role !== target.role) {
     // (a) Write gate
+    // W-TENANT-ASSISTANT UNIT 25: same anchor-derived assistant tightening
+    // as the opt-out gate above. Branch-scoped assistants lose role-change
+    // authority; top-tier-anchored assistants retain it.
     const canChangeRole = user.isPlatformAdmin
       || user.role === 'admin'
       || user.position === 'tenant_admin'
-      || user.position === 'assistant'
+      || (user.position === 'assistant' && viewerAssistantIsTopTier)
     if (!canChangeRole) {
       return NextResponse.json(
         { error: 'Only tenant admins can change agent roles. Ask your tenant admin.' },

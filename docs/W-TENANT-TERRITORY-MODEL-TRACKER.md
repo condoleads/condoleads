@@ -3489,3 +3489,188 @@ new kind.
 
   1 app file + tracker shipped together (live-tracker rule). HOLD
   push pending operator instruction.
+
+---
+
+## W-TENANT-ASSISTANT UNIT 25 RUN-LOG (2026-06-26) — close assistant admin-rights privilege gap (anchor-derived gating)
+
+Operator-locked Option B: keep one DB role ('assistant'), derive
+admin-rights from the SAME reports-to anchor that already drives
+lead-flow (Unit 19). Single source of truth — no schema change, no
+new role, no dropdown change.
+
+### The gap (UNIT 24 recon)
+
+  canSetHouseAccount + canSetOversightOptOut admitted position=='assistant'
+  FLATLY in BOTH the UI gate (app/admin-homes/agents/page.tsx) and the
+  API PUT route gates (app/api/admin-homes/agents/[id]/route.ts L154,
+  L202). Result: ANY assistant -- including one reporting to a solo
+  agent -- had tenant-wide admin rights (set house account, opt-out
+  others, change roles). Unit 19 had already correctly scoped lead-flow
+  by anchor; admin-rights diverged.
+
+  The PATCH /tenants/[id] route (set-house) is unaffected by this gap
+  -- it goes through can(tenant.write) which requires isTenantAdminTier
+  (lib/admin-homes/permissions.ts:138) and assistants are NOT in that
+  tier. So the set-house API was safe by accident; the agents/[id] PUT
+  route was the live escalation path.
+
+### Locked model
+
+  An assistant's admin-rights mirror their lead-flow scope:
+    - Top-tier-anchored (reports up to tenant owner / house account,
+      possibly through other assistants) -> sees all + admin rights.
+    - Branch-anchored (reports to manager / area_manager / agent) ->
+      sees only that branch + NO tenant-wide admin rights.
+    - No anchor / cycle / inactive anchor -> no scope + no admin rights.
+
+  Single source of truth = Unit 19's resolveAssistantAnchor. No second
+  implementation. New helper viewerIsTopTierAssistant() wraps it for
+  the gate call sites.
+
+### Files
+
+  lib/admin-homes/assistant-anchor.ts
+    + viewerIsTopTierAssistant(user, supabase): Promise<boolean>
+      - Short-circuits to false for non-assistant viewers (cheap; no
+        DB call).
+      - For position='assistant', fetches tenants.default_agent_id
+        once + calls resolveAssistantAnchor; returns anchor.isTopTier.
+      - Tenant-scoped via the underlying walk.
+
+  app/admin-homes/agents/page.tsx
+    + Imports viewerIsTopTierAssistant.
+    + Computes viewerAssistantIsTopTier ONCE per request.
+    + Tightens both UI gates:
+        canSetOversightOptOut = isPlatformAdmin || role==='admin'
+                              || position==='tenant_admin'
+                              || (position==='assistant' && viewerAssistantIsTopTier)
+        canSetHouseAccount    = isPlatformAdmin
+                              || position==='tenant_admin'
+                              || (position==='assistant' && viewerAssistantIsTopTier)
+
+  app/api/admin-homes/agents/[id]/route.ts
+    + Imports viewerIsTopTierAssistant.
+    + Computes viewerAssistantIsTopTier ONCE at PUT entry (after the
+      can() decision; before the per-field gate branches).
+    + Replaces the flat position==='assistant' clause in BOTH
+      gates with the same (position==='assistant' && viewerAssistantIsTopTier)
+      pattern:
+        - notification_preferences (opt-out) write gate (L154 area)
+        - role change write gate (L202 area)
+    + Branch-scoped assistants now receive 403 from the API for these
+      writes -- not just hidden from the UI. Security backstop tight.
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+  validate_house_account trigger (Phase 1): UNCHANGED. HOUSE_ELIGIBLE_ROLES:
+  unchanged (still excludes assistant as house-account TARGET). Unit
+  19's assistant-anchor logic + lead-flow scoping: unchanged.
+  normalizePosition + agents.role CHECK + AddAgent/EditAgent dropdowns:
+  unchanged (operator-locked: distinction is anchor-derived, not role-
+  derived).
+
+### Smoke (gate matrix, SAVEPOINT-isolated synthetic Aily mini-org)
+
+  Built 11 synthetic agents under Aily:
+    M1                  manager,    parent=Ovais
+    A_top               assistant,  parent=Ovais                  [TOP TIER]
+    A_branch_mgr        assistant,  parent=M1                     [branch via manager]
+    A_chain_top         assistant,  parent=A_top -> Ovais         [TOP TIER via chain]
+    A_solo              agent,      parent=NULL
+    A_branch_solo       assistant,  parent=A_solo                 [branch via agent]
+    A_orphan            assistant,  parent=NULL                   [no anchor]
+    A_cycle1+A_cycle2   assistants, mutual                        [cycle]
+    inactive_mgr        manager,    parent=Ovais,  is_active=false
+    A_branch_inactive   assistant,  parent=inactive_mgr           [inactive anchor]
+
+  37 assertions PASS. Key results:
+    - top-tier assistant: isTop=true,  canOptOut=true,  canSetHouse=true
+    - top-tier-via-chain: isTop=true,  canOptOut=true,  canSetHouse=true
+    - branch (-> manager): isTop=false, canOptOut=FALSE, canSetHouse=FALSE   <-- gap closed
+    - branch (-> agent):   isTop=false, canOptOut=FALSE, canSetHouse=FALSE   <-- gap closed
+    - orphan:              isTop=false, canOptOut=FALSE, canSetHouse=FALSE   <-- gap closed
+    - cycle:               isTop=false, canOptOut=FALSE, canSetHouse=FALSE   <-- gap closed
+    - inactive-anchor:     isTop=false, canOptOut=FALSE, canSetHouse=FALSE   <-- gap closed
+    - tenant_admin Ovais:                  canOptOut=true,  canSetHouse=true (unchanged)
+    - platform_admin:                      canOptOut=true,  canSetHouse=true (unchanged)
+    - plain manager M1:                    canOptOut=false, canSetHouse=false (unchanged)
+    - plain agent A_solo:                  canOptOut=false, canSetHouse=false (unchanged)
+    - DB role='admin' + non-top-tier pos:  canOptOut=TRUE,  canSetHouse=FALSE
+      (Unit 21 distinction preserved: opt-out broader than set-house;
+       DB role='admin' admitted to opt-out but not to set-house.)
+
+  Lead-flow unchanged proof:
+    - top-tier assistant: viewerIsTopTierAssistant=true (admin-rights)
+      AND resolveAssistantAnchor.isTopTier=true (lead-flow). Agree.
+    - branch assistant: both false. Agree. Coherent model.
+
+  Post-cleanup: 0 synthetic rows remaining (verified via fresh conn).
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T2 gate matrix: 37 assertions PASS (esp. branch-scoped assistants
+       DENIED, top-tier assistants KEPT, all non-assistant viewers
+       UNCHANGED, opt-out vs set-house distinction preserved)
+  T3 lead-flow unchanged: viewerIsTopTierAssistant agrees with
+       resolveAssistantAnchor.isTopTier (same predicate; no drift)
+  T4 C12 regression: 17 PASS / 3 FAIL -- same baseline (c8b-2, c11,
+       L2.1), 0 new fails.
+  Aily / WALLiam state: unchanged (no DB writes).
+
+### What changed for live operators / API consumers
+
+  Before:
+    - An assistant created via "Tenant Assistant" dropdown — regardless
+      of WHERE they were placed in the reports-to tree — got tenant-
+      wide admin rights (opt-out toggle, set-house picker, role-edit).
+    - Branch-scoped assistant (e.g. reporting to a manager) could
+      escalate privileges via the agents/[id] PUT API even with the
+      UI hidden.
+  After:
+    - "Tenant Assistant" is REAL only when placed under the tenant
+      owner / house account (possibly via another top-tier assistant).
+      Operator places the assistant at top tier in the reports-to chart
+      to grant top-tier rights; placing them under a manager keeps them
+      branch-scoped on BOTH lead-flow and admin-rights.
+    - The agents/[id] PUT API returns 403 for branch-scoped assistant
+      callers attempting opt-out / role-change writes. Security
+      backstop is consistent with the UI gate.
+
+### Multi-tenant proof
+
+  viewerIsTopTierAssistant -> resolveAssistantAnchor -> tenant_id
+  filtered on every visited row (Unit 19 invariant unchanged). All
+  three call sites pass user.tenantId for the walk. Tenant #3 zero-
+  change.
+
+### Backups (timestamps)
+
+  lib/admin-homes/assistant-anchor.ts.backup_20260626_113227
+  app/admin-homes/agents/page.tsx.backup_20260626_113227
+  app/api/admin-homes/agents/[id]/route.ts.backup_20260626_113227
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_113651
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca:
+    - Create a top-tier assistant (reports-to = Ovais): logs in,
+      sees house-account picker + opt-out + role-edit; can save
+      changes successfully.
+    - Create a branch assistant (reports-to = Manager (Aily)): logs
+      in, NO house-account picker; opt-out toggle hidden in
+      EditAgentModal; attempting role-change via the API returns
+      403.
+    - Lead-flow regression: send a test lead matched to Manager
+      (Aily)'s branch -> branch assistant receives BCC. Send a
+      lead matched to a different branch -> branch assistant does
+      NOT receive BCC. Top-tier assistant receives BCC on every
+      lead (Unit 19 unchanged).
+  - PATCH /tenants/[id] (set-house) is already strict via
+    can(tenant.write); no further tightening needed.
+
+### Commit gate
+
+  3 app files + tracker shipped together (live-tracker rule). HOLD
+  push pending operator instruction.

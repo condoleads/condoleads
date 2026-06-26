@@ -134,6 +134,57 @@ export async function resolveAssistantAnchor(
 }
 
 /**
+ * W-TENANT-ASSISTANT UNIT 25 — viewer-side gate helper.
+ *
+ * Answers: "Should this VIEWER (when they are a position='assistant')
+ * count as a top-tier (tenant-wide-admin) assistant?"
+ *
+ * One source of truth for the assistant-admin-rights distinction:
+ * reuses resolveAssistantAnchor (the same predicate that scopes lead
+ * flow in Unit 19). An assistant viewer is top-tier iff their own
+ * reports-to chain anchors at the tenant owner or the house account
+ * (possibly through other assistants — the up-walk skips assistant
+ * nodes).
+ *
+ * Returns false (no admin rights) for:
+ *   - non-assistant viewers (caller should branch separately for
+ *     tenant_admin / platform_admin / DB role='admin' BEFORE calling this)
+ *   - assistants with no agentId / no tenantId (defensive)
+ *   - assistants whose anchor is branch-tier (manager / area_manager /
+ *     agent) — gap closed
+ *   - assistants with no anchor / cycle / inactive anchor — gap closed
+ *
+ * Tenant-scoped via the underlying resolveAssistantAnchor walk.
+ *
+ * Cost: one tenants SELECT (default_agent_id) + the up-walk (<=10 row
+ * reads). Only paid for position='assistant' viewers — branches
+ * short-circuit before any DB call.
+ */
+export async function viewerIsTopTierAssistant(
+  user: { agentId: string | null; tenantId: string | null; position: string },
+  supabase: SupabaseClient
+): Promise<boolean> {
+  if (user.position !== 'assistant') return false
+  if (!user.agentId || !user.tenantId) return false
+
+  const { data: tenantRow } = await supabase
+    .from('tenants')
+    .select('default_agent_id')
+    .eq('id', user.tenantId)
+    .maybeSingle()
+  const houseAccountAgentId =
+    (tenantRow as { default_agent_id: string | null } | null)?.default_agent_id ?? null
+
+  const anchor = await resolveAssistantAnchor(
+    user.agentId,
+    user.tenantId,
+    supabase,
+    houseAccountAgentId
+  )
+  return anchor.isTopTier
+}
+
+/**
  * Test whether an assistant with the given anchor inherits a specific lead.
  *
  * @param anchor              resolved via resolveAssistantAnchor
