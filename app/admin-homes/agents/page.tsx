@@ -129,5 +129,18 @@ export default async function AdminHomesAgentsPage() {
     || user?.position === 'tenant_admin'
     || user?.position === 'assistant'
 
-  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} tenantDefaultAgentId={tenantDefaultAgentId} canSetOversightOptOut={canSetOversightOptOut} tenantBrokerageName={tenantBrokerageName} tenantBrokerageAddress={tenantBrokerageAddress} />
+  // W-HOUSE-ACCOUNT UNIT 21: NARROW predicate just for the set-as-house
+  // action. Operator-locked: rare + sensitive, restricted to top-tier
+  // viewers (tenant_admin / tenant_assistant) plus platform_admin (so the
+  // system operator isn't locked out during onboarding / recovery).
+  // Deliberately a SEPARATE boolean from canSetOversightOptOut — opt-out
+  // toggle + role edit keep their existing broader gate (which also admits
+  // DB role='admin'). Consolidating into one predicate would over-restrict
+  // those other controls.
+  const canSetHouseAccount: boolean =
+    user?.isPlatformAdmin === true
+    || user?.position === 'tenant_admin'
+    || user?.position === 'assistant'
+
+  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} tenantDefaultAgentId={tenantDefaultAgentId} canSetOversightOptOut={canSetOversightOptOut} canSetHouseAccount={canSetHouseAccount} tenantBrokerageName={tenantBrokerageName} tenantBrokerageAddress={tenantBrokerageAddress} />
 }

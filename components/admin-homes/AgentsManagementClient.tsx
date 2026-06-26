@@ -1,8 +1,8 @@
 // components/admin-homes/AgentsManagementClient.tsx
 'use client'
 
-import { useState } from 'react'
-import { Users, TrendingUp, Building2, Plus, Pencil, MapPin, UserCheck, ChevronDown, ChevronRight, X, Crown } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Users, TrendingUp, Building2, Plus, Pencil, MapPin, UserCheck, ChevronDown, ChevronRight, X, Crown, MoreHorizontal } from 'lucide-react'
 import AddAgentModal from './AddAgentModal'
 import EditAgentModal from './EditAgentModal'
 import Link from 'next/link'
@@ -47,7 +47,11 @@ interface Agent {
 // the scoped tenant's values. Each is null when the tenant row has no
 // value (no fabricated default). Multi-tenant safe — driven entirely by
 // the scoped tenant's own columns, never hardcoded.
-export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain, tenantId, tenantDefaultAgentId = null, canSetOversightOptOut = false, tenantBrokerageName = null, tenantBrokerageAddress = null }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null, tenantId: string | null, tenantDefaultAgentId?: string | null, canSetOversightOptOut?: boolean, tenantBrokerageName?: string | null, tenantBrokerageAddress?: string | null }) {
+// W-HOUSE-ACCOUNT UNIT 21: canSetHouseAccount — separate narrow gate just
+// for the set-as-house action (top tier + platform_admin). Distinct from
+// canSetOversightOptOut, which keeps its broader scope for opt-out + role
+// edit. Default false so unguarded callers get the safe no-show behavior.
+export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain, tenantId, tenantDefaultAgentId = null, canSetOversightOptOut = false, canSetHouseAccount = false, tenantBrokerageName = null, tenantBrokerageAddress = null }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null, tenantId: string | null, tenantDefaultAgentId?: string | null, canSetOversightOptOut?: boolean, canSetHouseAccount?: boolean, tenantBrokerageName?: string | null, tenantBrokerageAddress?: string | null }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -68,6 +72,16 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
     () => new Set(agents.filter(a => agents.some(x => x.parent_id === a.id)).map(a => a.id))
   )
   const [preselectedParentId, setPreselectedParentId] = useState<string | null>(null)
+  // W-HOUSE-ACCOUNT UNIT 21: row-overflow menu state. Stores the agent id
+  // whose menu is currently open (null = nothing open). Click anywhere
+  // outside or on the same kebab again closes it.
+  const [openMenuAgentId, setOpenMenuAgentId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!openMenuAgentId) return
+    function onDocClick() { setOpenMenuAgentId(null) }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [openMenuAgentId])
 
   const tenantMap = Object.fromEntries(tenants.map(t => [t.id, t]))
 
@@ -333,34 +347,6 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
               <Link href={`/admin-homes/agents/${agent.id}`} className="flex items-center gap-1 px-3 py-1 text-xs text-green-700 hover:bg-green-50 rounded">
                 <MapPin className="w-3 h-3" /> Assign
               </Link>
-              {/* W-HOUSE-ACCOUNT UNIT 13: inline "Set as house account" row
-                  action. Gated to tenant_admin / assistant / admin / platform
-                  admin viewers (same canSetOversightOptOut predicate from
-                  UNITs 10/12 — admin-level writes to tenant agent records).
-                  Hidden for role='assistant' rows: assistants are barred from
-                  being house account by the validate_house_account trigger
-                  contract (Phase 1) — no point offering a button that always
-                  fails. The current holder's row shows a disabled "Current"
-                  label instead of the action, mirroring UNIT 2 drawer UX. */}
-              {canSetOversightOptOut && tenantId && (agent as any).role !== 'assistant' && (
-                tenantDefaultAgentId === agent.id ? (
-                  <span
-                    title="This agent is the current house account."
-                    className="flex items-center gap-1 px-3 py-1 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded cursor-default"
-                  >
-                    <Crown className="w-3 h-3" /> Current house account
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setAsHouseAccount(agent.id, agent.full_name)}
-                    className="flex items-center gap-1 px-3 py-1 text-xs text-amber-700 border border-amber-300 hover:bg-amber-50 rounded"
-                    title="Make this agent the catch-all for unrouted leads."
-                  >
-                    <Crown className="w-3 h-3" /> Set as house
-                  </button>
-                )
-              )}
               {agent.can_create_children && (
                 <button onClick={() => { setPreselectedParentId(agent.id); setShowAddModal(true) }} className="flex items-center gap-1 px-3 py-1 text-xs text-orange-600 hover:bg-orange-50 rounded">
                   <Plus className="w-3 h-3" /> Add Agent
@@ -374,6 +360,62 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
               <button onClick={() => deleteAgent(agent.id, agent.full_name)} className="flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded">
                 🗑 Delete
               </button>
+              {/* W-HOUSE-ACCOUNT UNIT 21: row-overflow menu for rare actions.
+                  Currently hosts the "Set as house account" action only
+                  (operator-locked: rare + sensitive; out of always-visible
+                  button row). The menu button is always rendered as the
+                  attachment point, but the menu's CONTENTS are gated:
+                    - The "Set as house" item appears only when the viewer
+                      has canSetHouseAccount (top tier + platform_admin),
+                      the tenant context is present, the target agent is
+                      active + eligible-role (not 'assistant' — trigger
+                      contract), and is NOT the current holder.
+                  Holder marker stays in the Role/Hierarchy column (Unit 3
+                  Crown pill) — not duplicated here. */}
+              {(() => {
+                const isHolder = tenantDefaultAgentId === agent.id
+                const targetIsEligible =
+                  agent.is_active === true
+                  && (agent as any).role !== 'assistant'
+                  && !isHolder
+                const showSetHouseItem = canSetHouseAccount && !!tenantId && targetIsEligible
+                // Hide the kebab entirely when there's nothing to put in
+                // it — keeps the row uncluttered for non-admin viewers
+                // and on holder rows (which have no overflow actions
+                // today). Add future rare actions here to surface the menu.
+                if (!showSetHouseItem) return null
+                const isOpen = openMenuAgentId === agent.id
+                return (
+                  <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuAgentId(isOpen ? null : agent.id)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded"
+                      title="More actions"
+                      aria-haspopup="menu"
+                      aria-expanded={isOpen}
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                    {isOpen && (
+                      <div
+                        role="menu"
+                        className="absolute right-0 top-full mt-1 z-20 w-56 bg-white border border-gray-200 rounded shadow-lg py-1"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => { setOpenMenuAgentId(null); setAsHouseAccount(agent.id, agent.full_name) }}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-xs text-amber-800 hover:bg-amber-50"
+                        >
+                          <Crown className="w-3 h-3" />
+                          <span>Set as house account</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           </td>
         </tr>

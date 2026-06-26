@@ -3073,3 +3073,138 @@ defaults: tenant has no value -> input stays blank.
 
   3 app files + tracker shipped together (live-tracker rule). HOLD push
   pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 21 RUN-LOG (2026-06-26) — gate set-as-house to top tier + move to overflow menu
+
+Operator rule: setting the house account is rare + sensitive. (a) gate
+to top tier + platform_admin: viewer position==='tenant_admin' OR
+position==='assistant' OR isPlatformAdmin (keep platform_admin so the
+system operator isn't locked out). (b) move it OUT of the always-visible
+amber row button INTO a less-prominent row overflow (kebab) menu.
+
+### Recon-confirm (the two predicates stay independent)
+
+  - canSetOversightOptOut (BROADER, KEPT as-is): platform_admin OR DB
+    role='admin' OR position='tenant_admin' OR position='assistant'.
+    Used by: EditAgentModal opt-out toggle + role select. NOT MODIFIED.
+  - canSetHouseAccount (NEW, NARROWER, this unit): platform_admin OR
+    position='tenant_admin' OR position='assistant'. Drops the DB
+    role='admin'-only clause that opt-out preserves. Used by:
+    AgentsManagementClient set-as-house menu item ONLY.
+
+  Why separate booleans:
+    Opt-out + role edit have a different blast radius — they're
+    per-agent admin operations that DB role='admin' (legacy
+    "tenant admin" without the position bucket) should retain. Set-as-
+    house mutates a tenant-level invariant (tenants.default_agent_id) and
+    is one operator action away from re-routing every catch-all lead;
+    operator wants the tightest population that fits the org model.
+
+### Files
+
+  app/admin-homes/agents/page.tsx
+    + canSetHouseAccount: boolean — computed alongside the existing
+      canSetOversightOptOut. Both passed to AgentsManagementClient.
+
+  components/admin-homes/AgentsManagementClient.tsx
+    + Prop signature accepts canSetHouseAccount (default false).
+    + Removed: always-visible amber "Set as house" row button + its
+      paired "Current house account" disabled span from the Actions cell.
+      (The current-holder Crown pill in the Role/Hierarchy column is
+      KEPT — that's the visible marker now.)
+    + Added: row-overflow (kebab "MoreHorizontal") menu in the Actions
+      cell. Renders ONLY when canSetHouseAccount AND tenantId is set AND
+      the target row is eligible (active, role not 'assistant', not the
+      current holder). Click-outside handler closes the open menu.
+      Menu hosts a single item today: "Set as house account" — calling
+      the same setAsHouseAccount() function that posted the validated
+      PATCH before. The kebab itself is hidden when there's nothing to
+      put in the menu, keeping the row uncluttered.
+    + MoreHorizontal icon added to the lucide-react import.
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+### Smoke (gate-proof, pure mirror of the predicates + per-row gate)
+
+  24 assertions PASS across 4 sections:
+    1) Predicate independence:
+       - opt-out: TRUE for platform_admin, tenant_admin,
+         tenant_assistant, db role='admin' (broader path).
+         FALSE for plain manager / agent / area_manager.
+       - set-house: TRUE for platform_admin, tenant_admin,
+         tenant_assistant. FALSE for db role='admin' alone (NARROWER —
+         the delta). FALSE for plain manager / agent / area_manager.
+    2) Per-row menu visibility (tenant_admin viewer):
+       - HIDDEN on holder row (Ovais).
+       - SHOWN on Manager row + Agent row (eligible non-holders).
+       - HIDDEN on assistant row (trigger contract).
+       - HIDDEN on inactive row (trigger contract).
+    3) Per-row menu visibility (plain manager viewer): HIDDEN everywhere.
+    4) Per-row menu visibility (db role='admin' alone viewer): HIDDEN
+       for set-house (narrower predicate); same viewer STILL passes
+       opt-out (broader predicate preserved) — independence proven.
+    Plus: cross-tenant view (tenantId=null) hides the menu even for
+    platform_admin.
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T3 gate-proof smoke: 24 assertions PASS
+  T4 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11,
+       L2.1), 0 new fails.
+  Aily / WALLiam state: unchanged (no DB writes — pure UI gating change).
+
+### What changed for live operators
+
+  Before: tenant_admin / assistant / DB role='admin' / platform_admin
+    viewers saw an always-visible amber "Set as house" button on every
+    eligible non-holder row in the agents list (with a paired
+    "Current house account" disabled span on the holder row).
+  After:
+    - Tenant_admin / assistant / platform_admin viewers see a small
+      kebab "More actions" button on each eligible non-holder row,
+      which on click reveals a single "Set as house account" menu
+      item. Less prominent; one click of safety margin before the
+      change.
+    - DB role='admin' alone (no top-tier position) sees no menu — the
+      narrower gate revokes their access to this specific action
+      (still can opt-out + role-edit via the broader gate).
+    - Holder still marked by the Crown pill in the Role / Hierarchy
+      column (Unit 3 pill, unchanged).
+    - All other action buttons (Edit, Assign, Add Agent, Remove,
+      Delete) untouched.
+
+### Multi-tenant proof
+
+  Both predicates are derived from the viewer's session, not from any
+  per-tenant constant. The per-row gate includes !!tenantId so the
+  cross-tenant universal view (scopedTenantId=null) silently hides the
+  menu for everyone — no accidental cross-tenant write. Tenant #3
+  onboarding requires zero change.
+
+### Backups (timestamps)
+
+  app/admin-homes/agents/page.tsx.backup_20260626_103929
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260626_103929
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_104642
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca:
+    - As Ovais (tenant_admin): kebab "More actions" appears on
+      Manager (Aily) + Agent (Aily) rows; opening reveals "Set as
+      house account"; click moves the Crown pill to that agent on
+      reload. No kebab on Ovais's own row (holder) or Olga (assistant).
+    - As a plain agent / manager viewer: no kebab anywhere in the
+      agents list.
+    - Opt-out toggle in EditAgentModal still gated to the broader
+      population (DB role='admin' included) — unaffected by this unit.
+  - Future rare row actions (e.g. impersonate, reset password) would
+    nest under the same kebab without changing the row layout.
+
+### Commit gate
+
+  2 app files + tracker shipped together (live-tracker rule). HOLD push
+  pending operator instruction.
