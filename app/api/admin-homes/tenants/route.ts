@@ -15,6 +15,8 @@ import { can } from '@/lib/admin-homes/permissions'
 import { deriveSourceKey, sanitizeSourceKey } from '@/lib/admin-homes/tenant-source-key'
 import { deriveUniqueAgentSubdomain } from '@/lib/admin-homes/agent-subdomain'
 import { teardownAuthUser } from '@/lib/admin-homes/teardown-auth-user'
+import { Client } from 'pg'
+import { randomUUID } from 'crypto'
 
 export async function GET(request: NextRequest) {
   const user = await resolveAdminHomesUser()
@@ -112,123 +114,146 @@ export async function POST(request: NextRequest) {
 
   // W-TENANT-CREATE UNIT 15: strip owner_* from the tenants insert payload
   // — they're consumed by the agent-seed steps below, not stored on tenants.
+  // W-TENANT-GOV UNIT 16b: this insertPayload feeds the pg-direct INSERT
+  // tenant call below (built generically from its keys/values).
   const { owner_full_name: _ofn, owner_password: _opw, ...tenantBodyOnly } = body
-  const insertPayload = {
+  const tenantInsertRecord: Record<string, any> = {
     ...tenantBodyOnly,
     domain: body.domain.toLowerCase(),
     source_key: sourceKey,
   }
 
-  // ─── STEP 1: insert tenant ───────────────────────────────────────────────
-  const { data: tenant, error: tenantErr } = await supabase
-    .from('tenants')
-    .insert(insertPayload)
-    .select()
-    .single()
-
-  if (tenantErr) {
-    if (tenantErr.code === '23505' && tenantErr.message.includes('source_key')) {
-      return NextResponse.json(
-        {
-          error: "source_key collision: '" + sourceKey + "' is already in use by another tenant",
-          code: tenantErr.code,
-          derived_source_key: sourceKey,
-        },
-        { status: 409 }
-      )
-    }
-    if (tenantErr.code === '23505' && tenantErr.message.includes('domain')) {
-      return NextResponse.json(
-        { error: "domain '" + insertPayload.domain + "' is already in use by another tenant", code: tenantErr.code },
-        { status: 409 }
-      )
-    }
-    return NextResponse.json({ error: tenantErr.message, code: tenantErr.code }, { status: 500 })
-  }
-
-  // W-TENANT-CREATE UNIT 15: seed owner agent + house account. Atomicity
-  // is best-effort across the DB/auth boundary (PG transactions can't span
-  // auth.admin). The pattern: roll back each step on failure of any later
-  // step so the tenant is never left house-account-less. Mirrors the
-  // teardown pattern from /api/admin-homes/agents POST handler
-  // (W-AGENT-LIFECYCLE-INTEGRITY).
   const ownerEmail: string = body.admin_email
 
-  // ─── STEP 2: create the owner's Supabase auth user ────────────────────────
+  // ─── STEP 1 (pre-tx): create owner's Supabase auth user ───────────────────
+  // auth.admin lives outside Postgres, so it can't be in the pg tx below.
+  // We create the auth user FIRST. If the pg tx fails, we teardownAuthUser
+  // to avoid leaving an orphan.
   const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
     email: ownerEmail,
     password: ownerPassword,
     email_confirm: true,
   })
   if (authErr || !authData?.user) {
-    // Rollback: delete the tenant we just created.
-    await supabase.from('tenants').delete().eq('id', tenant.id)
     return NextResponse.json(
-      { error: 'tenant rolled back; owner auth user create failed: ' + (authErr?.message || 'unknown') },
+      { error: 'owner auth user create failed: ' + (authErr?.message || 'unknown') },
       { status: 400 }
     )
   }
   const authUserId = authData.user.id
 
-  // ─── STEP 3: insert the owner agent row ──────────────────────────────────
+  // Pre-derive subdomain + tenant id so the pg tx can run with all inputs
+  // ready.
   const ownerSubdomain = await deriveUniqueAgentSubdomain(supabase, ownerFullName)
-  const { data: ownerAgent, error: agentErr } = await supabase
-    .from('agents')
-    .insert({
-      id: authUserId,
-      user_id: authUserId,
-      full_name: ownerFullName,
-      email: ownerEmail,
-      notification_email: ownerEmail,
-      role: 'tenant_admin',  // operator-locked: owner = root + house-account-eligible
-      parent_id: null,        // operator-locked: owner is the root (parent_id NULL)
-      tenant_id: tenant.id,
-      is_active: true,
-      site_type: 'comprehensive',
-      subdomain: ownerSubdomain,
-      can_create_children: true,
-      title: 'Owner',
-    })
-    .select()
-    .single()
-  if (agentErr || !ownerAgent) {
-    // Rollback: teardown auth user, then delete tenant.
+  const newTenantId = randomUUID()
+
+  // Build the full tenant insert column list for the pg tx (generic from
+  // tenantInsertRecord keys; values pulled in the same order). Fixed columns
+  // (id, default_agent_id, updated_at) added explicitly to make the param
+  // mapping deterministic.
+  const tenantRecord: Record<string, any> = {
+    id: newTenantId,
+    default_agent_id: authUserId,
+    updated_at: new Date().toISOString(),
+    ...tenantInsertRecord,
+  }
+  const tenantCols = Object.keys(tenantRecord)
+  const tenantParams = tenantCols.map(k => tenantRecord[k])
+  const tenantPlaceholders = tenantCols.map((_, i) => `$${i + 1}`).join(', ')
+  const tenantInsertSql =
+    `INSERT INTO public.tenants (${tenantCols.map(c => '"' + c + '"').join(', ')}) ` +
+    `VALUES (${tenantPlaceholders}) RETURNING *`
+
+  // Agent insert columns (fixed shape — same fields as the Unit 15 supabase
+  // insert; expressed as positional params for pg-direct).
+  const agentCols = ['id','user_id','full_name','email','notification_email','role','parent_id','tenant_id','is_active','site_type','subdomain','can_create_children','title']
+  const agentParams = [authUserId, authUserId, ownerFullName, ownerEmail, ownerEmail, 'tenant_admin', null, newTenantId, true, 'comprehensive', ownerSubdomain, true, 'Owner']
+  const agentInsertSql =
+    `INSERT INTO public.agents (${agentCols.map(c => '"' + c + '"').join(', ')}) ` +
+    `VALUES (${agentCols.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`
+
+  // ─── STEP 2 (pg-direct tx): atomic agent + tenant insert ─────────────────
+  // W-TENANT-GOV UNIT 16b: the FK cycle (tenants.default_agent_id ↔
+  // agents.tenant_id) is resolved by SET CONSTRAINTS ALL DEFERRED inside
+  // this tx. Both FKs were made DEFERRABLE INITIALLY IMMEDIATE by the Gate
+  // 1 migration (20260626_w_phase1b_fk_deferrable.sql). The validate_house_
+  // account trigger (Phase 1 d39941f) is UNCHANGED — it fires on the tenant
+  // INSERT and sees agent.tenant_id already correctly set to newTenantId
+  // (because the agent insert went first with the correct value), so cond
+  // (b) passes strictly.
+  //
+  // Order:
+  //   1. SET CONSTRAINTS ALL DEFERRED
+  //   2. INSERT agent (id=authUserId, tenant_id=newTenantId, role=tenant_admin,
+  //      is_active=true, ...) — agents.tenant_id FK deferred
+  //   3. INSERT tenant (id=newTenantId, default_agent_id=authUserId, ...) —
+  //      tenants.default_agent_id FK validates against agent which exists in
+  //      this tx; trigger fires + passes (agent.tenant_id == newTenantId)
+  //   4. COMMIT — agents.tenant_id FK validates (tenant exists now), passes
+  //
+  // On ANY failure: ROLLBACK the tx + teardownAuthUser. Owner email is
+  // released for re-use immediately.
+  const connStr = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.SUPABASE_DB_URL
+  if (!connStr) {
+    await teardownAuthUser(supabase, authUserId).catch(() => undefined)
+    return NextResponse.json({ error: 'DATABASE_URL not configured; cannot run tenant-create transaction' }, { status: 500 })
+  }
+  const pg = new Client({ connectionString: connStr })
+  await pg.connect()
+  let createdTenantRow: any = null
+  let createdAgentRow: any = null
+  try {
+    await pg.query('BEGIN')
+    await pg.query('SET CONSTRAINTS ALL DEFERRED')
+
+    // Insert agent FIRST with correct tenant_id (FK deferred to COMMIT).
+    const agentRes = await pg.query(agentInsertSql, agentParams)
+    createdAgentRow = agentRes.rows[0]
+
+    // Insert tenant SECOND. tenants.default_agent_id FK validates
+    // immediately against the just-inserted agent (no defer needed for
+    // this FK direction). validate_house_account trigger fires + checks
+    // agent.tenant_id (==newTenantId) against NEW.id (==newTenantId) →
+    // strict match, passes.
+    const tenantRes = await pg.query(tenantInsertSql, tenantParams)
+    createdTenantRow = tenantRes.rows[0]
+
+    // COMMIT — agents.tenant_id deferred FK validates (tenant exists),
+    // passes.
+    await pg.query('COMMIT')
+  } catch (txErr: any) {
+    await pg.query('ROLLBACK').catch(() => undefined)
+    await pg.end().catch(() => undefined)
     const td = await teardownAuthUser(supabase, authUserId)
-    await supabase.from('tenants').delete().eq('id', tenant.id)
+    // Friendly mapping for the most likely failures (uniqueness collisions
+    // on domain / source_key surface as 23505).
+    if (txErr.code === '23505' && /source_key/.test(txErr.message || '')) {
+      return NextResponse.json(
+        { error: "source_key collision: '" + sourceKey + "' is already in use by another tenant", code: txErr.code, derived_source_key: sourceKey },
+        { status: 409 }
+      )
+    }
+    if (txErr.code === '23505' && /domain/.test(txErr.message || '')) {
+      return NextResponse.json(
+        { error: "domain '" + tenantRecord.domain + "' is already in use by another tenant", code: txErr.code },
+        { status: 409 }
+      )
+    }
     return NextResponse.json(
-      { error: 'tenant rolled back; owner agent insert failed: ' + (agentErr?.message || 'unknown') + (td.ok ? '' : ' (auth teardown also failed: ' + td.error + ')') },
+      { error: 'tenant-create transaction rolled back: ' + (txErr.message || 'unknown') + (td.ok ? '' : ' (auth teardown also failed: ' + td.error + ')'), code: txErr.code },
       { status: 500 }
     )
+  } finally {
+    await pg.end().catch(() => undefined)
   }
-
-  // ─── STEP 4: set tenant.default_agent_id = owner agent id ────────────────
-  // The validate_house_account trigger (Phase 1 d39941f) validates this
-  // write automatically. Owner agent satisfies all 4 conditions: exists,
-  // tenant_id matches, is_active=true, role='tenant_admin' (eligible).
-  const { error: defaultErr } = await supabase
-    .from('tenants')
-    .update({ default_agent_id: ownerAgent.id, updated_at: new Date().toISOString() })
-    .eq('id', tenant.id)
-  if (defaultErr) {
-    // Rollback all: delete agent, teardown auth user, delete tenant.
-    await supabase.from('agents').delete().eq('id', ownerAgent.id)
-    const td = await teardownAuthUser(supabase, authUserId)
-    await supabase.from('tenants').delete().eq('id', tenant.id)
-    return NextResponse.json(
-      { error: 'tenant rolled back; default_agent_id set failed: ' + defaultErr.message + (td.ok ? '' : ' (auth teardown also failed: ' + td.error + ')') },
-      { status: 500 }
-    )
-  }
-
-  // Re-fetch the tenant with default_agent_id populated for the response.
-  const { data: finalTenant } = await supabase
-    .from('tenants')
-    .select('*')
-    .eq('id', tenant.id)
-    .single()
 
   return NextResponse.json({
-    tenant: finalTenant || tenant,
-    owner_agent: { id: ownerAgent.id, full_name: ownerAgent.full_name, email: ownerAgent.email, role: ownerAgent.role },
+    tenant: createdTenantRow,
+    owner_agent: {
+      id: createdAgentRow.id,
+      full_name: createdAgentRow.full_name,
+      email: createdAgentRow.email,
+      role: createdAgentRow.role,
+    },
   })
 }

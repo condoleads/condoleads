@@ -26,8 +26,9 @@ FLOW: Territory resolution decides lead/email ownership; hierarchy governs escal
 | W-COCKPIT-PARITY UNIT 12 (thread tenantDefaultAgentId + canSetOversightOptOut from cockpit server page → CockpitShell → PeopleTab → AgentsManagementClient/EditAgentModal — closes the 3 carried cockpit follow-ups from UNITs 3 and 10) | territory (operator UX cockpit) | SHIPPED, pushed bed7bed | bed7bed | — |
 | W-HOUSE-ACCOUNT UNIT 13 (inline "Set as house account" row action in agents list — works in standalone + cockpit via shared AgentsManagementClient; reuses Phase 1 Part 2 PATCH; gated to tenant_admin/assistant/admin/platform; hidden for assistant rows per trigger contract) | territory→leads→email (operator UX) | SHIPPED, pushed fee54461 | fee54461 | — |
 | W-AGENT-EDIT UNIT 14 (role edit in EditAgentModal — gated to admin viewers; server PUT enforces 2 invariants: house-account-eligible role + no-orphan-on-demote) | hierarchy + territory (operator UX) | SHIPPED, pushed 011d627 | 011d627 | — |
-| W-TENANT-CREATE UNIT 15 (auto-seed tenant owner as first agent + house account on tenant create — closes the "manual step 3" gap; prerequisite for Phase 1b NOT NULL) | tenant lifecycle + territory | SHIPPED LOCAL | (pending this commit) | live operator click-test (create test tenant + verify owner agent + house account seeded automatically) |
-| Phase 1b NOT NULL on tenants.default_agent_id | territory | UNBLOCKED by UNIT 15 (create-tenant now auto-seeds; safe to enforce NOT NULL in a future unit) | — | next migration: ALTER TABLE tenants ALTER COLUMN default_agent_id SET NOT NULL after backfilling any historical tenants with NULL default |
+| W-TENANT-CREATE UNIT 15 (auto-seed tenant owner as first agent + house account on tenant create — closes the "manual step 3" gap; prerequisite for Phase 1b NOT NULL) | tenant lifecycle + territory | SHIPPED, pushed b2ffd1a | b2ffd1a | — |
+| W-TENANT-GOV PHASE 1b / UNIT 16 (FIRST ATTEMPT) — NOT NULL only | territory | REVERTED 2026-06-25 — broke UNIT 15 tenant-create (FK cycle: tenants.default_agent_id ↔ agents.tenant_id). Migration applied + emergency rolled back; no commit. Root cause + comprehensive fix path documented; supersession by UNIT 16b. | — | n/a |
+| W-TENANT-GOV PHASE 1b / UNIT 16b (deferrable FKs + transactional create refactor + NOT NULL) | territory + tenant lifecycle | SHIPPED LOCAL, DDL live (Gate 1 + Gate 2) | (pending this commit) | live operator click-test (create test tenant on aily.ca → owner seeded under live NOT NULL) |
 | Phase 3 admin_assistant role + SMOKE 7 role-ineligible | territory→hierarchy (roles) | SUPERSEDED — Phase 3's "admin_assistant" role intent is now W-TENANT-ASSISTANT UNIT 11's 'assistant' value (added to agents.role CHECK 2026-06-25). SMOKE 7 role-ineligible test is implicit in Unit 11's apply-runner SMOKE 4 (validate_house_account still rejects assistant as house). Closed as covered. | 18c71f2..(this) | — |
 | Phase 2 cards_opt_out column + CHECK | territory→hierarchy (opt-out) | SUPERSEDED — UNIT 9 implemented opt-out via the existing agents.notification_preferences jsonb (no new column needed). Closed as covered. | 59da867 | — |
 
@@ -2476,3 +2477,205 @@ exactly what this prevents). Prerequisite for Phase 1b NOT NULL.
   2 app files + tracker shipped together (live-tracker rule). NO prod DB
   writes from this build (the smoke is SAVEPOINT-isolated). HOLD push
   pending operator instruction.
+
+---
+
+## W-TENANT-GOV PHASE 1b / UNIT 16 (FIRST ATTEMPT) — REVERTED 2026-06-25
+
+Tried ALTER COLUMN default_agent_id SET NOT NULL alone on 2026-06-25.
+Migration applied (4 smokes passed inside the runner), but post-apply
+verification immediately uncovered a hard regression: under NOT NULL,
+UNIT 15's POST handler INSERT tenants step fails with 23502 because the
+handler inserts the tenant FIRST (with default_agent_id implicitly NULL),
+then UPDATEs default_agent_id at step 4.
+
+Emergency rollback executed minutes later — `ALTER TABLE tenants ALTER
+COLUMN default_agent_id DROP NOT NULL`. Production restored, Aily +
+WALLiam unchanged, no commit.
+
+ROOT CAUSE — FK cycle:
+  tenants.default_agent_id  --FK-->  agents(id)
+  agents.tenant_id          --FK-->  tenants(id)
+Neither row can be inserted before the other while both FKs are
+IMMEDIATE. UNIT 15's two-step "insert tenant with NULL default → create
+agent → backfill default" worked only because default_agent_id was
+nullable.
+
+Lesson: NOT NULL alone is structurally incomplete; the cycle must be
+resolved AT THE SAME TIME (FK deferrability + transactional create
+refactor). Single-step migration unsafe. See UNIT 16b for the
+comprehensive fix.
+
+---
+
+## W-TENANT-GOV PHASE 1b / UNIT 16b RUN-LOG (2026-06-26) — comprehensive fix
+
+Two migrations + one create-flow refactor shipped as ONE unit, with TWO
+HARD GATES (operator-approved at each gate). Closes Phase 1b
+structurally — the house-account invariant is now a DB constraint, not a
+convention.
+
+### Locked design (operator decision after UNIT 16 revert)
+
+- Trigger validate_house_account is NOT modified. No relaxation. Strict
+  cond (b) — agent.tenant_id must equal tenant.id, no NULL carve-out.
+- FK cycle resolved by ORDERING in a single transaction, not by relaxing
+  the trigger.
+- Both FKs (tenants.default_agent_id_fkey + agents_tenant_id_fkey) made
+  DEFERRABLE INITIALLY IMMEDIATE — behavior unchanged for existing queries
+  (IMMEDIATE), opt-in deferred via SET CONSTRAINTS DEFERRED inside the
+  create-tx.
+- UNIT 15 POST refactored to pg-direct transaction: SET CONSTRAINTS ALL
+  DEFERRED → INSERT agent WITH correct tenant_id (referencing not-yet-
+  existing tenant, FK deferred) → INSERT tenant WITH default_agent_id
+  pointing at the just-inserted agent (FK validates immediately, trigger
+  fires + passes strictly because agent.tenant_id == NEW.id) → COMMIT
+  flushes deferred FK.
+- NO transient NULL state in agent.tenant_id; no relaxation anywhere.
+
+### Gate 1 — deferrable FK migration (LIVE)
+
+  supabase/migrations/20260626_w_phase1b_fk_deferrable.sql:
+    ALTER TABLE tenants ALTER CONSTRAINT tenants_default_agent_id_fkey
+      DEFERRABLE INITIALLY IMMEDIATE;
+    ALTER TABLE agents ALTER CONSTRAINT agents_tenant_id_fkey
+      DEFERRABLE INITIALLY IMMEDIATE;
+
+  Applied via scripts/apply-phase1b-gate1.js (deleted post-success).
+  Rollback snapshot retained:
+    rollback-snapshots/_phase1b-gate1-fk-deferrable_2026-06-26T09-58-00-373Z.sql
+  (captures pre-apply FK deferrability + FULL prior validate_house_account
+  function body — to prove the trigger was not modified).
+
+  Gate 1 runner smokes:
+    SMOKE A PASS: trigger rejects nonexistent agent (cond a intact)
+    SMOKE B PASS: trigger rejects WALLiam-agent-on-Aily mismatch
+      (cond b strict path intact — no relaxation)
+    SMOKE C PASS: deferred-tx (agent-first with correct tenant_id) COMMITs
+      all FKs + trigger
+    SMOKE D PASS: deferred-tx with WRONG agent.tenant_id rejected at
+      trigger (cond b STILL bites)
+  Post-verify: validate_house_account function body byte-identical to
+    pre-apply (NO trigger modification).
+  Aily + WALLiam state byte-identical.
+
+### Refactored UNIT 15 POST (between gates)
+
+  app/api/admin-homes/tenants/route.ts POST:
+    + Imports Client (pg) + randomUUID (crypto).
+    + Auth user created BEFORE the pg tx (auth.admin lives outside Postgres).
+    + Pre-derives newTenantId (randomUUID), ownerSubdomain.
+    + Single pg-direct transaction:
+        BEGIN
+        SET CONSTRAINTS ALL DEFERRED
+        INSERT agents (id=authUserId, tenant_id=newTenantId, role=tenant_admin,
+                       parent_id=NULL, is_active=true, ...)  -- FK deferred
+        INSERT tenants (id=newTenantId, default_agent_id=authUserId, ...)
+                       -- FK to agents validates immediately, trigger fires + passes
+        COMMIT  -- deferred FK validates, all good
+    + On any tx failure: ROLLBACK + teardownAuthUser (orphan-free).
+    + 23505 friendly mapping preserved for source_key + domain collisions.
+    + Tenant insert payload built generically from request body keys
+      (same shape Unit 15 had); fixed columns (id, default_agent_id,
+      updated_at) added explicitly.
+
+  B2 verification (SAVEPOINT-isolated, under Gate 1 + still-nullable default):
+    10 assertions PASS across 4 scenarios:
+      1. Refactored tx GREEN (agent inserted with correct tenant_id;
+         tenant inserted with default; trigger passes strictly).
+      2. WRONG agent.tenant_id REJECTED at trigger (cond b strict
+         preserved).
+      3. OLD-style nullable-default INSERT still tolerated (Gate 2 not
+         yet applied).
+      4. Aily + WALLiam byte-identical.
+
+### Gate 2 — NOT NULL migration (LIVE)
+
+  supabase/migrations/20260626_w_phase1b_default_agent_id_not_null.sql:
+    ALTER TABLE tenants ALTER COLUMN default_agent_id SET NOT NULL;
+
+  Applied via scripts/apply-phase1b-gate2.js (deleted post-success).
+  Rollback snapshot retained:
+    rollback-snapshots/_phase1b-gate2-not-null_2026-06-26T10-05-27-756Z.sql
+
+  Gate 2 runner pre-checks:
+    Pre 1: zero NULL rows (drift guard from recon).
+    Pre 2: both FKs verified DEFERRABLE (refuses to apply if Gate 1 was
+      rolled back — Gate 1 is a prerequisite).
+  Gate 2 runner smokes (the decisive ones):
+    SMOKE 1 PASS: UPDATE Aily SET default_agent_id=NULL rejected with
+      23502.
+    SMOKE 2 PASS: OLD-style INSERT (no default in payload) rejected
+      with 23502 — proves the refactored POST is REQUIRED, not optional.
+    SMOKE 3 PASS: refactored UNIT 15 tx COMMITs cleanly under deferrable
+      FKs + NOT NULL. This is the EXACT failure case from original
+      UNIT 16; now GREEN.
+    SMOKE 4 PASS: WRONG agent.tenant_id rejected at trigger (no
+      relaxation under NOT NULL either).
+
+  Post-sanity: Aily + WALLiam unchanged.
+
+### Final verification (post-Gate 2, separate read-only script)
+
+  7 assertions PASS:
+    T1: is_nullable=NO; both FKs deferrable.
+    T2: Aily + WALLiam state unchanged.
+    T3: refactored UNIT 15 tx COMMITs under live constraints.
+    T3b: OLD-style INSERT rejected 23502 (confirms refactored POST is
+      required path).
+  Post-check (fresh connection): 0 persistent test tenants.
+
+### Gates
+
+  T1 TSC --noEmit: exit 0
+  T2 SAVEPOINT-isolated verification: 7 + 10 + 4 (Gate 1) + 4 (Gate 2)
+     = 25 assertions across the whole unit. No persistent prod mutation
+     beyond the two intentional migration DDLs.
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11,
+     L2.1). 0 NEW fails.
+
+### Files (this commit)
+
+  supabase/migrations/20260626_w_phase1b_fk_deferrable.sql          (Gate 1 DDL, applied)
+  supabase/migrations/20260626_w_phase1b_default_agent_id_not_null.sql (Gate 2 DDL, applied)
+  app/api/admin-homes/tenants/route.ts                              (POST refactor)
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md                          (this run-log)
+  supabase/migrations/rollback-snapshots/
+    _phase1b-gate1-fk-deferrable_2026-06-26T09-58-00-373Z.sql
+    _phase1b-gate2-not-null_2026-06-26T10-05-27-756Z.sql
+
+### Backups (timestamps)
+
+  app/api/admin-homes/tenants/route.ts.backup_20260626_055824
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_060700 (pre-this-entry)
+
+### What's now structurally enforced
+
+  - Every tenant row HAS a default_agent_id (NOT NULL).
+  - That agent always satisfies the validate_house_account contract
+    (exists, tenant matches, active, role eligible) — trigger fires on
+    every write and rejects mismatches.
+  - The FK relationship is intact (RESTRICT delete) — agents who are
+    house accounts can't be deleted while held; deactivate is also
+    blocked by UNIT 1 Part 4 + UNIT 14 guards.
+  - The create-tenant flow can no longer leave a tenant in a half-
+    configured house-account-less state — the atomic tx either succeeds
+    fully or fails fully (with auth teardown).
+
+### Open follow-ups
+
+- The refactored POST uses pg-direct via the service-role connection
+  string (DATABASE_URL). If DATABASE_URL is ever absent (misconfigured
+  deploy), the route returns 500 + teardownAuthUser. Documented in code
+  comment; no runtime fallback to the old order.
+- Live operator click-test on aily.ca after push:
+  - Add Tenant → real owner details → submit → success.
+  - Verify the new tenant has default_agent_id populated AND the owner
+    agent has tenant_id == new tenant.
+  - Cockpit People tab shows owner as tenant_admin root with House
+    Account pill.
+
+### Commit gate
+
+  2 migrations + 1 app file + tracker + 2 rollback snapshots shipped
+  together (live-tracker rule). HOLD push pending operator instruction.

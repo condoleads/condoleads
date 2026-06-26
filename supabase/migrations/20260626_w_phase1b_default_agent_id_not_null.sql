@@ -1,0 +1,39 @@
+-- ============================================================================
+-- W-TENANT-GOV PHASE 1b / UNIT 16b — GATE 2: NOT NULL on tenants.default_agent_id.
+-- 2026-06-26.
+--
+-- Companion to Gate 1 (20260626_w_phase1b_fk_deferrable.sql) — which made
+-- both FK directions DEFERRABLE INITIALLY IMMEDIATE so the refactored
+-- UNIT 15 tenant-create flow (pg-direct tx with SET CONSTRAINTS ALL
+-- DEFERRED, agent-first with correct tenant_id, tenant second) can insert
+-- the cycle atomically.
+--
+-- This migration enforces the house-account invariant STRUCTURALLY: every
+-- tenant row must have a default_agent_id. Convention (UNIT 15 auto-seed
+-- + validate_house_account trigger + P-HOUSE resolver fallback) becomes a
+-- DB constraint.
+--
+-- PRE-APPLY ASSERTION (runner re-checks before this DDL):
+--   SELECT COUNT(*) FROM tenants WHERE default_agent_id IS NULL must be 0.
+--   Recon already verified this; the runner re-checks immediately before
+--   ALTER to catch drift.
+--
+-- POST-APPLY THE DECISIVE SMOKE (in runner):
+--   Run the EXACT refactored UNIT 15 tx (SET CONSTRAINTS ALL DEFERRED →
+--   INSERT agent with correct tenant_id → INSERT tenant with
+--   default_agent_id populated → SET CONSTRAINTS ALL IMMEDIATE) inside a
+--   SAVEPOINT under BOTH deferrable FKs + NOT NULL. This is the case that
+--   FAILED in the original UNIT 16. Must PASS now.
+--
+-- Plus: direct UPDATE tenant SET default_agent_id=NULL must be REJECTED
+-- with 23502 (not_null_violation).
+--
+-- IDEMPOTENT: ALTER ... SET NOT NULL is a no-op on an already-NOT-NULL
+-- column.
+--
+-- ROLLBACK (paired down):
+--   ALTER TABLE public.tenants ALTER COLUMN default_agent_id DROP NOT NULL;
+-- ============================================================================
+
+ALTER TABLE public.tenants
+  ALTER COLUMN default_agent_id SET NOT NULL;
