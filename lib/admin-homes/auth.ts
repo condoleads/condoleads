@@ -20,7 +20,8 @@ export type AdminHomesRole = 'admin' | 'manager' | 'agent'
 
 export type AdminHomesPosition =
   | 'tenant_admin'
-  | 'assistant'
+  | 'tenant_assistant'   // W-TENANT-ASSISTANT UNIT 27: top-tier (equal to tenant_admin) — admin BY ROLE
+  | 'assistant'          // branch-scoped — NO tenant-wide admin (reports-to anchor drives lead-flow only)
   | 'support'
   | 'area_manager'
   | 'manager'
@@ -28,7 +29,7 @@ export type AdminHomesPosition =
   | 'agent'
 
 const ALL_POSITIONS: AdminHomesPosition[] = [
-  'tenant_admin', 'assistant', 'support',
+  'tenant_admin', 'tenant_assistant', 'assistant', 'support',
   'area_manager', 'manager', 'managed', 'agent',
 ]
 
@@ -71,7 +72,9 @@ function isValidDbRole(s: string | null | undefined): s is DbRole {
     s === 'manager' ||
     s === 'area_manager' ||
     s === 'tenant_admin' ||
-    s === 'admin'
+    s === 'admin' ||
+    s === 'assistant' ||           // W-TENANT-ASSISTANT UNIT 11 (catch-up; was missed there)
+    s === 'tenant_assistant'       // W-TENANT-ASSISTANT UNIT 27
   )
 }
 

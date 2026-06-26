@@ -8,7 +8,6 @@ import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { createServiceClient } from '@/lib/admin-homes/service-client'
 import { can, type DbRole } from '@/lib/admin-homes/permissions'
 import { teardownAuthUser } from '@/lib/admin-homes/teardown-auth-user'
-import { viewerIsTopTierAssistant } from '@/lib/admin-homes/assistant-anchor'
 
 // GET /api/admin-homes/agents/[id]
 export async function GET(
@@ -72,15 +71,11 @@ export async function PUT(
   })
   if (!decision.ok) return NextResponse.json({ error: decision.reason }, { status: decision.status })
 
-  // W-TENANT-ASSISTANT UNIT 25: compute once — used by the
-  // notification_preferences (opt-out) gate AND the role-change gate
-  // below. Tightens both: a position='assistant' viewer now needs their
-  // own reports-to anchor to resolve to top tier (tenant owner / house
-  // account) to keep these admin rights. Branch-scoped assistants lose
-  // admin rights here, matching the UI predicate in
-  // app/admin-homes/agents/page.tsx and the lead-flow scoping from
-  // Unit 19. Short-circuits to false for non-assistant viewers (cheap).
-  const viewerAssistantIsTopTier = await viewerIsTopTierAssistant(user, supabase)
+  // W-TENANT-ASSISTANT UNIT 27 (supersedes Unit 25 anchor-based gating):
+  // admin-rights for assistants are now ROLE-BASED via position==='tenant_assistant'.
+  // The viewerIsTopTierAssistant helper is retired; the two gate clauses
+  // below admit position='tenant_assistant' directly. Plain 'assistant'
+  // viewers receive 403 from the API for these writes, matching the UI.
 
   const body = await request.json()
 
@@ -158,15 +153,13 @@ export async function PUT(
     }
     // AdminHomesRole is 'admin' | 'manager' | 'agent' (auth.ts normalises DB
      // 'tenant_admin' + 'admin' both to role='admin'). position carries the
-     // finer 7-role surface — use it for the assistant check.
-    // W-TENANT-ASSISTANT UNIT 25: assistants require their own reports-to
-    // anchor to resolve to top tier (one source of truth via Unit 19's
-    // resolveAssistantAnchor). Branch-scoped assistants — previously
-    // admitted by the flat position check — are now denied.
+     // finer 8-role surface — tenant_assistant is the top-tier assistant role.
+    // W-TENANT-ASSISTANT UNIT 27: role-based gating. Plain 'assistant' is
+    // NOT admitted (branch-scoped role; no tenant-wide admin authority).
     const canSetOptOut = user.isPlatformAdmin
       || user.role === 'admin'
       || user.position === 'tenant_admin'
-      || (user.position === 'assistant' && viewerAssistantIsTopTier)
+      || user.position === 'tenant_assistant'
     if (!canSetOptOut) {
       return NextResponse.json(
         { error: 'Only tenant admins can change oversight preferences (notification_preferences). Ask your tenant admin to set this for you.' },
@@ -211,13 +204,12 @@ export async function PUT(
   // change the other; both are tenant-agent admin authority.
   if (role !== undefined && role !== target.role) {
     // (a) Write gate
-    // W-TENANT-ASSISTANT UNIT 25: same anchor-derived assistant tightening
-    // as the opt-out gate above. Branch-scoped assistants lose role-change
-    // authority; top-tier-anchored assistants retain it.
+    // W-TENANT-ASSISTANT UNIT 27: role-based gating, mirror of the opt-out
+    // gate above. Plain 'assistant' is not admitted.
     const canChangeRole = user.isPlatformAdmin
       || user.role === 'admin'
       || user.position === 'tenant_admin'
-      || (user.position === 'assistant' && viewerAssistantIsTopTier)
+      || user.position === 'tenant_assistant'
     if (!canChangeRole) {
       return NextResponse.json(
         { error: 'Only tenant admins can change agent roles. Ask your tenant admin.' },
@@ -226,7 +218,9 @@ export async function PUT(
     }
 
     // (b) Valid role value (server-side mirror of VALID_ROLES used by POST)
-    const VALID_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'admin', 'assistant'] as const
+    // W-TENANT-ASSISTANT UNIT 27: 'tenant_assistant' added (mirrors the
+    // agents.role CHECK extension).
+    const VALID_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'admin', 'assistant', 'tenant_assistant'] as const
     if (!(VALID_ROLES as readonly string[]).includes(role)) {
       return NextResponse.json(
         { error: 'Invalid role; must be one of: ' + VALID_ROLES.join(', ') },

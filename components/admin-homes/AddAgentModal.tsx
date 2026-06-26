@@ -47,7 +47,7 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
     brokerage_name: '', brokerage_address: '', license_number: '',
     custom_domain: '', bio: '', profile_photo_url: '',
     parent_id: '', can_create_children: false, tenant_id: '',
-    role: 'agent' as 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'assistant',
+    role: 'agent' as 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'assistant' | 'tenant_assistant',
     primary_color: '#16a34a', secondary_color: '#15803d',
   })
 
@@ -134,7 +134,16 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
   // sub-assistant is just an assistant reporting to another assistant — every
   // assistant must be selectable so chains can be built. Other roles keep
   // the existing can_create_children !== false gate.
-  const availableParents = agents.filter(a => a.can_create_children !== false || (a as any).role === 'assistant')
+  // W-ASSISTANT-FLOW UNIT 19 + W-TENANT-ASSISTANT UNIT 27: include both
+  // assistant flavors as selectable reports-to targets regardless of
+  // can_create_children. tenant_assistant naturally passes can_create_children
+  // (managers can create reports), but include defensively in case the
+  // can_create_children default ever differs.
+  const availableParents = agents.filter(a =>
+    a.can_create_children !== false
+    || (a as any).role === 'assistant'
+    || (a as any).role === 'tenant_assistant'
+  )
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -159,10 +168,16 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
                   <option value="manager">Manager</option>
                   <option value="area_manager">Area Manager</option>
                   <option value="tenant_admin">Tenant Admin</option>
-                  {/* W-TENANT-ASSISTANT UNIT 11: Tenant Assistant role. Multiple
-                      assistants per tenant supported. Card-eligible like any
-                      other role; receives lead/email copies via Unit 9 top-layer. */}
-                  <option value="assistant">Tenant Assistant</option>
+                  {/* W-TENANT-ASSISTANT UNIT 27: TWO assistant roles now exist.
+                      Tenant Assistant -> tenant_assistant (TOP TIER, equal to
+                      Tenant): admin rights BY ROLE (set house, opt-out
+                      others, edit roles), top-tier lead copies, house-
+                      account eligible.
+                      Assistant -> assistant (BRANCH-SCOPED): no tenant-wide
+                      admin; inherits anchor's lead flow via Unit 19; not
+                      house-account eligible. */}
+                  <option value="tenant_assistant">Tenant Assistant (top tier)</option>
+                  <option value="assistant">Assistant (branch-scoped)</option>
                 </select>
                 <p className="text-xs text-gray-400 mt-1">Determines this user's hierarchy tier.</p>
               </div>

@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/server'
 import { resolveAdminHomesUser } from '@/lib/admin-homes/auth'
 import { getCurrentTenantId } from '@/lib/tenant/getCurrentTenantId'
 import { isCrossTenantView, getScopedTenantId } from '@/lib/admin-homes/scope'
-import { viewerIsTopTierAssistant } from '@/lib/admin-homes/assistant-anchor'
 import { redirect } from 'next/navigation'
 import AgentsManagementClient from '@/components/admin-homes/AgentsManagementClient'
 
@@ -117,44 +116,34 @@ export default async function AdminHomesAgentsPage() {
     ? (tenants || []).find(t => t.id === scopedTenantId)?.default_agent_id ?? null
     : null
 
-  // W-TENANT-ASSISTANT UNIT 25: assistant admin-rights privilege gap fix.
-  // BOTH gates previously admitted position==='assistant' FLATLY. That
-  // meant any assistant — including one reporting to a solo agent —
-  // got tenant-wide admin rights. Unit 19 already scopes lead-flow
-  // correctly via reports-to anchor; this unit aligns admin-rights with
-  // the same anchor logic so the model is coherent: top-tier-anchored
-  // assistants keep admin rights; branch-anchored assistants lose them
-  // (their narrow lead-flow scope is preserved unchanged).
-  //
-  // Cheap when the viewer is not an assistant — viewerIsTopTierAssistant
-  // short-circuits to false before touching the DB.
-  const viewerAssistantIsTopTier: boolean = await viewerIsTopTierAssistant(user, supabase)
+  // W-TENANT-ASSISTANT UNIT 27 (supersedes Unit 25 anchor-based gating):
+  // admin-rights for assistants are now ROLE-BASED, not anchor-derived.
+  //   - 'tenant_assistant' (top-tier role) -> full admin rights, BY ROLE.
+  //   - 'assistant' (branch role) -> NO tenant-wide admin rights, regardless
+  //     of where they report. Their lead-flow scope is still anchor-derived
+  //     via Unit 19; admin-rights are not.
+  // The Unit 25 viewerIsTopTierAssistant helper is RETIRED.
 
-  // W-HOUSE-ACCOUNT UNIT 10 + W-TENANT-ASSISTANT UNIT 25: opt-out write gate.
-  // Population: platform admins / DB role='admin' / position='tenant_admin' /
-  // assistants WHOSE OWN REPORTS-TO ANCHOR resolves to top tier (tenant
-  // owner or house account; possibly via an assistant chain). Branch-scoped
-  // assistants — previously admitted by the flat position check — are now
-  // denied here. The PUT route in app/api/admin-homes/agents/[id]/route.ts
-  // is tightened in lockstep so a branch-scoped assistant cannot escalate
-  // by calling the API directly.
+  // W-HOUSE-ACCOUNT UNIT 10 + W-TENANT-ASSISTANT UNIT 27: opt-out write gate.
+  // Population: platform admins / DB role='admin' (legacy) / position='tenant_admin' /
+  // position='tenant_assistant'. The PUT route in app/api/admin-homes/agents/
+  // [id]/route.ts is tightened in lockstep so a plain 'assistant' caller
+  // cannot escalate by calling the API directly.
   const canSetOversightOptOut: boolean =
     user?.isPlatformAdmin === true
     || user?.role === 'admin'
     || user?.position === 'tenant_admin'
-    || (user?.position === 'assistant' && viewerAssistantIsTopTier)
+    || user?.position === 'tenant_assistant'
 
-  // W-HOUSE-ACCOUNT UNIT 21 + W-TENANT-ASSISTANT UNIT 25: NARROW predicate
-  // for the set-as-house action. Same anchor-derived assistant gating as
-  // above. Platform_admin retained so the system operator isn't locked
-  // out during onboarding / recovery. DB role='admin' (without a top-tier
-  // position) is intentionally NOT admitted here (Unit 21 design: this
-  // action is rare + sensitive and only top-tier-anchored writers should
-  // hold it).
+  // W-HOUSE-ACCOUNT UNIT 21 + W-TENANT-ASSISTANT UNIT 27: NARROW predicate
+  // for the set-as-house action. Top-tier roles only — platform_admin (kept
+  // so the system operator isn't locked out), tenant_admin owner, and
+  // tenant_assistant. DB role='admin' alone (no top-tier position) is
+  // intentionally NOT admitted here (Unit 21 design: rare + sensitive).
   const canSetHouseAccount: boolean =
     user?.isPlatformAdmin === true
     || user?.position === 'tenant_admin'
-    || (user?.position === 'assistant' && viewerAssistantIsTopTier)
+    || user?.position === 'tenant_assistant'
 
   return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} tenantDefaultAgentId={tenantDefaultAgentId} canSetOversightOptOut={canSetOversightOptOut} canSetHouseAccount={canSetHouseAccount} tenantBrokerageName={tenantBrokerageName} tenantBrokerageAddress={tenantBrokerageAddress} />
 }

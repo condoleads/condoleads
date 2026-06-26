@@ -259,6 +259,32 @@ export async function getLeadEmailRecipients(
     }
   }
 
+  // ─── W-TENANT-ASSISTANT UNIT 27: tenant_assistant top-tier copies ────────
+  // tenant_assistant is a TOP-TIER role (equal to tenant_admin owner) —
+  // every active tenant_assistant in the tenant receives a copy of every
+  // tenant lead, BY ROLE (no anchor walk required, unlike plain 'assistant'
+  // below). Multi-tenant: scoped per tenantId. Self-copy suppressed when
+  // the tenant_assistant IS the assigned agent. Opt-out (Unit 9/10)
+  // filtered.
+  const tenantAssistantEmails: string[] = []
+  {
+    const { data: taRows } = await supabase
+      .from('agents')
+      .select('id, role, email, notification_email, notification_preferences, parent_id')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .eq('role', 'tenant_assistant')
+
+    for (const raw of (taRows || []) as (AgentEmailRow & { role: string | null; parent_id: string | null })[]) {
+      if (isOptedOut(raw)) continue
+      if (raw.id === agentId) continue
+      const email = raw.notification_email || raw.email || null
+      if (!email) continue
+      tenantAssistantEmails.push(email)
+      resolved.assistants.push(email)
+    }
+  }
+
   // ─── W-ASSISTANT-FLOW UNIT 19: assistants scoped by reports-to anchor ───
   // For each active assistant in the tenant:
   //   1. Walk UP their parent_id chain, skipping assistant nodes, to find
@@ -488,7 +514,10 @@ export async function getLeadEmailRecipients(
   // W-HOUSE-ACCOUNT UNIT 9: tenant owner → BCC (deduped vs house_account
   // and tenant_admin walker hit via the cross-list dedupe below).
   if (tenantOwnerEmail) bcc.push(tenantOwnerEmail)
-  // W-HOUSE-ACCOUNT UNIT 9: assistants → BCC.
+  // W-TENANT-ASSISTANT UNIT 27: tenant_assistant top-tier copies → BCC.
+  for (const e of tenantAssistantEmails) bcc.push(e)
+  // W-HOUSE-ACCOUNT UNIT 9 + W-ASSISTANT-FLOW UNIT 19: branch-scoped
+  // 'assistant' emails (resolved via anchor walk earlier) → BCC.
   for (const e of assistantEmails) bcc.push(e)
   // Layers 1–4 delegate overlay → BCC (W-ROLES-DELEGATION R7)
   for (const emails of delegateEmailsByDelegator.values()) {

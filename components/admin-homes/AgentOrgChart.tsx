@@ -67,7 +67,9 @@ function applyDagreLayout(rfNodes: Node[], rfEdges: Edge[]): Node[] {
   })
 }
 
-const ALL_ROLES = ['tenant_admin', 'assistant', 'support', 'area_manager', 'manager', 'managed', 'agent']
+// W-TENANT-ASSISTANT UNIT 27: 'tenant_assistant' added; sits with the
+// top-tier roles for the org-chart legend/filters.
+const ALL_ROLES = ['tenant_admin', 'tenant_assistant', 'assistant', 'support', 'area_manager', 'manager', 'managed', 'agent']
 
 // W-COCKPIT P-B-1: optional props for cockpit context. When omitted (standalone
 // /admin-homes/agents/tree route), the chart falls back to its original behavior:

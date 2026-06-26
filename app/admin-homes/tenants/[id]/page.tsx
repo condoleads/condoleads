@@ -231,10 +231,12 @@ export default async function TenantCockpitPage({
         // server PUT route is the security backstop; this drives UI render
         // only.
         canSetOversightOptOut={
+          // W-TENANT-ASSISTANT UNIT 27: role-based — admit tenant_assistant
+          // (top-tier role with admin BY ROLE), no longer plain 'assistant'.
           user.isPlatformAdmin === true
           || user.role === 'admin'
           || user.position === 'tenant_admin'
-          || user.position === 'assistant'
+          || user.position === 'tenant_assistant'
         }
         people={{
           agents: agentsWithStats,

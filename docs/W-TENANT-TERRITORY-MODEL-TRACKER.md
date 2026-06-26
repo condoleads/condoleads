@@ -3674,3 +3674,235 @@ new role, no dropdown change.
 
   3 app files + tracker shipped together (live-tracker rule). HOLD
   push pending operator instruction.
+
+---
+
+## W-TENANT-ASSISTANT UNIT 27 RUN-LOG (2026-06-26) — split 'assistant' into two real roles
+
+Operator-locked model — SUPERSEDES Unit 25's anchor-based admin gating:
+  - tenant_assistant: DISTINCT top-tier role, equal-to-tenant. Full
+    admin rights BY ROLE (set house account, opt-out others, edit
+    roles). Top-tier lead/email copies BY ROLE. House-account
+    eligible.
+  - assistant: branch-scoped (Unit 19 unchanged). Reports to anyone;
+    inherits anchor's lead flow. NO tenant-wide admin rights
+    (reversing Unit 25's anchor-grant for plain assistant). NOT
+    house-account eligible.
+  - Access decided by the LOGGED-IN user's ROLE, not inferred from
+    org position at request time.
+
+### G1 + G2 migration (live)
+
+  supabase/migrations/20260626_w_tenant_assistant_role_and_house_eligible.sql:
+    (1) ALTER TABLE agents — extend role CHECK to include
+        'tenant_assistant' (superset).
+    (2) CREATE OR REPLACE FUNCTION validate_house_account — add
+        'tenant_assistant' to eligible-role list; other 3 conditions
+        byte-identical to d39941f; plain 'assistant' stays excluded.
+
+  Applied via scripts/apply-tenant-assistant-role.js (deleted
+  post-success). Snapshot retained:
+    rollback-snapshots/_tenant-assistant-role_2026-06-26T16-01-20-014Z.sql
+
+  Runner smokes:
+    SMOKE A PASS: tenant_assistant INSERT accepted (CHECK extension)
+    SMOKE B PASS: plain assistant INSERT still accepted (superset)
+    SMOKE C PASS: tenant_assistant settable as house account (trigger)
+    SMOKE D PASS: plain assistant STILL rejected as house account
+    SMOKE E PASS: bogus role still CHECK-rejected
+    SMOKE F PASS: inactive tenant_assistant rejected (cond c preserved)
+  Post-sanity: Aily.default=Ovais, WALLiam.default=King Shah unchanged.
+
+### B-phase (app layer)
+
+  lib/admin-homes/auth.ts
+    + 'tenant_assistant' added to AdminHomesPosition union + ALL_POSITIONS.
+    + isValidDbRole now admits 'assistant' (was missing — Unit 11
+      catch-up) and 'tenant_assistant'.
+  lib/admin-homes/permissions.ts
+    + 'tenant_assistant' added to DbRole.
+    + isTenantAdminTier now admits 'tenant_assistant' (full Tier 4
+      authority via can() — equal to tenant_admin owner per operator
+      model).
+  lib/admin-homes/assistant-anchor.ts
+    + resolveAssistantAnchor isTopTier classifier: added
+      `role === 'tenant_assistant'` so a plain assistant reporting
+      up to a tenant_assistant correctly inherits tenant-wide (chain
+      resolves to top tier).
+    + Unit 25's viewerIsTopTierAssistant helper REMOVED (no remaining
+      call site; admin-rights are now role-based, not anchor-derived).
+  lib/admin-homes/lead-email-recipients.ts
+    + NEW block: tenant_assistant top-tier copies — every active
+      tenant_assistant in the tenant gets BCC by ROLE (parallel to
+      the tenant_owner block, no anchor walk). Plain 'assistant'
+      block (Unit 19 anchor-walk) UNCHANGED.
+  app/admin-homes/agents/page.tsx
+    + viewerIsTopTierAssistant import + computation REMOVED.
+    + Both gates: `(position === 'assistant' && viewerAssistantIsTopTier)`
+      replaced with `position === 'tenant_assistant'`. Plain assistants
+      now FALSE on both gates regardless of anchor.
+  app/api/admin-homes/agents/[id]/route.ts (security backstop)
+    + Same Unit 25 helper removal + replacement at both PUT gates
+      (notification_preferences + role change).
+    + VALID_ROLES extended with 'tenant_assistant'.
+  app/api/admin-homes/tenants/[id]/route.ts
+    + ELIGIBLE_ROLES extended with 'tenant_assistant' (mirror of
+      trigger eligible list).
+  app/admin-homes/tenants/[id]/page.tsx
+    + Cockpit canSetOversightOptOut prop updated to role-based gate
+      (position === 'tenant_assistant', not 'assistant').
+  components/admin-homes/AddAgentModal.tsx + EditAgentModal.tsx
+    + Role union types extended with 'tenant_assistant'.
+    + Dropdown now TWO options:
+        Tenant Assistant (top tier) -> tenant_assistant
+        Assistant (branch-scoped)   -> assistant
+    + Reports-To availableParents filter also admits tenant_assistant.
+  components/admin-homes/AgentsManagementClient.tsx
+    + ROLE_ORDER: tenant_assistant added at slot 0 (top of non-owner
+      ordering).
+    + ROLE_LABELS: distinct pill for tenant_assistant (emerald-bordered)
+      vs plain assistant (slate). Both clearly visible in the table.
+    + House-account picker eligibility comment updated: filter is
+      role !== 'assistant' ONLY; tenant_assistant naturally passes.
+  components/admin-homes/AgentOrgChart.tsx
+    + 'tenant_assistant' added to ALL_ROLES (legend / filter).
+  components/admin-homes/AdminHomesSidebar.tsx
+    + 'tenant_assistant' added to Agents + Listings + Settings nav
+      position lists (Settings becomes accessible to top-tier
+      assistants, equal-to-tenant per operator model).
+    + POSITION_LABELS: distinct entry for tenant_assistant ("Tenant
+      Assistant" purple-500 vs plain "Assistant" slate-400).
+  app/admin-homes/agents/tree/page.tsx
+    + tenant_assistant admitted to the org chart access gate.
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+  Unit 19 plain-assistant anchor walk + branch-scoped lead-flow
+  UNCHANGED. validate_house_account trigger's other 3 conditions
+  UNCHANGED. agents.role 'assistant' value preserved (existing rows
+  like Aily's Olga stay branch-scoped without migration).
+
+### Rights matrix (live DB, synthetic Aily mini-org, 25 assertions PASS)
+
+  Synthetic agents: M1 (manager), TA_root (TA -> Ovais),
+  TA_branch (TA -> manager), A_root (assistant -> Ovais),
+  A_branch (assistant -> manager), A_under_TA (assistant -> TA_root).
+
+  Admin-rights (BY ROLE):
+    TA_root (TA, parent=Ovais):       optOut=true,  house=true
+    TA_branch (TA, parent=manager):   optOut=true,  house=true  <-- BY ROLE, not anchor
+    A_root (asst, parent=Ovais):      optOut=FALSE, house=FALSE <-- Unit 25 REVERSAL
+    A_branch (asst, parent=manager):  optOut=FALSE, house=FALSE
+    A_under_TA (asst, parent=TA):     optOut=FALSE, house=FALSE
+    tenant_admin Ovais:               optOut=true,  house=true
+    platform_admin:                   optOut=true,  house=true
+    plain manager M1:                 optOut=false, house=false
+
+  House-account TARGET eligibility (trigger):
+    tenant_assistant settable as house account: ACCEPTED
+    plain assistant: REJECTED (house_account_role_ineligible)
+
+  Lead flow:
+    tenant_assistant top-tier query: TA_root + TA_branch (BY ROLE);
+    plain assistant A_root NOT included.
+
+  Anchor walk (Unit 19, plain-assistant LEAD-FLOW only):
+    A_under_TA -> anchor=tenant_assistant -> isTopTier=TRUE via
+      UNIT 27 classifier addition (chain to top via TA inherits tenant-
+      wide for LEAD FLOW; admin-rights still gated separately by ROLE).
+    A_branch -> anchor=manager -> isTopTier=FALSE (branch unchanged).
+
+  Cleanup: synthetic agents deleted; fresh-conn post-check 0
+  residual rows.
+
+### T3 — existing Olga row (Aily plain assistant) regression check
+
+  Olga (role='assistant', parent=NULL, active):
+    Under UNIT 27 gates: canSetOversightOptOut=false, canSetHouseAccount=false
+    OK -- Unit-25 anchor-grant correctly reversed for plain assistant.
+  No data migration; Olga stays role='assistant'. Operator can change
+  her to 'tenant_assistant' via Edit Agent if top-tier was intended.
+
+### Gates
+
+  G1 + G2 migration (live; rollback snapshot retained)
+  T1 tsc --noEmit: exit 0
+  T2 rights matrix (25 assertions PASS):
+    admin BY ROLE for tenant_assistant (anchor-irrelevant),
+    no admin for plain assistant (Unit 25 reversal),
+    trigger eligibility, lead-flow distinction, anchor-walk chain.
+  T3 Olga regression: now correctly no admin rights.
+  T4 C12: 17 PASS / 3 FAIL -- baseline (c8b-2, c11, L2.1), 0 new.
+  Aily / WALLiam state unchanged (post-sanity in runner).
+
+### What changed for live operators
+
+  Before (post-UNIT 25):
+    - "Tenant Assistant" dropdown wrote role='assistant'.
+    - Admin rights for any 'assistant' depended on whether their
+      reports-to anchor resolved to top tier (a confusing,
+      anchor-coupled rule that operator rejected).
+    - Olga (plain assistant -> NULL parent under Aily) had tenant-
+      wide admin rights through Unit 25's anchor heuristic.
+  After (UNIT 27):
+    - Dropdown is TWO options:
+        Tenant Assistant (top tier)   -> writes tenant_assistant
+        Assistant (branch-scoped)     -> writes assistant
+    - tenant_assistant: full admin BY ROLE, settable as house
+      account, top-tier lead copies. Equal-to-tenant.
+    - assistant: branch-scoped (Unit 19 lead flow). NO admin.
+      NOT house-account-eligible.
+    - Olga's row stays role='assistant' (no data migration). Her
+      admin rights are now correctly FALSE; operator changes her
+      role to tenant_assistant via Edit Agent if top-tier intended.
+
+### Multi-tenant proof
+
+  Every role-based gate keys on the viewer's own user.position from
+  auth.ts (per-request derived from the agents row of the logged-in
+  user). Lead-flow top-tier query at lead-email-recipients.ts is
+  scoped per tenantId. assistant-anchor's tenant-scoped walk
+  unchanged. Tenant #3 onboarding zero-change.
+
+### Backups (timestamps)
+
+  lib/admin-homes/auth.ts.backup_20260626_120147
+  lib/admin-homes/permissions.ts.backup_20260626_120147
+  lib/admin-homes/assistant-anchor.ts.backup_20260626_120147
+  lib/admin-homes/lead-email-recipients.ts.backup_20260626_120147
+  app/admin-homes/agents/page.tsx.backup_20260626_120147
+  app/api/admin-homes/agents/[id]/route.ts.backup_20260626_120147
+  app/api/admin-homes/tenants/[id]/route.ts.backup_20260626_120147
+  app/admin-homes/tenants/[id]/page.tsx.backup_20260626_120147
+  components/admin-homes/AddAgentModal.tsx.backup_20260626_120147
+  components/admin-homes/EditAgentModal.tsx.backup_20260626_120147
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260626_120147
+  components/admin-homes/AgentOrgChart.tsx.backup_20260626_120147
+  components/admin-homes/AdminHomesSidebar.tsx.backup_20260626_120147
+  app/admin-homes/agents/tree/page.tsx.backup_20260626_120147
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_122708
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca:
+    - Create a Tenant Assistant via Add Agent -> verify dropdown
+      shows TWO options; pick "Tenant Assistant (top tier)" -> agent
+      created with role='tenant_assistant'; log in as them: house-
+      account picker visible, opt-out toggle visible, role-edit
+      visible. Confirm they receive copies of a test lead.
+    - Create an Assistant via the same flow with "Assistant
+      (branch-scoped)" -> agent created with role='assistant';
+      log in as them: no house-account picker, no opt-out, no
+      role-edit. Lead flow depends on reports-to anchor.
+    - Edit Olga's role to 'tenant_assistant' to grant top-tier
+      rights; revert if it was not intended.
+  - Future: if the operator wants tenant_assistant to also bypass
+    Phase 1's "deactivate the current house account" guard,
+    that's a separate guard in agents/[id] PUT — out of this unit's
+    scope.
+
+### Commit gate
+
+  Migration (already applied) + 14 app files + tracker + 1 rollback
+  snapshot shipped together (live-tracker rule). HOLD push pending
+  operator instruction.

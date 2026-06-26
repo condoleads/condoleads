@@ -49,7 +49,7 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
     // agent row; UI gated to canSetOversightOptOut viewers. Server PUT
     // has the same gate + 2 invariants (house-account-eligible role +
     // no-orphan-on-demote).
-    role: 'agent' as 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'admin' | 'assistant',
+    role: 'agent' as 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'admin' | 'assistant' | 'tenant_assistant',
   })
 
   useEffect(() => {
@@ -183,7 +183,15 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
   // assistant must be selectable so chains can be built. Self-exclusion
   // (a.id !== agentId) preserved to prevent self-parenting (Unit 14 anti-
   // orphan guard's UP-walk on the server PUT route is the backstop).
-  const availableParents = agents.filter(a => a.id !== agentId && (a.can_create_children !== false || (a as any).role === 'assistant'))
+  // W-ASSISTANT-FLOW UNIT 19 + W-TENANT-ASSISTANT UNIT 27: include both
+  // assistant flavors as selectable reports-to targets regardless of
+  // can_create_children. Self-exclusion preserved.
+  const availableParents = agents.filter(a =>
+    a.id !== agentId
+    && (a.can_create_children !== false
+        || (a as any).role === 'assistant'
+        || (a as any).role === 'tenant_assistant')
+  )
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -271,7 +279,10 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
                       <option value="manager">Manager</option>
                       <option value="area_manager">Area Manager</option>
                       <option value="tenant_admin">Tenant Admin</option>
-                      <option value="assistant">Tenant Assistant</option>
+                      {/* W-TENANT-ASSISTANT UNIT 27: TWO assistant roles
+                          (top-tier vs branch-scoped). Mirror of AddAgentModal. */}
+                      <option value="tenant_assistant">Tenant Assistant (top tier)</option>
+                      <option value="assistant">Assistant (branch-scoped)</option>
                     </select>
                     <p className="text-[11px] text-gray-500 mt-1">
                       Changing role re-validates server-side: can't demote the current house account, can't demote someone with active reports to a leaf role (agent / assistant).

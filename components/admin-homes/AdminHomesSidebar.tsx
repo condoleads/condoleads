@@ -12,21 +12,29 @@ const ALL_NAV: { href: string; label: string; icon: string; positions: PositionG
   { href: '/admin-homes',           label: 'Dashboard', icon: '🏠', positions: 'all' },
   { href: '/admin-homes/leads',     label: 'Leads',     icon: '📋', positions: 'all' },
   { href: '/admin-homes/users',     label: 'Users',     icon: '👤', positions: 'all' },
-  { href: '/admin-homes/agents',    label: 'Agents',    icon: '👥', positions: ['tenant_admin', 'assistant', 'area_manager', 'manager'] },
+  // W-TENANT-ASSISTANT UNIT 27: tenant_assistant added wherever 'assistant'
+  // appears (both flavors get sidebar nav). Plain assistant keeps existing
+  // access; tenant_assistant inherits the same nav surface plus the admin
+  // gates elsewhere give them tenant-wide write authority.
+  { href: '/admin-homes/agents',    label: 'Agents',    icon: '👥', positions: ['tenant_admin', 'tenant_assistant', 'assistant', 'area_manager', 'manager'] },
   { href: '/admin-homes/bulk-sync', label: 'Bulk Sync', icon: '🔄', positions: 'platform_admin_only' },
   { href: '/admin-homes/tenants',   label: 'Tenants',   icon: '🏢', positions: 'platform_admin_only' },
-  { href: '/admin-homes/listings',  label: 'Listings',  icon: '📄', positions: ['tenant_admin', 'assistant'] },
-  { href: '/admin-homes/settings',  label: 'Settings',  icon: '⚙️', positions: ['tenant_admin'] },
+  { href: '/admin-homes/listings',  label: 'Listings',  icon: '📄', positions: ['tenant_admin', 'tenant_assistant', 'assistant'] },
+  // W-TENANT-ASSISTANT UNIT 27: Settings opens to tenant_assistant too
+  // (top-tier role, equal to tenant_admin owner per operator-locked model).
+  { href: '/admin-homes/settings',  label: 'Settings',  icon: '⚙️', positions: ['tenant_admin', 'tenant_assistant'] },
 ]
 
 const POSITION_LABELS: Record<AdminHomesPosition, { label: string; color: string }> = {
-  tenant_admin: { label: 'Tenant Admin',  color: 'bg-purple-600' },
-  assistant:    { label: 'Assistant',     color: 'bg-purple-500' },
-  support:      { label: 'Support',       color: 'bg-slate-500' },
-  area_manager: { label: 'Area Manager',  color: 'bg-indigo-600' },
-  manager:      { label: 'Manager',       color: 'bg-blue-600' },
-  managed:      { label: 'Managed',       color: 'bg-green-700' },
-  agent:        { label: 'Agent',         color: 'bg-green-600' },
+  tenant_admin:     { label: 'Tenant Admin',     color: 'bg-purple-600' },
+  // W-TENANT-ASSISTANT UNIT 27: distinct label for the top-tier assistant role.
+  tenant_assistant: { label: 'Tenant Assistant', color: 'bg-purple-500' },
+  assistant:        { label: 'Assistant',        color: 'bg-slate-400' },
+  support:          { label: 'Support',          color: 'bg-slate-500' },
+  area_manager:     { label: 'Area Manager',     color: 'bg-indigo-600' },
+  manager:          { label: 'Manager',          color: 'bg-blue-600' },
+  managed:          { label: 'Managed',          color: 'bg-green-700' },
+  agent:            { label: 'Agent',            color: 'bg-green-600' },
 }
 
 export default function AdminHomesSidebar({ user }: { user: AdminHomesUser }) {

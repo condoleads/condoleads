@@ -190,13 +190,17 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
   // the separate owner header above the table. Unknown / forward-compat roles
   // (e.g. future 'admin_assistant' from Phase 3) fall to the end of the
   // ordering, ensuring graceful render rather than a crash.
+  // W-TENANT-ASSISTANT UNIT 27: tenant_assistant gets the highest non-owner
+  // priority (top tier; sorted just after area_manager). Plain assistant
+  // stays near the end (branch-scoped support role).
   const ROLE_ORDER: Record<string, number> = {
-    area_manager: 1,
-    manager:      2,
-    agent:        3,
-    managed:      4,
-    assistant:    5,
-    support:      6,
+    tenant_assistant: 0,
+    area_manager:     1,
+    manager:          2,
+    agent:            3,
+    managed:          4,
+    assistant:        5,
+    support:          6,
   }
   const filteredAgents = agents
     .filter(a => {
@@ -222,11 +226,14 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
   // not inferred from hierarchy flags. Friendly-label map covers all 5
   // DB role values (agents_role_check) plus a fallback for unexpected values.
   const ROLE_LABELS: Record<string, { label: string; classes: string }> = {
-    agent:        { label: 'Agent',         classes: 'bg-blue-100 text-blue-700' },
-    manager:      { label: 'Manager',       classes: 'bg-orange-100 text-orange-700' },
-    area_manager: { label: 'Area Manager',  classes: 'bg-purple-100 text-purple-700' },
-    tenant_admin: { label: 'Tenant Admin',  classes: 'bg-emerald-100 text-emerald-700' },
-    admin:        { label: 'Platform Admin', classes: 'bg-rose-100 text-rose-700' },
+    agent:            { label: 'Agent',             classes: 'bg-blue-100 text-blue-700' },
+    manager:          { label: 'Manager',           classes: 'bg-orange-100 text-orange-700' },
+    area_manager:     { label: 'Area Manager',      classes: 'bg-purple-100 text-purple-700' },
+    tenant_admin:     { label: 'Tenant Admin',      classes: 'bg-emerald-100 text-emerald-700' },
+    admin:            { label: 'Platform Admin',    classes: 'bg-rose-100 text-rose-700' },
+    // W-TENANT-ASSISTANT UNIT 27: distinct pills for the two assistant roles.
+    tenant_assistant: { label: 'Tenant Assistant',  classes: 'bg-emerald-50 text-emerald-700 border border-emerald-200' },
+    assistant:        { label: 'Assistant',         classes: 'bg-slate-100 text-slate-700' },
   }
 
   function RoleBadge({ agent }: { agent: Agent }) {
@@ -489,8 +496,10 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
               Non-authorized viewers still see WHO the house account is
               (the pill above) but cannot change it.
               Eligible list = active comprehensive agents in this tenant
-              MINUS role='assistant' (validate_house_account trigger
-              contract — Phase 1). Current holder included, marked
+              MINUS role='assistant' ONLY (validate_house_account trigger
+              contract; W-TENANT-ASSISTANT UNIT 27 made tenant_assistant
+              house-account-eligible, which naturally passes the
+              role !== 'assistant' filter). Current holder included, marked
               "(current)" so the operator sees the baseline; clicking
               Set when the draft equals the current holder is a no-op
               (button disabled).

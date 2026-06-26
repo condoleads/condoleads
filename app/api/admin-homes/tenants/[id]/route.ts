@@ -129,7 +129,10 @@ export async function PATCH(
       if (!agent.is_active) {
         return NextResponse.json({ error: 'That agent is inactive' }, { status: 400 })
       }
-      const ELIGIBLE_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'admin']
+      // W-TENANT-ASSISTANT UNIT 27: 'tenant_assistant' added — mirror of the
+      // validate_house_account trigger eligible list (which was extended in
+      // the companion migration).
+      const ELIGIBLE_ROLES = ['agent', 'manager', 'area_manager', 'tenant_admin', 'admin', 'tenant_assistant']
       if (!ELIGIBLE_ROLES.includes(agent.role)) {
         return NextResponse.json({ error: "That agent's role can't be a house account" }, { status: 400 })
       }

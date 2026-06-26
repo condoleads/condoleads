@@ -68,7 +68,13 @@
 // style powers assistants have (opt-out toggle, house-account picker) are
 // gated on AdminHomesUser.position === 'assistant' separately (Unit 9/10
 // PUT route + Unit 10 page boolean).
-export type DbRole = 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'admin' | 'assistant'
+// W-TENANT-ASSISTANT UNIT 27 (2026-06-26): 'tenant_assistant' added —
+// a TOP-TIER role with admin rights BY ROLE (set house account, opt-out
+// others, edit roles). Plain 'assistant' stays branch-scoped (no
+// tenant-wide admin; lead-flow via reports-to anchor only). The role-
+// based gating (page.tsx + agents/[id] PUT) keys on AdminHomesUser.
+// position === 'tenant_assistant', NOT on anchor walk.
+export type DbRole = 'agent' | 'manager' | 'area_manager' | 'tenant_admin' | 'admin' | 'assistant' | 'tenant_assistant'
 
 export type PlatformTier = 'admin' | 'manager'
 
@@ -132,11 +138,13 @@ const FORBIDDEN_PLATFORM: CanResult = { ok: false, status: 403, reason: 'Forbidd
 const FORBIDDEN_NOT_YOUR_LEAD: CanResult = { ok: false, status: 403, reason: 'Forbidden — not your lead' }
 const FORBIDDEN_SOS: CanResult = { ok: false, status: 403, reason: 'Forbidden — delegates cannot grant further delegations' }
 
-// Tier 4 (tenant admin) accepts both 'tenant_admin' and 'admin' DB values.
-// Legacy: agents.role='admin' was used pre-R2 for the tenant-admin-equivalent
-// role. R2.1 CHECK keeps 'admin' valid; can() treats both equivalently.
+// Tier 4 (tenant admin) accepts 'tenant_admin', 'admin' (legacy), and
+// — W-TENANT-ASSISTANT UNIT 27 — 'tenant_assistant'. Operator-locked
+// model: tenant_assistant is a TOP-TIER role equal to tenant_admin
+// owner (full admin rights BY ROLE, no anchor check). Plain 'assistant'
+// is NOT in this tier (branch-scoped, no tenant-wide admin).
 function isTenantAdminTier(role: DbRole | null): boolean {
-  return role === 'tenant_admin' || role === 'admin'
+  return role === 'tenant_admin' || role === 'admin' || role === 'tenant_assistant'
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

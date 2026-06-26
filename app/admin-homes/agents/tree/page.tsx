@@ -17,9 +17,11 @@ export default async function AgentsTreePage() {
   const user = await resolveAdminHomesUser()
   if (!user) redirect('/login?redirect=/admin-homes/agents/tree')
 
+  // W-TENANT-ASSISTANT UNIT 27: tenant_assistant added (top-tier role).
   const allowed =
     user.isPlatformAdmin === true ||
     user.position === 'tenant_admin' ||
+    user.position === 'tenant_assistant' ||
     user.position === 'assistant' ||
     user.position === 'area_manager' ||
     user.position === 'manager'
