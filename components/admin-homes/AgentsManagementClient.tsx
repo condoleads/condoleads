@@ -259,6 +259,18 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
     const teamMembers = getTeamMembers(agent.id)
     const isExpanded = expandedManagers.has(agent.id)
     const managerName = getManagerName(agent.parent_id)
+    // W-HOUSE-ACCOUNT UNIT 22: catch-all ownership display flag. When the
+    // agent is this tenant's house account (tenants.default_agent_id), the
+    // count cells (Territories / Buildings / Leads) carry an extra amber
+    // annotation showing that the agent owns the unassigned remainder by
+    // COMPUTATION (Phase 1 P-HOUSE resolver fallback), distinct from the
+    // EXPLICIT seeded counts (agent_property_access / agent_geo_buildings).
+    // No new server query is added: per-tenant unassigned counts are
+    // expensive (no defined "tenant universe" of scopes/buildings, and
+    // mls_listings has no tenant_id), so we surface the badge without a
+    // number. The existing tenant-scoped total_leads count is the running
+    // tally of catch-all-routed leads — annotated rather than replaced.
+    const isHouseAccount = !!tenantDefaultAgentId && agent.id === tenantDefaultAgentId
 
     return (
       <>
@@ -298,7 +310,7 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
                 {/* W-HOUSE-ACCOUNT UNIT 3: Crown badge when this agent is the
                     tenant's current default_agent_id. Amber harmonizes with
                     the org chart marker (Unit 2). */}
-                {tenantDefaultAgentId && agent.id === tenantDefaultAgentId && (
+                {isHouseAccount && (
                   <span
                     title="House account — catch-all for unrouted leads"
                     className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-xs font-medium"
@@ -311,26 +323,68 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
               {teamMembers.length > 0 && (
                 <p className="text-xs text-orange-600">{teamMembers.length} agent{teamMembers.length > 1 ? 's' : ''}</p>
               )}
+              {/* W-HOUSE-ACCOUNT UNIT 22: plain-language explanation of
+                  catch-all ownership. Only on the house-account row.
+                  Reinforces that the bare 0/0 counts to the right are
+                  EXPLICIT-only, and the agent additionally owns the
+                  computed remainder. */}
+              {isHouseAccount && (
+                <p className="text-[11px] text-amber-700 max-w-[18rem] leading-snug">
+                  Catch-all: receives any lead whose geo doesn't match an explicit assignment in this tenant.
+                </p>
+              )}
             </div>
           </td>
           {/* Territories */}
+          {/* W-HOUSE-ACCOUNT UNIT 22: explicit count (green) unchanged.
+              When this is the house account, add an amber "+ catch-all"
+              line BELOW so operators see explicit-vs-computed distinctly.
+              No number on the catch-all line — per-tenant unassigned
+              scope count isn't cheaply derivable (no defined tenant
+              universe set). Tooltip carries the why. */}
           <td className="px-5 py-4">
             <div className="flex items-center gap-1">
               <MapPin className="w-4 h-4 text-green-600" />
               <span className="font-semibold">{agent.geo_territories}</span>
+              <span className="text-xs text-gray-400 ml-1">explicit</span>
             </div>
+            {isHouseAccount && (
+              <p
+                className="text-[11px] text-amber-700 mt-0.5"
+                title="The house account computationally owns every geo scope in this tenant that has no explicit assignment (P-HOUSE resolver fallback). Per-tenant unassigned count is expensive to derive and not surfaced here."
+              >
+                + catch-all (all unassigned scopes)
+              </p>
+            )}
           </td>
           {/* Buildings */}
           <td className="px-5 py-4">
             <div className="flex items-center gap-1">
               <Building2 className="w-4 h-4 text-green-600" />
               <span className="font-semibold">{agent.assigned_buildings}</span>
+              <span className="text-xs text-gray-400 ml-1">explicit</span>
             </div>
+            {isHouseAccount && (
+              <p
+                className="text-[11px] text-amber-700 mt-0.5"
+                title="The house account computationally owns every building in this tenant that has no explicit pin (P-HOUSE resolver fallback). Per-tenant unassigned count is expensive to derive and not surfaced here."
+              >
+                + catch-all (all unassigned buildings)
+              </p>
+            )}
           </td>
           {/* Leads */}
           <td className="px-5 py-4">
             <p className="font-semibold">{agent.total_leads}</p>
             <p className="text-xs text-gray-400">{agent.new_leads} new · {agent.hot_leads} hot</p>
+            {isHouseAccount && (
+              <p
+                className="text-[11px] text-amber-700 mt-0.5"
+                title="The house account's lead count includes leads routed here by the P-HOUSE resolver fallback (no other agent matched the lead's geo)."
+              >
+                incl. catch-all routing
+              </p>
+            )}
           </td>
           {/* Status */}
           <td className="px-5 py-4">

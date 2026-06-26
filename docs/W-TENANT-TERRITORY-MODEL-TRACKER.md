@@ -3208,3 +3208,144 @@ amber row button INTO a less-prominent row overflow (kebab) menu.
 
   2 app files + tracker shipped together (live-tracker rule). HOLD push
   pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 22 RUN-LOG (2026-06-26) — surface catch-all ownership on agents dashboard
+
+Problem: the house account (Ovais on Aily, King Shah on WALLiam) is the
+computational catch-all for unrouted leads under Phase 1 (P-HOUSE
+resolver fallback), but his row on /admin-homes/agents shows Territories
+N / Buildings N / Leads N — counts pulled from EXPLICIT seeded rows
+only (agent_property_access + agent_geo_buildings + leads). Operators
+reasonably misread the counts as "owns nothing" when in fact the agent
+owns the remainder by computation. DISPLAY gap, not function gap.
+
+### Recon (count cost — confirmed expensive / not tenant-scoped)
+
+  - agent_property_access "unassigned scopes per tenant": requires a
+    defined "tenant scope universe" (set of geo cards available to this
+    tenant) which isn't stored anywhere. Computing NOT EXISTS over an
+    implicit universe is EXPENSIVE.
+  - agent_geo_buildings "unassigned buildings per tenant": same shape —
+    needs a defined "tenant buildings universe". EXPENSIVE.
+  - mls_listings.assigned_agent_id IS NULL: cheap globally (~3,993
+    today) but mls_listings has NO tenant_id column; not tenant-scoped.
+    Cannot be split per-tenant without joining via the resolver itself
+    (which is per-listing too expensive).
+  - leads.agent_id = house AND leads.tenant_id = scopedTenant: ALREADY
+    counted by page.tsx total_leads. This IS the running tally of
+    catch-all-routed leads (whether by explicit assignment of the house
+    account or by P-HOUSE fallback). Cheap.
+
+  Operator-locked B2 decision: "If the count is expensive, show the
+  badge without a number rather than a slow query; state which." -->
+  use the badge approach for territories + buildings. Annotate the
+  leads cell instead of introducing a new query.
+
+### Files
+
+  components/admin-homes/AgentsManagementClient.tsx
+    + Added isHouseAccount derivation per AgentRow (cheap closure over
+      already-passed tenantDefaultAgentId; no new prop).
+    + Role/Hierarchy column gains a plain-language amber subtext on the
+      house-account row reinforcing the catch-all semantic:
+        "Catch-all: receives any lead whose geo doesn't match an
+         explicit assignment in this tenant."
+    + Territories cell on the house-account row: count remains as-is
+      (with new "explicit" mini-label) + amber "+ catch-all (all
+      unassigned scopes)" line below. Tooltip explains why a number
+      isn't shown.
+    + Buildings cell on the house-account row: same treatment — amber
+      "+ catch-all (all unassigned buildings)" line.
+    + Leads cell on the house-account row: amber "incl. catch-all
+      routing" annotation (the count itself IS the running tally — no
+      number duplication).
+
+  Existing Crown amber "House Account" pill UNCHANGED (already in the
+  Role / Hierarchy column from UNIT 3). Non-house rows unchanged in
+  every cell.
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+### Smoke (display proof, live DB)
+
+  19 assertions PASS across 4 scenarios:
+    Aily view (default=Ovais):
+      - Ovais row: Crown pill + catch-all subtext + amber annotations on
+        Territories / Buildings / Leads cells. Explicit counts (0, 0, 0)
+        unchanged.
+      - Manager (Aily) (non-holder, role=manager): no pill / subtext /
+        annotation anywhere.
+    WALLiam view (default=King Shah):
+      - King Shah row: Crown pill + catch-all subtext + annotations.
+        Explicit counts SHOW REAL VALUES (11 territories explicit + 9
+        buildings explicit) — annotation appears alongside without
+        overwriting; explicit-vs-computed visibly distinct.
+      - Neo Smith (non-holder, role=agent): no pill / annotation.
+    Cross-tenant safety:
+      - Ovais rendered with WALLiam's default_agent_id (synthetic test):
+        no pill, no annotation — pivot is on agent.id == THIS tenant's
+        default, not on a global flag.
+    Null tenant default:
+      - When tenantDefaultAgentId is null, no row in the entire table
+        gets the annotation.
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T3 display proof: 19 assertions PASS
+  T4 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11,
+       L2.1), 0 new fails.
+  Aily / WALLiam state: unchanged (no DB writes — pure display layer).
+
+### What changed for live operators
+
+  Before: Ovais row read "Territories 0  /  Buildings 0  /  Leads 0",
+    visually identical to a brand-new no-territory agent. The Crown
+    pill alone (which most operators read as a status badge) didn't
+    make clear that this agent computationally owns the remainder.
+  After:
+    - Ovais row's Role/Hierarchy column shows the existing Crown
+      "House Account" pill PLUS a one-line amber sentence stating the
+      catch-all semantic in plain language.
+    - Each of the three count cells (Territories / Buildings / Leads)
+      gains a small amber annotation below the explicit count clearly
+      labeling the computed catch-all dimension. The explicit number
+      keeps its green styling; the catch-all annotation uses amber
+      (matching the Crown pill) so explicit vs computed are visually
+      distinct.
+    - No counts are faked. No seeding. No schema change. No resolver
+      change. Pure display-layer addition driven by the existing
+      tenantDefaultAgentId prop (already passed by page.tsx).
+
+### Multi-tenant proof
+
+  Annotation is rendered ONLY when agent.id === tenantDefaultAgentId,
+  driven by the SCOPED tenant's own default (already passed per
+  request by page.tsx since UNIT 3). Each tenant's house account sees
+  its own annotation; no global flag, no per-tenant constant. WALLiam
+  test verified inline (King Shah's row carries the annotation under
+  the WALLiam-scoped view). Tenant #3 onboarding requires zero
+  change — same prop path, same display rule.
+
+### Backups (timestamps)
+
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260626_105037
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_105324
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca: Ovais row shows the Crown pill
+    plus a one-line amber catch-all sentence; the three count cells
+    each show "0 explicit" plus an amber "+ catch-all (...)" line.
+    Non-house rows unchanged.
+  - If per-tenant unassigned-scope counts become cheap in a future unit
+    (e.g. a materialized "tenant geo universe" table), the catch-all
+    line can be upgraded from text-only to "+ N (catch-all)" without
+    further structural change.
+
+### Commit gate
+
+  1 app file + tracker shipped together (live-tracker rule). HOLD push
+  pending operator instruction.
