@@ -177,7 +177,13 @@ export default function EditAgentModal({ isOpen, onClose, onSuccess, agentId, ex
   }
 
   if (!isOpen) return null
-  const availableParents = agents.filter(a => a.id !== agentId && a.can_create_children !== false)
+  // W-ASSISTANT-FLOW UNIT 19: include role='assistant' as selectable reports-
+  // to targets regardless of can_create_children. Operator-locked model:
+  // sub-assistant is just an assistant reporting to another assistant — every
+  // assistant must be selectable so chains can be built. Self-exclusion
+  // (a.id !== agentId) preserved to prevent self-parenting (Unit 14 anti-
+  // orphan guard's UP-walk on the server PUT route is the backstop).
+  const availableParents = agents.filter(a => a.id !== agentId && (a.can_create_children !== false || (a as any).role === 'assistant'))
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

@@ -107,7 +107,12 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
 
   if (!isOpen) return null
 
-  const availableParents = agents.filter(a => a.can_create_children !== false)
+  // W-ASSISTANT-FLOW UNIT 19: include role='assistant' as selectable reports-
+  // to targets regardless of can_create_children. Operator-locked model:
+  // sub-assistant is just an assistant reporting to another assistant — every
+  // assistant must be selectable so chains can be built. Other roles keep
+  // the existing can_create_children !== false gate.
+  const availableParents = agents.filter(a => a.can_create_children !== false || (a as any).role === 'assistant')
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

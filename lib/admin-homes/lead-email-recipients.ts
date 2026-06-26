@@ -21,6 +21,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
+import { resolveAssistantAnchor, assistantInheritsLead } from '@/lib/admin-homes/assistant-anchor'
 
 // Re-export the email send helper's error types so consuming routes have one import surface.
 export {
@@ -65,9 +66,13 @@ export interface LeadEmailRecipients {
      *  field is forward-compat for tenants where the owner differs from
      *  the house-account holder. Opt-outs filtered. */
     tenant_owner: string | null
-    /** W-HOUSE-ACCOUNT UNIT 9 — assistant role copies. Forward-compat;
-     *  agents.role CHECK constraint doesn't include 'assistant' today, so
-     *  this is empty until that role lands. Opt-outs filtered. */
+    /** W-ASSISTANT-FLOW UNIT 19 — assistant role copies, scoped by reports-
+     *  to anchor. Top-tier-anchored assistants (anchor=tenant owner or
+     *  house account, possibly through an assistant chain) inherit EVERY
+     *  lead in the tenant. Branch-anchored assistants inherit ONLY leads
+     *  whose assigned-agent chain passes through their anchor. No-anchor /
+     *  cycle / inactive-anchor assistants inherit nothing. Opt-outs
+     *  filtered. */
     assistants: string[]
   }
 }
@@ -220,40 +225,88 @@ export async function getLeadEmailRecipients(
     }
   }
 
-  // ─── UNIT 9: tenant owner + assistants (top-layer copies) ────────────────
+  // ─── UNIT 9: tenant owner (top-layer copy) ──────────────────────────────
   // Tenant owner = role='tenant_admin' AND parent_id IS NULL AND tenant-
   // scoped. Today coincides with the house account (Aily Ovais / WALLiam
-  // King Shah) — dedupe handles the overlap. Forward-compat for tenants
-  // where owner != house_account.
+  // King Shah) — dedupe handles the overlap.
   //
-  // Assistants = role='assistant' AND tenant-scoped. agents.role CHECK
-  // doesn't include 'assistant' today; query returns 0 rows until the
-  // role lands (Phase 3 admin_assistant migration or similar).
+  // W-ASSISTANT-FLOW UNIT 19: assistants are NO LONGER collected here.
+  // Under the locked model an assistant's scope is determined by the
+  // resolved non-assistant anchor walking UP their reports-to chain. A
+  // single tenant-wide query that treats every assistant as top-layer
+  // (the Unit 9 behavior) was incorrect for branch-anchored assistants.
+  // The fork happens below, after we have the assigned agent's chain
+  // (used as the cheap branch-membership test).
   let tenantOwnerEmail: string | null = null
-  const assistantEmails: string[] = []
   {
     const { data: topLayerRows } = await supabase
       .from('agents')
       .select('id, role, email, notification_email, notification_preferences, parent_id')
       .eq('tenant_id', tenantId)
       .eq('is_active', true)
-      .in('role', ['tenant_admin', 'assistant'])
+      .eq('role', 'tenant_admin')
+      .is('parent_id', null)
 
     for (const raw of (topLayerRows || []) as (AgentEmailRow & { role: string | null; parent_id: string | null })[]) {
       if (isOptedOut(raw)) continue
       if (raw.id === agentId) continue  // owner is the assigned agent already in TO; no self-copy
       const email = raw.notification_email || raw.email || null
       if (!email) continue
-      if (raw.role === 'tenant_admin' && raw.parent_id === null) {
-        // Tenant owner. First one wins (typical case = exactly one owner).
-        if (!tenantOwnerEmail) {
-          tenantOwnerEmail = email
-          resolved.tenant_owner = email
-        }
-      } else if (raw.role === 'assistant') {
-        assistantEmails.push(email)
-        resolved.assistants.push(email)
+      if (!tenantOwnerEmail) {
+        tenantOwnerEmail = email
+        resolved.tenant_owner = email
       }
+    }
+  }
+
+  // ─── W-ASSISTANT-FLOW UNIT 19: assistants scoped by reports-to anchor ───
+  // For each active assistant in the tenant:
+  //   1. Walk UP their parent_id chain, skipping assistant nodes, to find
+  //      the first non-assistant anchor.
+  //   2. Classify anchor: top-tier (tenant owner OR house account) -> the
+  //      assistant inherits EVERY lead in the tenant. Branch -> inherits
+  //      only when the assigned agent is the anchor or in the anchor's
+  //      down-branch (equivalently, anchor.id is in the lead's UP-chain
+  //      ancestors that we already computed).
+  //   3. Cycle / no-anchor / inactive anchor -> assistant inherits nothing.
+  //   4. Opt-out (Unit 9/10) still filters at the end.
+  //
+  // Multi-tenant: every query in resolveAssistantAnchor is scoped to
+  // tenantId; cross-tenant parent_id is defensively treated as no-anchor.
+  const assistantEmails: string[] = []
+  {
+    // Fetch tenant.default_agent_id once (house-account classification
+    // input). The same value is re-fetched below for the house-account CC
+    // block — keeping it local here for now; the duplicate is a single
+    // .maybeSingle() and dedupe at assembly handles the eventual overlap.
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('default_agent_id')
+      .eq('id', tenantId)
+      .maybeSingle()
+    const houseAccountAgentIdForAnchor =
+      (tenantRow as { default_agent_id: string | null } | null)?.default_agent_id ?? null
+
+    const leadChainAncestorIds = (chain?.ancestors || []).map(a => a.id)
+
+    const { data: assistantRows } = await supabase
+      .from('agents')
+      .select('id, role, email, notification_email, notification_preferences, parent_id')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .eq('role', 'assistant')
+
+    for (const raw of (assistantRows || []) as (AgentEmailRow & { role: string | null; parent_id: string | null })[]) {
+      if (raw.id === agentId) continue  // assistant is the assigned agent -> already in TO
+      if (isOptedOut(raw)) continue
+      const email = raw.notification_email || raw.email || null
+      if (!email) continue
+
+      const anchor = await resolveAssistantAnchor(raw.id, tenantId, supabase, houseAccountAgentIdForAnchor)
+      if (!assistantInheritsLead(anchor, agentId, leadChainAncestorIds)) continue
+
+      assistantEmails.push(email)
+      resolved.assistants.push(email)
     }
   }
 

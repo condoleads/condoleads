@@ -2679,3 +2679,167 @@ convention.
 
   2 migrations + 1 app file + tracker + 2 rollback snapshots shipped
   together (live-tracker rule). HOLD push pending operator instruction.
+
+---
+
+## W-ASSISTANT-FLOW UNIT 19 RUN-LOG (2026-06-26) — assistant inherits flow by reports-to anchor
+
+Replaces the Unit 9 "every assistant is top-layer" treatment with operator-
+locked anchor-based inheritance. NO schema migration. NO new role. NO
+license logic. The 'assistant' role from Unit 11 stays as-is.
+
+### Locked model (operator)
+
+  - One assistant role. Sub-assistant = assistant reporting to another
+    assistant; not a separate type.
+  - An assistant INHERITS the lead/email scope of their FIRST NON-ASSISTANT
+    ancestor walking UP the parent_id chain.
+  - Top-tier anchor (tenant owner / house account) -> assistant sees ALL
+    leads in the tenant (including agent-less leads).
+  - Branch anchor (manager / area_manager / agent) -> assistant sees ONLY
+    leads whose assigned-agent chain passes through the anchor.
+  - Cycle / no-parent / inactive-anchor -> inherits NOTHING.
+  - Inheritance CHAINS: assistant B -> assistant A -> tenant_admin: B
+    inherits A's resolved anchor, which is the tenant_admin (top tier),
+    so B sees everything. Chain depth bounded; cycle-safe.
+  - Existing Unit 9/10 admin opt-out still filters at the end (an over-
+    copied assistant can be muted by tenant_admin/assistant viewers).
+  - Existing tenant_owner / house_account CC chain UNCHANGED — only
+    assistant collection is rescoped.
+
+### The bug fixed in B1
+
+  AddAgentModal:110 + EditAgentModal:180 filtered
+  `availableParents = agents.filter(a => a.can_create_children !== false)`.
+  Assistants default to can_create_children=false, so they were silently
+  DROPPED from the Reports-To dropdown — assistant->assistant chains
+  could not be authored.
+
+  Fix: extend the filter to `|| a.role === 'assistant'`. Reports-To
+  selector itself was already visible for role='assistant'; both modals
+  always render it. No UI gating change needed.
+
+### Files
+
+  components/admin-homes/AddAgentModal.tsx
+    + availableParents filter now includes role='assistant' regardless
+      of can_create_children. 1-line change at the dropdown source.
+  components/admin-homes/EditAgentModal.tsx
+    + same filter change, preserving the self-exclusion guard.
+  lib/admin-homes/assistant-anchor.ts  (NEW)
+    + resolveAssistantAnchor(assistantId, tenantId, supabase,
+                             houseAccountAgentId): AssistantAnchor
+        - UP-walk parent_id, skipping assistant nodes
+        - 10-hop cap + seen-set cycle guard
+        - tenant_id mismatch on any visited row -> no anchor (defensive
+          multi-tenant guard)
+        - classification: isTopTier when anchor is role='tenant_admin'
+          with parent_id=NULL OR anchor.id == tenant.default_agent_id
+        - inactive anchor flagged separately (anchorInactive=true)
+    + assistantInheritsLead(anchor, leadAssignedAgentId, leadChainAncestorIds): boolean
+        - top-tier anchor -> always true (even when leadAssignedAgentId
+          is null; agent-less leads still reach top-tier assistants)
+        - branch anchor -> true when anchor.id == leadAssignedAgentId
+          OR anchor.id in leadChainAncestorIds
+        - no-anchor / inactive-anchor -> false
+  lib/admin-homes/lead-email-recipients.ts
+    + import {resolveAssistantAnchor, assistantInheritsLead}
+    + Tenant-owner-only block (was Unit 9 combined block): query narrowed
+      to role='tenant_admin' AND parent_id IS NULL. Behavior preserved.
+    + NEW block: fetch tenants.default_agent_id, walkHierarchy
+      ancestor-id snapshot, then per-active-assistant:
+        a. resolveAssistantAnchor with cycle / inactive / cross-tenant
+           defenses
+        b. assistantInheritsLead test against the lead's chain
+        c. include in BCC + resolved.assistants only on pass
+      Opt-out filter (Unit 9/10) still applied per-row.
+    + resolved.assistants doc updated to reflect the new semantics.
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+### T3 fork smoke (synthetic mini-org under Aily; pre-cleaned)
+
+  Built 11 synthetic agents:
+    M1 (manager, parent=null)
+    A_top (assistant, parent=Ovais)               [TOP TIER]
+    A_M1 (assistant, parent=M1)                   [BRANCH=M1.down]
+    A_M1_2 (assistant, parent=A_M1)               [chain skips asst -> M1]
+    G1 (agent, parent=M1)
+    Solo (agent, parent=null)                     [solo agent, no descendants]
+    A_solo (assistant, parent=Solo)               [BRANCH=Solo only]
+    A_orphan (assistant, parent=null)             [NO ANCHOR]
+    A_cycle_1 + A_cycle_2 (assistants, mutual)    [CYCLE]
+    A_via_top_chain (assistant, parent=A_top)     [chain resolves to top]
+
+  3 lead scenarios:
+    L1: lead assigned to G1 (inside M1's branch)
+      A_top YES, A_M1 YES, A_M1_2 YES (chain skips A_M1 to M1),
+      A_solo NO, A_orphan NO, A_cycle_1/2 NO, A_via_top_chain YES.
+    L2: lead assigned to Solo
+      A_top YES, A_M1 NO, A_M1_2 NO, A_solo YES, A_orphan NO,
+      A_cycle_1 NO, A_via_top_chain YES.
+    L3: agent-less lead (agentId=null)
+      A_top YES (top-tier still gets agent-less leads), A_M1 NO,
+      A_solo NO, A_orphan NO, A_via_top_chain YES.
+
+  20 fork-membership assertions PASSED. Post-cleanup: 0 synthetic rows
+  remaining (verified via fresh-connection re-query).
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T3 fork smoke: 20 assertions PASS
+  T4 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11, L2.1).
+       0 NEW fails. (One run showed transient 15/5 due to spawn env race
+       on L2.6/L2.7 child processes; immediately reran 17/3 stable.
+       Tests don't touch any of UNIT 19's surfaces.)
+  Aily / WALLiam state: unchanged (no DB writes from this unit).
+
+### What changed for live recipients
+
+  Before this unit: every active assistant in a tenant received BCC on
+  every lead routed within that tenant — even leads outside their
+  reporting branch. Effectively top-layer for all.
+
+  After this unit:
+    - Assistant reporting to tenant_admin owner / house account / a
+      tenant-assistant whose chain resolves to top -> behavior unchanged
+      (still gets all leads). Today this matches Unit 11's behavior for
+      tenant-anchored assistants.
+    - Assistant reporting to a manager / area_manager / agent -> ONLY
+      receives leads from that anchor's down-branch. Out-of-branch leads
+      no longer flood their inbox.
+    - Assistant with no anchor (orphan / cycle / inactive anchor) -> no
+      copies. Surfaced as own root row via existing Unit 6 orphan
+      handling.
+
+### Multi-tenant proof
+
+  resolveAssistantAnchor verifies every visited row's tenant_id == the
+  passed tenantId; cross-tenant parent_id (defensive) terminates with
+  no-anchor. The lead-email-recipients assistant block filters by
+  tenant_id at the top-level query. WALLiam parity: tested via the C12
+  baseline (17/3, no new fails).
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca:
+    - Add an assistant reporting to a manager, fire a lead within that
+      manager's branch -> assistant gets BCC.
+    - Fire a lead outside that manager's branch -> assistant does NOT
+      get a copy.
+    - Repeat with assistant reporting to Ovais (top tier) -> always
+      gets BCC.
+  - C12 brittle assertions (c8b-2, c11, L2.1) baseline carry-over; not
+    in this unit's scope.
+
+### Backups (timestamps)
+
+  components/admin-homes/AddAgentModal.tsx.backup_20260626_071648
+  components/admin-homes/EditAgentModal.tsx.backup_20260626_071648
+  lib/admin-homes/lead-email-recipients.ts.backup_20260626_071648
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_094823
+
+### Commit gate
+
+  4 app/lib files (3 edited + 1 new) + tracker shipped together (live-
+  tracker rule). HOLD push pending operator instruction.
