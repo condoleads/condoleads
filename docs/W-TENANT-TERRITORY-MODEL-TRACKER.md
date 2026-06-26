@@ -2969,3 +2969,107 @@ operator can't change the house account from the dashboard.
 
   1 app file + tracker shipped together (live-tracker rule). HOLD push
   pending operator instruction.
+
+---
+
+## W-AGENT-CREATE UNIT 18 RUN-LOG (2026-06-26) — auto-populate brokerage on Add Agent
+
+Goal: on Add Agent, pre-fill brokerage name + brokerage address from the
+scoped tenant's values so they're consistent across a tenant's agents
+and not re-typed/mistyped. Fields remain editable. No fabricated
+defaults: tenant has no value -> input stays blank.
+
+### Recon
+
+  Tenants schema (information_schema):
+    brokerage_name      text
+    brokerage_address   text
+    brokerage_phone     text     (out of scope this unit; not seeded)
+
+  Live values verified:
+    Aily.brokerage_name    = "PREMIER MATRIX REALTY LTD. BROKERAGE"
+    Aily.brokerage_address = "208 Spring Garden Ave, North York, ON M2N 3G8, Canada"
+    WALLiam.brokerage_name = "WALLiam Realty Inc., Brokerage"
+    WALLiam.brokerage_address = "1 Placeholder Ave, Suite 100, Toronto, ON M5V 0A1"
+
+  Modal scope:
+    components/admin-homes/AddAgentModal.tsx mounts at:
+      - components/admin-homes/AgentsManagementClient.tsx (the agents
+        page list)
+    Confirmed via grep — no other System 2 caller mounts AddAgentModal.
+    components/admin/* paths are System 1 (per CLAUDE.md) and untouched.
+
+### Files
+
+  app/admin-homes/agents/page.tsx
+    + tenants SELECT: append brokerage_name, brokerage_address (allow-list
+      extended; never SELECT *).
+    + Derive tenantBrokerageName / tenantBrokerageAddress from the scoped
+      tenant row; null when the row has no value.
+    + Pass both as props to AgentsManagementClient.
+
+  components/admin-homes/AgentsManagementClient.tsx
+    + Accept tenantBrokerageName + tenantBrokerageAddress on the prop
+      signature (default null).
+    + Thread both to AddAgentModal.
+
+  components/admin-homes/AddAgentModal.tsx
+    + Props interface extended: tenantBrokerageName + tenantBrokerageAddress.
+    + New useEffect on [isOpen, tenantBrokerageName, tenantBrokerageAddress]:
+      when modal opens, replace form.brokerage_name + form.brokerage_address
+      with the tenant values (|| '' fallback for null). Operator edits
+      during a single open persist; closing + reopening resets to tenant
+      defaults (each open is a fresh add).
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+### Smoke (mirror of modal seed logic against live tenant rows)
+
+  12 assertions PASS across 4 scenarios:
+    Aily:    seeded form.brokerage_name + address match Aily tenant row.
+    WALLiam: seeded values match WALLiam tenant row; WALLiam value does
+             NOT leak to Aily (per-tenant scoping intact).
+    NULL:    tenant with null brokerage values -> form fields blank
+             (no fabricated default).
+    Reopen:  operator-typed value overwritten by tenant value on reopen
+             (each open is a fresh add; predictable seed semantics).
+  No persistent DB writes.
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T3 form-seed smoke: 12 assertions PASS
+  T4 C12 regression: 17 PASS / 3 FAIL -- same baseline (c8b-2, c11, L2.1),
+       0 new fails.
+  Aily / WALLiam state: unchanged (no DB writes).
+
+### Multi-tenant proof
+
+  Brokerage values flow only from the scoped tenant row (selected by
+  scopedTenantId derived in the server page); never from a per-tenant
+  constant in code. Tenant #3 onboarding requires zero changes: their
+  brokerage_name + brokerage_address are read via the same SELECT path
+  and seed the modal identically. Null-value tenants stay blank — no
+  cross-tenant default leak.
+
+### Backups (timestamps)
+
+  app/admin-homes/agents/page.tsx.backup_20260626_101140
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260626_101140
+  components/admin-homes/AddAgentModal.tsx.backup_20260626_101140
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_101508
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca: Add Agent -> brokerage fields
+    pre-filled with Aily's brokerage; edit a field then save -> the
+    edited value persists on the agent row; reopen the modal for another
+    new agent -> brokerage fields back to tenant defaults.
+  - If operators need brokerage_phone seeded too (out of scope this
+    unit, not in operator's spec), a follow-up unit would mirror this
+    pattern on the (currently absent) phone fields in AddAgentModal.
+
+### Commit gate
+
+  3 app files + tracker shipped together (live-tracker rule). HOLD push
+  pending operator instruction.

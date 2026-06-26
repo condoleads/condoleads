@@ -42,7 +42,12 @@ interface Agent {
 // EditAgentModal only renders the opt-out toggle for viewers who can write
 // it. Backstop is the server PUT gate (Unit 9); this stops a non-admin
 // viewer being shown a control that would 403.
-export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain, tenantId, tenantDefaultAgentId = null, canSetOversightOptOut = false }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null, tenantId: string | null, tenantDefaultAgentId?: string | null, canSetOversightOptOut?: boolean }) {
+// W-AGENT-CREATE UNIT 18: tenantBrokerageName + tenantBrokerageAddress
+// threaded through to AddAgentModal so the brokerage fields pre-fill from
+// the scoped tenant's values. Each is null when the tenant row has no
+// value (no fabricated default). Multi-tenant safe — driven entirely by
+// the scoped tenant's own columns, never hardcoded.
+export default function AgentsManagementClient({ agents, tenants, tenantName, tenantBrandName, tenantDomain, tenantId, tenantDefaultAgentId = null, canSetOversightOptOut = false, tenantBrokerageName = null, tenantBrokerageAddress = null }: { agents: Agent[], tenants: Tenant[], tenantName: string | null, tenantBrandName: string | null, tenantDomain: string | null, tenantId: string | null, tenantDefaultAgentId?: string | null, canSetOversightOptOut?: boolean, tenantBrokerageName?: string | null, tenantBrokerageAddress?: string | null }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -504,6 +509,8 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
         tenantBrandName={tenantBrandName}
         tenantDomain={tenantDomain}
         tenantId={tenantId}
+        tenantBrokerageName={tenantBrokerageName}
+        tenantBrokerageAddress={tenantBrokerageAddress}
       />
       <EditAgentModal
         isOpen={showEditModal}

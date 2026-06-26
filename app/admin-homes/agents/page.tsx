@@ -53,9 +53,12 @@ export default async function AdminHomesAgentsPage() {
   // W-HOUSE-ACCOUNT UNIT 3: include default_agent_id so the client can render
   // the house-account marker (Crown badge) on the holding agent's row. Explicit
   // cols only (CLAUDE.md: NEVER SELECT * on tenants — holds api keys).
+  // W-AGENT-CREATE UNIT 18: include brokerage_name + brokerage_address so the
+  // Add Agent modal can pre-fill those inputs from the tenant's values. Keeps
+  // the allow-list narrow; never *.
   let tenantsQuery = supabase
     .from('tenants')
-    .select('id, name, domain, brand_name, default_agent_id')
+    .select('id, name, domain, brand_name, default_agent_id, brokerage_name, brokerage_address')
     .order('name')
 
   if (!seeAll && scopedTenantId) {
@@ -80,6 +83,12 @@ export default async function AdminHomesAgentsPage() {
     ? (_c10_scopedTenant.brand_name || _c10_scopedTenant.name || null)
     : null
   const tenantDomain = _c10_scopedTenant?.domain ?? null
+  // W-AGENT-CREATE UNIT 18: scoped-tenant brokerage values for Add Agent
+  // pre-fill. Tenant is the source of truth for "the brokerage this tenant
+  // operates as." Each falls back to null if the tenant row has no value —
+  // the modal then leaves the input blank (no fabricated default).
+  const tenantBrokerageName = _c10_scopedTenant?.brokerage_name ?? null
+  const tenantBrokerageAddress = _c10_scopedTenant?.brokerage_address ?? null
 
   const agentsWithStats = await Promise.all(
     (agents || []).map(async (agent) => {
@@ -120,5 +129,5 @@ export default async function AdminHomesAgentsPage() {
     || user?.position === 'tenant_admin'
     || user?.position === 'assistant'
 
-  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} tenantDefaultAgentId={tenantDefaultAgentId} canSetOversightOptOut={canSetOversightOptOut} />
+  return <AgentsManagementClient agents={agentsWithStats} tenants={tenants || []} tenantName={tenantName} tenantBrandName={tenantBrandName} tenantDomain={tenantDomain} tenantId={scopedTenantId} tenantDefaultAgentId={tenantDefaultAgentId} canSetOversightOptOut={canSetOversightOptOut} tenantBrokerageName={tenantBrokerageName} tenantBrokerageAddress={tenantBrokerageAddress} />
 }

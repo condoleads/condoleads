@@ -25,9 +25,16 @@ interface Props {
   // D26 (P3.F5): tenant_id passed from parent (admin-scope), not from
   // hostname-derived useTenantId hook. Prevents cross-tenant data leaks.
   tenantId?: string | null
+  // W-AGENT-CREATE UNIT 18: pre-fill the brokerage fields from the tenant
+  // so new agents inherit the tenant's brokerage by default (editable).
+  // null when the tenant has no value -> input stays blank (no fabricated
+  // default). Both values are surfaced via app/admin-homes/agents/page.tsx
+  // from the scoped tenant row.
+  tenantBrokerageName?: string | null
+  tenantBrokerageAddress?: string | null
 }
 
-export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgents = [], preselectedParentId = null, tenantBrandName = null, tenantDomain = null, tenantId = null }: Props) {
+export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgents = [], preselectedParentId = null, tenantBrandName = null, tenantDomain = null, tenantId = null, tenantBrokerageName = null, tenantBrokerageAddress = null }: Props) {
   const [agents, setAgents] = useState<Agent[]>(existingAgents)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -47,6 +54,21 @@ export default function AddAgentModal({ isOpen, onClose, onSuccess, existingAgen
   useEffect(() => {
     if (preselectedParentId) setFormData(p => ({ ...p, parent_id: preselectedParentId }))
   }, [preselectedParentId, isOpen])
+
+  // W-AGENT-CREATE UNIT 18: seed brokerage_name + brokerage_address from
+  // the tenant when the modal opens. Operator-locked behavior: each open
+  // is a fresh add, so we replace the field values with the tenant's
+  // current values on every open (operator's edits during a single open
+  // persist; closing then re-opening resets to tenant defaults). When the
+  // tenant has no value the input stays blank — no fabricated default.
+  useEffect(() => {
+    if (!isOpen) return
+    setFormData(p => ({
+      ...p,
+      brokerage_name: tenantBrokerageName || '',
+      brokerage_address: tenantBrokerageAddress || '',
+    }))
+  }, [isOpen, tenantBrokerageName, tenantBrokerageAddress])
 
   useEffect(() => {
     if (isOpen && existingAgents.length === 0) {
