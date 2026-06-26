@@ -2843,3 +2843,129 @@ license logic. The 'assistant' role from Unit 11 stays as-is.
 
   4 app/lib files (3 edited + 1 new) + tracker shipped together (live-
   tracker rule). HOLD push pending operator instruction.
+
+---
+
+## W-HOUSE-ACCOUNT UNIT 17 RUN-LOG (2026-06-26) — restore missing dashboard "Set as house account" action
+
+Symptom (live aily.ca/admin-homes/agents, platform_admin viewer): Ovais's
+row shows the disabled "Current house account" span (correct), but no
+OTHER eligible agent row shows the assignable "Set as house" button —
+operator can't change the house account from the dashboard.
+
+### Recon
+
+  R1 (gate audit). AgentsManagementClient.tsx:326 render gate is
+    structurally correct:
+      canSetOversightOptOut && tenantId && (agent as any).role !== 'assistant' && (
+        tenantDefaultAgentId === agent.id
+          ? <span>Current house account</span>
+          : <button>Set as house</button>
+      )
+    File UNCHANGED since fee54461 (Unit 13). page.tsx UNCHANGED since
+    18c71f2 (Unit 10). canSetOversightOptOut computed + passed correctly.
+    For platform_admin: user.isPlatformAdmin=true -> canSetOversightOptOut=
+    true. For aily.ca host: hostTenantId=AILY -> scopedTenantId=AILY ->
+    tenantId prop=AILY (truthy). Gate evaluates true for Ovais (proving
+    the gate works -- span renders), and would evaluate true for Manager
+    (Aily) when its row is rendered.
+
+  R2 (cause classification). NONE of the offered candidates (a/b/c/d)
+    matched static analysis:
+      (a) viewer-permission false -> would block Ovais's span too; doesn't.
+      (b) eligible-role filter excludes shown rows -> filter is just
+          `role !== 'assistant'`; Manager.role='manager' passes.
+      (c) regression in Units 14/16b/19 -> git log shows none touched
+          AgentsManagementClient.tsx or page.tsx.
+      (d) current-holder check mis-fires on all rows -> would show
+          "Current house account" span on every row; doesn't.
+    THE ACTUAL CAUSE: row VISIBILITY. expandedManagers initial state at
+    line 50 was `new Set()` -> every nested row hidden by default. Under
+    Units 5/6/7's operating-tree nesting, every non-owner agent is nested
+    under their parent_id. With the collapsed default, only top-level
+    rows render. For Aily that's [Olga (assistant -> no action), Ovais
+    (holder -> disabled span)] -- both eligible-non-holders (Manager,
+    Agent (Aily)) live under Ovais and need a manual chevron click.
+    Operators never saw the button.
+
+  R3 (eligible non-holders confirmed by live probe).
+      Ovais (319ad339, tenant_admin, parent=NULL, active)   = HOLDER
+      Olga Condo (3c332140, assistant, parent=NULL, active) = assistant
+      Manager (Aily) (3c17dc80, manager, parent=Ovais, active) = ELIGIBLE
+      Agent (Aily) (28fee333, agent, parent=Manager, active)   = ELIGIBLE
+    Both eligible non-holders nest under Ovais (or under a child of
+    Ovais) and were collapsed-by-default.
+
+### Fix
+
+  components/admin-homes/AgentsManagementClient.tsx:50
+    BEFORE: useState<Set<string>>(new Set())
+    AFTER:  useState<Set<string>>(
+              () => new Set(agents.filter(a =>
+                agents.some(x => x.parent_id === a.id)
+              ).map(a => a.id))
+            )
+
+  Every agent that has at least one child in the visible set is added
+  to expandedManagers on initial render. Lazy initializer (function form)
+  -- runs once at mount only.
+  Manual collapse still works -- toggleExpand mutates the set as before.
+  Multi-tenant safe -- driven entirely by the per-tenant `agents` prop,
+  no hardcoding.
+
+  Per-row gate (line 326) UNCHANGED. validate_house_account contract
+  intact (Phase 1). Opt-out (Unit 9/10), assistant exclusion (Unit 13),
+  holder disabled-span (Unit 13) all UNCHANGED.
+
+### Smoke (render proof, SAVEPOINT-isolated; pre-cleaned)
+
+  Mirror of the client's logic against live Aily agents + default:
+    Auto-expanded by initial state: [Ovais, Manager (Aily)]
+    Rendered table rows by default: [Olga, Ovais, Manager (Aily), Agent (Aily)]
+    Per-row action:
+      Olga          (assistant)    -> NO ACTION
+      Ovais         (tenant_admin) -> DISABLED SPAN "Current house account"
+      Manager (Aily)(manager)      -> BUTTON "Set as house"
+      Agent (Aily)  (agent)        -> BUTTON "Set as house"
+    Non-admin viewer simulation: every row -> NO ACTION (gate-off).
+  8 assertions PASSED. No persistent DB writes.
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T3 render proof: 8 assertions PASS
+  T4 C12 regression: 17 PASS / 3 FAIL -- same baseline (c8b-2, c11, L2.1),
+       0 new fails.
+  Aily / WALLiam state: unchanged (no DB writes).
+
+### What changed for live operators
+
+  Before this unit: the dashboard's "Set as house account" action existed
+  in source code per Unit 13 but was effectively unreachable -- nested
+  rows stayed collapsed by default, so the only visible rows for typical
+  tenants were the owner (disabled span) and any solo-parented assistants
+  (excluded by gate). The operator couldn't change the house account
+  without first clicking the chevron next to the owner -- and there was
+  no signal in the UI that an expand step was needed.
+
+  After this unit: every agent with team members is auto-expanded on
+  mount; every eligible non-holder row is visible AND shows the
+  assignable button. Manager (Aily) and Agent (Aily) on aily.ca are now
+  directly assignable from the dashboard. The collapse toggle still
+  works for branches an operator wants to hide.
+
+### Backups (timestamps)
+
+  components/admin-homes/AgentsManagementClient.tsx.backup_20260626_100410
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_100602
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca: confirm Manager (Aily) row shows
+    "Set as house" button on page load (no chevron click required) and
+    that clicking moves the pill via the validated PATCH.
+
+### Commit gate
+
+  1 app file + tracker shipped together (live-tracker rule). HOLD push
+  pending operator instruction.

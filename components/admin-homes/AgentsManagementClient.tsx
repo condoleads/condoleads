@@ -47,7 +47,21 @@ export default function AgentsManagementClient({ agents, tenants, tenantName, te
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editAgentId, setEditAgentId] = useState<string | null>(null)
-  const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set())
+  // W-HOUSE-ACCOUNT UNIT 17: default-expand every row that has team
+  // members. Unit 13's "Set as house account" row action is rendered per
+  // AgentRow but only DOM-rendered when the row is visible. Under Unit 5/
+  // 6/7's operating-tree nesting, every non-owner agent is nested under
+  // their parent; with the prior `new Set()` initial state, those rows
+  // stayed collapsed by default and the assignable action was effectively
+  // hidden — operators saw only Ovais's disabled "Current house account"
+  // and Olga's no-action (assistant) and concluded the action was missing.
+  //
+  // Initializer lazy form: computed once at mount from the `agents` prop;
+  // collected at expand-call sites still mutate the set. Multi-tenant
+  // safe — driven entirely by the per-tenant `agents` prop, no hardcoding.
+  const [expandedManagers, setExpandedManagers] = useState<Set<string>>(
+    () => new Set(agents.filter(a => agents.some(x => x.parent_id === a.id)).map(a => a.id))
+  )
   const [preselectedParentId, setPreselectedParentId] = useState<string | null>(null)
 
   const tenantMap = Object.fromEntries(tenants.map(t => [t.id, t]))
