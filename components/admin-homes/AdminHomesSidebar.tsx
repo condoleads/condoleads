@@ -17,6 +17,11 @@ const ALL_NAV: { href: string; label: string; icon: string; positions: PositionG
   // access; tenant_assistant inherits the same nav surface plus the admin
   // gates elsewhere give them tenant-wide write authority.
   { href: '/admin-homes/agents',    label: 'Agents',    icon: '👥', positions: ['tenant_admin', 'tenant_assistant', 'assistant', 'area_manager', 'manager'] },
+  // W-TERRITORY-VIEW UNIT 30: surface the 7 production territory views
+  // (Agents/Cards/Geography/Pins/Buildings/Health/Detail) at the top
+  // level. Discoverability fix — no new components; the page wraps the
+  // existing TerritoryTab. Visible to everyone who can have territory.
+  { href: '/admin-homes/territory', label: 'Territory', icon: '🗺️', positions: ['tenant_admin', 'tenant_assistant', 'assistant', 'area_manager', 'manager', 'agent'] },
   { href: '/admin-homes/bulk-sync', label: 'Bulk Sync', icon: '🔄', positions: 'platform_admin_only' },
   { href: '/admin-homes/tenants',   label: 'Tenants',   icon: '🏢', positions: 'platform_admin_only' },
   { href: '/admin-homes/listings',  label: 'Listings',  icon: '📄', positions: ['tenant_admin', 'tenant_assistant', 'assistant'] },

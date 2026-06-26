@@ -3906,3 +3906,173 @@ Operator-locked model — SUPERSEDES Unit 25's anchor-based admin gating:
   Migration (already applied) + 14 app files + tracker + 1 rollback
   snapshot shipped together (live-tracker rule). HOLD push pending
   operator instruction.
+
+---
+
+## W-TERRITORY-VIEW UNIT 30 RUN-LOG (2026-06-26) — surface the existing territory view (sidebar entry + real page)
+
+Problem (UNIT 29 recon confirmed): 7 production territory views exist
+(Agents / Cards / Geography / Pins / Buildings / Health / Detail) all
+wired to real endpoints, but reachable ONLY through the cockpit URL
+pattern (/admin-homes/tenants/[id]). No "Territory" entry in the
+sidebar. The page at /admin-homes/territory was a pure REDIRECT —
+never rendered anything. The work was invisible to operators.
+
+Fix shape (operator-locked): discoverability ONLY — no new components,
+no changes to the per-agent Assign flow, no changes to the 7 view
+components. Promote the redirect-page to a real server page that
+mounts the existing TerritoryTab; add a top-level "Territory" entry
+to the sidebar.
+
+### Recon-confirm
+
+  R1. app/admin-homes/territory/page.tsx — confirmed pure redirect
+      (auth check, then redirect to cockpit or tenants list).
+  R2. AdminHomesSidebar.tsx ALL_NAV pattern: `PositionGate =
+      'all' | 'platform_admin_only' | AdminHomesPosition[]`. Filter
+      at line 44-48 admits via position list. Territory slots between
+      Agents and Bulk Sync (operations grouping).
+  R3. Server-page scope pattern from app/admin-homes/agents/page.tsx:
+      `resolveAdminHomesUser` + `getCurrentTenantId` + scope.ts
+      `isCrossTenantView` / `getScopedTenantId`. Cross-tenant
+      universal view (platform_admin no host/no selected) → redirect
+      to /admin-homes/tenants (same fallback as the prior redirect).
+  R3b. TerritoryTab is a 'use client' component, mountable from a
+      server page. Default view was hardcoded 'agents'.
+
+### Files
+
+  app/admin-homes/territory/page.tsx
+    BEFORE: pure redirect to cockpit / tenants list.
+    AFTER:  real server page that:
+      - resolves user + scoped tenant via the same pattern as
+        app/admin-homes/agents/page.tsx
+      - universal-view (no tenant scope) -> redirect to
+        /admin-homes/tenants (pick a tenant; matches prior fallback)
+      - tenant-scoped viewer -> fetches scoped tenant name
+        (allow-list: id, name only; no SELECT *) and renders
+        TerritoryTab with defaultView="geography" (operator-locked
+        landing — the "who owns which scope" picture)
+      - Page header explains the views in plain language.
+
+  components/admin-homes/AdminHomesSidebar.tsx
+    + One new ALL_NAV entry between Agents and Bulk Sync:
+        { href: '/admin-homes/territory', label: 'Territory', icon: '🗺️',
+          positions: ['tenant_admin', 'tenant_assistant', 'assistant',
+                      'area_manager', 'manager', 'agent'] }
+    Visible to everyone who can have territory; platform_admin sees
+    it too because they're synthesized to position='tenant_admin'
+    via auth.ts. legacy 'support'/'managed' positions excluded.
+
+  components/admin-homes/cockpit/tabs/TerritoryTab.tsx
+    + Optional `defaultView?: View` prop added (default 'agents').
+      Cockpit callers omit the prop -> behavior identical.
+      Standalone page passes defaultView="geography".
+    No other change. The 7 view components — AgentsView, CardsView,
+    GeographyView, PinsView, BuildingsView, HealthView,
+    TerritoryCascadeChart — are UNTOUCHED.
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+  Per-agent Assign flow (Assign button on /admin-homes/agents →
+  /admin-homes/agents/[id] with Geo / Building / Listing assignment
+  sections) UNTOUCHED. Two complementary surfaces: per-agent form-
+  driven + per-tenant hierarchy-driven.
+
+### Smoke (nav + page-resolution mirror, no DB writes)
+
+  23 assertions PASS across 4 sections:
+    1) Sidebar Territory entry visibility (9 viewer profiles):
+       - platform_admin: TRUE (synthesized as position='tenant_admin')
+       - tenant_admin Ovais: TRUE
+       - tenant_assistant: TRUE (UNIT 27)
+       - plain assistant: TRUE
+       - area_manager: TRUE
+       - manager: TRUE
+       - plain agent: TRUE
+       - support (legacy): FALSE (not in positions list)
+       - managed (legacy): FALSE
+    2) Page resolution mirror (5 scenarios):
+       - platform_admin on aily.ca host -> render Aily territory
+       - platform_admin no scope (universal) -> redirect to tenants
+       - tenant-scoped owner Ovais on aily.ca -> render Aily
+       - tenant-scoped owner on walliam.ca -> render WALLiam
+       - plain agent on aily.ca -> render Aily
+    3) Per-agent Assign flow integrity:
+       - Assign button still links to /admin-homes/agents/[id]
+         with MapPin icon (regex match verified)
+       - per-agent page still exists
+    4) Territory view files untouched (file-existence check):
+       - AgentsView, CardsView, GeographyView, PinsView,
+         BuildingsView, HealthView, TerritoryCascadeChart all
+         present.
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T3 nav + page-resolution proof: 23 assertions PASS
+  T4 C12 regression: 17 PASS / 3 FAIL — same baseline (c8b-2, c11,
+       L2.1), 0 new fails.
+  Aily / WALLiam state: unchanged (no DB writes — pure mount + nav).
+
+### What changed for live operators
+
+  Before:
+    - No "Territory" link anywhere in the sidebar.
+    - /admin-homes/territory just redirected to the cockpit / tenants
+      list — never showed a view.
+    - The 7 production territory views were reachable only by drilling
+      into the cockpit per-tenant. Tenant-scoped operators landed
+      there via auto-redirect but had no signal that "Territory" was a
+      sub-tab; platform admins had to know the cockpit URL pattern.
+  After:
+    - Sidebar shows "Territory" (map pin icon) to every viewer who
+      can have territory.
+    - Click -> lands on /admin-homes/territory, scoped to the viewer's
+      tenant, with GeographyView as the default sub-view (the
+      "who owns which scope" overview, ASSIGNED / INHERITED / NONE
+      per scope per access-type, carve-up modal one click away).
+    - All 6 other sub-views (Agents/Cards/Pins/Buildings/Health/
+      Detail) reachable via the in-page tab bar that was already there.
+    - For Aily today (UNIT 28 data): GeographyView shows ~0 ASSIGNED
+      rows + everything else INHERITED from the house account — the
+      blank-canvas-with-fallback picture the operator described as
+      "the work is wired but invisible." Now visible.
+
+### Multi-tenant proof
+
+  Page resolves scoped tenant the same way every other admin-homes
+  page does (scope.ts isCrossTenantView + getScopedTenantId). Tenant
+  name fetch uses an explicit allow-list (id, name) — no SELECT *.
+  TerritoryTab + its 7 sub-views are already tenant-scoped via the
+  tenantId prop (queries all filter by tenant_id). Tenant #3
+  onboarding: zero change — same prop flow.
+
+### Backups (timestamps)
+
+  app/admin-homes/territory/page.tsx.backup_20260626_150309
+  components/admin-homes/AdminHomesSidebar.tsx.backup_20260626_150309
+  components/admin-homes/cockpit/tabs/TerritoryTab.tsx.backup_20260626_150309
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260626_150537
+
+### Open follow-ups
+
+  - Live operator click-test on aily.ca:
+    - Sidebar shows "Territory" (map pin icon) — click navigates
+      to /admin-homes/territory.
+    - GeographyView renders by default — area / municipality /
+      community drill, ASSIGNED / INHERITED / NONE per scope, carve-up
+      modal reachable.
+    - In-page tab bar still works — switch to AgentsView, CardsView,
+      etc. without leaving the page.
+    - Per-agent Assign flow on /admin-homes/agents/[id] still opens
+      with the same Geo / Building / Listing sections and writes
+      to the same endpoints. No regression.
+    - Platform_admin universal view (no host, no selected tenant)
+      → /admin-homes/territory redirects to /admin-homes/tenants.
+
+### Commit gate
+
+  1 server page + 1 sidebar file + 1 client wrapper (defaultView
+  prop) + tracker shipped together (live-tracker rule). HOLD push
+  pending operator instruction.

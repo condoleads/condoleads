@@ -19,12 +19,17 @@ import AuditSidebar from '@/components/admin-homes/cockpit/territory/AuditSideba
 import TerritorySearchBar, { type SearchResult } from '@/components/admin-homes/cockpit/territory/TerritorySearchBar'
 import { Activity, Building2, Map, Pin, Table, Users } from 'lucide-react'
 
-interface Props { tenantId: string; tenantName: string; actingAgentId: string | null }
+// W-TERRITORY-VIEW UNIT 30: optional `defaultView` prop lets the standalone
+// /admin-homes/territory page (new in this unit) land directly on
+// GeographyView (the "who owns what" picture). Cockpit callers omit the
+// prop and keep the prior default of 'agents'. No behavior change for
+// existing call sites.
+interface Props { tenantId: string; tenantName: string; actingAgentId: string | null; defaultView?: View }
 
 type View = 'agents' | 'cards' | 'geography' | 'pins' | 'buildings' | 'health' | 'detail'
 
-export default function TerritoryTab({ tenantId, tenantName, actingAgentId }: Props) {
-  const [view, setView] = useState<View>('agents')
+export default function TerritoryTab({ tenantId, tenantName, actingAgentId, defaultView = 'agents' }: Props) {
+  const [view, setView] = useState<View>(defaultView)
   const [cardsAgentFilter, setCardsAgentFilter] = useState<string | null>(null)
   const [cardsGeoFilter, setCardsGeoFilter] = useState<{ scope: string; scope_id: string; geo_name: string } | null>(null)
 
