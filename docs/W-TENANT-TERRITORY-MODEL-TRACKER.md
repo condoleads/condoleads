@@ -4579,3 +4579,74 @@ baseline). DDL Fix 2 STEP 3 remains held at HARD GATE.
 
   Tracker-only delta. Will be folded into the next unit's commit or
   pushed as a small "push record" commit per the existing pattern.
+
+---
+
+## UNIT 34 Fix 2 STEP 3 — pick_routing_agent_for_type ORDER BY APPLIED (2026-06-27)
+
+Operator HARD GATE go. DDL applied to prod; behavior under current
+invariants identical (deterministic-insurance only). The regression
+baseline's section-E PEND flipped to PASS (14 -> 15 PASS).
+
+### Runner transcript
+
+  Snapshot:  rollback-snapshots/_pick-routing-agent-order-by_2026-06-27T14-01-39-514Z.sql
+  BEGIN
+  CREATE OR REPLACE FUNCTION public.pick_routing_agent_for_type(...)
+    (ORDER BY apa.created_at, apa.agent_id added before LIMIT 1)
+  Post-verify: function body now contains ORDER BY apa.created_at, apa.agent_id
+  SMOKE 1 PASS: pick_routing_agent_for_type(neighbourhood, bogus_uuid,
+                Aily, condo) -> NULL  (no apa match, as expected)
+  COMMIT successful.
+
+  Manual rollback path retained as snapshot.
+
+### Files (this commit)
+
+  supabase/migrations/20260627_w_pick_routing_agent_order_by.sql
+  supabase/migrations/rollback-snapshots/_pick-routing-agent-order-by_2026-06-27T14-01-39-514Z.sql
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+  Runner scripts/apply-pick-routing-order-by.js was DELETED post-success
+  (one-shot pattern; snapshot retained).
+
+### Behavior delta — none today
+
+  Under the existing 4 partial unique indexes
+  (uniq_apa_primary_{area,community,muni,neighbourhood}), at most one
+  apa row matches the WHERE clause of pick_routing_agent_for_type's
+  SELECT per (scope, scope_id, tenant_id) where is_primary AND
+  is_active. The bare LIMIT 1 returned that single row deterministically.
+  ORDER BY apa.created_at, apa.agent_id picks the same single row.
+
+  If a future migration ever relaxes one of those partial unique
+  indexes, the ORDER BY becomes load-bearing: oldest-card-wins (with
+  agent_id as deterministic secondary tie-break), instead of
+  undefined-order. Insurance, not a behavior change today.
+
+### Gates
+
+  T1 runner SMOKE 1 PASS
+  T2 territory regression: 15 PASS / 0 FAIL (was 14/0/1-PEND)
+  T3 C12 regression: 17 PASS / 3 FAIL — baseline (c8b-2, c11, L2.1),
+       0 new fails.
+  Aily / WALLiam state unchanged (the live data already satisfied the
+    invariants).
+
+### What changed for live operators
+
+  Nothing observable today. The change is a future-proofing
+  insurance: if territory invariants ever evolve in a way that relaxes
+  the per-scope is_primary uniqueness, lead routing will continue to
+  pick the same agent deterministically (oldest card) instead of
+  whatever the planner returns first.
+
+### Backups (timestamps)
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260627_103835
+
+### Commit gate
+
+  1 migration + 1 rollback snapshot + tracker shipped together
+  (live-tracker rule). Runner deleted post-success. HOLD push pending
+  operator instruction.
