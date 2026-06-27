@@ -4076,3 +4076,184 @@ to the sidebar.
   1 server page + 1 sidebar file + 1 client wrapper (defaultView
   prop) + tracker shipped together (live-tracker rule). HOLD push
   pending operator instruction.
+
+---
+
+## W-TERRITORY-VIEW UNIT 32 RUN-LOG (2026-06-27) — standalone Territory destination for platform_admin
+
+Problem (operator-verified in browser after UNIT 30 ship): platform_admin
+navigates via the sidebar but does NOT see a Territory entry. The only
+path to territory is Tenants -> click a tenant -> Territory tab inside
+the cockpit. Operator wants a sidebar door that works WITHOUT entering
+a tenant first, landing on the geo ownership map.
+
+Root cause: UNIT 30's Territory sidebar entry used an array-of-positions
+gate. In SOME platform_admin session states (where their derived
+`user.position` falls outside the array), the entry is hidden. The
+`platform_admin_only` gate (used by Tenants + Bulk Sync) is bypassing
+position entirely via `user.isPlatformAdmin === true`; array gates were
+not. Also, the page redirected platform_admin-no-scope to /admin-homes/
+tenants — a bounce rather than an in-page destination.
+
+### Recon-confirm
+
+  R1. AdminHomesSidebar.tsx filter (line 49-53): array gates only
+      check `item.positions.includes(user.position)`. Platform_admin
+      sees array-gated entries only when their derived position is
+      in the array. Bulk Sync + Tenants bypass via `'platform_admin_only'`
+      (line 51). Territory needs the same bypass admission WITHOUT
+      removing tenant-position visibility.
+  R2. /admin-homes/territory/page.tsx (UNIT 30) redirects no-scope
+      to /admin-homes/tenants (line 43-45). TerritoryTab props:
+      tenantId, tenantName, actingAgentId, defaultView (optional).
+  R3. /admin-homes/tenants/page.tsx uses `.select('*')` on tenants
+      (line 18) — a CLAUDE.md violation; will NOT replicate. The
+      picker uses explicit allow-list: id, name, domain, brand_name.
+
+### Files
+
+  components/admin-homes/AdminHomesSidebar.tsx
+    + One-line filter change at line 49-53: array-gated entries now
+      ALSO admit `user.isPlatformAdmin === true`, in addition to the
+      existing position-array match. No structural change to ALL_NAV.
+      Comment block explaining the operator-locked model:
+      platform_admin is a meta-role admitted to every nav an array
+      gate admits, mirroring the bypass that platform_admin_only
+      entries already have.
+
+  app/admin-homes/territory/page.tsx
+    + searchParams typed: { tenant_id?: string }.
+    + UUID_RX regex defined for param validation.
+    + Replaced the universal-view redirect with three branches:
+        a) Platform_admin + ?tenant_id present + UUID-valid + tenant
+           exists -> set scopedTenantId = param, render territory.
+        b) No scope after that resolution AND user is platform_admin
+           -> fetch tenants list (allow-list: id, name, domain,
+           brand_name) + render in-page picker (links to ?tenant_id=).
+        c) No scope AND user is NOT platform_admin -> defensive
+           redirect to /admin-homes (should not happen via normal
+           paths; their session already scoped them).
+    + When platform_admin is browsing via picker (seeAll && param),
+      a "Switch tenant" link appears in the page header so they can
+      return to the picker without retyping URLs.
+    + Tenant-scoped users: unchanged from UNIT 30 (direct render,
+      no picker, no Switch tenant link).
+    + The ?tenant_id param is ONLY honored for platform_admin —
+      tenant-scoped users have it ignored (can't jump to another
+      tenant via URL).
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+  Untouched: per-agent Assign flow, all 7 territory view components
+  (AgentsView / CardsView / GeographyView / PinsView / BuildingsView /
+  HealthView / TerritoryCascadeChart), TerritoryTab dispatcher,
+  cascade-walker, audit-sidebar.
+
+### Smoke (logic mirror + live dev compile)
+
+  34 logic assertions PASS:
+    Sidebar Territory visibility (12 viewer profiles):
+      - platform_admin in any position (tenant_admin / agent /
+        support / managed): TRUE  <-- the bug fix
+      - tenant_admin, tenant_assistant, assistant, area_manager,
+        manager, agent (non-platform): TRUE (unchanged)
+      - legacy support / managed (non-platform): FALSE (unchanged)
+    Existing platform_admin_only entry: unchanged.
+    "all" gate: unchanged.
+    Page resolution (8 scenarios):
+      - platform_admin no scope, no param -> picker
+      - platform_admin no scope, valid Aily param -> render Aily,
+        showPickerSwitch=true
+      - platform_admin no scope, bogus param -> picker
+      - platform_admin on aily.ca host -> render Aily,
+        showPickerSwitch=false (host-scoped)
+      - tenant-scoped Aily user -> render Aily, switch hidden
+      - tenant-scoped user with ?tenant_id=WAL -> param IGNORED,
+        renders OWN tenant (defensive)
+      - WALLiam user on walliam.ca -> render WALLiam
+      - non-platform no scope -> defensive redirect /admin-homes
+    Allow-list compliance: SELECT * absent; explicit selects present.
+    7 territory view files: all present (file-existence verified).
+
+  Live dev compile (npm run dev):
+    /admin-homes/territory compiles in 1.7s (2762 modules).
+    HTTP smoke:
+      GET /admin-homes/territory (Host: aily.ca)    -> 307 to login
+      GET /admin-homes/territory (Host: walliam.ca) -> 307 to login
+      GET /admin-homes/territory?tenant_id=AILY     -> 307 to login
+      GET /admin-homes/agents/<Ovais>               -> 307 to login
+    All four routes 307 (middleware auth gate). No 500, no compile
+    error, no hang. The picker / TerritoryTab branches all execute
+    in compile but page reaches the auth gate first under curl.
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T2 logic-proof smoke: 34 assertions PASS
+  T3 dev compile + 4-route HTTP smoke: all 307 with no error;
+     /admin-homes/territory compiled in 1.7s.
+  T4 C12 regression: 17 PASS / 3 FAIL -- same baseline (c8b-2,
+     c11, L2.1), 0 new fails.
+  Aily / WALLiam state unchanged (no DB writes -- pure mount + nav).
+
+### Live render-truth gap (acknowledged honestly)
+
+  This unit's mechanical proofs verify:
+    - the sidebar filter admits platform_admin to array gates,
+    - the page compiles and reaches the auth gate without crashing,
+    - the logic for picker vs render is correct,
+    - SELECT * is NOT used.
+  This unit's mechanical proofs do NOT verify (would require
+  authenticated browser session):
+    - the rendered picker UI for a logged-in platform_admin,
+    - GeographyView landing for a chosen tenant,
+    - the visible "Territory" entry in the operator's actual sidebar
+      with their specific platform_admin account state.
+  Operator click-test required before push.
+
+### What changed for live operators
+
+  Before (UNIT 30):
+    - Tenant-scoped users: Territory sidebar entry visible -> page
+      renders their tenant's territory directly (UNIT 30 works).
+    - Platform_admin: Territory entry hidden in some session-state
+      combinations; /admin-homes/territory bounced to tenants list.
+      No standalone territory destination for platform_admin.
+  After (UNIT 32):
+    - Tenant-scoped users: unchanged from UNIT 30.
+    - Platform_admin: Territory sidebar entry now ALWAYS visible
+      (one-line filter admission). Click -> if no tenant scope and
+      no ?tenant_id, see an in-page picker listing tenants by
+      brand_name / domain. Click a tenant -> SAME page now renders
+      that tenant's GeographyView. A "Switch tenant" link returns
+      to the picker.
+    - DB role='admin'-alone viewers (non-platform): UNIT 25/27
+      distinction preserved; no admin-rights creep.
+
+### Multi-tenant proof
+
+  Tenant list query uses an explicit allow-list (id, name, domain,
+  brand_name) — no SELECT *. The ?tenant_id param is validated
+  against the tenants table; bogus / non-existent UUIDs fall through
+  to the picker. tenant-scoped users have the param IGNORED — they
+  can't jump tenants via URL. Tenant #3 onboarding: zero change.
+
+### Backups (timestamps)
+
+  components/admin-homes/AdminHomesSidebar.tsx.backup_20260627_053718
+  app/admin-homes/territory/page.tsx.backup_20260627_053718
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260627_055330
+
+### Open follow-ups
+
+  - Operator click-test on the platform_admin session: sidebar shows
+    Territory; click -> picker lands; pick aily -> GeographyView for
+    Aily renders (everything INHERITED from Ovais / house account, 0
+    explicit apa); "Switch tenant" link works; pick walliam ->
+    GeographyView for WALLiam. Per-agent Assign on /agents/[id]
+    unchanged. Then "go push 06e34ab + UNIT 32 commit".
+
+### Commit gate
+
+  2 app files + tracker shipped together (live-tracker rule). HOLD
+  push pending operator click-test + go.

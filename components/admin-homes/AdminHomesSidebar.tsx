@@ -46,10 +46,18 @@ export default function AdminHomesSidebar({ user }: { user: AdminHomesUser }) {
   const pathname = usePathname()
   const router = useRouter()
 
+  // W-TERRITORY-VIEW UNIT 32: array-gated entries now ALSO admit
+  // platform_admin (in addition to the listed positions). Operator-locked
+  // model: platform_admin is a meta-role that sees what any tenant nav
+  // admits. UNIT 30's Territory entry was hidden for platform_admin in
+  // some session-state combinations (when their derived position fell
+  // outside the array). Tenants/Bulk Sync already bypassed this via the
+  // `platform_admin_only` gate; this change mirrors that admission for
+  // array gates without removing any existing viewer.
   const navItems = ALL_NAV.filter(item => {
     if (item.positions === 'all') return true
     if (item.positions === 'platform_admin_only') return user.isPlatformAdmin === true
-    return item.positions.includes(user.position)
+    return user.isPlatformAdmin === true || item.positions.includes(user.position)
   })
 
   const handleLogout = async () => {
