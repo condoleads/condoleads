@@ -4257,3 +4257,93 @@ tenants — a bounce rather than an in-page destination.
 
   2 app files + tracker shipped together (live-tracker rule). HOLD
   push pending operator click-test + go.
+
+---
+
+## UNITS 30 + 32 — PUSH RECORD (2026-06-27)
+
+Operator authorized push without local click-test; verification moves to
+live aily.ca post-deploy. Both units shipped to origin/main in one push.
+
+### Pre-push gate (all green)
+
+  - origin/main pre-push:  2073493 (UNIT 27)
+  - HEAD:                  bca5a41 (UNIT 32)
+  - HEAD~1:                06e34ab (UNIT 30)
+  - Both commits ahead of origin/main: verified
+  - System 1 zero-diff check (app/admin/*, app/api/chat/*,
+    agent_buildings): EMPTY — no System 1 file touched
+  - tsc --noEmit: exit 0
+  - C12 regression: 17 PASS / 3 FAIL — baseline (c8b-2, c11, L2.1),
+    0 new fails
+  - Tracker reflects both unit run-logs
+
+### Push
+
+  git push origin main 2>&1
+  -> 2073493..bca5a41  main -> main
+
+  origin/main post-push:   bca5a41
+  HEAD:                    bca5a41 (==origin/main)
+  ahead of origin: empty (up-to-date)
+
+### Vercel deploy status
+
+  Push to main auto-triggers Vercel deploy via the GitHub integration.
+  I cannot directly query Vercel's build queue from CLI (no API token
+  in scope), but the live production site is responsive post-push:
+
+  https://aily.ca/                                 308 (apex -> www; standard)
+  https://aily.ca/admin-homes/territory            308 -> www
+  https://www.aily.ca/admin-homes/territory        200 via middleware redirect to /login (auth gate fires, route resolves)
+  X-Vercel-Id: fra1::47fk9-...                     served by Vercel
+  Server: Vercel
+
+  No 500 or build-error at the route level. If a build error materializes
+  on Vercel's dashboard the deploy would not promote — operator should
+  spot-check the Vercel dashboard.
+
+### Render-truth — STILL PENDING (operator click-test on aily.ca)
+
+  These verifications cannot be done from CLI (require authenticated
+  session in a real browser). Operator click-test plan:
+
+  Live URL to test: https://www.aily.ca/admin-homes/territory
+
+  Logged in as platform_admin:
+    1. Sidebar should show "Territory" entry (🗺️) on every admin-homes
+       page — was hidden pre-UNIT 32.
+    2. Click Territory with no tenant entered -> in-page tenant
+       picker should render, listing aily + walliam (allow-list select
+       respected). NO bounce to /admin-homes/tenants.
+    3. Click "aily" -> GeographyView should land for Aily:
+       area->muni->community drill, condo/homes/buildings columns,
+       everything INHERITED from Ovais / house account (0 explicit
+       apa rows for Aily — UNIT 28 data), 0 ASSIGNED, 0 NONE.
+       "Switch tenant" link visible in page header.
+    4. Click "Switch tenant" -> back to picker -> click "walliam" ->
+       GeographyView for WALLiam renders.
+    5. Per-agent Assign on /admin-homes/agents/<id> still mounts the
+       Geo / Building / Listing assignment sections (regression check).
+
+  Logged in as tenant-scoped Aily user (e.g. Ovais):
+    6. Sidebar Territory entry visible (UNIT 30 behavior; unchanged).
+    7. Click Territory -> direct render of Aily territory, NO picker,
+       NO "Switch tenant" link.
+    8. ?tenant_id=WALLIAM in URL -> IGNORED, still renders Aily
+       (defensive; can't jump tenants via URL).
+
+### Status (pushed, render-truth pending click-test)
+
+  UNIT 30 06e34ab — PUSHED
+  UNIT 32 bca5a41 — PUSHED
+  Vercel deploy auto-triggered; production responsive at route level
+    (200 through auth-gate redirect; no 500).
+  Operator click-test pending — sidebar visibility + picker render +
+    GeographyView land + tenant-scoped behavior + Assign regression.
+
+### Commit gate (this PUSH record)
+
+  Tracker-only delta. Will be folded into the next unit's commit per
+  the operator's request style (push records typically land in the
+  next unit's commit boundary).
