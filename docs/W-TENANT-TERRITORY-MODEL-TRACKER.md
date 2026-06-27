@@ -4347,3 +4347,162 @@ live aily.ca post-deploy. Both units shipped to origin/main in one push.
   Tracker-only delta. Will be folded into the next unit's commit per
   the operator's request style (push records typically land in the
   next unit's commit boundary).
+
+---
+
+## W-TERRITORY-SMOKE UNITS 33 + 34 (2026-06-27)
+
+UNIT 33 — full territory audit (read-only, no fixes).
+UNIT 34 — buildings rollup + listing label + apa-card tie-break root fix
++ regression baseline.
+
+### UNIT 33 audit findings (verbatim)
+
+  A1. BUILDINGS=0 root cause: (b) architecturally not rolled up.
+      buildings.community_id is the only geo FK; geo-rollup/route.ts:159-164
+      hardcodes `0::int` except at community level. DB CAN produce the
+      rollup via community -> muni -> area (proven query).
+      Expected post-fix area counts: Toronto=3,383, Ottawa=1,780,
+      York=572, Peel=556, Halton=449, Simcoe=431, Niagara=276,
+      Hamilton=243, Durham=208, Middlesex=199, Wellington=156,
+      Muskoka=128.
+
+  A2. LISTING COUNTS (Durham/Frontenac/Toronto): MV applies 2-year
+      recency window; direct-join all-time count is higher. NOT a bug
+      — column header just doesn't say "(last 2 yrs)". Cosmetic.
+
+  A3. INHERITED owner: correct, no hardcode. Aily default -> Ovais
+      (tenant_admin, active); WALLiam -> King Shah.
+
+  B1-B3. Resolver cascade verified: 8-arg signature, P1->P-HOUSE
+      cascade in 20260625_w_gov_phase1_house_account_fallback.sql,
+      P-HOUSE terminal with tenant_id + is_active check.
+      Fan-out: 4 lead routes call resolve_agent_for_context then
+      getLeadEmailRecipients (charlie/lead, walliam/contact,
+      charlie/appointment, lib/actions/leads).
+
+  C1. F-HASH-RR-NOT-IMPLEMENTED — MIXED:
+      pick_floor_agent (floor pool) FIXED with hash-RR.
+      pick_routing_agent_for_type (apa-card layer) NO ORDER BY.
+      But: 4 existing partial unique indexes
+      (uniq_apa_primary_{area,community,muni,neighbourhood}) ALREADY
+      enforce per-scope uniqueness, making C1 unfireable under current
+      invariants. STILL: add ORDER BY as insurance for future
+      invariant evolution.
+
+  C2. F-NON-SELLING-PRIMARY-SILENT-FAILOVER — NOT PRESENT (already
+      fixed). All 4 routes + the TS wrapper apply
+      is_active+is_selling re-checks on the mls_listings cache via
+      inner-join filter. Live data: WALLiam 1,355,999 assigned
+      listings all link to active+selling agents; 0 stale.
+
+### UNIT 34 fixes applied
+
+  FIX 1 — buildings rollup (HIGH, code-only):
+    app/api/admin-homes/territory/geo-rollup/route.ts:159-176
+    The buildingCountExpr block extended:
+      community  -> COUNT(*) FROM buildings b WHERE b.community_id = g.id
+      muni       -> COUNT(*) FROM buildings b JOIN communities c
+                    ON c.id = b.community_id WHERE c.municipality_id = g.id
+      area       -> COUNT(*) FROM buildings b JOIN communities c
+                    ON c.id = b.community_id JOIN municipalities m
+                    ON m.id = c.municipality_id WHERE m.area_id = g.id
+      neighbourhood -> 0 (buildings have no neighbourhood FK)
+    Supporting indexes verified live:
+      idx_buildings_community_id            (b -> c)
+      idx_communities_municipality_id       (c -> m)
+      idx_municipalities_area_id            (m -> ta)
+    Post-fix verified live: Toronto=3,383, Ottawa=1,780, Durham=208,
+    Toronto C01 (muni) = 597. All-areas rollup query timing: 154ms.
+
+  FIX 3 — listing column label (LOW, code-only):
+    components/admin-homes/cockpit/territory/GeographyView.tsx:208
+    Header changed from 'Listings' to 'Listings <span ...>(last 2 yrs)</span>'.
+    Pure UI string clarification of the MV semantic.
+
+  FIX 2 — apa-card tie-break (HARD GATE; DDL ready, NOT applied):
+    STEP 1 probe (live, read-only): 0 duplicates in
+      (tenant_id, scope, scope_id, access_col) WHERE is_primary
+      AND is_active. Safe to add partial unique index without
+      operator data-resolution.
+    STEP 2 verdict: existing 4 partial unique indexes already
+      enforce the operator's intended invariant. Proposed new
+      index would be REDUNDANT — recommend SKIP.
+    STEP 3 — ORDER BY insurance:
+      Migration: supabase/migrations/20260627_w_pick_routing_agent_order_by.sql
+      Runner: scripts/apply-pick-routing-order-by.js
+      The change: CREATE OR REPLACE FUNCTION pick_routing_agent_for_type
+      with `ORDER BY apa.created_at, apa.agent_id` added before
+      `LIMIT 1`. Behavior under current invariants: identical
+      (still at most one match). Behavior if invariants ever slip:
+      deterministic oldest-card-wins instead of undefined order.
+      Runner: snapshot prior body -> apply in tx -> verify ORDER BY
+      in new body -> SAVEPOINT smoke (call with bogus scope_id
+      expects NULL).
+      HARD GATE: HOLD for operator `node scripts/apply-pick-routing-order-by.js`.
+
+### Regression baseline — scripts/test-territory-regression.js (NEW)
+
+  14 assertions, all PASS:
+    A. Buildings rollup at area + muni for known geos (Toronto > 1000,
+       Durham > 100, Toronto C01 > 100) — DB-level.
+    B. geo-rollup source contains buildings rollup at muni + area
+       (regex match) — locks FIX 1 against future hardcode-to-0.
+    C. P-HOUSE fallback: resolver(Aily, unmatched) -> Ovais;
+       resolver(WALLiam, unmatched) -> King Shah.
+    D. The 4 lead-create routes all filter agents.is_active=true and
+       agents.is_selling=true on the cache lookup — locks C2 fix.
+    E. pick_routing_agent_for_type body contains ORDER BY:
+       currently PEND (Fix 2 STEP 3 DDL pending operator gate).
+       Switches to PASS automatically once the DDL ships.
+
+  Run from project root:
+    node scripts/test-territory-regression.js
+  Exit 0 = all pass; nonzero = regression.
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T2 territory regression: 14 PASS / 0 FAIL (1 PEND for Fix 2 STEP 3)
+  T3 Fix 1 sanity (live DB): Toronto=3383, Ottawa=1780, Durham=208,
+       Toronto C01=597. Timing 154ms. Operator-expected counts confirmed.
+  T4 C12 regression: 17 PASS / 3 FAIL -- same baseline (c8b-2, c11,
+       L2.1), 0 new fails.
+  Aily / WALLiam state unchanged (no DB writes -- code-only fixes 1+3;
+    Fix 2 DDL held at gate).
+
+### Files
+
+  Code-only (this commit):
+    app/api/admin-homes/territory/geo-rollup/route.ts          (Fix 1)
+    components/admin-homes/cockpit/territory/GeographyView.tsx (Fix 3)
+    scripts/test-territory-regression.js                        (regression baseline)
+  DDL queued behind HARD GATE (not in this commit yet):
+    supabase/migrations/20260627_w_pick_routing_agent_order_by.sql
+    scripts/apply-pick-routing-order-by.js
+  Tracker:
+    docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (this run-log)
+
+### Backups (timestamps)
+
+  app/api/admin-homes/territory/geo-rollup/route.ts.backup_20260627_081914
+  components/admin-homes/cockpit/territory/GeographyView.tsx.backup_20260627_081914
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260627_083122
+
+### Open follow-ups
+
+  - HARD GATE Fix 2 STEP 3 ORDER BY DDL — HOLD for operator
+    `node scripts/apply-pick-routing-order-by.js`.
+  - Live operator verification on aily.ca/admin-homes/territory:
+    BUILDINGS column at area level shows the real numbers
+    (Toronto 3383, etc.) instead of 0. "Listings (last 2 yrs)"
+    header reads the new label.
+  - C2 (non-selling cache failover) confirmed already-fixed by
+    UNIT 33 audit — no work needed; regression baseline locks it.
+
+### Commit gate
+
+  2 app files + 1 new script + tracker shipped together
+  (live-tracker rule). DDL migration + runner NOT in this commit
+  (queued for operator HARD GATE). HOLD push pending operator
+  instruction.

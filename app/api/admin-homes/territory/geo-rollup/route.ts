@@ -156,11 +156,22 @@ export async function GET(req: NextRequest) {
   }
   // neighbourhood: mls_listings has no neighbourhood_id; listing_count stays 0.
 
-  // buildings table has only community_id (verified probe 2026-05-26).
-  // building_count is meaningful at community level only; 0 elsewhere.
+  // W-TERRITORY-SMOKE UNIT 34 (2026-06-27): buildings rollup at muni + area.
+  // Prior to this unit the BUILDINGS column read 0 at area and municipality
+  // levels (operator-visible bug). The buildings table FKs only to community,
+  // but the geo chain community.municipality_id -> municipalities.area_id is
+  // intact and indexed (verified probe: idx_buildings_community_id,
+  // idx_communities_municipality_id, idx_municipalities_area_id). The chain
+  // rollup is computed inline per row; the indexes keep this cheap for the
+  // ~12 areas / ~60 municipalities / hundreds of communities Aily-region
+  // workload. Neighbourhood stays 0 (buildings have no neighbourhood FK).
   let buildingCountExpr = "0::int"
   if (level === 'community') {
     buildingCountExpr = "(SELECT COUNT(*)::int FROM buildings b WHERE b.community_id = g.id)"
+  } else if (level === 'municipality') {
+    buildingCountExpr = "(SELECT COUNT(*)::int FROM buildings b JOIN communities c ON c.id = b.community_id WHERE c.municipality_id = g.id)"
+  } else if (level === 'area') {
+    buildingCountExpr = "(SELECT COUNT(*)::int FROM buildings b JOIN communities c ON c.id = b.community_id JOIN municipalities m ON m.id = c.municipality_id WHERE m.area_id = g.id)"
   }
 
   const parentSelectExpr = parentFk ? "g." + parentFk : "NULL::uuid"

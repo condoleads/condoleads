@@ -205,7 +205,11 @@ export default function GeographyView({ tenantId, tenantName, onOpenCards }: Pro
           <thead className='bg-gray-50 text-xs text-gray-600 uppercase'>
             <tr>
               <th className='px-3 py-2 text-left'>{LEVEL_LABEL[currentLevel]}</th>
-              <th className='px-3 py-2 text-right'>Listings</th>
+              {/* W-TERRITORY-SMOKE UNIT 34: clarify the listing-count semantic.
+                  The mv_*_counts MVs apply a 2-year recency window (see
+                  geo-rollup/route.ts comment + UNIT 33 audit). Surface that
+                  so operators don't misread the totals as all-time. */}
+              <th className='px-3 py-2 text-right'>Listings <span className='text-[10px] text-gray-400 font-normal'>(last 2 yrs)</span></th>
               <th className='px-3 py-2 text-right'>Buildings</th>
               <th className='px-3 py-2 text-right'>Children</th>
               <th className='px-3 py-2 text-left'>Condo</th>
