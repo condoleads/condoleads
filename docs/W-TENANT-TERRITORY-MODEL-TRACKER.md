@@ -4506,3 +4506,76 @@ UNIT 34 — buildings rollup + listing label + apa-card tie-break root fix
   (live-tracker rule). DDL migration + runner NOT in this commit
   (queued for operator HARD GATE). HOLD push pending operator
   instruction.
+
+---
+
+## UNIT 34 — PUSH RECORD (2026-06-27)
+
+Operator authorized push of d78d61d (code-only fixes 1 + 3 + regression
+baseline). DDL Fix 2 STEP 3 remains held at HARD GATE.
+
+### Pre-push gate (all green)
+
+  - origin/main pre-push:  6b39b8c (UNITS 30+32 push record)
+  - HEAD:                  d78d61d (UNIT 33+34 code-only)
+  - HEAD~1:                6b39b8c
+  - Ahead: 1 commit
+  - System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+  - tsc --noEmit: exit 0
+  - territory regression: 14 PASS / 0 FAIL / 1 PEND (C1 ORDER BY,
+    pending Fix 2 STEP 3 DDL gate)
+  - C12 regression: 17 PASS / 3 FAIL — baseline, 0 new fails
+
+### Push
+
+  git push origin main
+  -> 6b39b8c..d78d61d  main -> main
+
+  origin/main post-push:   d78d61d  (==HEAD)
+  HEAD:                    d78d61d
+  ahead of origin: empty
+
+### Vercel deploy status
+
+  Push to main auto-triggers Vercel deploy via GitHub integration.
+  Live production responsive post-push:
+
+  https://aily.ca/admin-homes/territory             308 -> www canonical
+  https://www.aily.ca/admin-homes/territory         200 final via /login redirect
+                                                    (middleware auth gate fires, route resolves)
+  total=1.78s
+  Server: Vercel
+
+  No 500 / build-error at the route level. Vercel dashboard spot-check
+  recommended for green deploy confirmation of d78d61d SHA.
+
+### Status
+
+  FIX 1 — buildings rollup (geo-rollup/route.ts at muni + area):
+    PUSHED. Post-deploy, the BUILDINGS column on
+    /admin-homes/territory should show real counts (Toronto~3383,
+    Durham~208) at area level instead of 0.
+  FIX 3 — listing label (GeographyView column header):
+    PUSHED. Header now reads "Listings (last 2 yrs)".
+  Regression baseline (scripts/test-territory-regression.js):
+    PUSHED. Locks Fix 1 + C2 + P-HOUSE fallback against future
+    regression. Pre-deploy 14/0/1-PEND.
+  FIX 2 STEP 3 — pick_routing_agent_for_type ORDER BY insurance:
+    DDL HELD AT HARD GATE. Migration + runner files local-only;
+    will commit alongside the apply call after operator go
+    (node scripts/apply-pick-routing-order-by.js).
+
+### Live URL to verify (operator)
+
+  https://www.aily.ca/admin-homes/territory
+
+  As platform_admin: sidebar -> Territory -> pick a tenant ->
+  GeographyView. BUILDINGS column at area level should show real
+  counts (Toronto 3383, etc.) — not 0. "Listings (last 2 yrs)" header
+  visible.
+  As tenant-scoped user: same view, direct to their tenant.
+
+### Commit gate (this PUSH record)
+
+  Tracker-only delta. Will be folded into the next unit's commit or
+  pushed as a small "push record" commit per the existing pattern.
