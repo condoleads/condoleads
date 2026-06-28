@@ -5021,3 +5021,195 @@ the CURRENT pattern. L2.1 is INTENTIONALLY LEFT RED — see below.
   2 test files + tracker shipped together (live-tracker rule). ZERO
   production code change. ZERO DB write. ZERO sends. HOLD push
   pending operator instruction.
+
+---
+
+## UNIT 39 — PUSH RECORD (2026-06-28)
+
+Operator authorized push of bb8b515 (test-files-only rewrite of c8b-2
++ c11 to guard CURRENT data-driven multi-tenant pattern).
+
+### Pre-push gate (all green)
+
+  - origin/main pre-push:  c30fca8 (UNIT 37)
+  - HEAD:                  bb8b515 (UNIT 39)
+  - HEAD~1:                c30fca8
+  - Ahead: 1 commit
+  - Commit contents (git show --stat): exactly 3 files
+      scripts/test-c8b-2-multitenant-regression.js  (+197/-)
+      scripts/test-c11-multitenant-regression.js    (+10/-)
+      docs/W-TENANT-TERRITORY-MODEL-TRACKER.md      (+217)
+    ZERO production code in commit. ZERO DB. ZERO Resend.
+  - System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+  - tsc --noEmit: exit 0
+  - C12: 19 PASS / 1 FAIL — only L2.1 red (intentional dormant debt,
+    F-SYNC-SINGLE-TENANT-IMPLICIT; NOT allow-listed by design)
+
+### Pre-existing dirty files (must NOT be swept in)
+
+  Pre-push state, NOT in this commit:
+    M app/api/charlie/municipalities/route.ts
+    M scripts/r-w-territory-master-p2-data-phantom-fix.js
+    M scripts/r-w-territory-master-p4-check-fix.js
+
+  Post-push state — SAME 3 files still unstaged/modified:
+    M app/api/charlie/municipalities/route.ts
+    M scripts/r-w-territory-master-p2-data-phantom-fix.js
+    M scripts/r-w-territory-master-p4-check-fix.js
+  Untouched by UNIT 39 commit. Their pre-existing dirty state was
+  preserved across the push.
+
+### Push
+
+  git push origin main
+  -> c30fca8..bb8b515  main -> main
+
+  origin/main post-push:   bb8b515  (==HEAD)
+  HEAD:                    bb8b515
+  ahead of origin: empty
+
+### Vercel deploy status
+
+  Push to main auto-triggers Vercel deploy. Live production
+  responsive post-push:
+
+  https://www.aily.ca/admin-homes/territory  final=200 (1.42s)
+  Server: Vercel
+  X-Vercel-Cache: MISS (fresh response)
+  X-Vercel-Id: fra1::iad1::jjz2z-...
+
+  No 500 / no build-error at the route level. Test-only commit
+  doesn't change runtime behavior — Vercel build expected green
+  for the test script changes (scripts/ isn't in the Next.js build
+  graph anyway).
+
+### New baseline
+
+  C12: 19 PASS / 1 FAIL (was 17/3; +2 PASS / -2 FAIL via UNIT 39).
+  The single remaining FAIL is L2.1 (territory-constants.ts:29
+  WALLiam-only PropTx MLS sync constant). This is REAL dormant debt
+  tracked as F-SYNC-SINGLE-TENANT-IMPLICIT — not allow-listed because
+  the red flag IS the reminder. Aily has zero runtime path that
+  reads it.
+
+### Status
+
+  UNIT 39 — test rewrites for current data-driven pattern: PUSHED.
+  c8b-2 + c11 now correctly guard the post-MTB-DEF-1 wordmarkStyle
+  data-driven hero gating. Any future reintroduction of a hardcoded
+  WALLIAM_TENANT_ID shortcut in HomePageComprehensiveClient.tsx /
+  V2 will be caught by the 14 NEGATIVE assertions.
+
+  Baseline-noise reduction:
+    Before UNIT 39: 17 PASS / 3 FAIL (c8b-2, c11, L2.1)
+    After UNIT 39: 19 PASS / 1 FAIL (only L2.1, documented)
+
+### Commit gate (this PUSH record)
+
+  Tracker-only delta. Will be folded into the next unit's commit per
+  the established pattern.
+
+---
+
+## W-CRON-FAIL UNIT 41 RUN-LOG (2026-06-28) — delete dead Reroll Worker Cron workflow
+
+UNIT 40 audit established: .github/workflows/reroll-worker.yml has NEVER
+succeeded — committed 2026-05-30 in commit 9255a18, the two required
+secrets (REROLL_WORKER_BASE_URL + REROLL_WORKER_CRON_TOKEN) were never
+provisioned in GH Actions, workflow's own preflight catches it and exits
+1 in <1s every 5 min, spamming failure-notification emails for ~4 weeks.
+
+UNIT 41: delete the dead trigger. Route + queue + manual drainer KEPT.
+
+### Deleted
+
+  .github/workflows/reroll-worker.yml
+    Timestamped backup at .backup_20260628_070535 (per CLAUDE.md
+    backup-before-touch).
+
+### Retained (untouched)
+
+  app/api/admin-homes/territory/reroll-worker/route.ts
+    The drain ROUTE stays. Used by:
+      - components/admin-homes/cockpit/territory/QueueIndicator.tsx
+        (ad-hoc operator drain via cockpit polling at 10s while mounted)
+      - any future autonomous drainer (operator can re-add a workflow
+        with proper secrets provisioning, or use a different scheduler)
+    The Bearer-token bypass code path (lines 25-33) remains; just
+    nothing's calling it on a schedule today.
+
+  territory_reroll_queue table
+    Untouched. Producers (handle_agent_deactivate trigger,
+    reroll_listings_at_geo) still enqueue rows; manual drainer still
+    drains them.
+
+  components/admin-homes/cockpit/territory/QueueIndicator.tsx
+    Untouched. Manual drain via cockpit poll continues to work.
+
+### Dangling-reference audit (D2)
+
+  Grep for: reroll-worker.yml, "Reroll Worker Cron", REROLL_WORKER_BASE_URL,
+  REROLL_WORKER_CRON_TOKEN. Hits after delete:
+    Code: ZERO. No source file imports/depends on the deleted workflow.
+    Comments/docs (historical, untouched):
+      - .github/workflows/reconcile.yml:16,45 (sibling-workflow comments
+        about reroll-worker as proven pattern)
+      - .github/workflows/reconcile.yml:44 — reconcile.yml uses
+        secrets.REROLL_WORKER_BASE_URL too; the secret NAME stays in
+        repo settings because the sibling workflow consumes it.
+      - f-event7-reconcile-recon.md, cv-event7-recon-output.txt,
+        f-reroll-coupled-check-recon.md (recon transcripts)
+      - docs/W-TERRITORY-MASTER-TRACKER.md (master tracker history)
+      - 2 migration files' comments (20260601, 20260530)
+      - The route's own comment (the route stays anyway)
+    All historical/architectural references. No breakage.
+
+### Shared secret note
+
+  REROLL_WORKER_BASE_URL is consumed by both reroll-worker.yml (now
+  deleted) and reconcile.yml (still present). Do NOT remove that
+  secret if it ever gets provisioned — reconcile.yml needs it too.
+  REROLL_WORKER_CRON_TOKEN is now exclusive-history (no live workflow
+  uses it post-delete).
+
+### Sibling-workflow status (out of scope, FLAGGED)
+
+  .github/workflows/reconcile.yml ("Nightly Reconcile") is in the SAME
+  failed state — same missing-secrets pattern (REROLL_WORKER_BASE_URL +
+  RECONCILE_CRON_TOKEN both unprovisioned). Fails daily at 09:00 UTC
+  in ~6s. Operator may want to address as a follow-up: either delete
+  similarly OR provision both secrets + the cron will run.
+
+### F-REROLL-CRON-UNPROVISIONED (tracked debt, not a regression)
+
+  Autonomous WALLiam queue drain is NOT a lost capability — it's a
+  deliberate future build. To restore it:
+    1. Provision secrets in GH Actions: REROLL_WORKER_BASE_URL
+       (= production base URL, shared with reconcile.yml) +
+       REROLL_WORKER_CRON_TOKEN (= freshly-generated 32+ char string).
+    2. Provision REROLL_WORKER_CRON_TOKEN on Vercel server env
+       (Production scope) with the SAME value as step 1.
+    3. Restore a workflow (re-create from the .backup_20260628_070535
+       snapshot, or write a fresh one).
+  Tracked. Not Aily-launch-blocking (Aily has near-zero reroll
+  activity per UNIT 28 data).
+
+### Gates
+
+  T1 git status: D .github/workflows/reroll-worker.yml (deletion staged)
+  T2 grep for dangling refs: zero CODE refs; only historical doc refs.
+  T3 route + queue file present + unchanged.
+  T4 tsc --noEmit: exit 0 (zero code path touched).
+  T5 GH Actions: cron will stop firing on next push (workflow file
+       removed from the schedule registry).
+
+### Backups (timestamps)
+
+  .github/workflows/reroll-worker.yml.backup_20260628_070535
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260628_070743
+
+### Commit gate
+
+  1 workflow file deleted + tracker shipped together (live-tracker
+  rule). ZERO production code change. ZERO DB write. HOLD push
+  pending operator instruction.
