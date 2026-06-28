@@ -591,7 +591,17 @@ export default async function BuildingPage({ params }: { params: { slug: string 
           {/* Agent Sidebar - 1 column, sticky */}
           <div className="lg:col-span-1">
             <div className="sticky top-24 space-y-6">
-              {isHero ? (
+              {/* W-BUILDING-PAGE UNIT 46 (2026-06-28): gate the tenant-aware
+                  rail on tenantId (not isHero). isHero is a brand-flavor
+                  signal (which wordmark to render), not a behavior signal.
+                  Every tenant-bound host gets the tenant-aware rail; only
+                  the dramatic WalliamCTA wordmark stays hero-gated. The
+                  Walliam* component names are legacy carryover — each takes
+                  tenant inputs via props and resolves through
+                  resolve_agent_for_context (F4 audit confirmed). The
+                  legacy non-tenant branch (subdomain/custom_domain agent
+                  sites) is unchanged. */}
+              {tenantId ? (
                 <>
                   <WalliamAgentCard
                    building_id={building.id}
@@ -599,7 +609,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                    municipality_id={building.municipality_id || null}
                    tenant_id={tenantId!}
                   />
-                  <WalliamCTA context={building.building_name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
+                  {isHero && (
+                    <WalliamCTA context={building.building_name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
+                  )}
                   <CharliePageContext building_id={building.id} community_id={building.community_id || null} municipality_id={building.municipality_id || null} />
                   <WalliamContactForm
                     tenantId={tenantId!}

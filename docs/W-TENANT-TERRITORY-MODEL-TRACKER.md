@@ -5315,3 +5315,198 @@ and "homepage can render".
   3 source files + tracker shipped together (live-tracker rule).
   Code-only fix. ZERO DB write. ZERO sends. HOLD push pending
   operator instruction.
+
+---
+
+## W-BUILDING-PAGE UNIT 46 RUN-LOG (2026-06-28) — decouple building-page right rail from hero-branding
+
+UNIT 45 audit established the missing right-rail elements on aily.ca
+building pages were architectural, not defensive: BuildingPage.tsx:594
+gated the entire right rail on `isHero` (wordmark_style==='hero').
+Hero path rendered all 4 tenant-aware widgets (WalliamAgentCard,
+WalliamCTA, CharliePageContext, WalliamContactForm); non-hero path
+rendered a degraded 2-widget surface gated on a host-derived agent
+that was null for aily.ca (no agent has custom_domain='aily.ca').
+NOT the same class as UNIT 44 — `isHero` was being used as a
+brand-flavor-as-behavior-proxy (MTB-DEF-1 class).
+
+UNIT 46 broadens the tenant-aware rail to every tenant-bound host;
+the dramatic WalliamCTA wordmark stays hero-gated; legacy non-tenant
+branch (subdomain/custom_domain solo-agent sites) unchanged.
+
+### Files changed (1 source + tracker)
+
+  app/[slug]/BuildingPage.tsx
+    Line 594: `{isHero ? (` -> `{tenantId ? (`  + an in-place
+      comment explaining the gate flip.
+    Lines 602: wrapped `<WalliamCTA .../>` in `{isHero && (...)}`
+      so the dramatic hero wordmark stays WALLiam-only.
+    No other behavior changes. Legacy non-tenant branch (lines
+      627-655 pre-edit) byte-identical in diff.
+    Diff: 14 insertions, 2 deletions (10 of the 14 are the comment).
+
+### F4 multi-tenant leak audit (pre-fix verification)
+
+  WalliamAgentCard.tsx       CLEAN — receives tenant_id prop;
+                              POSTs /api/walliam/resolve-agent with
+                              x-tenant-id header. No hardcoded tenant
+                              id, no host check. Caveat: the `!agent`
+                              fallback renders a literal WALL/iam
+                              brand visual; cascade's P-HOUSE always
+                              returns the tenant's default agent
+                              (UNIT 16b NOT NULL), so the fallback
+                              is unreachable in practice for tenants
+                              with a configured default_agent_id.
+  WalliamContactForm.tsx     CLEAN — tenantId required prop; POSTs
+                              with tenant_id from prop.
+  CharliePageContext.tsx     CLEAN — generic page-context emitter;
+                              no tenant reference. The global
+                              Charlie route resolves tenant
+                              server-side from host/cookies.
+  WalliamCTA.tsx             CLEAN — brandName + wordmarkStyle as
+                              props; supports aiglow already; kept
+                              hero-gated per F2 scope discipline.
+
+### Render-truth + tenant-data-correctness smoke (local npm run dev)
+
+  S1: aily.ca / x2-condos-101-charles-st-e-toronto (the bug)
+      HTTP 200 / 1,169,504 bytes rendered (vs the pre-fix empty rail)
+      WalliamContactForm (SSR-visible markers Get In Touch +
+        Send Message): present in HTML
+      CharliePageContext (SSR-invisible — returns null + dispatches
+        useEffect event): bundle markers present (charlie:open /
+        charlie:pagecontext hits)
+      WalliamAgentCard (SSR-invisible — `if (loading) return null`):
+        verified via direct API probe.
+
+      AILY-DATA-CORRECTNESS leak check (must NOT show WALLiam data):
+        walliam.ca link hits in HTML: 0
+        'King Shah' (WALLiam default agent) hits: 0
+        'WALL' brand-card text hits: 0
+
+      /api/walliam/resolve-agent direct probe with x-tenant-id=AILY
+        returns:
+          { success: true,
+            agent: { id: '319ad339-...',  <- Ovais
+                     full_name: 'OVAIS QASSIM',
+                     email: 'yourcondorealtor@gmail.com',
+                     cell_phone: '+1416-224-2166',
+                     title: 'Broker of Record',
+                     brokerage_name: 'PREMIER MATRIX REALTY LTD.
+                                      BROKERAGE' },
+            source: 'walliam_default' }    <- P-HOUSE for Aily
+      VERDICT: Aily card resolves to Aily's OWN default agent.
+      No cross-tenant data leak.
+
+  S2: walliam.ca / x2-condos (regression check)
+      HTTP 200 / 1,168,002 bytes rendered (similar shape to before)
+      contact form present, hero WalliamCTA present (1 hit, hero-
+        only), Own a Unit CTA present.
+      /api/walliam/resolve-agent with x-tenant-id=WALLIAM returns
+        King Shah (WALLiam's default), source walliam_default.
+      VERDICT: WALLiam unchanged (was already in all-widgets path).
+
+  S3: legacy non-tenant branch (System 1 solo-agent sites)
+      git diff: the non-tenant branch (lines 627-655 pre-edit) does
+      NOT appear in the diff — byte-identical. No System 1 impact.
+
+  S4: tsc --noEmit -> exit 0
+      C12 multi-tenant regression: 19 PASS / 1 FAIL (baseline
+        preserved; only L2.1 red, documented dormant debt
+        F-SYNC-SINGLE-TENANT-IMPLICIT)
+
+### Multi-tenant correctness
+
+  The new gate `{tenantId ? (...) : (...)}` is derived from
+    getCurrentTenantId() which resolves the request's tenant from
+    host -> tenants.domain. No per-tenant code branching.
+  Tenant #3 onboarding gets the full tenant-aware right rail on its
+    building pages automatically (assuming `tenants.domain` is set
+    and `tenants.default_agent_id` is provisioned per UNIT 16b).
+  Hero (dramatic WALLiam wordmark) stays exclusively gated on
+    wordmark_style==='hero' — Aily's aiglow-style site keeps its
+    own cleaner layout without the dramatic CTA card.
+
+### What's NOT in this fix (deliberate scope discipline)
+
+  - Rename Walliam* components to tenant-neutral names. Cosmetic;
+    the fix is one gate flip. Deferred.
+  - The Walliam-brand fallback inside WalliamAgentCard (lines
+    142-189) still hardcodes WALL/iam visual. Unreachable today
+    via the P-HOUSE cascade for any tenant with a default agent.
+    Tracked as F-WALLIAM-FALLBACK-BRAND-LEAK; will replace with
+    tenant-driven generic fallback in a future unit.
+  - The legacy non-tenant branch (subdomain/custom_domain solo-
+    agent sites) is unchanged. AI Ask + contact form are still
+    absent there; they're tenant-aware concepts that don't apply
+    to per-agent System 1 sites.
+
+### Backups (timestamps)
+
+  app/[slug]/BuildingPage.tsx.backup_20260628_143416
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260628_144004
+
+### Commit gate
+
+  1 source file + tracker shipped together (live-tracker rule).
+  Code-only fix. ZERO DB write. ZERO sends. HOLD push pending
+  operator instruction.
+
+---
+
+### UNIT 44 PUSH RECORD (2026-06-28)
+
+  Operator authorized push of 86eed78 (homepage decoupling code fix).
+
+  Pre-push gate (all green):
+    origin/main pre-push: 4a4f03f
+    HEAD:                 86eed78
+    HEAD~1:               4a4f03f
+    ahead: 1 commit
+    Commit contents (git show --stat 86eed78): exactly 4 files
+      components/HomePageComprehensive.tsx     (+9/-)
+      components/HomePageComprehensiveV2.tsx   (+9/-)
+      docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (+102)
+      lib/comprehensive/access-resolver.ts     (+29)
+      4 files changed, 137 insertions, 12 deletions
+    System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+    tsc --noEmit: exit 0
+    C12: 19 PASS / 1 FAIL (baseline preserved; only L2.1 red)
+
+  Pre-existing dirty (must NOT be swept in):
+    Pre-push:
+      M app/api/charlie/municipalities/route.ts
+      M scripts/r-w-territory-master-p2-data-phantom-fix.js
+      M scripts/r-w-territory-master-p4-check-fix.js
+    Post-push: SAME 3 files, untouched, still unstaged.
+
+  Push:
+    git push origin main
+    -> 4a4f03f..86eed78  main -> main
+
+    origin/main post-push: 86eed78  (== HEAD)
+    ahead of origin: empty
+
+  Vercel auto-deploy + LIVE render-truth verification:
+    Polled https://www.aily.ca/ post-push until the error string
+    disappeared. First probe (~30s post-push) already showed the
+    new build live — Vercel deploy was fast.
+
+    Final live probe:
+      HTTP 200 / 1.42s response time
+      bytes: 92810  (was: ~50-byte error <div>)
+      "Access configuration error" in body: 0 occurrence(s)
+      Homepage element hits (main/nav/listings/MLS/Aily): 6
+
+    THE CUSTOMER-FACING ERROR IS GONE FROM PRODUCTION.
+
+  Status:
+    UNIT 44 - homepage render decoupled from agent.apa rows: PUSHED.
+    aily.ca/ public homepage renders the real comprehensive surface.
+    Any future tenant with zero apa rows on its default agent gets
+    the same graceful all-MLS default + operator-visible warn. No
+    per-tenant code change needed per onboarding.
+
+  Commit gate (this PUSH record):
+    Tracker-only delta. Will fold into the next unit's commit per
+    the established pattern.
