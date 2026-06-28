@@ -5452,6 +5452,183 @@ branch (subdomain/custom_domain solo-agent sites) unchanged.
   Code-only fix. ZERO DB write. ZERO sends. HOLD push pending
   operator instruction.
 
+### UNIT 46 PUSH RECORD (2026-06-28)
+
+  Operator authorized push of 9878633 (BuildingPage right-rail
+  gate flip).
+
+  Pre-push gate (all green):
+    origin/main pre-push: 86eed78  (UNIT 44)
+    HEAD:                 9878633  (UNIT 46)
+    HEAD~1:               86eed78
+    ahead: 1 commit
+    Commit contents (git show --stat 9878633): exactly 2 files
+      app/[slug]/BuildingPage.tsx              (+16/-2)
+      docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (+195)
+      2 files changed, 209 insertions, 2 deletions
+    Live-tracker fold check: the UNIT 44 PUSH RECORD section
+      added post-UNIT-44-push folded into THIS commit's tracker
+      diff (1 occurrence in `git show 9878633 -- tracker`). NOT
+      lost. Folding pattern preserved.
+    System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+    tsc --noEmit: exit 0
+    C12: 19 PASS / 1 FAIL (only L2.1 red, by design)
+
+  Pre-existing dirty (must NOT be swept in):
+    Pre-push:
+      M app/api/charlie/municipalities/route.ts
+      M scripts/r-w-territory-master-p2-data-phantom-fix.js
+      M scripts/r-w-territory-master-p4-check-fix.js
+    Post-push: SAME 3 files, untouched, still unstaged.
+
+  Push:
+    git push origin main
+    -> 86eed78..9878633  main -> main
+    origin/main post-push: 9878633  (== HEAD)
+
+  Vercel auto-deploy + LIVE production probe:
+    Polled https://www.aily.ca/x2-condos-101-charles-st-e-toronto
+    until any new-build right-rail marker appeared. New build live
+    in ~60s.
+
+    Final live probe:
+      HTTP 200 / 1.90s response time
+      bytes: 1,172,941  (vs pre-fix empty rail)
+      Right-rail markers in LIVE Aily HTML:
+        contact form (walliam_building_inquiry + Get In Touch): 2 hits
+        WalliamAgentCard + CharliePageContext: client-hydrated post-
+          paint (SSR-invisible per `if (loading) return null` and
+          `return null` patterns; visible after hydration completes).
+
+      Leak check on the LIVE HTML (critical multi-tenant safety):
+        'King Shah' (WALLiam's default agent) hits: 0
+        'walliam.ca' link hits:                     0
+      VERDICT: aily.ca's building page right rail renders with
+      Aily-tenant context only. No cross-tenant data leak in live
+      production.
+
+  Status:
+    UNIT 46 - building-page right-rail gate flip: PUSHED.
+    aily.ca/<building-slug> public pages now render the
+    tenant-aware right rail (agent card, AI Ask, contact form,
+    Own a Unit CTA). Same components, tenant-driven by props,
+    no per-tenant code branching. Tenant #3 onboarding gets the
+    same rail without further code edits.
+
+  Commit gate (this PUSH record):
+    Tracker-only delta. Will fold into the next unit's commit per
+    the established live-tracker pattern.
+
+---
+
+## W-BUILDING-PAGE UNIT 48 RUN-LOG (2026-06-28) — close residual MTB-DEF-1 gate on WalliamCTA
+
+UNIT 47 audit established the missing "Get Your AI Real Estate Plan"
+block on Aily building rails is the residue of a UNIT 46 mistake:
+UNIT 46 kept WalliamCTA hero-gated ({isHero && <WalliamCTA/>})
+believing it was just the dramatic hero WORDMARK. It is actually
+the AI plan CTA card (Ask AI + Buyer Plan + Seller Plan); the
+wordmark is one sub-element of it that already self-branches
+correctly by wordmarkStyle (hero / aiglow / plain BrandWordmark)
+per W-AILY-CTA-BRAND-LEAK + W-AILY-CTA-PANEL authoring. UNIT 47 R4
+leak-audit confirmed CLEAN: no hardcoded WALLiam, no host check,
+all flavor driven by wordmarkStyle/brandName/assistantName props.
+
+UNIT 48 removes the residual gate — closes the MTB-DEF-1 case on
+the 4th of 4 tenant-rail components. Same brand-flavor-as-behavior-
+proxy class UNIT 46 was fixing.
+
+### Sequencing
+
+  C0 push-status:  origin/main = 9878633 (UNIT 46 ALREADY PUSHED).
+  UNIT 48 = clean follow-up commit, normal flow. NOT an amend.
+
+### File changed (1 source + tracker)
+
+  app/[slug]/BuildingPage.tsx
+    Removed the {isHero && (...)} wrapper around <WalliamCTA .../>;
+    render unconditionally at the same level as WalliamAgentCard /
+    CharliePageContext / WalliamContactForm inside the {tenantId ?}
+    branch. wordmarkStyle/brandName/assistantName props unchanged.
+    Diff: 15 insertions, 3 deletions (12 of 15 are the explanatory
+    comment + post-mortem reference).
+
+### Render-truth + flavor-correctness smoke (local npm run dev)
+
+  S1: aily.ca / x2-condos-101-charles-st-e-toronto
+      HTTP 200 / 1,173,574 bytes
+      WalliamCTA presence (the 4th block):
+        'Get Your AI Real Estate Plan' tagline: 1 hit (rendered)
+        'Buyer Plan' button: 5 hits (component + repeat references)
+        'Seller Plan' button: 5 hits
+        'Ask AI' button: 2 hits
+      AILY-FLAVOR check:
+        'Ask aily about X2' subtitle: 1 hit (assistantName=aily +
+          context=X2 Condos threaded correctly)
+        Aiglow magenta panel #29142b: 1 hit (aiglow background
+          rendered — wordmarkStyle='aiglow' branch confirmed taken)
+        AiGlowWordmark bundle markers: 21 hits
+      HERO-LEAK check (must all be 0 for visual rendering):
+        'WALL' text in rendered visual: 0
+        'King Shah' hits: 0
+        'WALLiam' brand text hits: 0
+      Dead-CSS artifacts (component emits unconditional <style>;
+      visual is NOT used in aiglow path):
+        walliam-cta-heartbeat keyframes: 1 (the @keyframes rule,
+          no element references it for non-hero)
+        #060b18 navy hex: 2 hits (from other components' styles;
+          WalliamCTA's hero background ternary not taken for aiglow)
+      VERDICT: Aily renders the 4th block in Aily's own flavor
+        (aiglow wordmark + magenta panel + Aily assistant copy).
+        Zero cross-tenant visual leak.
+
+  S2: walliam.ca / x2-condos (regression check)
+      HTTP 200 / 1,168,002 bytes
+      WalliamCTA + HERO flavor preserved:
+        'Get Your AI Real Estate Plan': 1 hit
+        Buyer/Seller Plan: 5/5 hits
+        HERO 'WALL' visual text: 3 hits (hero branch taken)
+        Hero navy #060b18: 5 hits (hero background rendered)
+        Aiglow magenta #29142b: 0 (not taken — WALLiam is hero)
+        Ask {assistantName} subtitle: 3 hits
+      VERDICT: WALLiam byte-comparable; hero wordmark + heartbeat
+        animation + navy background all preserved.
+
+  S3: tsc --noEmit -> exit 0
+      C12 multi-tenant regression: 19 PASS / 1 FAIL (baseline
+        preserved; only L2.1 red, documented dormant debt
+        F-SYNC-SINGLE-TENANT-IMPLICIT)
+
+### UNIT 46 post-mortem (recorded so it isn't repeated)
+
+  UNIT 46 hero-gated WalliamCTA on the mistaken assumption that the
+  component name (Walliam + CTA) + the wordmark sub-element made it
+  a wordmark wrapper. The component header comment described it as
+  "drop into any page to show Buyer/Seller Plan CTAs + AI search" —
+  reading the full component body would have shown the wordmark is
+  one of 4 sub-elements (wordmark / tagline / search bar / plan
+  buttons), all of which work for any tenant via props.
+
+  The post-mortem rule: when keeping a hero gate on a `Walliam*`
+  named component during a tenant-decouple unit, verify the
+  component is not itself already multi-tenant-safe at the prop
+  level. WalliamCTA was — UNIT 46 negated its own design intent.
+
+  This pattern (component multi-tenant-safe internally, but call
+  site brand-gates the whole thing) is the residual MTB-DEF-1
+  failure mode to scan for in future units.
+
+### Backups (timestamps)
+
+  app/[slug]/BuildingPage.tsx.backup_20260628_151921
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260628_152421
+
+### Commit gate
+
+  1 source file + tracker shipped together (live-tracker rule).
+  Code-only fix. ZERO DB write. ZERO sends. HOLD push pending
+  operator instruction.
+
 ---
 
 ### UNIT 44 PUSH RECORD (2026-06-28)

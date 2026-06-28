@@ -609,9 +609,21 @@ export default async function BuildingPage({ params }: { params: { slug: string 
                    municipality_id={building.municipality_id || null}
                    tenant_id={tenantId!}
                   />
-                  {isHero && (
-                    <WalliamCTA context={building.building_name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
-                  )}
+                  {/* W-BUILDING-PAGE UNIT 48 (2026-06-28): UNIT 46 hero-gated
+                      this on the mistaken assumption that the component was
+                      the dramatic hero WORDMARK. It is actually the
+                      "Get Your AI Real Estate Plan" CTA card (Ask AI +
+                      Buyer Plan + Seller Plan) — the wordmark is one
+                      sub-element of it that already self-branches by
+                      wordmarkStyle (hero / aiglow / plain BrandWordmark)
+                      per W-AILY-CTA-BRAND-LEAK + W-AILY-CTA-PANEL
+                      authoring. UNIT 47 R4 leak-audit confirmed CLEAN:
+                      no hardcoded WALLiam id, no host check, all flavor
+                      driven by wordmarkStyle/brandName/assistantName
+                      props. Render unconditionally — closes the
+                      MTB-DEF-1 case UNIT 46 left open on the 4th of 4
+                      tenant-rail components. */}
+                  <WalliamCTA context={building.building_name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
                   <CharliePageContext building_id={building.id} community_id={building.community_id || null} municipality_id={building.municipality_id || null} />
                   <WalliamContactForm
                     tenantId={tenantId!}
