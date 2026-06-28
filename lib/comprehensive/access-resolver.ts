@@ -11,7 +11,7 @@ import type { GeoAssignment, ResolvedAccess } from './types';
  * grained. Tighter neighbourhood-grained filtering would extend ResolvedAccess
  * with neighbourhoodIds + downstream filter -- a future T4d.
  */
-export async function resolveAgentAccess(agentId: string): Promise<ResolvedAccess | null> {
+export async function resolveAgentAccess(agentId: string): Promise<ResolvedAccess> {
   const supabase = createClient();
   // 1. Fetch all active assignments
   const { data: assignments, error } = await supabase
@@ -22,7 +22,32 @@ export async function resolveAgentAccess(agentId: string): Promise<ResolvedAcces
 
   console.log('[resolveAgentAccess] Query result:', { count: assignments?.length, error: error?.message });
   if (error || !assignments || assignments.length === 0) {
-    return null; // No System 2 access - use System 1
+    // W-HOMEPAGE-ERROR UNIT 44 (2026-06-28): decouple "agent has assignments"
+    // from "homepage can render". Previously this returned null, causing
+    // HomePageComprehensive*.tsx to render `<div>Access configuration error</div>`
+    // to public visitors of any tenant whose default_agent_id had zero apa
+    // rows (live symptom on aily.ca/ since the seed-admin -> Ovais promotion
+    // didn't carry over apa rows). The customer surface is decoupled by
+    // defaulting to the same shape a `scope='all'` row would produce
+    // (isAllMLS: true, all categories on, empty geo). Misconfiguration stays
+    // VISIBLE to operators via the structured warn below — not silenced.
+    // No per-tenant branching: any tenant whose homepage agent has zero rows
+    // gets the same graceful default + the same operator-facing warn.
+    console.warn('[resolveAgentAccess] zero active apa rows; defaulting to all-MLS', {
+      agent_id: agentId,
+      error: error?.message ?? null,
+    });
+    return {
+      hasAccess: true,
+      isAllMLS: true,
+      assignments: [],
+      areaIds: [],
+      municipalityIds: [],
+      communityIds: [],
+      buildings_access: true,
+      condo_access: true,
+      homes_access: true,
+    };
   }
 
   // 2. Check for "ALL" scope (entire MLS)

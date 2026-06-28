@@ -5213,3 +5213,105 @@ UNIT 41: delete the dead trigger. Route + queue + manual drainer KEPT.
   1 workflow file deleted + tracker shipped together (live-tracker
   rule). ZERO production code change. ZERO DB write. HOLD push
   pending operator instruction.
+
+---
+
+## W-HOMEPAGE-ERROR UNIT 44 RUN-LOG (2026-06-28) — decouple homepage render from agent.apa rows
+
+UNIT 43 audit identified the live customer-facing symptom on aily.ca:
+the literal string "Access configuration error" rendering as the main
+content of the homepage. Root cause: HomePageComprehensive*.tsx
+treated `null` from resolveAgentAccess(agent.id) as render-blocking,
+and resolveAgentAccess returned null on zero active agent_property_access
+rows. Aily's default_agent_id (Ovais Qassim, 319ad339) has 0 apa rows,
+so the homepage hit the error string instead of rendering.
+
+The author's comment at the call site ("Shouldn't happen — routing
+should have caught this") confirmed the error was never meant to reach
+prod. The fix decouples two unrelated concerns: "agent has assignments"
+and "homepage can render".
+
+### Files changed (3)
+
+  lib/comprehensive/access-resolver.ts
+    Signature: Promise<ResolvedAccess | null>  ->  Promise<ResolvedAccess>
+    Zero-rows / error path: was `return null`, now returns a default
+    all-MLS ResolvedAccess (isAllMLS: true, all categories true, empty
+    geo) + structured console.warn with agent_id so operators still see
+    misconfigured tenants in logs. Multi-tenant: no per-tenant
+    branching — every zero-rows tenant gets the same graceful default.
+
+  components/HomePageComprehensive.tsx
+    Removed the dead `if (!access) return <div>Access configuration
+    error</div>` branch (lines 43-46 pre-edit). Replaced with a single
+    archeology comment so future readers know why the guard is absent.
+
+  components/HomePageComprehensiveV2.tsx
+    Same removal (lines 52-55 pre-edit). Same archeology comment.
+
+### Render-truth smoke (local npm run dev, NOT compile-only)
+
+  S1: aily.ca homepage (Ovais, 0 apa rows)
+      - HTTP 200, 97994 bytes rendered (was: tiny error-string div)
+      - grep "Access configuration error" /tmp/aily_home.html -> 0 hits
+      - 8 homepage element hits (main/header/MLS/listings/Aily/nav)
+      - VERDICT: error string ABSENT, homepage renders.
+
+  S2: walliam.ca homepage (King Shah, 11 apa rows)
+      - HTTP 200, 71745 bytes rendered (unchanged shape)
+      - 5 walliam-brand mentions + 3 hero/wordmark hits
+      - grep "Access configuration error" -> 0 hits
+      - VERDICT: regression-clean, WALLiam untouched.
+
+  S3: operator-facing warn log
+      Aily (count=0):  "[resolveAgentAccess] zero active apa rows;
+                        defaulting to all-MLS
+                        { agent_id: '319ad339-f031-43af-b036-be06bd5221b3',
+                          error: null }"
+      WALLiam (count=11):  "[resolveAgentAccess] Query result:
+                            { count: 11, error: undefined }"  -- no warn
+      VERDICT: warn fires for misconfigured tenant, silent for healthy.
+
+  S4: tsc --noEmit -> exit 0
+      C12 multi-tenant regression: 19 PASS / 1 FAIL (baseline preserved;
+        only L2.1 red, documented dormant debt
+        F-SYNC-SINGLE-TENANT-IMPLICIT)
+
+### Multi-tenant correctness
+
+  - The fallback object is derived from no tenant constant; same shape
+    for any tenant with zero apa rows.
+  - The warn line includes agent_id so operators can identify which
+    tenant's homepage agent is unconfigured.
+  - WALLiam path (geo-scoped via apa rows) is byte-identical to before.
+  - Tenant #3 onboarding with zero apa rows on its default agent will
+    render its homepage gracefully + log the warn — no code edit needed
+    per new tenant.
+
+### What's NOT in this fix (deliberate scope discipline)
+
+  - hasComprehensiveAccess (sibling function in same file) NOT touched.
+    Used elsewhere as a boolean routing signal where null/false has
+    semantic meaning; the fix is scoped to the customer-facing surface.
+  - The cross-tenant anthropic_api_key sharing flagged in UNIT 43
+    (aily + walliam fingerprint sk-ant...zwAA len 108 identical) is
+    a separate operational concern — NOT addressed here.
+  - Aily's missing apa rows are NOT being silently filled in DB. The
+    correct long-term posture is: if Aily wants geo-scoped homepage
+    behavior, operator inserts apa rows via Studio. If Aily's product
+    positioning is MLS-wide (per UNIT 28 data: 0 explicit apa,
+    AI-first), the default that this fix provides IS the right
+    behavior, with the warn as the operational signal.
+
+### Backups (timestamps)
+
+  lib/comprehensive/access-resolver.ts.backup_20260628_130643
+  components/HomePageComprehensive.tsx.backup_20260628_130643
+  components/HomePageComprehensiveV2.tsx.backup_20260628_130643
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260628_131423
+
+### Commit gate
+
+  3 source files + tracker shipped together (live-tracker rule).
+  Code-only fix. ZERO DB write. ZERO sends. HOLD push pending
+  operator instruction.

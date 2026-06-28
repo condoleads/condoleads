@@ -39,11 +39,10 @@ export async function HomePageComprehensive({ agent }: HomePageComprehensiveProp
   const tenantId = await getCurrentTenantId();
   const isHero = await isHeroTenant();
     const access = await resolveAgentAccess(agent.id);
-
-  if (!access) {
-    // Shouldn't happen  routing should have caught this
-    return <div>Access configuration error</div>;
-  }
+  // W-HOMEPAGE-ERROR UNIT 44 (2026-06-28): resolveAgentAccess never returns null
+  // (graceful all-MLS default on zero apa rows; operator-visible warn in logs).
+  // The previous `if (!access) return <div>Access configuration error</div>`
+  // surfaced internal misconfig as a customer-facing string — removed.
 
   // Fetch all homepage data in parallel
   const [stats, topAreas] = await Promise.all([
