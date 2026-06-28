@@ -25,8 +25,16 @@ const EXTS = new Set(['.ts', '.tsx']);
 
 const DELETED_FILE = path.join(ROOT, 'lib', 'utils', 'territory.ts');
 
+// W-C12-BASELINE UNIT 39 (2026-06-28): tightened the import-path regex.
+// Original pattern /lib\/utils\/territory/g over-matched the legitimate
+// replacement file `lib/utils/territory-constants.ts` (and its consumers)
+// — caused a permanent FAIL in the baseline despite the deleted file
+// `lib/utils/territory.ts` actually being gone. Negative-lookahead now
+// catches references to the DELETED file only:
+//   matches:  lib/utils/territory.ts, lib/utils/territory', lib/utils/territory"
+//   skips:    lib/utils/territory-constants.ts, lib/utils/territory-constants'
 const FORBIDDEN_PATTERNS = [
-  { name: 'import path lib/utils/territory', regex: /lib\/utils\/territory/g },
+  { name: 'import path lib/utils/territory (excluding -constants replacement)', regex: /lib\/utils\/territory(?!-constants)/g },
   { name: 'symbol getEffectiveTerritories', regex: /\bgetEffectiveTerritories\b/g },
   { name: 'type EffectiveTerritories', regex: /\bEffectiveTerritories\b/g },
   { name: 'type TerritorySource', regex: /\bTerritorySource\b/g },

@@ -4804,3 +4804,220 @@ config changes — code only.
   4 app files + 1 regression script + tracker shipped together
   (live-tracker rule). NO DB writes. NO domain/Resend config changes.
   HOLD push pending operator instruction.
+
+---
+
+## UNIT 37 — PUSH RECORD (2026-06-28)
+
+Operator authorized push of c30fca8 (silent email-failure fix + LOW
+cleanups, code-only).
+
+### Pre-push gate (all green)
+
+  - origin/main pre-push:  b209629 (UNIT 34 Fix 2 STEP 3 — ORDER BY DDL)
+  - HEAD:                  c30fca8 (UNIT 37)
+  - HEAD~1:                b209629
+  - Ahead: 1 commit
+  - System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+  - tsc --noEmit: exit 0
+  - territory regression: 28 PASS / 0 FAIL (was 15; +13 from UNIT 37
+    sections F + F2 + F3)
+  - C12 regression: 17 PASS / 3 FAIL — baseline, 0 new fails
+
+### Push
+
+  git push origin main
+  -> b209629..c30fca8  main -> main
+
+  origin/main post-push:   c30fca8  (==HEAD)
+  HEAD:                    c30fca8
+  ahead of origin: empty
+
+### Vercel deploy status
+
+  Push to main auto-triggers Vercel deploy via GitHub integration.
+  Live production responsive post-push:
+
+  https://www.aily.ca/admin-homes/territory     final=200 (1.68s)
+                                                via middleware -> /login
+  Server: Vercel
+  X-Vercel-Cache: MISS (fresh response)
+  X-Vercel-Id: fra1::iad1::xgg48-...
+
+  No 500 / build-error at the route level. Operator should spot-check
+  the Vercel dashboard for green deploy of c30fca8.
+
+### Status
+
+  UNIT 37 — silent email-failure swallow (R2 + R4) + LOW cleanups:
+    PUSHED. Post-deploy, R2 + R4 callers will start seeing
+      `emailSent: true|false` and `emailReason: 'delivered'|'not_configured'
+      |'send_failed'|'recipients_unavailable'`
+    in their JSON responses. Lead capture status (`success`) remains
+    independent of email delivery — no data loss on send failure.
+    WALLiam contact-form submissions in particular will now surface
+    `emailReason: 'not_configured'` (or similar) while UNIT 36's
+    walliam.ca verification + send_from update remains pending operator
+    action — this is the expected revealed-state, not a new bug.
+
+  Regression baseline (scripts/test-territory-regression.js):
+    PUSHED. Now 28 PASS / 0 FAIL — locks UNIT 37's fixes plus the
+    earlier UNIT 33/34 locks.
+
+### What changes for live callers (revealed-state)
+
+  Before c30fca8:
+    walliam/contact form -> 200 OK -> {success:true, leadId}.
+    Email may or may not have actually sent; caller had no idea.
+  After c30fca8:
+    walliam/contact form -> 200 OK -> {success:true, leadId, emailSent,
+    emailReason}.
+    If emailSent=false + emailReason='not_configured' -> tenant Resend
+    config is missing/invalid (UNIT 36 known-defect for WALLiam's
+    send_from). UI/caller can now show "lead captured, email pending"
+    instead of falsely claiming delivery.
+
+### Commit gate (this PUSH record)
+
+  Tracker-only delta. Will be folded into the next unit's commit per
+  the established pattern.
+
+---
+
+## W-C12-BASELINE UNIT 39 RUN-LOG (2026-06-28) — rewrite stale C12 tests (c8b-2 + c11)
+
+UNIT 38 audit established: c8b-2 + c11 are stale tests asserting code that
+was intentionally refactored to a more multi-tenant-correct pattern. Code
+is right; tests assert old pattern. This unit rewrites the tests to guard
+the CURRENT pattern. L2.1 is INTENTIONALLY LEFT RED — see below.
+
+### TEST FILES ONLY — zero production code change
+
+### Current production pattern (verified on disk this session)
+
+  components/HomePageComprehensiveClient.tsx:
+    L31-40  Props { tenantId, brandName, wordmarkStyle, ... }
+    L51     function HeroWordmark({ wordmarkStyle, brandName }: ...)
+    L69     if (wordmarkStyle !== 'hero') { ... fallback to BrandWordmark }
+    L493    function WalliamHero({ wordmarkStyle, brandName, assistantName }: ...)
+    L529    <HeroWordmark wordmarkStyle={wordmarkStyle} brandName={brandName} />
+    L646    <WalliamHero wordmarkStyle={wordmarkStyle} ... />
+    NO `const WALLIAM_TENANT_ID = '...'`
+    NO `tenantId !== WALLIAM_TENANT_ID`
+    NO WALLiam UUID literal in this file
+  components/HomePageComprehensiveClientV2.tsx: same shape (V2 WalliamHero
+    has extended props: topAreas, neighbourhoods, access, defaultHomeMode,
+    showBrowsePlanCTAs).
+
+  This is MTB-DEF-1 data-driven gating via `tenants.wordmark_style`:
+  hero variant opt-in by data, not by hardcoded UUID. Adding a tenant-3
+  with wordmark_style='hero' lights up the WALLiam-style animated hero
+  without any code change.
+
+### FIX 1 — c8b-2 rewritten (scripts/test-c8b-2-multitenant-regression.js)
+
+  Pre-unit:  14 PASS / 13 FAIL (asserting deleted hardcoded-tenant pattern)
+  Post-unit: 39 PASS / 0 FAIL (asserts current data-driven pattern)
+
+  Structure of the rewritten gate (per client file, V1 + V2):
+    (a) NEGATIVE assertions — old hardcoded-tenant shortcuts are ABSENT:
+        - no `const WALLIAM_TENANT_ID =` constant
+        - no WALLiam UUID literal (b16e1039-...) anywhere in the file
+        - no `tenantId !== WALLIAM_TENANT_ID` gate
+        - no `<HeroWordmark tenantId={...` callsite
+        - no `<WalliamHero tenantId={...` callsite
+        - no `function HeroWordmark({ tenantId` signature
+        - no `function WalliamHero({ tenantId` signature
+    (b) POSITIVE assertions — new data-driven pattern is PRESENT:
+        - BrandWordmark import
+        - HeroWordmark signature takes `wordmarkStyle, brandName`
+        - data-driven gate `if (wordmarkStyle !== 'hero')`
+        - fallback to <BrandWordmark size="hero">
+        - WalliamHero signature takes `wordmarkStyle, ...`
+        - callsites pass `wordmarkStyle={wordmarkStyle}` (not tenantId)
+        - default export destructures wordmarkStyle from Props
+    (c) Carry-over assertions: BrandWordmark hero type + branch + font
+        size (3); wrapper passes tenantId + brandName (V1 + V2 = 4);
+        no-unguarded-HeroWordmark negative (2).
+
+  Also: relaxed `BrandWordmark-hero-size-in-type` regex from the rigid
+  `'sm' | 'md' | 'hero'` to `'sm' [...] 'hero'` so adding a future size
+  variant (e.g. 'lg', already present today) doesn't break the gate.
+
+  IF a future change reintroduces a hardcoded WALLiam UUID shortcut in
+  either client, ANY of the 14 NEGATIVE assertions will FAIL —
+  regression caught.
+
+### FIX 2 — c11 regex tightened (scripts/test-c11-multitenant-regression.js)
+
+  Assertion 1 (lib/utils/territory.ts file absent) was already passing.
+  Assertion 2's regex /lib\/utils\/territory/g over-matched and caught
+  the LEGITIMATE replacement file lib/utils/territory-constants.ts +
+  its consumers (5 false positives).
+
+  Change: regex tightened to negative-lookahead exclusion of `-constants`:
+    BEFORE: /lib\/utils\/territory/g
+    AFTER:  /lib\/utils\/territory(?!-constants)/g
+
+  Behavior:
+    matches:  lib/utils/territory.ts, lib/utils/territory', lib/utils/territory"
+              (catches any reintroduction of the deleted file)
+    skips:    lib/utils/territory-constants.ts (the legitimate replacement)
+
+  Pre-unit:  1 PASS / 1 FAIL on assertion 2 (5 false-positive hits)
+  Post-unit: 5 PASS / 0 FAIL (all 4 forbidden patterns absent)
+
+### L2.1 — INTENTIONALLY LEFT RED
+
+  L2.1 fails on `lib/utils/territory-constants.ts:29` —
+  `export const WALLIAM_TENANT_ID = 'b16e1039-...'`. This is REAL
+  dormant debt tracked as `F-SYNC-SINGLE-TENANT-IMPLICIT`: the
+  WALLiam-only PropTx MLS sync hardcodes this constant. Consumers:
+  lib/homes-sync/save.ts and lib/building-sync/save.ts (the nightly
+  sync, executed only against WALLiam's PropTx feed). Aily has NO
+  runtime path that reads this constant — UNIT 38 audit confirmed.
+
+  WE DELIBERATELY DO NOT ADD `lib/utils/territory-constants.ts` TO
+  UNIT 38's UUID_LOCKED_LIST. Allow-listing would mask the debt; the
+  red baseline IS the reminder that:
+    (a) the WALLiam sync is single-tenant-implicit today, and
+    (b) tenant-3 MLS-sync onboarding requires per-listing tenant
+        derivation in those sync paths before the constant can go.
+
+  L2.1 is therefore the single intentional red in the baseline, with
+  a documented "do not allow-list" rationale.
+
+### Verification
+
+  Standalone test runs:
+    node scripts/test-c11-multitenant-regression.js  -> 5 PASS / 0 FAIL
+    node scripts/test-c8b-2-multitenant-regression.js -> 39 PASS / 0 FAIL
+  Full C12: 19 PASS / 1 FAIL (was 17/3; +2 PASS, -2 FAIL)
+    The 1 remaining fail is L2.1 only — confirmed in runner output.
+  tsc --noEmit: exit 0 (no prod change; pure test edits)
+  git diff --stat (staged for this commit):
+    scripts/test-c11-multitenant-regression.js   (+10)
+    scripts/test-c8b-2-multitenant-regression.js (+197)
+    docs/W-TENANT-TERRITORY-MODEL-TRACKER.md     (this run-log)
+    Pre-existing dirty files (charlie/municipalities/route.ts,
+    r-w-territory-master p2/p4) are NOT in this commit — they predate
+    this session and remain unstaged.
+
+### New baseline
+
+  C12: 19 PASS / 1 FAIL  (was 17/3)
+  The single remaining fail (L2.1) is documented dormant debt, not
+  noise. Any new fail is a real regression; the baseline now reads
+  honestly.
+
+### Backups (timestamps)
+
+  scripts/test-c8b-2-multitenant-regression.js.backup_20260628_055239
+  scripts/test-c11-multitenant-regression.js.backup_20260628_055239
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260628_055730
+
+### Commit gate
+
+  2 test files + tracker shipped together (live-tracker rule). ZERO
+  production code change. ZERO DB write. ZERO sends. HOLD push
+  pending operator instruction.
