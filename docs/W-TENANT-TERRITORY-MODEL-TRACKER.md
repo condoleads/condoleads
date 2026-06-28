@@ -4650,3 +4650,157 @@ baseline's section-E PEND flipped to PASS (14 -> 15 PASS).
   1 migration + 1 rollback snapshot + tracker shipped together
   (live-tracker rule). Runner deleted post-success. HOLD push pending
   operator instruction.
+
+---
+
+## W-LEAD-FLOW-SMOKE UNIT 37 RUN-LOG (2026-06-28) — fix silent email-failure swallow (R2 + R4) + LOW cleanups
+
+UNIT 35 audit findings addressed (the MEDIUM + LOW items). NO domain/Resend
+config changes — code only.
+
+### Ground truth (UNIT 35)
+
+  - R2 (walliam/contact:239) + R4 (lib/actions/leads.ts:403) returned bare
+    `{success:true}` even when tenant email send failed. Caller / user
+    had no signal the email never went out.
+  - R1 + R3 already use the `attemptTenantEmail` helper (typed outcome)
+    and surface result in their JSON responses — they were the reference
+    pattern.
+  - Lead persists BEFORE email in ALL 4 routes (UNIT 35 / 28 verified) —
+    no data loss; this unit fixes REPORTING only.
+
+### FIX A — R2 + R4 surface email outcome
+
+  app/api/walliam/contact/route.ts
+    - Replaced direct `sendTenantEmail` + try/catch swallow with
+      `attemptTenantEmail({...}, '[walliam/contact]')`.
+    - Imports: dropped sendTenantEmail/TenantEmailNotConfigured/
+      TenantEmailFailed; added attemptTenantEmail.
+    - Captures outcome in local vars `emailSent: boolean` +
+      `emailReason: 'delivered'|'not_configured'|'send_failed'|
+      'recipients_unavailable'`.
+    - Return shape:
+        BEFORE: `NextResponse.json({ success: true, leadId: lead?.id })`
+        AFTER:  `NextResponse.json({ success: true, leadId: lead?.id, emailSent, emailReason })`
+    - logEmailRecipients still fires on success (with outcome.messageId).
+
+  lib/actions/leads.ts (createLead)
+    - Replaced BOTH email blocks (agent-chain + buyer-copy) with
+      `attemptTenantEmail({...}, '[leads]')` and
+      `attemptTenantEmail({...}, '[leads:buyer]')`.
+    - Imports: dropped sendTenantEmail/TenantEmailNotConfigured/
+      TenantEmailFailed; added attemptTenantEmail.
+    - Declared `chainEmailOutcome` + `buyerEmailOutcome` locals before
+      the recipients block. Defaults to
+      `{sent:false, reason:'recipients_unavailable'}` and
+      `{sent:false, reason:'skipped'}`.
+    - Return shape:
+        BEFORE: `return { success: true, lead }`
+        AFTER:  `return {
+                  success: true, lead,
+                  emailSent: chainEmailOutcome.sent,
+                  emailReason: chainEmailOutcome.reason,
+                  buyerEmailSent: buyerEmailOutcome.sent,
+                  buyerEmailReason: buyerEmailOutcome.reason,
+                }`
+    - The "buyer email" path covered UNIT 35's separate LOW finding.
+
+  Lead persistence verified UNCHANGED (still INSERTs BEFORE the email
+  attempt; regression F2 asserts the source-order).
+
+### FIX B — UNIT 35 LOW cleanups
+
+  app/api/charlie/appointment/route.ts:202
+    - `getLeadEmailRecipients(tenantId || '', agentId, supabase)` →
+      `getLeadEmailRecipients(tenantId!, agentId, supabase)`
+    - validateSession at L86 already rejects requests with null tenantId.
+    - The `|| ''` fallback was dead (would have called with empty
+      tenant_id, returning zero recipients anyway).
+
+  lib/admin-homes/lead-email-recipients.ts (isOptedOut comment)
+    - Strengthened the existing TO-exemption comment to explicitly
+      enumerate the 8 CC/BCC consumer layers and warn future
+      contributors: "Layer 1 (assigned agent in TO) MUST NOT be filtered
+      here ... do NOT extend isOptedOut to Layer 1 without also
+      redesigning the 'lead can never be address-less' guarantee."
+
+### Regression lock — scripts/test-territory-regression.js extended
+
+  Three new sections added (F + F2 + F3):
+    F: R2 + R4 surface email outcome
+       - R2 success response includes emailSent (regex match)
+       - R2 uses attemptTenantEmail (presence)
+       - R2 no longer calls sendTenantEmail directly (absence)
+       - R4 success return includes emailSent + buyerEmailSent
+       - R4 has >=3 attemptTenantEmail occurrences (import + 2 sites)
+       - R4 no longer calls sendTenantEmail directly
+       - R3 no longer uses tenantId || '' fallback
+       - isOptedOut comment warns against extending to Layer 1
+    F2: lead INSERT precedes email attempt (R2 + R4 source-order check
+        — proves send failure cannot lose the lead)
+    F3: attemptTenantEmail source contract verified (returns
+        {sent:false} for both not_configured + send_failed paths)
+
+  Pre-unit: 15 PASS. Post-unit: 28 PASS / 0 FAIL.
+
+### Gates
+
+  T1 tsc --noEmit: exit 0
+  T2 territory regression: 28 PASS / 0 FAIL (was 15; +13 from UNIT 37)
+  T3 C12 regression: 17 PASS / 3 FAIL — same baseline, 0 new fails
+  Aily / WALLiam state unchanged (no DB writes — code-only)
+
+### What changed for live callers
+
+  Before (R2 / R4):
+    Client/caller saw `{success: true}` even when the tenant's
+    Resend send failed. No signal at all. User thinks email
+    went out when it didn't.
+  After (R2 / R4):
+    Client/caller sees `{success: true, leadId, emailSent, emailReason}`
+    (R2) or `{success: true, lead, emailSent, emailReason,
+    buyerEmailSent, buyerEmailReason}` (R4). Lead capture status
+    (success) is independent of email delivery status (emailSent).
+    The UI / consumer can now render a "couldn't email — admin
+    notified" hint when emailSent=false. Tenant config defects
+    (UNIT 36 WALLiam send_from = condoleads.ca) surface as
+    `emailReason='not_configured'` instead of silent success.
+
+  R3:
+    Dead `|| ''` fallback removed. Behavior identical (validateSession
+    guard at L86 already prevented the empty-string branch from
+    being reached).
+
+  Lead-email-recipients:
+    isOptedOut comment improved — code behavior identical.
+
+### Multi-tenant proof
+
+  No changes to tenant scoping. attemptTenantEmail passes tenantId
+  through to sendTenantEmail which reads `tenants.resend_api_key`
+  via `.eq('id', params.tenantId)` (UNIT 35 already verified). No
+  cross-tenant leak surface introduced.
+
+### Backups (timestamps)
+
+  app/api/walliam/contact/route.ts.backup_20260628_052041
+  lib/actions/leads.ts.backup_20260628_052041
+  app/api/charlie/appointment/route.ts.backup_20260628_052041
+  lib/admin-homes/lead-email-recipients.ts.backup_20260628_052041
+  scripts/test-territory-regression.js.backup_20260628_052041
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260628_052733
+
+### Open follow-ups
+
+  - UI / caller surfaces of R2 + R4 can now consume `emailSent` to
+    show a "lead captured but email not sent" hint where applicable.
+    Out of scope for this unit (server-side fix only).
+  - UNIT 36 send_from fix for WALLiam (operational: verify walliam.ca
+    in Resend + update tenants row via Studio GUI) remains pending
+    operator action.
+
+### Commit gate
+
+  4 app files + 1 regression script + tracker shipped together
+  (live-tracker rule). NO DB writes. NO domain/Resend config changes.
+  HOLD push pending operator instruction.

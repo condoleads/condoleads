@@ -96,7 +96,19 @@ interface AgentEmailRow {
 
 // W-HOUSE-ACCOUNT UNIT 9: opt-out predicate. The agent itself (TO) is NOT
 // filtered by opt-out — they're the OWNER of the lead, not a copy target.
-// Opt-out applies only to CC/BCC copy candidates.
+// Opt-out applies ONLY to CC/BCC copy candidates.
+//
+// W-LEAD-FLOW-SMOKE UNIT 37 (2026-06-28): explicit reminder — the 8 layers
+// below are the consumers of this predicate. Layer 1 (assigned agent in TO)
+// MUST NOT be filtered here; lead-flow code only reads agent.email/notification_email
+// for that slot and never calls isOptedOut on the assigned agent. Future
+// contributors: do NOT extend isOptedOut to Layer 1 without also redesigning
+// the "lead can never be address-less" guarantee.
+//   Consumer call sites (CC/BCC layers only):
+//     - Layer 2 (manager)            - Layer 3 (area_manager)
+//     - Layer 4 (tenant_admin slot)  - branch_ancestors (UNIT 9)
+//     - tenant_owner (UNIT 9)        - tenant_assistant top-tier (UNIT 27)
+//     - plain assistants (UNIT 19)   - house_account CC (UNIT 8B)
 function isOptedOut(row: AgentEmailRow | null | undefined): boolean {
   const prefs = row?.notification_preferences
   if (!prefs || typeof prefs !== 'object') return false

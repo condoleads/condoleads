@@ -199,7 +199,12 @@ export async function POST(req: NextRequest) {
     // Step 5: Notification email → full chain (helper resolves all layers)
     let recipients
     try {
-      recipients = await getLeadEmailRecipients(tenantId || '', agentId, supabase)
+      // W-LEAD-FLOW-SMOKE UNIT 37: dropped the `tenantId || ''` fallback —
+      // validateSession at L86 already requires a non-null tenantId (rejects
+      // the request otherwise), so the empty-string branch was unreachable
+      // and would have called getLeadEmailRecipients with an empty tenant
+      // (returning zero recipients) anyway.
+      recipients = await getLeadEmailRecipients(tenantId!, agentId, supabase)
     } catch (err) {
       if (err instanceof AdminPlatformUnreachable) {
         console.error('[charlie/appointment] admin platform unreachable:', err.message)

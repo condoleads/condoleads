@@ -18,12 +18,13 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { headers } from 'next/headers'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
-  sendTenantEmail,
-  TenantEmailNotConfigured,
-  TenantEmailFailed,
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+// W-LEAD-FLOW-SMOKE UNIT 37: switched to attemptTenantEmail so the
+// agent-chain AND buyer-copy email outcomes are surfaced in the return
+// value (was silently swallowed behind {success:true}).
+import { attemptTenantEmail } from '@/lib/email/sendTenantEmail'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { buildBaseUrl } from '@/lib/utils/tenant-brand'
 // P-WORKING-DOC (2026-06-12): shared 3-section render helper. ONE renderer
@@ -266,6 +267,12 @@ export async function createLead(params: CreateLeadParams) {
     }
   }
 
+  // W-LEAD-FLOW-SMOKE UNIT 37: capture per-send outcomes so the return value
+  // exposes both the chain (agent + branch + top-tier) and the optional
+  // buyer-copy result. Default = recipients_unavailable / not attempted.
+  let chainEmailOutcome: { sent: boolean; reason: 'delivered' | 'not_configured' | 'send_failed' | 'recipients_unavailable'; messageId?: string } = { sent: false, reason: 'recipients_unavailable' }
+  let buyerEmailOutcome: { sent: boolean; reason: 'delivered' | 'not_configured' | 'send_failed' | 'skipped'; messageId?: string } = { sent: false, reason: 'skipped' }
+
   if (recipients) {
     // P-WORKING-DOC (2026-06-12): plumb tenant.domain + brand_name so the
     // template can build tenant-correct property hrefs via buildBaseUrl.
@@ -317,35 +324,26 @@ export async function createLead(params: CreateLeadParams) {
     })
     const subject = `✦ New Lead — ${params.contactName} — ${source}`
 
-    try {
-      const sendResult = await sendTenantEmail({
+    // W-LEAD-FLOW-SMOKE UNIT 37: capture chain-email outcome.
+    chainEmailOutcome = await attemptTenantEmail({
+      tenantId: params.tenantId,
+      to: recipients.to,
+      cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+      bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+      subject,
+      html,
+    }, '[leads]')
+    if (chainEmailOutcome.sent && lead?.id) {
+      await logEmailRecipients({
+        supabase,
         tenantId: params.tenantId,
-        to: recipients.to,
-        cc: recipients.cc.length > 0 ? recipients.cc : undefined,
-        bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+        leadId: lead.id,
+        agentId: resolvedAgentId,
+        recipients,
         subject,
-        html,
+        templateKey: 'leads_helper_new_lead_notification',
+        resendMessageId: chainEmailOutcome.messageId!,
       })
-      if (lead?.id) {
-        await logEmailRecipients({
-          supabase,
-          tenantId: params.tenantId,
-          leadId: lead.id,
-          agentId: resolvedAgentId,
-          recipients,
-          subject,
-          templateKey: 'leads_helper_new_lead_notification',
-          resendMessageId: sendResult.id,
-        })
-      }
-    } catch (err) {
-      if (err instanceof TenantEmailNotConfigured) {
-        console.warn('[leads] tenant email not configured:', err.message)
-      } else if (err instanceof TenantEmailFailed) {
-        console.error('[leads] resend send failed:', err.message)
-      } else {
-        console.error('[leads] unexpected email error:', err)
-      }
     }
 
     // ─── NEW (P-WORKING-DOC): buyer copy of the working document ─────────
@@ -369,38 +367,41 @@ export async function createLead(params: CreateLeadParams) {
         brandName: tenantBrandName,
       })
       const buyerSubject = `Your estimate working document${tenantBrandName ? ' — ' + tenantBrandName : ''}`
-      try {
-        const buyerSend = await sendTenantEmail({
+      // W-LEAD-FLOW-SMOKE UNIT 37: capture buyer-email outcome.
+      const bOutcome = await attemptTenantEmail({
+        tenantId: params.tenantId,
+        to: buyerEmail,
+        subject: buyerSubject,
+        html: buyerHtml,
+      }, '[leads:buyer]')
+      buyerEmailOutcome = { sent: bOutcome.sent, reason: bOutcome.reason, messageId: bOutcome.messageId }
+      if (bOutcome.sent && lead?.id) {
+        await logEmailRecipients({
+          supabase,
           tenantId: params.tenantId,
-          to: buyerEmail,
+          leadId: lead.id,
+          agentId: resolvedAgentId,
+          recipients: { to: [buyerEmail], cc: [], bcc: [], resolved: { agent: null, manager: null, area_manager: null, tenant_admin: null, manager_platforms: [], admin_platforms: [], agent_delegates: [], manager_delegates: [], area_manager_delegates: [], tenant_admin_delegates: [] } } as any,
           subject: buyerSubject,
-          html: buyerHtml,
+          templateKey: 'leads_helper_buyer_working_doc',
+          resendMessageId: bOutcome.messageId!,
         })
-        if (lead?.id) {
-          await logEmailRecipients({
-            supabase,
-            tenantId: params.tenantId,
-            leadId: lead.id,
-            agentId: resolvedAgentId,
-            recipients: { to: [buyerEmail], cc: [], bcc: [], resolved: { agent: null, manager: null, area_manager: null, tenant_admin: null, manager_platforms: [], admin_platforms: [], agent_delegates: [], manager_delegates: [], area_manager_delegates: [], tenant_admin_delegates: [] } } as any,
-            subject: buyerSubject,
-            templateKey: 'leads_helper_buyer_working_doc',
-            resendMessageId: buyerSend.id,
-          })
-        }
-      } catch (err) {
-        if (err instanceof TenantEmailNotConfigured) {
-          console.warn('[leads] buyer email not configured:', err.message)
-        } else if (err instanceof TenantEmailFailed) {
-          console.error('[leads] buyer resend send failed:', err.message)
-        } else {
-          console.error('[leads] buyer unexpected email error:', err)
-        }
       }
     }
   }
 
-  return { success: true, lead }
+  // W-LEAD-FLOW-SMOKE UNIT 37: emailSent + emailReason surface the agent-
+  // chain send. buyerEmailSent / buyerEmailReason cover the optional
+  // buyer-copy. Lead persistence already happened above (line 208-245);
+  // these fields reflect ONLY the send outcomes.
+  return {
+    success: true,
+    lead,
+    emailSent: chainEmailOutcome.sent,
+    emailReason: chainEmailOutcome.reason,
+    buyerEmailSent: buyerEmailOutcome.sent,
+    buyerEmailReason: buyerEmailOutcome.reason,
+  }
 }
 
 // ─── updateLeadEnrichment ────────────────────────────────────────────────────

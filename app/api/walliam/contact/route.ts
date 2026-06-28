@@ -15,12 +15,13 @@ import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { walkHierarchy } from '@/lib/admin-homes/hierarchy'
 import {
-  sendTenantEmail,
-  TenantEmailNotConfigured,
-  TenantEmailFailed,
   getLeadEmailRecipients,
   AdminPlatformUnreachable,
 } from '@/lib/admin-homes/lead-email-recipients'
+// W-LEAD-FLOW-SMOKE UNIT 37: switched to attemptTenantEmail (returns typed
+// outcome) so this route can surface emailSent/emailReason in the response
+// instead of silently swallowing email failures behind {success:true}.
+import { attemptTenantEmail } from '@/lib/email/sendTenantEmail'
 import { logEmailRecipients } from '@/lib/admin-homes/log-email-recipients'
 import { getTenantContext } from '@/lib/utils/tenant-brand'
 import { getOrCreateAuthUserByEmail } from '@/lib/auth/get-or-create-by-email'
@@ -194,36 +195,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // W-LEAD-FLOW-SMOKE UNIT 37: capture the email outcome (delivered /
+    // not_configured / send_failed / recipients_unavailable) and surface
+    // it in the response. Lead persistence already happened above —
+    // emailSent reflects ONLY the send result, not whether the lead was
+    // captured. logEmailRecipients still fires on success so the lead's
+    // emails table shows the actual recipient set sent.
+    let emailSent = false
+    let emailReason: 'delivered' | 'not_configured' | 'send_failed' | 'recipients_unavailable' = 'recipients_unavailable'
+
     if (recipients) {
-      try {
-        const sendResult = await sendTenantEmail({
+      const outcome = await attemptTenantEmail({
+        tenantId: tenant_id,
+        to: recipients.to,
+        cc: recipients.cc.length > 0 ? recipients.cc : undefined,
+        bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+        subject,
+        html,
+      }, '[walliam/contact]')
+      emailSent = outcome.sent
+      emailReason = outcome.reason
+      if (outcome.sent && lead?.id) {
+        await logEmailRecipients({
+          supabase,
           tenantId: tenant_id,
-          to: recipients.to,
-          cc: recipients.cc.length > 0 ? recipients.cc : undefined,
-          bcc: recipients.bcc.length > 0 ? recipients.bcc : undefined,
+          leadId: lead.id,
+          agentId: agent?.id || null,
+          recipients,
           subject,
-          html,
+          templateKey: 'walliam_contact_lead_capture',
+          resendMessageId: outcome.messageId!,
         })
-        if (lead?.id) {
-          await logEmailRecipients({
-            supabase,
-            tenantId: tenant_id,
-            leadId: lead.id,
-            agentId: agent?.id || null,
-            recipients,
-            subject,
-            templateKey: 'walliam_contact_lead_capture',
-            resendMessageId: sendResult.id,
-          })
-        }
-      } catch (err) {
-        if (err instanceof TenantEmailNotConfigured) {
-          console.warn('[walliam/contact] tenant email not configured:', err.message)
-        } else if (err instanceof TenantEmailFailed) {
-          console.error('[walliam/contact] resend send failed:', err.message)
-        } else {
-          console.error('[walliam/contact] unexpected email error:', err)
-        }
       }
     }
 
@@ -236,7 +238,10 @@ export async function POST(req: NextRequest) {
       message: message || null,
     }, req.headers.get('referer') || '')
 
-    return NextResponse.json({ success: true, leadId: lead?.id })
+    // W-LEAD-FLOW-SMOKE UNIT 37: emailSent + emailReason surface the send
+    // result. Bare {success:true} previously swallowed the typed exception
+    // and the caller had no signal the email never went out.
+    return NextResponse.json({ success: true, leadId: lead?.id, emailSent, emailReason })
   } catch (error) {
     console.error('[walliam/contact] error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
