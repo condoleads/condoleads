@@ -5629,6 +5629,234 @@ proxy class UNIT 46 was fixing.
   Code-only fix. ZERO DB write. ZERO sends. HOLD push pending
   operator instruction.
 
+### UNIT 48 PUSH RECORD (2026-06-28)
+
+  Operator authorized push of cd13b0a (residual MTB-DEF-1 gate
+  removal — WalliamCTA renders for all tenants).
+
+  Pre-push gate (all green):
+    origin/main pre-push: 9878633 (UNIT 46)
+    HEAD:                 cd13b0a (UNIT 48)
+    HEAD~1:               9878633
+    ahead: 1 commit
+    Commit contents (git show --stat cd13b0a): exactly 2 files
+      app/[slug]/BuildingPage.tsx              (+18/-3)
+      docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (+177)
+      2 files changed, 192 insertions, 3 deletions
+    System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+    tsc --noEmit: exit 0
+    C12: 19 PASS / 1 FAIL (only L2.1 red, by design)
+
+  Pre-existing dirty (must NOT be swept in):
+    Pre-push:
+      M app/api/charlie/municipalities/route.ts
+      M scripts/r-w-territory-master-p2-data-phantom-fix.js
+      M scripts/r-w-territory-master-p4-check-fix.js
+    Post-push: SAME 3 files, untouched, still unstaged.
+
+  Push:
+    git push origin main
+    -> 9878633..cd13b0a  main -> main
+    origin/main post-push: cd13b0a  (== HEAD)
+
+  Vercel auto-deploy + LIVE production probe:
+    Polled https://www.aily.ca/x2-condos-101-charles-st-e-toronto
+    until the "Get Your AI Real Estate Plan" tagline appeared in
+    live HTML. New build live in ~60s.
+
+    Final live probe:
+      HTTP 200 / 1.85s response time
+      bytes: 1,178,496
+      4th block presence on LIVE Aily:
+        'Get Your AI Real Estate Plan' tagline: 1 hit
+        Buyer Plan / Seller Plan / Ask AI buttons: 4 / 4 / 2 hits
+      AILY-flavor on LIVE:
+        'Ask aily about X2' subtitle: 1 hit (assistantName + context)
+        Aiglow magenta panel #29142b: 1 hit (aiglow background)
+      Leak check on LIVE (must all be 0):
+        'WALLiam' brand text: 0
+        'King Shah': 0
+
+    THE 4TH BLOCK IS LIVE ON PRODUCTION AILY.CA with Aily-flavor
+    (aiglow wordmark + magenta panel + Aily assistant copy).
+    Zero cross-tenant leak in live production.
+
+  Status:
+    UNIT 48 - residual MTB-DEF-1 gate on WalliamCTA closed: PUSHED.
+    aily.ca/<building> right rail now renders all 4 blocks:
+      1. Agent card (UNIT 46)
+      2. Get Your AI Real Estate Plan CTA (UNIT 48) <- newly live
+      3. Get In Touch contact form (UNIT 46)
+      4. Own a Unit CTA (UNIT 46)
+    Matches the WALLiam rail count; rendered in Aily-flavor via
+    tenant-driven props. No per-tenant code branching.
+
+  Commit gate (this PUSH record):
+    Tracker-only delta. Will fold into the next unit's commit per
+    the established live-tracker pattern.
+
+---
+
+## W-LANDING-CONTEXT UNIT 50 RUN-LOG (2026-06-29) — landing-page context propagation: Gap A (plan artifact) + Gap B (geo-page chat) + cosmetic form header
+
+UNIT 49 audit established three gaps in landing-page context flow on
+building / geo pages: (A) plan-email persistence and email subject
+were building-blind even though the LLM reasoning was building-aware
+in the system prompt; (B) the chat client forwarded only building_id
+from pageContextRef, dropping community_id/municipality_id/area_id so
+geo pages couldn't pre-load the route's geoAnalyticsContext; (C)
+cosmetic — contact form header was generic "GET IN TOUCH" even when
+contextLabel was passed.
+
+UNIT 50 closes all three additively — current working paths
+(homepage / building rail / contact form / building-page chat) stay
+byte-intact.
+
+### D1 verdict — data-layer
+
+  chat_sessions has NO building_id column.
+  NO standalone plans table exists.
+  Plans persist as leads. leads.building_id column ALREADY EXISTS
+    (UNIT 49 R4 confirmed).
+  buildings table has NO tenant_id column (shared MLS data per
+    CLAUDE.md).
+  Verdict: Gap A is CODE-ONLY. No migration needed. No HARD GATE
+    triggered.
+
+### Files changed (3 source + tracker)
+
+  app/charlie/hooks/useCharlie.ts
+    Gap B (line ~422): widened geoContext forward from {building_id}
+      only to {building_id, community_id, municipality_id, area_id}.
+      Building-page behavior unchanged (route's
+      `if (geoContext?.building_id)` pre-load wins; geo-pre-load is
+      mutually exclusive via `!geoContext?.building_id` guard at
+      route.ts:191).
+    Gap A (line ~556): added `building_id:
+      pageContextRef.current?.building_id || null` to the
+      plan-email POST body. Additive — geoContext field unchanged.
+
+  app/api/charlie/plan-email/route.ts
+    Gap A: destructured `building_id` from body + UUID-shape validated
+      into a typed null-safe local; null on non-building pages.
+    Gap A: when buildingId present, fetch building_name from buildings
+      table by id (no tenant scoping — buildings is shared MLS data).
+    Gap A: leads.building_id = buildingId in the insert (null when
+      absent — row shape identical to today).
+    Gap A: email subject now `${brand} ${planType} Plan — ${building
+      Name} — ${userName}` when buildingName present; falls back to
+      today's `... — ${geoName||'GTA'} — ${userName}` otherwise.
+
+  components/WalliamContactForm.tsx
+    Cosmetic (line ~108-114): header text now reads "Inquiring About"
+      with the contextLabel rendered below WHEN contextLabel is
+      present; falls back to "Get In Touch" when absent (byte-
+      identical to today on pages without contextLabel).
+
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md
+    UNIT 50 run-log + UNIT 48 PUSH RECORD fold-in.
+
+### Multi-tenant safety
+
+  All changes are tenant-driven via existing props/pageContext/
+    tenant_id from request. No hardcoded WALLiam/Aily IDs introduced.
+  Cosmetic header derives entirely from contextLabel prop (already
+    multi-tenant). Aily + WALLiam + tenant-N all benefit from the
+    same code path.
+  Plan-email building lookup queries `buildings` by id only (buildings
+    has no tenant_id). The buildingId UUID-shape gate prevents
+    injection at the client->route boundary.
+
+### Smoke (local dev, npm run dev)
+
+  S1: aily.ca/x2-condos-101-charles-st-e-toronto (building chat path)
+      HTTP 200 / 1,173,577 bytes — UNCHANGED from UNIT 48 baseline.
+      4-block rail still present:
+        Get Your AI Real Estate Plan: 1 hit
+        Inquiring About header (cosmetic): 1 hit
+        X2 Condos in form context: 7 hits
+      VERDICT: building chat path byte-intact + cosmetic surfaces.
+
+  S2: aily.ca/toronto-c08 (community page)
+      HTTP 200 / 277,772 bytes — community page renders cleanly.
+      Gap B's wider pageContext forward doesn't break the page.
+      Full Gap B value (geoAnalyticsContext pre-load) requires a
+      real chat session to fully prove — code path verified by
+      diff inspection + route.ts:189-191 acceptance shape unchanged.
+
+  S3 (Gap A — the headline improvement)
+      Code-level proof (Charlie session smoke requires auth):
+        useCharlie.ts plan-email POST now includes
+          `building_id: pageContextRef.current?.building_id || null`
+        plan-email route reads it, fetches building_name, persists
+          leads.building_id = buildingId, builds subject as
+          "... Plan — X2 Condos — <userName>" when on a building.
+      VERDICT: code-level pass. Live proof comes post-deploy when
+      a real plan submission from a building page lands.
+
+  S4: regression — non-building-page plan
+      buildingId is null when absent from POST body.
+      leads.building_id writes null — identical to today.
+      buildingName fetch is gated `if (buildingId)` — skipped.
+      Subject ternary `buildingName ? ... : ...` falls back to
+        today's `${geoName || 'GTA'}` form.
+      VERDICT: non-building-page plans byte-identical to today.
+
+  S5: cosmetic form header
+      X2 page: "Inquiring About" header + "X2 Condos" subtitle
+        rendered (1 hit each in HTML).
+      Pages without contextLabel still render "Get In Touch"
+        header (fallback ternary intact).
+      VERDICT: surfaced louder where context exists; unchanged
+        on geo pages without a context label.
+
+  S6: walliam.ca/x2-condos parity
+      HTTP 200 / 1,168,005 bytes
+      Get Your AI Real Estate Plan: 1 hit (UNIT 48 preserved)
+      HERO 'WALL' visual: 3 hits (hero flavor preserved)
+      Inquiring About header (cosmetic): 1 hit (works on WALLiam too)
+      X2 Condos in context: 5 hits
+      VERDICT: WALLiam parity confirmed — cosmetic + Gap B
+        improvements are tenant-neutral.
+
+  S7: tsc --noEmit -> exit 0
+      C12 multi-tenant regression: 19 PASS / 1 FAIL (baseline
+        preserved; only L2.1 red — documented dormant debt
+        F-SYNC-SINGLE-TENANT-IMPLICIT)
+      c8b-2 regression: 39 PASS / 0 FAIL
+      c11 regression: 5 PASS / 0 FAIL
+      territory regression: 28 PASS / 0 FAIL
+      VERDICT: full regression suite preserves prior pass counts;
+        zero new fails.
+
+### Backups (timestamps)
+
+  app/charlie/hooks/useCharlie.ts.backup_20260629_082133
+  app/api/charlie/plan-email/route.ts.backup_20260629_082133
+  components/WalliamContactForm.tsx.backup_20260629_082133
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260629_082133
+
+### What's NOT in this UNIT (deliberate scope discipline)
+
+  - chat_sessions schema unchanged. Lead persistence is the
+    canonical "plan record" today; adding a parallel building_id
+    on chat_sessions would duplicate state.
+  - Plan email BODY layout unchanged (the buildingName goes into
+    the subject only). A richer per-building line in the email
+    body could be a small follow-up but is not required to close
+    the gap operator flagged (artifact knows the building).
+  - lead-page (admin view) building display: unchanged. The
+    lead-page already renders geo_name/building_id where present.
+  - No prefill of contact form NAME/EMAIL/PHONE (Rule Zero — no
+    fake identity).
+
+### Commit gate
+
+  3 source files + tracker shipped together (live-tracker rule).
+  Code-only fix. ZERO DB write. ZERO sends. HOLD push pending
+  operator instruction. UNIT 48 PUSH RECORD also folded into this
+  commit per the established pattern.
+
 ---
 
 ### UNIT 44 PUSH RECORD (2026-06-28)

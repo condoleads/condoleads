@@ -70,7 +70,13 @@ function createServiceClient() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate: rawSellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks } = await req.json()
+    const { sessionId, userId, planType, plan, analytics, listings, geoContext, comparables, sellerEstimate: rawSellerEstimate, vipCreditUsed, vipCreditPlansUsed, vipCreditTotal, blocks, building_id: incomingBuildingId } = await req.json()
+    // W-LANDING-CONTEXT UNIT 50 Gap A (2026-06-29): building_id is optional —
+    // when present (plan generated from a building landing page) it is
+    // persisted on the lead (leads.building_id already exists) AND surfaced
+    // in the email subject so the agent inbox shows the originating
+    // building. Absent: behavior byte-identical to today.
+    const buildingId: string | null = (typeof incomingBuildingId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(incomingBuildingId)) ? incomingBuildingId : null
 
     if (!sessionId || !userId || !planType) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
@@ -287,6 +293,23 @@ export async function POST(req: NextRequest) {
 
     const geoName = geoContext?.geoName || plan?.geoName || null
 
+    // W-LANDING-CONTEXT UNIT 50 Gap A (2026-06-29): when the plan was
+    // generated from a building landing page, fetch the building's name
+    // for the email subject + lead surfacing. buildings table is shared
+    // MLS data across tenants (no tenant_id column per CLAUDE.md), so
+    // we look up by id only. UUID-shape validation already ran at
+    // request entry. Null if buildingId is absent — the null path is
+    // byte-identical to today (no building reference in the email).
+    let buildingName: string | null = null
+    if (buildingId) {
+      const { data: bld } = await supabase
+        .from('buildings')
+        .select('building_name')
+        .eq('id', buildingId)
+        .maybeSingle()
+      buildingName = bld?.building_name || null
+    }
+
     // W3c: capture source URL from referer for both leads.source_url + email render
     const pageUrl = headers().get('referer') || null
 
@@ -344,6 +367,12 @@ export async function POST(req: NextRequest) {
       assignment_source: agent ? 'geo' : 'admin',
       status: 'new',
       tenant_id: tenantId,
+      // W-LANDING-CONTEXT UNIT 50 Gap A (2026-06-29): persist the
+      // originating building on the lead when the plan was generated
+      // from a building landing page. leads.building_id column exists
+      // (UNIT 49 R4). null on non-building-page plans — row shape
+      // byte-identical to today.
+      building_id: buildingId,
     }).select('id').single()
     if (leadError) console.error('[plan-email] lead error:', leadError)
 
@@ -360,7 +389,13 @@ export async function POST(req: NextRequest) {
     // when the backfill populated rows (Defect 1 fix carries through
     // to the email surface).
     const html = buildRichPlanEmail({ userName, userEmail, planType, plan, analytics, listings: effectiveListings, agent, geoName, comparables: comparables || [], sellerEstimate: sellerEstimate || null, vipCreditUsed: vipCreditUsed || false, vipCreditPlansUsed: vipCreditPlansUsed || 0, vipCreditTotal: vipCreditTotal || 1, blocks: blocks || [], brandName, domain, baseUrl: BASE_URL, sourceUrl: pageUrl, buyerTaxMatch })
-    const subject = `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
+    // W-LANDING-CONTEXT UNIT 50 Gap A (2026-06-29): surface the
+    // originating building in the email subject when present so the
+    // agent inbox shows the landing-page context. Absent: byte-identical
+    // to today's "<brand> <Plan> \u2014 <geoName|GTA> \u2014 <userName>".
+    const subject = buildingName
+      ? `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${buildingName} \u2014 ${userName}`
+      : `\u2756 ${brandName} ${planType === 'buyer' ? 'Buyer' : 'Seller'} Plan \u2014 ${geoName || 'GTA'} \u2014 ${userName}`
 
     // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): capture user-email outcome.
     const userOutcome = await attemptTenantEmail(

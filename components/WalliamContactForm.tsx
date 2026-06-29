@@ -104,13 +104,17 @@ export default function WalliamContactForm({
       <div style={{ height: 3, background: 'linear-gradient(90deg, #1d4ed8, #4f46e5, #7c3aed)' }} />
 
       <div style={{ padding: '20px' }}>
-        {/* Header */}
+        {/* Header — W-LANDING-CONTEXT UNIT 50 cosmetic (2026-06-29):
+            when contextLabel is present (building / property / geo page),
+            surface it as "Inquiring about <X>" header so the visitor's
+            page context is louder. Pages without contextLabel keep
+            the original "GET IN TOUCH" header — byte-identical to today. */}
         <div style={{
           fontSize: 10, fontWeight: 700, letterSpacing: '0.15em',
           color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase',
           marginBottom: 4,
         }}>
-          Get In Touch
+          {contextLabel ? 'Inquiring About' : 'Get In Touch'}
         </div>
         {contextLabel && (
           <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.6)', marginBottom: 16 }}>

@@ -419,7 +419,29 @@ export function useCharlie() {
           messages: messagesRef.current,
           sessionId: creditsRef.current.state.sessionId,
           userId: creditsRef.current.state.userId,
-          geoContext: geoContextRef.current ? { ...geoContextRef.current, building_id: pageContextRef.current?.building_id || null } : (pageContextRef.current?.building_id ? { building_id: pageContextRef.current.building_id } : null),
+          // W-LANDING-CONTEXT UNIT 50 Gap B (2026-06-29): widen the page-
+          // context forward from building_id only to also include
+          // community_id / municipality_id / area_id so /api/charlie can
+          // pre-load geoAnalyticsContext on muni/community/area pages too
+          // (today it only pre-loads when one of those IDs is present per
+          // route.ts:189-191, but the client was dropping them). Building-
+          // page behavior unchanged: building_id still threads exactly as
+          // before AND building_intelligence pre-load still wins at the
+          // route level (the route's `if (geoContext?.building_id)` runs
+          // first, and the geo-pre-load `if (... && !geoContext?.building_id)`
+          // is mutually exclusive — see route.ts:161 vs :191).
+          geoContext: geoContextRef.current ? {
+            ...geoContextRef.current,
+            building_id: pageContextRef.current?.building_id || null,
+            community_id: pageContextRef.current?.community_id || null,
+            municipality_id: pageContextRef.current?.municipality_id || null,
+            area_id: pageContextRef.current?.area_id || null,
+          } : (pageContextRef.current?.building_id || pageContextRef.current?.community_id || pageContextRef.current?.municipality_id || pageContextRef.current?.area_id ? {
+            building_id: pageContextRef.current?.building_id || null,
+            community_id: pageContextRef.current?.community_id || null,
+            municipality_id: pageContextRef.current?.municipality_id || null,
+            area_id: pageContextRef.current?.area_id || null,
+          } : null),
         }),
       })
 
@@ -553,6 +575,15 @@ export function useCharlie() {
             analytics: analyticsRef.current,
             listings: stateRef.current.listingGroups.flatMap(g => g.listings).slice(0, 10),
             geoContext: stateRef.current.geoContext,
+            // W-LANDING-CONTEXT UNIT 50 Gap A (2026-06-29): forward
+            // pageContextRef.current.building_id into the plan-email
+            // payload so the persisted lead carries leads.building_id and
+            // the email header references the building. Additive — the
+            // existing geoContext (chat-derived geoName for the
+            // GTA/community summary) is untouched. Null on non-building
+            // pages — server (plan-email/route.ts) writes null into
+            // leads.building_id, identical to today's row shape.
+            building_id: pageContextRef.current?.building_id || null,
             vipCreditUsed: stateRef.current.vipCreditUsed,
             vipCreditPlansUsed: stateRef.current.vipCreditPlansUsed,
             vipCreditTotal: stateRef.current.vipCreditTotal,
