@@ -6697,6 +6697,47 @@ to https://www.aily.ca.
   UNIT 59 revert-note also folded into this commit per the
   established live-tracker pattern.
 
+### UNIT 60 PUSH RECORD (2026-06-30)
+
+  Operator authorized push of 3f585f0 (01leads demo links repointed
+  walliam.ca -> https://www.aily.ca).
+
+  Pre-push gate (all green):
+    origin/main pre-push: ac1dbcc (UNIT 55)
+    HEAD:                 3f585f0 (UNIT 60)
+    ahead: 1 commit
+    Commit contents: exactly 6 files (5 source +1/-1 each + tracker)
+    System 1 zero-diff: EMPTY
+    tsc --noEmit: exit 0
+    Live walliam.ca refs in app/zerooneleads/ source: 0
+
+  Push:
+    git push origin main
+    -> ac1dbcc..3f585f0  main -> main
+
+  Vercel auto-deploy + LIVE production probe:
+    01leads.com 308-redirects to www.01leads.com (followed via curl
+    -L). Build live (my initial polling loop missed it for ~7.5 min
+    because it wasn't following the apex->www 308).
+
+    Final live probe at https://www.01leads.com/:
+      HTTP 200 / 98,811 bytes
+      walliam.ca refs in live HTML:                  0
+      href="https://www.aily.ca" anchor count:       5
+        (Nav "See Demo", Hero "See Live Demo ->",
+         Solution "See it Live ->", FooterCTA "See it Live ->",
+         Footer "See Live Demo")
+      All anchors with target=_blank+rel=noopener preserved on the
+      4 button-style CTAs (the Footer list item is plain link by
+      design — pattern preserved).
+
+  Status: UNIT 60 - 01leads demo links repointed to aily.ca: PUSHED.
+  Dead-link blocker for the launch marketing surface cleared.
+
+  Commit gate (this PUSH record):
+    Tracker-only delta. Folds into the next unit's commit per the
+    established live-tracker pattern.
+
 ### What's NOT in this UNIT
 
   - No code uses src/lib/ads.ts yet (dormant capability, ready for
