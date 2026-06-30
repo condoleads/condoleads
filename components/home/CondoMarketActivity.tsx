@@ -225,9 +225,15 @@ export default async function CondoMarketActivity() {
                 display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14,
               }}>
                 {buildings.map(b => (
+                  // W-FEATURED-CONDOS UNIT 54 (2026-06-30): target=_blank +
+                  // rel="noopener noreferrer" — keeps the homepage open while
+                  // visitor explores a building; noopener required for security
+                  // (blocks window.opener access from opened tab).
                   <Link
                     key={b.slug}
                     href={`/${b.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     style={{
                       position: 'relative', display: 'block',
                       borderRadius: 12, overflow: 'hidden',
@@ -305,9 +311,13 @@ export default async function CondoMarketActivity() {
                 borderRadius: 12, overflow: 'hidden',
               }}>
                 {communities.map((c, i) => (
+                  // W-FEATURED-CONDOS UNIT 54 (2026-06-30): same target=_blank +
+                  // noopener noreferrer pattern as the building cards.
                   <Link
                     key={c.slug}
                     href={`/${c.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     style={{
                       display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr) auto',
                       alignItems: 'center', gap: 10,

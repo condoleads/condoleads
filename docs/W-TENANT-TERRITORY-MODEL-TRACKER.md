@@ -6099,6 +6099,149 @@ BELOW the existing client. Existing homepage sections untouched.
   operator instruction. UNIT 50 PUSH RECORD also folded into this
   commit per the established pattern.
 
+### UNIT 53 PUSH RECORD (2026-06-30)
+
+  Operator authorized push of 5f1b1ed (new "GTA Condo Market — Live
+  Activity" homepage section).
+
+  Pre-push gate (all green):
+    origin/main pre-push: e089f14 (UNIT 50)
+    HEAD:                 5f1b1ed (UNIT 53)
+    HEAD~1:               e089f14
+    ahead: 1 commit
+    Commit contents (git show --stat 5f1b1ed): exactly 4 files
+      components/HomePageComprehensiveV2.tsx   (+11)
+      components/home/CondoMarketActivity.tsx  (+354 NEW)
+      components/home/Sparkline.tsx            (+70 NEW)
+      docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (+242)
+      4 files changed, 677 insertions
+    System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+    tsc --noEmit: exit 0
+    C12: 19 PASS / 1 FAIL (only L2.1 red, by design)
+    c8b-2: 39 PASS / 0 FAIL
+    c11:   5 PASS / 0 FAIL
+    territory: 28 PASS / 0 FAIL
+
+  Pre-existing dirty (must NOT be swept in):
+    Pre-push + Post-push (UNCHANGED, both states):
+      M app/api/charlie/municipalities/route.ts
+      M scripts/r-w-territory-master-p2-data-phantom-fix.js
+      M scripts/r-w-territory-master-p4-check-fix.js
+
+  Push:
+    git push origin main
+    -> e089f14..5f1b1ed  main -> main
+    origin/main post-push: 5f1b1ed  (== HEAD)
+
+  Vercel auto-deploy + LIVE production probe:
+    Polled https://www.aily.ca/ until UNIT 53 "GTA Condo Market"
+    heading appeared. New build live in ~30s.
+
+    Final live probe:
+      HTTP 200 / 1.32s response time
+      bytes: 175,374
+
+      UNIT 53 section markers on LIVE Aily:
+        'GTA Condo Market':         2 hits (heading + aria-label)
+        'Live Activity':            2 hits
+        'Featured Buildings':       2 hits
+        'Most Active Communities':  2 hits
+        'Updated' timestamp:        2 hits
+
+      REAL TOP BUILDINGS rendering on production (matching UNIT 52
+      probe — real data, real photos, real slugs):
+        '50 O Neil':       2 hits
+        'M City 1 Condos': 2 hits
+        'Quartz Condos':   2 hits
+        'Shangrila':       2 hits
+
+      Existing homepage regression (must equal pre-UNIT-53 baseline):
+        AiGlow wordmark bundle: 21 hits  (UNIT 46 baseline = 21) ✓
+
+    THE FEATURED CONDO SECTION IS LIVE ON PRODUCTION AILY.CA with
+    real top buildings, real "Updated" date from geo_analytics.
+    Zero placeholder, zero fabrication. Existing homepage above
+    untouched.
+
+  Status:
+    UNIT 53 - "GTA Condo Market — Live Activity" section: PUSHED.
+    aily.ca/ now ships a server-rendered featured-by-activity
+    section below the existing homepage content:
+      Featured Buildings (left, photo-led, sparklines where data
+        is real enough)
+      Most Active Communities (right, text stat-tiles)
+    Tenant-neutral data (geo_analytics has no tenant_id); WALLiam
+    parity confirmed in S2 smoke. Links host-relative; tenant
+    flows via middleware.
+
+  Commit gate (this PUSH record):
+    Tracker-only delta. Will fold into the next unit's commit per
+    the established live-tracker pattern.
+
+---
+
+## W-FEATURED-CONDOS UNIT 54 RUN-LOG (2026-06-30) — featured-section links open in new tab
+
+Tiny additive UX fix: building cards + community tiles in UNIT 53's
+"GTA Condo Market - Live Activity" section now open in a new tab so
+the visitor keeps the homepage open while exploring.
+
+### File changed (1 source + tracker)
+
+  components/home/CondoMarketActivity.tsx
+    Added `target="_blank" rel="noopener noreferrer"` to:
+      1. The <Link> wrapping each featured BUILDING card
+      2. The <Link> wrapping each MOST-ACTIVE COMMUNITY tile
+    rel=noopener is required (blocks window.opener from the opened
+      tab — XSS surface area otherwise). rel=noreferrer per
+      preference.
+    Diff: +10 insertions only — 2 attribute lines + 6 comment lines
+      + 2 surrounding whitespace lines. Anchor styling, href shape,
+      and child markup unchanged.
+
+### Smoke
+
+  S1: aily.ca homepage
+      HTTP 200 / 182,974 bytes
+      Every UNIT 53 featured slug has a target=_blank anchor:
+        /m-city-1-condos...: 1 new-tab anchor
+        /m-city-2-condos...: 1
+        /quartz-condos...:   1
+        /shangrila...:       1
+        /west-condos...:     1
+        /riverview-condos...:1
+        /via-bloor-2...:     1
+        /waterfront-communities-c1...: 1
+        /niagara...:                   2 (also in BrowseMegaMenu)
+        /city-centre...:               1
+        /willowdale-east...:           2 (also in BrowseMegaMenu)
+        /mimico...:                    1
+      Direct DOM read sample (community tile):
+        <a target="_blank" rel="noopener noreferrer" ...
+          href="/waterfront-communities-c1">
+
+  Regression — links elsewhere unchanged:
+    Other source files NOT in this diff. BrowseMegaMenuContent (the
+    nav neighbourhood browser) renders its links conditional on its
+    own `openInNewTab` prop (pre-existing UNIT 53-era behavior) —
+    not touched by this UNIT.
+
+  S7: tsc --noEmit -> exit 0
+      C12: 19 PASS / 1 FAIL (baseline preserved; only L2.1 red —
+        documented dormant debt F-SYNC-SINGLE-TENANT-IMPLICIT)
+
+### Backups (timestamps)
+
+  components/home/CondoMarketActivity.tsx.backup_20260630_052237
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260630_052237
+
+### Commit gate
+
+  1 source file + tracker shipped together (live-tracker rule).
+  Code-only fix, additive HTML attributes. ZERO DB write. ZERO
+  sends. HOLD push pending operator instruction. UNIT 53 PUSH RECORD
+  also folded into this commit per the established pattern.
+
 ---
 
 ### UNIT 44 PUSH RECORD (2026-06-28)
