@@ -6244,6 +6244,486 @@ the visitor keeps the homepage open while exploring.
 
 ---
 
+## W-GOOGLE-ADS UNIT 55a (2026-06-30) — append Google Ads keys to .env.local
+
+Operator-led: 5 GOOGLE_ADS_* keys appended to .env.local (raw-byte append
+via one-shot Node script, no BOM risk). GOOGLE_ADS_REFRESH_TOKEN
+deliberately deferred to UNIT 55b.
+
+Backup: .env.local.backup_20260630_071322
+.gitignore: .env.local covered by 4 rules (lines 26, 27, 47, 51) —
+  cannot be committed.
+Line delta: 95 -> 102 (1 blank + 1 comment + 5 keys + trailing blank).
+NO git activity. NO push. NO commit.
+
+Fingerprints (no full secrets in tracker):
+  GOOGLE_ADS_CLIENT_ID            len 73, ends ...googleusercontent.com
+  GOOGLE_ADS_CLIENT_SECRET        len 35
+  GOOGLE_ADS_DEVELOPER_TOKEN      len 22
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID    10 digits (MCC, not secret)
+  GOOGLE_ADS_CUSTOMER_ID          10 digits (account, not secret)
+
+---
+
+## W-GOOGLE-ADS UNIT 55c (2026-06-30) — API client + read-only auth verification (FAILED — Google Ads API not enabled on project)
+
+NB: spec re-used UNIT 55c numbering. Earlier 55c was the live exchange.
+The auth-verify unit is the second 55c (operator-numbered). Both
+remain logged for traceability.
+
+### Dependencies
+
+  npm install google-ads-api -> google-ads-api@^24.1.0 added to
+  package.json dependencies. package-lock.json updated.
+
+### Files added (2 new)
+
+  src/lib/ads.ts  (TypeScript, project convention is `lib/` at root
+    but operator spec said `src/lib/`; tsconfig include `**/*.ts`
+    picks it up regardless)
+    Exports:
+      - MissingGoogleAdsEnvError (named subclass; identifies which
+        env key is missing)
+      - buildAdsClient(): GoogleAdsApi  (reads CLIENT_ID,
+        CLIENT_SECRET, DEVELOPER_TOKEN)
+      - getCustomer(): Customer  (additionally reads CUSTOMER_ID,
+        LOGIN_CUSTOMER_ID, REFRESH_TOKEN)
+    All 6 env vars read via envOrThrow() at call time; throws
+    MissingGoogleAdsEnvError(name) on missing. NO hardcoded
+    credentials.
+
+  scripts/verify-ads-auth.js  (CommonJS)
+    Runs ONE read-only GAQL: SELECT customer.id, descriptive_name,
+      currency_code, time_zone FROM customer LIMIT 1
+    Fails loud on missing env (lists which key).
+    Maps 5 common error classes to actionable hints:
+      AUTHENTICATION_ERROR / invalid_grant -> refresh token bad/expired
+      DEVELOPER_TOKEN_NOT_APPROVED -> dev token in Test mode
+      USER_PERMISSION_DENIED -> account lacks access on MCC
+      CUSTOMER_NOT_FOUND -> id/login_customer_id mismatch
+      TypeError "Cannot read properties of undefined (reading 'get')"
+        at getGoogleAdsError -> Google Ads API not enabled on Cloud
+        project (5th case, added during this UNIT — library can't
+        parse "service not enabled" PreconditionFailure shape; the
+        "No data type found for metadata.service / activation_url"
+        warnings are the protobuf signature)
+    Includes deterministic activation URL with project number
+      extracted from GOOGLE_ADS_CLIENT_ID prefix.
+
+### Smoke
+
+  tsc --noEmit: exit 0  (src/lib/ads.ts compiles cleanly)
+
+  node scripts/verify-ads-auth.js:
+    FAIL — TypeError "Cannot read properties of undefined (reading
+    'get')" inside google-ads-api@24.1.0's getGoogleAdsError at
+    service.js:112:49.
+
+    Library's error response decoder crashed because Google returned
+    a non-Ads-API error shape:
+      No data type found for metadata.service
+      No data type found for metadata.service_title
+      No data type found for metadata.consumer
+      No data type found for metadata.container_info
+      No data type found for metadata.activation_url
+
+    These are protobuf fields specific to Google Cloud's
+    google.rpc.PreconditionFailure with reason="SERVICE_DISABLED".
+    Diagnosis: Google Ads API is NOT enabled on the Google Cloud
+    project (678967923355) that owns the OAuth client.
+
+    Activation URL (deterministic from client_id prefix):
+      https://console.cloud.google.com/apis/library/googleads.googleapis.com?project=678967923355
+
+    The OAuth chain itself (client_id, client_secret, refresh token,
+    customer_id, login_customer_id) is INTACT — the failure is at
+    the Google Cloud API-enablement layer, BEFORE the request
+    reaches the Ads API. After enabling, the refresh_token + dev
+    token + customer_id chain should authenticate cleanly.
+
+### Tracked operator action (next step for credential set to be usable)
+
+  Enable Google Ads API on Cloud project 678967923355 via the
+  activation URL above. Re-run node scripts/verify-ads-auth.js to
+  confirm. Expect: account facts (id 5426857546, descriptive_name,
+  currency, time_zone) printed on success.
+
+  Secondary potential blockers AFTER enabling (in order of likelihood):
+    - DEVELOPER_TOKEN_NOT_APPROVED if developer token is still in
+      Test mode against a production customer
+    - USER_PERMISSION_DENIED if yourcondorealtor@gmail.com isn't
+      authorized on MCC 9809090748
+  Both already mapped to specific hints in verify-ads-auth.js.
+
+### Post-API-enablement re-verify result (2026-06-30, same UNIT)
+
+Operator enabled Google Ads API; PreconditionFailure resolved.
+Second failure surfaced: USER_PERMISSION_DENIED variant ("User
+doesn't have permission to access customer ... authorization_error:2").
+
+Script updates made this UNIT:
+  - extractDiagnostic(err): build human-readable error string by
+    combining err.message + err.errors[].message + err.errors[].
+    error_code. Library throws an object whose .message is
+    "[object Object]"; the real detail is nested in .errors[].
+  - mapErrorToHint: broadened USER_PERMISSION_DENIED regex to
+    catch "doesn't have permission" + "authorization_error" +
+    "login.customer.id" (the new error message variants).
+  - Hint expanded to spell out the two distinct failure modes
+    that share this error code (a: account permission missing;
+    b: MCC link relationship missing) + a quick isolation probe.
+
+Isolation probe run (inline node):
+  Query MCC 9809090748 against itself (customer_id =
+  login_customer_id = 9809090748) — SUCCEEDED:
+    customer.id:               9809090748
+    customer.descriptive_name: "Real Estate Platform"
+    customer.manager:          true  (confirmed an MCC)
+
+  -> Failure mode (a) is RULED OUT (OAuth account CAN access MCC).
+  -> Failure mode (b) CONFIRMED: MCC 9809090748 does NOT manage
+     customer 5426857546. Link relationship missing.
+
+### Tracked operator action (revised)
+
+Two paths to unblock:
+  Option 1 — Link customer to MCC: in Google Ads UI as MCC, Tools &
+    Settings -> Setup -> Sub-account settings -> + Link existing
+    account -> enter 5426857546 -> send invite -> accept as owner
+    of 5426857546 -> re-run verify.
+  Option 2 — Point GOOGLE_ADS_CUSTOMER_ID at a customer the MCC
+    already manages.
+
+After fix, re-run node scripts/verify-ads-auth.js — expect account
+facts for 5426857546 (id, descriptive_name, currency, time_zone).
+
+---
+
+## W-GOOGLE-ADS UNIT 55d (2026-06-30) — list customers managed by MCC
+
+New diagnostic script: scripts/list-ads-customers.js
+  Queries `customer_client` GAQL against MCC 9809090748 (login_customer_id
+  = customer_id = MCC) to enumerate every account it manages at any level.
+  Prints id / manager-flag / level / status / descriptive_name.
+  Also checks whether the currently-configured GOOGLE_ADS_CUSTOMER_ID
+  appears in the list and prints a clear "link this" or "pick from list"
+  next-step. Read-only.
+
+Run result (this UNIT):
+  1 row total, 0 non-MCC client accounts.
+  Only row is the MCC self: 9809090748 "Real Estate Platform"
+    manager=true, level=0, status=2 (ENABLED).
+
+  -> MCC has NO sub-accounts linked yet.
+  -> Configured GOOGLE_ADS_CUSTOMER_ID=5426857546 is NOT in the list.
+
+Operator action options (revised from UNIT 55c):
+  Option 1 — Link 5426857546 under the MCC (existing customer):
+    Google Ads UI as MCC -> Tools & Settings -> Setup -> Sub-account
+    settings -> + Link existing account -> enter 5426857546 -> send
+    invite -> accept as the owner of 5426857546.
+  Option 2 — Create a new sub-account from the MCC:
+    Google Ads UI as MCC -> Tools & Settings -> Setup -> Sub-account
+    settings -> + Create new account. Auto-links under the MCC. Update
+    GOOGLE_ADS_CUSTOMER_ID in .env.local to the new 10-digit id.
+  Option 3 — Use the MCC itself as the customer (limited; MCCs can't
+    serve ads, only manage other accounts — works for some reporting
+    queries, not for conversion uploads / ad creation):
+    Set GOOGLE_ADS_CUSTOMER_ID=9809090748 (same as login_customer_id).
+
+After whichever path: re-run node scripts/verify-ads-auth.js to
+confirm the new GOOGLE_ADS_CUSTOMER_ID resolves to account facts.
+
+NO writes. NO push. Diagnostic script only.
+
+---
+
+## W-GOOGLE-ADS UNIT 55e (2026-06-30) — update customer id + verify (PROGRESS: past linkage wall, customer not yet enabled)
+
+Operator created new sub-account 956-531-3746 under MCC 9809090748,
+asked to update env + verify.
+
+### Step 1 — Env update
+
+  Backup: .env.local.backup_20260630_125342
+  GOOGLE_ADS_CUSTOMER_ID: 5426857546 -> 9565313746
+  All other keys (5 GOOGLE_ADS_* + 5 non-Google sentinels) untouched.
+  .env.local still gitignored (4 rules).
+  Old value (5426857546) confirmed removed from file (grep count 0).
+  Edit done via Node fs (read -> string-replace with anchored regex
+  -> write) inside a guard: aborted if pre-edit value wasn't the
+  expected old constant.
+
+### Step 2 — Verify
+
+  FAIL: authorization_error code 24 (CUSTOMER_NOT_ENABLED).
+  Inner message: "The customer account can't be accessed because it
+  is not yet enabled or has been deactivated."
+
+  CRITICAL DIAGNOSTIC: this is a DIFFERENT error code from UNIT
+  55c/55d (which got code 2 = USER_PERMISSION_DENIED for the
+  not-linked customer). Code 24 proves:
+    - MCC 9809090748 IS managing customer 9565313746 (linkage works)
+    - OAuth permission chain reaches the customer correctly
+    - The new sub-account itself is in an unactivated state
+
+  We are PAST the linkage/permission wall — remaining work is
+  operator-side in the Google Ads UI to finish the new-account
+  setup wizard.
+
+### Script update (additive hint case)
+
+  scripts/verify-ads-auth.js: added a NEW hint mapping ABOVE the
+  USER_PERMISSION_DENIED broad-catch, specifically for
+  authorization_error code 24 / "not yet enabled" /
+  CUSTOMER_NOT_ENABLED. The hint enumerates common causes for a
+  new sub-account (billing not configured, ToS not accepted,
+  currency/tz not finalized, account in draft state) and points
+  the operator at the Google Ads UI for the account.
+
+  Total mapped error classes in verify-ads-auth.js now:
+    1. AUTHENTICATION_ERROR / invalid_grant (UNIT 55b)
+    2. DEVELOPER_TOKEN_NOT_APPROVED (UNIT 55b)
+    3. USER_PERMISSION_DENIED / authorization_error code 2 (UNIT 55c)
+    4. CUSTOMER_NOT_FOUND (UNIT 55c)
+    5. Library decoder crash for service-not-enabled (UNIT 55c)
+    6. authorization_error code 24 / CUSTOMER_NOT_ENABLED (UNIT 55e)
+
+### Tracked operator action (next step)
+
+  Open Google Ads UI as the account owner (yourcondorealtor@gmail.com),
+  select customer 956-531-3746 from the account picker, complete
+  pending setup steps the UI surfaces (most likely: billing setup,
+  ToS acceptance, or just first-time UI login to activate). Re-run
+  node scripts/verify-ads-auth.js after.
+
+  Expected on success: customer.id 9565313746, descriptive_name,
+  currency_code, time_zone.
+
+### POST-ACTIVATION RE-VERIFY — SUCCESS (2026-06-30)
+
+  Operator completed the new-account activation in Google Ads UI.
+  Re-ran node scripts/verify-ads-auth.js — exit 0, account facts
+  returned:
+
+    customer.id:               9565313746
+    customer.descriptive_name: Aily
+    customer.currency_code:    CAD
+    customer.time_zone:        America/Toronto
+
+  Full Google Ads API auth chain proven end-to-end:
+    OAuth client + dev token + refresh token + API enablement on
+    Cloud project 678967923355 + OAuth account access on MCC
+    9809090748 + MCC->customer linkage + customer activation +
+    GAQL read.
+
+  Capability is OPERATIONAL. No code in the repo consumes the
+  Ads credentials yet — dormant + ready for future integration
+  units (e.g., conversion uploads on lead-creation, ad-spend
+  reporting, campaign listing for the admin dashboard).
+
+  src/lib/ads.ts is the production entry point: buildAdsClient() +
+  getCustomer() return correctly-configured instances. Both throw
+  named MissingGoogleAdsEnvError if any of the 6 required env vars
+  is missing.
+
+NO writes. NO push. NO ad-account writes. Files dirty in working
+tree: .env.local (operator-credential, gitignored), package.json +
+package-lock.json (google-ads-api dep), src/lib/ads.ts (new),
+scripts/verify-ads-auth.js (new), scripts/list-ads-customers.js
+(new), scripts/get-refresh-token.js (new from UNIT 55b), tracker.
+Operator commits when ready.
+
+### What's NOT in this UNIT
+
+  - No code uses src/lib/ads.ts yet (dormant capability, ready for
+    future ads integration units).
+  - No campaign/ad-account writes attempted (read-only verify
+    only).
+  - No tenant-specific Ads config (Ads account is a global
+    operational tool, not per-tenant — env-driven, single account).
+  - No conversion-import / spend-report code yet — UNIT 55c
+    intentionally scoped to plumbing + auth proof.
+
+NO git activity. NO push. NO commit. package.json + package-lock.json
++ src/lib/ads.ts + scripts/verify-ads-auth.js dirty in working tree
+(operator commits when ready).
+
+---
+
+## W-GOOGLE-ADS UNIT 55c (2026-06-30) — live exchange: refresh_token appended
+
+Operator ran the browser flow, pasted the redirected URL back. Claude
+Code piped the URL via stdin to scripts/get-refresh-token.js, captured
+the response to a temp file (NOT stdout — to avoid the full token in
+the Bash tool output buffer + chat transcript), parsed out the
+refresh_token via Node regex, appended to .env.local, wiped + deleted
+the temp file.
+
+Result: exit 0. refresh_token persisted to .env.local.
+
+Fingerprint: [refresh token fingerprint — chat only, not committed] (len 103)
+
+POLICY (going forward): credential prefixes/suffixes/fingerprints
+are NOT written into the committed tracker. Length-only is fine
+when meaningful. Actual fingerprint chars (first 6 + last 4 per
+CLAUDE.md's general guidance) stay in chat-only ephemeral
+confirmations. Rationale: committed tracker becomes permanent git
+history; even small prefix samples can aid attackers narrowing
+search spaces, and a single grep-scan policy is easier to enforce
+than judgment calls per entry.
+
+Backup: .env.local.backup_20260630_111031
+
+State verification post-append:
+  GOOGLE_ADS_* keys total:        6  (UNIT 55a's 5 + UNIT 55c REFRESH_TOKEN)
+  GOOGLE_ADS_REFRESH_TOKEN line:  1
+  existing sentinels intact:      5  (PROPTX_VOW_TOKEN, DEV_TENANT_DOMAIN,
+                                      NEXT_PUBLIC_SUPABASE_URL, DATABASE_URL,
+                                      SUPABASE_SERVICE_ROLE_KEY)
+  parser exit code:               0
+
+Full token never printed back. Temp file held it for milliseconds
+between write and Node parse, then truncated + deleted.
+
+NO git activity. NO push. NO commit. .env.local is gitignored
+(4 rules — UNIT 55a verified) and stays out of version control.
+
+Full Google Ads credential set now locally available for any future
+integration unit. Operator-tracked dormant capability — no code uses
+these env vars yet.
+
+---
+
+## W-GOOGLE-ADS UNIT 55b (2026-06-30) — refresh-token generation script
+
+New file: scripts/get-refresh-token.js
+  Run-once local bootstrap to obtain GOOGLE_ADS_REFRESH_TOKEN. Manual-
+  fetch implementation against https://oauth2.googleapis.com/token
+  (chose this path over the 'googleapis' npm dep — spec allowed either;
+  manual-fetch keeps package.json/package-lock.json untouched for a
+  one-off bootstrap script).
+
+Configuration (matches Google Cloud OAuth client registration):
+  redirect_uri = 'http://localhost' (no port, no trailing slash)
+  scope = ['https://www.googleapis.com/auth/adwords']
+  access_type = 'offline'
+  prompt = 'consent' (required — without it, Google may not return
+    a refresh_token on subsequent authorizations)
+
+Flow:
+  1. Prints consent URL + instructions; explains the "site can't be
+     reached" at http://localhost is EXPECTED (address bar URL is
+     what's needed).
+  2. Reads pasted URL OR raw code from stdin via readline.
+  3. Extracts code, exchanges for tokens via POST to
+     oauth2.googleapis.com/token.
+  4. Prints ONLY refresh_token + "Add this to .env.local as
+     GOOGLE_ADS_REFRESH_TOKEN=..." instruction. access_token and
+     id_token deliberately NOT printed (server-side use only needs
+     the refresh_token).
+  5. Does NOT auto-write any file. Operator manually copies into
+     .env.local.
+
+Error handling:
+  - Missing GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET -> clear
+    FATAL message + exit 1.
+  - redirect_uri_mismatch -> explicit hint about Google Cloud Console
+    Authorized redirect URIs + propagation delay.
+  - invalid_grant -> hint about 60-second code expiry / single-use.
+  - Empty input -> clear FATAL message about expected shape.
+  - Missing refresh_token in response -> hint about revoking prior
+    auth at myaccount.google.com/permissions if prompt=consent didn't
+    take.
+
+Smoke (this unit):
+  node scripts/get-refresh-token.js < /dev/null
+    -> prints consent URL with correct params (client_id, redirect_uri,
+       scope, access_type=offline, prompt=consent), prints Step 1 +
+       Step 2 instructions, waits at the "Paste the redirected URL"
+       prompt before EOF-failing on the empty stdin. Reached
+       URL-print step as required by UNIT 55b spec.
+
+Operator follow-up (separate run):
+  node scripts/get-refresh-token.js
+  -> open URL -> auth -> paste -> copy refresh_token to .env.local
+  -> NO git add (.env.local stays ignored).
+
+Files:
+  scripts/get-refresh-token.js   (NEW; no backup needed for new file
+                                  per CLAUDE.md)
+
+NO git activity. NO push. NO commit.
+
+---
+
+### UNIT 54 PUSH RECORD (2026-06-30)
+
+  Operator authorized push of c36bfaf (featured-section links open
+  in new tab).
+
+  Pre-push gate (all green):
+    origin/main pre-push: 5f1b1ed (UNIT 53)
+    HEAD:                 c36bfaf (UNIT 54)
+    HEAD~1:               5f1b1ed
+    ahead: 1 commit
+    Commit contents (git show --stat c36bfaf): exactly 2 files
+      components/home/CondoMarketActivity.tsx   (+10)
+      docs/W-TENANT-TERRITORY-MODEL-TRACKER.md  (+143)
+      2 files changed, 153 insertions
+    System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+    tsc --noEmit: exit 0
+    C12: 19 PASS / 1 FAIL (only L2.1 red, by design)
+
+  Pre-existing dirty (must NOT be swept in):
+    Pre-push + Post-push (UNCHANGED, both states):
+      M app/api/charlie/municipalities/route.ts
+      M scripts/r-w-territory-master-p2-data-phantom-fix.js
+      M scripts/r-w-territory-master-p4-check-fix.js
+
+  Push:
+    git push origin main
+    -> 5f1b1ed..c36bfaf  main -> main
+    origin/main post-push: c36bfaf  (== HEAD)
+
+  Vercel auto-deploy + LIVE production probe:
+    Polled https://www.aily.ca/ until featured-card anchors had
+    target=_blank in the live HTML. New build live in ~60s.
+
+    Final live probe:
+      HTTP 200 / 1.39s response time
+      bytes: 177,635
+
+      Featured-section new-tab anchors confirmed on LIVE production
+      for every UNIT 53 slug sampled:
+        /m-city-1-condos:           1 new-tab anchor
+        /m-city-2-condos:           1
+        /quartz-condos:             1
+        /shangrila:                 1
+        /west-condos:               1
+        /via-bloor-2:               1
+        /waterfront-communities-c1: 1
+        /niagara:                   2 (also in BrowseMegaMenu)
+        /city-centre:               1
+
+      Section presence + existing-homepage regression:
+        'GTA Condo Market':                       2 hits (preserved)
+        AiGlow wordmark bundle (UNIT 46 baseline): 21 hits (preserved)
+
+    UNIT 54 LIVE: featured building cards + community tiles on
+    aily.ca/ now open the destination page in a new tab. Visitor
+    keeps the homepage open while exploring. Same behavior on
+    walliam.ca (tenant-neutral by design).
+
+  Status:
+    UNIT 54 - featured-section new-tab: PUSHED.
+
+  Commit gate (this PUSH record):
+    Tracker-only delta. Will fold into the next unit's commit per
+    the established live-tracker pattern.
+
+---
+
 ### UNIT 44 PUSH RECORD (2026-06-28)
 
   Operator authorized push of 86eed78 (homepage decoupling code fix).
