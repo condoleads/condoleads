@@ -7,6 +7,12 @@ import { getCurrentTenantId, isHeroTenant } from '@/lib/utils/tenant-resolver';
 import { getTenantByHost } from '@/lib/utils/tenant-brand';
 import { createClient } from '@/lib/supabase/server';
 import { headers } from 'next/headers';
+// W-FEATURED-CONDOS UNIT 53 (2026-06-30) — new "GTA Condo Market — Live Activity"
+// section. Additive — mounted BELOW the existing client component. Reads from
+// geo_analytics (tenant-neutral per UNIT 52). Self-empty-states (returns null
+// when zero qualifying rows), so any tenant with no condo data sees nothing
+// rather than a broken empty box.
+import CondoMarketActivity from './home/CondoMarketActivity';
 
 interface Agent {
   id: string;
@@ -92,6 +98,11 @@ export async function HomePageComprehensiveV2({ agent, defaultHomeMode, showBrow
         defaultHomeMode={defaultHomeMode}
         showBrowsePlanCTAs={showBrowsePlanCTAs}
       />
+      {/* W-FEATURED-CONDOS UNIT 53 (2026-06-30) — section mounts in normal
+          document flow BELOW the comprehensive client. Pure server component,
+          fetches geo_analytics top-N (cheap ~13ms+5ms per UNIT 52 R4).
+          Same data on all tenants (correct: market facts). */}
+      <CondoMarketActivity />
       {/* W-FUNNEL §9.2 Step 3: System 2 uses CharlieWidget (global, ConditionalLayout); System 1 keeps ChatWidgetWrapper. */}
       {!isHero && !tenantId && <ChatWidgetWrapper agent={{ id: agent.id, full_name: agent.full_name }} />}
     </>

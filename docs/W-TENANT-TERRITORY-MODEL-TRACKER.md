@@ -5857,6 +5857,248 @@ byte-intact.
   operator instruction. UNIT 48 PUSH RECORD also folded into this
   commit per the established pattern.
 
+### UNIT 50 PUSH RECORD (2026-06-29)
+
+  Operator authorized push of e089f14 (landing-page context
+  propagation: Gap A + Gap B + cosmetic).
+
+  Pre-push gate (all green):
+    origin/main pre-push: cd13b0a (UNIT 48)
+    HEAD:                 e089f14 (UNIT 50)
+    HEAD~1:               cd13b0a
+    ahead: 1 commit
+    Commit contents (git show --stat e089f14): exactly 4 files
+      app/api/charlie/plan-email/route.ts      (+39/-1)
+      app/charlie/hooks/useCharlie.ts          (+33/-2)
+      components/WalliamContactForm.tsx        (+8/-2)
+      docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (+228)
+      4 files changed, 303 insertions, 5 deletions
+    System 1 zero-diff (app/admin/*, app/api/chat/*, agent_buildings): EMPTY
+    tsc --noEmit: exit 0
+    C12: 19 PASS / 1 FAIL (only L2.1 red, by design)
+    c8b-2: 39 PASS / 0 FAIL
+    c11:   5 PASS / 0 FAIL
+    territory: 28 PASS / 0 FAIL
+
+  Pre-existing dirty (must NOT be swept in):
+    Pre-push + Post-push (UNCHANGED, both states):
+      M app/api/charlie/municipalities/route.ts
+      M scripts/r-w-territory-master-p2-data-phantom-fix.js
+      M scripts/r-w-territory-master-p4-check-fix.js
+
+  Push:
+    git push origin main
+    -> cd13b0a..e089f14  main -> main
+    origin/main post-push: e089f14  (== HEAD)
+
+  Vercel auto-deploy + LIVE production probe:
+    Polled https://www.aily.ca/x2-condos-101-charles-st-e-toronto
+    for the UNIT 50 cosmetic "Inquiring About" header. First probe
+    already showed the new build live — Vercel deploy near-instant.
+
+    Final live probe:
+      HTTP 200 / 1.70s response time
+      bytes: 1,178,499
+      UNIT 50 cosmetic on LIVE Aily:
+        'Inquiring About' header:   1 hit
+        'X2 Condos' context label:  3 hits
+      Existing rail still 4 blocks (UNITS 46+48 regression-clean):
+        Get Your AI Real Estate Plan: 1 hit
+        Buyer Plan / Seller Plan / Ask AI: 4 / 4 / 2 hits
+      Leak check on LIVE Aily (must all be 0):
+        'WALLiam' brand text: 0
+        'King Shah':          0
+
+    THE COSMETIC HEADER IMPROVEMENT IS LIVE ON PRODUCTION AILY.CA
+    + all prior rail blocks preserved + zero cross-tenant leak.
+
+  S3 status (Gap A — plan building-awareness):
+    Code-proven via diff inspection during smoke. Live proof
+    requires an OPERATOR plan-generation test from a building page
+    (Charlie chat session → buyer/seller plan submit → confirm:
+    (1) leads.building_id populated on the resulting lead row,
+    (2) plan email subject includes the building name).
+    PENDING operator live verification. NOT a blocker — the
+    non-building-page path is regression-safe by null ternary
+    (S4 smoke + diff).
+
+  Status:
+    UNIT 50 - landing-page context propagation: PUSHED.
+    Aily building pages now ship the louder "Inquiring About <X>"
+    contact-form surfacing. Geo-page chats now forward
+    community/muni/area IDs to enable route-side
+    geoAnalyticsContext pre-load. Plan persistence + email subject
+    are code-wired to record the originating building (live
+    verification pending).
+
+  Commit gate (this PUSH record):
+    Tracker-only delta. Will fold into the next unit's commit per
+    the established live-tracker pattern.
+
+---
+
+## W-FEATURED-CONDOS UNIT 53 RUN-LOG (2026-06-30) — new "GTA Condo Market - Live Activity" homepage section (featured buildings + active communities)
+
+UNIT 52 audit established geo_analytics holds building + community rows
+rankable by closed_sale_count_90 at <15ms top-N, tenant-neutral (no
+tenant_id), no existing featured logic. UNIT 53 builds the section.
+
+ADDITIVE design: new server component mounted in HomePageComprehensiveV2
+BELOW the existing client. Existing homepage sections untouched.
+
+### Files added (2 new + 1 mount edit)
+
+  components/home/CondoMarketActivity.tsx  (new)
+    Server component. Two parallel queries against geo_analytics:
+      Buildings: top by closed_sale_count_90 (track='condo',
+        period_type='rolling_12mo', low_volume_flag=false,
+        non-null sold + median); overfetch 24, filter to
+        cover_photo_url present, take first 12.
+      Communities: top 12 by closed_sale_count_90, same filters,
+        joined to communities.is_active=true.
+    Data-confidence gate: excludes null/missing-stat rows, missing
+      cover_photo_url buildings. No "—" / no placeholder anywhere.
+    Empty-state: returns null if both lists are empty (no broken
+      empty box).
+    Updated-date: max(calculated_at) across the selection.
+    Tenant-neutral by design — same featured list on all tenants.
+
+  components/home/Sparkline.tsx  (new)
+    Pure SVG, server-renderable. Reads {month, value, count}[] from
+    geo_analytics.price_trend_monthly. Min 4 points required;
+    returns null when sparse (~2 in 3 top buildings have empty
+    trend per shape probe — graceful omission, no fabrication).
+
+  components/HomePageComprehensiveV2.tsx  (mount edit)
+    Imported CondoMarketActivity. Mounted between
+      <HomePageComprehensiveClientV2 /> and <ChatWidgetWrapper />.
+    Mount is at the document-flow level — chat widget floats and
+      is unaffected. Diff: 2 inserts (import + JSX line).
+
+### Smoke (local npm run dev)
+
+  S1: aily.ca homepage
+      HTTP 200 / 180,627 bytes (was ~98KB pre-UNIT-53; delta ~82KB
+        is the new section's real markup).
+      Section markers present in rendered HTML:
+        'GTA Condo Market':         2 hits (heading + aria-label)
+        'Live Activity':            2 hits
+        'Featured Buildings':       2 hits
+        'Most Active Communities':  2 hits
+        'Updated' timestamp:        2 hits
+        '<svg' sparklines:          7 hits (subset of buildings
+                                            with populated trends)
+      REAL TOP BUILDINGS rendering (matching UNIT 52 probe top-N):
+        50 O Neil, M City 1 Condos, M City 2 Condos, Quartz Condos,
+        Shangrila, Westlake Encore, Via Bloor 2, WEST Condos,
+        Riverview Condos, ...
+      REAL SLUGS link to building pages (sample):
+        /m-city-1-condos-3900-confederation-parkway-mississauga
+        /m-city-2-condos-3883-quartz-road-s-mississauga
+        /quartz-condos-75-queens-wharf-road-toronto
+        /west-condos-9-tecumseth-street-toronto
+        /riverview-condos-38-water-walk-drive-markham
+      Updated label: "Updated Jun 19, 2026" (from real
+        geo_analytics.calculated_at)
+      VERDICT: real data, real photos, real top-ranked buildings.
+        Zero placeholder text. Zero "—". Zero lorem.
+
+  S2: walliam.ca homepage parity
+      HTTP 200 / 149,221 bytes (~72KB pre + ~77KB section)
+      Section identical-data render:
+        'GTA Condo Market': 1 hit; 'Featured Buildings': 1 hit
+        '50 O Neil':        1 hit (same top building as Aily —
+                                   tenant-neutral data confirmed)
+        'Quartz Condos':    1 hit (same)
+      Existing WALLiam markers preserved:
+        HERO 'WALL' visual: 3 hits (UNIT 48 baseline)
+      VERDICT: WALLiam shows the same authoritative featured list,
+        rendered alongside its preserved hero branding.
+
+  S3: link routing
+      Building card href = `/${b.slug}` (relative).
+      Community card href = `/${c.slug}` (relative).
+      Tenant is resolved by host via middleware; clicking on
+        aily.ca navigates within aily.ca, on walliam.ca within
+        walliam.ca. No hardcoded tenant in any href.
+
+  S4: data-confidence gate proved
+      All rendered building cards came through the .not('cover_photo_url',
+        'is', null) filter AND the photoUrl-present in-JS gate AND the
+        non-null soldCount/medianPrice gate.
+      All communities filtered by is_active=true.
+      No low_volume_flag=true rows surfaced.
+
+  S5: existing-homepage regression
+      AILY existing markers preserved:
+        AiGlow wordmark bundle: 21 hits (matches UNIT 46 baseline)
+        Browse Toronto by Neighbourhood: 1 hit
+      WALLIAM existing markers preserved:
+        HERO 'WALL' visual: 3 hits (matches UNIT 48 baseline)
+      Section sits BELOW existing client component; existing
+      sections render byte-shape-identically.
+
+  S7: tsc --noEmit -> exit 0
+      C12 multi-tenant regression: 19 PASS / 1 FAIL (baseline; only
+        L2.1 red — documented dormant debt F-SYNC-SINGLE-TENANT-IMPLICIT)
+      c8b-2 regression: 39 PASS / 0 FAIL
+      c11 regression: 5 PASS / 0 FAIL
+      territory regression: 28 PASS / 0 FAIL
+      No new fails. Existing pass counts held.
+
+### Multi-tenant correctness
+
+  - geo_analytics has no tenant_id — same data for every tenant.
+    Correct: "most active condo building in GTA" is a market fact,
+    not a tenant fact.
+  - All links are host-relative; middleware resolves tenant by host.
+  - No tenant constants, no hardcoded WALLiam/Aily anywhere in the
+    new component or its data path.
+  - A future tenant on the same host pattern gets the section as
+    soon as their homepage routes through HomePageComprehensiveV2
+    (which is everyone today).
+
+### Rule Zero (no fake data)
+
+  - Every value rendered comes from a verified DB row.
+  - Photos: only buildings with cover_photo_url IS NOT NULL.
+  - Numbers: only rows with non-null closed_sale_count_90 AND
+    median_sale_price.
+  - Sparkline: only renders when the trend array has >= 4 real points;
+    omitted when sparse (no faux trends).
+  - Empty state: the entire section returns null when both lists are
+    empty (no broken empty box).
+  - Updated label: derived from real geo_analytics.calculated_at.
+
+### Backups (timestamps)
+
+  components/HomePageComprehensiveV2.tsx.backup_20260630_042403
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260630_042403
+  (Sparkline.tsx + CondoMarketActivity.tsx are new files — no
+   backup required.)
+
+### What's NOT in this UNIT (deliberate scope discipline)
+
+  - V1 homepage (HomePageComprehensive.tsx, not V2): no mount.
+    Today all tenants route through V2/V3 layout (per
+    tenants.homepage_layout). V1 is legacy — would re-mount if any
+    tenant goes back to it (operator decision).
+  - Featured HOMES (non-condo): UNIT 52 confirmed homes data exists
+    too. Section is condo-only as a focused first ship; homes is
+    a follow-up.
+  - Per-tenant featured (e.g. WALLiam's apa-territory): UNIT 52 R6
+    confirms geo_analytics is tenant-neutral. Tenant-scoped featured
+    would need a different aggregate; out of scope.
+  - Per-region featured pages: section is GTA-wide. Per-region (one
+    section per Downtown/North York/etc.) would be a follow-up.
+
+### Commit gate
+
+  2 new files + 1 mount edit + tracker shipped together (live-tracker
+  rule). Code-only fix. ZERO DB write. ZERO sends. HOLD push pending
+  operator instruction. UNIT 50 PUSH RECORD also folded into this
+  commit per the established pattern.
+
 ---
 
 ### UNIT 44 PUSH RECORD (2026-06-28)
