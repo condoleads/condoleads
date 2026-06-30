@@ -467,7 +467,7 @@ export default function Solution() {
             opacity: v ? 1 : 0,
             transition: 'opacity 0.7s ease 0.4s',
           }}>
-            <a href="https://walliam.ca" target="_blank" rel="noopener" style={{
+            <a href="https://www.aily.ca" target="_blank" rel="noopener" style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '13px 30px', borderRadius: 100,
               background: 'rgba(255,255,255,0.06)',

@@ -29,7 +29,7 @@ export default function FooterCTA() {
             onMouseEnter={e => { e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 14px 50px rgba(59,130,246,0.6)' }}
             onMouseLeave={e => { e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.boxShadow='0 8px 40px rgba(59,130,246,0.45)' }}
           >Book Discovery Call</a>
-          <a href="https://walliam.ca" target="_blank" rel="noopener" style={{ padding: '16px 40px', borderRadius: 100, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', fontSize: 16, fontWeight: 700, textDecoration: 'none', transition: 'all 0.2s' }}
+          <a href="https://www.aily.ca" target="_blank" rel="noopener" style={{ padding: '16px 40px', borderRadius: 100, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', fontSize: 16, fontWeight: 700, textDecoration: 'none', transition: 'all 0.2s' }}
             onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.1)'}
             onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.05)'}
           >See it Live →</a>

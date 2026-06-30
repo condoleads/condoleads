@@ -21,7 +21,7 @@
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.28)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 16 }}>Company</div>
               {[
-                { label: 'See Live Demo', href: 'https://walliam.ca' },
+                { label: 'See Live Demo', href: 'https://www.aily.ca' },
                 { label: 'Contact Us', href: '/contact' },
                 { label: 'Privacy Policy', href: '/privacy-policy' },
                 { label: 'Refund Policy', href: '/refund-policy' },

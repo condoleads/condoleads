@@ -6534,6 +6534,169 @@ scripts/verify-ads-auth.js (new), scripts/list-ads-customers.js
 (new), scripts/get-refresh-token.js (new from UNIT 55b), tracker.
 Operator commits when ready.
 
+---
+
+## W-GOOGLE-ADS UNIT 55 PUSH RECORD (2026-06-30) — commit ac1dbcc
+
+Operator authorized commit + push of the Google Ads foundation
+(typed client + auth-verify + token bootstrap + MCC enumerator;
+dormant until campaign logic specced).
+
+### Pre-commit secret-scan history (for the record)
+
+  First scan caught 2 fingerprint references in tracker (UNITs
+    55a, 55c entries). Per spec STOP triggers. Halted.
+  Operator authorized scrub. Two lines rewritten:
+    "len 35, GOCSPX prefix" -> "len 35"
+    "Fingerprint: 1//03d...qZIw (len 103)" -> "[refresh token
+      fingerprint — chat only, not committed] (len 103)"
+  Policy note added to tracker: credential prefixes/fingerprints
+    stay chat-only; length-only is committable.
+  Re-scan: 0 hits across all 7 staged files. Commit proceeded.
+
+### Pre-push gate (all green)
+
+  origin/main pre-push: c36bfaf (UNIT 54)
+  HEAD:                 ac1dbcc (UNIT 55)
+  HEAD~1:               c36bfaf
+  ahead: 1 commit
+  Commit contents (git show --stat ac1dbcc): exactly 7 files
+    docs/W-TENANT-TERRITORY-MODEL-TRACKER.md (+480)
+    package-lock.json                        (+1197/-83)
+    package.json                             (+1)
+    scripts/get-refresh-token.js             (+190, new)
+    scripts/list-ads-customers.js            (+145, new)
+    scripts/verify-ads-auth.js               (+208, new)
+    src/lib/ads.ts                           (+59, new)
+    7 files changed, 2197 insertions, 83 deletions
+  System 1 zero-diff (app/admin/, app/api/chat/, agent_buildings): EMPTY
+  tsc --noEmit: exit 0
+  PARANOIA RE-SCAN on COMMITTED content (via git show ac1dbcc:<file>
+    for each), 4 patterns (GOCSPX, 6MYpZS, 1//03d, MLaw4JDk1Lb):
+    TOTAL HITS: 0 across all 7 files.
+  .env.local in ac1dbcc tree: 0 files (gitignored throughout).
+
+  Pre-existing dirty (must NOT be swept in):
+    Pre-push + Post-push (UNCHANGED, both states):
+      M app/api/charlie/municipalities/route.ts
+      M scripts/r-w-territory-master-p2-data-phantom-fix.js
+      M scripts/r-w-territory-master-p4-check-fix.js
+
+### Push
+
+  git push origin main
+  -> c36bfaf..ac1dbcc  main -> main
+  origin/main post-push: ac1dbcc  (== HEAD)
+  ahead of origin: empty
+  .env.local STILL not in origin/main tree (0 files).
+
+### Vercel auto-deploy + live probe
+
+  This commit adds a runtime dep (google-ads-api) + dormant code
+  (src/lib/ads.ts is exported but never imported by any production
+  file). No runtime behavior change expected.
+
+  Final live probe https://www.aily.ca/:
+    HTTP 200 / 1.44s response time
+    bytes: 177,678
+    GTA Condo Market (UNIT 53 marker): 2 hits — preserved
+    AiGlow wordmark bundle (UNIT 46 baseline 21): 21 hits — preserved
+    (Inquiring About 0 hits on root expected — cosmetic is a
+    building/geo-page contact-form marker, not a homepage marker.)
+
+  Build green; no regression.
+
+### Status
+
+  UNIT 55 - Google Ads API foundation: PUSHED.
+  Six env vars provisioned (gitignored .env.local). Typed
+  src/lib/ads.ts + 3 diagnostic scripts shipped. Auth chain
+  verified end-to-end (customer.id 9565313746 "Aily", CAD,
+  America/Toronto).
+  No production code consumes the foundation yet — dormant
+  capability ready for the next ads integration unit.
+
+  Commit gate (this PUSH record):
+    Tracker-only delta. Will fold into the next unit's commit per
+    the established live-tracker pattern.
+
+---
+
+## W-DIRTY-FILES UNIT 59 (2026-06-30) — reverted 3 newline-only dirty files
+
+UNIT 58 audit established the 3 long-standing dirty files (kept out
+of every commit this session per a guardrail) had ONLY a trailing-
+newline-at-EOF change — editor save-hook side-effect from
+2026-05-28, ~5 weeks pre-this-session, zero logic change, byte-
+identical executable.
+
+UNIT 59 reverted them with: git checkout -- <3 files>
+
+  Reverted:
+    app/api/charlie/municipalities/route.ts
+    scripts/r-w-territory-master-p2-data-phantom-fix.js
+    scripts/r-w-territory-master-p4-check-fix.js
+
+  All 3 now confirmed clean (git status --porcelain returns 0 lines
+  for each).
+  tsc --noEmit: exit 0 (nothing functional was touched).
+  No commit needed — revert restores committed shape.
+  Working tree now clean of modified-tracked files except the
+  tracker itself (this entry).
+
+---
+
+## W-01LEADS-LINK UNIT 60 (2026-06-30) — repoint dead walliam.ca demo link -> aily.ca
+
+walliam.ca was dropped from Vercel (returns DEPLOYMENT_NOT_FOUND).
+The 01leads marketing site at app/zerooneleads/* linked to
+walliam.ca as its "See [Live] Demo" CTA. All such links repointed
+to https://www.aily.ca.
+
+### Files changed (5 source + tracker)
+
+  app/zerooneleads/components/Nav.tsx        ("See Demo" pill, top nav)
+  app/zerooneleads/components/Hero.tsx       ("See Live Demo ->" CTA next to Book Discovery Call)
+  app/zerooneleads/components/FooterCTA.tsx  ("See it Live ->" CTA in footer band)
+  app/zerooneleads/components/Solution.tsx   ("See it Live ->" CTA in Solution section)
+  app/zerooneleads/components/Footer.tsx     ({label:'See Live Demo'} in Company links list)
+
+  Each edit: 1 line +/- 1 line = exactly the URL swap
+  (https://walliam.ca -> https://www.aily.ca). target="_blank" +
+  rel="noopener" preserved on every anchor.
+
+### Scope discipline
+
+  Grep for 'walliam' in app/zerooneleads/ POST-edit returned ONLY
+  the 5 .backup_<ts>.tsx files (timestamped backup snapshots,
+  per CLAUDE.md backup-before-touch). ZERO walliam refs in live
+  01leads source.
+  walliam refs ELSEWHERE in the codebase (middleware
+  KNOWN_TENANT_DOMAINS, tenant DB rows, comments, tracker history)
+  were NOT touched — out of UNIT 60 scope per the spec.
+
+### Smoke
+
+  tsc --noEmit: exit 0
+  git diff --stat app/zerooneleads/: 5 files, +5/-5 lines
+    (1-line swap per file, no collateral)
+
+### Backups (timestamps)
+
+  app/zerooneleads/components/Nav.tsx.backup_20260630_170347
+  app/zerooneleads/components/Hero.tsx.backup_20260630_170347
+  app/zerooneleads/components/FooterCTA.tsx.backup_20260630_170347
+  app/zerooneleads/components/Solution.tsx.backup_20260630_170347
+  app/zerooneleads/components/Footer.tsx.backup_20260630_170347
+  docs/W-TENANT-TERRITORY-MODEL-TRACKER.md.backup_20260630_170347
+
+### Commit gate
+
+  5 source files + tracker. Code-only string-swap fix. ZERO DB
+  write, ZERO sends. HOLD push pending operator instruction.
+  UNIT 59 revert-note also folded into this commit per the
+  established live-tracker pattern.
+
 ### What's NOT in this UNIT
 
   - No code uses src/lib/ads.ts yet (dormant capability, ready for
