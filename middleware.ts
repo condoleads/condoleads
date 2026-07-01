@@ -29,6 +29,17 @@ const KNOWN_TENANT_DOMAINS: Record<string, string> = {
   'www.aily.ca': 'e2619717-6401-4159-8d4c-d5f87651c8d6',
 }
 
+// W-MARKETING A-UNIT-1 (2026-07-01): owner-owned promo/payment hosts --
+// exempt from the legacy-agent X-Robots-Tag noindex applied below.
+// Compared against cleanReqHost (www-stripped), so apex + www variants
+// both match without duplicate entries. Kept inline (duplicated from
+// app/robots.ts OWNER_PROMO_HOSTS) because middleware runs in Edge and
+// app/robots.ts runs in Node -- no shared-module import between runtimes.
+const OWNER_PROMO_HOSTS = new Set<string>([
+  'condoleads.ca',
+  '01leads.com',
+])
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
@@ -67,11 +78,18 @@ export async function middleware(request: NextRequest) {
   const reqHost = request.headers.get('host') || ''
   const cleanReqHost = reqHost.replace(/^www\./, '')
 
-  // 01leads.com â€” serve marketing site (no DB needed)
+  // 01leads.com — serve marketing site (no DB needed)
   if (cleanReqHost === '01leads.com') {
     // API routes must stay at their real path (e.g. /api/paddle/webhook)
-    // â€” do not prefix them with /zerooneleads
+    // — do not prefix them with /zerooneleads
     if (pathname.startsWith('/api')) {
+      return supabaseResponse
+    }
+    // W-MARKETING A-UNIT-1 (2026-07-01): top-level SEO metadata routes
+    // (Next.js Metadata Files convention) live at the root of every host
+    // and MUST NOT be rewritten into /zerooneleads/*. Same reasoning as
+    // the SYSTEM FORK block below.
+    if (pathname === '/robots.txt' || pathname === '/sitemap.xml') {
       return supabaseResponse
     }
     const url = request.nextUrl.clone()
@@ -88,7 +106,12 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith('/reset-password') &&
     !pathname.startsWith('/test-') &&
     !pathname.startsWith('/_next') &&
-    !pathname.startsWith('/favicon')
+    !pathname.startsWith('/favicon') &&
+    // W-MARKETING A-UNIT-1 (2026-07-01): top-level SEO metadata routes
+    // (Next.js Metadata Files convention). These MUST NOT be rewritten
+    // to /comprehensive-site/* — they live at the root of every host.
+    pathname !== '/robots.txt' &&
+    pathname !== '/sitemap.xml'
   ) {
     const host = request.headers.get('host') || ''
     const agent = await resolveAgentFromHost(supabase, host)
@@ -104,6 +127,29 @@ export async function middleware(request: NextRequest) {
         rewriteResponse.cookies.set(cookie.name, cookie.value)
       })
       return rewriteResponse
+    }
+
+    // W-MARKETING A-UNIT-1 (2026-07-01): X-Robots-Tag: noindex, nofollow
+    // on LEGACY AGENT hosts only. Fires when:
+    //   - agent resolved AND agent.site_type !== 'comprehensive'
+    //     (a legacy custom_domain agent or *.condoleads.ca subdomain
+    //     agent — the pages that compete with aily.ca in SERPs).
+    // Skips:
+    //   - Comprehensive tenants (returned above via the rewrite path).
+    //   - Owner promo hosts (condoleads.ca apex + www.condoleads.ca
+    //     resolve to null agent; 01leads.com short-circuits at the
+    //     earlier rewrite at lines 70-80). The OWNER_PROMO_HOSTS
+    //     guard below is defense-in-depth so a future resolver
+    //     change catching promo hosts still won't accidentally
+    //     de-index the owner's promo sites.
+    //   - Null-agent hosts (unknown or apex). Not indexed via this
+    //     branch anyway; not our problem to noindex.
+    // De-index rationale: robots Disallow (in app/robots.ts) blocks
+    // future crawl but does NOT evict already-indexed URLs from
+    // Google's index. X-Robots-Tag: noindex on responses actively
+    // instructs de-indexing on the next crawl of already-known URLs.
+    if (agent && agent.site_type !== 'comprehensive' && !OWNER_PROMO_HOSTS.has(cleanReqHost)) {
+      supabaseResponse.headers.set('X-Robots-Tag', 'noindex, nofollow')
     }
   }
 

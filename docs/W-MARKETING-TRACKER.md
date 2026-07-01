@@ -48,13 +48,34 @@ sitemap, no robots.txt, canonical only on building pages, JSON-LD only
 on buildings (no `RealEstateListing` on properties), no H1 on home or
 property pages, generic homepage title without keyword anchor.
 
-### A-UNIT-1 — Crawl foundation `[DEV]` — STATUS: **READY**
+### A-UNIT-1 — Crawl foundation `[DEV]` — STATUS: **PARTIAL** (robots + noindex SHIPPED 2026-07-01; sitemap + canonicals remaining)
 
-  - **robots.txt** (`app/robots.ts`, host-aware, allow-all +
-    sitemap pointer). walliam-disallow case moot now (walliam
-    dropped). Single dynamic route, ~15 lines.
-  - **sitemap INDEX** at `/sitemap.xml` + child sitemaps:
-    - active listings (~102,633 URLs → 3 sitemap files, 50K-URL
+**SHIPPED 2026-07-01** (A-UNIT-1 first half):
+  - **`app/robots.ts`** — dynamic per-host route. Config-derived
+    policy (no brand-string branch):
+      Branch 1 comprehensive tenant (via `getCurrentTenantId` -> `tenants.domain`) -> Allow / + `Sitemap: https://${host}/sitemap.xml` pointer
+      Branch 2 owner promo (`condoleads.ca` / `01leads.com` inc. www) -> Allow /, no sitemap
+      Branch 3 everything else (legacy agent hosts, unknown) -> Disallow /
+    Fail-closed on unknown hosts (Disallow). New comprehensive
+    tenants auto-allowed by their `tenants.domain` row -> zero
+    code change per new tenant.
+  - **`middleware.ts` X-Robots-Tag: noindex, nofollow**
+    on legacy agent hosts only (agent resolved + non-comprehensive
+    site_type + not owner promo). De-indexes already-indexed
+    agent pages; robots Disallow alone would only block future
+    crawl, not evict existing indexed URLs.
+  - **Middleware path exclusions added**: `/robots.txt` and
+    `/sitemap.xml` skipped by both the 01leads rewrite branch
+    AND the comprehensive-site rewrite branch (Next.js Metadata
+    Files must live at the root of every host, not under
+    `/comprehensive-site/*` or `/zerooneleads/*`).
+  - Local smoke 9/9 passes (aily.ca + www, condoleads.ca + www,
+    01leads.com + www, yourcondorealtor.ca, viyacondex.condoleads.ca,
+    syedshah.condoleads.ca).
+
+**REMAINING** (A-UNIT-1 second half — next dispatch):
+  - **`app/sitemap.ts`** — sitemap INDEX + child sitemaps:
+    - active listings (~102,633 URLs -> 3 sitemap files, 50K-URL
       limit per file) — refreshed nightly
     - quality-gated buildings (~4,634 — photo + active listings) —
       refreshed weekly
@@ -69,10 +90,10 @@ property pages, generic homepage title without keyword anchor.
   - **`alternates.canonical` tags** added to: home, property,
     area, muni, community, neighbourhood. Building already has
     one — leave intact.
-  - **`/property/[UUID]` → slug canonical** (dual-URL defense
+  - **`/property/[UUID]` -> slug canonical** (dual-URL defense
     so Google doesn't fragment indexed listings between the UUID
     direct route and the slug-based route per UNIT 61 R8).
-  - **Dependencies**: none. Can ship today.
+  - **Dependencies for second half**: none blocking.
 
 ### A-UNIT-2 — Structured data / JSON-LD `[DEV]` — STATUS: **READY** (HIGHEST SEO value per UNIT 61 R4)
 
