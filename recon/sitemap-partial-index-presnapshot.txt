@@ -1,0 +1,25 @@
+W-MARKETING A-UNIT-1b PARTIAL INDEX SWAP — pre-apply snapshot
+snapshot timestamp: 2026-07-01T16:32:26.002Z
+
+idx_mls_listings_status_id exists? YES
+idx_mls_listings_sitemap exists? no
+
+index defs:
+  idx_mls_listings_status_id: CREATE INDEX idx_mls_listings_status_id ON public.mls_listings USING btree (standard_status, id) [57 MB]
+
+BEFORE plan (offset 50000):
+Limit  (cost=111389.48..111401.98 rows=5000 width=216) (actual time=22122.354..22123.782 rows=5000 loops=1)
+  Buffers: shared hit=16196 read=66628 dirtied=12 written=860, temp read=1019 written=1379
+  ->  Sort  (cost=111264.48..111410.23 rows=58302 width=216) (actual time=22109.149..22120.783 rows=55000 loops=1)
+        Sort Key: id
+        Sort Method: external merge  Disk: 11000kB
+        Buffers: shared hit=16196 read=66628 dirtied=12 written=860, temp read=1019 written=1379
+        ->  Index Scan using idx_listings_status on mls_listings ml  (cost=0.43..103146.06 rows=58302 width=216) (actual time=0.685..21992.384 rows=86144 loops=1)
+              Index Cond: ((standard_status)::text = ANY ('{Active,"Active Under Contract"}'::text[]))
+              Filter: (((property_type)::text = 'Residential Condo & Other'::text) OR (((property_type)::text = 'Residential Freehold'::text) AND ((property_subtype)::text = ANY ('{Detached,Semi-Detached,Att/Row/Townhouse,Link,Duplex,Triplex,Fourplex,Multiplex}'::text[]))))
+              Rows Removed by Filter: 13999
+              Buffers: shared hit=16193 read=66628 dirtied=12 written=860
+Planning:
+  Buffers: shared hit=576
+Planning Time: 1.743 ms
+Execution Time: 22126.886 ms

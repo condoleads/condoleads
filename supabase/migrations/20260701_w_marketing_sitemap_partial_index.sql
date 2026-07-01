@@ -1,0 +1,73 @@
+-- W-MARKETING A-UNIT-1b PARTIAL INDEX SWAP (2026-07-01)
+-- Documentary — the CONCURRENTLY DDL runs from
+-- scripts/apply-sitemap-partial-index.js (CREATE INDEX CONCURRENTLY and
+-- DROP INDEX CONCURRENTLY cannot execute inside a transaction block).
+-- This file is the git-tracked record of what the runner did.
+--
+-- Swap the unused composite index shipped in
+-- 20260701_w_marketing_sitemap_rpc_timeout_fix.sql for a partial index
+-- matching the sitemap listings predicate exactly. Recon proved the
+-- composite is never used — even with SET enable_seqscan=off +
+-- enable_sort=off the planner rejects it and falls back to
+-- idx_listings_status + 11MB external merge sort. Result: 10-25s per
+-- rpc call.
+--
+-- The partial index matches the query's WHERE clause literally, so the
+-- planner recognizes it as pre-filtered and does an id-order index scan
+-- with LIMIT/OFFSET. Expected: sub-second per call.
+--
+-- ┌──────────────────────────────────────────────────────────────────────┐
+-- │ COUPLED PREDICATE                                                    │
+-- │                                                                      │
+-- │ The WHERE clause of idx_mls_listings_sitemap MUST STAY BYTE-IDENTICAL │
+-- │ to the WHERE clause of public.get_sitemap_listings() defined in      │
+-- │ migration 20260701_w_marketing_sitemap_rpc_functions.sql             │
+-- │ (as amended by ...rpc_timeout_fix.sql).                              │
+-- │                                                                      │
+-- │ If the sitemap predicate changes and this index is not updated in    │
+-- │ lock-step, the planner silently STOPS using the partial index. The   │
+-- │ sitemap will still function correctly, but performance drops back    │
+-- │ to ~10-25s per rpc call (external merge sort resumes) — no error,    │
+-- │ no warning. Only a probe of EXPLAIN would show it.                   │
+-- │                                                                      │
+-- │ Rule: any edit to get_sitemap_listings' WHERE clause requires a      │
+-- │ matching edit to this index's WHERE clause, applied in the same      │
+-- │ dispatch. Add a comment referencing this rule to any future          │
+-- │ migration that touches either predicate.                             │
+-- └──────────────────────────────────────────────────────────────────────┘
+
+-- What the runner executed (recorded here for git history):
+
+-- 1. DROP the unused composite from the timeout-fix migration.
+--    Safe: it's a plain btree, referenced by no FK/constraint.
+--    idx_mls_listings_status_id was built CONCURRENTLY at 116931ms,
+--    ~30MB storage. Never used by the planner (verified via multiple
+--    EXPLAIN runs, incl. one with SET enable_seqscan=off + enable_sort=off).
+--
+--    DROP INDEX CONCURRENTLY IF EXISTS public.idx_mls_listings_status_id;
+
+-- 2. CREATE the partial index that matches the sitemap predicate.
+--    Storage: ~86k rows × ~14 bytes = ~1-2MB (30x smaller than the
+--    composite it replaces). Planner-preferred because the WHERE clause
+--    is a literal superset match to the query's WHERE.
+--
+--    CREATE INDEX CONCURRENTLY idx_mls_listings_sitemap
+--        ON public.mls_listings (id)
+--        WHERE standard_status IN ('Active', 'Active Under Contract')
+--          AND (
+--            property_type = 'Residential Condo & Other'
+--            OR (
+--              property_type = 'Residential Freehold'
+--              AND property_subtype IN (
+--                'Detached', 'Semi-Detached', 'Att/Row/Townhouse',
+--                'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'
+--              )
+--            )
+--          );
+
+-- Rollback:
+--   DROP INDEX CONCURRENTLY IF EXISTS public.idx_mls_listings_sitemap;
+--   (Then rebuild the composite from the timeout-fix migration if desired,
+--    though recon shows the composite was pointless — dropping it and
+--    leaving no replacement gets us back to plain 25s external-merge-sort
+--    plans, which is a regression from Stage-2 baseline.)
