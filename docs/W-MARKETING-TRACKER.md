@@ -284,23 +284,35 @@ re-hit)**:
 
 ### OPEN FOLLOW-UPS (logged so nothing is lost)
 
-  1. **DEVELOPMENT DISPATCH BUG** — `/<development-slug>` returns 404
-     on aily.ca for all 7 developments despite:
-       - Dispatch code at `app/[slug]/page.tsx:145` and
-         `app/comprehensive-site/[slug]/page.tsx:95-97`
-       - DB rows existing in `developments` for all 7 slugs
-       - `developments` table has `relrowsecurity=false` (no RLS)
-       - Direct `supabase-anon .from('developments').eq('slug', ...)`
-         returning the row correctly
-     Suspected: interaction with the middleware `/comprehensive-
-     site/` rewrite path OR the module-scoped `supabase` import in
-     `comprehensive-site/[slug]/page.tsx:11` (`@/lib/supabase/client`
-     is client-side; server context may misbehave). **Verify the
-     bug is developments-ONLY, not a broader rewrite-layer class**
-     (before fixing, sample muni/area/community dispatch under the
-     same path to prove they don't ALSO have subtle route bugs).
-     Developments removed from sitemap in `bbe7e65`; re-add per the
-     migration comment when fixed.
+  1. **DEVELOPMENT DISPATCH BUG — RESOLVED 2026-07-01, commit `4d305b8`**
+     — `/<development-slug>` was returning 404 on aily.ca for all 7
+     developments.
+     **Root cause found**: `getAgentFromHost('aily.ca')` in
+     `lib/utils/agent-detection.ts:99-123` returns null because aily's
+     tenant→agent linkage lives in `tenants.default_agent_id`, not in
+     `agents.custom_domain` (verified via direct DB probe — 0 agents
+     rows have `custom_domain='aily.ca'`). So `getDisplayAgentForDevelopment`
+     returned `displayAgent: null`. `DevelopmentPage:130-132` called
+     `notFound()` on null displayAgent, where `BuildingPage:315`
+     tolerates the same null with "// May be null — page renders
+     without agent features".
+     **Fix**: match BuildingPage's tolerance in DevelopmentPage.
+     Removed the null-guard; added null-safety wraps around the
+     `<script>window.__AGENT_DATA__ = {agent.id...}</script>` block
+     (:193-210) and `<MobileContactBar agent={agent} .../>` (:350-355)
+     — mirrors BuildingPage:686 pattern. All other agent uses were
+     already null-safe via optional chaining / truthy wrappers.
+     **Verification**: all 7 dev URLs render 200 on production with
+     real content (H1s: Corktown District Lofts, Pier 27 Condos,
+     Playground Condos, The Monde Condos, Lighthouse East and West
+     Towers, Harbour Plaza Residences, The Thompson Residences).
+     Developments re-added to `get_sitemap_geo_slugs` in the follow-up
+     migration.
+     **NOT changed**: `lib/utils/agent-detection.ts` — a first attempt
+     to add a comprehensive-tenant branch to `getDisplayAgentForDevelopment`
+     was reverted (unreachable — the outer `if (!siteOwner)` guard fires
+     before it can). Fixing the resolver itself is a separate broader
+     follow-up (see item 7 below).
 
   2. **Buildings chunk ~22s cold** — buildings uses a different
      predicate (`EXISTS` on `building_id` subquery, `~4574` rows).
@@ -335,11 +347,47 @@ re-hit)**:
      use `generatePropertySlug` / `generateHomePropertySlug`
      everywhere.
 
-  6. **Route `GEO_PATH_PREFIX` map has unused `development`
-     entry** in `app/sitemap/[id]/route.ts`. Harmless — the SQL
-     function no longer emits `kind='development'` — but should
-     be pruned when developments return, or immediately if we
-     want a clean map.
+  6. **Route `GEO_PATH_PREFIX` map has `development` entry** in
+     `app/sitemap/[id]/route.ts`. **NOW ACTIVE** after developments
+     re-added to `get_sitemap_geo_slugs` (2026-07-01). Kind maps to
+     `/` prefix — correct for the observed dev URL shape (e.g.
+     `/the-thompson-residences-...`).
+
+  7. **`getAgentFromHost` is tenant-blind** (LOW priority follow-up)
+     — `lib/utils/agent-detection.ts:99-123` only checks
+     `agents.custom_domain` + subdomain lookup; it does NOT consult
+     `tenants.domain` → `tenants.default_agent_id` the way middleware
+     does at `middleware.ts:258-276`. Result: for comprehensive
+     tenants (aily, walliam), `getAgentFromHost` returns null even
+     though the middleware has already resolved a real tenant agent.
+     Downstream helpers (`getDisplayAgentForBuilding`,
+     `getDisplayAgentForDevelopment`) return `displayAgent: null` on
+     the null siteOwner short-circuit — worked around at the page
+     level in BuildingPage (:315 tolerance) and now DevelopmentPage
+     (commit 4d305b8, mirrors BuildingPage). If a third page type
+     lands with the same pattern, consider a properly-audited
+     tenant-aware `getAgentFromHost` as its own unit: grep every
+     caller (currently 4+ in `agent-detection.ts` alone + external
+     sites), do isolation review, verify System-1 hosts still resolve
+     correctly, verify no caller depends on the current null-for-
+     tenant-hosts return. NOT doing it now — page-level tolerance is
+     the correct scope today.
+
+  8. **DevelopmentPage metadata brand leak** — `DevelopmentPage.tsx:81`
+     falls back to hardcoded `'CondoLeads'` when agent branding lookup
+     fails, and the metadata title format is `${development.name} |
+     ${addresses} | ${siteName}`. On aily, siteName resolves via the
+     legacy `agents.custom_domain` / subdomain path (fails for
+     comprehensive tenants — same class as item 7) so the fallback
+     `'CondoLeads'` fires — production probe showed
+     `<title>The Thompson Residences | 55 Stewart St, Toronto, 552
+     Wellington St W, Toronto | CondoLeads</title>`. Should be
+     `| aily` (or the tenant's brand). Same class as the
+     neighbourhood-title bug UNIT 61 R1 flagged. Now visible on a
+     live page type — bumped priority. Fix pattern already established
+     in `resolveCanonicalHost` (used in A-UNIT-1b canonicals): resolve
+     tenant via `tenants.domain` → `tenants.name`. Small dedicated
+     dispatch.
 
 **Isolation review (mandatory for tenant-scoped work)**:
   - Every query in `app/sitemap.ts` scopes as follows:
