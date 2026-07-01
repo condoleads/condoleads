@@ -157,6 +157,190 @@ property pages, generic homepage title without keyword anchor.
     legacy hosts (where /property/[UUID] still serves), harmless on
     aily.
 
+### Post-launch stabilization (2026-07-01, same day — sitemap rebuild journey)
+
+The metadata-route approach in `ed9de36` deployed cleanly but the
+sitemap route silently failed to register on Vercel — `/sitemap.xml`
++ every `/sitemap.xml/[id]` returned 404 with a `[slug]` catchall
+marker. Root-caused, rebuilt, and re-shipped over the course of a
+single day. Final architecture:
+
+**Full SHA chain for A-UNIT-1 (in chronological order)**:
+  - `e303773` — A-UNIT-1a robots.ts + middleware X-Robots-Tag noindex
+                on legacy agent hosts (LIVE, correct)
+  - `ed9de36` — A-UNIT-1b (first attempt): sitemap metadata route +
+                pg-direct, plus 8 canonicals + AreaPage fallback fix.
+                Canonicals + robots correct; sitemap route FAILED to
+                register on Vercel (silent — no build error).
+  - `e03a35d` — HOTFIX runtime='nodejs'+dynamic='force-dynamic' pin —
+                did not fix; sitemap still 404.
+  - `d324c22` — DIAGNOSTIC trivial 3-URL metadata sitemap — proved
+                registration works with zero non-type imports.
+  - `373640a` — DB migration: 3 sitemap RPC functions committed
+                (`get_sitemap_listings`, `get_sitemap_buildings`,
+                `get_sitemap_geo_slugs`). Applied to prod same session.
+  - `b05fbc9` — restore sitemap via supabase.rpc (still metadata
+                route). Also FAILED to register — proved the failure
+                is NOT pg-specific; ANY non-type import trips the
+                metadata-route loader on Vercel.
+  - `52c6e97` — Stage 0 revert to diagnostic (Vercel webhook never
+                fired for this commit; harmless — superseded).
+  - `7cecbf0` — STAGE 1: sitemap rebuilt as Route Handler
+                (`app/sitemap.xml/route.ts` + `app/sitemap/[id]/route.ts`),
+                trivial data. Route Handler mechanism REGISTERED.
+  - `333c99a` — STAGE 2: real data through the Route Handler via RPC +
+                slug-gen + middleware `/sitemap/` exclusion. Deployed
+                but chunks 1+2 empty due to statement_timeout.
+  - `653ffdd` — TIMEOUT FIX: SET statement_timeout=0 in each of the
+                3 SQL functions + composite `(standard_status, id)`
+                index CONCURRENTLY. Applied to prod.
+  - `aa9d3c1` — PARTIAL INDEX SWAP: composite was never used by
+                planner (rejected MergeAppend across 2 status values);
+                dropped and replaced with predicate-matching partial
+                `idx_mls_listings_sitemap` (2.6 MB vs 57 MB). Sitemap
+                queries went from 25s to ~1s. Applied to prod.
+  - `bbe7e65` — DEV-URL FIX: removed developments UNION branch from
+                `get_sitemap_geo_slugs()` after production probe
+                showed all 7 development URLs 404 despite dispatch
+                code + DB rows existing. Applied to prod. **This
+                commit closes A-UNIT-1.**
+
+**Live sitemap on aily.ca (post-`bbe7e65`)**:
+  - `/sitemap.xml` — 4-child sitemap-index (2 listings + 1 buildings + 1 geo)
+  - `/sitemap/0` — 50,000 listing URLs (offsets 0..49999)
+  - `/sitemap/1` — 36,144 listing URLs (offsets 50000..86143)
+  - `/sitemap/2` — 4,574 building URLs
+  - `/sitemap/3` — 2,536 geo URLs (community 1948, muni 506, treb_area
+                    73, neighbourhood 9; developments removed)
+  - **Total: 93,254 URLs**
+  - Zero slug-skips on the listings path — every row with a
+    `listing_key` produced a valid slug.
+
+**Timings (measured cold via `?_cb=<ts>` cache-bust, warm via same URL
+re-hit)**:
+  - `/sitemap/0` — cold 12.0s, warm 5.6s
+  - `/sitemap/1` — cold  7.2s, warm 9.3s (variance on warm; near cold)
+  - `/sitemap/2` — cold 22.2s, warm 21.5s (buildings NOT helped by
+                    partial listings index; its own EXISTS predicate
+                    dominates)
+  - `/sitemap/3` — cold  8.9s, warm 1.6s
+  - All well under Vercel's 60s per-invocation ceiling.
+
+**Isolation review** (post-rebuild):
+  - Route handlers use `serviceClient()` (SUPABASE_SERVICE_ROLE_KEY).
+    Host gate (`OWNER_PROMO_HOSTS` set + `getCurrentTenantId()` null-
+    check) fires BEFORE any DB call — non-tenant hosts get empty XML
+    with zero DB reads. Verified on `condoleads.ca` (owner promo):
+    empty `<sitemapindex/>` and empty `<urlset>`.
+  - SQL functions all `SECURITY DEFINER` + `SET search_path = public,
+    pg_temp` + `SET statement_timeout = 0` + `GRANT EXECUTE ONLY TO
+    service_role`. No `SELECT *`.
+  - mls_listings / buildings / geo tables: no `tenant_id` per
+    CLAUDE.md (shared MLS/geo). Tenant scoping is at the route layer.
+
+### LEARNINGS — patterns to remember (2026-07-01)
+
+  1. **Metadata Route convention silently fails to register on Vercel
+     for any file with non-type imports.** The `next-metadata-route-
+     loader.js` module analyzer accepts trivial files (pure inline
+     data) but rejects the file — silently, no build error — when
+     the module graph includes `pg`, `@supabase/supabase-js`, or
+     even the app's own `lib/utils/tenant-resolver`. Diagnosis path:
+     if `/sitemap.xml` returns HTML 404 with `"slug","sitemap.xml","d"`
+     in the response body, the route was never registered — the
+     `[slug]` catchall handled it. **Solution: use Route Handlers
+     (`app/<path>/route.ts` with `export async function GET`) instead
+     of the Metadata Route convention.** Route Handlers use a
+     different loader path and don't suffer from this.
+
+  2. **PostgREST connects as `authenticator` role which has an 8s
+     `statement_timeout` set at role-login time.** `SET LOCAL ROLE
+     service_role` per request does NOT reset the timeout — GUCs
+     don't reset on `SET ROLE`. Even calling with the
+     `SUPABASE_SERVICE_ROLE_KEY` inherits the 8s cap. **Solution:
+     per-function `SET statement_timeout = 0`** in the function
+     declaration. The pooler does not override — proven via
+     `sb.rpc()` end-to-end. If a function scans large tables or
+     runs long-lived aggregates, it must set its own timeout.
+
+  3. **Composite index `(status, id)` rejected by the planner for
+     `IN (status1, status2)` queries.** With 2 status values the
+     planner considers MergeAppend more expensive than `Index Scan
+     on idx_listings_status + external merge sort`. Even forced with
+     `SET enable_seqscan=off + enable_sort=off` the composite is
+     ignored. **Solution: partial index whose WHERE clause matches
+     the query's WHERE literally** (`WHERE status IN (...) AND
+     property_type = ... OR (...)`) — the planner recognizes it as
+     pre-filtered and uses an index-order scan, eliminating the
+     sort. Storage: ~1-2MB (86k entries) vs 30MB for the composite.
+
+  4. **COUPLED-PREDICATE seam**: `idx_mls_listings_sitemap`'s WHERE
+     clause MUST stay byte-identical to `get_sitemap_listings()`'s
+     WHERE clause. If they drift, the partial index is silently
+     rejected and the sitemap drops back to ~15s per rpc call with
+     no error — only an EXPLAIN would show it. Documented in the
+     migration SQL header block; any future edit to either predicate
+     requires a matching edit to the other in the same dispatch.
+
+### OPEN FOLLOW-UPS (logged so nothing is lost)
+
+  1. **DEVELOPMENT DISPATCH BUG** — `/<development-slug>` returns 404
+     on aily.ca for all 7 developments despite:
+       - Dispatch code at `app/[slug]/page.tsx:145` and
+         `app/comprehensive-site/[slug]/page.tsx:95-97`
+       - DB rows existing in `developments` for all 7 slugs
+       - `developments` table has `relrowsecurity=false` (no RLS)
+       - Direct `supabase-anon .from('developments').eq('slug', ...)`
+         returning the row correctly
+     Suspected: interaction with the middleware `/comprehensive-
+     site/` rewrite path OR the module-scoped `supabase` import in
+     `comprehensive-site/[slug]/page.tsx:11` (`@/lib/supabase/client`
+     is client-side; server context may misbehave). **Verify the
+     bug is developments-ONLY, not a broader rewrite-layer class**
+     (before fixing, sample muni/area/community dispatch under the
+     same path to prove they don't ALSO have subtle route bugs).
+     Developments removed from sitemap in `bbe7e65`; re-add per the
+     migration comment when fixed.
+
+  2. **Buildings chunk ~22s cold** — buildings uses a different
+     predicate (`EXISTS` on `building_id` subquery, `~4574` rows).
+     The listings partial index doesn't help. Acceptable at current
+     data volume (well under Vercel 60s limit), but if `buildings`
+     grows or the EXISTS subquery slows, a supporting index on
+     `mls_listings (building_id, standard_status)` — or on
+     `buildings (slug, cover_photo_url) WHERE both NOT NULL` —
+     would help.
+
+  3. **`OWNER_PROMO_HOSTS` Edge/Node duplication seam** — the set
+     `{condoleads.ca, 01leads.com}` is declared in three places
+     that can't share modules (Edge vs Node runtimes): `middleware.
+     ts`, `app/robots.ts`, and both sitemap route handlers.
+     Adding a new promo host = 4 edits. Not blocking, but tracked.
+
+  4. **~400 untracked files in tree** including live route dirs
+     (`app/api/parity-probe-*`, `app/api/probe-condo-resolver/`,
+     `app/api/test-estimator-sections/`). Audit whether these are
+     shipping to production as live routes and if so whether they
+     leak data or provide unauthenticated access. Not touched by
+     A-UNIT-1 but critical hygiene.
+
+  5. **/property/[UUID] broken links** — 4 pre-existing call sites
+     linking to the UUID route which 404s on aily:
+       - `app/api/search/route.ts:104`
+       - `app/estimator/components/EstimatorResults.tsx:1197`
+       - `components/dashboard/WorkingDocView.tsx:142`
+       - `components/property/HomeAddressHistoryModal.tsx:130`
+     Pre-A-UNIT-1; canonical code in `app/property/[id]/page.tsx`
+     is dead on aily but harmless. Fix = swap link generation to
+     use `generatePropertySlug` / `generateHomePropertySlug`
+     everywhere.
+
+  6. **Route `GEO_PATH_PREFIX` map has unused `development`
+     entry** in `app/sitemap/[id]/route.ts`. Harmless — the SQL
+     function no longer emits `kind='development'` — but should
+     be pruned when developments return, or immediately if we
+     want a clean map.
+
 **Isolation review (mandatory for tenant-scoped work)**:
   - Every query in `app/sitemap.ts` scopes as follows:
     - listings: filtered by `standard_status IN ('Active','Active
