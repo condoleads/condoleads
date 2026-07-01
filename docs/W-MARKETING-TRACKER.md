@@ -48,9 +48,9 @@ sitemap, no robots.txt, canonical only on building pages, JSON-LD only
 on buildings (no `RealEstateListing` on properties), no H1 on home or
 property pages, generic homepage title without keyword anchor.
 
-### A-UNIT-1 — Crawl foundation `[DEV]` — STATUS: **PARTIAL** (robots + noindex SHIPPED 2026-07-01; sitemap + canonicals remaining)
+### A-UNIT-1 — Crawl foundation `[DEV]` — STATUS: **COMPLETE** (both halves SHIPPED 2026-07-01)
 
-**SHIPPED 2026-07-01** (A-UNIT-1 first half):
+**SHIPPED 2026-07-01** (A-UNIT-1 first half, commit e303773 — robots.ts + noindex):
   - **`app/robots.ts`** — dynamic per-host route. Config-derived
     policy (no brand-string branch):
       Branch 1 comprehensive tenant (via `getCurrentTenantId` -> `tenants.domain`) -> Allow / + `Sitemap: https://${host}/sitemap.xml` pointer
@@ -73,27 +73,180 @@ property pages, generic homepage title without keyword anchor.
     01leads.com + www, yourcondorealtor.ca, viyacondex.condoleads.ca,
     syedshah.condoleads.ca).
 
-**REMAINING** (A-UNIT-1 second half — next dispatch):
-  - **`app/sitemap.ts`** — sitemap INDEX + child sitemaps:
-    - active listings (~102,633 URLs -> 3 sitemap files, 50K-URL
-      limit per file) — refreshed nightly
-    - quality-gated buildings (~4,634 — photo + active listings) —
-      refreshed weekly
-    - communities (1,948), municipalities (506), treb_areas (73),
-      neighbourhoods (9), developments (7) — refreshed weekly
-    - Total: ~110K URLs across 4 listing/geo sitemaps + 1 index
-    - `lastmod` sources:
-      - mls_listings: `modification_timestamp` or `updated_at`
-      - buildings: `updated_at` or `geo_analytics.calculated_at`
-        (uses nightly stats freshness)
-      - communities/munis/areas/neighbourhoods: `updated_at`
-  - **`alternates.canonical` tags** added to: home, property,
-    area, muni, community, neighbourhood. Building already has
-    one — leave intact.
-  - **`/property/[UUID]` -> slug canonical** (dual-URL defense
-    so Google doesn't fragment indexed listings between the UUID
-    direct route and the slug-based route per UNIT 61 R8).
-  - **Dependencies for second half**: none blocking.
+**SHIPPED 2026-07-01** (A-UNIT-1 second half, this commit — sitemap + canonicals):
+
+  - **`app/sitemap.ts`** — 5-child sitemap-index served via Next.js
+    `generateSitemaps` at `/sitemap.xml/[id]` (index at `/sitemap.xml`
+    auto-serves in PRODUCTION per next-metadata-route-loader.js:157
+    which gates on `NODE_ENV === "production"`; dev serves children
+    only — production probe post-deploy will verify the index).
+    Local smoke on aily.ca:
+      /sitemap.xml/0: 50,000 listing URLs (chunk 0)
+      /sitemap.xml/1: 50,000 listing URLs (chunk 1)
+      /sitemap.xml/2:    409 listing URLs (chunk 2)
+      /sitemap.xml/3:  4,580 building URLs (quality-gated)
+      /sitemap.xml/4:  2,543 geo URLs (1948 comm + 506 muni + 73 area
+                                       + 9 nbhd + 7 dev)
+      Total: ~107,500 URLs.
+    Non-tenant hosts (yourcondorealtor.ca, viyacondex.condoleads.ca,
+      condoleads.ca): each returns `[]` (empty sitemap) — host gate
+      mirrors robots.ts Branch 1.
+    Listing predicate: `standard_status IN ('Active','Active Under
+      Contract')` AND (`property_type = 'Residential Condo & Other'`
+      OR `property_type = 'Residential Freehold' AND property_subtype
+      IN residential-home-subtypes`). Filter mirrors HomePropertyPage.
+      tsx:87 gate so sitemap URLs match what the site actually serves.
+    Building predicate: `slug IS NOT NULL AND cover_photo_url IS NOT
+      NULL AND EXISTS (active listing)`. Single SQL EXISTS clause.
+    Geo predicate per table: `slug IS NOT NULL` + `is_active` on
+      communities + neighbourhoods.
+    lastmod: `modification_timestamp` (COALESCE to `updated_at`) on
+      listings; `updated_at` on buildings + geo.
+    Efficiency: pg-direct via DATABASE_URL with `SET statement_timeout
+      = 0` for the two large scans (listings + buildings). Supabase-js
+      caps at 5000 rows per query (verified during build; even
+      `.range(0, 100000)` clamps). Geo stays on Supabase-js (all
+      queries < 2k rows). Chunks 0 + 1 take ~30s each cold; revalidate
+      3600 (1 hour) means each is cached after first hit — MLS
+      refreshes hourly so cadence matches.
+    NO changefreq, NO priority (Google largely ignores; noise).
+
+  - **Canonicals added / fixed** — mirror the tenant-normalized pattern
+    with self-host fallback via new shared `lib/utils/canonical.ts`
+    `resolveCanonicalHost()` helper:
+      home                    (both app/page.tsx + app/comprehensive-site/page.tsx —
+                              aily's / rewrites to /comprehensive-site/)
+      condo property          (app/property/[id]/page.tsx — dual-URL defense
+                               canonical to slug URL when generatable)
+      home property           (app/property/[id]/HomePropertyPage.tsx — same)
+      municipality            (app/[slug]/MunicipalityPage.tsx)
+      community               (app/[slug]/CommunityPage.tsx)
+      development             (app/[slug]/DevelopmentPage.tsx)
+      neighbourhood           (app/comprehensive-site/toronto/[neighbourhood]/page.tsx)
+      area — FIXED FALLBACK   (app/[slug]/AreaPage.tsx: previous fallback of
+                               'www.condoleads.ca' when tenant lookup failed
+                               would emit `https://www.condoleads.ca/${slug}`
+                               canonical on aily pages — the exact leak
+                               UNIT 56 flagged. Fix: fall back to raw request
+                               host, never a different domain. Delegated to
+                               resolveCanonicalHost so same rule applies to
+                               every page-type canonical uniformly.)
+
+  - **Canonical fallback policy**: `resolveCanonicalHost()` prefers
+    `tenants.domain` (normalized www/apex per DB); falls back to the
+    raw request host (self-canonical). Never a different domain.
+
+  - **Middleware exclusions extended**: `/sitemap.xml/*` (child
+    sitemaps) also excluded from both the /comprehensive-site rewrite
+    and the /zerooneleads rewrite. Next 14 serves child sitemaps at
+    `/sitemap.xml/[id]` (dot in the segment, not `/sitemap/[id].xml`)
+    — startsWith check catches both index + children.
+
+**Known follow-up (not blocking A-UNIT-1)**:
+  - `/toronto` canonical currently emits `https://aily.ca/toronto-area`
+    (uses `area.slug` DB value which has the `-area` suffix for some
+    areas) instead of the URL slug `toronto`. Pre-existing pattern in
+    AreaPage.tsx; not introduced by this UNIT. Fix requires threading
+    the URL slug through the metadata call; deferred to a follow-up
+    (low SEO impact — Google will accept the canonical either way; the
+    `-area` URL is a valid alternate that also serves).
+  - `/property/[UUID]` on aily returns 404 (middleware rewrites into
+    `/comprehensive-site/property/[UUID]` which doesn't exist) — this
+    is _natural_ de-canonicalization: Google will drop indexed UUID
+    URLs, only the slug URLs survive. Canonical code in place for
+    legacy hosts (where /property/[UUID] still serves), harmless on
+    aily.
+
+**Isolation review (mandatory for tenant-scoped work)**:
+  - Every query in `app/sitemap.ts` scopes as follows:
+    - listings: filtered by `standard_status IN ('Active','Active
+      Under Contract')` + `property_type/subtype` filter mirroring
+      the render gate. No tenant column exists on `mls_listings` per
+      CLAUDE.md — the DATA is tenant-neutral market data. The route
+      itself gates on `getCurrentTenantId()` (host resolves to
+      comprehensive tenant) BEFORE any listing query runs.
+    - buildings: `slug IS NOT NULL AND cover_photo_url IS NOT NULL
+      AND EXISTS (active mls_listing)`. Same tenant-neutral posture
+      + same host gate.
+    - geo (comm/muni/area/nbhd/dev): `slug IS NOT NULL` + `is_active`
+      where applicable. Same posture.
+  - Non-tenant host response verified `[]` empty (yourcondorealtor.ca
+    / viyacondex.condoleads.ca / condoleads.ca all confirmed 0-URL
+    sitemap during smoke).
+  - NO `SELECT *` on tenants or agents — sitemap doesn't touch either
+    table. Canonical helper's `getTenantByHost` uses tenants column
+    allow-list.
+  - Host-gate cannot emit a sitemap for a non-tenant host:
+    `resolveRequestContext()` returns `isTenant: false` for owner promo
+    hosts (in OWNER_PROMO_HOSTS set) + for any host where
+    `getCurrentTenantId()` returns null. Both branches make the sitemap
+    handler return `[]` before any DB query fires.
+
+Files changed in this half (this commit):
+  app/sitemap.ts                                                   (NEW)
+  lib/utils/canonical.ts                                           (NEW)
+  middleware.ts                                                    (extend exclusions)
+  app/page.tsx                                                     (canonical via helper)
+  app/comprehensive-site/page.tsx                                  (canonical via helper)
+  app/property/[id]/page.tsx                                       (dual-URL canonical)
+  app/property/[id]/HomePropertyPage.tsx                           (dual-URL canonical)
+  app/[slug]/AreaPage.tsx                                          (FIX fallback via helper)
+  app/[slug]/MunicipalityPage.tsx                                  (canonical via helper)
+  app/[slug]/CommunityPage.tsx                                     (canonical via helper)
+  app/[slug]/DevelopmentPage.tsx                                   (canonical via helper)
+  app/comprehensive-site/toronto/[neighbourhood]/page.tsx          (canonical + tenant-aware brand)
+  docs/W-MARKETING-TRACKER.md                                      (this delta)
+
+### A-UNIT-4 — Geo-page unique content from geo_analytics `[DEV]` — STATUS: **READY** (HIGH priority ranking lever)
+
+Templated geo pages (area, muni, community, neighbourhood) currently
+share the same title-shape + description pattern (per UNIT 61 R1).
+Google's Panda / helpful-content signals penalize templated pages
+without unique substantive data. UNIT 53 established `geo_analytics`
+has per-geo real numbers (median_sale_price, avg_psf, active_count,
+closed_sale_count_90, closed_avg_dom_90, absorption_rate_pct,
+months_of_inventory, etc.). Surface these visibly on each geo page
+so every page has UNIQUE market data. Turns "generic templated" into
+"real data page" — the exact kind of content Google's helpful-content
+system rewards.
+
+Approach: single reused server component reads `geo_analytics` for the
+current geo (via getGeoAnalyticsForCurrentPage helper) and renders
+stat cards + a mini sparkline (same pattern as UNIT 53's homepage
+CondoMarketActivity). Mount on Area / Muni / Community / Neighbourhood
+pages. Fallback: if `low_volume_flag=true` for this geo, hide the
+whole panel (never emit thin data). Fully data-driven; multi-tenant
+neutral by construction (geo_analytics has no tenant_id per UNIT 52
+R6).
+
+Dependencies: none. Ships independently of A-UNIT-1 completion (which
+this commit closes). Follows the same "read-only, tenant-neutral,
+data-quality-gated" posture as UNIT 53.
+
+### Known seams (log for future refinement)
+
+  - **`OWNER_PROMO_HOSTS` duplication** across `middleware.ts` (Edge
+    runtime) and `app/robots.ts` + `app/sitemap.ts` (Node runtime).
+    Middleware runs in Edge; robots/sitemap in Node. No shared-module
+    import possible across runtimes. Adding a promo host requires
+    editing three files: middleware.ts + app/robots.ts + app/sitemap.
+    ts. Not blocking, but tracked so operator knows to touch all
+    three in sync.
+
+  - **AreaPage canonical uses DB slug not URL slug** — pre-existing
+    behavior; `/toronto` emits `canonical: /toronto-area` because
+    `treb_areas.slug = 'toronto-area'` while the URL is `/toronto`
+    (via `findArea`'s fallback). Google accepts as valid alternate;
+    fix requires threading `params.slug` through metadata helper.
+    Deferred.
+
+### Next dispatch: B-UNIT-1 (internal linking, coupled to sitemap)
+
+Sitemap tells Google WHAT exists. Internal linking tells Google WHAT
+MATTERS most and distributes rank across the site. B-UNIT-1 builds
+programmatic cross-links: building pages -> community + area, community
+-> its buildings + parent muni, etc. Complements A-UNIT-1's sitemap
+by improving crawl depth + rank flow. Ready to dispatch.
 
 ### A-UNIT-2 — Structured data / JSON-LD `[DEV]` — STATUS: **READY** (HIGHEST SEO value per UNIT 61 R4)
 

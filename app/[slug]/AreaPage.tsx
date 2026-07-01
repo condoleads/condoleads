@@ -34,15 +34,15 @@ interface AreaData { id: string; name: string; slug: string }
 interface AreaPageProps { area: AreaData }
 
 export async function generateAreaMetadata(area: AreaData) {
-  // W-FUNNEL Batch 1: tenant-aware canonical href. Resolves the current host's
-  // tenant via the working public-page resolver (matches OG/twitter pipeline);
-  // falls back to platform domain when no tenant matches (e.g. condoleads.ca
-  // root). Prevents WALLiam/aily pages from telling search engines they're
-  // aliases of condoleads.ca.
-  const _canonicalHost = headers().get('host') || ''
-  const _canonicalSupabase = createTenantClient()
-  const _canonicalTenant = await getTenantByHost(_canonicalSupabase, _canonicalHost)
-  const canonicalDomain = _canonicalTenant?.domain || 'www.condoleads.ca'
+  // W-MARKETING A-UNIT-1b (2026-07-01): fixed fallback from 'www.condoleads.ca'
+  // to raw request host (self-canonical). Previous fallback would emit
+  // `https://www.condoleads.ca/${slug}` when tenant lookup failed on aily,
+  // telling Google aily pages canonicalize to condoleads — the exact
+  // duplicate-content leak UNIT 56 flagged. Fix: fall back to the SERVING
+  // host (never a different domain). Delegated to resolveCanonicalHost
+  // so the same fallback rule applies to every page-type canonical.
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const canonicalDomain = await resolveCanonicalHost()
   return {
     title: `${area.name} Real Estate | Condos & Homes for Sale`,
     description: `Browse condos and homes for sale in ${area.name}. Explore municipalities, communities, and condo buildings.`,

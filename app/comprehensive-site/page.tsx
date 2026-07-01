@@ -28,6 +28,12 @@ export async function generateMetadata(): Promise<Metadata> {
     const ogTitle = `${tenant.name} - AI Real Estate Assistant`
     const ogDescription = 'Get your personalized real estate plan in minutes.'
 
+    // W-MARKETING A-UNIT-1b (2026-07-01): homepage self-canonical.
+    // aily.ca and future tenants land here (middleware rewrites `/` to
+    // `/comprehensive-site/`). Fallback = raw host (self-canonical).
+    const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+    const canonicalDomain = await resolveCanonicalHost()
+
     return {
       title,
       description,
@@ -44,6 +50,9 @@ export async function generateMetadata(): Promise<Metadata> {
         title: ogTitle,
         description: ogDescription,
         images: [ogImageUrl],
+      },
+      alternates: {
+        canonical: `https://${canonicalDomain}/`,
       },
     }
   } catch {

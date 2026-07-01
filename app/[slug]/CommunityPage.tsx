@@ -31,9 +31,16 @@ interface CommunityData { id: string; name: string; slug: string; municipality_i
 interface CommunityPageProps { community: CommunityData }
 
 export async function generateCommunityMetadata(community: CommunityData) {
+  // W-MARKETING A-UNIT-1b (2026-07-01): add self-canonical (was absent per
+  // UNIT 61 R2). Shared resolver — raw-host fallback, never cross-tenant.
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const canonicalDomain = await resolveCanonicalHost()
   return {
     title: `${community.name} Real Estate | Condos & Homes for Sale`,
     description: `Browse condos and homes for sale in ${community.name}. View listings, condo buildings, market data, and price estimates.`,
+    alternates: {
+      canonical: `https://${canonicalDomain}/${community.slug}`,
+    },
   }
 }
 

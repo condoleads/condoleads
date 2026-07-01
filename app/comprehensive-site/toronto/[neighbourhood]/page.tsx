@@ -29,9 +29,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .single()
 
   if (!n) return { title: 'Neighbourhood Not Found' }
+  // W-MARKETING A-UNIT-1b (2026-07-01): tenant-aware title (was hardcoded
+  // "CondoLeads") + self-canonical (was absent). Reuses shared resolver.
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const { getTenantByHost } = await import('@/lib/utils/tenant-brand')
+  const { headers } = await import('next/headers')
+  const canonicalDomain = await resolveCanonicalHost()
+  const brandTenant = await getTenantByHost(supabase, headers().get('host') || '')
+  const brandName = brandTenant?.name || 'CondoLeads'
   return {
-    title: `${n.name} Real Estate – Condos & Homes | CondoLeads`,
+    title: `${n.name} Real Estate – Condos & Homes | ${brandName}`,
     description: `Browse condos and homes for sale and lease in ${n.name}, Toronto.`,
+    alternates: {
+      canonical: `https://${canonicalDomain}/toronto/${params.neighbourhood}`,
+    },
   }
 }
 

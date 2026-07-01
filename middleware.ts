@@ -88,8 +88,9 @@ export async function middleware(request: NextRequest) {
     // W-MARKETING A-UNIT-1 (2026-07-01): top-level SEO metadata routes
     // (Next.js Metadata Files convention) live at the root of every host
     // and MUST NOT be rewritten into /zerooneleads/*. Same reasoning as
-    // the SYSTEM FORK block below.
-    if (pathname === '/robots.txt' || pathname === '/sitemap.xml') {
+    // the SYSTEM FORK block below. Next.js 14 serves child sitemaps at
+    // /sitemap.xml/<id> — the startsWith catches both.
+    if (pathname === '/robots.txt' || pathname.startsWith('/sitemap.xml')) {
       return supabaseResponse
     }
     const url = request.nextUrl.clone()
@@ -110,8 +111,11 @@ export async function middleware(request: NextRequest) {
     // W-MARKETING A-UNIT-1 (2026-07-01): top-level SEO metadata routes
     // (Next.js Metadata Files convention). These MUST NOT be rewritten
     // to /comprehensive-site/* — they live at the root of every host.
+    // Next.js 14 serves the sitemap index at /sitemap.xml and child
+    // sitemaps (generateSitemaps) at /sitemap.xml/<id> — the prefix
+    // check catches both.
     pathname !== '/robots.txt' &&
-    pathname !== '/sitemap.xml'
+    !pathname.startsWith('/sitemap.xml')
   ) {
     const host = request.headers.get('host') || ''
     const agent = await resolveAgentFromHost(supabase, host)

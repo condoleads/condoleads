@@ -92,7 +92,11 @@ export async function generateDevelopmentMetadata(development: { id: string; nam
   
   const title = `${development.name} | ${addresses} | ${siteName}`
   const description = `Explore ${development.name} at ${addresses}. ${buildingCount} buildings with condos for sale and rent. View floor plans, amenities, and market insights.`
-  
+
+  // W-MARKETING A-UNIT-1b (2026-07-01): add self-canonical (was absent per UNIT 61 R2).
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const canonicalDomain = await resolveCanonicalHost()
+
   return {
     title,
     description,
@@ -110,6 +114,9 @@ export async function generateDevelopmentMetadata(development: { id: string; nam
       title,
       description,
       images: [ogImage],
+    },
+    alternates: {
+      canonical: `https://${canonicalDomain}/${development.slug}`,
     },
   }
 }

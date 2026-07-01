@@ -32,9 +32,17 @@ interface MunicipalityData { id: string; name: string; slug: string; area_id: st
 interface MunicipalityPageProps { municipality: MunicipalityData }
 
 export async function generateMunicipalityMetadata(municipality: MunicipalityData) {
+  // W-MARKETING A-UNIT-1b (2026-07-01): add self-canonical (was absent per
+  // UNIT 61 R2). Uses shared resolver — fallback is raw request host
+  // (self-canonical, never a different domain).
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const canonicalDomain = await resolveCanonicalHost()
   return {
     title: `${municipality.name} Real Estate | Condos & Homes for Sale`,
     description: `Browse condos and homes for sale in ${municipality.name}. Explore communities, condo buildings, and market intelligence.`,
+    alternates: {
+      canonical: `https://${canonicalDomain}/${municipality.slug}`,
+    },
   }
 }
 

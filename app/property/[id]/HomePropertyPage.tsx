@@ -42,7 +42,7 @@ export async function generateHomeMetadata({ params }: { params: { id: string } 
 
   const { data: listing } = await serverSupabase
     .from('mls_listings')
-    .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total_integer, transaction_type, property_subtype, architectural_style')
+    .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total_integer, transaction_type, property_subtype, architectural_style, listing_key, street_number, street_name')
     .eq('id', params.id)
     .single()
 
@@ -57,6 +57,14 @@ export async function generateHomeMetadata({ params }: { params: { id: string } 
   const title = [listing.unparsed_address, style, price, beds, siteName].filter(Boolean).join(' | ')
   const description = `${beds} ${baths} ${style.toLowerCase()} ${type.toLowerCase()} at ${listing.unparsed_address}. ${price}. View photos, room dimensions, and get a free home estimate.`
 
+  // W-MARKETING A-UNIT-1b (2026-07-01): dual-URL defense — /property/[UUID]
+  // canonicals to the slug URL (SEO-friendly, address+MLS embedded).
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const { generateHomePropertySlug } = await import('@/lib/utils/slugs')
+  const canonicalDomain = await resolveCanonicalHost()
+  const slug = generateHomePropertySlug(listing)
+  const canonicalPath = slug && !slug.startsWith('/property/') ? slug : `/property/${params.id}`
+
   return {
     title,
     description,
@@ -67,6 +75,9 @@ export async function generateHomeMetadata({ params }: { params: { id: string } 
       images: [{ url: ogImage, width: 1200, height: 630, alt: listing.unparsed_address }],
     },
     twitter: { card: 'summary_large_image', title, description, images: [ogImage] },
+    alternates: {
+      canonical: `https://${canonicalDomain}${canonicalPath}`,
+    },
   }
 }
 

@@ -363,6 +363,9 @@ export async function generateMetadata() {
       const ogImageUrl = `${url}/og`
       const title = `${tenant.name} - AI Real Estate Assistant`
       const description = `Browse properties, get a personalized AI buyer or seller plan, and connect with a local expert. Powered by ${tenant.name} AI.`
+      // W-MARKETING A-UNIT-1b (2026-07-01): homepage self-canonical.
+      const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+      const canonicalDomain = await resolveCanonicalHost()
       return {
         title,
         description,
@@ -379,6 +382,9 @@ export async function generateMetadata() {
           title,
           description,
           images: [ogImageUrl],
+        },
+        alternates: {
+          canonical: `https://${canonicalDomain}/`,
         },
       }
     }

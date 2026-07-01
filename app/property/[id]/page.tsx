@@ -82,6 +82,18 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
   
   const title = titleParts.join(' | ')
   const description = `${beds} ${baths} condo ${type.toLowerCase()} at ${listing.unparsed_address}${building ? ` in ${building.building_name}` : ''}. ${price}. View photos, floor plans, and schedule a showing.`
+  // W-MARKETING A-UNIT-1b (2026-07-01): dual-URL defense — the /property/[UUID]
+  // route + the /[slug] route both serve the same listing. Canonical points
+  // Google at the slug URL (SEO-friendly, address+MLS embedded) so index
+  // consolidation is deterministic.
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const { generatePropertySlug } = await import('@/lib/utils/slugs')
+  const canonicalDomain = await resolveCanonicalHost()
+  const slug = generatePropertySlug(listing)
+  // Guard: fall through to raw UUID URL only if slug-gen fell back (missing
+  // listing_key). Never point canonical at a nonexistent slug.
+  const canonicalPath = slug && !slug.startsWith('/property/') ? slug : `/property/${params.id}`
+
   return {
     title,
     description,
@@ -99,6 +111,9 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
       title,
       description,
       images: [ogImage],
+    },
+    alternates: {
+      canonical: `https://${canonicalDomain}${canonicalPath}`,
     },
   }
 }
