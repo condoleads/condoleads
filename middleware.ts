@@ -85,12 +85,20 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/api')) {
       return supabaseResponse
     }
-    // W-MARKETING A-UNIT-1 (2026-07-01): top-level SEO metadata routes
-    // (Next.js Metadata Files convention) live at the root of every host
-    // and MUST NOT be rewritten into /zerooneleads/*. Same reasoning as
-    // the SYSTEM FORK block below. Next.js 14 serves child sitemaps at
-    // /sitemap.xml/<id> — the startsWith catches both.
-    if (pathname === '/robots.txt' || pathname.startsWith('/sitemap.xml')) {
+    // W-MARKETING A-UNIT-1 (2026-07-01): top-level SEO routes live at the
+    // root of every host and MUST NOT be rewritten into /zerooneleads/*.
+    // W-MARKETING A-UNIT-1b STAGE 2 (2026-07-01): sitemap moved from the
+    // metadata-route convention (which silently failed to register on
+    // Vercel with any non-type import) to a Route Handler pair:
+    //   /sitemap.xml       -> app/sitemap.xml/route.ts   (the index)
+    //   /sitemap/<id>      -> app/sitemap/[id]/route.ts  (children)
+    // Both prefixes excluded. There is no legit content route under
+    // /sitemap/* (verified by grep).
+    if (
+      pathname === '/robots.txt' ||
+      pathname.startsWith('/sitemap.xml') ||
+      pathname.startsWith('/sitemap/')
+    ) {
       return supabaseResponse
     }
     const url = request.nextUrl.clone()
@@ -108,14 +116,17 @@ export async function middleware(request: NextRequest) {
     !pathname.startsWith('/test-') &&
     !pathname.startsWith('/_next') &&
     !pathname.startsWith('/favicon') &&
-    // W-MARKETING A-UNIT-1 (2026-07-01): top-level SEO metadata routes
-    // (Next.js Metadata Files convention). These MUST NOT be rewritten
-    // to /comprehensive-site/* — they live at the root of every host.
-    // Next.js 14 serves the sitemap index at /sitemap.xml and child
-    // sitemaps (generateSitemaps) at /sitemap.xml/<id> — the prefix
-    // check catches both.
+    // W-MARKETING A-UNIT-1 (2026-07-01): top-level SEO routes. These MUST
+    // NOT be rewritten to /comprehensive-site/* — they live at the root
+    // of every host.
+    // W-MARKETING A-UNIT-1b STAGE 2 (2026-07-01): sitemap moved to Route
+    // Handler pair (index at /sitemap.xml, children at /sitemap/<id>).
+    // Both prefixes excluded — /sitemap/<id> is where the [id] handler
+    // lives; without this exclusion middleware rewrites it to
+    // /comprehensive-site/sitemap/<id> which does not exist.
     pathname !== '/robots.txt' &&
-    !pathname.startsWith('/sitemap.xml')
+    !pathname.startsWith('/sitemap.xml') &&
+    !pathname.startsWith('/sitemap/')
   ) {
     const host = request.headers.get('host') || ''
     const agent = await resolveAgentFromHost(supabase, host)
