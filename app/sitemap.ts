@@ -30,6 +30,13 @@ import { createClient } from '@supabase/supabase-js'
 import { Client } from 'pg'
 import { generatePropertySlug, generateHomePropertySlug } from '@/lib/utils/slugs'
 
+// W-MARKETING A-UNIT-1b HOTFIX (2026-07-01 post-push): explicit runtime +
+// dynamic. Without these, Next 14.2.5 on Vercel returned 404 for
+// /sitemap.xml and every /sitemap.xml/[id] — the pg import in this file
+// requires Node runtime, and revalidate needed the dynamic export to be
+// picked up on the metadata route.
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 export const revalidate = 3600
 
 const OWNER_PROMO_HOSTS = new Set<string>(['condoleads.ca', '01leads.com'])
