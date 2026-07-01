@@ -126,11 +126,14 @@ export default async function DevelopmentPage({ params, development }: Developme
   const host = headersList.get('host') || ''
   const serverSupabase = createClient()
   const { displayAgent, isTeamSite } = await getDisplayAgentForDevelopment(host, development.id)
-  
-  if (!displayAgent) {
-    notFound()
-  }
-  const agent = displayAgent
+  // W-MARKETING A-UNIT-1b post-close (2026-07-01): tolerate null displayAgent.
+  // Mirrors BuildingPage:315 pattern. On comprehensive tenants (aily), the
+  // shared getAgentFromHost() returns null because aily's agent link lives
+  // in tenants.default_agent_id, not agents.custom_domain — so displayAgent
+  // is null even though the page should render. Legacy agent hosts still
+  // get a truthy displayAgent via the existing development_agents flow;
+  // this change only affects the null case (comprehensive tenants).
+  const agent = displayAgent // May be null — page renders without agent features
 
   const buildings = await getCachedDevelopmentBuildings(development.id)
 
@@ -190,24 +193,26 @@ export default async function DevelopmentPage({ params, development }: Developme
 
   return (
     <>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `window.__AGENT_DATA__ = ${JSON.stringify({
-            id: agent.id,
-            full_name: agent.full_name,
-            email: agent.email,
-            phone: agent.cell_phone,
-            brokerage_name: agent.brokerage_name,
-            brokerage_address: agent.brokerage_address,
-            title: agent.title,
-            siteName: agent.site_title || agent.full_name,
-            siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
-            ogImageUrl: agent.og_image_url,
-            buildingName: development.name,
-            buildingAddress: addresses
-         })};`
-        }}
-      />
+      {agent && (
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__AGENT_DATA__ = ${JSON.stringify({
+              id: agent.id,
+              full_name: agent.full_name,
+              email: agent.email,
+              phone: agent.cell_phone,
+              brokerage_name: agent.brokerage_name,
+              brokerage_address: agent.brokerage_address,
+              title: agent.title,
+              siteName: agent.site_title || agent.full_name,
+              siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+              ogImageUrl: agent.og_image_url,
+              buildingName: development.name,
+              buildingAddress: addresses
+           })};`
+          }}
+        />
+      )}
       <DevelopmentStickyNav
         forSaleCount={forSaleActive.length}
         forLeaseCount={forLeaseActive.length}
@@ -347,12 +352,14 @@ export default async function DevelopmentPage({ params, development }: Developme
           totalLeased={leasedCount}
           addresses={addresses}
         />
-        <MobileContactBar
-          agent={agent} 
-          buildingId={buildings[0]?.id}
-          buildingName={development.name}
-          buildingAddress={addresses}
-        />
+        {agent && (
+          <MobileContactBar
+            agent={agent}
+            buildingId={buildings[0]?.id}
+            buildingName={development.name}
+            buildingAddress={addresses}
+          />
+        )}
       </div>
     </>
   )
