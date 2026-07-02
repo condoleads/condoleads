@@ -852,6 +852,6 @@ TSC exit 0.
 - `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` (import + wrapping div + mount)
 - `docs/W-MARKETING-TRACKER.md` (this DECISION LOG entry)
 
-**Commit SHA**: <backfill after commit — immediately preceding commit to this tracker entry>
+**Commit SHA**: `f0cae79` (this commit — component + 4 pages + tracker in the same block).
 
 **Next**: A-UNIT-4b (buildings) — extend the same `geo_type='building'` pattern to `BuildingPage.tsx` as a NEW panel that complements (does not replace) the existing `getBuildingMarketData`/`market_values` PSF-and-investment path. Requires sitemap-eligible-buildings coverage probe first (~4,574 quality-gated buildings — coverage TBD).
