@@ -854,4 +854,35 @@ TSC exit 0.
 
 **Commit SHA**: `f0cae79` (this commit — component + 4 pages + tracker in the same block).
 
+### POST-PUSH VERIFY — 2026-07-02 (same-day close)
+
+**Coexistence audit** (VERIFIED this session — both components read `geo_analytics`):
+- `GeoMarketActivity`: server-side `.from('geo_analytics')` at `components/geo/GeoMarketActivity.tsx:113`.
+- `AnalyticsSection`: client-side `fetch('/api/analytics?geoType=X&geoId=Y&track=T')` at `AnalyticsSection.tsx:121-122`; the API route `app/api/analytics/route.ts:17` `.from('geo_analytics')` for the same `(geo_type, geo_id, period_type='rolling_12mo', track)` key.
+- **SAME source table, SAME rows** — impossible for medians to disagree.
+
+Windfields (`022b1046-fc13-418c-8303-4f4edf28cb65`) sample DB values VERIFIED both tracks (rolling_12mo, community):
+  - condo: median_psf=$416.67, closed_avg_dom_90=70.7, sale_to_list_ratio=99.65%, absorption_rate_pct=4.12%, active_count=97, closed_sale_count_90=11, median_sale_price=$582K
+  - homes: median_psf=NULL, closed_avg_dom_90=30.2, sale_to_list_ratio=101.37%, absorption_rate_pct=16.67%, active_count=54, closed_sale_count_90=28, median_sale_price=$817K
+
+**One-line verdict per page type**:
+- **Area** — COMPLEMENT (both read `geo_analytics` geo_type='area'; 6-metric overlap of IDENTICAL values, plus unique content per component: GeoMarketActivity adds median_sale_price headline + months_of_inventory + price_trend sparkline; AnalyticsSection adds 12-month DOM/STL chart + bedroom/sqft/subtype breakdowns + 6 `insight_*` blocks). NO conflict, NO regression.
+- **Community** — COMPLEMENT (same story with geo_type='community').
+- **Municipality** — COMPLEMENT (same story with geo_type='municipality').
+- **Neighbourhood** — no coexistence: `AnalyticsSection` was never wired on this page type; only `GeoMarketActivity` renders here.
+
+**Behavior on `low_volume_flag=true` geos differs (not a regression, documented)**:
+- `GeoMarketActivity` gates on `low_volume_flag=false` → panel disappears, empty-state string shows.
+- `AnalyticsSection` has NO `low_volume_flag` gate → renders section with `'–'` dashes + per-block "populating nightly" empty-states.
+- Same honest posture, different presentation. Consistent Rule Zero: neither fabricates numbers.
+
+**PRODUCTION render VERIFIED this session** (`https://www.aily.ca`, cache-busted, HTTP 200):
+- `/windfields` (community, both-tracks) — 200, 98,248 bytes, formatted medians `$582K $817K` present. Matches DB exact.
+- `/madoc` (municipality, homes-only) — 200, 294,243 bytes, formatted median `$480K` present. Matches DB exact.
+- `/toronto/midtown-central` (**comprehensive-site rewrite path**, both-tracks nbhd) — 200, 299,594 bytes, formatted medians `$1.9M $635K` present. Matches DB exact. **The rewrite path that previously 404'd for developments works cleanly for this new geo panel.**
+
+Zero fabricated numbers on any URL. Empty-state count=0 on all 3 (as expected — all 3 are populated geos).
+
+**A-UNIT-4a — CLOSED**. No open items from this unit. Ready to proceed to A-UNIT-4b (buildings) when dispatched.
+
 **Next**: A-UNIT-4b (buildings) — extend the same `geo_type='building'` pattern to `BuildingPage.tsx` as a NEW panel that complements (does not replace) the existing `getBuildingMarketData`/`market_values` PSF-and-investment path. Requires sitemap-eligible-buildings coverage probe first (~4,574 quality-gated buildings — coverage TBD).
