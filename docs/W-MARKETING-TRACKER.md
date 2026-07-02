@@ -724,7 +724,7 @@ A-1's sitemap. Lanes D + E layer on once A + C are live.
 
 **NOT changed**: the verified-IDs block (lines 155-165) is byte-for-byte unchanged. **Zero UUIDs added** across the entire diff (verified via `grep -oE "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"` on the `+` lines — count=0). Agent identity is a `tenants.default_agent_id` data-plane lookup, not a CLAUDE.md constant.
 
-**Commit SHA**: <backfill after commit — immediately-preceding commit to this tracker entry>
+**Commit SHA**: `3a6e06d` (this commit — CLAUDE.md + tracker in the same block; SHA backfilled in a follow-up amend? — no: kept as-is, this DECISION section documents the commit it lives in).
 
 ---
 
