@@ -776,6 +776,6 @@ A-1's sitemap. Lanes D + E layer on once A + C are live.
 
 **Prior CLAUDE.md changes (from commit `3a6e06d`) still in effect**: System 2 line reframed tenant-neutral; banned-constant list includes `"aily"`; `DEV_TENANT_DOMAIN` line tenant-neutral. No re-edit of those in this dispatch.
 
-**Commit SHA**: <backfill after commit — immediately-preceding commit to this tracker entry>
+**Commit SHA**: `bb23eee` (this commit — CLAUDE.md SEO-scope note + tracker second-entry, same block).
 
 **A-UNIT-4 scope lock**: unchanged from the previous DECISION LOG entry (2026-07-02, first entry). 5 entities / 3 phases / sequential / no gap. Track rule: whichever `track` has `low_volume_flag=false`; both when both exist; NO default. Coverage numbers already verified (community 79%, muni 78%, area 66%, nbhd 100%, building 18% overall — sitemap-eligible subset TO VERIFY in 4b recon). Empty-state text TBD, operator-approved BEFORE 4a code ships. No new decisions in this dispatch beyond the CLAUDE.md SEO-scope note.
