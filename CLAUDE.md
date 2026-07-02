@@ -10,7 +10,7 @@ Multi-tenant real estate SaaS. Next.js 14.2.5 / TypeScript / Supabase (PostgreSQ
 
 Two permanently isolated systems:
 - **System 1** — legacy condoleads.ca agent condo sites at `/admin`, `app/api/chat/*`, `agent_buildings`. **Maintenance-only. Never modify. Never add features.**
-- **System 2** — the active build: walliam.ca, `/admin-homes`, `app/api/walliam/*`, `app/api/charlie/*`, `app/zerooneleads/*`. All new work is System 2.
+- **System 2** — the active multi-tenant platform. Tenants live as rows in the `tenants` table (currently: aily.ca, walliam.ca). New tenants added by row-insert, not by code change. Tenant identity is resolved per request from host → `tenants` row, never hardcoded to any specific tenant. Code paths: `/admin-homes`, `app/comprehensive-site/*`, `app/api/walliam/*` (path name preserved for historical reasons — routes serve every tenant, not just walliam), `app/api/charlie/*`, `app/zerooneleads/*`. All new work is System 2.
 
 Building pages are a documented shared exception requiring explicit handling. Otherwise System 1 isolation is absolute — zero cross-contamination.
 
@@ -52,7 +52,7 @@ Backup is created BEFORE the edit. New files from scratch don't need backup. Con
 
 - Tenant identity is derived per request (header, host, RPC) — NEVER hardcoded.
 - A query without a tenant scoping filter is a tenant-leak bug.
-- A constant referencing a single tenant ("walliam", "condoleads") in business logic is a violation.
+- A constant referencing a single tenant ("walliam", "aily", "condoleads") in business logic is a violation. Tenants are data-plane rows, not code-plane branches.
 - Every fetch, RPC, and cache key scopes by tenant.
 - Code must work identically when tenant #2, #50, #1000 onboards — no per-tenant if/else branches.
 - Tenant leakage is a data-breach incident.
@@ -129,7 +129,7 @@ If unsure whether a phase is pattern-proven, treat it as novel. The fast path is
 
 ## Testing and deploy
 
-- **Local smoke first, never Vercel preview.** All smoke testing runs locally via `npm run dev` before commit+push. Local URL: `http://localhost:3000/<path>`. For WALLiam tenant testing locally, `DEV_TENANT_DOMAIN=walliam.ca` must be in `.env.local`.
+- **Local smoke first, never Vercel preview.** All smoke testing runs locally via `npm run dev` before commit+push. Local URL: `http://localhost:3000/<path>`. Set `DEV_TENANT_DOMAIN` in `.env.local` to whichever tenant is being smoked (`walliam.ca`, `aily.ca`, etc.); local requests act as that tenant. Smoke both when touching cross-tenant behavior (files under `app/comprehensive-site/*`, `middleware.ts`, tenant-resolution helpers).
 - Deploy pattern: Node.js patch script → backup → apply → verify → `git add` + commit after each phase group.
 - Completed work commits to `origin/main`.
 - **Commit applied migrations the same session they are applied.** The DB COMMIT is not the git commit. A migration applied to production but left untracked in git is drift — a cold-start session reading git sees no migration and assumes a clean slate that does not match the live DB. Both commits happen before the phase closes.

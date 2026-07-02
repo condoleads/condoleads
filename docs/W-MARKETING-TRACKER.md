@@ -708,3 +708,54 @@ Lane A is the highest-priority "do now" cluster (parallel-shippable
 UNITs 1/2/3). Lane C-1 (GA4) should start in parallel with A — no
 A dependency on GA4 directly. Lane C-2 (Search Console) waits for
 A-1's sitemap. Lanes D + E layer on once A + C are live.
+
+---
+
+## DECISION LOG — 2026-07-02
+
+### CLAUDE.md tenant-neutral isolation amendment `[DECISION]`
+
+**VERIFIED this session**: System 2 identifier in CLAUDE.md line 13 previously named `walliam.ca` as THE S2 tenant. Reality now: `tenants` table has **two active rows** — `aily.ca` (A-UNIT-1 live production tenant #1) and `walliam.ca` (`is_active=true`, verified via `SELECT id, name, domain, is_active FROM tenants`). Walliam code paths remain on disk: **82 files under `app/api/walliam/`** (assign-user-agent, charlie, contact, estimator, resolve-agent, plus 5+ subdirs). Verified `ls app/api/walliam/` this session.
+
+**Amendment applied** (CLAUDE.md, this dispatch, timestamped backup at `.backup_20260702_072147`):
+- **Line 13** (System 2 identifier) — reframed from "walliam.ca" to "the active multi-tenant platform. Tenants live as rows in the `tenants` table (currently: aily.ca, walliam.ca). New tenants added by row-insert, not by code change. Tenant identity is resolved per request from host → `tenants` row, never hardcoded." Preserved walliam-named paths on disk verbatim: `app/api/walliam/*`, `app/api/charlie/*`, `app/zerooneleads/*`, `/admin-homes`. Added `app/comprehensive-site/*` (verified exists — 28 files this session).
+- **Line 55** (Rule Zero banned-constant list) — widened from `"walliam", "condoleads"` to `"walliam", "aily", "condoleads"`. Added trailing clarification: "Tenants are data-plane rows, not code-plane branches."
+- **Line 132** (local smoke `DEV_TENANT_DOMAIN`) — reframed to tenant-neutral: set to whichever tenant is being smoked; smoke both when touching cross-tenant behavior (files under `app/comprehensive-site/*`, `middleware.ts`, tenant-resolution helpers).
+
+**NOT changed**: the verified-IDs block (lines 155-165) is byte-for-byte unchanged. **Zero UUIDs added** across the entire diff (verified via `grep -oE "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"` on the `+` lines — count=0). Agent identity is a `tenants.default_agent_id` data-plane lookup, not a CLAUDE.md constant.
+
+**Commit SHA**: <backfill after commit — immediately-preceding commit to this tracker entry>
+
+---
+
+### A-UNIT-4 — SCOPE LOCKED (5 entities, 3 phases, sequential, no gap) `[DEV]`
+
+**Sequence** (single working block per "no deferral" rule):
+- **4a — Geo pages** (community, municipality, treb_area, neighbourhood). Reuse UNIT 53's `CondoMarketActivity` pattern.
+- **4b — Buildings** (SHARED-EXCEPTION path per CLAUDE.md line 15). New panel that **complements** — does NOT replace — the existing `getBuildingMarketData` / `market_values` PSF+investment path in `BuildingPage.tsx`. Includes an explicit regression check that the pre-existing PSF panel + investment-metrics render is unchanged after 4b lands.
+- **4c — Insight blocks** (`insight_seasonal`, `insight_demand_mismatch`, `insight_investor_ratio`, `insight_reentry`, `insight_concession_matrix`, `insight_price_reduction`, `insight_value_migration`). JSONB blocks with rich SEO-valuable data. Rendered as expandable sections.
+
+**Track rule**: for each geo page, render whichever `track` (`condo` / `homes`) has a `low_volume_flag=false` row for that geo. Render **both** side-by-side when both exist. **No default track** (would drop 78%-of-set data on some levels).
+
+**Coverage — VERIFIED THIS SESSION** via SQL (`period_type='rolling_12mo' AND low_volume_flag=false`, distinct geo_ids joined against sitemap-eligible rows):
+- community: **1,548 / 1,948 have ≥1 usable row = 79%**  (condo-only=682, homes-only=1,520 — sets barely overlap)
+- municipality: **397 / 506 = 78%**  (condo-only=193, homes-only=397)
+- treb_area (called `area` in geo_analytics — SAME entity, 73/73 geo_id match verified): **48 / 73 = 66%**  (condo=42, homes=47)
+- neighbourhood: **9 / 9 = 100%**  (condo=9, homes=9 — both tracks always populated)
+- building: **1,220 / 6,776 condo-usable = 18%** across all buildings; **homes track 20/6,776 = 0.3%** (near-zero, expected — buildings are condo-shape). Sitemap-eligible building subset (~4,574 quality-gated) coverage **NOT yet probed** — flagged as `to verify in 4b recon`.
+
+**Per-track coverage inversion** — VERIFIED: community/muni **homes** coverage (78%) is 2x **condo** coverage (35–38%). Inverts the aily-audience assumption; the track-agnostic render rule is critical.
+
+**Building fields — VERIFIED THIS SESSION**: sample building `50 O Neil Road, Toronto C13`, `geo_id=52efe4a7-606d-4857-9174-4d166b7ec198`, `track=condo`, `calculated_at=2026-06-19T12:58:12Z`, `low_volume_flag=false`. Populated: **58 / 69 columns** (median_sale_price=$525k, closed_sale_count_90=25, active_count=103, absorption_rate_pct=5.83, months_of_inventory=17.17, median_lease_price=$2,300, gross_rental_yield_pct=5.26, median_maint_fee=$601, all 5 monthly trend JSONBs, all 6 insight_* blocks). **NULL on buildings**: `median_psf`, `avg_psf`, `median_lease_psf`, `psf_trend_pct`, `insight_value_migration`, `active_avg_dom` — these come from the existing `market_values` / `getBuildingMarketData` path; **do NOT duplicate**.
+
+**Empty-state text** — Rule Zero (no fake numbers): honest real text, ZERO numeric placeholders. **Exact string TBD — will present for operator approval BEFORE 4a code ships**. Candidates: "Market data will appear as more transactions accumulate" / "Not enough transactions yet to publish reliable market metrics" — final wording is operator's call.
+
+**Reuse** — VERIFIED to exist this session:
+- `components/home/CondoMarketActivity.tsx` (UNIT 53, 2026-06-30) — reference implementation, reads `geo_analytics` server-side
+- `components/home/Sparkline.tsx` — reusable SVG sparkline from `TrendPoint[]` shape `{month, value, count}`
+- Same `serviceClient()` factory pattern
+- Same `low_volume_flag=false + closed_sale_count_90 IS NOT NULL + median_sale_price IS NOT NULL` gate
+
+**Isolation** — VERIFIED: `geo_analytics` has NO `tenant_id` column (confirmed via `information_schema.columns` — 69 columns, zero contain "tenant"). Tenant-neutral like `mls_listings` per CLAUDE.md. Same data on every tenant; branding flows via host + links.
+
+**Note**: sitemap index — canvas-tracked separately per operator directive; NOT tracked in this doc.
