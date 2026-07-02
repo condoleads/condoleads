@@ -1,0 +1,37 @@
+W-MARKETING A-UNIT-1b DEV-URL RE-ADD — pre-apply snapshot
+snapshot timestamp: 2026-07-02T10:23:02.641Z
+
+BEFORE counts by kind:
+  community = 1948
+  municipality = 506
+  neighbourhood = 9
+  treb_area = 73
+
+BEFORE total: 2536
+
+---- prior get_sitemap_geo_slugs definition ----
+CREATE OR REPLACE FUNCTION public.get_sitemap_geo_slugs()
+ RETURNS TABLE(kind text, slug text, lastmod timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+ SET statement_timeout TO '0'
+AS $function$
+  SELECT 'community'::text     AS kind, c.slug::text, c.updated_at AS lastmod
+    FROM communities c
+   WHERE c.slug IS NOT NULL
+     AND c.is_active = true
+  UNION ALL
+  SELECT 'municipality'::text  AS kind, m.slug::text, m.updated_at AS lastmod
+    FROM municipalities m
+   WHERE m.slug IS NOT NULL
+  UNION ALL
+  SELECT 'treb_area'::text     AS kind, a.slug::text, a.updated_at AS lastmod
+    FROM treb_areas a
+   WHERE a.slug IS NOT NULL
+  UNION ALL
+  SELECT 'neighbourhood'::text AS kind, n.slug::text, n.updated_at AS lastmod
+    FROM neighbourhoods n
+   WHERE n.slug IS NOT NULL
+     AND n.is_active = true;
+$function$
