@@ -11,6 +11,7 @@ import GeoInterlinking from './components/GeoInterlinking'
 import CommunityCard from './components/CommunityCard'
 import GeoHero from './components/GeoHero'
 import AnalyticsSection from '@/components/analytics/AnalyticsSection'
+import GeoMarketActivity from '@/components/geo/GeoMarketActivity'
 import WalliamCTA from '@/components/WalliamCTA'
 import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
@@ -252,6 +253,9 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
         geoType="municipality"
       />
       <div className="max-w-7xl mx-auto px-4 py-8">
+
+        {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
+        <GeoMarketActivity geoType="municipality" geoId={municipality.id} geoName={municipality.name} />
 
         <div className="mt-8">
           <GeoPageTabs

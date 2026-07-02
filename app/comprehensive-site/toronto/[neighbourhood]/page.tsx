@@ -9,6 +9,7 @@ import { unstable_cache } from 'next/cache'
 import { countDirect } from '@/lib/db/pg'
 import NeighbourhoodPageTabs from '@/app/[slug]/components/NeighbourhoodPageTabs'
 import GeoHero from '@/app/[slug]/components/GeoHero'
+import GeoMarketActivity from '@/components/geo/GeoMarketActivity'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import { getCurrentTenantId, isHeroTenant, resolveAgentForContext } from '@/lib/utils/tenant-resolver'
 import CharliePageContext from '@/components/CharliePageContext'
@@ -342,6 +343,11 @@ export default async function NeighbourhoodPage({ params }: Props) {
           initialTotal={initialTotal}
           counts={initialCounts}
         />
+      </div>
+
+      {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <GeoMarketActivity geoType="neighbourhood" geoId={neighbourhood.id} geoName={neighbourhood.name} />
       </div>
 
       {/* Communities */}

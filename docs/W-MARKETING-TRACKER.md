@@ -779,3 +779,79 @@ A-1's sitemap. Lanes D + E layer on once A + C are live.
 **Commit SHA**: `bb23eee` (this commit — CLAUDE.md SEO-scope note + tracker second-entry, same block).
 
 **A-UNIT-4 scope lock**: unchanged from the previous DECISION LOG entry (2026-07-02, first entry). 5 entities / 3 phases / sequential / no gap. Track rule: whichever `track` has `low_volume_flag=false`; both when both exist; NO default. Coverage numbers already verified (community 79%, muni 78%, area 66%, nbhd 100%, building 18% overall — sitemap-eligible subset TO VERIFY in 4b recon). Empty-state text TBD, operator-approved BEFORE 4a code ships. No new decisions in this dispatch beyond the CLAUDE.md SEO-scope note.
+
+---
+
+## DECISION LOG — 2026-07-02 (third entry, same day) — A-UNIT-4a SHIPPED
+
+### A-UNIT-4a — geo-page market panel `[DEV]` — STATUS: **SHIPPED**
+
+**Component**: `components/geo/GeoMarketActivity.tsx` (new file, new directory). Server component. Props `(geoType: 'area'|'community'|'municipality'|'neighbourhood', geoId: string, geoName: string)`. Tenant-neutral (VERIFIED: `geo_analytics` has no `tenant_id` column per prior recon; component takes zero tenant/agent/brand props). Reuses the UNIT 53 `CondoMarketActivity` query pattern (same `createServiceClient` factory + `.eq('period_type', 'rolling_12mo').eq('low_volume_flag', false).not(...is null)` gates), and the existing `components/home/Sparkline.tsx` for the price-trend visualization.
+
+**4 pages wired** (all backed up with timestamp `.backup_20260702_170137` before edit):
+- `app/[slug]/AreaPage.tsx` — passes `geoType="area"`, `geoId={area.id}`, `geoName={area.name}`. Mounted after `<GeoHero />`, before `<GeoPageTabs />` (top-of-page SSR slot).
+- `app/[slug]/CommunityPage.tsx` — `geoType="community"`, `geoId={community.id}`, `geoName={community.name}`. Same top-of-page slot.
+- `app/[slug]/MunicipalityPage.tsx` — `geoType="municipality"`, `geoId={municipality.id}`, `geoName={municipality.name}`. Same slot.
+- `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` — `geoType="neighbourhood"`, `geoId={neighbourhood.id}`, `geoName={neighbourhood.name}`. Mounted after Communities pills block, before `{isHero && (...)}` walliam CTA.
+
+**11-field render set** (VERIFIED-populated on `low_volume_flag=false` geo rows this session):
+1. `median_sale_price` → **Median sale price** (headline, `fmtPrice`)
+2. `active_count` → **Active listings**
+3. `closed_sale_count_90` → **Sold last 90 days**
+4. `months_of_inventory` → **Months of inventory**
+5. `closed_avg_dom_90` → **Avg days on market**
+6. `sale_to_list_ratio` → **Sale-to-list ratio** (2 decimals `%`)
+7. `absorption_rate_pct` → **Absorption rate** (1 decimal `%`)
+8. `median_psf` (fallback `avg_psf`) → **Median PSF** (rendered ONLY when non-null — VERIFIED NULL on homes-track geo rows, so PSF section disappears on homes panels)
+9. `psf_trend_pct` → PSF trend badge ▲/▼ with `%` (paired with PSF)
+10. `price_trend_monthly` → `<Sparkline points={...} width={160} height={40} />` when JSONB array has ≥4 finite `value`s (Sparkline `MIN_POINTS = 4` gate)
+11. `calculated_at` → `Updated {MMM DD, YYYY}` footer (formatted via `toLocaleDateString('en-CA')`)
+
+**Track rule (operator-locked)**: query fetches BOTH tracks (no `.eq('track', ...)` filter); component renders whichever track(s) return a row. Both tracks → STACKED panels labeled "Condos" then "Homes" (in query result order). Single track → single labeled panel. Neither → empty-state paragraph.
+
+**Empty-state string (operator-approved verbatim)**:
+> Market statistics for {geoName} will be published as transaction activity is recorded in this area.
+
+Where `{geoName}` = the real geo name in page scope (interpolated as `${geoName}` in JSX). Zero fabricated numbers.
+
+**Isolation posture VERIFIED**:
+- `geo_analytics` has NO `tenant_id` column (VERIFIED prior session — 69 columns, zero contain "tenant"); shared MLS-derived facts identical for every tenant.
+- Component signature `(geoType, geoId, geoName)` — zero tenant / agent / brand context in or out.
+- No tenant-scoped query in the component; single `SELECT` against `geo_analytics`.
+- Existing tenant/agent state on all 4 pages (`getCurrentTenantId`, `getAgentFromHost`, `isHeroTenant`, `resolveAgentForContext`, `getTenantByHost`) remains scoped to sibling components (`GeoPageTabs`, `WalliamCTA`, `WalliamAgentCard`, `CharliePageContext`) — untouched.
+
+**Coexistence with existing `AnalyticsSection`**: `GeoMarketActivity` sits ABOVE (top-of-page SEO-visible SSR summary). `AnalyticsSection` (836-line client component using recharts, reads same `geo_analytics` via `/api/analytics`) stays where it was on Area/Community/Muni as the mid-page interactive dashboard. Neighbourhood page previously had no analytics; now has the new SSR panel.
+
+**Local smoke this session** — REAL geo_ids picked from DB via SQL, values verified against RSC-rendered response body. Every case tested against BOTH aily.ca and walliam.ca local hosts. All 6 cases × 2 tenants = 12 renders, all HTTP 200:
+
+| Case | Page type | Slug | geo_id (VERIFIED this session) | Expected DB medians | Rendered on aily | Rendered on walliam |
+|---|---|---|---|---|---|---|
+| Both tracks stacked | Community | `/windfields` | `022b1046-fc13-418c-8303-4f4edf28cb65` | condo $582K + homes $817K | `$582K $817K` ✓ | `$582K $817K` ✓ |
+| Homes-only | Community | `/south-marysburg-ward` | `00001ef1-a6cb-4f8f-a0be-a9382f02267b` | homes $575K | `$575K` ✓ | `$575K` ✓ |
+| Homes-only | Municipality | `/madoc` | `000916c4-41c4-4bc2-8640-7ad982faf14a` | homes $480K | `$480K` ✓ | `$480K` ✓ |
+| Both tracks stacked | Area | `/lambton-area` | `025028c4-5cd3-45d1-a81d-7b968f4114c5` | condo $485K + homes $540K | `$485K $540K` ✓ | `$485K $540K` ✓ |
+| Both tracks stacked | Neighbourhood | `/toronto/midtown-central` | `0b295da7-a949-4d23-8b33-fe4d4fcaafa4` | condo $635K + homes $1.9M | `$635K $1.9M` ✓ | `$635K $1.9M` ✓ |
+| Thin (no usable row) | Community | `/hawtrey` | `000c579c-728b-4fbd-a63d-b59b298fc358` | (no rows) | empty-state × 2 ✓ zero fabricated | empty-state × 2 ✓ zero fabricated |
+
+**Both-tenant match VERIFIED**: aily and walliam render byte-identical numbers from the same DB rows. Empty-state on Hawtrey shows the verbatim operator-approved string, zero dollar signs or metric labels rendered.
+
+**Sparkline reuse**: `price_trend_monthly` populates 14–25 points on all `low_volume_flag=false` geo rows (well above `MIN_POINTS = 4`, VERIFIED via prior session probe) — sparklines draw on every panel with trend data.
+
+**No regressions** (features touched, smoke-verified):
+- 4 geo page types render 200 — existing `GeoHero`, `GeoPageTabs`, `AnalyticsSection`, `WalliamCTA`, `WalliamAgentCard`, `CharliePageContext`, `GeoInterlinking`, `GeoSEOContent` all still render (page byte counts 67K–299K depending on populated data).
+- `components/home/Sparkline.tsx` — imported but not modified. Homepage `CondoMarketActivity` usage unaffected.
+- No API route touched. No middleware touched. No DB migration. No schema changes.
+
+TSC exit 0.
+
+**Files (all in one commit)**:
+- `components/geo/GeoMarketActivity.tsx` (NEW, 226 lines)
+- `app/[slug]/AreaPage.tsx` (import + 1-line mount)
+- `app/[slug]/CommunityPage.tsx` (import + 1-line mount)
+- `app/[slug]/MunicipalityPage.tsx` (import + 1-line mount)
+- `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` (import + wrapping div + mount)
+- `docs/W-MARKETING-TRACKER.md` (this DECISION LOG entry)
+
+**Commit SHA**: <backfill after commit — immediately preceding commit to this tracker entry>
+
+**Next**: A-UNIT-4b (buildings) — extend the same `geo_type='building'` pattern to `BuildingPage.tsx` as a NEW panel that complements (does not replace) the existing `getBuildingMarketData`/`market_values` PSF-and-investment path. Requires sitemap-eligible-buildings coverage probe first (~4,574 quality-gated buildings — coverage TBD).

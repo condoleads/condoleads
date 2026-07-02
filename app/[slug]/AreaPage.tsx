@@ -10,6 +10,7 @@ import GeoSEOContent from './components/GeoSEOContent'
 import GeoInterlinking from './components/GeoInterlinking'
 import GeoHero from './components/GeoHero'
 import AnalyticsSection from '@/components/analytics/AnalyticsSection'
+import GeoMarketActivity from '@/components/geo/GeoMarketActivity'
 import WalliamCTA from '@/components/WalliamCTA'
 import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
@@ -304,6 +305,9 @@ export default async function AreaPage({ area }: AreaPageProps) {
         geoType="area"
       />
       <div className="max-w-7xl mx-auto px-4 py-8">
+
+        {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
+        <GeoMarketActivity geoType="area" geoId={area.id} geoName={area.name} />
 
         <div className="mt-8">
           <GeoPageTabs
