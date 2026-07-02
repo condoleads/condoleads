@@ -57,6 +57,8 @@ Backup is created BEFORE the edit. New files from scratch don't need backup. Con
 - Code must work identically when tenant #2, #50, #1000 onboards — no per-tenant if/else branches.
 - Tenant leakage is a data-breach incident.
 
+**SEO scope is a per-tenant capability, config-gated, never brand-hardcoded.** SEO surfaces — sitemap, robots policy, geo-content, structured data, ranking optimization — are aily's. Other tenants do not inherit them, and legacy agent sites (yourcondorealtor.ca, *.condoleads.ca) are actively blocked from crawlers so they never compete with aily in search. This is enforced as a tenant/host capability (the comprehensive-tenant vs owner-promo vs legacy-agent-host classification already in `app/robots.ts`), NEVER as `if (host === 'aily.ca')`. The multitenant rule is not weakened by this: "only aily gets SEO" is a data-plane fact (aily's config + host classification enable it), not a code-plane branch. If a future tenant should get SEO, it is a config change, not a code change.
+
 ### No regressions
 
 Before any change ships: identify every existing feature touched (direct + transitive), smoke-test each end-to-end before commit. If you cannot name the affected features, you haven't understood the change — read more code. "TSC clean" is necessary, never sufficient. A regression of a working feature is worse than not shipping the new feature.

@@ -759,3 +759,23 @@ A-1's sitemap. Lanes D + E layer on once A + C are live.
 **Isolation** — VERIFIED: `geo_analytics` has NO `tenant_id` column (confirmed via `information_schema.columns` — 69 columns, zero contain "tenant"). Tenant-neutral like `mls_listings` per CLAUDE.md. Same data on every tenant; branding flows via host + links.
 
 **Note**: sitemap index — canvas-tracked separately per operator directive; NOT tracked in this doc.
+
+---
+
+## DECISION LOG — 2026-07-02 (second entry, same day)
+
+### CLAUDE.md SEO-scope clarification `[DECISION]`
+
+**Amendment applied** (CLAUDE.md, this dispatch, timestamped backup at `.backup_20260702_073538`): appended a new paragraph AFTER the Multitenant Rule Zero block ("Tenant leakage is a data-breach incident.") and BEFORE the "No regressions" heading. Full verbatim text (VERIFIED via `git diff CLAUDE.md`):
+
+> **SEO scope is a per-tenant capability, config-gated, never brand-hardcoded.** SEO surfaces — sitemap, robots policy, geo-content, structured data, ranking optimization — are aily's. Other tenants do not inherit them, and legacy agent sites (yourcondorealtor.ca, *.condoleads.ca) are actively blocked from crawlers so they never compete with aily in search. This is enforced as a tenant/host capability (the comprehensive-tenant vs owner-promo vs legacy-agent-host classification already in `app/robots.ts`), NEVER as `if (host === 'aily.ca')`. The multitenant rule is not weakened by this: "only aily gets SEO" is a data-plane fact (aily's config + host classification enable it), not a code-plane branch. If a future tenant should get SEO, it is a config change, not a code change.
+
+**Why this matters**: documents what `app/robots.ts` (commit `e303773`) already does — 3-branch host-derived policy: owner-promo hosts get a permissive `Allow: /` with no tenant SEO; comprehensive-tenant hosts get sitemap + Allow; legacy-agent hosts get `Disallow: /` + `X-Robots-Tag: noindex, nofollow`. That classification is code; specific host names + tenant identities are data. No `if (host === 'aily.ca')` anywhere in that decision — VERIFIED via `grep -rn "aily.ca" app/robots.ts middleware.ts lib/utils/canonical.ts` this session (only strings are in fallback defaults + JSDoc, none in decision logic).
+
+**Zero UUIDs added** — verified via `grep -oE "[0-9a-fA-F]{8}-...-[0-9a-fA-F]{12}"` on the `+` lines of the CLAUDE.md diff: count=0. Verified-IDs block byte-for-byte unchanged.
+
+**Prior CLAUDE.md changes (from commit `3a6e06d`) still in effect**: System 2 line reframed tenant-neutral; banned-constant list includes `"aily"`; `DEV_TENANT_DOMAIN` line tenant-neutral. No re-edit of those in this dispatch.
+
+**Commit SHA**: <backfill after commit — immediately-preceding commit to this tracker entry>
+
+**A-UNIT-4 scope lock**: unchanged from the previous DECISION LOG entry (2026-07-02, first entry). 5 entities / 3 phases / sequential / no gap. Track rule: whichever `track` has `low_volume_flag=false`; both when both exist; NO default. Coverage numbers already verified (community 79%, muni 78%, area 66%, nbhd 100%, building 18% overall — sitemap-eligible subset TO VERIFY in 4b recon). Empty-state text TBD, operator-approved BEFORE 4a code ships. No new decisions in this dispatch beyond the CLAUDE.md SEO-scope note.
