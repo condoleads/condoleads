@@ -42,7 +42,13 @@ import { createClient } from '@supabase/supabase-js'
 import Sparkline from '@/components/home/Sparkline'
 
 interface Props {
-  geoType: 'area' | 'community' | 'municipality' | 'neighbourhood'
+  // W-MARKETING A-UNIT-4b (2026-07-03): 'building' added — buildings share the
+  // same geo_analytics query pattern + render shape. Buildings have condo track
+  // only (0.3% homes-track usable), NULL PSF (existing MarketIntelligence owns
+  // PSF via building_psf_summary — do NOT duplicate), and price_trend_monthly
+  // with 0-1 points typically (Sparkline's MIN_POINTS=4 gate hides it).
+  // Net effect: renders the 7-field summary (median headline + 6-metric grid).
+  geoType: 'area' | 'community' | 'municipality' | 'neighbourhood' | 'building'
   geoId: string
   geoName: string  // for empty-state text + panel heading
 }

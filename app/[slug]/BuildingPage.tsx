@@ -10,6 +10,7 @@ import BuildingHighlights from './components/BuildingHighlights'
 import ListingSection from './components/ListingSection'
 import MarketStats from './components/MarketStats'
 import MarketIntelligence from './components/MarketIntelligence'
+import GeoMarketActivity from '@/components/geo/GeoMarketActivity'
 import { getBuildingMarketData } from '@/lib/market/get-building-analytics'
 import BuildingAmenities from './components/BuildingAmenities'
 import dynamic from 'next/dynamic'
@@ -513,6 +514,19 @@ export default async function BuildingPage({ params }: { params: { slug: string 
             <div id="market-stats">
               <MarketStats stats={stats} yearBuilt={building.year_built} />
             </div>
+            {/* W-MARKETING A-UNIT-4b (2026-07-03): SSR activity summary from
+                geo_analytics. Sandwiched between MarketStats (property basics,
+                inventory %, high/low sale) and MarketIntelligence (PSF, yield,
+                parking/locker). 7 fields NON-overlapping with either sibling:
+                median sale price + 6-metric grid (Sold90d / Active / Months of
+                inventory / DOM / STL / Absorption). Tenant-neutral: no tenant
+                gate, matches shared-exception posture of the two existing
+                sibling panels. Renders for both System-1 and System-2 hosts. */}
+            <GeoMarketActivity
+              geoType="building"
+              geoId={building.id}
+              geoName={building.building_name}
+            />
             <MarketIntelligence data={marketData} />
             {amenities.length > 0 && (
               <div id="amenities">
