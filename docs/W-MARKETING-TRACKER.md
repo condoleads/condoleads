@@ -1061,6 +1061,28 @@ TSC exit 0.
 
 **A-UNIT-4c — CLOSED. A-UNIT-4 — CLOSED**. No open items from this unit. All 5 mount pages now render 7 insight blocks below the stat panel where data exists. Tenant-neutral, literal-only, per-field null-gated, per-block absence handling.
 
-**Commit SHA**: (HOLD PUSH — SHA reported below after commit).
+**Commit SHA**: `ec7edc4` (pushed to `origin/main` at 2026-07-03).
+
+### POST-PUSH VERIFY — 2026-07-03 (same-day close)
+
+**Production render VERIFIED on `https://www.aily.ca`** — 4 live URLs, direct DOM-context grep against RSC output (React `<!-- -->` comment nodes stripped before grep so text-node continuity is preserved for the literal-value check):
+
+| Check | URL | HTTP | Insight blocks (marker phrases) | Cited literal values in DOM | Bad tokens |
+|---|---|---|---|---|---|
+| **A. Community** | `/windfields` | **200** | Investor mix ×2, Price reductions ×2, Re-entries ×2, Concession pattern ×2, Median PSF vs parent ×2, Seasonality ×2, Supply vs demand ×2 (×2 = SSR + RSC payload) | Investor `98.36%` / `1.64%` + `from 11 sales, 660 leases` ✓, price_red `36.36%` + `$37,250` `(6.64%)` ✓, reentry `1 of 172 sold · rate 0.58% · -$145,000 (-19.33%)` ✓, value_mig `Median PSF: $417 — -6.46% vs municipality avg ($445) [discount]` ✓, concession all 4 buckets (`1br (28 sales) — 78.57%`) ✓, seasonal `May, Apr, Jun` / `Mar, Jan, Feb` ✓ | 0 (`$null`=0, `null%`/`NaN%`/`undefined%`=0) |
+| **B. Building 5750 Tosca** | `/5750-tosca-dr-townhouse-condos-3250-bentley-mississauga` | **200** | Same 6 marker phrases | Investor `83.33%` / `16.67%` + `from 1 sales, 5 leases` ✓, value_mig `Median PSF: $545 — +5.55% vs community avg ($517) [premium]` ✓ **(exact combined-string match)**, concession `(12 sales) — 91.67% closed with concessions, avg 3.32% below ask` ✓ **(12 sales adjacent to 91.67%)**, seasonal `Aug, May, Sep` ✓ | 0 |
+| **C. Building 1535 Lakeshore** | `/1535-lakeshore-road-e-mississauga` | **200** | Same 6 markers + Supply vs demand ×2 | demand_mismatch sample `5 active listings · 1 sold (90d)` ✓, `3br: 5 active / 1 sold · mismatch +0.00%` ✓ **(raw counts adjacent to mismatch %, no bare percentage)**, all 4 bedroom rows show `mismatch <strong>+0.00%</strong>` alongside `active / sold` ✓, concession `3br (22 sales) — 90.91% closed with concessions, avg 4.75% below ask` ✓ | 0 |
+| **D. No-insight building** | `/side-launch-1-shipyard-lane-collingwood` | **200** | ZERO insight markers (Investor mix ×0, Price reductions ×0, Re-entries ×0, Concession pattern ×0, Median PSF vs parent ×0, Seasonality ×0, Supply vs demand ×0, Market Insights ×0) | 4a/4b empty-state paragraph verbatim: `Side Launch will be published as transaction activity is recorded in this area.` — real building name, ZERO fabricated numbers ✓ | 0 |
+
+**Non-regression on production VERIFIED**: Side Launch page still shows `Market Overview` ×2 (MarketStats heading) + `Price per sqft analysis and trends` ×1 (MarketIntelligence subtitle) — existing sibling panels render unchanged next to the empty A-UNIT-4a stat panel + absent A-UNIT-4c insight section. Insight-section correctly hides when no `low_volume_flag=false` row exists.
+
+**E. Cross-page interpretive-language grep** (banned patterns: `seller's market / buyer's market / favours X / good time to (buy|sell) / strong seller / hot market / cool market / undervalued / overvalued / lucrative / bargain`) — VERIFIED across all 4 live pages: **0 hits on every page**. Additional targeted check for "attractive" INSIDE insight-block regions on the 3 data-populated pages: 0 hits (the word appears only in pre-existing `building_description` DB content on some buildings, not in the new insight code — verified by grep-context around insight markers).
+
+**All 5 verify checks (A–E) PASS on live production**. A-UNIT-4c — CLOSED with production proof. A-UNIT-4 — CLOSED.
+
+**Files (verify commit)**:
+- `docs/W-MARKETING-TRACKER.md` (this POST-PUSH VERIFY entry)
+- Backup: `docs/W-MARKETING-TRACKER.md.backup_W-A-UNIT-4c-VERIFY_20260703_150116`
+
 
 
