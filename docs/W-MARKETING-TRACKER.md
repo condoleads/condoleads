@@ -960,7 +960,7 @@ TSC exit 0.
 - `app/[slug]/BuildingPage.tsx` (import + 5-line mount with comment)
 - `docs/W-MARKETING-TRACKER.md` (this DECISION LOG entry)
 
-**Commit SHA**: <backfill after commit — immediately preceding commit to this tracker entry>
+**Commit SHA**: `81394f5` (this commit — extended GeoMarketActivity + BuildingPage mount + tracker in the same block).
 
 **Next**: A-UNIT-4c (insight_* JSONB blocks) — surface the rich per-geo insight blocks (`insight_seasonal`, `insight_demand_mismatch`, `insight_investor_ratio`, `insight_reentry`, `insight_concession_matrix`, `insight_price_reduction`, `insight_value_migration`) on geo pages as expandable SEO-visible sections. Requires per-block coverage probe + design of collapse/expand pattern. Buildings covered by 4b + insight blocks in geo_analytics building rows are eligible for future extension.
 
