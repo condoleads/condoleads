@@ -962,6 +962,29 @@ TSC exit 0.
 
 **Commit SHA**: `81394f5` (this commit — extended GeoMarketActivity + BuildingPage mount + tracker in the same block).
 
+### POST-PUSH VERIFY — 2026-07-03 (same-day close)
+
+**Production render VERIFIED this session** on `https://www.aily.ca` — direct DOM-context grep against RSC output confirmed the panel's own markers, not incidental price tokens elsewhere on the page:
+
+| URL | HTTP | Panel median (in DOM near "Median sale price") | Panel 6-metric grid samples | Empty-state |
+|---|---|---|---|---|
+| `/5750-tosca-dr-townhouse-condos-3250-bentley-mississauga` | **200** | **$600K** (`>$600K<`) | present | — |
+| `/500-talbot-street-london-east` | **200** | **$283K** (`>$283K<`) | Sold 90d=1, STL=97.30%, Absorption=0.0% (matches DB) | — |
+| `/side-launch-1-shipyard-lane-collingwood` | **200** | (no headline) | (no grid) | `Side Launch will be published as transaction activity` — verbatim, real building name, ZERO numbers |
+
+**Non-regression on production VERIFIED**: all 3 live pages contain `Market Overview` (MarketStats heading, `×2` each) and `Price per sqft analysis and trends` (MarketIntelligence subtitle, `×1` each) — existing sibling panels render unchanged.
+
+**System-1 LIVE production check VERIFIED** (the isolation-critical one; matches shared-exception rule per CLAUDE.md line 15):
+
+| Live URL | System | HTTP | Panel heading `5750 Tosca Dr Townhouse Condos Market Statistics` | Panel median | `X-Robots-Tag` (A-UNIT-1a) |
+|---|---|---|---|---|---|
+| `https://www.yourcondorealtor.ca/5750-tosca-...` | S1 legacy agent (custom_domain) | **200** | present ×1 | **$600K** | `noindex, nofollow` ✓ |
+| `https://viyacondex.condoleads.ca/5750-tosca-...` | S1 legacy agent (subdomain) | **200** | present ×1 | **$600K** | `noindex, nofollow` ✓ |
+
+**Both System-1 live hosts render the new panel with `$600K` — byte-identical panel median to aily.ca for the same building.** Tenant-neutrality of the shared-exception path VERIFIED end-to-end on production. A-UNIT-1a's crawler block (`X-Robots-Tag: noindex, nofollow`) still fires on legacy hosts — panel is user-visible-only, Google won't index. Same posture as `MarketStats` / `MarketIntelligence` which already ship on both systems. No S1/S2 divergence introduced.
+
+**A-UNIT-4b — CLOSED**. No open items from this unit. Ready to proceed to A-UNIT-4c (insight_* JSONB blocks) when dispatched.
+
 **Next**: A-UNIT-4c (insight_* JSONB blocks) — surface the rich per-geo insight blocks (`insight_seasonal`, `insight_demand_mismatch`, `insight_investor_ratio`, `insight_reentry`, `insight_concession_matrix`, `insight_price_reduction`, `insight_value_migration`) on geo pages as expandable SEO-visible sections. Requires per-block coverage probe + design of collapse/expand pattern. Buildings covered by 4b + insight blocks in geo_analytics building rows are eligible for future extension.
 
 **Next**: A-UNIT-4b (buildings) — extend the same `geo_type='building'` pattern to `BuildingPage.tsx` as a NEW panel that complements (does not replace) the existing `getBuildingMarketData`/`market_values` PSF-and-investment path. Requires sitemap-eligible-buildings coverage probe first (~4,574 quality-gated buildings — coverage TBD).
