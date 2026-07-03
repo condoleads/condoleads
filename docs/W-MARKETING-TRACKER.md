@@ -985,6 +985,82 @@ TSC exit 0.
 
 **A-UNIT-4b — CLOSED**. No open items from this unit. Ready to proceed to A-UNIT-4c (insight_* JSONB blocks) when dispatched.
 
-**Next**: A-UNIT-4c (insight_* JSONB blocks) — surface the rich per-geo insight blocks (`insight_seasonal`, `insight_demand_mismatch`, `insight_investor_ratio`, `insight_reentry`, `insight_concession_matrix`, `insight_price_reduction`, `insight_value_migration`) on geo pages as expandable SEO-visible sections. Requires per-block coverage probe + design of collapse/expand pattern. Buildings covered by 4b + insight blocks in geo_analytics building rows are eligible for future extension.
+---
 
-**Next**: A-UNIT-4b (buildings) — extend the same `geo_type='building'` pattern to `BuildingPage.tsx` as a NEW panel that complements (does not replace) the existing `getBuildingMarketData`/`market_values` PSF-and-investment path. Requires sitemap-eligible-buildings coverage probe first (~4,574 quality-gated buildings — coverage TBD).
+## A-UNIT-4c — SHIPPED (2026-07-03)
+
+**Scope**: extended `components/geo/GeoMarketActivity.tsx` (the same component 4a/4b already mount) with 7 `insight_*` JSONB blocks rendered LITERALLY beneath the existing 6-metric grid. Renders on all 5 mount points (Area, Community, Municipality, Neighbourhood, BuildingPage). Tenant-neutral by construction — zero code-plane references to tenant/agent/host in the component (VERIFIED via grep). Closes A-UNIT-4.
+
+**RENDER RULE (universal, Rule Zero #1)**: LITERAL VALUES ONLY. No interpretive conclusions ("seller's market", "hot", "favours investors") — those are fabricated meaning even off real numbers. Every percentage renders WITH its raw count adjacent (Option 2). Proxy/modeled fields labeled **"estimated"**. Month numbers → month names. Per-field null gate: a field renders only if non-null. Per-block absence: null column → block absent (not empty-state). All-null → InsightSection returns null (stat panel still renders).
+
+**7 BLOCKS + literal mapping (structures VERIFIED this session from real DB rows)**:
+
+| # | Block | Coverage (rolling_12mo, low_volume_flag=false) | Track render | Sample literal render (from cited geo_ids) |
+|---|---|---|---|---|
+| 1 | `insight_investor_ratio` (PROXY — labeled "estimated") | 34-100% varying by level | both tracks | `Investor mix — estimated proxy (90d): Investor-proxy share: 83.33% · End-user: 16.67% (from 1 sales, 5 leases)` — VERIFIED(5750 Tosca) |
+| 2 | `insight_price_reduction` | 100% all levels + tracks | both tracks | `Price reductions (90d): Price-reduction rate: 36.36% · Avg reduction: $37,250 (6.64%) · Monthly trend (22 months)` — VERIFIED(Windfields community-condo) |
+| 3 | `insight_reentry` | 100% all levels + tracks | both tracks | `Re-entries: 1 · of 172 sold · rate 0.58% · Avg price change: -$145,000 (-19.33%)` — VERIFIED(Windfields). Note: `total_sold_12mo` may be omitted on some rows → per-field null-guarded. |
+| 4 | `insight_seasonal` | 85-100% all levels + tracks | both tracks | `Historically strongest months: May, Apr, Jun · Weakest months: Mar, Jan, Feb · Annual: DOM 37.9d · sale-to-list 99.65% (n=172)` — VERIFIED(Windfields) |
+| 5 | `insight_concession_matrix` | 100% condo all levels, 0% homes | condo-only | `1BR (28 sales) — 78.57% closed with concessions, avg 3.17% below ask` — VERIFIED(Windfields). Iterates present bedroom keys only. |
+| 6 | `insight_demand_mismatch` | 69-100% condo, 0% homes | condo-only | `2BR: 42 active / 1 sold · mismatch +34.21%` — VERIFIED(Windfields). All 4 bedroom keys always present; mismatch % always paired with raw active/sold counts. |
+| 7 | `insight_value_migration` | building-condo 29%, community-condo 87%, others 0-4% | **building + community ONLY** (gated) | `Median PSF: $545 — +5.55% vs community avg ($517) [premium]` — VERIFIED(5750 Tosca). Uses JSONB's own `direction` enum. |
+
+**Key locked design decisions (all VERIFIED empirically this session)**:
+- `insight_value_migration` gated to `geoType IN ('building','community')` — VERIFIED 0% area/muni/nbhd (RECON-2 Q1). Regression test: fake payload on `geoType='area'` → returns 0 blocks. PASS.
+- `total_sold_12mo` on `insight_reentry` is optional — RECON-3 confirmed community row without it. Render guarded with `if (total_sold_12mo)`.
+- `avg_reduction_amt_90d` / `avg_reduction_pct_90d` on `insight_price_reduction` may be null when zero reductions (VERIFIED on 5750 Tosca). Render guarded — no "$null" emitted (regression #3 PASS).
+- `avg_price_change_*` on `insight_reentry` only rendered when `reentry_count > 0` (division-by-zero would produce NaN otherwise).
+- `insight_seasonal.best_months` renders as month names (Jan..Dec via MONTH_NAMES table) — locked per operator decision (no interpretive framing).
+- `insight_concession_matrix` iterates present bedroom keys only (bucket may be absent when zero sales in that bedroom — VERIFIED on building bc680002 which has only 3BR).
+- `insight_demand_mismatch` always shows raw `supply_count` + `demand_count` adjacent to `mismatch_pct` (Rule "no bare percentages" — % always paired with counts).
+- Component still fetches BOTH tracks (no `.eq('track', ...)`); per-block track gating driven by DB reality (condo-only fields naturally null on homes tracks).
+
+**LOCAL SMOKE (this session)** — real cited geo_ids × render simulation + live dev server:
+
+| Cited geo | geoType | geoId | Track | Observed insight blocks |
+|---|---|---|---|---|
+| **5750 Tosca** (b2c4f86e) | building | `b2c4f86e-9da2-44df-97c1-5a3636617c44` | condo | investor(83.33%/16.67%), price_reduction(0%), reentry(0/rate 0%), value_migration($545, +5.55%, premium), concession(2BR only, 12 sales, 91.67%), seasonal(strongest Aug/May/Sep) |
+| **1535 Lakeshore** (bc680002) | building | `bc680002-1dfa-409b-8d18-1e2285ffb725` | condo | price_reduction(0%), reentry(0/rate 0%), demand_mismatch(all 4 buckets, sample 5 active / 1 sold), concession(3BR only, 22 sales, 90.91%), seasonal(11 months) |
+| **Windfields** (022b1046) | community | `022b1046-fc13-418c-8303-4f4edf28cb65` | condo + homes | condo: all 7 blocks; homes: 4 blocks (concession/demand_mismatch/value_migration correctly absent — condo-only fields, homes-track has NULL) |
+| **Muni 0224274a** | municipality | `0224274a-e58e-4af5-8419-3fc4e3f3a7e1` | condo + homes | 5 blocks (value_migration correctly absent per gating — VERIFIED not building+community) |
+
+**REGRESSION TESTS** (4/4 PASS):
+1. All 7 insight columns null on row → InsightSection returns `null`, stat panel still renders independently. VERIFIED(simulated).
+2. `insight_value_migration` on `geoType='area'` with fake populated payload → 0 blocks (gate blocks render). VERIFIED.
+3. Bad token grep on observed output (`$null | null% | undefined | NaN`) → 0 matches. VERIFIED.
+4. Interpretive-word grep on component source (`seller's market | buyer | favours | good time | strong | attractive | undervalued | hot | cool | lucrative | ideal | bargain`) → 0 matches in `components/geo/GeoMarketActivity.tsx`. VERIFIED.
+
+**LIVE DEV SERVER RENDER — both S2 tenants** (`npm run dev` on `http://localhost:3000`):
+
+| Case | Host header | Path | HTTP | Insight-block markers found (6/6) | Cited literal values in HTML |
+|---|---|---|---|---|---|
+| **aily.ca (S2)** | `aily.ca` (DEV_TENANT_DOMAIN=aily.ca) | `/5750-tosca-dr-townhouse-condos-3250-bentley-mississauga` | 200 | Investor mix ✓, Price reductions ✓, Re-entries ✓, Concession pattern ✓, Median PSF vs parent ✓, Seasonality ✓ | 83.33% ✓, 16.67% ✓, 5.55% ✓, 3.32% ✓, 91.67% ✓, `premium` ✓ |
+| **walliam.ca (S2)** | `walliam.ca` (DEV_TENANT_DOMAIN=walliam.ca) | same building | 200 | same 6/6 ✓ | same 6 literal values ✓ — BYTE-IDENTICAL insight blocks across S2 tenants |
+
+**Tenant-neutrality VERIFIED end-to-end**: aily and walliam render IDENTICAL insight literals for the same building — as expected, since GeoMarketActivity has zero tenant/agent/host code-plane references and `geo_analytics` has no `tenant_id` column. Same architectural guarantee as A-UNIT-4a/4b/MarketStats/MarketIntelligence — all render identically on S1 hosts too (documented shared-exception, VERIFIED in A-UNIT-4b live production check).
+
+**No-regression VERIFIED**:
+- TSC exit 0 (no type errors introduced by the 7 insight interfaces or the InsightSection mount).
+- Existing 4a/4b stat panel still renders (headings + 6-metric grid appear in both aily + walliam HTML).
+- SELECT list extension does NOT drop any pre-existing columns (all 13 original + 7 new = 20 columns fetched).
+- Component signature preserved: `geoType`, `geoId`, `geoName` props unchanged. All 5 mount sites unchanged. Zero touch of BuildingPage, AreaPage, CommunityPage, MunicipalityPage, or `[neighbourhood]/page.tsx`.
+- MarketStats + MarketIntelligence untouched. Agent-context features untouched.
+- Homepage `CondoMarketActivity` untouched.
+- No-interpretation grep on the new component source: 0 matches for the 12 banned interpretive phrases. Literal-only render confirmed.
+
+**Files (all in one commit)**:
+- `components/geo/GeoMarketActivity.tsx` (extended: 7 JSONB interfaces + 7 render helpers + InsightSection + 20-col SELECT + comment)
+- `docs/W-MARKETING-TRACKER.md` (this DECISION LOG entry)
+- Backups: `components/geo/GeoMarketActivity.tsx.backup_W-A-UNIT-4c_20260703_091022`, `docs/W-MARKETING-TRACKER.md.backup_W-A-UNIT-4c_20260703_100535`
+
+**Field taxonomy (Rule Zero #1 — proxies labeled)**:
+- PROXY / MODELED: `investor_proxy_pct`, `end_user_pct` (both in `insight_investor_ratio`) — rendered with "estimated proxy" wording. Never as fact.
+- DERIVED (deterministic arithmetic — safe as-is): all rates/pcts/ratios in the other 6 blocks.
+- DIRECT COUNTS: `sale_count_90`, `lease_count_90`, `reentry_count`, `total_sold_12mo`, `total_active`, `total_sold_90`, per-bucket `count`/`supply_count`/`demand_count`, `sample_size`, `this_median_psf`, `parent_median_psf` — rendered as-is.
+- SEMI-MODELED (opaque ranking): `best_months`/`worst_months` — operator locked "Historically strongest/weakest months: {names}" wording (labels the ranking without editorial framing).
+
+**A-UNIT-4c — CLOSED. A-UNIT-4 — CLOSED**. No open items from this unit. All 5 mount pages now render 7 insight blocks below the stat panel where data exists. Tenant-neutral, literal-only, per-field null-gated, per-block absence handling.
+
+**Commit SHA**: (HOLD PUSH — SHA reported below after commit).
+
+
