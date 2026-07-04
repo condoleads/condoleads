@@ -4,6 +4,7 @@ import { getDisplayAgentForBuilding, isCustomDomain } from '@/lib/utils/agent-de
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import PropertyPageClient from './PropertyPageClient'
+import ListingSchema from './components/ListingSchema'
 import { createClient as createTenantClient } from '@/lib/supabase/server'
 import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
@@ -396,8 +397,32 @@ export default async function PropertyPage({ params }: { params: { id: string } 
   // System 1 (tenantId null). The System-2 tenant-key branch was provably
   // unreachable; the prop is read straight from the agent row again.
 
+  // A-UNIT-2 Phase 1 (2026-07-04): resolve the canonical URL for the
+  // RealEstateListing JSON-LD's `url` field so it matches the metadata
+  // canonical alternate (index-consolidation guidance). Reuses the same
+  // helpers that generateMetadata already uses at the top of this file.
+  const _canonical = await (async () => {
+    const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+    const { generatePropertySlug } = await import('@/lib/utils/slugs')
+    const domain = await resolveCanonicalHost()
+    const s = generatePropertySlug(listing)
+    const path = s && !s.startsWith('/property/') ? s : `/property/${params.id}`
+    return `https://${domain}${path}`
+  })()
+
   return (
     <>
+      {/* A-UNIT-2 Phase 1: RealEstateListing JSON-LD. Gated on
+          isSeoEnabledTenant() inside the component — emits for aily
+          (seo_enabled=true), returns null for walliam (seo_enabled=false)
+          and non-tenant hosts. Zero new DB queries — reuses listing,
+          building, largePhotos already in scope. */}
+      <ListingSchema
+        listing={listing}
+        building={building}
+        photos={largePhotos || []}
+        canonicalUrl={_canonical}
+      />
       <script
         dangerouslySetInnerHTML={{
           __html: `window.__AGENT_DATA__ = ${JSON.stringify({

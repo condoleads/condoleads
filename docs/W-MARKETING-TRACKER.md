@@ -577,6 +577,109 @@ Buildings VERIFIED fill rates (this session, 9,835 rows total):
 
 **Files this dispatch**: read-only recon only. Scripts left at `scripts/_recon-listing-cols.js` (safe — `BEGIN READ ONLY`). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-2-RECON_20260704_135942`. No code files touched. No SQL write. No commit made this dispatch (staging + commit pending operator go).
 
+#### A-UNIT-2 PHASE 1 — BuildingSchema Toronto fix + RealEstateListing on condo pages — SHIPPED (2026-07-04)
+
+Ships (a) the Rule Zero fix for BuildingSchema.tsx's hardcoded `"addressLocality": "Toronto"` and (b) a net-new `RealEstateListing` JSON-LD emitter on the condo listing page. Both gated on `isSeoEnabledTenant()` (shipped e3d229f) — emit for aily (`seo_enabled=true`), absent for walliam (`seo_enabled=false`) and non-tenant hosts. Zero brand branch.
+
+##### Part 1 — BuildingSchema Toronto fix
+
+**Fix**: `app/[slug]/components/BuildingSchema.tsx` — replaced hardcoded `"addressLocality": "Toronto"` with a real municipality-name prop resolved by the parent via the VERIFIED geo join chain `buildings.community_id → communities.municipality_id → municipalities.name`.
+- Component converted to async server component.
+- Gate at top: `if (!(await isSeoEnabledTenant())) return null` — JSON-LD is an SEO surface per CLAUDE.md line 60.
+- New prop: `locality?: string | null`. When null (building has no `community_id`, or the join yields nothing) `addressLocality` is OMITTED. **Never falls back to any hardcoded string.**
+- `yearBuilt`: gated to `building.year_built != null` (VERIFIED 0.0% populated at recon time; currently omitted on every building — emits only after backfill).
+- `geo` block kept commented (VERIFIED lat/lng 0.0% populated across 9,835 buildings — uncommenting would emit `null`).
+- `addressRegion` and `addressCountry`: OMITTED entirely because the `buildings` table has NO `state_or_province` / `country` columns (VERIFIED 28-column schema). Never fabricate.
+- `AggregateOffer` block preserved as-is (pre-existing `priceCurrency: 'CAD'` retained — pre-existing pattern, not touched by this dispatch).
+
+**BuildingPage integration** (`app/[slug]/BuildingPage.tsx`): async IIFE inline at the `<BuildingSchema>` mount site (line ~420) resolves `locality` via two targeted `.select` calls chained through `communities` → `municipalities`. Uses in-scope `building.community_id` (already present from the `SELECT *` cached fetch at line 20-31). Zero touch of the parallel query batch; single-round-trip lookup only when needed.
+
+**Aily smoke (VERIFIED this session)** — 5750 Tosca Dr Townhouse Condos, Mississauga (`community_id → communities → municipalities.name = 'Mississauga'`):
+```
+JSON PARSES OK
+@type:             ApartmentComplex
+name:              "5750 Tosca Dr Townhouse Condos"
+address:           {"@type":"PostalAddress","streetAddress":"3250 Bentley, Mississauga","addressLocality":"Mississauga"}
+addressLocality:   "Mississauga"   ← REAL municipality via join (was hardcoded "Toronto" pre-fix)
+hardcoded Toronto? false           ← Rule Zero violation ELIMINATED
+```
+
+##### Part 2 — RealEstateListing JSON-LD on condo listing page
+
+**New file**: `app/property/[id]/components/ListingSchema.tsx` — async server component. Gates on `isSeoEnabledTenant()`. Consumes `listing`, `building`, `photos`, `canonicalUrl` — zero new DB queries; every prop comes from data the parent already fetched.
+
+**Field map — every field from a VERIFIED column** (see A-UNIT-2 RECON above, `information_schema` probe, `mls_listings` 494-column schema):
+| JSON-LD | Column | Rule Zero behavior |
+|---|---|---|
+| `@type` | constant `RealEstateListing` | Google's canonical real-estate type |
+| `url` | canonical URL (`resolveCanonicalHost()` + `generatePropertySlug()`) | matches metadata canonical alternate |
+| `about.@type` | derived from `property_subtype` via deterministic map (Condo Apartment→Apartment, Detached→SingleFamilyResidence, etc.) | fallback `Residence` when no clean map — no fabrication |
+| `about.address.streetAddress` | `street_number` + `street_name` + `street_suffix` (+ `#unit_number`) | falls back to `unparsed_address` if pieces missing |
+| `about.address.addressLocality` | `city` with regex strip `/\s+[CWE]\d{2}$/` (Toronto TREB zone codes) | deterministic; other cities unchanged |
+| `about.address.addressRegion` | `state_or_province` | emitted only if non-null |
+| `about.address.postalCode` | `postal_code` | emitted only if non-null |
+| `about.address.addressCountry` | `country` (84.5% populated) | **emit only when non-null; NEVER default "CA" for the 15.5%** |
+| `about.numberOfBedrooms` | `bedrooms_total` | emit only if non-null |
+| `about.numberOfBathroomsTotal` | `bathrooms_total_integer` | numeric normalize; emit only if non-null and non-NaN |
+| `about.floorSize` | `calculated_sqft` (scalar, unitCode `FTK`) OR `living_area_range` parsed `/^(\d+)-(\d+)$/` → `{minValue, maxValue}` | ranges like `"< 700"` dropped rather than fabricated |
+| `about.name` | `building.building_name` (via join, when building present) | omitted if null |
+| `offers.price` | `list_price` | 100% populated |
+| `offers.priceCurrency` | **OMITTED** — no currency column exists on mls_listings (`list_price_unit` is a sale/lease descriptor like `"For Sale"`/`"Month"`, NOT ISO 4217). Per operator rule: OMIT rather than default. |
+| `offers.availability` | derived from `standard_status`: Active/Active Under Contract→InStock, Pending/Closed→SoldOut | omit if no clean map |
+| `offers.businessFunction` | derived from `transaction_type`: For Sale→Sell, For Lease→LeaseOut | omit if neither |
+| `offers.validFrom` | `on_market_date` | omit if null |
+| `identifier` | `listing_key` as `PropertyValue{ name:"MLS Listing ID", value }` | 100% populated |
+| `datePosted` | `listing_contract_date` | 100% populated |
+| `dateModified` | `modification_timestamp` | omit if null |
+| `description` | `public_remarks` if `length > 20` | omit short/null |
+| `image` | `media.media_url` where `variant_type='large'`, ordered, limit 8 | never emits missing/null URLs |
+| `geo` | **OMITTED entirely** — lat/lng 0.0% populated on mls_listings | never fabricated |
+
+**Aily smoke — real DB row verified this session**:
+Listing: `id=fc04d083-4f3a-4186-8686-7baa49ba64d8, listing_key=W13517014, unparsed_address="101 Subway Crescent 2012, Toronto, ON M9B 6K4", city="Toronto W08", list_price=559900, bedrooms_total=2, bathrooms_total_integer="2.0", property_subtype="Condo Apartment", calculated_sqft=950, standard_status="Active", transaction_type="For Sale", country="CA"`.
+
+Aily.ca curl output (VERBATIM parsed):
+```
+JSON PARSES OK
+keys:            @context, @type, url, about, offers, identifier, datePosted, dateModified, description, image
+about keys:      @type, address, numberOfBedrooms, numberOfBathroomsTotal, floorSize
+offers keys:     @type, price, availability, businessFunction
+no priceCurrency:  true       ← omitted per no-currency-column rule
+no geo:            true       ← omitted per 0% lat/lng
+addressLocality:   "Toronto"  ← TREB "W08" suffix STRIPPED from raw "Toronto W08"
+addressCountry:    "CA"       ← real value from country column (non-null)
+identifier.value:  "W13517014"
+image count:       8          ← limit=8, real media URLs
+```
+
+Per-field DB-vs-render spot-check (VERIFIED matches):
+- `about.address.streetAddress: "101 Subway Crescent #2012"` = `street_number + street_name + street_suffix + #unit_number` ✓
+- `about.@type: "Apartment"` = mapped from `property_subtype="Condo Apartment"` ✓
+- `about.floorSize.value: 950` = `calculated_sqft` ✓, `unitCode: "FTK"` ✓
+- `offers.price: 559900` = `list_price` ✓
+- `offers.availability: "https://schema.org/InStock"` = mapped from `standard_status="Active"` ✓
+- `offers.businessFunction: "https://schema.org/Sell"` = mapped from `transaction_type="For Sale"` ✓
+- `datePosted: "2026-07-03"` = `listing_contract_date` ✓
+- `identifier.value: "W13517014"` = `listing_key` ✓
+
+**Walliam smoke** — same URLs, `seo_enabled=false`:
+- `/101-subway-crescent-unit-2012-w13517014` → HTTP 200, size 133,528 bytes, `application/ld+json` count: **0**, `RealEstateListing` count: **0** ✓
+- `/5750-tosca-dr-townhouse-condos-3250-bentley-mississauga` → HTTP 200, size 310,081 bytes, `application/ld+json` count: **0**, `ApartmentComplex` count: **0** ✓
+- **Regression check**: both pages still render 200 with full content when JSON-LD is suppressed. Listing page 133 KB, building page 310 KB — normal render sizes, tenant-scoped content intact.
+
+##### Files this dispatch
+
+- New: `app/property/[id]/components/ListingSchema.tsx` (async server component, 250 lines)
+- Modified: `app/[slug]/components/BuildingSchema.tsx` (async + gate + real locality + year_built gate)
+- Modified: `app/[slug]/BuildingPage.tsx` (municipality-name resolution IIFE at BuildingSchema mount)
+- Modified: `app/property/[id]/page.tsx` (canonical URL resolution + ListingSchema mount)
+- Backups: all `.backup_A-UNIT-2-P1_20260704_160331` on the 3 modified source files
+- Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-2-PHASE-1_20260704_161341`
+
+**TSC**: exit 0 (all 4 file edits clean).
+
+**Next**: Phase 2 (BreadcrumbList + geo-page `Place`/`LocalBusiness` schema) is the next dispatch. Same `isSeoEnabledTenant()` gate. Aily-only emission by tenant config, walliam absent by config, both without code branches.
+
 #### SEO-FLAG PRE-BUILD RECON — Option A locked (2026-07-04)
 
 **Decision (option A)**: per-tenant `seo_enabled` flag on `tenants` so SEO is aily-only by verified config, not brand-hardcode, not WALLiam removal. Multi-tenant safe by construction — data-plane per-tenant capability, zero code-plane branch. New tenants opt into SEO by row-update, mirroring the existing precedent (`estimator_ai_enabled` per-tenant boolean toggle).

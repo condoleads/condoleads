@@ -422,6 +422,26 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         activeSales={activeSales}
         activeRentals={activeRentals}
         avgPrice={avgSalePrice}
+        // A-UNIT-2 Phase 1 (2026-07-04): real locality via verified geo
+        // join chain buildings.community_id → communities.municipality_id →
+        // municipalities.name. Async IIFE keeps the resolution inline (single
+        // targeted lookup; buildings without community_id return null → schema
+        // omits addressLocality). Replaces the prior hardcoded "Toronto".
+        locality={await (async () => {
+          if (!building.community_id) return null
+          const { data: comm } = await supabase
+            .from('communities')
+            .select('municipality_id')
+            .eq('id', building.community_id)
+            .single()
+          if (!comm?.municipality_id) return null
+          const { data: muni } = await supabase
+            .from('municipalities')
+            .select('name')
+            .eq('id', comm.municipality_id)
+            .single()
+          return muni?.name || null
+        })()}
       />
       <StickyNav agentId={agent?.id} />
       
