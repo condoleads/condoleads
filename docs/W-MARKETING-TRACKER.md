@@ -757,6 +757,46 @@ Zero non-SEO regression. `getCurrentTenantId()` file (`lib/utils/tenant-resolver
 
 **Ready for A-UNIT-2 JSON-LD build** — emitters gate on the same `isSeoEnabledTenant()` helper. Migration cannot roll back silently (DDL COMMIT is real); rollback SQL documented above. Push held for operator go.
 
+#### HOST-STATE RECON — yourcondorealtor.ca + walliam.ca post-e3d229f (2026-07-04)
+
+Read-only verification of the host classification landscape after e3d229f was pushed (previous dispatch: `6c04ade..e3d229f main -> main` — HEAD == origin/main == `e3d229f`). Confirms yourcondorealtor.ca does not benefit from SEO and walliam.ca's post-push code state is correct.
+
+**yourcondorealtor.ca — DB classification** (VERIFIED this session):
+| Check | Result |
+|---|---|
+| `tenants WHERE domain ILIKE '%yourcondorealtor%'` | 0 rows — NOT a tenant |
+| `agents WHERE custom_domain ILIKE '%yourcondorealtor%'` | 1 row: `id=3b106c2d-e3df-442d-ab8a-918a40bcdb8c, custom_domain='yourcondorealtor.ca', is_active=true` — **legacy System-1 agent custom domain** |
+| Hardcoded refs in `app/`, `lib/`, `middleware.ts` | **0 hits** — classification is generic, not brand-specific |
+
+**Request flow for yourcondorealtor.ca** (VERIFIED via `middleware.ts` code inspection):
+1. **Non-SEO page path** (e.g. `/`, `/[slug]`, property/building/geo): middleware SYSTEM FORK block runs. `resolveAgentFromHost('yourcondorealtor.ca')` looks up `custom_domain='yourcondorealtor.ca'` → agent with `site_type != 'comprehensive'`. Line 166 predicate `(agent && agent.site_type !== 'comprehensive' && !OWNER_PROMO_HOSTS.has(cleanReqHost))` matches → **sets `X-Robots-Tag: noindex, nofollow`** on response. Shipped in A-UNIT-1 (2026-07-01), **INDEPENDENT of e3d229f**.
+2. **`/robots.txt`**: middleware SYSTEM FORK block SKIPPED by the exclusion guard `pathname !== '/robots.txt'` (line 127). Handler `app/robots.ts` runs — post-e3d229f: `isSeoEnabledTenant()` returns false (no tenant matches `yourcondorealtor.ca`, so `getCurrentTenantId()` returns null → helper returns false) → Branch 3 → **emits `Disallow: /`**. Pre-e3d229f: `getCurrentTenantId()==null` → Branch 3 → same output. **e3d229f: zero behavior change**.
+3. **`/sitemap.xml` + `/sitemap/[id]`**: middleware SYSTEM FORK block SKIPPED (`!pathname.startsWith('/sitemap.xml') && !pathname.startsWith('/sitemap/')` guards, lines 128-129). Handlers run — `resolveRequestContext()` → `isSeoEnabledTenant()` returns false → `isTenant: false` → **empty XML at HTTP 200** (`emptyIndex()` / `emitUrlset([])`). Pre-e3d229f: `getCurrentTenantId()==null` → `isTenant: false` → same empty output. **e3d229f: zero behavior change**.
+
+**What governs yourcondorealtor.ca's SEO posture — answer from the code, not inference**:
+- **(c) BOTH middleware AND the flag pathway** — but they're independent, not additive:
+  - Middleware `X-Robots-Tag: noindex, nofollow` is the primary de-index mechanism on all page responses (line 166–168). Untouched by e3d229f.
+  - The flag pathway (`isSeoEnabledTenant()`) independently returns false for yourcondorealtor.ca (no tenant row) → fail-closed responses on the 3 SEO surfaces, IDENTICAL to pre-e3d229f `getCurrentTenantId()==null` fail-closed responses.
+
+**Walliam.ca — post-e3d229f state** (VERIFIED from code + DB this session):
+- Tenant row: `id=b16e1039-…, domain='walliam.ca', seo_enabled=false, is_active=true`.
+- Middleware `KNOWN_TENANT_DOMAINS` still lists `walliam.ca` (line 26) + `www.walliam.ca` (line 27) → for non-SEO routes, still resolves as `comprehensive` → rewrites to `/comprehensive-site/*` → normal tenant-scoped page rendering (no X-Robots-Tag from middleware since `site_type === 'comprehensive'` skips the noindex predicate).
+- Post-e3d229f: `/robots.txt` → Disallow (Branch 3); `/sitemap.xml` + `/sitemap/[id]` → empty XML at 200. Verified in the same-session local smoke prior to push.
+- **Vercel de-hosting**: operator-claimed infra. **Unverifiable from repo** — a request that never reaches this app is out of scope for code-level verification.
+
+**VERDICT — plain**:
+| Question | Answer (from commands) |
+|---|---|
+| yourcondorealtor.ca — benefits from SEO right now? | **NO** — middleware noindex on all page responses + fail-closed sitemap/robots. Both mechanisms are shipped and active. |
+| e3d229f changed yourcondorealtor.ca's behavior? | **NO** — flag pathway returns false because `getCurrentTenantId()` returns null (no tenant row for that domain); same fail-closed shape as pre-flag. Zero behavior delta on any of the 3 SEO surfaces. |
+| walliam.ca post-e3d229f — code state correct? | **YES** — robots Disallow, sitemap empty at 200, non-SEO surfaces render tenant-scoped content normally (`getCurrentTenantId()` untouched). |
+| Push safety at e3d229f | **SAFE** — no regression on yourcondorealtor.ca, walliam.ca in intended Branch 3 state, aily.ca byte-identical to today. Already pushed to origin/main. |
+| Gap needing follow-up work? | **NO** — yourcondorealtor.ca is fully covered by middleware noindex (A-UNIT-1) + fail-closed handlers. No additional noindex needed. |
+
+**Nothing-Deferred posture**: no gap surfaced by this recon; no follow-up work item. Migration + code changes already shipped in e3d229f. If operator later observes yourcondorealtor.ca serving without the noindex header (e.g. Vercel edge caching drift, or a middleware exclusion bug), that would be a genuine follow-up — but current code state does not indicate that.
+
+**Files this dispatch**: read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_HOST-STATE-RECON_20260704_155026`. Recon script left at `scripts/_recon-tenants.js` (safe — `BEGIN READ ONLY`, explicit column allow-lists).
+
 ### A-UNIT-3 — On-page basics `[DEV]` — STATUS: **READY**
 
   - **H1 on homepage** (keyword + brand anchor; currently 0 H1
