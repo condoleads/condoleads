@@ -33,7 +33,12 @@ const { URL } = require('url')
 const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID
 const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET
 const REDIRECT_URI = 'http://localhost'
-const SCOPES = ['https://www.googleapis.com/auth/adwords']
+// C-UNIT-2 PATH-A Step 2 (2026-07-04): added webmasters (read/write) so a
+// single re-consent mints a refresh token usable for both Ads AND Search
+// Console (sitemaps.submit / sitemaps.get). Keep adwords first so the
+// existing Ads token path continues to work until the operator saves the
+// new dual-scope token to .env.local under a separate key.
+const SCOPES = ['https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/webmasters']
 
 if (!CLIENT_ID) {
   console.error('FATAL: GOOGLE_ADS_CLIENT_ID missing from .env.local')

@@ -571,14 +571,43 @@ by improving crawl depth + rank flow. Ready to dispatch.
   - **Dependencies**: GA4 property created (OPS) before tag
     install (DEV).
 
-### C-UNIT-2 — Search Console verification — STATUS: **BLOCKED** by A-UNIT-1
+### C-UNIT-2 — Search Console verification + programmatic sitemap submission — STATUS: **PATH-A CHOSEN, 2 EXTERNAL BLOCKERS + 1 CODE STEP**
 
-  - `[OPS]` Verify aily.ca in Google Search Console (DNS or HTML
-    file method).
-  - `[OPS]` Submit sitemap (URL from A-UNIT-1).
-  - Monitor: index coverage, crawl errors, top queries,
-    impression/click data.
-  - **Dependencies**: A-UNIT-1 sitemap shipped + live first.
+**Path A (locked 2026-07-03)**: clear the 3 blockers so we can call `webmasters.sitemaps.submit` from a script (idempotent, safe to re-run per tenant onboarding). Chosen over Path B (manual GSC UI submission) because it matches the "add tenants by row-insert" architecture — tenant #3 onboarding auto-runs the same submission code once the tenant's domain is verified.
+
+**A-UNIT-1 dependency**: CLEARED. Sitemap shipped + live (per earlier tracker entries in this doc). C-UNIT-2 is no longer blocked by A-UNIT-1 — the sitemap URL exists at `https://www.aily.ca/sitemap.xml`.
+
+#### Re-verified blocker states (this session, 2026-07-03)
+
+| # | Blocker | State | Evidence (commands run this session) |
+|---|---|---|---|
+| **1** | `googleapis` Node client not installed | **CONFIRMED-STILL-BLOCKED** | `grep -nE '"googleapis"|@googleapis/searchconsole|@googleapis/webmasters' package.json` → **0 matches**. `ls node_modules/googleapis/package.json` → **ABSENT**. Only `google-ads-api ^24.1.0` is present (Ads-only client, no Search Console support). |
+| **2** | OAuth refresh token lacks `webmasters` scope | **CONFIRMED-STILL-BLOCKED** | `grep -rn "googleapis.com/auth" scripts/ lib/ app/` → single hit at `scripts/get-refresh-token.js:36`: `const SCOPES = ['https://www.googleapis.com/auth/adwords']`. `adwords` scope only. **No `webmasters` or `webmasters.readonly` scope anywhere in the codebase.** Refresh tokens carry the scopes they were consented with — cannot be silently upgraded. |
+| **3** | aily.ca not verified as a GSC property (no code artifact) | **CONFIRMED-STILL-BLOCKED** | `grep -rn "google-site-verification|google.domain.verification" app/ components/ public/` → **0 matches**. `.env.local` Google keys are `GOOGLE_MAPS_API_KEY` + 6× `GOOGLE_ADS_*` only — no GSC/webmasters keys. No DNS TXT verification artifact in code. |
+
+#### Ordered clearance plan
+
+1. **[DEV] Install `googleapis` client — DONE (2026-07-04)** — `npm install googleapis` completed successfully. VERIFIED(this session): `require('googleapis/package.json').version` returned `173.0.0`; `package.json` line 23 now contains `"googleapis": "^173.0.0"`. Blocker 1 CLEARED. (Note: `npm audit` reports 19 pre-existing repo vulnerabilities — pre-existing, not from this install, not touched.)
+2. **[DEV] Consent-script scope-edit — DONE (2026-07-04). [OPS] Operator re-consent — EXTERNAL BLOCKER (pending)** —
+   - `[DEV]` — `scripts/get-refresh-token.js` line 36 patched to line 41: `const SCOPES = ['https://www.googleapis.com/auth/adwords', 'https://www.googleapis.com/auth/webmasters']`. VERIFIED(this session): grep `googleapis.com/auth` on the script confirms the new dual-scope array. Backup at `scripts/get-refresh-token.js.backup_20260704_081959` (6983 bytes preserved). `adwords` kept first so the existing Ads code path continues to work; `webmasters` (read/write) is what `sitemaps.submit` requires.
+   - `[OPS]` — Operator re-runs the consent flow in a browser. Existing OAuth client credentials (`GOOGLE_ADS_CLIENT_ID` + `GOOGLE_ADS_CLIENT_SECRET` from UNIT 55a, 2026-06-30) are reused — no new OAuth client needed; the consent screen must show the new `webmasters` scope alongside `adwords`. **Claimed, unverified until the operator completes the flow.**
+   - `[DEV]` — After operator completes consent: new refresh token saved to `.env.local` under a NEW key (proposed: `GOOGLE_WEBMASTERS_REFRESH_TOKEN`) so the existing `GOOGLE_ADS_REFRESH_TOKEN` (adwords-only) continues to work through the transition. No Ads regression window. Credentials write follows CLAUDE.md secrets rule (never echoed in chat; GUI/secure input only).
+   - **Nothing-Deferred posture**: **external-blocker deferral** on the operator re-consent step. Resume the moment the new token is saved to `.env.local`.
+3. **[OPS] Verify aily.ca in Google Search Console — EXTERNAL BLOCKER (pending)** — one-time, out-of-band. Operator adds a DNS TXT record at Google's instruction (or we can serve an HTML meta tag if they prefer). Approximately 15 minutes end-to-end (DNS propagation dependent).
+   - **Nothing-Deferred posture**: **external-blocker deferral** on the operator DNS/HTML verification step. Resume the moment verification lands.
+4. **[DEV] Ship `scripts/gsc-submit-sitemap.js` — PENDING** — reads `GOOGLE_WEBMASTERS_REFRESH_TOKEN` from `.env.local`, uses `googleapis` client (installed above) to call `webmasters.sitemaps.submit({ siteUrl: 'https://www.aily.ca/', feedpath: 'https://www.aily.ca/sitemap.xml' })`, verifies via `webmasters.sitemaps.get`. Idempotent, safe to re-run. Prints result + submission timestamp. Extendable to loop over `tenants.domain` for future multi-tenant onboarding without code change. Cannot run until steps 2 and 3 are cleared.
+
+#### `yourcondorealtor` removal — API status (verified this session)
+
+The Search Console API does NOT support removing/de-indexing another site you don't own. Google's "URL Removal Tool" is UI-only (no API endpoint since 2018). The `urlNotifications` API was **deprecated by Google in 2023** and no longer accepts new integrations. Current de-indexing paths that DO work:
+- **Rely on A-UNIT-1a's `X-Robots-Tag: noindex, nofollow`** on legacy hosts — SHIPPED. This IS the correct posture. Natural Google recrawl deindexes over weeks-to-months.
+- Optional acceleration: if aily's owner is also the registered owner of yourcondorealtor.ca (via `agents.custom_domain` = `yourcondorealtor.ca`, VERIFIED prior session as a System-1 legacy custom_domain agent site), that domain COULD be added as its own separately-verified GSC property. Its sitemap could then be programmatically set to empty. Even so, still relies on natural de-indexing after noindex + empty-sitemap combo. **Not urgent to script** — the noindex is already doing the work.
+
+#### Files touched this session (recon only, no state change)
+- `docs/W-MARKETING-TRACKER.md` (this Path-A recon append; backup at `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-PATH-A_20260703_172212`)
+- No code files touched. No `npm install`. No scope edit. No API call.
+
+**Awaiting**: operator DNS verification step for aily.ca + OAuth re-consent flow. When both clear, C-UNIT-2 Part 2 executes step 4 (build + smoke the submission script) autonomously.
 
 ### C-UNIT-3 — Conversion tracking (lead forms → GA4 + Ads) — STATUS: **READY** (Ads side BLOCKED by D-UNIT-2)
 
