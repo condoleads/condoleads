@@ -642,6 +642,28 @@ by improving crawl depth + rank flow. Ready to dispatch.
 - Step 4 (`scripts/gsc-submit-sitemap.js`) — still pending, unblocks when Blockers 2 and 3 both clear.
 
 **Backups added this dispatch**: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-INCIDENT_20260704_102851`. No code files touched this dispatch.
+
+#### Step 4 (part 1) — sites.list attempt (2026-07-04)
+
+**Blocker 2 CLEARED** (with narrow-scope proof, not from-first-principles). `GOOGLE_WEBMASTERS_REFRESH_TOKEN` was written to `.env.local` by operator's second consent-flow run (VERIFIED this session: `grep -c "^GOOGLE_WEBMASTERS_REFRESH_TOKEN=" .env.local` → 1; dotenv-loaded value fingerprint `1//03l...rNuU (len=103)` — matches Step-2c fingerprint format). New `scripts/gsc-sites-list.js` built the OAuth2 client from `GOOGLE_ADS_CLIENT_ID` + `GOOGLE_ADS_CLIENT_SECRET`, injected the webmasters refresh token, called `webmasters.sites.list()`. The request **authenticated successfully with Google's OAuth infrastructure** — proven by the fact that the response was a targeted **HTTP 403 from the Search Console API surface itself** (not a `401 invalid_token` or `invalid_grant` from the OAuth token endpoint). Google minted an access token from the refresh token, forwarded it to the API endpoint, and the API endpoint rejected for a different reason (see 2.5 below).
+
+**NEW EXTERNAL BLOCKER 2.5 — Search Console API not enabled in Cloud Project 678967923355**. VERIFIED(this session) via `sites.list` error message: `"Google Search Console API has not been used in project 678967923355 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/searchconsole.googleapis.com/overview?project=678967923355 then retry. If you enabled this API recently, wait a few minutes for the action to propagate to our systems and retry."` — HTTP 403, `code: 403`. The Cloud Project ID `678967923355` matches the `GOOGLE_ADS_CLIENT_ID` prefix (verified against `.env.local` line 98). Same Cloud Project that hosts the Google Ads OAuth client from UNIT 55a — the Ads API is enabled there, but Search Console API is a **separate per-API enable toggle** in the same project. This is a one-click Google Cloud Console UI action (operator visits the URL Google gave and clicks Enable), then ~1-few minute propagation delay.
+
+**Nothing-Deferred posture**: **external-blocker deferral** on the Cloud Console API-enable step. Resume `sites.list` retry the moment it clears.
+
+**Blocker 3 (aily.ca verified as GSC property)**: **UNKNOWN** — cannot check `webmasters.sites.list()` output until Blocker 2.5 clears. **Claimed, unverified**: aily.ca's verification state remains as it was pre-session; no observation this session confirms or refutes it.
+
+**Blocker table state after Step 4 (part 1)**:
+| # | Blocker | State | Type |
+|---|---|---|---|
+| 1 | `googleapis` npm package installed | CLEARED | code (Step 1) |
+| 2 | OAuth refresh token has `webmasters` scope + saved to `.env.local` | CLEARED | operator terminal (Step 2c auto-write) — VERIFIED via successful OAuth authentication in `sites.list` request |
+| **2.5 (NEW)** | Search Console API enabled in Cloud Project 678967923355 | **EXTERNAL BLOCKER (pending)** | operator Cloud Console UI action (~1 min + propagation) |
+| 3 | aily.ca verified as GSC property (URL-prefix `https://www.aily.ca/` OR domain `sc-domain:aily.ca`) | UNKNOWN (unblocked-check pending 2.5) | operator DNS TXT / HTML meta tag |
+
+**Files this dispatch**:
+- New: `scripts/gsc-sites-list.js` (read-only sites.list caller; prints `siteUrl` + `permissionLevel` only; guards against full-`err`-object dump because `err.response.config.headers` can echo the bearer access token; error path prints only `err.message` + `err.code` + `err.errors[]`).
+- Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-BLOCKER-2_5_20260704_105207`.
 3. **[OPS] Verify aily.ca in Google Search Console — EXTERNAL BLOCKER (pending)** — one-time, out-of-band. Operator adds a DNS TXT record at Google's instruction (or we can serve an HTML meta tag if they prefer). Approximately 15 minutes end-to-end (DNS propagation dependent).
    - **Nothing-Deferred posture**: **external-blocker deferral** on the operator DNS/HTML verification step. Resume the moment verification lands.
 4. **[DEV] Ship `scripts/gsc-submit-sitemap.js` — PENDING** — reads `GOOGLE_WEBMASTERS_REFRESH_TOKEN` from `.env.local`, uses `googleapis` client (installed above) to call `webmasters.sitemaps.submit({ siteUrl: 'https://www.aily.ca/', feedpath: 'https://www.aily.ca/sitemap.xml' })`, verifies via `webmasters.sitemaps.get`. Idempotent, safe to re-run. Prints result + submission timestamp. Extendable to loop over `tenants.domain` for future multi-tenant onboarding without code change. Cannot run until steps 2 and 3 are cleared.
