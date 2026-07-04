@@ -13,9 +13,15 @@
 // empty <urlset> — mirrors robots.ts Branch 1's "not a tenant" treatment.
 // Fires BEFORE any DB call.
 
+// A-UNIT-2 SEO-FLAG (2026-07-04): eligibility gate moved from
+// getCurrentTenantId() to isSeoEnabledTenant() — reads tenants.seo_enabled
+// so aily emits full urlset, walliam emits the existing empty-urlset
+// (matches the existing not-eligible response shape — HTTP 200 empty
+// <urlset/>). Non-SEO callers of getCurrentTenantId() unaffected.
+
 import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
-import { getCurrentTenantId } from '@/lib/utils/tenant-resolver'
+import { isSeoEnabledTenant } from '@/lib/utils/seo-scope'
 import { generatePropertySlug, generateHomePropertySlug } from '@/lib/utils/slugs'
 
 export const runtime = 'nodejs'
@@ -53,8 +59,12 @@ async function resolveRequestContext(): Promise<{ host: string; isTenant: boolea
   const rawHost = (headers().get('host') || '').toLowerCase()
   const cleanHost = rawHost.replace(/^www\./, '')
   if (OWNER_PROMO_HOSTS.has(cleanHost)) return { host: rawHost, isTenant: false }
-  const tenantId = await getCurrentTenantId()
-  return { host: rawHost, isTenant: !!tenantId }
+  // A-UNIT-2 SEO-FLAG: gate on tenants.seo_enabled, not raw tenant presence.
+  // Preserves the isTenant field name for minimal-diff; semantics now mean
+  // "eligible to emit sitemap contents" (aily=true, walliam=false, new
+  // tenants default false).
+  const eligible = await isSeoEnabledTenant()
+  return { host: rawHost, isTenant: eligible }
 }
 
 async function computeListingChunks(supabase: ReturnType<typeof serviceClient>): Promise<number> {

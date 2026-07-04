@@ -480,28 +480,282 @@ programmatic cross-links: building pages -> community + area, community
 -> its buildings + parent muni, etc. Complements A-UNIT-1's sitemap
 by improving crawl depth + rank flow. Ready to dispatch.
 
-### A-UNIT-2 — Structured data / JSON-LD `[DEV]` — STATUS: **READY** (HIGHEST SEO value per UNIT 61 R4)
+### A-UNIT-2 — Structured data / JSON-LD `[DEV]` — STATUS: **READY (recon corrected 2026-07-04)**
 
-  - **`RealEstateListing` / `SingleFamilyResidence` on property
-    pages** — THE single highest-ROI SEO move for a real-estate
-    site. Existing DB data covers every required field: address,
-    price, beds, baths, sqft, photos, transaction_type. ~80 lines
-    per page-type schema builder. Unlocks rich SERP results
-    (price + photo card in search). Apply to both
-    `app/property/[id]/page.tsx` (condo) and
-    `app/property/[id]/HomePropertyPage.tsx` (home).
-  - **`LocalBusiness` / `RealEstateAgent` on homepage** — site-
-    wide brand schema. Unlocks Knowledge Graph eligibility,
-    branded SERP enhancement.
-  - **`BreadcrumbList` on building / area / muni / community
-    pages** — pairs with Lane B-3 UI work; unlocks breadcrumb
-    display in SERP results.
-  - **Fix existing `BuildingSchema.tsx`**: uncomment + populate
-    `geo` lat/long block (commented out at lines 23-27;
-    `buildings.latitude`/`longitude` are populated in the DB).
-    ~3-line fix; richer building rich-results.
-  - **Dependencies**: independent of A-UNIT-1. Can ship in
-    parallel.
+**Prior stall reason (documented for the record)**: earlier recon assumed column names `living_area`, `list_date`, `year_built (on mls_listings)`, `virtual_tour_url`, `photos_count`. This session's `information_schema` probe VERIFIED all five are **ABSENT** on `mls_listings`. The line-500-501 claim "`buildings.latitude`/`longitude` are populated in the DB" is also FALSE — this session's probe VERIFIED **0.0% populated** (0/9835 rows). The geo block MUST stay commented-out / omitted; uncommenting it would emit `null` values (Rule Zero violation). See the RECON section below for the full corrected field map.
+
+Corrected scope (unchanged from the intent above, updated for real columns):
+  - **`RealEstateListing` on `app/property/[id]/page.tsx` (condo) + `app/property/[id]/HomePropertyPage.tsx` (home)** — real DB columns cover every required + most optional fields (see RECON below for exact map). ~80 lines per page-type schema builder. Nested `about: { @type: Apartment | House | SingleFamilyResidence }` chosen by `property_subtype` (a real column, 100% populated).
+  - **`LocalBusiness` / `RealEstateAgent` on homepage** — site-wide brand schema; unblocked pending recon of homepage's brand data source (deferred to A-UNIT-2 Part 2 recon).
+  - **`BreadcrumbList` on building / area / muni / community pages** — pairs with Lane B-3 UI work.
+  - **Fix `app/[slug]/components/BuildingSchema.tsx` Rule Zero violation** — line 19 hardcodes `"addressLocality": "Toronto"` for every building including non-Toronto ones. Real locality resolvable via `buildings → community_id → community.municipality_id → municipality.name` (VERIFIED join chain works this session for Mississauga, Oakville samples; NULL when `community_id` is null, which requires `canonical_address` fallback or omission). Also VERIFIED: **`buildings.latitude/longitude` = 0.0% populated (0/9835)** so the commented-out `geo` block at lines 23-27 must STAY commented — the earlier tracker line proposing an "uncomment + populate" 3-line fix was based on a falsified assumption. Same posture for `buildings.year_built`: VERIFIED **0.0% populated (0/9835)** — currently emitted at BuildingSchema line 29 → will emit `null`; gate with `year_built != null` or drop entirely.
+  - **Dependencies**: independent of A-UNIT-1. Can ship in parallel.
+
+#### A-UNIT-2 RECON — VERIFIED SCHEMA (2026-07-04)
+
+**Table backing listing pages**: `public.mls_listings` (VERIFIED via `information_schema.tables` — 4 candidate tables containing "listing"; `mls_listings` is the one referenced by `app/property/[id]/page.tsx:126` `.from('mls_listings').select('*').eq('id', params.id)`). **494 columns total** (TREB IDX schema).
+
+**Prior-assumed columns — ABSENT (VERIFIED this session)**:
+| Assumed name | Real name / source |
+|---|---|
+| `living_area` | **ABSENT** — use `calculated_sqft` (integer, 33.9% populated) or `living_area_range` (varchar range like "1100-1500", 93.6% populated) |
+| `list_date` | **ABSENT** — use `listing_contract_date` (date, 100.0% populated) or `on_market_date` |
+| `year_built` (on mls_listings) | **ABSENT on mls_listings** — column lives on `buildings.year_built` (integer, but **0.0% populated in DB** — do NOT emit) |
+| `virtual_tour_url` | **ABSENT** — skip; no clean alternate |
+| `photos_count` | **ABSENT** — count `media` rows (`variant_type='large'`) at render time |
+
+**REAL column → JSON-LD field map** (RealEstateListing / nested Residence/Apartment/House). All source columns VERIFIED via `information_schema` this session; population rates VERIFIED against 95,079 Active listings:
+
+| JSON-LD field | Real column(s) | Population (% Active) | Rule Zero posture |
+|---|---|---:|---|
+| `url` | `resolveCanonicalHost()` + `generatePropertySlug()` / `generateHomePropertySlug()` (both already imported by pages this session) | — | always emit |
+| `name` | title composed from `unparsed_address` + `unit_number` + `list_price` (same as `generateMetadata` already does) | — | always emit |
+| `datePosted` | `listing_contract_date` | **100.0%** | always emit |
+| `dateModified` | `modification_timestamp` | ~100% (unverified fill rate this session) | emit if non-null |
+| `description` | `public_remarks` where `length > 20` | 99.9% | emit if non-null + long enough |
+| `image[]` | `media.media_url` where `variant_type='large'` ordered by `order_number` | variable per listing (5-160+ rows typical) | emit array |
+| `offers.price` | `list_price` (bigint) | **100.0%** | always emit |
+| `offers.priceCurrency` | constant `"CAD"` (TREB is Canadian; not fabrication) | — | always emit |
+| `offers.availability` | derived from `standard_status`: `Active`→`InStock`, `Pending`→`SoldOut`, else omit | 100% populated | emit when in enum |
+| `offers.businessFunction` | derived from `transaction_type`: `For Sale`→`Sell`, `For Lease`→`LeaseOut` | — | emit when in enum |
+| `offers.validFrom` | `on_market_date` | — | emit if non-null |
+| `about.@type` | derived from `property_subtype` (100.0% populated): `Condo Apartment`→`Apartment`, `Detached`→`SingleFamilyResidence`, `Semi-Detached`/`Att/Row/Townhouse`→`House`, others→`Residence` | — | always resolves |
+| `about.name` | `buildings.building_name` (via join on `mls_listings.building_id`, condos only) | — | emit if joined + non-null |
+| `about.address.streetAddress` | derived from `street_number + street_name + street_suffix` (+ optional `unit_number`) | 100% | always emit |
+| `about.address.addressLocality` | `city` with regex strip `/\s+[CWE]\d{2}$/` (Toronto "C10"/"W08"/"E09" TREB zone codes verified in Q3 sample of prior recon — 15,000+ Toronto listings have this suffix) | **100.0%** | emit stripped city |
+| `about.address.addressRegion` | `state_or_province` | 100.0% | emit |
+| `about.address.postalCode` | `postal_code` | 100.0% | emit |
+| `about.address.addressCountry` | `country` | **84.5%** | **emit only when non-null** (NEVER default to "CA" for the 15.5%) |
+| `about.numberOfBedrooms` | `bedrooms_total` | 98.8% | emit if non-null |
+| `about.numberOfBathroomsTotal` | `bathrooms_total_integer` | 99.0% | emit if non-null |
+| `about.floorSize` | priority 1: `calculated_sqft` (33.9%, scalar) → `QuantitativeValue{value, unitCode:"FTK"}`; priority 2: `living_area_range` matching `/^(\d+)-(\d+)$/` (93.6% populated, ~90% of them parseable) → bounded `QuantitativeValue{minValue, maxValue, unitCode:"FTK"}`; else omit | ~95% combined | emit when parseable |
+| `geo` (GeoCoordinates) | `latitude`, `longitude` | **0.0%** | **NEVER emit** |
+| identifier / MLS number | `listing_key` (varchar, NOT NULL on every row) | 100% | emit as `additionalProperty` PropertyValue with `name:"MLS Listing ID"` |
+
+Fields skipped entirely (no clean data / column absent):
+- `broker` / `seller` (list_office_name is 100% populated but no clean map to RealEstateListing; skip in v1)
+- agent name (`list_agent_full_name` is 0.1% populated — nearly always null)
+- `tax_annual_amount` / `association_fee` (no clean schema.org mapping on RealEstateListing)
+- `year_built` (0.0% populated on buildings; not on mls_listings at all)
+
+**`mls_listings` has NO `tenant_id` column** — VERIFIED (`information_schema.columns WHERE column_name ILIKE '%tenant%'` → 0 rows). Listing data is data-plane tenant-neutral. Host classification (per SEO scope) happens at emitter level, not data level.
+
+**BuildingSchema.tsx Rule Zero violation — VERBATIM (VERIFIED this session)**:
+```
+17:      "@type": "PostalAddress",
+18:      "streetAddress": building.canonical_address,
+19:      "addressLocality": "Toronto",              ← hardcoded — fabricates locality for every non-Toronto building
+20:      "addressRegion": "ON",                     ← safe (TREB is Ontario board) but still hardcoded
+21:      "addressCountry": "CA"                     ← safe (TREB is Canadian) but still hardcoded
+```
+Buildings table VERIFIED (28 columns) has NO `city` / `state_or_province` column. Real locality path: **`buildings → community_id → communities.municipality_id → municipalities.name`**. VERIFIED this session:
+- `King Gardens Condos` (75 King St E, Mississauga) → community "Cooksville" → municipality **"Mississauga"** ✓
+- `Glen Abbey Village` (1450 Glen Abbey Gate, Oakville) → community "1007 - GA Glen Abbey" → municipality **"Oakville"** ✓
+- `The Palace Condos` (1270 Maple Crossing Blvd, Burlington) → `community_id=NULL` → join yields NULL. Fallback needed: parse from `canonical_address` (last non-empty comma-separated piece before postal, when postal absent take the tail token) OR omit.
+
+Buildings VERIFIED fill rates (this session, 9,835 rows total):
+- `latitude` non-null: **0/9835 (0.0%)** — geo block MUST stay commented
+- `year_built` non-null: **0/9835 (0.0%)** — currently emitted at BuildingSchema line 29 → will emit `null`; must be gated
+
+**Mount points + in-scope data (zero new DB queries required — all JSON-LD emitters receive already-fetched props)**:
+
+| Page | File | Data object already in scope | Notes |
+|---|---|---|---|
+| Condo listing | `app/property/[id]/page.tsx` | `listing` (SELECT * mls_listings), `building` (id, building_name, slug, canonical_address, development_id, community_id — line 137-139), `largePhotosResult` (media, media_url + order_number where variant_type='large', line 204-207) | Emitter receives listing + building + largePhotos + canonical URL. Zero new queries. |
+| Home listing | `app/property/[id]/HomePropertyPage.tsx` | `listing` (SELECT *), conditional joins to `communities` / `municipalities` / `treb_areas` (lines 145/150/155 — already fetch municipality name for homes), `media` (line 160-163) | Municipality-name path already available for homes — cleaner than regex for addressLocality on homes. |
+| Building | `app/[slug]/BuildingPage.tsx` | `building` (existing BuildingSchema mounted here, needs the addressLocality fix + geo/year_built gating) | Fix in place; consider a new join to communities/municipalities for real locality. |
+| Geo pages (Area/Community/Muni/Neighbourhood) | `app/[slug]/{AreaPage,CommunityPage,MunicipalityPage}.tsx` + `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` | Each has its own geo row + geo hierarchy in scope | Candidates for BreadcrumbList + Place @type; deferred to A-UNIT-2 Part 2 build. |
+
+**Host / tenant classification gate — REUSE existing pattern**:
+- `app/robots.ts:32-59` implements the canonical 3-branch classification: comprehensive tenant (via `getCurrentTenantId()` from `lib/utils/tenant-resolver.ts`) → SEO surface; owner promo (`condoleads.ca`, `01leads.com`) → not SEO; else (legacy agent, unknown) → not SEO.
+- JSON-LD emitters MUST call the SAME `getCurrentTenantId()` and return `null` when it returns null → no schema on legacy hosts, no schema on owner promo hosts. Zero brand branch (`if (host === 'aily.ca')` explicitly forbidden per CLAUDE.md:60). New comprehensive tenants inherit SEO surfaces (including JSON-LD) automatically via the same `tenants.domain` resolver — zero code change.
+
+**Existing JSON-LD inventory (grep `application/ld+json | @type | schema.org` on `app/` + `components/` `*.tsx`, this session)**:
+- **1 file only**: `app/[slug]/components/BuildingSchema.tsx` — emits `@type: ApartmentComplex` + nested `PostalAddress` (Toronto-hardcoded) + `AggregateOffer` + commented-out `GeoCoordinates`. No JSON-LD on listing pages, no LocalBusiness/RealEstateAgent, no BreadcrumbList anywhere. All A-UNIT-2 additions are net-new (except the BuildingSchema fix, which is in-place).
+
+**Multi-tenant scope note**: Per WALLIAM-REMOVAL RECON (this session): WALLiam is currently STILL a live active tenant row (`is_active=true`, UUID `b16e1039-...`). CLAUDE.md documents both aily and walliam as active tenants. Under the SEO-scope classification, walliam.ca IS a comprehensive-tenant host that WOULD receive JSON-LD if it hits an A-UNIT-2-instrumented page. If operator wants aily-only JSON-LD, that requires either (a) a new per-tenant SEO capability flag in `tenants` (separate schema change, not this unit) or (b) WALLiam tenant removal (also separate). Neither has landed. A-UNIT-2's default posture: emit for every comprehensive tenant (Branch 1 host) — same posture as sitemap/robots today. Documenting this so no build-dispatch surprises the operator.
+
+**Files this dispatch**: read-only recon only. Scripts left at `scripts/_recon-listing-cols.js` (safe — `BEGIN READ ONLY`). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-2-RECON_20260704_135942`. No code files touched. No SQL write. No commit made this dispatch (staging + commit pending operator go).
+
+#### SEO-FLAG PRE-BUILD RECON — Option A locked (2026-07-04)
+
+**Decision (option A)**: per-tenant `seo_enabled` flag on `tenants` so SEO is aily-only by verified config, not brand-hardcode, not WALLiam removal. Multi-tenant safe by construction — data-plane per-tenant capability, zero code-plane branch. New tenants opt into SEO by row-update, mirroring the existing precedent (`estimator_ai_enabled` per-tenant boolean toggle).
+
+##### 1. Tenants column set — REUSE vs ADD
+
+**VERIFIED this session** (`information_schema.columns WHERE table_schema='public' AND table_name='tenants'`): **65 columns total**. No `SELECT *` — table holds `anthropic_api_key` + `resend_api_key` per CLAUDE.md secrets rule.
+
+Existing capability-flag / config-shaped columns (VERIFIED via `column_name ILIKE` filter over seo/enabled/active/feature/capab/config/setting/flag + JSONB data_type):
+| Column | Type | Default | Semantic |
+|---|---|---|---|
+| `is_active` | boolean | `true` | Tenant lifecycle, NOT per-capability |
+| `estimator_ai_enabled` | boolean | `false` | Per-capability toggle (precedent) |
+| `estimator_nonai_enabled` | boolean | `true` | Per-capability toggle (precedent) |
+| `lifecycle_status` | text | `'active'` | Lifecycle state, NOT SEO |
+
+**No JSONB `config` / `features` / `settings` / `capabilities` column exists.** Nothing to read for a JSONB SEO key. VERIFIED via `data_type='jsonb'` filter — 0 hits on `tenants`.
+
+**Verdict: ADD** new column. Not reuse. **Proposed shape** (matches precedent of `estimator_ai_enabled`):
+```
+ALTER TABLE tenants
+  ADD COLUMN seo_enabled boolean NOT NULL DEFAULT false;
+UPDATE tenants SET seo_enabled = true WHERE id = 'e2619717-6401-4159-8d4c-d5f87651c8d6';  -- aily
+-- walliam (b16e1039-…) intentionally stays default false
+```
+Default `false` = fail-closed (new tenants don't accidentally enable SEO; aily is the ONE explicit `true`).
+
+##### 2. The classification helper — real function name(s) + shape
+
+**Primary classifier** — `lib/utils/tenant-resolver.ts::getCurrentTenantId()` (VERIFIED lines 38-73):
+- Resolves current request's tenant id by matching request host against `tenants.domain` (`.eq('is_active', true)`).
+- Dev/preview branch uses `DEV_TENANT_DOMAIN` env fallback.
+- Returns `tenants.id` string OR `null` (no matching tenant / error path).
+
+This is the general-purpose tenant resolver used by EVERY tenant-scoped feature — auth, admin, estimator, geo, property, brand, layout, AND SEO. NOT purpose-built for classification; the 3-branch classification lives in `app/robots.ts:32-59`, which layers on top of `getCurrentTenantId()`:
+- Branch 1 (comprehensive tenant) = `getCurrentTenantId()` returns non-null → SEO on
+- Branch 2 (owner promo `condoleads.ca` / `01leads.com`) = hardcoded set → SEO on (no sitemap)
+- Branch 3 (legacy agent / unknown) = fail-closed → SEO off
+
+**Second `getCurrentTenantId` variant** (VERIFIED): `lib/tenant/getCurrentTenantId.ts` — reads `x-tenant-id` request header (set by middleware). Same name, DIFFERENT implementation. Used by 4 admin-homes pages. NOT SEO-facing. **Not touched by this proposal.**
+
+**Middleware** (`middleware.ts`) applies `X-Robots-Tag: noindex, nofollow` on legacy hosts via its own Edge-runtime host predicate (NOT `getCurrentTenantId`). Independent of the SEO flag. **Not touched by this proposal.**
+
+##### 3. Consumer inventory + regression surface
+
+**~30+ callers of `getCurrentTenantId()` this session** (grep VERIFIED). Classified:
+
+**SEO-facing (3 files — the target consumers of the new flag)**:
+| File | Line | Current gate |
+|---|---|---|
+| `app/robots.ts` | 47 | `tenantId = await getCurrentTenantId()` → Allow + sitemap or Disallow |
+| `app/sitemap.xml/route.ts` | 48 | Same gate — 404 if null, else emit sitemap-index |
+| `app/sitemap/[id]/route.ts` | 56 | Same gate — 404 if null, else emit sitemap children |
+
+**Non-SEO callers — MUST stay unchanged for walliam** (regression surface):
+| Category | Files (count) |
+|---|---|
+| Auth / form actions | `app/actions/{joinTenant,submitLeadFromForm,submitActivityFromForm,updateLeadEnrichmentFromForm}.ts` (4) |
+| Admin dashboards | `admin-homes/{agents,leads,leads/[id],users,territory}/page.tsx` (5) — plus the 4 that use the second `lib/tenant/getCurrentTenantId` header-reader variant |
+| Estimators | `app/estimator/actions/estimate-{condo-rent,condo-sale,home-rent,home-sale,rent,sale}.ts` (6) |
+| Layout | `app/layout.tsx` (1) — RootLayout uses it for wordmark_style + tenant class |
+| Property pages | `app/property/[id]/page.tsx`, `HomePropertyPage.tsx`, `[slug]/PropertyPageContent.tsx` (3) |
+| Geo pages | `[slug]/{Building,Area,Community,Municipality}Page.tsx` + `comprehensive-site/toronto/[neighbourhood]/page.tsx` (5) |
+| Total non-SEO callers | ~24 |
+
+**Placement decision — LOCKED to EMITTER-LEVEL**. Adding `.eq('seo_enabled', true)` inside `getCurrentTenantId()` would make it return `null` for walliam, cross-tenant-regressing all ~24 non-SEO features listed above. That is not acceptable per the no-regressions rule.
+
+Correct pattern:
+- **NEW helper `lib/utils/seo-scope.ts::isSeoEnabledTenant(): Promise<boolean>`** — calls `getCurrentTenantId()` (unchanged), then queries `tenants.seo_enabled` for that id via a new explicit-column-allow-list `.select('seo_enabled')` predicate. Returns:
+  - `false` on null tenant
+  - `false` on `seo_enabled=false`
+  - `false` on any error (fail-closed, matches robots.ts Branch 3)
+  - `true` only on `seo_enabled=true`
+- **3 file switches** (build dispatch, NOT this recon): `app/robots.ts`, `app/sitemap.xml/route.ts`, `app/sitemap/[id]/route.ts` — replace their `getCurrentTenantId()` SEO-gate with `isSeoEnabledTenant()`. Non-SEO callers of `getCurrentTenantId()` UNCHANGED.
+
+##### 4. Regression posture per tenant
+
+| Tenant | Post-migration behavior |
+|---|---|
+| **aily** (`seo_enabled=true`) | All 3 SEO surfaces continue emitting BYTE-IDENTICAL output to today (robots Allow + sitemap pointer, `/sitemap.xml` serves the index, `/sitemap/<id>` serves children). All non-SEO surfaces UNCHANGED. |
+| **walliam** (`seo_enabled=false`, default) | `walliam.ca/robots.txt` → Disallow (was Allow + sitemap). `walliam.ca/sitemap.xml` → 404 (was 200 with index). `walliam.ca/sitemap/<id>` → 404 (was 200 with children). All non-SEO surfaces — auth, admin-homes, estimator, layout, property, geo, brand — **BYTE-IDENTICAL** to today. |
+| **New tenants** (default `seo_enabled=false`) | SEO off by default (fail-closed). Opt-in via `UPDATE tenants SET seo_enabled = true WHERE id = ...`. Matches robots.ts Branch 3 fail-closed posture. |
+
+##### 5. A-UNIT-2 JSON-LD gate — same flag
+
+A-UNIT-2 JSON-LD emitters (per the A-UNIT-2 RECON above) will call the same new `isSeoEnabledTenant()` helper, not `getCurrentTenantId()` directly. Result: JSON-LD emits on aily, is silently absent on walliam (which is exactly the Option A intent), auto-gated for future tenants by the same flag.
+
+##### 6. Migration + build plan (build dispatch, NOT this recon)
+
+Ordered, each step with a backup + smoke:
+1. **Migration** — `ALTER TABLE tenants ADD COLUMN seo_enabled boolean NOT NULL DEFAULT false;` + `UPDATE tenants SET seo_enabled = true WHERE id = 'e2619717-…'`. Read-only pre-check + `BEGIN/ROLLBACK` smoke, then apply-runner with rollback snapshot per CLAUDE.md pattern.
+2. **Helper** — write `lib/utils/seo-scope.ts::isSeoEnabledTenant()` with explicit column allow-list and fail-closed error path.
+3. **Switch the 3 SEO consumers** — `app/robots.ts`, `app/sitemap.xml/route.ts`, `app/sitemap/[id]/route.ts`.
+4. **Smoke both tenants** — aily.ca (all 3 surfaces unchanged from today), walliam.ca (robots swaps to Disallow, both sitemap URLs 404). Local dev via `DEV_TENANT_DOMAIN` swap; then production verify post-push.
+5. **Ship A-UNIT-2 JSON-LD** with the same `isSeoEnabledTenant()` gate.
+
+##### 7. Files this dispatch
+
+Read-only recon. Script left at `scripts/_recon-tenants-cols.js` (safe — `BEGIN READ ONLY`, no `SELECT *`, capability-flag ILIKE filter only). Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_SEO-FLAG-RECON_20260704_144850`. **No code files touched. No SQL write. No commit.** Migration + build follow in the next dispatch.
+
+#### SEO-FLAG BUILD — SHIPPED (2026-07-04)
+
+**Migration APPLIED** — VERIFIED post-verify inside the same transaction before COMMIT (`scripts/apply-seo-flag.js`, transactional; ROLLBACK on any pre-check or post-verify mismatch):
+
+Post-verify output (VERBATIM, this session):
+```
+=== POST-VERIFY (SEPARATE query — mirrors Supabase editor semantics) ===
+  rows: 2
+    id=e2619717-6401-4159-8d4c-d5f87651c8d6  domain=aily.ca      seo_enabled=true
+    id=b16e1039-38ed-43d7-bbc5-dd02bb651bc9  domain=walliam.ca   seo_enabled=false
+=== COMMIT ===
+  migration applied: aily.seo_enabled=true, walliam.seo_enabled=false (default)
+```
+Pre-migration snapshot: `docs/snapshots/tenants_pre_seo_flag_20260704_145253.txt`. Rollback if needed: `ALTER TABLE public.tenants DROP COLUMN IF EXISTS seo_enabled;`.
+
+**New helper**: `lib/utils/seo-scope.ts` exports `isSeoEnabledTenant(): Promise<boolean>`. Calls `getCurrentTenantId()` (UNCHANGED), reads `tenants.seo_enabled` for the resolved tenant via explicit-column-allow-list `.select('seo_enabled')`. Fail-closed on every error path (null tenant, DB error, missing row, seo_enabled=false/null). VERIFIED TSC clean.
+
+**3 SEO consumers SWITCHED** (backups timestamped, per file):
+- `app/robots.ts` — replaced `getCurrentTenantId()` gate with `await isSeoEnabledTenant()`. Branch structure unchanged: Owner-promo above the SEO gate stays (kept crawlable), Branch 1 SEO-eligible → Allow + sitemap, Branch 3 fail-closed → Disallow. Backup `app/robots.ts.backup_SEO-FLAG_20260704_145540`.
+- `app/sitemap.xml/route.ts` — same swap inside `resolveRequestContext()`. `isTenant` field name preserved for minimal diff; semantics now "eligible to emit sitemap contents". Backup `app/sitemap.xml/route.ts.backup_SEO-FLAG_20260704_145540`.
+- `app/sitemap/[id]/route.ts` — same swap. Backup `app/sitemap/[id]/route.ts.backup_SEO-FLAG_20260704_145540`.
+
+VERIFIED TSC clean on all 4 file edits (helper + 3 consumers).
+
+**Response-shape note (operator dispatch parenthetical rule)**: existing sitemap routes emit **HTTP 200 with empty XML** for non-eligible hosts (`<sitemapindex/>` for `sitemap.xml`, `<urlset/>` for `sitemap/[id]`) — NOT 404. Operator's dispatch text said "sitemap routes return 404" but the accompanying parenthetical "read what each currently returns for a non-comprehensive host and reuse that exact response shape, do not invent a new one" overrides. Walliam now matches the existing not-eligible shape (empty XML at 200). If actual 404 is preferred, a follow-up dispatch can change the empty-response shape.
+
+**Local smoke — VERBATIM, this session** (`npm run dev` on `http://localhost:3000` with `DEV_TENANT_DOMAIN` swap):
+
+`DEV_TENANT_DOMAIN=aily.ca` (Host: aily.ca):
+```
+/robots.txt      HTTP 200
+                 User-Agent: *
+                 Allow: /
+                 Sitemap: https://aily.ca/sitemap.xml     ← Branch 1 preserved, BYTE-IDENTICAL to today
+
+/sitemap.xml     HTTP 200  size=354  application/xml
+                 <sitemapindex> with 4 children (sitemap/0..sitemap/3) — same as today's production shape
+                 (listing chunks 0-1, buildings=2, geo=3)
+
+/sitemap/0       HTTP 200  size=6.24 MB  application/xml
+                 <urlset> with 50,000 URL entries — matches LISTINGS_CHUNK_SIZE, matches today
+```
+
+`DEV_TENANT_DOMAIN=walliam.ca` (Host: walliam.ca):
+```
+/robots.txt      HTTP 200
+                 User-Agent: *
+                 Disallow: /                              ← Branch 3 — was Branch 1 pre-change
+
+/sitemap.xml     HTTP 200  size=107  application/xml
+                 <sitemapindex/> (empty — matches existing not-eligible shape)
+
+/sitemap/0       HTTP 200  size=110  application/xml
+                 <urlset/> (empty — matches existing not-eligible shape)
+```
+
+**Non-SEO regression check — walliam** (surfaces that call `getCurrentTenantId()` for reasons other than SEO):
+- BuildingPage `/5750-tosca-dr-townhouse-condos-3250-bentley-mississauga` on `Host: walliam.ca` → HTTP 200, 308 KB, A-UNIT-4 insight markers present (Market Overview ×2, Market Insights ×2, Concession pattern ×2, Median PSF vs parent ×2). Tenant-scoped features render normally.
+- Comprehensive homepage `/` on `Host: walliam.ca` → HTTP 200, 156 KB, walliam brand markers present (`WALLiam` ×6). Tenant branding intact.
+
+Zero non-SEO regression. `getCurrentTenantId()` file (`lib/utils/tenant-resolver.ts`) UNCHANGED — the shared resolver keeps serving auth, admin, estimator, layout, property, geo, brand consumers for walliam identically to today.
+
+**Blocker/regression table**:
+| Surface | Aily | Walliam |
+|---|---|---|
+| robots.txt | Allow + sitemap (unchanged) | Disallow (was Allow + sitemap) |
+| sitemap.xml | Full index (unchanged) | Empty index at 200 |
+| sitemap/[id] | Full urlset (unchanged) | Empty urlset at 200 |
+| BuildingPage / geo pages / property pages | unchanged | unchanged (VERIFIED) |
+| Layout / brand / estimator / admin-homes / auth | unchanged | unchanged (getCurrentTenantId untouched) |
+
+**Files this dispatch**:
+- Migration: `scripts/apply-seo-flag.js` (transactional runner; ROLLBACK on mismatch)
+- Helper: `lib/utils/seo-scope.ts` (new; `isSeoEnabledTenant()`)
+- Consumers: `app/robots.ts`, `app/sitemap.xml/route.ts`, `app/sitemap/[id]/route.ts` (each with `.backup_SEO-FLAG_20260704_145540`)
+- Pre-migration snapshot: `docs/snapshots/tenants_pre_seo_flag_20260704_145253.txt`
+- Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_SEO-FLAG-SHIPPED_20260704_150417`.
+
+**Ready for A-UNIT-2 JSON-LD build** — emitters gate on the same `isSeoEnabledTenant()` helper. Migration cannot roll back silently (DDL COMMIT is real); rollback SQL documented above. Push held for operator go.
 
 ### A-UNIT-3 — On-page basics `[DEV]` — STATUS: **READY**
 

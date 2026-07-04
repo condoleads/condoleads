@@ -1,0 +1,18 @@
+◇ injected env (44) from .env.local // tip: ⌁ auth for agents [www.vestauth.com]
+# tenants pre-migration snapshot for SEO-FLAG (explicit column allow-list)
+# taken: 2026-07-04T18:52:54.283Z
+# columns: id, domain, name, is_active
+
+rows: 2
+  id=e2619717-6401-4159-8d4c-d5f87651c8d6  domain=aily.ca  name=aily  is_active=true
+  id=b16e1039-38ed-43d7-bbc5-dd02bb651bc9  domain=walliam.ca  name=WALLiam  is_active=true
+
+# also snapshot columns matching %enabled (any pre-existing capability toggles)
+  {"id":"e2619717-6401-4159-8d4c-d5f87651c8d6","domain":"aily.ca","estimator_ai_enabled":false,"estimator_nonai_enabled":true,"is_active":true}
+  {"id":"b16e1039-38ed-43d7-bbc5-dd02bb651bc9","domain":"walliam.ca","estimator_ai_enabled":false,"estimator_nonai_enabled":true,"is_active":true}
+
+# EXPECTED post-migration state:
+#   aily    (e2619717-6401-4159-8d4c-d5f87651c8d6): seo_enabled = true
+#   walliam (b16e1039-38ed-43d7-bbc5-dd02bb651bc9): seo_enabled = false (DEFAULT)
+# ROLLBACK if not:
+#   ALTER TABLE public.tenants DROP COLUMN IF EXISTS seo_enabled;
