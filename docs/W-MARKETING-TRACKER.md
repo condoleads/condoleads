@@ -701,6 +701,45 @@ Recommended: **domain property (`sc-domain:aily.ca`) via DNS TXT** — catches a
 | 4 | `scripts/gsc-submit-sitemap.js` shipped | PENDING (blocked on 3) | code |
 
 **No code files touched this dispatch**. Tracker append only. Backup: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-SITES-LIST-EMPTY_20260704_110130`.
+
+#### Step 4 (part 1, final re-run) — Blocker 3 CLEARED (2026-07-04)
+
+**Blocker 3 CLEARED**. Operator completed aily.ca ownership via the Domain-name-provider auto-verify path in Search Console (browser-side proof: operator screenshot showed "Ownership auto verified"). Re-ran `node scripts/gsc-sites-list.js` to confirm the token now sees the new property (browser proof is NOT the same as API-token-visible proof — required a fresh sites.list to confirm).
+
+**Sites.list output VERBATIM** (VERIFIED this session):
+```
+=== Search Console sites.list ===
+  entries: 1
+  siteUrl="sc-domain:aily.ca"  permissionLevel="siteOwner"
+```
+
+- **Property form**: `sc-domain:aily.ca` (domain property). Consistent with DNS-name-provider verification path — that path creates ONLY the `sc-domain:` form, not URL-prefix. URL-prefix form (`https://www.aily.ca/` or `https://aily.ca/`) remains absent, as expected. The domain property covers all www/apex/subdomain + protocol variants under aily.ca in a single property, matching this repo's canonical-host architecture (`resolveCanonicalHost` normalizes www/apex).
+- **`permissionLevel`**: `siteOwner` — top-level permission. Permits `sitemaps.submit`, `sitemaps.get`, `sitemaps.list`, `sitemaps.delete`, `searchanalytics.query`, `urlInspection.index.inspect`. `siteFullUser` would also permit sitemap submit; `siteRestrictedUser` would not — we have the strongest tier.
+
+**Exact `siteUrl` string for `sitemaps.submit`** — VERIFIED(this session):
+```
+sc-domain:aily.ca
+```
+
+Step 4 part 2 (`scripts/gsc-submit-sitemap.js`) is now **unblocked**. Anticipated call shape (build dispatch will confirm the exact googleapis method signature and args):
+```
+webmasters.sitemaps.submit({
+  siteUrl: 'sc-domain:aily.ca',
+  feedpath: 'https://www.aily.ca/sitemap.xml'
+})
+```
+Followed by `webmasters.sitemaps.get({ siteUrl, feedpath })` to verify submission landed. Idempotent — safe to re-run.
+
+**Blocker table state after Step 4 (part 1, final re-run)**:
+| # | Blocker | State | Type |
+|---|---|---|---|
+| 1 | `googleapis` npm package installed | CLEARED | code (Step 1) |
+| 2 | OAuth refresh token has `webmasters` scope + saved to `.env.local` | CLEARED | Step 2c auto-write + Step 4 pt1 auth proof |
+| 2.5 | Search Console API enabled in Cloud Project 678967923355 | CLEARED | operator Cloud Console + Step 4 pt1 re-run HTTP 200 |
+| 3 | aily.ca verified as GSC property (domain or URL-prefix) | **CLEARED** — VERIFIED via API: `sc-domain:aily.ca` visible with `siteOwner` | operator DNS-provider auto-verify + this-session API confirmation |
+| 4 | `scripts/gsc-submit-sitemap.js` shipped + smoke-verified | **UNBLOCKED, PENDING BUILD** | code (next dispatch) |
+
+**No code files touched this dispatch**. Tracker append only. Backup: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-BLOCKER-3-CLEARED_20260704_114046`.
 3. **[OPS] Verify aily.ca in Google Search Console — EXTERNAL BLOCKER (pending)** — one-time, out-of-band. Operator adds a DNS TXT record at Google's instruction (or we can serve an HTML meta tag if they prefer). Approximately 15 minutes end-to-end (DNS propagation dependent).
    - **Nothing-Deferred posture**: **external-blocker deferral** on the operator DNS/HTML verification step. Resume the moment verification lands.
 4. **[DEV] Ship `scripts/gsc-submit-sitemap.js` — PENDING** — reads `GOOGLE_WEBMASTERS_REFRESH_TOKEN` from `.env.local`, uses `googleapis` client (installed above) to call `webmasters.sitemaps.submit({ siteUrl: 'https://www.aily.ca/', feedpath: 'https://www.aily.ca/sitemap.xml' })`, verifies via `webmasters.sitemaps.get`. Idempotent, safe to re-run. Prints result + submission timestamp. Extendable to loop over `tenants.domain` for future multi-tenant onboarding without code change. Cannot run until steps 2 and 3 are cleared.
