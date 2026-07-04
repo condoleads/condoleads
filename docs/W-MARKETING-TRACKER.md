@@ -680,6 +680,409 @@ Per-field DB-vs-render spot-check (VERIFIED matches):
 
 **Next**: Phase 2 (BreadcrumbList + geo-page `Place`/`LocalBusiness` schema) is the next dispatch. Same `isSeoEnabledTenant()` gate. Aily-only emission by tenant config, walliam absent by config, both without code branches.
 
+#### A-UNIT-2 PHASE 2 RECON — BreadcrumbList + geo Place schema (2026-07-04)
+
+Read-only recon. Establishes: which pages have parent-chain data ALREADY in scope for a full breadcrumb (name + slug per level) and which pages need extra joins; how URLs are constructed (must match sitemap canonicals); existing breadcrumb inventory (avoid duplicate emission); Place-schema field availability per geo table.
+
+##### 0. Push state — 7c6c3c7 on origin/main (0 ahead)
+
+`git log origin/main..HEAD` returned 0 rows (VERIFIED this session). HEAD and origin/main both at `7c6c3c7 W-MARKETING A-UNIT-2 PHASE 1: BuildingSchema Toronto fix + RealEstateListing JSON-LD on condo pages`. Working tree has pre-existing untracked artifacts (parity probes, dev outputs) — none from this dispatch.
+
+##### 1. Breadcrumb parent-chain per page-type — in-scope data map
+
+**Legend**: ✓ = in scope with name+slug (no new query); ⚠ = ID in scope (name+slug requires new join); ✗ = absent.
+
+**Condo listing** — `app/property/[id]/page.tsx`:
+| Level | In scope? | Source |
+|---|---|---|
+| Area | ⚠ | `listing.area_id` (from SELECT * @ line 126), 99.9% populated. **NAME+SLUG NOT FETCHED** — needs `SELECT id,name,slug FROM treb_areas WHERE id=listing.area_id`. |
+| Municipality | ⚠ | `listing.municipality_id` 99.9% populated. **NAME+SLUG NOT FETCHED** — needs `SELECT id,name,slug FROM municipalities WHERE id=listing.municipality_id`. |
+| Community | ⚠ | `listing.community_id` 96.2% populated. **NAME+SLUG NOT FETCHED** — needs `SELECT id,name,slug FROM communities WHERE id=listing.community_id`. |
+| Development | ✓ | Already fetched conditionally at line 146-147 as `{id,name,slug}`. |
+| Building | ✓ | Already fetched at line 138-139: `{id, building_name, slug, canonical_address, development_id, community_id}`. |
+| Listing (self) | ✓ | canonicalUrl already resolved in Phase 1 (line 401-409 in the current page.tsx). Label = unit number / short address. |
+
+Chain to emit (Phase 2 build target): Home > Area > Muni > Community > (Development?) > Building > Unit. Requires 3 new lookups (area/muni/community by ID) OR a single Promise.all pattern — copy the HomePropertyPage pattern (verified below).
+
+**Home listing** — `app/property/[id]/HomePropertyPage.tsx`:
+| Level | In scope? | Source |
+|---|---|---|
+| Area | ✓ | `area = areaResult.data` @ line 218, fetched via `.from('treb_areas').select('id,name,slug').eq('id', listing.area_id).single()` @ line 155. |
+| Municipality | ✓ | `municipality = municipalityResult.data` @ line 217, fetched via `.from('municipalities').select('id,name,slug,area_id').eq('id', listing.municipality_id).single()` @ line 150. |
+| Community | ✓ | `community = communityResult.data` @ line 216, fetched via `.from('communities').select('id,name,slug,municipality_id').eq('id', listing.community_id).single()` @ line 145. |
+| Listing (self) | ✓ | canonicalUrl resolved similarly. |
+
+**Full chain already in scope** — Home > Area > Muni > Community > Address. VERIFIED at `HomePropertyPageClient.tsx:102-107` — the existing visual `<Breadcrumb>` already emits these 4 levels. BreadcrumbList JSON-LD can reuse the same in-scope objects.
+
+**BuildingPage** — `app/[slug]/BuildingPage.tsx`:
+| Level | In scope? | Source |
+|---|---|---|
+| Area | ⚠ | Must chain from `building.community_id → communities.municipality_id → municipalities.area_id → treb_areas.name/slug`. Extends the Phase 1 IIFE at line 431-446. |
+| Municipality | ⚠ | Phase 1 IIFE at line 431-446 already fetches `municipality.name` from the chain, but NOT `municipality.slug`. Extend `.select('id,name,slug,area_id')`. |
+| Community | ⚠ | Phase 1 IIFE only fetches `communities.municipality_id`. Extend to `.select('id,name,slug,municipality_id')`. |
+| Development | ✓ | Conditional, `{id,name,slug}` at line 300-302. |
+| Building (self) | ✓ | `building.slug` + `building.building_name` in scope. |
+
+Existing visual breadcrumb at `BuildingPage.tsx:415-418` currently emits `[development?, building_name]` — missing area/muni/community. Phase 2 build extends the same 2-step IIFE (or replaces with one Promise.all) to also fetch area/muni slugs.
+
+**AreaPage** — `app/[slug]/AreaPage.tsx`:
+| Level | In scope? | Source |
+|---|---|---|
+| Area (self, top) | ✓ | Props: `area = {id,name,slug}` @ line 34-35. |
+
+No parent. Chain: Home > Area.
+
+**CommunityPage** — `app/[slug]/CommunityPage.tsx`:
+| Level | In scope? | Source |
+|---|---|---|
+| Area | ⚠ | `municipality.area_id` @ line 62 (`SELECT id,name,slug,area_id FROM municipalities`). **NAME+SLUG NOT FETCHED** — needs `SELECT id,name,slug FROM treb_areas WHERE id=municipality.area_id`. |
+| Municipality | ✓ | `municipalityResult.data` @ line 62 = `{id,name,slug,area_id}`. |
+| Community (self) | ✓ | Props: `community = {id,name,slug,municipality_id}`. |
+
+Chain: Home > Area (needs 1 extra join) > Municipality > Community.
+
+**MunicipalityPage** — `app/[slug]/MunicipalityPage.tsx`:
+| Level | In scope? | Source |
+|---|---|---|
+| Area | ✓ | `areaResult.data` @ line 65 = `{id,name,slug}` — full parent already fetched. |
+| Municipality (self) | ✓ | Props: `municipality = {id,name,slug,area_id}`. |
+
+**Full chain already in scope** — Home > Area > Municipality. Zero new queries.
+
+**Neighbourhood** — `app/comprehensive-site/toronto/[neighbourhood]/page.tsx`:
+| Level | In scope? | Source |
+|---|---|---|
+| Municipalities (0..N) | ✓ | `municipalities = mappings.map(m => m.municipalities)` @ line 76 = `{id,name,slug}[]` fetched via `municipality_neighbourhoods` M2M embed at line 63-66. |
+| Neighbourhood (self) | ✓ | `neighbourhood = {id,name,slug}` @ line 54-55. |
+
+⚠ **Neighbourhood→municipality is MANY-TO-MANY** (verified via `municipality_neighbourhoods` table). Ambiguous parent for a single breadcrumb chain. Options: (a) pick the first municipality (deterministic ordering by table), (b) omit the municipality level and use `Home > Toronto (constant) > Neighbourhood`. Note: `neighbourhoods.area_id` column exists (verified — 5 columns including area_id) BUT is NOT fetched in the current page code; a 1-1 area link is available if fetched.
+
+##### 2. URL construction patterns — canonical alignment
+
+Each page-type's canonical alternate emits VERIFIED this session (via grep on `canonical: \`https://` in each page file). Breadcrumb `item` URLs will match these exactly so BreadcrumbList JSON-LD aligns with sitemap:
+
+| Level | Canonical URL pattern | Source column |
+|---|---|---|
+| Area | `https://{domain}/${area.slug}` (`AreaPage.tsx:51`) | `treb_areas.slug` |
+| Municipality | `https://{domain}/${municipality.slug}` (`MunicipalityPage.tsx:45`) | `municipalities.slug` |
+| Community | `https://{domain}/${community.slug}` (`CommunityPage.tsx:43`) | `communities.slug` |
+| Development | `https://{domain}/${development.slug}` (`DevelopmentPage.tsx:119`) | `developments.slug` |
+| Building | `https://{host}/${params.slug}` (`BuildingPage.tsx:264`) | `buildings.slug` |
+| Neighbourhood | `https://{domain}/toronto/${slug}` (`.../[neighbourhood]/page.tsx:45`) | `neighbourhoods.slug`, prefixed `/toronto/` |
+| Condo listing | `https://{domain}${generatePropertySlug(listing)}` (`property/[id]/page.tsx:117`) | Slug helper |
+| Home listing | `https://{domain}${generateHomePropertySlug(listing)}` (`HomePropertyPage.tsx:79`) | Slug helper |
+
+**Sitemap alignment**: matches — the sitemap route handlers use the same slug + PGRST rpc'd paths (VERIFIED in `app/sitemap/[id]/route.ts`, lines 118-131 for listings, 149 for buildings, 168-176 for geo — all use per-row slugs + the same `/${slug}` or `/toronto/${slug}` conventions).
+
+##### 3. Existing breadcrumbs — visual only, ZERO JSON-LD
+
+- **`components/Breadcrumb.tsx`** (VERIFIED — 36 lines): visual-only nav/ol/li component. Prepends a "Home" link. Takes `items: {label, href?}[]`. No JSON-LD emission.
+- **`grep -rn "BreadcrumbList" app/ components/`** (VERIFIED this session): **0 hits**. No BreadcrumbList JSON-LD anywhere in the codebase — Phase 2 emitter is net-new (no duplicate risk).
+- Existing `<Breadcrumb>` usage:
+  - `BuildingPage.tsx:415-418` — items: `[development?, building_name]` (missing area/muni/community)
+  - `DevelopmentPage.tsx:225` — items: `[development.name]` (top-level only)
+  - `PropertyPageClient.tsx:105-109` — items: `[development?, building?, "Unit N"]` (missing area/muni/community)
+  - `HomePropertyPageClient.tsx:102-107` — items: `[area?, municipality?, community?, shortAddress]` — **FULL 4-LEVEL CHAIN ALREADY BUILT**
+  - `AreaPage`, `CommunityPage`, `MunicipalityPage`, Neighbourhood page — **NO visual breadcrumb** currently
+- Recommended posture for Phase 2:
+  - BreadcrumbList JSON-LD emitter (new file, gated on `isSeoEnabledTenant()`) mounted on each page.
+  - Optional: also add the visual `<Breadcrumb>` component to the 4 geo pages currently missing it (`Area/Community/Muni/Neighbourhood`), passing the same `items` prop as the JSON-LD emitter. Keeps visual + JSON-LD consistent, single source of truth per page. Operator to decide scope.
+
+##### 4. Geo-page Place schema — field availability + @type map
+
+VERIFIED column list per geo table (this session):
+
+| Table | Columns | Place-relevant | @type recommendation |
+|---|---|---|---|
+| `treb_areas` | id, name, slug, code, display_order, is_active, homes_count, buildings_discovered/synced, discovery_status, last_discovery_at, created_at, updated_at (13 cols) | `name`, `slug` | `AdministrativeArea` (schema.org: region within a country/state) |
+| `municipalities` | + `area_id` (14 cols) | `name`, `slug`, `area_id` (for containedInPlace) | `City` |
+| `communities` | + `municipality_id` (13 cols) | `name`, `slug`, `municipality_id` | `Place` (generic — `Neighborhood` is US-centric; `Place` is safer) |
+| `neighbourhoods` | id, name, slug, display_order, is_active, area_id, created_at, updated_at (8 cols) | `name`, `slug`, `area_id` | `Place` (same rationale) |
+
+**Fields EMITTED for Place @type** (all levels):
+- `@type` per-table from the map above
+- `name` from `name` column ✓
+- `url` from canonical URL pattern (§2)
+- `containedInPlace` — recursive nested Place. Chain up via `area_id`/`municipality_id` FKs (fetch parent name+slug if not already in scope; MunicipalityPage has parent, AreaPage has no parent, others need extra joins per §1)
+
+**Fields OMITTED entirely** (no source column):
+- `geo` (GeoCoordinates) — NO lat/lng column on ANY geo table (verified). Never emit. Matches Phase 1's mls_listings/buildings 0% posture.
+- `address` (PostalAddress) — NO street/postal columns on geo tables. Never emit.
+- `description` — NO description column. Never emit.
+
+`LocalBusiness` on the homepage (mentioned in operator's original A-UNIT-2 scope): NOT in this Phase 2 recon — homepage brand-data recon is a separate follow-up (operator flagged in the earlier A-UNIT-2 recon as "Part 2"). Not addressed here.
+
+##### 5. Phase 2 BUILD implications (for the next dispatch)
+
+- **BreadcrumbList JSON-LD emitter** (new file, e.g. `components/BreadcrumbListSchema.tsx`): gated on `isSeoEnabledTenant()`. Takes `items: {name, url}[]` where url is the FULL canonical URL for each level. Emits `<script type="application/ld+json">` with `@type: BreadcrumbList` and `itemListElement: [{@type:ListItem, position, name, item(url)}]` per schema.org spec.
+- **Data availability by page** (from §1 map):
+  - Ready-to-ship without new queries: **MunicipalityPage** (Home > Area > Muni), **HomePropertyPage** (Home > Area > Muni > Community > Address).
+  - Needs 1 extra join: **CommunityPage** (fetch area name+slug from `municipality.area_id`), **AreaPage** (Home > Area only — trivial).
+  - Needs 3 extra fetches (Promise.all pattern from HomePropertyPage): **Condo PropertyPage** (fetch area/muni/community by listing FKs).
+  - Needs extended IIFE: **BuildingPage** (extend Phase 1 chain to also return area+muni+community slug — 2-3 more `.select` calls).
+  - Ambiguous parent (M2M) or requires new area fetch: **Neighbourhood page**. Simple deterministic chain (Home > Toronto > Neighbourhood) recommended.
+- **Geo-page Place schema**: separate small emitter per page-type OR one shared component that accepts `{@type, name, url, containedInPlace}` props. Same `isSeoEnabledTenant()` gate.
+
+##### 6. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-2-PHASE-2-RECON_20260704_164428`. Data queries via ad-hoc `node -e` scripts (safe — `BEGIN READ ONLY`, explicit column allow-lists). **No commit made this dispatch** (staging + commit pending operator go on the recon-line).
+
+#### A-UNIT-2 COVERAGE RECON — verify Phase 1 emitter's real coverage (2026-07-04)
+
+Read-only recon on the shipped 7c6c3c7 emitter. Verifies property-type coverage (condo vs home) and listing-state handling (Active / Cancelled / Expired / Withdrawn / Closed / etc.) against the REAL distinct values in `mls_listings`. Result: **two coverage flaws to fix in Phase 2**.
+
+##### 1. Property-type mount coverage — HOME LISTINGS EMIT NOTHING
+
+`grep -n "ListingSchema" app/property/[id]/page.tsx app/property/[id]/HomePropertyPage.tsx` (VERIFIED this session):
+- `app/property/[id]/page.tsx:7`: `import ListingSchema from './components/ListingSchema'` ✓
+- `app/property/[id]/page.tsx:420`: `<ListingSchema ...>` ✓
+- `app/property/[id]/HomePropertyPage.tsx`: **0 hits** — no import, no mount.
+
+**Gap CONFIRMED**: home listings (`property_type = 'Residential Freehold'`, subtypes `Detached / Semi-Detached / Att/Row/Townhouse / Link / Duplex / Triplex / Fourplex / Multiplex`) currently emit **zero** RealEstateListing JSON-LD. Only condo listings are covered. Home listing counts (Active only, from prior recon): 47,000+ Active homes have no schema today.
+
+**Fix (next dispatch)**: mount `<ListingSchema>` in `HomePropertyPage.tsx` with the same prop shape (`listing / building=null / photos / canonicalUrl`). Note: `building` will be null on homes (freehold), so `about.name` (building name) is naturally omitted for homes — no wrong data emitted. Component already null-guards `building?.building_name`.
+
+##### 2. Listing-state mapping — verified vs real DB distincts
+
+**Emitter's mapping** (VERIFIED in `app/property/[id]/components/ListingSchema.tsx:132-150`):
+```
+availabilityFromStatus(status):
+  'Active' | 'Active Under Contract'  →  'https://schema.org/InStock'
+  'Pending' | 'Closed'                 →  'https://schema.org/SoldOut'
+  default (any other value)           →  null   (OMIT availability field)
+
+businessFunctionFromTx(tx):
+  'For Sale'    →  'https://schema.org/Sell'
+  'For Lease'   →  'https://schema.org/LeaseOut'
+  default (any other value)  →  null   (OMIT businessFunction field)
+```
+
+**Real distinct `standard_status × transaction_type` in `mls_listings`** (VERIFIED this session — top rows by count):
+| standard_status | transaction_type | count | Emitter behavior |
+|---|---|---:|---|
+| Closed | For Sale | 319,071 | `SoldOut` + `Sell` — arguably OK (honest historical sale) |
+| Cancelled | For Sale | 314,950 | availability OMITTED + `Sell` — **⚠ misleading** (see below) |
+| Closed | For Lease | 306,532 | `SoldOut` + `LeaseOut` — SoldOut is inexact for leases; schema.org has no dedicated "leased-out" enum, so this is the least-bad option |
+| Expired | For Sale | 126,846 | availability OMITTED + `Sell` — **⚠ misleading** |
+| Cancelled | For Lease | 117,071 | availability OMITTED + `LeaseOut` — **⚠ misleading** |
+| Active | For Sale | 71,565 | `InStock` + `Sell` — ✓ correct |
+| Expired | For Lease | 35,189 | availability OMITTED + `LeaseOut` — **⚠ misleading** |
+| Active | For Lease | 23,464 | `InStock` + `LeaseOut` — ✓ correct |
+| Withdrawn | For Sale | 22,649 | availability OMITTED + `Sell` — **⚠ misleading** |
+| Withdrawn | For Lease | 16,420 | availability OMITTED + `LeaseOut` — **⚠ misleading** |
+| null | For Sale | 7,611 | availability OMITTED — safe (no state to report) |
+| Active Under Contract | For Sale | 5,833 | `InStock` + `Sell` — ⚠ debatable (under contract ≠ freely available) |
+| Pending | For Sale | 1,915 | `SoldOut` + `Sell` — ✓ acceptable (sale in progress) |
+| null | For Lease | 957 | availability OMITTED — safe |
+| Active Under Contract | For Lease | 245 | `InStock` + `LeaseOut` — ⚠ debatable |
+| Pending | For Lease | 209 | `SoldOut` + `LeaseOut` — ✓ acceptable |
+| Cancelled | For Sub-Lease | 116 | availability OMITTED + `businessFunction` OMITTED — misleading absent AND wrong |
+| Closed | For Sub-Lease | 79 | `SoldOut` + `businessFunction` OMITTED — sub-lease has no map |
+| Delete | For Sale | 79 | availability OMITTED + `Sell` — **⚠ misleading** |
+| Expired | For Sub-Lease | 60 | availability OMITTED + `businessFunction` OMITTED |
+| Removed | For Lease | 57 | availability OMITTED + `LeaseOut` — **⚠ misleading** |
+| Active | For Sub-Lease | 48 | `InStock` + `businessFunction` OMITTED |
+| Withdrawn | For Sub-Lease | 41 | availability OMITTED + `businessFunction` OMITTED |
+| Removed | For Sale | 39 | availability OMITTED + `Sell` |
+| Delete | For Lease | 21 | availability OMITTED + `LeaseOut` |
+| Incomplete | For Sale | 7 | availability OMITTED + `Sell` |
+| Removed | For Sub-Lease | 4 | availability OMITTED + `businessFunction` OMITTED |
+| Active | null | 2 | `InStock` + `businessFunction` OMITTED |
+| Expired | null | 1 | availability OMITTED + `businessFunction` OMITTED |
+
+**Rule Zero flag — "half-schema" on withdrawn listings** (Cancelled + Expired + Withdrawn + Removed + Delete + Incomplete):
+- **~641,000 listings** in aggregate (~46% of the mls_listings table).
+- Emitter behavior on these rows: `@type: RealEstateListing` + `offers.price` (the old list_price) + `offers.businessFunction: Sell`/`LeaseOut` (transaction_type map still fires) — but `offers.availability` is OMITTED (fail-closed).
+- Google's rich-result parser reads this as "a real estate listing with a price, available for a sale/lease transaction, current availability unspecified". That is **misleading**: the listing is no longer available at all.
+- Schema.org enum `Discontinued` (`https://schema.org/Discontinued`) is the honest map for withdrawn/cancelled/expired listings.
+
+**Rule Zero flag — For Sub-Lease `businessFunction` gap**: 348 rows (Active/Cancelled/Closed/Expired/Withdrawn/Removed × For Sub-Lease). Emitter's `businessFunctionFromTx` returns null for `'For Sub-Lease'` (no case). Sub-lease is a form of leasing out — `LeaseOut` is the correct map. Not a Rule Zero *violation* per se (OMIT is safe), but it's incomplete data. Volume tiny (~348), fix bundled with the Discontinued map.
+
+**Rule Zero acceptable — Active Under Contract → InStock**: schema.org's `InStock` semantics allow an in-negotiation offer to still be considered "in stock" until the sale closes. Not a violation, just a nuance. Leave as-is.
+
+##### 3. Wrong-state reachability — VERIFIED yes
+
+Condo page fetch (VERIFIED at `app/property/[id]/page.tsx:126-129`):
+```
+const { data: listing, error } = await supabase
+  .from('mls_listings')
+  .select('*')
+  .eq('id', params.id)
+  .single()
+```
+**No `standard_status` filter.** The page renders for any listing_key regardless of state.
+
+Slug dispatcher (`app/[slug]/page.tsx:22-49`): fetches by `listing_key` → no state filter either.
+
+Downstream state-branch: `page.tsx:378: const isClosed = listing.standard_status === 'Closed'` — the page knows the state (uses it for closed-price display + related-listings query) but does NOT gate the emitter or the whole page.
+
+**Conclusion**: any listing_key URL (Cancelled / Expired / Withdrawn / Closed) is a reachable, rendering URL that WILL trigger the emitter on aily.ca. Sitemap (VERIFIED at `sitemap.xml/route.ts:60`) only includes `Active / Active Under Contract` — so Google doesn't organically discover the wrong-state URLs. But links from other sources (Google's stale cache, external links, in-page "sold comps" navigation) can and do reach them.
+
+##### 4. Coverage matrix — plain
+
+| Axis | Coverage |
+|---|---|
+| **Property type: Condo** | ✓ covered by ListingSchema |
+| **Property type: Home** | ✗ **GAP — HomePropertyPage doesn't mount ListingSchema** |
+| **State: Active / Active Under Contract** | ✓ correct emission (InStock) |
+| **State: Pending / Closed** | ✓ correct emission (SoldOut) |
+| **State: Cancelled / Expired / Withdrawn / Removed / Delete / Incomplete** | ⚠ **RULE ZERO FLAG — Offer with price + businessFunction emitted, availability OMITTED. Should map to Discontinued.** ~641k listings affected. |
+| **Transaction: For Sale / For Lease** | ✓ correct businessFunction |
+| **Transaction: For Sub-Lease** | ⚠ businessFunction OMITTED (small volume ~348 rows) — should map to LeaseOut |
+
+##### 5. Phase 2 build implications
+
+Two additions to the Phase 2 build scope (both to fix here rather than defer, per NOTHING-DEFERRED and Rule Zero):
+
+**A. Mount `ListingSchema` on `HomePropertyPage.tsx`** — same shape, `building={null}`. Component null-guards work. Estimated ~5 lines (import + mount + canonicalUrl resolution IIFE mirroring the condo page).
+
+**B. Extend `availabilityFromStatus` map + `businessFunctionFromTx` map**:
+```
+availabilityFromStatus:
+  Active | Active Under Contract   → InStock
+  Pending | Closed                 → SoldOut
+  Cancelled | Expired | Withdrawn |
+  Removed | Delete | Incomplete    → Discontinued        ← ADD
+  default                          → null (unknown state)
+
+businessFunctionFromTx:
+  For Sale                         → Sell
+  For Lease | For Sub-Lease        → LeaseOut            ← ADD sub-lease
+  default                          → null
+```
+
+Every case is a VERIFIED distinct value from the DB this session. Fail-closed default preserved.
+
+##### 6. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-2-COVERAGE-RECON_20260704_165109`. Data query via ad-hoc `node -e` script (safe — `BEGIN READ ONLY`, no `SELECT *` on credential tables). **No commit made this dispatch** (staging + commit pending operator go on the recon-line).
+
+#### A-UNIT-2 PHASE 2 SHIPPED — BreadcrumbList + Place schema + 2 coverage fixes (2026-07-04)
+
+Ships (a) BreadcrumbList JSON-LD emitter mounted on all 7 page types, (b) Place-family JSON-LD emitter on 4 geo pages, and (c) the two Rule Zero coverage fixes from this session's COVERAGE RECON. All gated on `isSeoEnabledTenant()` (e3d229f).
+
+##### Part A — Coverage fixes (Rule Zero + property-type parity)
+
+**A1. `availabilityFromStatus` + `businessFunctionFromTx` extended** (`app/property/[id]/components/ListingSchema.tsx`):
+- **`Cancelled | Expired | Withdrawn | Removed | Delete | Incomplete → 'https://schema.org/Discontinued'`** — every state VERIFIED distinct DB value this session. Fixes the ~641k rows that previously emitted price+businessFunction with an OMITTED availability, reading as "priced, availability unspecified" when the listing was actually withdrawn.
+- **`For Sub-Lease → 'https://schema.org/LeaseOut'`** — VERIFIED distinct DB value (~348 rows across all statuses). Prior emitter returned null (safe but incomplete).
+- Default fail-closed branch preserved for genuinely unknown states.
+
+**A2. `ListingSchema` mounted on `HomePropertyPage.tsx`** — same shape as condo page, `building={null}` (component null-guards at line 183: `if (building?.building_name) about.name = ...`). Homes now emit RealEstateListing JSON-LD identically to condos. Fills the ~47k-Active-home coverage gap.
+
+##### Part B — BreadcrumbList emitter (new shared component)
+
+**New file**: `components/BreadcrumbSchema.tsx` (async server component, gated on `isSeoEnabledTenant()`). Accepts `items: {name, url}[]` (ordered, root-adjacent to current page — Home is prepended by the component itself) + `homeUrl`. Emits `<script type="application/ld+json">` with `@type: BreadcrumbList` + `itemListElement[]` per schema.org spec.
+
+**Mounted on 7 pages** with per-page chain built from VERIFIED in-scope data (no fabrication; missing FK/slug drops that level):
+- **`HomePropertyPage.tsx`**: full chain Home > Area > Muni > Community > shortAddress. Area/muni/community already in scope (existing 3× parallel joins at lines 145/150/155).
+- **`app/property/[id]/page.tsx` (condo)**: adds 3× Promise.all lookup by `listing.{area_id, municipality_id, community_id}` (mirroring the home page pattern). Chain: Home > Area > Muni > Community > Building > Unit N.
+- **`app/[slug]/BuildingPage.tsx`**: refactors Phase 1's inline muni-name IIFE into a top-of-function chain resolver that returns `{area, muni, community}` name+slug. Shares the result with `BuildingSchema` (locality) AND `BreadcrumbSchema` (items). Chain: Home > Area > Muni > Community > (Development?) > Building.
+- **`app/[slug]/AreaPage.tsx`**: Home > Area (trivial — self only).
+- **`app/[slug]/CommunityPage.tsx`**: Home > Area > Muni > Community. `area` was already fetched conditionally at line 170; `municipality` was in the parallel batch. Zero new query.
+- **`app/[slug]/MunicipalityPage.tsx`**: Home > Area > Muni. Both already in scope (area via `municipalityResult` chain).
+- **`app/comprehensive-site/toronto/[neighbourhood]/page.tsx`**: Home > Neighbourhood. Middle "Toronto" crumb from the visual GeoHero DROPPED in JSON-LD — VERIFIED this session that no `treb_area` or `municipality` has `slug='toronto'` (only per-district `toronto-c01`/`w08`/etc.), so a schema URL to `/toronto` would point to a non-page. Rule Zero: never emit a schema URL for a non-page. Visual GeoHero unchanged.
+
+##### Part C — Place emitter (new shared component)
+
+**New file**: `components/PlaceSchema.tsx` (async server component, gated). Accepts nested `PlaceNode` `{type, name, url, containedInPlace?}`. Emits `<script type="application/ld+json">` with recursive `containedInPlace` chain.
+
+@type per table (VERIFIED column set this session):
+- `treb_areas` → `AdministrativeArea`
+- `municipalities` → `City`
+- `communities` → `Place` (generic; `Neighborhood` schema.org type is US-centric)
+- `neighbourhoods` → `Place`
+
+**EMITS**: `@type`, `name`, `url`, `containedInPlace` (recursive chain up).
+**OMITS ENTIRELY**: `geo` (lat/lng 0% populated on all 4 geo tables — VERIFIED), `address` (no street/postal columns on any geo table), `description` (no column).
+
+**Mounted on 4 geo pages** with the same-parent-fetch as BreadcrumbSchema:
+- AreaPage: `AdministrativeArea` (no containedInPlace)
+- MunicipalityPage: `City` containedInPlace `AdministrativeArea`
+- CommunityPage: `Place` containedInPlace `City` containedInPlace `AdministrativeArea` (3-level nesting)
+- Neighbourhood: `Place` (no containedInPlace — see BreadcrumbSchema rationale)
+
+##### TSC clean check
+
+`npx tsc --noEmit` → exit 0 on all Phase 2 edits (2 new components + 8 mount-site edits).
+
+##### Smoke — aily.ca (VERIFIED, this session)
+
+**1. Real ACTIVE home listing** `/31-calamint-lane-toronto-e13522120` (Att/Row/Townhouse, $799k, L'Amoreaux community):
+```
+HTTP 200, size 373 KB
+RealEstateListing count: 1  ← coverage-fix Part A2 confirmed
+BreadcrumbList count: 1
+BreadcrumbList itemListElement (5 levels):
+  [1] Home           → https://aily.ca/
+  [2] Toronto        → https://aily.ca/toronto-area
+  [3] Toronto E05    → https://aily.ca/toronto-e05
+  [4] L'Amoreaux     → https://aily.ca/lamoreaux
+  [5] 31 Calamint Lane → https://aily.ca/31-calamint-lane-toronto-e13522120
+```
+
+**2. Real WITHDRAWN condo** `/109-front-street-e-unit-643-c13519594` (listing_key C13519594, `standard_status='Withdrawn'`):
+```
+HTTP 200, size 165 KB
+RealEstateListing JSON PARSES OK
+offers.availability:      "https://schema.org/Discontinued"  ← RULE ZERO FIX CONFIRMED
+offers.price:             850000    (real historical list_price)
+offers.businessFunction:  https://schema.org/Sell
+```
+Previously would have emitted `price` + `businessFunction` with NO `availability`. Now honestly says "discontinued".
+
+**3. Municipality page** `/oakville`:
+```
+HTTP 200, size 384 KB
+"@type":"City" x1               ← PlaceSchema self
+"@type":"AdministrativeArea" x1 ← containedInPlace parent (area)
+"@type":"BreadcrumbList" x1
+```
+
+**4. Community page** `/cooksville`:
+```
+HTTP 200, size 168 KB
+"@type":"Place" x1              ← PlaceSchema self (community)
+"@type":"City" x1               ← containedInPlace parent (municipality)
+"@type":"AdministrativeArea" x1 ← containedInPlace grandparent (area)
+"@type":"BreadcrumbList" x1
+containedInPlace occurrences: 1 (nested recursively — 2 chain levels above Community)
+```
+
+##### Smoke — walliam.ca (VERIFIED absent — regression check)
+
+Same 4 URLs on `Host: walliam.ca` (`seo_enabled=false`):
+| URL | HTTP | size | application/ld+json | RealEstateListing | BreadcrumbList | Place-family |
+|---|---|---|---|---|---|---|
+| `/31-calamint-lane-toronto-e13522120` | 200 | 356 KB | **0** | 0 | 0 | 0 |
+| `/109-front-street-e-unit-643-c13519594` | 200 | 140 KB | **0** | 0 | 0 | 0 |
+| `/oakville` | 200 | 381 KB | **0** | 0 | 0 | 0 |
+| `/cooksville` | 200 | 164 KB | **0** | 0 | 0 | 0 |
+
+All 4 pages render 200 with full content, **zero** JSON-LD emitted. Regression check pass — no page breaks when schema is suppressed.
+
+##### Files this dispatch
+
+New:
+- `components/BreadcrumbSchema.tsx` (async server component, gated)
+- `components/PlaceSchema.tsx` (async server component, gated)
+
+Modified:
+- `app/property/[id]/components/ListingSchema.tsx` (Discontinued + Sub-Lease map extensions)
+- `app/property/[id]/HomePropertyPage.tsx` (import + mount ListingSchema + BreadcrumbSchema with in-scope area/muni/community)
+- `app/property/[id]/page.tsx` (canonical resolver return shape + 3× Promise.all + BreadcrumbSchema mount)
+- `app/[slug]/BuildingPage.tsx` (Phase 1 IIFE refactored into top-of-function chain resolver returning area/muni/community, shared by BuildingSchema and BreadcrumbSchema)
+- `app/[slug]/AreaPage.tsx` (import + Breadcrumb + Place mounts)
+- `app/[slug]/CommunityPage.tsx` (import + Breadcrumb + Place with 3-level containedInPlace chain)
+- `app/[slug]/MunicipalityPage.tsx` (import + Breadcrumb + Place with containedInPlace to area)
+- `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` (import + Home>Neighbourhood breadcrumb + Place)
+
+Backups: all 8 modified sources have `.backup_A-UNIT-2-P2_20260704_165626`. Tracker backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-2-PHASE-2-SHIPPED_20260704_171753`.
+
+Every emitter gated on `isSeoEnabledTenant()`. Every breadcrumb URL built from a VERIFIED slug (matches sitemap canonical byte-for-byte). Every level with a null FK/slug is dropped, not fabricated. Zero brand branch (`if (host === 'aily.ca')` never appears).
+
+**A-UNIT-2 fully shipped**: RealEstateListing on condos + homes with correct state coverage; ApartmentComplex on buildings with real locality; BreadcrumbList on all 7 page types; Place on 4 geo pages. LocalBusiness on homepage remains a separate follow-up (needs homepage brand-data recon).
+
 #### SEO-FLAG PRE-BUILD RECON — Option A locked (2026-07-04)
 
 **Decision (option A)**: per-tenant `seo_enabled` flag on `tenants` so SEO is aily-only by verified config, not brand-hardcode, not WALLiam removal. Multi-tenant safe by construction — data-plane per-tenant capability, zero code-plane branch. New tenants opt into SEO by row-update, mirroring the existing precedent (`estimator_ai_enabled` per-tenant boolean toggle).

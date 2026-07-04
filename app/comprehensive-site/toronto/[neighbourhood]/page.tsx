@@ -15,6 +15,9 @@ import { getCurrentTenantId, isHeroTenant, resolveAgentForContext } from '@/lib/
 import CharliePageContext from '@/components/CharliePageContext'
 import WalliamCTA from '@/components/WalliamCTA'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
+import BreadcrumbSchema from '@/components/BreadcrumbSchema'
+import PlaceSchema from '@/components/PlaceSchema'
+import { resolveCanonicalHost } from '@/lib/utils/canonical'
 
 interface Props {
   params: { neighbourhood: string }
@@ -294,8 +297,29 @@ export default async function NeighbourhoodPage({ params }: Props) {
   const brandName     = _c8a_tenant?.brandName     || 'Brand'
   const wordmarkStyle = _c8a_tenant?.wordmarkStyle || 'standard'
 
+  // A-UNIT-2 Phase 2 (2026-07-04): Home > Neighbourhood breadcrumb + Place
+  // schema. The visual GeoHero breadcrumb includes a "Toronto" crumb
+  // linking to /toronto, but /toronto is a route path (not an indexed
+  // page — no treb_area or municipality slug matches "toronto";
+  // VERIFIED this session — Toronto municipalities are per-district
+  // Toronto C01, W08, etc.). Rule Zero: never emit a schema URL for a
+  // non-page. Drop the middle level in JSON-LD; visual UI stays.
+  const _domain = await resolveCanonicalHost()
+  const _neighUrl = `https://${_domain}/toronto/${neighbourhood.slug}`
+
   return (
     <div className="min-h-screen bg-white">
+      <BreadcrumbSchema
+        items={[{ name: neighbourhood.name, url: _neighUrl }]}
+        homeUrl={`https://${_domain}/`}
+      />
+      <PlaceSchema
+        place={{
+          type: 'Place',
+          name: neighbourhood.name,
+          url: _neighUrl,
+        }}
+      />
       <GeoHero
         assistantName={assistantName}
         title={`${neighbourhood.name} Real Estate`}

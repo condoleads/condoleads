@@ -5,6 +5,8 @@ import { isCustomDomain } from '@/lib/utils/agent-detection'
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import HomePropertyPageClient from './HomePropertyPageClient'
+import ListingSchema from './components/ListingSchema'
+import BreadcrumbSchema from '@/components/BreadcrumbSchema'
 import { createClient as createTenantClient } from '@/lib/supabase/server'
 import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
@@ -298,8 +300,54 @@ export default async function HomePropertyPage({ params }: { params: { id: strin
   // System 1 (tenantId null). The System-2 tenant-key branch was provably
   // unreachable; the prop is read straight from the agent row again.
 
+  // A-UNIT-2 Phase 2 (2026-07-04): resolve canonical URL for JSON-LD
+  // emitters (ListingSchema, BreadcrumbSchema). Reuses the same helpers
+  // generateMetadata already uses at the top of this file. Home-specific
+  // slug builder.
+  const _canonical = await (async () => {
+    const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+    const { generateHomePropertySlug } = await import('@/lib/utils/slugs')
+    const domain = await resolveCanonicalHost()
+    const s = generateHomePropertySlug(listing)
+    const path = s && !s.startsWith('/property/') ? s : `/property/${params.id}`
+    return { domain, url: `https://${domain}${path}` }
+  })()
+
+  // A-UNIT-2 Phase 2: breadcrumb items from in-scope area / muni /
+  // community (all fetched at lines 145/150/155). Drop levels whose
+  // FK/slug is null — never fabricate.
+  const _breadcrumbItems = [] as { name: string; url: string }[]
+  if (area && area.name && area.slug) {
+    _breadcrumbItems.push({ name: area.name, url: `https://${_canonical.domain}/${area.slug}` })
+  }
+  if (municipality && municipality.name && municipality.slug) {
+    _breadcrumbItems.push({ name: municipality.name, url: `https://${_canonical.domain}/${municipality.slug}` })
+  }
+  if (community && community.name && community.slug) {
+    _breadcrumbItems.push({ name: community.name, url: `https://${_canonical.domain}/${community.slug}` })
+  }
+  // Self crumb — label is the short address; URL is the canonical listing URL.
+  const _selfLabel = listing.unparsed_address?.split(',')[0]?.trim() || 'Listing'
+  _breadcrumbItems.push({ name: _selfLabel, url: _canonical.url })
+
   return (
     <>
+      {/* A-UNIT-2 Phase 2: RealEstateListing JSON-LD (Rule Zero coverage
+          fix — home listings now also emit schema). Gated by
+          isSeoEnabledTenant() inside the component. building=null on
+          home listings (freehold); component null-guards. */}
+      <ListingSchema
+        listing={listing}
+        building={null}
+        photos={largePhotos || []}
+        canonicalUrl={_canonical.url}
+      />
+      {/* A-UNIT-2 Phase 2: BreadcrumbList JSON-LD. Full chain in scope from
+          the existing area/muni/community joins. */}
+      <BreadcrumbSchema
+        items={_breadcrumbItems}
+        homeUrl={`https://${_canonical.domain}/`}
+      />
       <script
         dangerouslySetInnerHTML={{
           __html: `window.__AGENT_DATA__ = ${JSON.stringify({

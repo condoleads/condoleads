@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import PropertyPageClient from './PropertyPageClient'
 import ListingSchema from './components/ListingSchema'
+import BreadcrumbSchema from '@/components/BreadcrumbSchema'
 import { createClient as createTenantClient } from '@/lib/supabase/server'
 import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
@@ -407,8 +408,47 @@ export default async function PropertyPage({ params }: { params: { id: string } 
     const domain = await resolveCanonicalHost()
     const s = generatePropertySlug(listing)
     const path = s && !s.startsWith('/property/') ? s : `/property/${params.id}`
-    return `https://${domain}${path}`
+    return { domain, url: `https://${domain}${path}` }
   })()
+
+  // A-UNIT-2 Phase 2 (2026-07-04): fetch area / muni / community
+  // name+slug from the listing FKs so BreadcrumbList JSON-LD has a full
+  // ancestor chain. Mirrors HomePropertyPage's pattern (lines 145-155).
+  // FK population VERIFIED (this session, Active listings): community
+  // 96.2%, muni 99.9%, area 99.9%. When any FK is null → level dropped
+  // (never fabricated).
+  const [_areaRes, _muniRes, _communityRes] = await Promise.all([
+    listing.area_id
+      ? supabase.from('treb_areas').select('id, name, slug').eq('id', listing.area_id).single()
+      : Promise.resolve({ data: null } as any),
+    listing.municipality_id
+      ? supabase.from('municipalities').select('id, name, slug').eq('id', listing.municipality_id).single()
+      : Promise.resolve({ data: null } as any),
+    listing.community_id
+      ? supabase.from('communities').select('id, name, slug').eq('id', listing.community_id).single()
+      : Promise.resolve({ data: null } as any),
+  ])
+  const _area = _areaRes?.data as { name: string; slug: string } | null
+  const _muni = _muniRes?.data as { name: string; slug: string } | null
+  const _community = _communityRes?.data as { name: string; slug: string } | null
+
+  // A-UNIT-2 Phase 2: build breadcrumb items — drop levels whose
+  // FK/slug/name is null. URLs match sitemap canonicals byte-for-byte.
+  const _breadcrumbItems = [] as { name: string; url: string }[]
+  if (_area?.name && _area.slug) {
+    _breadcrumbItems.push({ name: _area.name, url: `https://${_canonical.domain}/${_area.slug}` })
+  }
+  if (_muni?.name && _muni.slug) {
+    _breadcrumbItems.push({ name: _muni.name, url: `https://${_canonical.domain}/${_muni.slug}` })
+  }
+  if (_community?.name && _community.slug) {
+    _breadcrumbItems.push({ name: _community.name, url: `https://${_canonical.domain}/${_community.slug}` })
+  }
+  if (building?.slug && building.building_name) {
+    _breadcrumbItems.push({ name: building.building_name, url: `https://${_canonical.domain}/${building.slug}` })
+  }
+  const _selfLabel = listing.unit_number ? `Unit ${listing.unit_number}` : (listing.unparsed_address?.split(',')[0]?.trim() || 'Listing')
+  _breadcrumbItems.push({ name: _selfLabel, url: _canonical.url })
 
   return (
     <>
@@ -421,7 +461,14 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         listing={listing}
         building={building}
         photos={largePhotos || []}
-        canonicalUrl={_canonical}
+        canonicalUrl={_canonical.url}
+      />
+      {/* A-UNIT-2 Phase 2: BreadcrumbList JSON-LD. Chain
+          Home > Area > Muni > Community > Building > Unit — each level
+          dropped if its slug/name is null. */}
+      <BreadcrumbSchema
+        items={_breadcrumbItems}
+        homeUrl={`https://${_canonical.domain}/`}
       />
       <script
         dangerouslySetInnerHTML={{

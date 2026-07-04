@@ -14,6 +14,9 @@ import GeoMarketActivity from '@/components/geo/GeoMarketActivity'
 import WalliamCTA from '@/components/WalliamCTA'
 import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
+import BreadcrumbSchema from '@/components/BreadcrumbSchema'
+import PlaceSchema from '@/components/PlaceSchema'
+import { resolveCanonicalHost } from '@/lib/utils/canonical'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -185,8 +188,41 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
   const brandName     = _c8a_tenant?.brandName     || 'Brand'
   const wordmarkStyle = _c8a_tenant?.wordmarkStyle || 'standard'
 
+  // A-UNIT-2 Phase 2 (2026-07-04): breadcrumb + Place JSON-LD.
+  // area was already fetched conditionally at line 170; municipality was
+  // fetched in the parallel batch. Drop levels whose slug/name is null.
+  const _domain = await resolveCanonicalHost()
+  const _communityUrl = `https://${_domain}/${community.slug}`
+  const _muniUrl = municipality?.slug ? `https://${_domain}/${municipality.slug}` : null
+  const _areaUrl = area?.slug ? `https://${_domain}/${area.slug}` : null
+  const _bcItems = [] as { name: string; url: string }[]
+  if (area?.name && _areaUrl) _bcItems.push({ name: area.name, url: _areaUrl })
+  if (municipality?.name && _muniUrl) _bcItems.push({ name: municipality.name, url: _muniUrl })
+  _bcItems.push({ name: community.name, url: _communityUrl })
+
   return (
     <div className="min-h-screen bg-white">
+      <BreadcrumbSchema
+        items={_bcItems}
+        homeUrl={`https://${_domain}/`}
+      />
+      <PlaceSchema
+        place={{
+          type: 'Place',
+          name: community.name,
+          url: _communityUrl,
+          containedInPlace: municipality?.name && _muniUrl ? {
+            type: 'City',
+            name: municipality.name,
+            url: _muniUrl,
+            containedInPlace: area?.name && _areaUrl ? {
+              type: 'AdministrativeArea',
+              name: area.name,
+              url: _areaUrl,
+            } : null,
+          } : null,
+        }}
+      />
       <GeoHero
         assistantName={assistantName}
         title={`${community.name} Real Estate`}

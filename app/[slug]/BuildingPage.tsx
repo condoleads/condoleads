@@ -111,6 +111,8 @@ import SEODescription from './components/SEODescription'
 import EstimatorSeller from '@/app/estimator/components/EstimatorSeller'
 import DualCTASection from './components/DualCTASection'
 import BuildingSchema from './components/BuildingSchema'
+import BreadcrumbSchema from '@/components/BreadcrumbSchema'
+import { resolveCanonicalHost } from '@/lib/utils/canonical'
 import { AgentCard } from '@/components/AgentCard'
 import MobileContactBar from '@/components/MobileContactBar'
 import Breadcrumb from '@/components/Breadcrumb'
@@ -391,6 +393,47 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   // System 1 (tenantId null). The System-2 tenant-key branch was provably
   // unreachable; the prop is read straight from the agent row again.
 
+  // A-UNIT-2 Phase 2 (2026-07-04): resolve the full geo chain
+  // buildings.community_id → communities → municipalities → treb_areas
+  // (name+slug at each level). Replaces the Phase 1 IIFE that only
+  // returned muni.name. Reused by both BuildingSchema (locality prop)
+  // and BreadcrumbSchema. Drops levels when any FK is null (never
+  // fabricated).
+  const _geoChain = await (async () => {
+    const out: { community: { name: string; slug: string } | null; muni: { name: string; slug: string } | null; area: { name: string; slug: string } | null } = { community: null, muni: null, area: null }
+    if (!building.community_id) return out
+    const { data: comm } = await supabase
+      .from('communities')
+      .select('name, slug, municipality_id')
+      .eq('id', building.community_id)
+      .single()
+    if (!comm) return out
+    if (comm.name && comm.slug) out.community = { name: comm.name, slug: comm.slug }
+    if (!comm.municipality_id) return out
+    const { data: muni } = await supabase
+      .from('municipalities')
+      .select('name, slug, area_id')
+      .eq('id', comm.municipality_id)
+      .single()
+    if (!muni) return out
+    if (muni.name && muni.slug) out.muni = { name: muni.name, slug: muni.slug }
+    if (!muni.area_id) return out
+    const { data: area } = await supabase
+      .from('treb_areas')
+      .select('name, slug')
+      .eq('id', muni.area_id)
+      .single()
+    if (area?.name && area.slug) out.area = { name: area.name, slug: area.slug }
+    return out
+  })()
+  const _bpDomain = await resolveCanonicalHost()
+  const _bpBcItems = [] as { name: string; url: string }[]
+  if (_geoChain.area) _bpBcItems.push({ name: _geoChain.area.name, url: `https://${_bpDomain}/${_geoChain.area.slug}` })
+  if (_geoChain.muni) _bpBcItems.push({ name: _geoChain.muni.name, url: `https://${_bpDomain}/${_geoChain.muni.slug}` })
+  if (_geoChain.community) _bpBcItems.push({ name: _geoChain.community.name, url: `https://${_bpDomain}/${_geoChain.community.slug}` })
+  if (development?.name && development.slug) _bpBcItems.push({ name: development.name, url: `https://${_bpDomain}/${development.slug}` })
+  _bpBcItems.push({ name: building.building_name, url: `https://${_bpDomain}/${building.slug || params.slug}` })
+
   return (
     <>
       {agent && (
@@ -422,26 +465,18 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         activeSales={activeSales}
         activeRentals={activeRentals}
         avgPrice={avgSalePrice}
-        // A-UNIT-2 Phase 1 (2026-07-04): real locality via verified geo
-        // join chain buildings.community_id → communities.municipality_id →
-        // municipalities.name. Async IIFE keeps the resolution inline (single
-        // targeted lookup; buildings without community_id return null → schema
-        // omits addressLocality). Replaces the prior hardcoded "Toronto".
-        locality={await (async () => {
-          if (!building.community_id) return null
-          const { data: comm } = await supabase
-            .from('communities')
-            .select('municipality_id')
-            .eq('id', building.community_id)
-            .single()
-          if (!comm?.municipality_id) return null
-          const { data: muni } = await supabase
-            .from('municipalities')
-            .select('name')
-            .eq('id', comm.municipality_id)
-            .single()
-          return muni?.name || null
-        })()}
+        // A-UNIT-2 Phase 2 (2026-07-04): locality from the resolved geo
+        // chain (Phase 1 IIFE was inlined; Phase 2 lifts it above the
+        // return so both BuildingSchema and BreadcrumbSchema share the
+        // resolved data — single query per render).
+        locality={_geoChain.muni?.name || null}
+      />
+      {/* A-UNIT-2 Phase 2: BreadcrumbList JSON-LD.
+          Chain Home > Area > Muni > Community > (Development?) > Building.
+          Each level dropped when its slug is null. */}
+      <BreadcrumbSchema
+        items={_bpBcItems}
+        homeUrl={`https://${_bpDomain}/`}
       />
       <StickyNav agentId={agent?.id} />
       

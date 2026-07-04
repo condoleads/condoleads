@@ -15,6 +15,9 @@ import GeoMarketActivity from '@/components/geo/GeoMarketActivity'
 import WalliamCTA from '@/components/WalliamCTA'
 import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
+import BreadcrumbSchema from '@/components/BreadcrumbSchema'
+import PlaceSchema from '@/components/PlaceSchema'
+import { resolveCanonicalHost } from '@/lib/utils/canonical'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -232,8 +235,34 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   const brandName     = _c8a_tenant?.brandName     || 'Brand'
   const wordmarkStyle = _c8a_tenant?.wordmarkStyle || 'standard'
 
+  // A-UNIT-2 Phase 2 (2026-07-04): Home > Area > Muni breadcrumb + City
+  // Place schema. Both area + muni are already in scope (area fetched
+  // via municipalityResult chain in the parallel batch).
+  const _domain = await resolveCanonicalHost()
+  const _muniUrl = `https://${_domain}/${municipality.slug}`
+  const _areaUrl = area?.slug ? `https://${_domain}/${area.slug}` : null
+  const _bcItems = [] as { name: string; url: string }[]
+  if (area?.name && _areaUrl) _bcItems.push({ name: area.name, url: _areaUrl })
+  _bcItems.push({ name: municipality.name, url: _muniUrl })
+
   return (
     <div className="min-h-screen bg-white">
+      <BreadcrumbSchema
+        items={_bcItems}
+        homeUrl={`https://${_domain}/`}
+      />
+      <PlaceSchema
+        place={{
+          type: 'City',
+          name: municipality.name,
+          url: _muniUrl,
+          containedInPlace: area?.name && _areaUrl ? {
+            type: 'AdministrativeArea',
+            name: area.name,
+            url: _areaUrl,
+          } : null,
+        }}
+      />
       <GeoHero
         assistantName={assistantName}
         title={`${municipality.name} Real Estate`}

@@ -14,6 +14,9 @@ import GeoMarketActivity from '@/components/geo/GeoMarketActivity'
 import WalliamCTA from '@/components/WalliamCTA'
 import CharliePageContext from '@/components/CharliePageContext'
 import WalliamAgentCard from '@/components/WalliamAgentCard'
+import BreadcrumbSchema from '@/components/BreadcrumbSchema'
+import PlaceSchema from '@/components/PlaceSchema'
+import { resolveCanonicalHost } from '@/lib/utils/canonical'
 
 const LISTING_SELECT = `
   id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type,
@@ -286,8 +289,24 @@ export default async function AreaPage({ area }: AreaPageProps) {
   const brandName     = _c8a_tenant?.brandName     || 'Brand'
   const wordmarkStyle = _c8a_tenant?.wordmarkStyle || 'standard'
 
+  // A-UNIT-2 Phase 2 (2026-07-04): breadcrumb + Place JSON-LD. Area is the
+  // top of the geo hierarchy (no containedInPlace parent).
+  const _domain = await resolveCanonicalHost()
+  const _areaUrl = `https://${_domain}/${area.slug}`
+
   return (
     <div className="min-h-screen bg-white">
+      <BreadcrumbSchema
+        items={[{ name: area.name, url: _areaUrl }]}
+        homeUrl={`https://${_domain}/`}
+      />
+      <PlaceSchema
+        place={{
+          type: 'AdministrativeArea',
+          name: area.name,
+          url: _areaUrl,
+        }}
+      />
       <GeoHero
         assistantName={assistantName}
         title={`${area.name} Real Estate`}

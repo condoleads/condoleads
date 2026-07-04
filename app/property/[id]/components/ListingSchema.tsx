@@ -137,6 +137,22 @@ function availabilityFromStatus(status: string | null | undefined): string | nul
     case 'Pending':
     case 'Closed':
       return 'https://schema.org/SoldOut'
+    // A-UNIT-2 Phase 2 (2026-07-04): Rule Zero #1 fix. Prior emitter's
+    // default→null branch emitted an Offer with price + businessFunction
+    // for withdrawn listings without an availability field — reads as
+    // "priced, availability unspecified" when the listing is actually
+    // withdrawn from market. Coverage recon this session VERIFIED ~641k
+    // rows (Cancelled 432k + Expired 162k + Withdrawn 39k + Removed +
+    // Delete + Incomplete) affected. Discontinued is schema.org's honest
+    // enum for these. All 6 status values below are VERIFIED distinct DB
+    // values (SELECT DISTINCT standard_status, this session).
+    case 'Cancelled':
+    case 'Expired':
+    case 'Withdrawn':
+    case 'Removed':
+    case 'Delete':
+    case 'Incomplete':
+      return 'https://schema.org/Discontinued'
     default:
       return null
   }
@@ -145,7 +161,11 @@ function availabilityFromStatus(status: string | null | undefined): string | nul
 // Deterministic transaction_type → schema.org BusinessFunction.
 function businessFunctionFromTx(tx: string | null | undefined): string | null {
   if (tx === 'For Sale') return 'https://schema.org/Sell'
-  if (tx === 'For Lease') return 'https://schema.org/LeaseOut'
+  // A-UNIT-2 Phase 2 (2026-07-04): For Sub-Lease also emits LeaseOut.
+  // Sub-lease is a form of leasing out; VERIFIED distinct DB value with
+  // ~348 rows across all statuses. Prior emitter returned null (OMIT),
+  // which was safe but incomplete.
+  if (tx === 'For Lease' || tx === 'For Sub-Lease') return 'https://schema.org/LeaseOut'
   return null
 }
 
