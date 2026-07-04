@@ -740,6 +740,61 @@ Followed by `webmasters.sitemaps.get({ siteUrl, feedpath })` to verify submissio
 | 4 | `scripts/gsc-submit-sitemap.js` shipped + smoke-verified | **UNBLOCKED, PENDING BUILD** | code (next dispatch) |
 
 **No code files touched this dispatch**. Tracker append only. Backup: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-BLOCKER-3-CLEARED_20260704_114046`.
+
+#### Step 4 (part 2) — sitemap SUBMITTED + VERIFIED (2026-07-04) — **C-UNIT-2 COMPLETE**
+
+**Pre-check (this session)**: `curl -sS -o /dev/null -w "%{http_code} %{content_type}" https://www.aily.ca/sitemap.xml` → `200  application/xml; charset=utf-8` (370 bytes — the sitemap-index topper from A-UNIT-1a's shipped route handler pair). Rule Zero: don't submit a feedpath you haven't confirmed serves. Confirmed live.
+
+**New: `scripts/gsc-submit-sitemap.js`** — multi-tenant-safe (per CLAUDE.md "constant referencing a single tenant in business logic is a violation"): defines a data-plane `targets = [{ siteUrl, feedpath, note }, ...]` list. The one current entry's `siteUrl` is the exact string obtained from this session's `sites.list` response — NOT hand-assembled, has provenance. Future SEO-enabled tenants append here, same code path, zero branch. Script authenticates via `googleapis` OAuth2 client using `GOOGLE_ADS_CLIENT_ID` / `GOOGLE_ADS_CLIENT_SECRET` and the Step-2c `GOOGLE_WEBMASTERS_REFRESH_TOKEN`, calls `webmasters.sitemaps.submit` then immediately `webmasters.sitemaps.get` for verification. Error handling surfaces only `err.message` + `err.code` + safe `err.errors[]` — never the full `err` object (`err.response.config.headers.Authorization` echoes the bearer access token).
+
+**Run result VERBATIM** (this session):
+```
+=== target: sc-domain:aily.ca ===
+  feedpath: https://www.aily.ca/sitemap.xml
+  note:     aily — siteOwner verified via sites.list 2026-07-04
+  → sitemaps.submit …
+    submit: OK (HTTP 204)
+  → sitemaps.get …
+    get: OK (HTTP 200)
+      path:            "https://www.aily.ca/sitemap.xml"
+      lastSubmitted:   "2026-07-04T15:48:30.450Z"
+      isPending:       true
+      isSitemapsIndex: false
+      type:            undefined
+      lastDownloaded:  undefined
+      contents count:  0
+      errors:          "0"
+      warnings:        "0"
+
+=== DONE (all targets submitted + verified) ===
+```
+
+**Interpretation**:
+- `submit: OK (HTTP 204)` — Google's standard success response for `sitemaps.submit` (No Content, empty body).
+- `path` returned by `get` exactly matches the submitted `feedpath` — confirms Google registered the correct URL under the `sc-domain:aily.ca` property.
+- `lastSubmitted: "2026-07-04T15:48:30.450Z"` — Google timestamped the registration.
+- `isPending: true` — **normal immediately post-submit**. Google queues the sitemap for crawling; it hasn't fetched it yet. On a re-run in a few hours, `isPending` should flip to `false`, and `type` / `lastDownloaded` / `isSitemapsIndex` / `contents[]` will populate with the actual crawl state.
+- `type: undefined` + `lastDownloaded: undefined` + `contents count: 0` — expected while `isPending: true`. Not a failure; the sitemap is registered but not yet crawled.
+- `errors: "0"` + `warnings: "0"` — no registration-time issues.
+
+**C-UNIT-2 COMPLETE**. Sitemap is registered with Google Search Console under `sc-domain:aily.ca`. Crawling is Google's asynchronous job — expected to complete within hours. The submission is idempotent: re-running the script updates `lastSubmitted` but is a no-op for indexing.
+
+**`yourcondorealtor` de-index posture — unchanged, no API action needed**: as documented in the C-UNIT-2 recon, Google's Search Console API does not support de-indexing a site the token doesn't own. Reliance on A-UNIT-1a's shipped `X-Robots-Tag: noindex, nofollow` on legacy hosts continues to be the correct de-index path. Natural Google recrawl deindexes over weeks-to-months. No further API work planned.
+
+**Final blocker table** (all cleared):
+| # | Blocker | Final state |
+|---|---|---|
+| 1 | `googleapis` npm package | CLEARED (Step 1) |
+| 2 | OAuth webmasters scope + `.env.local` token | CLEARED (Step 2c auto-write + Step 4 pt1 auth proof) |
+| 2.5 | SC API enabled in Cloud Project 678967923355 | CLEARED (Cloud Console + Step 4 pt1 re-run HTTP 200) |
+| 3 | aily.ca verified as GSC property | CLEARED (`sc-domain:aily.ca` + `siteOwner` via sites.list) |
+| 4 | `scripts/gsc-submit-sitemap.js` shipped + smoke-verified | **CLEARED** (this dispatch — submit OK 204, get OK 200 with matching `path`) |
+
+**Files this dispatch**:
+- New: `scripts/gsc-submit-sitemap.js` (idempotent; multi-tenant targets shape; safe error handling).
+- Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-SUBMIT_20260704_114859`.
+
+**Future re-runs**: `node scripts/gsc-submit-sitemap.js` is idempotent — safe to run any time (sitemap rotation, new tenant onboarding by appending to `targets`, verifying post-crawl state). Re-runs update `lastSubmitted` and return the current crawl state via `sitemaps.get`.
 3. **[OPS] Verify aily.ca in Google Search Console — EXTERNAL BLOCKER (pending)** — one-time, out-of-band. Operator adds a DNS TXT record at Google's instruction (or we can serve an HTML meta tag if they prefer). Approximately 15 minutes end-to-end (DNS propagation dependent).
    - **Nothing-Deferred posture**: **external-blocker deferral** on the operator DNS/HTML verification step. Resume the moment verification lands.
 4. **[DEV] Ship `scripts/gsc-submit-sitemap.js` — PENDING** — reads `GOOGLE_WEBMASTERS_REFRESH_TOKEN` from `.env.local`, uses `googleapis` client (installed above) to call `webmasters.sitemaps.submit({ siteUrl: 'https://www.aily.ca/', feedpath: 'https://www.aily.ca/sitemap.xml' })`, verifies via `webmasters.sitemaps.get`. Idempotent, safe to re-run. Prints result + submission timestamp. Extendable to loop over `tenants.domain` for future multi-tenant onboarding without code change. Cannot run until steps 2 and 3 are cleared.
