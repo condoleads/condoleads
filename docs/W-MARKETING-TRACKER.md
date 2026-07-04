@@ -615,6 +615,33 @@ by improving crawl depth + rank flow. Ready to dispatch.
    - **Regex safety on `GOOGLE_ADS_REFRESH_TOKEN`**: the write helper's regex `^GOOGLE_WEBMASTERS_REFRESH_TOKEN=.*$` (anchored + `.*` is single-line by default) cannot match `GOOGLE_ADS_REFRESH_TOKEN=...` — VERIFIED by inspection. The replace branch mutates only its own key line.
    - Backups: `scripts/get-refresh-token.js.backup_STEP-2c_20260704_084931` (7569 bytes preserved) + `.env.local.backup_STEP-2c_20260704_084931` (6147 bytes preserved — a write-helper bug could truncate the secrets file, so the operator can restore from the timestamped copy) + `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-STEP-2c_20260704_085440`.
    - **Operator experience post-2c**: `node scripts/get-refresh-token.js` in a local terminal → opens consent URL, prompts for redirected URL → on success, silently writes the dual-scope token to `.env.local` under `GOOGLE_WEBMASTERS_REFRESH_TOKEN` (APPEND on first run, REPLACE on re-runs / rotations) → prints file path, key name, action taken, and a first6...last4 (len=N) fingerprint. Zero manual paste, zero token material to stdout, `GOOGLE_ADS_REFRESH_TOKEN` untouched.
+
+#### Consent-flow re-run — incident + recovery log (2026-07-04)
+
+**Consent attempt 1 — burned**:
+- Operator initiated `node scripts/get-refresh-token.js` in local terminal, opened consent URL in browser, completed Google consent screen (both `adwords` and `webmasters` scopes granted — VERIFIED against the redirect URL's `scope=` param this session).
+- Operator pasted the redirect URL — containing the live single-use OAuth authorization code AND both granted scopes — **into the chat transcript** rather than into the terminal's readline prompt at `Step 2. Paste the redirected URL`.
+- Per CLAUDE.md secrets rule ("Never ask for or print full secrets/keys/tokens" + "If a full secret is accidentally exposed, instruct rotation/revocation before doing anything else"): the exposed authorization code was treated as **BURNED**. Planner did NOT exchange it from the planner side, even though the code was still within its ~60-second validity window when observed. Rationale: exchanging the code planner-side would have pulled the resulting refresh token through the planner's tool output, defeating the entire Step-2c auto-write architecture (fingerprint-only stdout, zero token material in chat/logs).
+
+**Recovery (operator-side, IN PROGRESS)**:
+- Operator aborts the terminal script run (Ctrl+C — the readline prompt was still waiting).
+- Operator revokes the client's existing authorization at `https://myaccount.google.com/permissions` so the burned code cannot be exchanged by anyone who saw the transcript, and so a fresh `prompt=consent` cycle fires next round (otherwise Google may silently short-circuit the re-auth and return no `refresh_token`).
+- Operator re-runs `node scripts/get-refresh-token.js` in the local terminal, opens the printed consent URL, completes consent, and pastes the resulting `http://localhost/?code=...` URL **into the terminal's readline prompt only — NOT into chat**.
+- Script exchanges the code, writes the new dual-scope refresh token to `.env.local` under `GOOGLE_WEBMASTERS_REFRESH_TOKEN` via the Step-2c auto-write helper, and prints only the file path + key name + action (APPEND / REPLACE) + fingerprint (`first6...last4 (len=N)`).
+- Operator returns the fingerprint (safe to share — non-recoverable substring) as the success signal. **Claimed, unverified until fingerprint returned.**
+
+**Consent-URL builder VERIFIED this session** (`scripts/get-refresh-token.js:52-62`, `buildConsentUrl`):
+- Line 58: `response_type: 'code'` — authorization-code flow.
+- Line 60: `access_type: 'offline'` — **REQUIRED** for `refresh_token` issuance. Without it, Google returns only an `access_token`.
+- Line 61: `prompt: 'consent'` — **REQUIRED** on re-consent. Without it, Google may short-circuit the flow for an already-authorized client and return no new `refresh_token`. Present here → the recovery re-run WILL yield a fresh refresh_token even without the operator revoking first (the revoke is a defense-in-depth measure against the burned code, not a functional requirement for the re-consent to succeed).
+- Manual URL assembly via `URLSearchParams` — no `google.auth.OAuth2.generateAuthUrl` in scope (grep confirms 0 hits).
+
+**Blocker status after incident**:
+- Blocker 2 (OAuth re-consent → dual-scope `GOOGLE_WEBMASTERS_REFRESH_TOKEN` in `.env.local`) — **STILL EXTERNAL BLOCKER, in progress**. Operator terminal action pending.
+- Blocker 3 (aily.ca DNS/HTML verification in Search Console) — still pending, unchanged by incident.
+- Step 4 (`scripts/gsc-submit-sitemap.js`) — still pending, unblocks when Blockers 2 and 3 both clear.
+
+**Backups added this dispatch**: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-INCIDENT_20260704_102851`. No code files touched this dispatch.
 3. **[OPS] Verify aily.ca in Google Search Console — EXTERNAL BLOCKER (pending)** — one-time, out-of-band. Operator adds a DNS TXT record at Google's instruction (or we can serve an HTML meta tag if they prefer). Approximately 15 minutes end-to-end (DNS propagation dependent).
    - **Nothing-Deferred posture**: **external-blocker deferral** on the operator DNS/HTML verification step. Resume the moment verification lands.
 4. **[DEV] Ship `scripts/gsc-submit-sitemap.js` — PENDING** — reads `GOOGLE_WEBMASTERS_REFRESH_TOKEN` from `.env.local`, uses `googleapis` client (installed above) to call `webmasters.sitemaps.submit({ siteUrl: 'https://www.aily.ca/', feedpath: 'https://www.aily.ca/sitemap.xml' })`, verifies via `webmasters.sitemaps.get`. Idempotent, safe to re-run. Prints result + submission timestamp. Extendable to loop over `tenants.domain` for future multi-tenant onboarding without code change. Cannot run until steps 2 and 3 are cleared.
