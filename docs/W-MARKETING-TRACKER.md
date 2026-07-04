@@ -664,6 +664,43 @@ by improving crawl depth + rank flow. Ready to dispatch.
 **Files this dispatch**:
 - New: `scripts/gsc-sites-list.js` (read-only sites.list caller; prints `siteUrl` + `permissionLevel` only; guards against full-`err`-object dump because `err.response.config.headers` can echo the bearer access token; error path prints only `err.message` + `err.code` + `err.errors[]`).
 - Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-BLOCKER-2_5_20260704_105207`.
+
+#### Step 4 (part 1, re-run) — sites.list after API enable (2026-07-04)
+
+**Blocker 2.5 CLEARED**. Operator enabled the Search Console API on Google Cloud Project `678967923355` (VERIFIED against operator screenshot: Status Enabled). Re-ran `node scripts/gsc-sites-list.js` — the earlier 403 is gone. Response was HTTP 200 with a valid `siteEntry` array.
+
+**Sites.list output VERBATIM** (VERIFIED this session):
+```
+=== Search Console sites.list ===
+  entries: 0
+  (no properties visible to this authenticated user)
+```
+
+**Blocker 3 CONFIRMED — aily.ca NOT verified under this OAuth account**. VERIFIED this session: `siteEntry` array is empty. Both property forms explicitly checked and absent:
+- URL-prefix (`https://www.aily.ca/` or `https://aily.ca/`): **absent** (no `siteEntry` with matching `siteUrl`).
+- Domain property (`sc-domain:aily.ca`): **absent** (no `siteEntry` with matching `siteUrl`).
+
+Additional finding: not only is aily.ca absent, but the authenticated user (the Google account that consented the OAuth flow, per operator context `yourcondorealtor@gmail.com`) has **ZERO verified properties in Search Console at all**. This narrows the resolution paths:
+
+**Operator action required — one of three paths**:
+1. **Verify aily.ca fresh under `yourcondorealtor@gmail.com`** via Search Console UI. Options: DNS TXT record on the aily.ca domain (preferred — one-time, covers all subdomain + protocol variants via a domain property), OR HTML meta tag on aily.ca's index page, OR HTML verification file, OR Google Analytics/Tag Manager if `yourcondorealtor@gmail.com` has GA access to aily.ca.
+2. **If aily.ca is already verified under a different Google account** (e.g. a personal account or an earlier Aily-owner account): from that account, add `yourcondorealtor@gmail.com` as an **Owner or Full user** on the existing property (Search Console Settings → Users and permissions → Add User). Property will then appear in this `sites.list` output without a fresh verify.
+3. **If aily.ca has never been verified anywhere**: proceed with path (1).
+
+Recommended: **domain property (`sc-domain:aily.ca`) via DNS TXT** — catches all `https://aily.ca` / `https://www.aily.ca` / any future subdomains, matches the canonical-host architecture used elsewhere in this repo (`resolveCanonicalHost` normalizes across www/apex), and doesn't require serving an HTML file from the running Next.js app.
+
+**Nothing-Deferred posture**: **external-blocker deferral** on the aily.ca verification step. Resume `sites.list` retry + Step 4 part 2 (`gsc-submit-sitemap.js`) the moment aily.ca appears in the `siteEntry` list with `permissionLevel: siteOwner` or `siteFullUser` (both permit sitemap submit; `siteRestrictedUser` does not).
+
+**Blocker table state after Step 4 (part 1, re-run)**:
+| # | Blocker | State | Type |
+|---|---|---|---|
+| 1 | `googleapis` npm package installed | CLEARED | code (Step 1) |
+| 2 | OAuth refresh token has `webmasters` scope + saved to `.env.local` | CLEARED | Step 2c auto-write + verified in Step 4 part 1 |
+| 2.5 | Search Console API enabled in Cloud Project 678967923355 | CLEARED | operator Cloud Console (VERIFIED via screenshot + successful HTTP 200 response) |
+| **3** | **aily.ca verified as GSC property** (URL-prefix OR sc-domain) | **CONFIRMED-BLOCKED** — empty siteEntry proves absence, not silence | operator DNS TXT / HTML tag / add-user on existing property |
+| 4 | `scripts/gsc-submit-sitemap.js` shipped | PENDING (blocked on 3) | code |
+
+**No code files touched this dispatch**. Tracker append only. Backup: `docs/W-MARKETING-TRACKER.md.backup_C-UNIT-2-SITES-LIST-EMPTY_20260704_110130`.
 3. **[OPS] Verify aily.ca in Google Search Console — EXTERNAL BLOCKER (pending)** — one-time, out-of-band. Operator adds a DNS TXT record at Google's instruction (or we can serve an HTML meta tag if they prefer). Approximately 15 minutes end-to-end (DNS propagation dependent).
    - **Nothing-Deferred posture**: **external-blocker deferral** on the operator DNS/HTML verification step. Resume the moment verification lands.
 4. **[DEV] Ship `scripts/gsc-submit-sitemap.js` — PENDING** — reads `GOOGLE_WEBMASTERS_REFRESH_TOKEN` from `.env.local`, uses `googleapis` client (installed above) to call `webmasters.sitemaps.submit({ siteUrl: 'https://www.aily.ca/', feedpath: 'https://www.aily.ca/sitemap.xml' })`, verifies via `webmasters.sitemaps.get`. Idempotent, safe to re-run. Prints result + submission timestamp. Extendable to loop over `tenants.domain` for future multi-tenant onboarding without code change. Cannot run until steps 2 and 3 are cleared.
