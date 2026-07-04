@@ -29,6 +29,8 @@ require('dotenv').config({ path: '.env.local' })
 const https = require('https')
 const readline = require('readline')
 const { URL } = require('url')
+const fs = require('fs')
+const path = require('path')
 
 const CLIENT_ID = process.env.GOOGLE_ADS_CLIENT_ID
 const CLIENT_SECRET = process.env.GOOGLE_ADS_CLIENT_SECRET
@@ -124,7 +126,7 @@ function exchangeCodeForTokens(code) {
 async function main() {
   const consentUrl = buildConsentUrl()
   console.log('')
-  console.log('=== Google Ads — Refresh Token Generation ===')
+  console.log('=== Google OAuth - dual-scope refresh token (adwords + webmasters) ===')
   console.log('')
   console.log('Step 1. Open this URL in your browser, authorize the Google')
   console.log('  Ads scope, then copy the FULL redirected URL.')
@@ -161,15 +163,38 @@ async function main() {
       console.error('revoke at https://myaccount.google.com/permissions and rerun.')
       process.exit(1)
     }
+    // C-UNIT-2 Step 2c (2026-07-04): write token directly to .env.local via
+    // replace-or-append helper. Fingerprint only to stdout - no token material
+    // (refresh_token / access_token / id_token) reaches stdout, logs, or chat.
+    const envPath = path.join(__dirname, '..', '.env.local')
+    let env = fs.readFileSync(envPath, 'utf8')
+    if (env.charCodeAt(0) === 0xFEFF) env = env.slice(1)
+    const envNL = env.indexOf('\r\n') !== -1 ? '\r\n' : '\n'
+    const KEY = 'GOOGLE_WEBMASTERS_REFRESH_TOKEN'
+    const newLine = KEY + '=' + tokens.refresh_token
+    const keyRe = new RegExp('^' + KEY + '=.*$', 'm')
+    let action
+    if (keyRe.test(env)) {
+      env = env.replace(keyRe, newLine)
+      action = 'REPLACED existing ' + KEY + ' line'
+    } else {
+      if (!env.endsWith(envNL)) env += envNL
+      env += newLine + envNL
+      action = 'APPENDED new ' + KEY + ' line'
+    }
+    fs.writeFileSync(envPath, env, 'utf8')
+    const t = tokens.refresh_token
+    const fp = t.slice(0, 6) + '...' + t.slice(-4) + ' (len=' + t.length + ')'
     console.log('')
-    console.log('=== SUCCESS — refresh token below ===')
+    console.log('=== SUCCESS - token written to .env.local ===')
     console.log('')
-    console.log('Add this line to .env.local (do NOT commit):')
+    console.log('  file:        ' + envPath)
+    console.log('  key:         ' + KEY)
+    console.log('  action:      ' + action)
+    console.log('  fingerprint: ' + fp)
     console.log('')
-    console.log('GOOGLE_ADS_REFRESH_TOKEN=' + tokens.refresh_token)
-    console.log('')
-    console.log('(access_token + id_token intentionally NOT printed — only the')
-    console.log(' refresh_token is needed for server-side use.)')
+    console.log('GOOGLE_ADS_REFRESH_TOKEN was NOT modified.')
+    console.log('(No token material printed - fingerprint only, per secrets rule.)')
   } catch (err) {
     console.error('')
     console.error('FATAL: token exchange failed — ' + err.message)
