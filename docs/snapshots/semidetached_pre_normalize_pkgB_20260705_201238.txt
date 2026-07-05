@@ -1,0 +1,27 @@
+PACKAGE B — pre-normalize snapshot (2026-07-05T20:13:43.602Z)
+TOTAL malformed rows (all statuses): 12
+By status:
+  Closed               9
+  Active               2
+  Expired              1
+
+Distinct malformed values:
+  raw="Semi-Detached " len=14 n=12 hex=53656d692d446574616368656420
+
+Sample Active rows (for post-verify smoke):
+[
+  {
+    "listing_key": "W13505048",
+    "property_subtype": "Semi-Detached ",
+    "standard_status": "Active",
+    "created_at": "2026-07-05T12:56:38.785Z",
+    "updated_at": "2026-07-05T12:56:38.785Z"
+  },
+  {
+    "listing_key": "E13235036",
+    "property_subtype": "Semi-Detached ",
+    "standard_status": "Active",
+    "created_at": "2026-07-05T11:16:47.517Z",
+    "updated_at": "2026-07-05T11:16:47.517Z"
+  }
+]

@@ -72,11 +72,10 @@ export default async function BuildingSchema({
     address,
     numberOfUnits: building.total_units,
   }
-  // yearBuilt: gate on non-null. Verified 0.0% populated at recon time
-  // — currently omitted on every building; emits only after backfill.
-  if (building.year_built != null) {
-    schema.yearBuilt = building.year_built
-  }
+  // A-UNIT-2 FINAL (2026-07-05): yearBuilt DROPPED — buildings.year_built is
+  // 0.0% populated across 9,835 rows (VERIFIED). The field never emitted
+  // anyway (null-gated), so removing it is a code-cleanup, not a behavior
+  // change. Re-add if a backfill lands.
   // geo: buildings.latitude / longitude verified 0.0% populated (0/9835).
   // Left commented so future backfill can uncomment without a code change:
   // if (building.latitude != null && building.longitude != null) {

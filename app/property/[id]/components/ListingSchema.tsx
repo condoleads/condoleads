@@ -78,31 +78,49 @@ interface ListingSchemaProps {
   canonicalUrl: string
 }
 
-// property_subtype → schema.org about @type. All source strings verified in
-// mls_listings (100% populated). Fallback to generic Residence when the
-// subtype does not have a schema.org mapping — avoids fabricating a type.
+// property_subtype → schema.org about @type. Every source string verified
+// this session against mls_listings post-btrim. Non-dwelling subtypes
+// (Vacant Land, Store W Apt/Office, Other) emit `Place` — schema.org's
+// honest general geographic type when the listing is not a residence. Never
+// fabricate a residential @type for a non-dwelling.
 function aboutTypeFromSubtype(subtype: string | null | undefined): string {
   switch (subtype) {
     case 'Condo Apartment':
     case 'Common Element Condo':
     case 'Co-op Apartment':
+    case 'Co-Ownership Apartment':
+    case 'Leasehold Condo':
+    case 'Upper Level':
+    case 'Lower Level':
       return 'Apartment'
     case 'Condo Townhouse':
     case 'Att/Row/Townhouse':
     case 'Semi-Detached':
     case 'Semi-Detached Condo':
     case 'Link':
+    case 'Modular Home':
+    case 'MobileTrailer':
+    case 'Farm':
       return 'House'
     case 'Detached':
     case 'Detached Condo':
+    case 'Rural Residential':
       return 'SingleFamilyResidence'
     case 'Duplex':
     case 'Triplex':
     case 'Fourplex':
     case 'Multiplex':
       return 'Residence'
+    case 'Room':
+    case 'Shared Room':
+      return 'Room'
+    // Non-dwelling residential-freehold subtypes: use Place, never Residence.
+    case 'Vacant Land':
+    case 'Store W Apt/Office':
+    case 'Other':
+      return 'Place'
     default:
-      return 'Residence'
+      return 'Place'
   }
 }
 
@@ -194,19 +212,33 @@ export default async function ListingSchema(props: ListingSchemaProps) {
     address.addressCountry = listing.country.trim()
   }
 
-  // about — nested Residence / Apartment / House. Property @type derived
-  // deterministically from property_subtype.
+  // about — nested type derived deterministically from property_type +
+  // property_subtype. Commercial always emits `Place` (never a residential
+  // type) — schema.org has no dedicated commercial-listing type; Place is
+  // the honest generic geographic type. For all other property_types the
+  // subtype mapping decides (dwelling → Apartment/House/etc., non-dwelling
+  // freehold → Place).
+  const aboutType =
+    listing.property_type === 'Commercial'
+      ? 'Place'
+      : aboutTypeFromSubtype(listing.property_subtype)
   const about: Record<string, unknown> = {
-    '@type': aboutTypeFromSubtype(listing.property_subtype),
+    '@type': aboutType,
     address,
   }
   if (building?.building_name) about.name = building.building_name
-  if (listing.bedrooms_total != null) about.numberOfBedrooms = listing.bedrooms_total
+  // A-UNIT-2 FINAL (2026-07-05): OMIT beds/baths when null OR 0. 0 is real
+  // DB data for non-dwelling subtypes (Vacant Land etc.) but not a factual
+  // count — emitting numberOfBedrooms:0 misrepresents the listing as a
+  // dwelling with zero bedrooms. Same rule as list_price=0 → OMIT.
+  if (listing.bedrooms_total != null && listing.bedrooms_total > 0) {
+    about.numberOfBedrooms = listing.bedrooms_total
+  }
   if (listing.bathrooms_total_integer != null) {
     // Column type is numeric — normalize to a plain number without
     // fabricating precision. String forms like "1.0" cast cleanly.
     const bt = Number(listing.bathrooms_total_integer)
-    if (!Number.isNaN(bt)) about.numberOfBathroomsTotal = bt
+    if (!Number.isNaN(bt) && bt > 0) about.numberOfBathroomsTotal = bt
   }
   // floorSize: prefer calculated_sqft (scalar), fall back to
   // living_area_range parsed as min/max. Ranges like "< 700" are dropped.
@@ -229,10 +261,15 @@ export default async function ListingSchema(props: ListingSchemaProps) {
   }
 
   // Offer — price only. priceCurrency omitted (no currency column verified).
+  // list_price=0 is a real DB value but not a real price (verified this
+  // session: 14 Commercial-with-unit rows have list_price=0). OMIT price
+  // when 0 rather than emit a fabricated zero.
   const offers: Record<string, unknown> = {
     '@type': 'Offer',
   }
-  if (listing.list_price != null) offers.price = listing.list_price
+  if (listing.list_price != null && listing.list_price > 0) {
+    offers.price = listing.list_price
+  }
   const availability = availabilityFromStatus(listing.standard_status)
   if (availability) offers.availability = availability
   const businessFunction = businessFunctionFromTx(listing.transaction_type)

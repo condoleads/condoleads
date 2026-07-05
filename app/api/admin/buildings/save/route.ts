@@ -349,7 +349,7 @@ function mapCompleteDLAFields(listing: any, buildingId: string) {
     
     // ===== PROPERTY TYPE =====
     property_type: listing.PropertyType || null,
-    property_subtype: listing.PropertySubType || null,
+    property_subtype: listing.PropertySubType?.trim() || null,
     property_use: listing.PropertyUse || null,
     board_property_type: listing.BoardPropertyType || null,
     transaction_type: listing.TransactionType || null,

@@ -1445,6 +1445,369 @@ Open Finding 1 (Commercial 937 rendering with `about.@type: Residence`) remains 
 
 HOLD push per operator dispatch. Commit staged only; `git push` not run.
 
+#### A-UNIT-2 REMAINING RECON — decide-what-can-be-decided pass (2026-07-05)
+
+Read-only recon on ALL remaining open A-UNIT-2 / SEO items. Each item resolves either to a DECIDED technical fix (verifiable now, ready to build) or an isolated product fact requiring operator input. All claims below have a command run this session backing them; nothing left "claimed, unverified" without that label attached.
+
+##### 1. Commercial (Rule Zero #1 violation — live emission VERIFIED)
+
+**Live emission — VERBATIM this session** (`Host: aily.ca` on `/111-steinway-boulevard-unit-a11-12-toronto-w10-w12716756` — Industrial, list_price $8,387,500, Active):
+```
+HTTP 200, 135 KB
+"@type":"RealEstateListing"
+about.@type:"Residence"                                    ← WRONG (Industrial listing)
+offers.price:8387500
+offers.availability:"https://schema.org/InStock"
+offers.businessFunction:"https://schema.org/Sell"
+```
+Rule Zero #1 violation confirmed live: 937 Active Commercial listings currently claim to be `Residence` in Google's structured-data view.
+
+**Real DB state** (VERIFIED this session):
+| Category | Count |
+|---|---:|
+| Commercial Active total | 1,133 |
+| — with unit_number → renders through PropertyPage (with wrong schema) | **937** |
+|     • list_price > 0 (real price emitted) | 923 |
+|     • list_price = 0 (real DB value; emits `price:0`) | 14 |
+|     • list_price NULL | 0 |
+| — no unit_number → routes to HomePropertyPage → notFound() | 196 |
+
+Subtype breakdown for the 937 rendering rows: Commercial Retail 425, Office 354, Sale Of Business 84, Industrial 62, Investment 7, Store W Apt/Office 4, Land 1.
+
+**Property_type IS in scope for ListingSchema** — VERIFIED at [app/property/[id]/components/ListingSchema.tsx:48](app/property/[id]/components/ListingSchema.tsx#L48) (`ListingSchemaProps.listing.property_type: string | null`). No plumbing work needed to gate on it.
+
+**DECIDED fix (technical, does NOT require product input)** — suppress the fake residential schema. This step is a Rule Zero #1 fix regardless of any product decision, because emitting `about.@type: Residence` for a factually-Industrial listing is fabrication:
+```
+// ListingSchema.tsx:172 (after isSeoEnabledTenant gate)
+if (listing.property_type === 'Commercial') return null
+```
+No fabricated `about.@type`. `list_price:0` on 14 rows is real DB data, so those 14 rows emit an honest zero — but wrapping any residential schema around a Commercial row is fabrication regardless. This ONE line stops the current live violation.
+
+**Honest emission (Route B — RECOMMENDED IF Commercial pages stay public)** — replace `about.@type` with a non-fabricated shape when `property_type='Commercial'`:
+- Option Ba: `about.@type: 'Place'` (schema.org's honest general geographic type; not residential; NOT a Google rich-card type — Google explicitly does not do rich-cards for commercial real estate regardless of schema choice, so no ranking loss).
+- Option Bb: emit `@type: 'Product'` at the top level (no `RealEstateListing` envelope, generic e-commerce shape). Loses real-estate semantics; not recommended.
+- Schema.org research (this session, no external fetches — encoded knowledge): schema.org has **no `CommercialRealEstateListing` type**. `LocalBusiness` subtypes only fit ACTIVE businesses (would apply to `Sale Of Business` = 84 rows but not vacant Office/Retail/Industrial). Google's rich-result docs support residential-only. `Place` is the honest fallback.
+
+**ONE remaining product fact for operator** — should Commercial URLs render a page at all?
+| Operator decision | Technical action |
+|---|---|
+| Suppress Commercial pages | Route A (suppress schema) + also add `if (listing.property_type === 'Commercial') notFound()` to `app/property/[id]/page.tsx` → 937 URLs 404. |
+| Keep public with honest schema | Route Ba (`about.@type: 'Place'` when Commercial). 937 URLs stay 200, but the fabricated Residence label is gone. |
+| Full commercial page component | Net-new page + net-new schema type; largest scope. Not required to resolve Rule Zero — the ONE-line suppress fix cures the violation regardless. |
+
+Route A (suppress the schema) can ship TODAY without any product decision — it stops the Rule Zero #1 fabrication. The page-existence question is orthogonal.
+
+##### 2. Non-RESIDENTIAL_TYPES residential subtypes — per-subtype data population (VERIFIED)
+
+`HomePropertyPage` renders home details via [components/property/HomePropertyDetails.tsx:53,57](components/property/HomePropertyDetails.tsx#L53) — `{listing.bedrooms_total || 0}` and `{listing.bathrooms_total_integer || 0}`. **When null, the UI renders literal `0`** — fabricating "0 bedrooms" / "0 bathrooms" for the user (and for any downstream JSON-LD deriving from those fields). Same shape at [components/property/PropertyHeader.tsx:87](components/property/PropertyHeader.tsx#L87).
+
+Given that render behavior, any subtype we consider adding to `RESIDENTIAL_TYPES` must have `bedrooms_total > 0` and `bathrooms_total_integer > 0` on ~all rows — otherwise we ship fabricated zeros. Data population, VERIFIED this session (Active, `property_type='Residential Freehold'`, non-RESIDENTIAL_TYPES subtypes):
+
+| Subtype | Total | beds>0 | baths>0 | sqft populated | price>0 | DECISION |
+|---|---:|---:|---:|---:|---:|---|
+| **Modular Home** | 229 | 229 (100.0%) | 229 (100.0%) | 229 (100.0%) | 229 (100.0%) | ✅ **ADD to RESIDENTIAL_TYPES** — perfect population, is a dwelling |
+| **Upper Level** | 166 | 165 (99.4%) | 166 (100.0%) | 166 (100.0%) | 166 (100.0%) | ✅ **ADD** — 1 row missing beds (rounds to 0.6%); is a dwelling (upper unit of a house) |
+| **Lower Level** | 285 | 277 (97.2%) | 285 (100.0%) | 284 (99.6%) | 285 (100.0%) | ✅ **ADD** — 8 rows missing beds (2.8%); is a dwelling (basement suite) |
+| **Room** | 34 | 34 (100.0%) | 34 (100.0%) | 34 (100.0%) | 34 (100.0%) | ✅ **ADD** — perfect population; is a dwelling (single-room rental) |
+| **Shared Room** | 5 | 5 (100.0%) | 5 (100.0%) | 5 (100.0%) | 5 (100.0%) | ✅ **ADD** — perfect population; is a dwelling |
+| **Rural Residential** | 490 | 476 (97.1%) | 471 (96.1%) | 490 (100.0%) | 490 (100.0%) | ✅ **ADD** — 14 rows miss beds (2.9%), 19 miss baths (3.9%); is a dwelling |
+| **MobileTrailer** | 500 | 498 (99.6%) | 497 (99.4%) | 499 (99.8%) | 500 (100.0%) | ✅ **ADD** — near-perfect; is a dwelling (mobile home) |
+| **Farm** | 529 | 467 (88.3%) | 465 (87.9%) | 525 (99.2%) | 529 (100.0%) | ⚠️ **OPERATOR DECISION** — 62 rows would render "0 Bed" (~12% of Farm rows have no residence; a Farm may be land-only or include a farmhouse). Decision is product: does aily's SEO scope want Farm listings? If yes, need a Farm-specific gate that omits beds/baths block when 0 rather than showing `0`. |
+| **Store W Apt/Office** | 147 | 142 (96.6%) | 147 (100.0%) | 147 (100.0%) | 147 (100.0%) | ⚠️ **OPERATOR DECISION** — this is a mixed-use commercial-with-apartment classification. The 5 no-beds rows are storefront-only. Product question: SEO scope? |
+| **Other** | 436 | 356 (81.7%) | 368 (84.4%) | 434 (99.5%) | 436 (100.0%) | ⚠️ **OPERATOR DECISION** — 80 rows would render "0 Bed" (18%). "Other" is a catchall; likely mixed. Recommend NOT adding — data quality too variable for a residential dwelling gate. |
+| **Vacant Land** | 5,663 | 61 (1.1%) | 59 (1.0%) | 925 (16.3%) | 5,663 (100.0%) | ❌ **STAY 404 (technical decision)** — 99% would render "0 Bed / 0 Bath" and sqft is missing on 84%. Vacant Land is not a dwelling; adding it fabricates residential attributes. Needs a distinct "LandListing"-shape page + schema, not force-fit onto HomePropertyPage. |
+
+**Also VERIFIED**: 2 rows still show `property_subtype='Semi-Detached '` (14 bytes, hex `...6420`) — see item 5 below (whitespace regression).
+
+**Non-Freehold "residential" subtypes recap** (from Phase 2 shipped work):
+- Condo subtypes (Apartment, Townhouse, Co-op, Common Element, Leasehold, Detached Condo, Co-Ownership) — already render + emit RealEstateListing via `PropertyPage`. NOT in this recon's scope.
+- Semi-Detached Condo (54 rows) — already renders via PropertyPage (has unit_number in most cases). Schema emits `about.@type: 'House'` via ListingSchema.tsx:93 mapping. No change.
+
+**AGGREGATE DECISION (technical, ready to build without operator input)** — add the 7 clean-population subtypes to `RESIDENTIAL_TYPES`:
+```
+const RESIDENTIAL_TYPES = [
+  'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
+  'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
+  // A-UNIT-2 REMAINING (2026-07-05): 7 subtypes with >=97% beds/baths/sqft population,
+  // all schema.org-classifiable as House / SecondaryDwellingUnit / Residence.
+  'Modular Home', 'Upper Level', 'Lower Level', 'Room', 'Shared Room',
+  'Rural Residential', 'MobileTrailer',
+]
+```
+Net-new coverage: 229 + 166 + 285 + 34 + 5 + 490 + 500 = **1,709 Active rows** would now render + emit RealEstateListing schema.
+
+`aboutTypeFromSubtype` needs mapping additions (all deterministic, no fabrication):
+- `Modular Home` / `MobileTrailer` → `House` (schema.org supports both under House)
+- `Upper Level` / `Lower Level` / `Room` / `Shared Room` → `Apartment` (a sub-dwelling unit)
+- `Rural Residential` → `SingleFamilyResidence` (a detached rural home)
+
+**REMAINING product questions (only for the 3 borderline subtypes)** — should aily's SEO scope include Farm (529 rows, 88% beds pop), Store W Apt/Office (147), Other (436)? None are technically-decidable without knowing the business focus. Recommend "no" on Other (data quality too variable); Farm and Store W Apt/Office genuinely need operator input.
+
+##### 3. Vacant Land + non-dwelling — technical DECISION (stay 404 / needs new page)
+
+| Subtype | Count | Recommendation |
+|---|---:|---|
+| Vacant Land | 5,663 | Stay 404 on HomePropertyPage. Needs a distinct page component + schema (`schema.org/LandListing` or `Place`, not `RealEstateListing`). ~1,700 lines net-new work if pursued. NOT this unit. |
+| Farm (if operator says no) | 529 | Stay 404 unless a Farm-specific page ships. |
+| Store W Apt/Office (if operator says no) | 147 | Stay 404 unless product wants mixed-use pages. |
+| Other (unless operator overrides) | 436 | Stay 404 — data too heterogeneous to gate on. |
+
+**Reasoning**: forcing non-dwellings onto `HomePropertyPage` triggers the `bedrooms_total || 0` fabrication in `HomePropertyDetails.tsx:53,57`. Rather than patch the render component to null-guard the whole details block, the durable posture is: keep HomePropertyPage as a *dwelling* page; ship distinct pages for land / commercial / farm when the operator prioritizes them.
+
+##### 4. Sitemap coverage of the newly-renderable rows (KNOCK-ON)
+
+If the 7 clean subtypes are added to `RESIDENTIAL_TYPES`, they also become sitemappable. `get_sitemap_freehold_listings` RPC needs its predicate widened to match. VERIFIED: `app/sitemap/[id]/route.ts` uses the RPC; RPC filter uses the same 8-value list. This is a co-required change (migration + code).
+
+**DECISION**: pair the code-side `RESIDENTIAL_TYPES` extension with a matching RPC UPDATE. Same 7 subtypes on both sides. Deterministic; no product input.
+
+##### 5. Whitespace regression (2 rows) — CRITICAL leak flagged for follow-up
+
+**Post-migration state (VERIFIED this session, after SEMI-DETACHED-404 FIX c7441de)**:
+- 2 Active rows with `property_subtype = 'Semi-Detached '` (14 bytes, trailing 0x20):
+  - `W13505048` — created 2026-07-05T12:56:38 UTC (AFTER c7441de push)
+  - `E13235036` — created 2026-07-05T11:16:47 UTC (AFTER c7441de push)
+- All-status total: **12 rows** re-inserted since migration.
+
+**Root cause** — the SEMI-DETACHED-404 FIX (c7441de) patched 4 insert sites but MISSED 3 more:
+
+| File | Line | Status |
+|---|---:|---|
+| `app/api/admin/buildings/incremental-sync/route.ts` | 813 | ❌ untrimmed — writes to `mls_listings.insert()` at :668 |
+| `app/api/admin/buildings/save/route.ts` | 352 | ❌ untrimmed — writes to `mls_listings` |
+| `scripts/sync-buildings-incremental.ts` | 99 | ❌ untrimmed — writes to `mls_listings` |
+
+CLAUDE.md's System 1 carve is `/admin`, `app/api/chat/*`, `agent_buildings`. **`app/api/admin/buildings/*` is NOT in the System 1 carve** — it's admin building sync writing into System 2's `mls_listings` shared table. This is a Rule Zero recurrence on the SEMI-DETACHED fix.
+
+**DECIDED fix (technical, no product input)** — extend the exact same `.trim() || null` shape to these 3 sites:
+```
+property_subtype: listing.PropertySubType?.trim() || null
+```
+Same one-line pattern as the 4 already-shipped sites. Backups per file. Follow with a second normalize migration (12 rows this time, trivial) inside the same commit.
+
+##### 6. Other OPEN A-UNIT-2 items — decidable now
+
+Tracker grep this session surfaced these remaining items under A-UNIT-2 / SEO scope:
+
+| Item | Source | Verified surface | DECISION |
+|---|---|---|---|
+| A-UNIT-2 line 514 — `dateModified` "~100% (unverified fill rate)" | `docs/W-MARKETING-TRACKER.md:514` | Not verified this session either | ⚠️ **VERIFY BEFORE NEXT BUILD** — quick DB probe; emit-if-non-null policy is already in ListingSchema so no risk regardless. Non-blocking. |
+| A-UNIT-2 tail — Farm/Vacant Land coverage gap | line 1123 tracker | Enumerated above (items 2, 3) | ✅ DECIDED in items 2, 3 |
+| AreaPage canonical uses DB slug not URL slug | line 468 tracker | Pre-existing: `treb_areas.slug='toronto-area'` while URL is `/toronto` | ⚠️ **DEFERRED (accepted)** — Google accepts alternate canonicals; not a Rule Zero issue. Threading `params.slug` through metadata is a small fix, not blocking. Log as accepted-deferred. |
+| Building latitude/longitude 0.0% populated (geo block stays commented) | line 491 tracker | Already handled — geo block commented in BuildingSchema | ✅ **ALREADY CLOSED** — no follow-up needed. |
+| Building year_built 0.0% populated | line 491 tracker | RECON claimed "gate with `year_built != null` or drop entirely" | ✅ **DECIDED** — drop entirely (no coverage). One-line delete in BuildingSchema.tsx. Non-blocking (already emits `null`, which is honest but noisy). |
+| `OWNER_PROMO_HOSTS` Edge/Node duplication (line 326) | Tracker OPEN item 3 | Enumerated (middleware.ts + app/robots.ts + 2 sitemap handlers) | ⚠️ **DEFERRED (accepted, tracked)** — not A-UNIT-2 scope; adding a new promo host requires 4 edits but that's rare. Non-blocking. |
+
+##### 7. SEO-lane items (C-UNIT / D-UNIT) — all EXTERNAL blockers
+
+Tracker grep: every non-A-UNIT-2 SEO item is currently gated on external operator action, not decidable by this recon:
+- C-UNIT-2 Blocker 2 — Cloud Console API-enable (operator step, external)
+- C-UNIT-2 Blocker 3 — aily.ca GSC verification (operator step, external)
+- E-UNIT-2 — DNS/HTML verification for social channels (external)
+- D-UNIT-2 — blocked by C-UNIT-3 (analytics-tracking wiring)
+
+None decidable in this pass. Log status unchanged.
+
+##### 8. Report — single table, one row per open item
+
+| # | Item | Verified surface | DECISION or product fact |
+|---|---|---|---|
+| 1 | Commercial 937 fake schema | ListingSchema.tsx emits `about.@type: Residence` for 937 Active Commercial rows. Live-verified this session (W12716756 Industrial $8.4M). | ✅ **DECIDED**: add `if (listing.property_type === 'Commercial') return null` at top of ListingSchema — stops Rule Zero #1 violation regardless of any product call. Product fact for later: should Commercial pages render at all? Independent of schema fix. |
+| 2 | Commercial 196 no-unit 404 | HomePropertyPage subtype-gate catches them (Commercial not in RESIDENTIAL_TYPES). | ✅ **DECIDED**: no schema action needed (page doesn't render). Only product decision: are 196 Commercial URLs meant to 404 forever or get a page? Same product question as #1. |
+| 3 | Modular Home / Upper Level / Lower Level / Room / Shared Room / Rural Residential / MobileTrailer (7 subtypes, 1,709 Active rows) | Each has ≥97% beds/baths/sqft/price population — safe to render. | ✅ **DECIDED**: add all 7 to RESIDENTIAL_TYPES + extend `aboutTypeFromSubtype` map + widen `get_sitemap_freehold_listings` RPC predicate. Pair change. |
+| 4 | Farm (529) / Store W Apt/Office (147) | Farm 88% beds pop (62 rows would fabricate); Store 96.6% beds pop. Business scope decision. | ⚠️ **PRODUCT FACT**: is Farm / Store-W-Apt in aily's SEO scope? If yes → add + null-gate the beds/baths render block; if no → stay 404. |
+| 5 | Other (436) | 81.7% beds pop → 80 rows would render "0 Bed". | ✅ **DECIDED**: STAY 404. Data quality too variable for a safe residential gate. |
+| 6 | Vacant Land (5,663) | 1.1% beds pop, 16.3% sqft. Not a dwelling. | ✅ **DECIDED**: STAY 404 on HomePropertyPage. Distinct LandListing page + schema is separate net-new unit if operator prioritizes it. |
+| 7 | Whitespace REGRESSION (12 rows since c7441de, 2 Active) | 3 untrimmed insert sites: `app/api/admin/buildings/incremental-sync/route.ts:813`, `app/api/admin/buildings/save/route.ts:352`, `scripts/sync-buildings-incremental.ts:99`. | ✅ **DECIDED**: extend `.trim() || null` to the 3 missed sites (same shape as c7441de). Pair with a normalize migration (12 rows, trivial). NOT System-1 carve. |
+| 8 | BuildingSchema `year_built` (0.0% populated) | Currently emits `null` on every building. | ✅ **DECIDED**: drop the field entirely. One-line delete. |
+| 9 | `dateModified` fill rate "~100% unverified" | Tracker :514 unverified. | ⚠️ Verify before build (single COUNT query). Non-blocking — emit-if-non-null already in place. |
+| 10 | AreaPage canonical DB-slug (`/toronto` → `/toronto-area`) | Pre-existing, Google accepts as alternate. | ⚠️ **DEFERRED (accepted)** — small fix, non-Rule-Zero. |
+| 11 | OWNER_PROMO_HOSTS Edge/Node dup | 4 files share the set (2 sitemap + robots + middleware). | ⚠️ **DEFERRED (accepted)** — not A-UNIT-2. |
+| 12 | C-UNIT-2 / D-UNIT-2 / E-UNIT-2 | All external-blocker deferrals (GSC verify, DNS, OAuth). | 🟡 UNCHANGED — external. |
+
+##### 9. Ready-to-build packages (post-recon)
+
+**Package A — Commercial Rule Zero suppression** (1 file, 1 line, no product input): stops the live 937-row fabrication.
+
+**Package B — Whitespace regression closure** (3 files patched + 1 normalize migration + snapshot): completes the SEMI-DETACHED-404 FIX by closing the 3 missed insert paths. NOT the System 1 carve.
+
+**Package C — 7 residential subtypes** (2 code files + 1 RPC migration): +1,709 Active rows renderable + sitemappable. Deterministic mapping.
+
+**Package D — BuildingSchema `year_built` drop** (1 file, 1 line): drops honest-but-null field.
+
+Packages A, B, C, D are technically decidable now. Only Farm / Store W Apt/Office / (optional) full Commercial page await operator product input.
+
+##### 10. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-2-REMAINING-RECON_20260705_193509`. Data queries via ad-hoc `node -e` scripts (safe — `BEGIN READ ONLY`, explicit column allow-lists, no `SELECT *` on credential tables). Live smoke ran on `Host: aily.ca` local dev — no state write. Every claim above verified against a command output this session; any exception is flagged "claimed, unverified."
+
+#### A-UNIT-2 FINAL — 4 packages SHIPPED (2026-07-05)
+
+Operator explicitly confirmed all 11 non-RESIDENTIAL_TYPES freehold subtypes are in-scope residential (Modular Home, Upper Level, Lower Level, Room, Shared Room, Rural Residential, MobileTrailer, Farm, Store W Apt/Office, Other, Vacant Land) — must render, must emit real fields, must OMIT null (never `0`/`-` placeholder). Rule Zero #1 governs HOW.
+
+##### 1. GATE — render-behavior verify (VERBATIM)
+
+Before Package C the operator required verification of how `bedrooms_total`/`bathrooms_total_integer` render when null. VERBATIM lines confirmed this session:
+
+| File | Line | Verbatim | Behavior |
+|---|---:|---|---|
+| `components/property/HomePropertyDetails.tsx` | 53 | `<p ...>{listing.bedrooms_total \|\| 0}</p>` | prints `0` on null → **FABRICATES** |
+| `components/property/HomePropertyDetails.tsx` | 57 | `<p ...>{listing.bathrooms_total_integer \|\| 0}</p>` | prints `0` on null → **FABRICATES** |
+| `components/property/HomePropertyDetails.tsx` | 173 | `{listing.living_area_range \|\| '-'}` | prints `-` placeholder |
+| `components/property/PropertyHeader.tsx` | 87 | `{listing.bedrooms_total \|\| 0} Bed · {listing.bathrooms_total_integer \|\| 0} Bath` | prints `0 Bed · 0 Bath` → **FABRICATES** |
+| `components/property/PropertyDetails.tsx` | 44,48 | `{listing.bedrooms_total \|\| 0}` / `{listing.bathrooms_total_integer \|\| 0}` | condo-layout fabrication (identical shape) |
+
+GATE result: **FABRICATES**. Package C therefore includes the guard fixes to omit-on-null on all 5 sites (backed up + patched).
+
+Emitter side — `app/property/[id]/components/ListingSchema.tsx:204-210` already gates on `!= null`, but that lets integer `0` through. Vacant Land has `bedrooms_total=0` in DB (not null). VERIFIED live before fix on `X11961103`: schema emitted `numberOfBedrooms: 0` / `numberOfBathroomsTotal: 0`. Same as list_price=0 → not a fact, must OMIT. Fix: strengthen guard to `!= null && > 0`.
+
+##### 2. Package A — Commercial honest schema (SHIPPED)
+
+Live violation VERIFIED pre-fix on aily.ca: `W12716756` (Industrial, $8.4M, Active) emitted `about.@type: "Residence"` (Rule Zero #1 fabrication).
+
+Fix — [ListingSchema.tsx:199](app/property/[id]/components/ListingSchema.tsx#L199) new deterministic branch:
+```
+const aboutType =
+  listing.property_type === 'Commercial'
+    ? 'Place'
+    : aboutTypeFromSubtype(listing.property_subtype)
+```
+`Place` is schema.org's honest general geographic type — chosen because schema.org has NO `CommercialRealEstateListing` type and Google's rich-cards are residential-only regardless. Not a fabrication.
+
+Also — `list_price=0` OMIT guard added (14 rows of the 937 commercial-with-unit have `list_price=0`):
+```
+if (listing.list_price != null && listing.list_price > 0) offers.price = listing.list_price
+```
+
+Post-fix live smoke on aily.ca, both a real-priced Industrial + a $0 Commercial:
+| listing_key | Subtype | Pre-fix about | Post-fix about | Pre-fix price | Post-fix price |
+|---|---|---|---|---:|---:|
+| W12716756 | Industrial | `Residence` | **`Place`** | 8387500 | 8387500 (unchanged; real) |
+| W12757158 | Office (unit 210,211&212, $0 DB) | `Residence` + `price:0` | **`Place`** + **OMIT** | 0 | **OMIT** |
+
+availability=InStock and businessFunction=Sell derived from real `standard_status` + `transaction_type` — unchanged. No fabrication.
+
+##### 3. Package B — Whitespace regression closure (SHIPPED)
+
+Verified inventory of EVERY prod code write to `mls_listings.property_subtype`:
+
+| File | Line | Pre-fix state | Action |
+|---|---:|---|---|
+| `lib/proptx/field-mapper.ts` | 37 | `?.trim() \|\| null` (c7441de) | ✓ unchanged |
+| `lib/homes-sync/save.ts` | 295 | `?.trim() \|\| null` (c7441de) | ✓ unchanged |
+| `lib/building-sync/save.ts` | 376 | `?.trim() \|\| null` (c7441de) | ✓ unchanged |
+| `scripts/lib/homes-save.ts` | 290 | `?.trim() \|\| null` (c7441de) | ✓ unchanged |
+| `app/api/admin/buildings/incremental-sync/route.ts` | 813 | untrimmed | **patched → `?.trim() \|\| null`** |
+| `app/api/admin/buildings/save/route.ts` | 352 | untrimmed | **patched → `?.trim() \|\| null`** |
+| `scripts/sync-buildings-incremental.ts` | 99 | untrimmed | **patched → `?.trim() \|\| null`** |
+
+Non-write echoes (SELECT + echo in response body, no write): `app/api/parity-probe-sf-lease/route.ts:76`, `app/api/parity-probe-sf-sold/route.ts:93`, `app/api/test-estimator-sections/route.ts:38` — all `.select()`-only. No action.
+
+**System 1 check** — CLAUDE.md carve = `/admin`, `app/api/chat/*`, `agent_buildings`. The 3 patched files are `app/api/admin/buildings/*` and `scripts/sync-buildings-incremental.ts` — NOT in the carve. Building sync is a documented shared exception; writing untrimmed to shared `mls_listings` was a Rule Zero recurrence risk, now closed.
+
+DB normalization migration (OPERATOR-APPROVED): `scripts/apply-semidetached-normalize-pkgB.js`:
+- Pre-check: 12 malformed rows (2 Active W13505048/E13235036 + 9 Closed + 1 Expired). Snapshot: `docs/snapshots/semidetached_pre_normalize_pkgB_20260705_201238.txt`.
+- Transactional `BEGIN` + `SET LOCAL statement_timeout = 0` + UPDATE btrim + post-verify (0 remaining) + sample re-check (W13505048, E13235036 both `Semi-Detached` len=13).
+- COMMITTED. Separate-query post-verify outside runner: 0 malformed remaining anywhere in `mls_listings`.
+
+##### 4. Package C — 11 subtypes render honestly (SHIPPED)
+
+DB byte-exact strings post-btrim verified this session (VERIFIED via `encode(::bytea,'hex')` probe on all 20 distinct freehold Active subtypes). Every added string is `clean=true` (no whitespace):
+
+RESIDENTIAL_TYPES widened at 4 code sites + 1 SQL RPC (all in sync):
+- [app/property/[id]/HomePropertyPage.tsx:16](app/property/[id]/HomePropertyPage.tsx#L16)
+- [app/api/geo-listings/route.ts:7](app/api/geo-listings/route.ts#L7)
+- [app/api/neighbourhood-listings/route.ts:14](app/api/neighbourhood-listings/route.ts#L14)
+- [app/sitemap.xml/route.ts:66](app/sitemap.xml/route.ts#L66)
+- `supabase/migrations/20260705_a_unit_2_final_sitemap_rpc_widen.sql` → `CREATE OR REPLACE FUNCTION public.get_sitemap_listings` — RPC COMMITTED via `scripts/apply-a-unit-2-final-sitemap-rpc.js` (OPERATOR-APPROVED). Pre-widen matching rows: 91,349; post-widen: 100,179; **net-new sitemappable: +8,830 Active rows**. RPC call `SELECT COUNT * FROM get_sitemap_listings(1000, 0)` returned 1000 (LIMIT applied). Migration transactional; ROLLBACK on narrowing.
+
+Emitter per-subtype schema.org `about.@type` map (`aboutTypeFromSubtype` at [ListingSchema.tsx:84](app/property/[id]/components/ListingSchema.tsx#L84)) — honest deterministic mapping, never fabricates a residential type for a non-dwelling:
+
+| Subtype | about.@type | Rationale |
+|---|---|---|
+| Modular Home | House | schema.org House covers modular-construction homes |
+| Upper Level | Apartment | sub-dwelling unit of a house |
+| Lower Level | Apartment | basement suite = sub-dwelling |
+| Room | Room | schema.org has schema:Room type |
+| Shared Room | Room | same |
+| Rural Residential | SingleFamilyResidence | detached rural home |
+| MobileTrailer | House | closest honest fit |
+| Farm | House | farmhouse (dwelling on farm parcel) |
+| Store W Apt/Office | **Place** | non-dwelling (mixed-use commercial + apt) |
+| Other | **Place** | catchall — data too heterogeneous for a dwelling type |
+| Vacant Land | **Place** | not a dwelling |
+| Commercial (all subtypes via property_type branch) | **Place** | non-residential (Package A) |
+
+UI null-omit guards SHIPPED at 3 files:
+- [components/property/HomePropertyDetails.tsx:50-77](components/property/HomePropertyDetails.tsx) — Bedrooms/Bathrooms/Square Feet/Property Type cells each individually null-guarded; renders empty cell (not `0`/`-`) when backing value null.
+- [components/property/PropertyHeader.tsx:85-100](components/property/PropertyHeader.tsx) — home sub-line composed from real non-null parts only; skips sub-line entirely if all null.
+- [components/property/PropertyDetails.tsx:41-64](components/property/PropertyDetails.tsx) — condo layout same shape (freehold-with-unit routes here; e.g. Modular Home X13214966, Room E13467500).
+
+Emitter null-omit strengthened at [ListingSchema.tsx:207-218](app/property/[id]/components/ListingSchema.tsx#L207) — beds/baths OMIT when `null OR 0`; same rule as list_price=0.
+
+**Live smoke — every subtype, real listing_key, both tenants**:
+
+| Subtype | listing_key | HTTP | about | beds | baths | price | avail | biz |
+|---|---|---:|---|---:|---:|---:|---|---|
+| Modular Home | X13214966 | 200 | House | 4 | 3 | 1266497 | InStock | Sell |
+| Upper Level | C12990900 | 200 | Apartment | 3 | 3 | 15800 | InStock | LeaseOut |
+| Lower Level | C13420642 | 200 | Apartment | 3 | 1 | 3100 | InStock | LeaseOut |
+| Room | E13467500 | 200 | Room | 2 | 2 | 2620 | InStock | LeaseOut |
+| Shared Room | W13055104 | 200 | Room | 3 | 1 | 2650 | InStock | LeaseOut |
+| Rural Residential | X13126132 | 200 | SingleFamilyResidence | 4 | 2 | 16900000 | InStock | Sell |
+| MobileTrailer | X13123056 | 200 | House | 2 | 1 | 999000 | InStock | Sell |
+| Farm | N10410273 | 200 | House | 6 | 6 | 35000000 | InStock | Sell |
+| Store W Apt/Office | X12472597 | 200 | Place | 6 | 5 | 7999000 | InStock | Sell |
+| **Other (DB beds=0)** | S13502654 | 200 | Place | **OMIT** | **OMIT** | 24000000 | InStock | Sell |
+| **Vacant Land (DB beds=0)** | X11961103 | 200 | Place | **OMIT** | **OMIT** | 34500000 | InStock | Sell |
+| Semi-Detached | N13087922 | 200 | House | 42 | 36 | 13000000 | InStock | Sell |
+| **Commercial Industrial** | W12716756 | 200 | Place | OMIT | OMIT | 8387500 | InStock | Sell |
+| **Commercial $0 (Office 448 Burnhamthorpe)** | W12757158 | 200 | Place | OMIT | OMIT | **OMIT** | InStock | Sell |
+
+Zero `0 Bed` text found in any rendered HTML across the 14 URLs (`grep -Fc "0 Bed"` = 0 everywhere).
+
+Walliam absence check on 3 subtypes (modular / vacantland / commercial): all HTTP 200, RealEstateListing x0, BreadcrumbList x0 — SEO gate intact, non-SEO tenant behavior preserved.
+
+geo-listings widening proof — community `51f44580-…` (top community with new-subtype rows): pre-widen homes-tab excluded them; post-widen returned 200 rows with Rural Residential + 40 Vacant Land + Duplex included. Postgres `.in()` predicate now matches.
+
+##### 5. Package D — year_built dropped (SHIPPED)
+
+[app/[slug]/components/BuildingSchema.tsx:77-80](app/[slug]/components/BuildingSchema.tsx#L77) removed. Field was 0.0% populated across 9,835 buildings — always OMIT before, always OMIT after; code-cleanup only. Building smoke on `/side-launch-1-shipyard-lane-collingwood` (aily): HTTP 200, `ApartmentComplex` x1, `BreadcrumbList` x1, `yearBuilt` tokens = 0. walliam same URL: HTTP 200, ApartmentComplex x0.
+
+##### 6. Files this dispatch
+
+New:
+- `scripts/apply-semidetached-normalize-pkgB.js`
+- `scripts/apply-a-unit-2-final-sitemap-rpc.js`
+- `scripts/_a-unit-2-final-smoke-parse.js` (smoke helper)
+- `supabase/migrations/20260705_a_unit_2_final_sitemap_rpc_widen.sql`
+- `docs/snapshots/semidetached_pre_normalize_pkgB_20260705_201238.txt`
+
+Modified (all with `.backup_A-UNIT-2-FINAL_20260705_201238`):
+- `app/property/[id]/components/ListingSchema.tsx` (Commercial branch + non-dwelling map + beds/baths/price >0 guards)
+- `app/property/[id]/HomePropertyPage.tsx` (RESIDENTIAL_TYPES widened to 19)
+- `app/api/geo-listings/route.ts` (RESIDENTIAL_TYPES widened)
+- `app/api/neighbourhood-listings/route.ts` (RESIDENTIAL_TYPES widened)
+- `app/sitemap.xml/route.ts` (HOME_SUBTYPES widened)
+- `components/property/HomePropertyDetails.tsx` (null-omit guards)
+- `components/property/PropertyHeader.tsx` (null-omit guards)
+- `components/property/PropertyDetails.tsx` (null-omit guards — condo layout)
+- `app/[slug]/components/BuildingSchema.tsx` (year_built dropped)
+- `app/api/admin/buildings/incremental-sync/route.ts` (`.trim()` on property_subtype)
+- `app/api/admin/buildings/save/route.ts` (`.trim()` on property_subtype)
+- `scripts/sync-buildings-incremental.ts` (`.trim()` on property_subtype)
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_A-UNIT-2-FINAL_20260705_201238`)
+
+TSC exit 0 on all edits. `.env.local` remains git-ignored — not staged. Backups untracked (deliberate).
+
+##### 7. Open Findings — updated
+
+- **Open Finding 1** (Commercial `Residence` fabrication) — **CLOSED** by Package A honest `Place` schema + list_price=0 OMIT.
+- **Open Finding 2** (Semi-Detached whitespace) — **CLOSED** (already closed by c7441de + confirmed by Package B closing the 3 previously-missed insert paths + normalizing the 12 re-corrupted rows).
+
+No new Open Findings surfaced this dispatch.
+
+HOLD push per operator dispatch.
+
 ##### 3. LocalBusiness / RealEstateAgent — SHIPPED (Rule Zero clean)
 
 **File**: `components/LocalBusinessSchema.tsx` (new, 90 lines). Async server component, gated on `isSeoEnabledTenant()`. Deterministic address parser (splits canonical `"street, locality, region postal, country"` format). Falls back to single-line streetAddress if parse fails.

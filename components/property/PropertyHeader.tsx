@@ -82,12 +82,23 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
                 {listing.buildings.name}
               </p>
             )}
-            {isHome && (
-              <p className={`text-base text-slate-700 mb-1 ${shouldBlur ? 'blur-sm' : ''}`}>
-                {listing.bedrooms_total || 0} Bed · {listing.bathrooms_total_integer || 0} Bath
-                {listing.property_subtype ? ` · ${listing.property_subtype}` : ''}
-              </p>
-            )}
+            {isHome && (() => {
+              // A-UNIT-2 FINAL (2026-07-05): compose the sub-line from real
+              // non-null fields only. Vacant Land / Store W Apt/Office
+              // etc. often lack beds/baths — never render "0 Bed" as a
+              // fabricated fact (Rule Zero #1). Omit missing parts; if
+              // nothing populates, skip the sub-line entirely.
+              const parts: string[] = []
+              if (listing.bedrooms_total != null && listing.bedrooms_total > 0) parts.push(`${listing.bedrooms_total} Bed`)
+              if (listing.bathrooms_total_integer != null && Number(listing.bathrooms_total_integer) > 0) parts.push(`${listing.bathrooms_total_integer} Bath`)
+              if (listing.property_subtype) parts.push(listing.property_subtype)
+              if (parts.length === 0) return null
+              return (
+                <p className={`text-base text-slate-700 mb-1 ${shouldBlur ? 'blur-sm' : ''}`}>
+                  {parts.join(' · ')}
+                </p>
+              )
+            })()}
             <p className={`text-sm text-slate-500 ${shouldBlur ? 'blur-sm' : ''}`}>
               MLS #{listing.listing_key || listing.listing_id}
             </p>

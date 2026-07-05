@@ -11,9 +11,14 @@ const CONDO_TYPES = [
   'Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
   'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment',
 ]
+// A-UNIT-2 FINAL (2026-07-05): mirrors HomePropertyPage RESIDENTIAL_TYPES —
+// every Residential Freehold subtype that has a rendering surface.
 const RESIDENTIAL_TYPES = [
-  'Detached', 'Semi-Detached', 'Att/Row/Townhouse',
-  'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
+  'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
+  'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
+  'Modular Home', 'Upper Level', 'Lower Level', 'Room', 'Shared Room',
+  'Rural Residential', 'MobileTrailer',
+  'Farm', 'Store W Apt/Office', 'Other', 'Vacant Land',
 ]
 
 const LISTING_SELECT = [

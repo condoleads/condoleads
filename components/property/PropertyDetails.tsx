@@ -37,24 +37,33 @@ export default function PropertyDetails({ listing }: PropertyDetailsProps) {
     <div className="bg-white rounded-2xl shadow-lg p-8">
       <h2 className="text-2xl font-bold text-slate-900 mb-6">Property Details</h2>
       
-      {/* Key Specs Grid */}
+      {/* Key Specs Grid — omit cells whose backing DB value is null/zero.
+          Never render a fabricated "0" or "-" placeholder (Rule Zero #1). */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
-        <div>
-          <p className="text-sm text-slate-600 mb-1">Bedrooms</p>
-          <p className="text-2xl font-bold text-slate-900">{listing.bedrooms_total || 0}</p>
-        </div>
-        <div>
-          <p className="text-sm text-slate-600 mb-1">Bathrooms</p>
-          <p className="text-2xl font-bold text-slate-900">{listing.bathrooms_total_integer || 0}</p>
-        </div>
-        <div>
-          <p className="text-sm text-slate-600 mb-1">Square Feet</p>
-          <p className="text-2xl font-bold text-slate-900">{displaySqft}</p>
-        </div>
-        <div>
-          <p className="text-sm text-slate-600 mb-1">Property Type</p>
-          <p className="text-2xl font-bold text-slate-900">{listing.property_type || 'Condo'}</p>
-        </div>
+        {listing.bedrooms_total != null && listing.bedrooms_total > 0 && (
+          <div>
+            <p className="text-sm text-slate-600 mb-1">Bedrooms</p>
+            <p className="text-2xl font-bold text-slate-900">{listing.bedrooms_total}</p>
+          </div>
+        )}
+        {listing.bathrooms_total_integer != null && Number(listing.bathrooms_total_integer) > 0 && (
+          <div>
+            <p className="text-sm text-slate-600 mb-1">Bathrooms</p>
+            <p className="text-2xl font-bold text-slate-900">{listing.bathrooms_total_integer}</p>
+          </div>
+        )}
+        {(exactSqft || listing.living_area_range) && (
+          <div>
+            <p className="text-sm text-slate-600 mb-1">Square Feet</p>
+            <p className="text-2xl font-bold text-slate-900">{displaySqft}</p>
+          </div>
+        )}
+        {listing.property_type && (
+          <div>
+            <p className="text-sm text-slate-600 mb-1">Property Type</p>
+            <p className="text-2xl font-bold text-slate-900">{listing.property_type}</p>
+          </div>
+        )}
       </div>
       
       {/* Additional Details - Two Column Layout */}

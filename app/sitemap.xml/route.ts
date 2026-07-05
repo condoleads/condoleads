@@ -63,9 +63,14 @@ async function resolveRequestContext(): Promise<{ host: string; isTenant: boolea
 // queries (one per property_type) to avoid PostgREST's fragile nested-OR
 // syntax with an IN list. Predicate mirrors public.get_sitemap_listings
 // (migration 373640a) — keep in sync.
+// A-UNIT-2 FINAL (2026-07-05): mirrors HomePropertyPage RESIDENTIAL_TYPES +
+// public.get_sitemap_listings predicate.
 const HOME_SUBTYPES = [
-  'Detached', 'Semi-Detached', 'Att/Row/Townhouse',
-  'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
+  'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
+  'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
+  'Modular Home', 'Upper Level', 'Lower Level', 'Room', 'Shared Room',
+  'Rural Residential', 'MobileTrailer',
+  'Farm', 'Store W Apt/Office', 'Other', 'Vacant Land',
 ]
 const ACTIVE_STATUSES = ['Active', 'Active Under Contract']
 
